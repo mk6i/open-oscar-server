@@ -128,6 +128,7 @@ func (f *FlapClient) SendSignonFrame(tlvs []TLV) error {
 }
 
 // ReceiveSignonFrame receives a signon FLAP response message.
+// jgk: biztocsock says for toc2 this frame should contain the len and username. do we need to validate that for some reason?
 func (f *FlapClient) ReceiveSignonFrame() (FLAPSignonFrame, error) {
 	flap := FLAPFrame{}
 	if err := UnmarshalBE(&flap, f.r); err != nil {

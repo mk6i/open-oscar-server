@@ -25,7 +25,7 @@ func TestOSCARProxy_RecvBOS_ChatIn(t *testing.T) {
 		// givenMsg is the incoming SNAC
 		givenMsg wire.SNACMessage
 		// wantCmd is the expected TOC response
-		wantCmd []byte
+		wantCmd string
 	}{
 		{
 			name:   "send chat message",
@@ -47,7 +47,7 @@ func TestOSCARProxy_RecvBOS_ChatIn(t *testing.T) {
 					},
 				},
 			},
-			wantCmd: []byte("CHAT_IN:0:them:F:<p>hello world!</p>"),
+			wantCmd: "CHAT_IN:0:them:F:<p>hello world!</p>",
 		},
 	}
 
@@ -59,7 +59,7 @@ func TestOSCARProxy_RecvBOS_ChatIn(t *testing.T) {
 				Logger: slog.Default(),
 			}
 
-			ch := make(chan []byte)
+			ch := make(chan []string)
 			wg := &sync.WaitGroup{}
 			wg.Add(1)
 
@@ -72,7 +72,7 @@ func TestOSCARProxy_RecvBOS_ChatIn(t *testing.T) {
 			assert.Equal(t, state.SessSendOK, status)
 
 			gotCmd := <-ch
-			assert.Equal(t, string(tc.wantCmd), string(gotCmd))
+			assert.Equal(t, tc.wantCmd, gotCmd[0])
 
 			cancel()
 			wg.Wait()
@@ -91,7 +91,7 @@ func TestOSCARProxy_RecvBOS_ChatUpdateBuddyArrived(t *testing.T) {
 		// givenMsg is the incoming SNAC
 		givenMsg wire.SNACMessage
 		// wantCmd is the expected TOC response
-		wantCmd []byte
+		wantCmd []string
 	}{
 		{
 			name: "send chat participant arrival",
@@ -104,7 +104,7 @@ func TestOSCARProxy_RecvBOS_ChatUpdateBuddyArrived(t *testing.T) {
 					},
 				},
 			},
-			wantCmd: []byte("CHAT_UPDATE_BUDDY:0:T:user1:user2"),
+			wantCmd: []string{"CHAT_UPDATE_BUDDY:0:T:user1:user2"},
 		},
 	}
 
@@ -116,7 +116,7 @@ func TestOSCARProxy_RecvBOS_ChatUpdateBuddyArrived(t *testing.T) {
 				Logger: slog.Default(),
 			}
 
-			ch := make(chan []byte)
+			ch := make(chan []string)
 			wg := &sync.WaitGroup{}
 			wg.Add(1)
 
@@ -129,7 +129,7 @@ func TestOSCARProxy_RecvBOS_ChatUpdateBuddyArrived(t *testing.T) {
 			assert.Equal(t, state.SessSendOK, status)
 
 			gotCmd := <-ch
-			assert.Equal(t, string(tc.wantCmd), string(gotCmd))
+			assert.Equal(t, tc.wantCmd[0], gotCmd[0])
 
 			cancel()
 			wg.Wait()
@@ -148,7 +148,7 @@ func TestOSCARProxy_RecvBOS_ChatUpdateBuddyLeft(t *testing.T) {
 		// givenMsg is the incoming SNAC
 		givenMsg wire.SNACMessage
 		// wantCmd is the expected TOC response
-		wantCmd []byte
+		wantCmd []string
 	}{
 		{
 			name: "send chat participant departure",
@@ -161,7 +161,7 @@ func TestOSCARProxy_RecvBOS_ChatUpdateBuddyLeft(t *testing.T) {
 					},
 				},
 			},
-			wantCmd: []byte("CHAT_UPDATE_BUDDY:0:F:user1:user2"),
+			wantCmd: []string{"CHAT_UPDATE_BUDDY:0:F:user1:user2"},
 		},
 	}
 
@@ -173,7 +173,7 @@ func TestOSCARProxy_RecvBOS_ChatUpdateBuddyLeft(t *testing.T) {
 				Logger: slog.Default(),
 			}
 
-			ch := make(chan []byte)
+			ch := make(chan []string)
 			wg := &sync.WaitGroup{}
 			wg.Add(1)
 
@@ -186,7 +186,7 @@ func TestOSCARProxy_RecvBOS_ChatUpdateBuddyLeft(t *testing.T) {
 			assert.Equal(t, state.SessSendOK, status)
 
 			gotCmd := <-ch
-			assert.Equal(t, string(tc.wantCmd), string(gotCmd))
+			assert.Equal(t, tc.wantCmd[0], gotCmd[0])
 
 			cancel()
 			wg.Wait()
@@ -205,7 +205,7 @@ func TestOSCARProxy_RecvBOS_Eviled(t *testing.T) {
 		// chatRegistry is the chat registry for the current session
 		chatRegistry *ChatRegistry
 		// wantCmd is the expected TOC response
-		wantCmd []byte
+		wantCmd []string
 	}{
 		{
 			name: "anonymous warning - 10%",
@@ -215,7 +215,7 @@ func TestOSCARProxy_RecvBOS_Eviled(t *testing.T) {
 					NewEvil: 100,
 				},
 			},
-			wantCmd: []byte("EVILED:10:"),
+			wantCmd: []string{"EVILED:10:"},
 		},
 		{
 			name: "normal warning - 10%",
@@ -232,7 +232,7 @@ func TestOSCARProxy_RecvBOS_Eviled(t *testing.T) {
 					},
 				},
 			},
-			wantCmd: []byte("EVILED:10:them"),
+			wantCmd: []string{"EVILED:10:them"},
 		},
 	}
 
@@ -242,7 +242,7 @@ func TestOSCARProxy_RecvBOS_Eviled(t *testing.T) {
 
 			svc := testOSCARProxy(t)
 
-			ch := make(chan []byte)
+			ch := make(chan []string)
 			wg := &sync.WaitGroup{}
 			wg.Add(1)
 
@@ -256,7 +256,7 @@ func TestOSCARProxy_RecvBOS_Eviled(t *testing.T) {
 			assert.Equal(t, state.SessSendOK, status)
 
 			gotCmd := <-ch
-			assert.Equal(t, string(tc.wantCmd), string(gotCmd))
+			assert.Equal(t, tc.wantCmd[0], gotCmd[0])
 
 			cancel()
 			wg.Wait()
@@ -273,7 +273,7 @@ func TestOSCARProxy_RecvBOS_IMIn(t *testing.T) {
 		// givenMsg is the incoming SNAC
 		givenMsg wire.SNACMessage
 		// wantCmd is the expected TOC response
-		wantCmd []byte
+		wantCmd []string
 	}{
 		{
 			name: "send IM",
@@ -306,7 +306,7 @@ func TestOSCARProxy_RecvBOS_IMIn(t *testing.T) {
 					},
 				},
 			},
-			wantCmd: []byte("IM_IN:them:F:hello world!"),
+			wantCmd: []string{"IM_IN:them:F:hello world!"},
 		},
 		{
 			name: "send IM - auto-response",
@@ -340,7 +340,7 @@ func TestOSCARProxy_RecvBOS_IMIn(t *testing.T) {
 					},
 				},
 			},
-			wantCmd: []byte("IM_IN:them:T:hello world!"),
+			wantCmd: []string{"IM_IN:them:T:hello world!"},
 		},
 		{
 			name: "send chat invitation",
@@ -370,7 +370,7 @@ func TestOSCARProxy_RecvBOS_IMIn(t *testing.T) {
 					},
 				},
 			},
-			wantCmd: []byte("CHAT_INVITE:the room:0:them:join my chat!"),
+			wantCmd: []string{"CHAT_INVITE:the room:0:them:join my chat!"},
 		},
 		{
 			name: "receive file transfer rendezvous IM",
@@ -401,7 +401,7 @@ func TestOSCARProxy_RecvBOS_IMIn(t *testing.T) {
 					},
 				},
 			},
-			wantCmd: []byte("RVOUS_PROPOSE:them:09461343-4C7F-11D1-8222-444553540000:aGFoYWhhaGE=:1:129.168.0.1:129.168.0.2:129.168.0.3:4000:10001:bG9s"),
+			wantCmd: []string{"RVOUS_PROPOSE:them:09461343-4C7F-11D1-8222-444553540000:aGFoYWhhaGE=:1:129.168.0.1:129.168.0.2:129.168.0.3:4000:10001:bG9s"},
 		},
 	}
 
@@ -411,7 +411,7 @@ func TestOSCARProxy_RecvBOS_IMIn(t *testing.T) {
 
 			svc := testOSCARProxy(t)
 
-			ch := make(chan []byte)
+			ch := make(chan []string)
 			wg := &sync.WaitGroup{}
 			wg.Add(1)
 
@@ -425,7 +425,7 @@ func TestOSCARProxy_RecvBOS_IMIn(t *testing.T) {
 			assert.Equal(t, state.SessSendOK, status)
 
 			gotCmd := <-ch
-			assert.Equal(t, string(tc.wantCmd), string(gotCmd))
+			assert.Equal(t, tc.wantCmd[0], gotCmd[0])
 
 			cancel()
 			wg.Wait()
@@ -442,7 +442,7 @@ func TestOSCARProxy_RecvBOS_UpdateBuddyArrival(t *testing.T) {
 		// givenMsg is the incoming SNAC
 		givenMsg wire.SNACMessage
 		// wantCmd is the expected TOC response
-		wantCmd []byte
+		wantCmd []string
 	}{
 		{
 			name: "send buddy arrival - buddy online",
@@ -456,12 +456,13 @@ func TestOSCARProxy_RecvBOS_UpdateBuddyArrival(t *testing.T) {
 							TLVList: wire.TLVList{
 								wire.NewTLVBE(wire.OServiceUserInfoSignonTOD, uint32(1234)),
 								wire.NewTLVBE(wire.OServiceUserInfoIdleTime, uint16(5678)),
+								wire.NewTLVBE(wire.OServiceUserInfoUserFlags, wire.OServiceUserFlagOSCARFree),
 							},
 						},
 					},
 				},
 			},
-			wantCmd: []byte("UPDATE_BUDDY:me:T:0:1234:5678: O "),
+			wantCmd: []string{"UPDATE_BUDDY:me:T:0:1234:5678: O "},
 		},
 		{
 			name: "send buddy arrival - buddy warned 10%",
@@ -475,12 +476,13 @@ func TestOSCARProxy_RecvBOS_UpdateBuddyArrival(t *testing.T) {
 							TLVList: wire.TLVList{
 								wire.NewTLVBE(wire.OServiceUserInfoSignonTOD, uint32(1234)),
 								wire.NewTLVBE(wire.OServiceUserInfoIdleTime, uint16(5678)),
+								wire.NewTLVBE(wire.OServiceUserInfoUserFlags, wire.OServiceUserFlagOSCARFree),
 							},
 						},
 					},
 				},
 			},
-			wantCmd: []byte("UPDATE_BUDDY:me:T:10:1234:5678: O "),
+			wantCmd: []string{"UPDATE_BUDDY:me:T:10:1234:5678: O "},
 		},
 		{
 			name: "send buddy arrival - buddy away",
@@ -494,13 +496,13 @@ func TestOSCARProxy_RecvBOS_UpdateBuddyArrival(t *testing.T) {
 							TLVList: wire.TLVList{
 								wire.NewTLVBE(wire.OServiceUserInfoSignonTOD, uint32(1234)),
 								wire.NewTLVBE(wire.OServiceUserInfoIdleTime, uint16(5678)),
-								wire.NewTLVBE(wire.OServiceUserInfoUserFlags, wire.OServiceUserFlagUnavailable),
+								wire.NewTLVBE(wire.OServiceUserInfoUserFlags, wire.OServiceUserFlagOSCARFree|wire.OServiceUserFlagUnavailable),
 							},
 						},
 					},
 				},
 			},
-			wantCmd: []byte("UPDATE_BUDDY:me:T:0:1234:5678: OU"),
+			wantCmd: []string{"UPDATE_BUDDY:me:T:0:1234:5678: OU"},
 		},
 	}
 
@@ -510,7 +512,7 @@ func TestOSCARProxy_RecvBOS_UpdateBuddyArrival(t *testing.T) {
 
 			svc := testOSCARProxy(t)
 
-			ch := make(chan []byte)
+			ch := make(chan []string)
 			wg := &sync.WaitGroup{}
 			wg.Add(1)
 
@@ -524,7 +526,7 @@ func TestOSCARProxy_RecvBOS_UpdateBuddyArrival(t *testing.T) {
 			assert.Equal(t, state.SessSendOK, status)
 
 			gotCmd := <-ch
-			assert.Equal(t, string(tc.wantCmd), string(gotCmd))
+			assert.Equal(t, tc.wantCmd[0], gotCmd[0])
 
 			cancel()
 			wg.Wait()
@@ -541,7 +543,7 @@ func TestOSCARProxy_RecvBOS_UpdateBuddyDeparted(t *testing.T) {
 		// givenMsg is the incoming SNAC
 		givenMsg wire.SNACMessage
 		// wantCmd is the expected TOC response
-		wantCmd []byte
+		wantCmd []string
 	}{
 		{
 			name: "send buddy departure",
@@ -553,7 +555,7 @@ func TestOSCARProxy_RecvBOS_UpdateBuddyDeparted(t *testing.T) {
 					},
 				},
 			},
-			wantCmd: []byte("UPDATE_BUDDY:me:F:0:0:0:   "),
+			wantCmd: []string{"UPDATE_BUDDY:me:F:0:0:0:   "},
 		},
 	}
 
@@ -563,7 +565,7 @@ func TestOSCARProxy_RecvBOS_UpdateBuddyDeparted(t *testing.T) {
 
 			svc := testOSCARProxy(t)
 
-			ch := make(chan []byte)
+			ch := make(chan []string)
 			wg := &sync.WaitGroup{}
 			wg.Add(1)
 
@@ -577,7 +579,7 @@ func TestOSCARProxy_RecvBOS_UpdateBuddyDeparted(t *testing.T) {
 			assert.Equal(t, state.SessSendOK, status)
 
 			gotCmd := <-ch
-			assert.Equal(t, string(tc.wantCmd), string(gotCmd))
+			assert.Equal(t, tc.wantCmd[0], gotCmd[0])
 
 			cancel()
 			wg.Wait()

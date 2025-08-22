@@ -246,3 +246,24 @@ func (s *TLVList) uint32(tag uint16, order binary.ByteOrder) (uint32, bool) {
 	}
 	return 0, false
 }
+
+// Uint16SliceBE retrieves a slice of 16-bit unsigned integer values from the TLVList
+// associated with the specified tag, interpreting the bytes in big-endian format.
+//
+// If the specificed tag is found, the function returns the associated value as a
+// uint16 slice and true. If the tag is not found, the function returns an empty
+// slice and false.
+func (s *TLVList) Uint16SliceBE(tag uint16) ([]uint16, bool) {
+	for _, tlv := range *s {
+		if tag == tlv.Tag {
+			outputLen := len(tlv.Value) / 2
+			outputSlice := make([]uint16, outputLen)
+			for i := range outputLen {
+				chunk := tlv.Value[i*2 : (i*2)+2]
+				outputSlice[i] = binary.BigEndian.Uint16(chunk)
+			}
+			return outputSlice, true
+		}
+	}
+	return []uint16{}, false
+}

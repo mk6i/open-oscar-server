@@ -403,7 +403,7 @@ func (s *Server) handleTOCRequest(
 	}
 
 	// TOC response queue
-	msgCh := make(chan []byte, 1)
+	msgCh := make(chan []string, 1)
 
 	g, ctx := errgroup.WithContext(ctx)
 
@@ -436,7 +436,7 @@ func (s *Server) handleTOCRequest(
 	return g.Wait()
 }
 
-func (s *Server) runClientCommands(ctx context.Context, doAsync func(f func() error), sessBOS *state.SessionInstance, chatRegistry *ChatRegistry, clientFlap *wire.FlapClient, toCh chan<- []byte) error {
+func (s *Server) runClientCommands(ctx context.Context, doAsync func(f func() error), sessBOS *state.SessionInstance, chatRegistry *ChatRegistry, clientFlap *wire.FlapClient, toCh chan<- []string) error {
 	for {
 		clientFrame, err := clientFlap.ReceiveFLAP()
 		if err != nil {
@@ -459,9 +459,12 @@ func (s *Server) runClientCommands(ctx context.Context, doAsync func(f func() er
 			}
 
 			msg := s.bosProxy.RecvClientCmd(ctx, sessBOS, chatRegistry, clientFrame.Payload, toCh, doAsync)
-			if len(msg) > 0 {
+			// jgk: checking for empty string in slice. This works because for now we will never
+			// send more than one response if element 0 is empty.
+			// should i be iterating all elements and filering out empty strings instead?
+			if len(msg) > 0 && len(msg[0]) > 0 {
 				select {
-				case toCh <- []byte(msg):
+				case toCh <- msg:
 				case <-ctx.Done():
 					return nil
 				}
@@ -472,24 +475,27 @@ func (s *Server) runClientCommands(ctx context.Context, doAsync func(f func() er
 	}
 }
 
-func (s *Server) sendToClient(ctx context.Context, toClient <-chan []byte, clientFlap *wire.FlapClient) error {
+func (s *Server) sendToClient(ctx context.Context, toClient <-chan []string, clientFlap *wire.FlapClient) error {
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
-		case msg := <-toClient:
-			if err := clientFlap.SendDataFrame(msg); err != nil {
-				return fmt.Errorf("clientFlap.SendDataFrame: %w", err)
-			}
-			if s.logger.Enabled(ctx, slog.LevelDebug) {
-				s.logger.DebugContext(ctx, "server response", "command", msg)
-			} else {
-				// just log the command, omit params
-				idx := len(msg)
-				if col := bytes.IndexByte(msg, ':'); col > -1 {
-					idx = col
+		case msgs := <-toClient:
+			for _, m := range msgs {
+				if err := clientFlap.SendDataFrame([]byte(m)); err != nil {
+					return fmt.Errorf("clientFlap.SendDataFrame: %w", err)
 				}
-				s.logger.InfoContext(ctx, "server response", "command", msg[0:idx])
+				// jgk: need to clean up, server response debug doesn't work?
+				if s.logger.Enabled(ctx, slog.LevelDebug) {
+					s.logger.DebugContext(ctx, "server response", "command", m)
+				} else {
+					// just log the command, omit params
+					idx := len(m)
+					if col := bytes.IndexByte([]byte(m), ':'); col > -1 {
+						idx = col
+					}
+					s.logger.InfoContext(ctx, "server response", "command", m[0:idx])
+				}
 			}
 		}
 	}
@@ -510,32 +516,40 @@ func (s *Server) login(ctx context.Context, clientFlap *wire.FlapClient) (*state
 	if idx := bytes.IndexByte(clientFrame.Payload, ' '); idx > -1 {
 		cmd, args = clientFrame.Payload[:idx], clientFrame.Payload[idx:]
 	}
-	if string(cmd) != "toc_signon" {
-		return nil, errors.New("expected toc_signon")
+	var tocVersion state.TOCVersion
+	if string(cmd) == "toc_signon" {
+		tocVersion = state.SupportsTOC
+	} else if string(cmd) == "toc2_signon" {
+		tocVersion = state.SupportsTOC2
+	} else if string(cmd) == "toc2_login" {
+		tocVersion = state.SupportsTOC2 | state.SupportsTOC2Enhanced
+	} else {
+		return nil, errors.New("expected one of toc_signon, toc2_signon, toc2_login")
 	}
 
-	sessBOS, reply := s.bosProxy.Signon(ctx, args)
+	sessBOS, reply := s.bosProxy.Signon(ctx, args, tocVersion)
+	sessBOS.SetTocVersion(tocVersion)
 	for _, m := range reply {
 		if err := clientFlap.SendDataFrame([]byte(m)); err != nil {
 			return nil, fmt.Errorf("clientFlap.SendDataFrame: %w", err)
 		}
 	}
-
 	return sessBOS, nil
 }
 
 // initFLAP sets up a new FLAP connection. It returns a flap client if the
 // connection successfully initialized.
 func (s *Server) initFLAP(rw io.ReadWriter) (*wire.FlapClient, error) {
-	expected := "FLAPON\r\n\r\n"
-	buf := make([]byte, len(expected))
+	buf := make([]byte, 10)
 
-	_, err := io.ReadFull(rw, buf)
+	count, err := rw.Read(buf)
 	if err != nil {
-		return nil, fmt.Errorf("io.ReadFull: %w", err)
+		return nil, fmt.Errorf("rw.Read: %w", err)
 	}
-	if expected != string(buf) {
-		return nil, fmt.Errorf("expected FLAPON, got %s", buf)
+
+	header := string(buf[:count])
+	if !(header == "FLAPON\n\n" || header == "FLAPON\r\n\r\n") {
+		return nil, fmt.Errorf("expected FLAPON, got %X", buf)
 	}
 
 	clientFlap := wire.NewFlapClient(0, rw, rw)

@@ -207,6 +207,12 @@ packages:
       SessionRetriever:
         config:
           filename: "mock_session_retriever_test.go"
+      FeedbagService:
+        config:
+          filename: "mock_feedbag_service_test.go"
+      FeedbagManager:
+        config:
+          filename: "mock_feedbag_manager_test.go"
   github.com/mk6i/open-oscar-server/server/kerberos:
     interfaces:
       AuthService:
