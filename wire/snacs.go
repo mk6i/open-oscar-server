@@ -2668,3 +2668,58 @@ type ICQDCInfo struct {
 	LastExtStatusUpdateTime uint32
 	Unknown                 uint16
 }
+
+//
+// TOC Error Codes
+//
+
+const (
+	// General Errors
+	TOCErrorGeneralUserNotAvailable        = "901" // followed by screenname
+	TOCErrorGeneralWarningUserNotAvailable = "902" // followed by screenname
+	TOCErrorGeneralRateLimitHit            = "903"
+	// Admin Errors
+	TOCErrorAdminInvalidInput       = "911"
+	TOCErrorAdminInvalidAccount     = "912"
+	TOCErrorAdminProcessingRequest  = "913"
+	TOCErrorAdminServiceUnavailable = "914"
+	// Chat Errors
+	TOCErrorChatInChatroomUnavailble = "950" // followed by chatroom
+	// IM & Info Errors
+	TOCErrorIMSendingMessagesTooFast = "960" // followed by screenname
+	TOCErrorIMMissedMessageTooBig    = "961" // followed by screenname
+	TOCErrorIMMissedMessageTooFast   = "962" // followed by screenname
+	// DirErrors
+	TOCErrorDirFailure               = "970"
+	TOCErrorDirTooManyMatches        = "971"
+	TOCErrorDirNeedMoreQualifiers    = "972"
+	TOCErrorDirServiceUnavailable    = "973"
+	TOCErrorDirEmailLookupRestricted = "974"
+	TOCErrorDirKeywordIgnored        = "975"
+	TOCErrorDirNoKeywords            = "976"
+	TOCErrorDirLanguageNotSupported  = "977"
+	TOCErrorDirCountryNotSupported   = "978"
+	TOCErrorDirFailureUnknown        = "979" // followed by error msg (or a SubErrorCode?)
+	// Auth Errors
+	TOCErrorAuthIncorrectNickOrPassword                    = "980"
+	TOCErrorAuthServiceUnavailable                         = "981"
+	TOCErrorAuthWarningTooHigh                             = "982"
+	TOCErrorAuthRatedFromLogin                             = "983"
+	TOCErrorAuthUnknownError                               = "989" // followed by SubErrorCode
+	TOCErrorAuthUnknownSubErrorSignOnTooSoon               = "0"
+	TOCErrorAuthUnknownSubErrorInvalidScreennameOrPassword = "7"
+	TOCErrorAuthUnknownSubErrorSuspendedAccount            = "17"
+)
+
+//
+// TOC2 Error Codes
+//
+
+const (
+	// Chat Error Codes
+	TO2CErrorChatJoinError            = "951" // followed by chatroom:SubErrorCode
+	TOC2ErrorChatJoinSubErrorReset    = "-1"
+	TOC2ErrorChatJoinSubErrorChatFull = "24"
+	TOC2ErrorChatJoinSubErrorRated    = "48"
+	TOC2ErrorChatJoinSubErrorEjected  = "74"
+)

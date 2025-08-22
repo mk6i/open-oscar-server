@@ -2,6 +2,7 @@ package toc
 
 import (
 	"context"
+	"net/http"
 
 	"github.com/google/uuid"
 
@@ -89,6 +90,26 @@ type TOCConfigStore interface {
 	User(ctx context.Context, screenName state.IdentScreenName) (*state.User, error)
 }
 
+type FeedbagManager interface {
+	// Feedbag fetches the contents of a user's feedbag for CONFIG2
+	Feedbag(ctx context.Context, screenName state.IdentScreenName) ([]wire.FeedbagItem, error)
+	UseFeedbag(ctx context.Context, screenName state.IdentScreenName) error
+}
+
+// FeedbagService defines the interface for managing server-side buddy lists
+// (feedbag) and related operations.
+type FeedbagService interface {
+	DeleteItem(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x0A_FeedbagDeleteItem) (*wire.SNACMessage, error)
+	Query(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame) (wire.SNACMessage, error)
+	QueryIfModified(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x05_FeedbagQueryIfModified) (wire.SNACMessage, error)
+	RespondAuthorizeToHost(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost) error
+	RightsQuery(ctx context.Context, inFrame wire.SNACFrame) wire.SNACMessage
+	StartCluster(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x11_FeedbagStartCluster)
+	EndCluster(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame)
+	UpsertItem(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, items []wire.FeedbagItem) (*wire.SNACMessage, error)
+	Use(ctx context.Context, instance *state.SessionInstance) error
+}
+
 // CookieBaker defines methods for issuing and verifying AIM authentication tokens ("cookies").
 // These tokens are used for authenticating client sessions with AIM services.
 type CookieBaker interface {
@@ -112,4 +133,11 @@ type SessionRetriever interface {
 	// or nil if no active session exists. Returns the Session object if there
 	// are active instances with complete signon.
 	RetrieveSession(screenName state.IdentScreenName) *state.Session
+}
+
+type OSCARProxyer interface {
+	Signon(ctx context.Context, args []byte, tocVersion state.TOCVersion) (*state.Session, []string)
+	RecvBOS(ctx context.Context, sessBOS *state.Session, chatRegistry *ChatRegistry, msgCh chan<- []string) error
+	RecvClientCmd(ctx context.Context, sessBOS *state.Session, chatRegistry *ChatRegistry, payload []byte, toCh chan<- []string, doAsync func(f func() error)) []string
+	NewServeMux() http.Handler
 }

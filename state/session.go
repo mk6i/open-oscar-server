@@ -841,6 +841,18 @@ func (s *Session) userInfo() wire.TLVList {
 	return tlvs
 }
 
+// TOCVersion is a bitmask that indicates the TOC protocol versions a client supports.
+type TOCVersion uint8
+
+const (
+	// SupportsTOC indicates client supports TOC protocol
+	SupportsTOC TOCVersion = 1 << iota
+	// SupportsTOC2 indicates client supports TOC2 protocol
+	SupportsTOC2
+	// SupportsTOC2Enhanced indicates client supports TOC2 Enhanced protocol
+	SupportsTOC2Enhanced
+)
+
 // SessionInstance represents a single client connection instance within a user's
 // session. Multiple SessionInstance objects can belong to the same Session,
 // allowing a user to maintain concurrent connections from different clients or
@@ -873,6 +885,7 @@ type SessionInstance struct {
 	capabilities      [][16]byte
 	foodGroupVersions [wire.MDir + 1]uint16
 	multiConnFlag     wire.MultiConnFlag
+	tocVersion        TOCVersion
 
 	// Per-session state
 	idle              bool
@@ -933,6 +946,20 @@ func (s *SessionInstance) SetClientID(clientID string) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	s.clientID = clientID
+}
+
+// SetTocVersion sets the session TOC version
+func (s *SessionInstance) SetTocVersion(tocVersion TOCVersion) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.tocVersion = tocVersion
+}
+
+// TocVersion returns session TOC version
+func (s *SessionInstance) TocVersion() (tocVersion TOCVersion) {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.tocVersion
 }
 
 //
