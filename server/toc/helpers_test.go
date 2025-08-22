@@ -94,9 +94,10 @@ type icbmParams struct {
 }
 
 type clientOnlineParams []struct {
-	body wire.SNAC_0x01_0x02_OServiceClientOnline
-	me   state.IdentScreenName
-	err  error
+	body    wire.SNAC_0x01_0x02_OServiceClientOnline
+	me      state.IdentScreenName
+	service uint16
+	err     error
 }
 
 type idleNotificationParams []struct {
@@ -261,6 +262,15 @@ type tocConfigParams struct {
 	userParams
 }
 
+type feedBagParams struct {
+	useFeedbagParams
+}
+
+type useFeedbagParams []struct {
+	me  state.IdentScreenName
+	err error
+}
+
 type mockParams struct {
 	adminParams
 	authParams
@@ -273,6 +283,7 @@ type mockParams struct {
 	icbmParams
 	locateParams
 	oServiceParams
+	feedBagParams
 	permitDenyParams
 	sessionRetrieverParams
 	tocConfigParams
