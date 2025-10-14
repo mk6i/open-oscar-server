@@ -40,8 +40,8 @@ func TestBuddyService_AddBuddies(t *testing.T) {
 	tests := []struct {
 		// name is the name of the test
 		name string
-		// sess is the client session
-		sess *state.Session
+		// instance is the client session
+		instance *state.SessionInstance
 		// bodyIn is the input SNAC
 		bodyIn wire.SNAC_0x03_0x04_BuddyAddBuddies
 		// mockParams is the list of params sent to mocks that satisfy this
@@ -51,8 +51,8 @@ func TestBuddyService_AddBuddies(t *testing.T) {
 		wantErr error
 	}{
 		{
-			name: "add 2 buddies, sign-on complete",
-			sess: newTestSession("user_screen_name", sessOptSignonComplete),
+			name:     "add 2 buddies, sign-on complete",
+			instance: newTestInstance("user_screen_name", sessOptSignonComplete),
 			bodyIn: wire.SNAC_0x03_0x04_BuddyAddBuddies{
 				Buddies: []struct {
 					ScreenName string `oscar:"len_prefix=uint8"`
@@ -92,8 +92,8 @@ func TestBuddyService_AddBuddies(t *testing.T) {
 			},
 		},
 		{
-			name: "add 2 buddies, sign-on not complete",
-			sess: newTestSession("user_screen_name"),
+			name:     "add 2 buddies, sign-on not complete",
+			instance: newTestInstance("user_screen_name"),
 			bodyIn: wire.SNAC_0x03_0x04_BuddyAddBuddies{
 				Buddies: []struct {
 					ScreenName string `oscar:"len_prefix=uint8"`
@@ -142,7 +142,7 @@ func TestBuddyService_AddBuddies(t *testing.T) {
 				buddyBroadcaster:           mockBuddyBroadcaster,
 			}
 
-			haveErr := svc.AddBuddies(context.Background(), tt.sess, tt.bodyIn)
+			haveErr := svc.AddBuddies(context.Background(), tt.instance, tt.bodyIn)
 			assert.ErrorIs(t, tt.wantErr, haveErr)
 		})
 	}
@@ -152,8 +152,8 @@ func TestBuddyService_DelBuddies(t *testing.T) {
 	tests := []struct {
 		// name is the name of the test
 		name string
-		// sess is the client session
-		sess *state.Session
+		// instance is the client session
+		instance *state.SessionInstance
 		// bodyIn is the input SNAC
 		bodyIn wire.SNAC_0x03_0x05_BuddyDelBuddies
 		// mockParams is the list of params sent to mocks that satisfy this
@@ -163,8 +163,8 @@ func TestBuddyService_DelBuddies(t *testing.T) {
 		wantErr error
 	}{
 		{
-			name: "delete 2 buddies",
-			sess: newTestSession("user_screen_name", sessOptSignonComplete),
+			name:     "delete 2 buddies",
+			instance: newTestInstance("user_screen_name", sessOptSignonComplete),
 			bodyIn: wire.SNAC_0x03_0x05_BuddyDelBuddies{
 				Buddies: []struct {
 					ScreenName string `oscar:"len_prefix=uint8"`
@@ -224,7 +224,7 @@ func TestBuddyService_DelBuddies(t *testing.T) {
 				clientSideBuddyListManager: clientSideBuddyListManager,
 			}
 
-			assert.ErrorIs(t, tt.wantErr, svc.DelBuddies(context.Background(), tt.sess, tt.bodyIn))
+			assert.ErrorIs(t, tt.wantErr, svc.DelBuddies(context.Background(), tt.instance, tt.bodyIn))
 		})
 	}
 }
@@ -233,8 +233,8 @@ func TestBuddyService_AddTempBuddies(t *testing.T) {
 	tests := []struct {
 		// name is the name of the test
 		name string
-		// sess is the client session
-		sess *state.Session
+		// instance is the client session
+		instance *state.SessionInstance
 		// bodyIn is the input SNAC
 		bodyIn wire.SNAC_0x03_0x0F_BuddyAddTempBuddies
 		// mockParams is the list of params sent to mocks that satisfy this
@@ -244,8 +244,8 @@ func TestBuddyService_AddTempBuddies(t *testing.T) {
 		wantErr error
 	}{
 		{
-			name: "add 2 buddies, sign-on complete",
-			sess: newTestSession("user_screen_name", sessOptSignonComplete),
+			name:     "add 2 buddies, sign-on complete",
+			instance: newTestInstance("user_screen_name", sessOptSignonComplete),
 			bodyIn: wire.SNAC_0x03_0x0F_BuddyAddTempBuddies{
 				Buddies: []struct {
 					ScreenName string `oscar:"len_prefix=uint8"`
@@ -285,8 +285,8 @@ func TestBuddyService_AddTempBuddies(t *testing.T) {
 			},
 		},
 		{
-			name: "add 2 buddies, sign-on not complete",
-			sess: newTestSession("user_screen_name"),
+			name:     "add 2 buddies, sign-on not complete",
+			instance: newTestInstance("user_screen_name"),
 			bodyIn: wire.SNAC_0x03_0x0F_BuddyAddTempBuddies{
 				Buddies: []struct {
 					ScreenName string `oscar:"len_prefix=uint8"`
@@ -335,7 +335,7 @@ func TestBuddyService_AddTempBuddies(t *testing.T) {
 				buddyBroadcaster:           mockBuddyBroadcaster,
 			}
 
-			haveErr := svc.AddTempBuddies(context.Background(), tt.sess, tt.bodyIn)
+			haveErr := svc.AddTempBuddies(context.Background(), tt.instance, tt.bodyIn)
 			assert.ErrorIs(t, tt.wantErr, haveErr)
 		})
 	}
@@ -345,8 +345,8 @@ func TestBuddyService_DelTempBuddies(t *testing.T) {
 	tests := []struct {
 		// name is the name of the test
 		name string
-		// sess is the client session
-		sess *state.Session
+		// instance is the client session
+		instance *state.SessionInstance
 		// bodyIn is the input SNAC
 		bodyIn wire.SNAC_0x03_0x10_BuddyDelTempBuddies
 		// mockParams is the list of params sent to mocks that satisfy this
@@ -356,8 +356,8 @@ func TestBuddyService_DelTempBuddies(t *testing.T) {
 		wantErr error
 	}{
 		{
-			name: "delete 2 buddies",
-			sess: newTestSession("user_screen_name", sessOptSignonComplete),
+			name:     "delete 2 buddies",
+			instance: newTestInstance("user_screen_name", sessOptSignonComplete),
 			bodyIn: wire.SNAC_0x03_0x10_BuddyDelTempBuddies{
 				Buddies: []struct {
 					ScreenName string `oscar:"len_prefix=uint8"`
@@ -417,7 +417,7 @@ func TestBuddyService_DelTempBuddies(t *testing.T) {
 				clientSideBuddyListManager: clientSideBuddyListManager,
 			}
 
-			assert.ErrorIs(t, tt.wantErr, svc.DelTempBuddies(context.Background(), tt.sess, tt.bodyIn))
+			assert.ErrorIs(t, tt.wantErr, svc.DelTempBuddies(context.Background(), tt.instance, tt.bodyIn))
 		})
 	}
 }
@@ -537,15 +537,15 @@ func TestBuddyService_BroadcastDeparture(t *testing.T) {
 	cases := []struct {
 		// name is the unit test name
 		name string
-		// sourceSession is the session of the user
-		userSession *state.Session
+		// instance is the session of the user
+		instance *state.SessionInstance
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
 	}{
 		{
-			name:        "happy path",
-			userSession: newTestSession("me"),
+			name:     "happy path",
+			instance: newTestInstance("me"),
 			mockParams: mockParams{
 				relationshipFetcherParams: relationshipFetcherParams{
 					allRelationshipsParams: allRelationshipsParams{
@@ -642,7 +642,7 @@ func TestBuddyService_BroadcastDeparture(t *testing.T) {
 				messageRelayer:      messageRelayer,
 			}
 
-			err := svc.BroadcastBuddyDeparted(context.Background(), tc.userSession)
+			err := svc.BroadcastBuddyDeparted(context.Background(), tc.instance)
 			assert.NoError(t, err)
 		})
 	}
@@ -652,8 +652,8 @@ func Test_buddyNotifier_BroadcastVisibility(t *testing.T) {
 	cases := []struct {
 		// name is the unit test name
 		name string
-		// sourceSession is the session of the user
-		userSession *state.Session
+		// instance is the session of the user
+		instance *state.SessionInstance
 		// filter limits specific users that can be notified
 		filter []state.IdentScreenName
 		// doSendDepartures indicates whether departure messages should be sent
@@ -663,8 +663,8 @@ func Test_buddyNotifier_BroadcastVisibility(t *testing.T) {
 		mockParams mockParams
 	}{
 		{
-			name:        "happy path",
-			userSession: newTestSession("me"),
+			name:     "happy path",
+			instance: newTestInstance("me"),
 			mockParams: mockParams{
 				relationshipFetcherParams: relationshipFetcherParams{
 					allRelationshipsParams: allRelationshipsParams{
@@ -772,27 +772,27 @@ func Test_buddyNotifier_BroadcastVisibility(t *testing.T) {
 					retrieveSessionParams: retrieveSessionParams{
 						{
 							screenName: state.NewIdentScreenName("friend2-visible-on-their-list"),
-							result:     newTestSession("friend2-visible-on-their-list"),
+							result:     newTestInstance("friend2-visible-on-their-list").Session(),
 						},
 						{
 							screenName: state.NewIdentScreenName("friend3-visible-on-your-list"),
-							result:     newTestSession("friend3-visible-on-your-list"),
+							result:     newTestInstance("friend3-visible-on-your-list").Session(),
 						},
 						{
 							screenName: state.NewIdentScreenName("friend4-visible-on-both-lists"),
-							result:     newTestSession("friend4-visible-on-both-lists"),
+							result:     newTestInstance("friend4-visible-on-both-lists").Session(),
 						},
 						{
 							screenName: state.NewIdentScreenName("friend5-blocked-on-their-list"),
-							result:     newTestSession("friend5-blocked-on-their-list"),
+							result:     newTestInstance("friend5-blocked-on-their-list").Session(),
 						},
 						{
 							screenName: state.NewIdentScreenName("friend6-blocked-on-your-list"),
-							result:     newTestSession("friend6-blocked-on-your-list"),
+							result:     newTestInstance("friend6-blocked-on-your-list").Session(),
 						},
 						{
 							screenName: state.NewIdentScreenName("friend7-blocked-on-both-lists"),
-							result:     newTestSession("friend7-blocked-on-both-lists"),
+							result:     newTestInstance("friend7-blocked-on-both-lists").Session(),
 						},
 						{
 							screenName: state.NewIdentScreenName("friend7-visible-offline"),
@@ -804,8 +804,8 @@ func Test_buddyNotifier_BroadcastVisibility(t *testing.T) {
 			doSendDepartures: true,
 		},
 		{
-			name:        "don't send departure notifications",
-			userSession: newTestSession("me"),
+			name:     "don't send departure notifications",
+			instance: newTestInstance("me"),
 			mockParams: mockParams{
 				relationshipFetcherParams: relationshipFetcherParams{
 					allRelationshipsParams: allRelationshipsParams{
@@ -869,15 +869,15 @@ func Test_buddyNotifier_BroadcastVisibility(t *testing.T) {
 					retrieveSessionParams: retrieveSessionParams{
 						{
 							screenName: state.NewIdentScreenName("friend2-visible-on-their-list"),
-							result:     newTestSession("friend2-visible-on-their-list"),
+							result:     newTestInstance("friend2-visible-on-their-list").Session(),
 						},
 						{
 							screenName: state.NewIdentScreenName("friend3-visible-on-your-list"),
-							result:     newTestSession("friend3-visible-on-your-list"),
+							result:     newTestInstance("friend3-visible-on-your-list").Session(),
 						},
 						{
 							screenName: state.NewIdentScreenName("friend4-visible-on-both-lists"),
-							result:     newTestSession("friend4-visible-on-both-lists"),
+							result:     newTestInstance("friend4-visible-on-both-lists").Session(),
 						},
 						{
 							screenName: state.NewIdentScreenName("friend7-visible-offline"),
@@ -919,7 +919,7 @@ func Test_buddyNotifier_BroadcastVisibility(t *testing.T) {
 				sessionRetriever:    sessionRetriever,
 			}
 
-			err := svc.BroadcastVisibility(context.Background(), tc.userSession, tc.filter, tc.doSendDepartures)
+			err := svc.BroadcastVisibility(context.Background(), tc.instance, tc.filter, tc.doSendDepartures)
 			assert.NoError(t, err)
 		})
 	}

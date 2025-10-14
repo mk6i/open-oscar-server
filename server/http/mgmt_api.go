@@ -61,12 +61,12 @@ func NewManagementAPI(bld config.Build, listener string, userManager UserManager
 
 	// Handlers for '/session' route
 	mux.HandleFunc("GET /session", func(w http.ResponseWriter, r *http.Request) {
-		getSessionHandler(w, r, sessionRetriever, time.Since)
+		getSessionHandler(w, r, sessionRetriever, time.Now)
 	})
 
 	// Handlers for '/session/{screenname}' route
 	mux.HandleFunc("GET /session/{screenname}", func(w http.ResponseWriter, r *http.Request) {
-		getSessionHandler(w, r, sessionRetriever, time.Since)
+		getSessionHandler(w, r, sessionRetriever, time.Now)
 	})
 	mux.HandleFunc("DELETE /session/{screenname}", func(w http.ResponseWriter, r *http.Request) {
 		deleteSessionHandler(w, r, sessionRetriever)
@@ -241,10 +241,10 @@ func putUserPasswordHandler(w http.ResponseWriter, r *http.Request, userManager 
 }
 
 // getSessionHandler handles GET /session
-func getSessionHandler(w http.ResponseWriter, r *http.Request, sessionRetriever SessionRetriever, funcTimeSince func(t time.Time) time.Duration) {
+func getSessionHandler(w http.ResponseWriter, r *http.Request, sessionRetriever SessionRetriever, nowFn func() time.Time) {
 	w.Header().Set("Content-Type", "application/json")
 
-	var allUsers []*state.Session
+	var allSessions []*state.Session
 
 	if screenName := r.PathValue("screenname"); screenName != "" {
 		session := sessionRetriever.RetrieveSession(state.NewIdentScreenName(screenName))
@@ -252,38 +252,64 @@ func getSessionHandler(w http.ResponseWriter, r *http.Request, sessionRetriever 
 			http.Error(w, "session not found", http.StatusNotFound)
 			return
 		}
-		allUsers = append(allUsers, session)
+		allSessions = append(allSessions, session)
 	} else {
-		allUsers = sessionRetriever.AllSessions()
+		// AllSessions returns all sessions
+		allSessions = sessionRetriever.AllSessions()
 	}
 
 	ou := onlineUsers{
-		Count:    len(allUsers),
-		Sessions: make([]sessionHandle, len(allUsers)),
+		Count:    len(allSessions),
+		Sessions: make([]sessionHandle, len(allSessions)),
 	}
 
-	for i, s := range allUsers {
-		// report 0 if the user is not idle
-		idleSeconds := funcTimeSince(s.IdleTime()).Seconds()
-		if !s.Idle() {
-			idleSeconds = 0
+	for i, s := range allSessions {
+		instances := s.Instances()
+		instanceHandles := make([]instanceHandle, len(instances))
+		for j, inst := range instances {
+			instanceIdleSeconds := 0
+			if inst.Idle() {
+				instanceIdleSeconds = int(nowFn().Sub(inst.IdleTime()).Seconds())
+			}
+
+			awayMsg, _ := inst.AwayMessage()
+			instanceHandles[j] = instanceHandle{
+				Num:         int(inst.Num()),
+				IdleSeconds: instanceIdleSeconds,
+				IsAway:      inst.Away(),
+				AwayMessage: awayMsg,
+				IsInvisible: inst.Invisible(),
+			}
+			ra := inst.RemoteAddr()
+			if ra != nil {
+				instanceHandles[j].RemoteAddr = ra.Addr().String()
+				instanceHandles[j].RemotePort = int(ra.Port())
+			}
 		}
-		onlineSeconds := funcTimeSince(s.SignonTime()).Seconds()
+
+		sessionIdleSeconds := 0
+		if s.Idle() {
+			sessionIdleSeconds = int(nowFn().Sub(s.IdleTime()).Seconds())
+		}
+
+		allAway := s.Away()
+		awayMessage := ""
+		if allAway {
+			awayMessage = s.AwayMessage()
+		}
 
 		ou.Sessions[i] = sessionHandle{
 			ID:            s.IdentScreenName().String(),
 			ScreenName:    s.DisplayScreenName().String(),
-			OnlineSeconds: onlineSeconds,
-			AwayMessage:   s.AwayMessage(),
-			IdleSeconds:   idleSeconds,
+			OnlineSeconds: int(nowFn().Sub(s.SignonTime()).Seconds()),
+			IsAway:        allAway,
+			AwayMessage:   awayMessage,
+			IdleSeconds:   sessionIdleSeconds,
+			IsInvisible:   s.Invisible(),
 			IsICQ:         s.UIN() > 0,
+			InstanceCount: s.InstanceCount(),
+			Instances:     instanceHandles,
 		}
-		ra := s.RemoteAddr()
-		if ra != nil {
-			ou.Sessions[i].RemoteAddr = ra.Addr().String()
-			ou.Sessions[i].RemotePort = ra.Port()
-		}
-
 	}
 
 	if err := json.NewEncoder(w).Encode(ou); err != nil {
@@ -302,7 +328,7 @@ func deleteSessionHandler(w http.ResponseWriter, r *http.Request, sessionRetriev
 			errorMsg(w, "session not found", http.StatusNotFound)
 			return
 		}
-		session.Close()
+		session.CloseSession()
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

@@ -23,53 +23,124 @@ import (
 )
 
 func TestSessionHandler_GET(t *testing.T) {
-	fnNewSess := func(screenName string, uin uint32) *state.Session {
-		sess := state.NewSession()
-		sess.SetIdentScreenName(state.NewIdentScreenName(screenName))
-		sess.SetDisplayScreenName(state.DisplayScreenName(screenName))
-		sess.SetUIN(uin)
-		ip, _ := netip.ParseAddrPort("1.2.3.4:1234")
-		sess.SetRemoteAddr(&ip)
-		return sess
-	}
+	// Fixed time for testing: 2024-01-01 12:00:00 UTC
+	fixedNow := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+	nowFn := func() time.Time { return fixedNow }
+
 	tt := []struct {
-		name          string
-		want          string
-		statusCode    int
-		timeSinceFunc func(t time.Time) time.Duration
-		mockParams    mockParams
+		name           string
+		want           string
+		statusCode     int
+		createSessions func() []*state.Session
 	}{
 		{
 			name:       "without sessions",
 			want:       `{"count":0,"sessions":[]}`,
 			statusCode: http.StatusOK,
-			mockParams: mockParams{
-				sessionRetrieverParams: sessionRetrieverParams{
-					sessionRetrieverAllSessionsParams: sessionRetrieverAllSessionsParams{
-						{
-							result: []*state.Session{},
-						},
-					},
-				},
+			createSessions: func() []*state.Session {
+				return []*state.Session{}
 			},
 		},
 		{
-			name:          "with sessions",
-			want:          `{"count":3,"sessions":[{"id":"usera","screen_name":"userA","online_seconds":0,"away_message":"","idle_seconds":0,"is_icq":false,"remote_addr":"1.2.3.4","remote_port":1234},{"id":"userb","screen_name":"userB","online_seconds":0,"away_message":"","idle_seconds":0,"is_icq":false,"remote_addr":"1.2.3.4","remote_port":1234},{"id":"100003","screen_name":"100003","online_seconds":0,"away_message":"","idle_seconds":0,"is_icq":true,"remote_addr":"1.2.3.4","remote_port":1234}]}`,
-			statusCode:    http.StatusOK,
-			timeSinceFunc: func(t time.Time) time.Duration { t0 := time.Now(); return t0.Sub(t0) },
-			mockParams: mockParams{
-				sessionRetrieverParams: sessionRetrieverParams{
-					sessionRetrieverAllSessionsParams: sessionRetrieverAllSessionsParams{
-						{
-							result: []*state.Session{
-								fnNewSess("userA", 0),
-								fnNewSess("userB", 0),
-								fnNewSess("100003", 100003),
-							},
-						},
-					},
-				},
+			name:       "with sessions",
+			want:       `{"count":3,"sessions":[{"id":"usera","screen_name":"userA","online_seconds":100,"is_away":false,"away_message":"","idle_seconds":0,"is_invisible":false,"is_icq":false,"instance_count":2,"instances":[{"num":1,"idle_seconds":30,"is_away":false,"away_message":"","is_invisible":false,"remote_addr":"1.2.3.4","remote_port":1234},{"num":2,"idle_seconds":0,"is_away":false,"away_message":"","is_invisible":true,"remote_addr":"5.6.7.8","remote_port":5678}]},{"id":"userb","screen_name":"userB","online_seconds":200,"is_away":false,"away_message":"","idle_seconds":0,"is_invisible":true,"is_icq":false,"instance_count":2,"instances":[{"num":1,"idle_seconds":0,"is_away":false,"away_message":"","is_invisible":true,"remote_addr":"9.10.11.12","remote_port":9012},{"num":2,"idle_seconds":0,"is_away":false,"away_message":"","is_invisible":true,"remote_addr":"13.14.15.16","remote_port":1314}]},{"id":"100003","screen_name":"100003","online_seconds":300,"is_away":false,"away_message":"","idle_seconds":0,"is_invisible":false,"is_icq":true,"instance_count":1,"instances":[{"num":1,"idle_seconds":0,"is_away":false,"away_message":"","is_invisible":false,"remote_addr":"1.2.3.4","remote_port":1234}]}]}`,
+			statusCode: http.StatusOK,
+			createSessions: func() []*state.Session {
+				// userA: 2 instances - one idle (30s), one invisible
+				userA := state.NewSession()
+				userA.SetIdentScreenName(state.NewIdentScreenName("userA"))
+				userA.SetDisplayScreenName(state.DisplayScreenName("userA"))
+				userA.SetUIN(0)
+				userA.SetNowFn(nowFn)
+				userA.SetSignonTime(fixedNow.Add(-100 * time.Second))
+				inst1 := userA.AddInstance()
+				inst1.SetSignonComplete()
+				inst1.SetIdle(30 * time.Second)
+				ip1, _ := netip.ParseAddrPort("1.2.3.4:1234")
+				inst1.SetRemoteAddr(&ip1)
+				inst2 := userA.AddInstance()
+				inst2.SetSignonComplete()
+				inst2.SetUserStatusBitmask(wire.OServiceUserStatusInvisible)
+				ip2, _ := netip.ParseAddrPort("5.6.7.8:5678")
+				inst2.SetRemoteAddr(&ip2)
+
+				// userB: 2 instances - both invisible
+				userB := state.NewSession()
+				userB.SetIdentScreenName(state.NewIdentScreenName("userB"))
+				userB.SetDisplayScreenName(state.DisplayScreenName("userB"))
+				userB.SetUIN(0)
+				userB.SetNowFn(nowFn)
+				userB.SetSignonTime(fixedNow.Add(-200 * time.Second))
+				inst3 := userB.AddInstance()
+				inst3.SetSignonComplete()
+				inst3.SetUserStatusBitmask(wire.OServiceUserStatusInvisible)
+				ip3, _ := netip.ParseAddrPort("9.10.11.12:9012")
+				inst3.SetRemoteAddr(&ip3)
+				inst4 := userB.AddInstance()
+				inst4.SetSignonComplete()
+				inst4.SetUserStatusBitmask(wire.OServiceUserStatusInvisible)
+				ip4, _ := netip.ParseAddrPort("13.14.15.16:1314")
+				inst4.SetRemoteAddr(&ip4)
+
+				// 100003: 1 instance - normal
+				icqUser := state.NewSession()
+				icqUser.SetIdentScreenName(state.NewIdentScreenName("100003"))
+				icqUser.SetDisplayScreenName(state.DisplayScreenName("100003"))
+				icqUser.SetUIN(100003)
+				icqUser.SetNowFn(nowFn)
+				icqUser.SetSignonTime(fixedNow.Add(-300 * time.Second))
+				inst5 := icqUser.AddInstance()
+				inst5.SetSignonComplete()
+				ip5, _ := netip.ParseAddrPort("1.2.3.4:1234")
+				inst5.SetRemoteAddr(&ip5)
+
+				return []*state.Session{userA, userB, icqUser}
+			},
+		},
+		{
+			name:       "with away sessions",
+			want:       `{"count":2,"sessions":[{"id":"usera","screen_name":"userA","online_seconds":100,"is_away":false,"away_message":"","idle_seconds":0,"is_invisible":false,"is_icq":false,"instance_count":2,"instances":[{"num":1,"idle_seconds":0,"is_away":true,"away_message":"Away message 1","is_invisible":false,"remote_addr":"1.2.3.4","remote_port":1234},{"num":2,"idle_seconds":0,"is_away":false,"away_message":"","is_invisible":false,"remote_addr":"5.6.7.8","remote_port":5678}]},{"id":"userb","screen_name":"userB","online_seconds":200,"is_away":true,"away_message":"Away message 2","idle_seconds":0,"is_invisible":false,"is_icq":false,"instance_count":2,"instances":[{"num":1,"idle_seconds":0,"is_away":true,"away_message":"Away message 2","is_invisible":false,"remote_addr":"9.10.11.12","remote_port":9012},{"num":2,"idle_seconds":0,"is_away":true,"away_message":"Away message 2","is_invisible":false,"remote_addr":"13.14.15.16","remote_port":1314}]}]}`,
+			statusCode: http.StatusOK,
+			createSessions: func() []*state.Session {
+				// userA: 2 instances - one away, one not away (away_message should be "")
+				userA := state.NewSession()
+				userA.SetIdentScreenName(state.NewIdentScreenName("userA"))
+				userA.SetDisplayScreenName(state.DisplayScreenName("userA"))
+				userA.SetUIN(0)
+				userA.SetNowFn(nowFn)
+				userA.SetSignonTime(fixedNow.Add(-100 * time.Second))
+				inst1 := userA.AddInstance()
+				inst1.SetSignonComplete()
+				inst1.SetUserStatusBitmask(wire.OServiceUserStatusAway)
+				inst1.SetAwayMessage("Away message 1")
+				ip1, _ := netip.ParseAddrPort("1.2.3.4:1234")
+				inst1.SetRemoteAddr(&ip1)
+				inst2 := userA.AddInstance()
+				inst2.SetSignonComplete()
+				ip2, _ := netip.ParseAddrPort("5.6.7.8:5678")
+				inst2.SetRemoteAddr(&ip2)
+
+				// userB: 2 instances - both away (away_message should be populated)
+				userB := state.NewSession()
+				userB.SetIdentScreenName(state.NewIdentScreenName("userB"))
+				userB.SetDisplayScreenName(state.DisplayScreenName("userB"))
+				userB.SetUIN(0)
+				userB.SetNowFn(nowFn)
+				userB.SetSignonTime(fixedNow.Add(-200 * time.Second))
+				inst3 := userB.AddInstance()
+				inst3.SetSignonComplete()
+				inst3.SetUserStatusBitmask(wire.OServiceUserStatusAway)
+				inst3.SetAwayMessage("Away message 2")
+				ip3, _ := netip.ParseAddrPort("9.10.11.12:9012")
+				inst3.SetRemoteAddr(&ip3)
+				inst4 := userB.AddInstance()
+				inst4.SetSignonComplete()
+				inst4.SetUserStatusBitmask(wire.OServiceUserStatusAway)
+				inst4.SetAwayMessage("Away message 2")
+				ip4, _ := netip.ParseAddrPort("13.14.15.16:1314")
+				inst4.SetRemoteAddr(&ip4)
+
+				return []*state.Session{userA, userB}
 			},
 		},
 	}
@@ -80,13 +151,12 @@ func TestSessionHandler_GET(t *testing.T) {
 			responseRecorder := httptest.NewRecorder()
 
 			sessionRetriever := newMockSessionRetriever(t)
-			for _, params := range tc.mockParams.sessionRetrieverParams.sessionRetrieverAllSessionsParams {
-				sessionRetriever.EXPECT().
-					AllSessions().
-					Return(params.result)
-			}
+			sessions := tc.createSessions()
+			sessionRetriever.EXPECT().
+				AllSessions().
+				Return(sessions)
 
-			getSessionHandler(responseRecorder, request, sessionRetriever, tc.timeSinceFunc)
+			getSessionHandler(responseRecorder, request, sessionRetriever, nowFn)
 
 			if responseRecorder.Code != tc.statusCode {
 				t.Errorf("Want status '%d', got '%d'", tc.statusCode, responseRecorder.Code)
@@ -100,56 +170,43 @@ func TestSessionHandler_GET(t *testing.T) {
 }
 
 func TestSessionHandlerScreenname_GET(t *testing.T) {
-	fnNewSess := func(screenName string, uin uint32) *state.Session {
-		sess := state.NewSession()
-		sess.SetIdentScreenName(state.NewIdentScreenName(screenName))
-		sess.SetDisplayScreenName(state.DisplayScreenName(screenName))
-		sess.SetUIN(uin)
-		ip, _ := netip.ParseAddrPort("1.2.3.4:1234")
-		sess.SetRemoteAddr(&ip)
-		return sess
-	}
+	// Fixed time for testing: 2024-01-01 12:00:00 UTC
+	fixedNow := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+	nowFn := func() time.Time { return fixedNow }
+
 	tt := []struct {
 		name              string
-		sessions          []*state.Session
 		requestScreenName state.IdentScreenName
 		want              string
 		statusCode        int
-		timeSinceFunc     func(t time.Time) time.Duration
-		mockParams        mockParams
+		createSession     func() *state.Session
 	}{
 		{
 			name:              "no session for screenname",
-			sessions:          []*state.Session{},
 			requestScreenName: state.NewIdentScreenName("userA"),
 			want:              `session not found`,
 			statusCode:        http.StatusNotFound,
-			mockParams: mockParams{
-				sessionRetrieverParams: sessionRetrieverParams{
-					retrieveSessionByNameParams: retrieveSessionByNameParams{
-						{
-							screenName: state.NewIdentScreenName("userA"),
-							result:     nil,
-						},
-					},
-				},
+			createSession: func() *state.Session {
+				return nil
 			},
 		},
 		{
 			name:              "active session found for screenname",
 			requestScreenName: state.NewIdentScreenName("userA"),
-			want:              `{"count":1,"sessions":[{"id":"usera","screen_name":"userA","online_seconds":0,"away_message":"","idle_seconds":0,"is_icq":false,"remote_addr":"1.2.3.4","remote_port":1234}]}`,
+			want:              `{"count":1,"sessions":[{"id":"usera","screen_name":"userA","online_seconds":150,"is_away":false,"away_message":"","idle_seconds":0,"is_invisible":false,"is_icq":false,"instance_count":1,"instances":[{"num":1,"idle_seconds":0,"is_away":false,"away_message":"","is_invisible":false,"remote_addr":"1.2.3.4","remote_port":1234}]}]}`,
 			statusCode:        http.StatusOK,
-			timeSinceFunc:     func(t time.Time) time.Duration { t0 := time.Now(); return t0.Sub(t0) },
-			mockParams: mockParams{
-				sessionRetrieverParams: sessionRetrieverParams{
-					retrieveSessionByNameParams: retrieveSessionByNameParams{
-						{
-							screenName: state.NewIdentScreenName("userA"),
-							result:     fnNewSess("userA", 0),
-						},
-					},
-				},
+			createSession: func() *state.Session {
+				sess := state.NewSession()
+				sess.SetIdentScreenName(state.NewIdentScreenName("userA"))
+				sess.SetDisplayScreenName(state.DisplayScreenName("userA"))
+				sess.SetUIN(0)
+				sess.SetNowFn(nowFn)
+				sess.SetSignonTime(fixedNow.Add(-150 * time.Second))
+				instance := sess.AddInstance()
+				instance.SetSignonComplete()
+				ip, _ := netip.ParseAddrPort("1.2.3.4:1234")
+				instance.SetRemoteAddr(&ip)
+				return sess
 			},
 		},
 	}
@@ -161,13 +218,12 @@ func TestSessionHandlerScreenname_GET(t *testing.T) {
 			responseRecorder := httptest.NewRecorder()
 
 			sessionRetriever := newMockSessionRetriever(t)
-			for _, params := range tc.mockParams.sessionRetrieverParams.retrieveSessionByNameParams {
-				sessionRetriever.EXPECT().
-					RetrieveSession(params.screenName).
-					Return(params.result)
-			}
+			session := tc.createSession()
+			sessionRetriever.EXPECT().
+				RetrieveSession(tc.requestScreenName).
+				Return(session)
 
-			getSessionHandler(responseRecorder, request, sessionRetriever, tc.timeSinceFunc)
+			getSessionHandler(responseRecorder, request, sessionRetriever, nowFn)
 
 			if responseRecorder.Code != tc.statusCode {
 				t.Errorf("Want status '%d', got '%d'", tc.statusCode, responseRecorder.Code)
@@ -185,13 +241,15 @@ func TestSessionHandlerScreenname_DELETE(t *testing.T) {
 		sess := state.NewSession()
 		sess.SetIdentScreenName(state.NewIdentScreenName(screenName))
 		sess.SetDisplayScreenName(state.DisplayScreenName(screenName))
+		instance := sess.AddInstance()
+		instance.SetSignonComplete()
 		ip, _ := netip.ParseAddrPort("1.2.3.4:1234")
-		sess.SetRemoteAddr(&ip)
+		instance.SetRemoteAddr(&ip)
 		return sess
 	}
 	tt := []struct {
 		name              string
-		session           *state.Session
+		session           *state.SessionInstance
 		requestScreenName state.IdentScreenName
 		statusCode        int
 		mockParams        mockParams
@@ -1441,6 +1499,8 @@ func TestPublicChatHandler_GET(t *testing.T) {
 		sess := state.NewSession()
 		sess.SetIdentScreenName(state.NewIdentScreenName(screenName))
 		sess.SetDisplayScreenName(state.DisplayScreenName(screenName))
+		instance := sess.AddInstance()
+		instance.SetSignonComplete()
 		return sess
 	}
 
@@ -1664,6 +1724,8 @@ func TestPrivateChatHandler_GET(t *testing.T) {
 		sess := state.NewSession()
 		sess.SetIdentScreenName(state.NewIdentScreenName(screenName))
 		sess.SetDisplayScreenName(state.DisplayScreenName(screenName))
+		instance := sess.AddInstance()
+		instance.SetSignonComplete()
 		return sess
 	}
 

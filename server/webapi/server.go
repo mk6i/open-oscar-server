@@ -122,7 +122,7 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 		})
 
 		// Authenticated Web AIM API endpoints
-		// Session management - supports multiple auth methods (k, a, ts+sig_sha256)
+		// SessionInstance management - supports multiple auth methods (k, a, ts+sig_sha256)
 		mux.Handle("GET /aim/startSession", authMiddleware.AuthenticateFlexible(
 			authMiddleware.CORSMiddleware(
 				http.HandlerFunc(sessionHandler.StartSession))))

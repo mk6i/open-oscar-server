@@ -26,16 +26,16 @@ func TestAdminService_ConfirmRequest(t *testing.T) {
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
-		// userSession is the session of the user
-		userSession *state.Session
+		// instance is the session of the user
+		instance *state.SessionInstance
 		// expectOutput is the SNAC sent from the server to client
 		expectOutput wire.SNACMessage
 		// expectErr is the expected error returned
 		expectErr error
 	}{
 		{
-			name:        "unconfirmed account sends confirmation request",
-			userSession: newTestSession("chattingchuck"),
+			name:     "unconfirmed account sends confirmation request",
+			instance: newTestInstance("chattingchuck"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.Admin,
@@ -91,8 +91,8 @@ func TestAdminService_ConfirmRequest(t *testing.T) {
 			},
 		},
 		{
-			name:        "already confirmed account sends confirmation request",
-			userSession: newTestSession("chattingchuck"),
+			name:     "already confirmed account sends confirmation request",
+			instance: newTestInstance("chattingchuck"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.Admin,
@@ -134,8 +134,8 @@ func TestAdminService_ConfirmRequest(t *testing.T) {
 			},
 		},
 		{
-			name:        "acccount with no email address sends confirmation request",
-			userSession: newTestSession("chattingchuck"),
+			name:     "acccount with no email address sends confirmation request",
+			instance: newTestInstance("chattingchuck"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.Admin,
@@ -192,7 +192,7 @@ func TestAdminService_ConfirmRequest(t *testing.T) {
 			}
 			for _, params := range tc.mockParams.broadcastBuddyArrivedParams {
 				buddyBroadcaster.EXPECT().
-					BroadcastBuddyArrived(mock.Anything, tc.userSession.IdentScreenName(), tc.userSession.TLVUserInfo()).
+					BroadcastBuddyArrived(mock.Anything, tc.instance.IdentScreenName(), tc.instance.Session().TLVUserInfo()).
 					Return(params.err)
 			}
 			svc := AdminService{
@@ -200,7 +200,7 @@ func TestAdminService_ConfirmRequest(t *testing.T) {
 				accountManager:   accountManager,
 				buddyBroadcaster: buddyBroadcaster,
 			}
-			outputSNAC, err := svc.ConfirmRequest(context.Background(), tc.userSession, tc.inputSNAC.Frame)
+			outputSNAC, err := svc.ConfirmRequest(context.Background(), tc.instance, tc.inputSNAC.Frame)
 			assert.ErrorIs(t, err, tc.expectErr)
 			if tc.expectErr != nil {
 				return
@@ -221,16 +221,16 @@ func TestAdminService_InfoQuery(t *testing.T) {
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
-		// userSession is the session of the user
-		userSession *state.Session
+		// instance is the session of the user
+		instance *state.SessionInstance
 		// expectOutput is the SNAC sent from the server to client
 		expectOutput wire.SNACMessage
 		// expectErr is the expected error returned
 		expectErr error
 	}{
 		{
-			name:        "user requests account registration status",
-			userSession: newTestSession("chattingchuck"),
+			name:     "user requests account registration status",
+			instance: newTestInstance("chattingchuck"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.Admin,
@@ -272,8 +272,8 @@ func TestAdminService_InfoQuery(t *testing.T) {
 			},
 		},
 		{
-			name:        "user requests account email address",
-			userSession: newTestSession("chattingchuck"),
+			name:     "user requests account email address",
+			instance: newTestInstance("chattingchuck"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.Admin,
@@ -317,8 +317,8 @@ func TestAdminService_InfoQuery(t *testing.T) {
 			},
 		},
 		{
-			name:        "user requests account email address but not set",
-			userSession: newTestSession("chattingchuck"),
+			name:     "user requests account email address but not set",
+			instance: newTestInstance("chattingchuck"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.Admin,
@@ -360,8 +360,8 @@ func TestAdminService_InfoQuery(t *testing.T) {
 			},
 		},
 		{
-			name:        "user requests formatted screenname",
-			userSession: newTestSession("ChattingChuck"),
+			name:     "user requests formatted screenname",
+			instance: newTestInstance("ChattingChuck"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.Admin,
@@ -392,8 +392,8 @@ func TestAdminService_InfoQuery(t *testing.T) {
 			},
 		},
 		{
-			name:        "user requests invalid TLV",
-			userSession: newTestSession("ChattingChuck"),
+			name:     "user requests invalid TLV",
+			instance: newTestInstance("ChattingChuck"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.Admin,
@@ -443,7 +443,7 @@ func TestAdminService_InfoQuery(t *testing.T) {
 				accountManager:   accountManager,
 				buddyBroadcaster: buddyBroadcaster,
 			}
-			outputSNAC, err := svc.InfoQuery(context.Background(), tc.userSession, tc.inputSNAC.Frame, tc.inputSNAC.Body.(wire.SNAC_0x07_0x02_AdminInfoQuery))
+			outputSNAC, err := svc.InfoQuery(context.Background(), tc.instance, tc.inputSNAC.Frame, tc.inputSNAC.Body.(wire.SNAC_0x07_0x02_AdminInfoQuery))
 			assert.ErrorIs(t, err, tc.expectErr)
 			if tc.expectErr != nil {
 				return
@@ -464,16 +464,16 @@ func TestAdminService_InfoChangeRequest_ScreenName(t *testing.T) {
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
-		// userSession is the session of the user
-		userSession *state.Session
+		// instance is the session of the user
+		instance *state.SessionInstance
 		// expectOutput is the SNAC sent from the server to client
 		expectOutput wire.SNACMessage
 		// expectErr is the expected error returned
 		expectErr error
 	}{
 		{
-			name:        "user changes screen name format successfully aim < 6",
-			userSession: newTestSession("chattingchuck"),
+			name:     "user changes screen name format successfully aim < 6",
+			instance: newTestInstance("chattingchuck"),
 			mockParams: mockParams{
 				accountManagerParams: accountManagerParams{
 					accountManagerUpdateDisplayScreenNameParams: accountManagerUpdateDisplayScreenNameParams{
@@ -498,7 +498,7 @@ func TestAdminService_InfoChangeRequest_ScreenName(t *testing.T) {
 									FoodGroup: wire.OService,
 									SubGroup:  wire.OServiceUserInfoUpdate,
 								},
-								Body: newOServiceUserInfoUpdate(newTestSession("Chatting Chuck")),
+								Body: newOServiceUserInfoUpdate(newTestInstance("Chatting Chuck")),
 							},
 						},
 					},
@@ -535,8 +535,8 @@ func TestAdminService_InfoChangeRequest_ScreenName(t *testing.T) {
 			},
 		},
 		{
-			name:        "user changes screen name format successfully aim >= 6",
-			userSession: newTestSession("chattingchuck", sessOptSetFoodGroupVersion(wire.OService, 4)),
+			name:     "user changes screen name format successfully aim >= 6",
+			instance: newTestInstance("chattingchuck", sessOptSetFoodGroupVersion(wire.OService, 4)),
 			mockParams: mockParams{
 				accountManagerParams: accountManagerParams{
 					accountManagerUpdateDisplayScreenNameParams: accountManagerUpdateDisplayScreenNameParams{
@@ -561,7 +561,7 @@ func TestAdminService_InfoChangeRequest_ScreenName(t *testing.T) {
 									FoodGroup: wire.OService,
 									SubGroup:  wire.OServiceUserInfoUpdate,
 								},
-								Body: newOServiceUserInfoUpdate(newTestSession("Chatting Chuck", sessOptSetFoodGroupVersion(wire.OService, 4))),
+								Body: newOServiceUserInfoUpdate(newTestInstance("Chatting Chuck", sessOptSetFoodGroupVersion(wire.OService, 4))),
 							},
 						},
 					},
@@ -598,8 +598,8 @@ func TestAdminService_InfoChangeRequest_ScreenName(t *testing.T) {
 			},
 		},
 		{
-			name:        "proposed screen name is too long",
-			userSession: newTestSession("chattingchuck"),
+			name:     "proposed screen name is too long",
+			instance: newTestInstance("chattingchuck"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.Admin,
@@ -631,8 +631,8 @@ func TestAdminService_InfoChangeRequest_ScreenName(t *testing.T) {
 			},
 		},
 		{
-			name:        "proposed screen name does not match session screen name",
-			userSession: newTestSession("chattingchuck"),
+			name:     "proposed screen name does not match session screen name",
+			instance: newTestInstance("chattingchuck"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.Admin,
@@ -664,8 +664,8 @@ func TestAdminService_InfoChangeRequest_ScreenName(t *testing.T) {
 			},
 		},
 		{
-			name:        "proposed screen name ends in a space",
-			userSession: newTestSession("chattingchuck"),
+			name:     "proposed screen name ends in a space",
+			instance: newTestInstance("chattingchuck"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.Admin,
@@ -729,7 +729,7 @@ func TestAdminService_InfoChangeRequest_ScreenName(t *testing.T) {
 				buddyBroadcaster: mockBuddyBroadcaster,
 				messageRelayer:   messageRelayer,
 			}
-			outputSNAC, err := svc.InfoChangeRequest(context.Background(), tc.userSession, tc.inputSNAC.Frame, tc.inputSNAC.Body.(wire.SNAC_0x07_0x04_AdminInfoChangeRequest))
+			outputSNAC, err := svc.InfoChangeRequest(context.Background(), tc.instance, tc.inputSNAC.Frame, tc.inputSNAC.Body.(wire.SNAC_0x07_0x04_AdminInfoChangeRequest))
 			assert.ErrorIs(t, err, tc.expectErr)
 			if tc.expectErr != nil {
 				return
@@ -756,16 +756,16 @@ func TestAdminService_InfoChangeRequest_EmailAddress(t *testing.T) {
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
-		// userSession is the session of the user
-		userSession *state.Session
+		// instance is the session of the user
+		instance *state.SessionInstance
 		// expectOutput is the SNAC sent from the server to client
 		expectOutput wire.SNACMessage
 		// expectErr is the expected error returned
 		expectErr error
 	}{
 		{
-			name:        "user changes email address successfully",
-			userSession: newTestSession("chattingchuck"),
+			name:     "user changes email address successfully",
+			instance: newTestInstance("chattingchuck"),
 			mockParams: mockParams{
 				accountManagerParams: accountManagerParams{
 					accountManagerUpdateEmailAddressParams: accountManagerUpdateEmailAddressParams{
@@ -809,8 +809,8 @@ func TestAdminService_InfoChangeRequest_EmailAddress(t *testing.T) {
 			},
 		},
 		{
-			name:        "proposed email address invalid rfc 5322 format",
-			userSession: newTestSession("chattingchuck"),
+			name:     "proposed email address invalid rfc 5322 format",
+			instance: newTestInstance("chattingchuck"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.Admin,
@@ -843,8 +843,8 @@ func TestAdminService_InfoChangeRequest_EmailAddress(t *testing.T) {
 			},
 		},
 		{
-			name:        "proposed email address too long",
-			userSession: newTestSession("chattingchuck"),
+			name:     "proposed email address too long",
+			instance: newTestInstance("chattingchuck"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.Admin,
@@ -895,7 +895,7 @@ func TestAdminService_InfoChangeRequest_EmailAddress(t *testing.T) {
 				buddyBroadcaster: buddyBroadcaster,
 				messageRelayer:   messageRelayer,
 			}
-			outputSNAC, err := svc.InfoChangeRequest(context.Background(), tc.userSession, tc.inputSNAC.Frame, tc.inputSNAC.Body.(wire.SNAC_0x07_0x04_AdminInfoChangeRequest))
+			outputSNAC, err := svc.InfoChangeRequest(context.Background(), tc.instance, tc.inputSNAC.Frame, tc.inputSNAC.Body.(wire.SNAC_0x07_0x04_AdminInfoChangeRequest))
 			assert.ErrorIs(t, err, tc.expectErr)
 			if tc.expectErr != nil {
 				return
@@ -916,16 +916,16 @@ func TestAdminService_InfoChangeRequest_RegStatus(t *testing.T) {
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
-		// userSession is the session of the user
-		userSession *state.Session
+		// instance is the session of the user
+		instance *state.SessionInstance
 		// expectOutput is the SNAC sent from the server to client
 		expectOutput wire.SNACMessage
 		// expectErr is the expected error returned
 		expectErr error
 	}{
 		{
-			name:        "user changes reg preference successfully",
-			userSession: newTestSession("chattingchuck"),
+			name:     "user changes reg preference successfully",
+			instance: newTestInstance("chattingchuck"),
 			mockParams: mockParams{
 				accountManagerParams: accountManagerParams{
 					accountManagerUpdateRegStatusParams: accountManagerUpdateRegStatusParams{
@@ -967,8 +967,8 @@ func TestAdminService_InfoChangeRequest_RegStatus(t *testing.T) {
 			},
 		},
 		{
-			name:        "proposed reg preference invalid",
-			userSession: newTestSession("chattingchuck"),
+			name:     "proposed reg preference invalid",
+			instance: newTestInstance("chattingchuck"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.Admin,
@@ -1019,7 +1019,7 @@ func TestAdminService_InfoChangeRequest_RegStatus(t *testing.T) {
 				buddyBroadcaster: buddyBroadcaster,
 				messageRelayer:   messageRelayer,
 			}
-			outputSNAC, err := svc.InfoChangeRequest(context.Background(), tc.userSession, tc.inputSNAC.Frame, tc.inputSNAC.Body.(wire.SNAC_0x07_0x04_AdminInfoChangeRequest))
+			outputSNAC, err := svc.InfoChangeRequest(context.Background(), tc.instance, tc.inputSNAC.Frame, tc.inputSNAC.Body.(wire.SNAC_0x07_0x04_AdminInfoChangeRequest))
 			assert.ErrorIs(t, err, tc.expectErr)
 			if tc.expectErr != nil {
 				return
@@ -1040,16 +1040,16 @@ func TestAdminService_InfoChangeRequest_Password(t *testing.T) {
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
-		// userSession is the session of the user
-		userSession *state.Session
+		// instance is the session of the user
+		instance *state.SessionInstance
 		// expectOutput is the SNAC sent from the server to client
 		expectOutput wire.SNACMessage
 		// expectErr is the expected error returned
 		expectErr error
 	}{
 		{
-			name:        "user changes password successfully",
-			userSession: newTestSession("me"),
+			name:     "user changes password successfully",
+			instance: newTestInstance("me"),
 			mockParams: mockParams{
 				accountManagerParams: accountManagerParams{
 					accountManagerSetUserPasswordParams: accountManagerSetUserPasswordParams{
@@ -1104,8 +1104,8 @@ func TestAdminService_InfoChangeRequest_Password(t *testing.T) {
 			},
 		},
 		{
-			name:        "user changes password, invalid new password length",
-			userSession: newTestSession("me"),
+			name:     "user changes password, invalid new password length",
+			instance: newTestInstance("me"),
 			mockParams: mockParams{
 				accountManagerParams: accountManagerParams{
 					accountManagerSetUserPasswordParams: accountManagerSetUserPasswordParams{
@@ -1162,8 +1162,8 @@ func TestAdminService_InfoChangeRequest_Password(t *testing.T) {
 			},
 		},
 		{
-			name:        "user changes password, set user password runtime error",
-			userSession: newTestSession("me"),
+			name:     "user changes password, set user password runtime error",
+			instance: newTestInstance("me"),
 			mockParams: mockParams{
 				accountManagerParams: accountManagerParams{
 					accountManagerSetUserPasswordParams: accountManagerSetUserPasswordParams{
@@ -1220,8 +1220,8 @@ func TestAdminService_InfoChangeRequest_Password(t *testing.T) {
 			},
 		},
 		{
-			name:        "user changes password, old password is invalid",
-			userSession: newTestSession("me"),
+			name:     "user changes password, old password is invalid",
+			instance: newTestInstance("me"),
 			mockParams: mockParams{
 				accountManagerParams: accountManagerParams{
 					accountManagerUserParams: accountManagerUserParams{
@@ -1271,8 +1271,8 @@ func TestAdminService_InfoChangeRequest_Password(t *testing.T) {
 			},
 		},
 		{
-			name:        "user changes password, user not found",
-			userSession: newTestSession("me"),
+			name:     "user changes password, user not found",
+			instance: newTestInstance("me"),
 			mockParams: mockParams{
 				accountManagerParams: accountManagerParams{
 					accountManagerUserParams: accountManagerUserParams{
@@ -1316,8 +1316,8 @@ func TestAdminService_InfoChangeRequest_Password(t *testing.T) {
 			},
 		},
 		{
-			name:        "user changes password, user lookup runtime error",
-			userSession: newTestSession("me"),
+			name:     "user changes password, user lookup runtime error",
+			instance: newTestInstance("me"),
 			mockParams: mockParams{
 				accountManagerParams: accountManagerParams{
 					accountManagerUserParams: accountManagerUserParams{
@@ -1361,9 +1361,9 @@ func TestAdminService_InfoChangeRequest_Password(t *testing.T) {
 			},
 		},
 		{
-			name:        "user changes password, missing old password",
-			userSession: newTestSession("me"),
-			mockParams:  mockParams{},
+			name:       "user changes password, missing old password",
+			instance:   newTestInstance("me"),
+			mockParams: mockParams{},
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.Admin,
@@ -1415,7 +1415,7 @@ func TestAdminService_InfoChangeRequest_Password(t *testing.T) {
 				accountManager: accountManager,
 				logger:         slog.Default(),
 			}
-			outputSNAC, err := svc.InfoChangeRequest(context.Background(), tc.userSession, tc.inputSNAC.Frame, tc.inputSNAC.Body.(wire.SNAC_0x07_0x04_AdminInfoChangeRequest))
+			outputSNAC, err := svc.InfoChangeRequest(context.Background(), tc.instance, tc.inputSNAC.Frame, tc.inputSNAC.Body.(wire.SNAC_0x07_0x04_AdminInfoChangeRequest))
 			assert.ErrorIs(t, err, tc.expectErr)
 			if tc.expectErr != nil {
 				return

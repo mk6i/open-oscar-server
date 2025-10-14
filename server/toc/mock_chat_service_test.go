@@ -40,8 +40,8 @@ func (_m *mockChatService) EXPECT() *mockChatService_Expecter {
 }
 
 // ChannelMsgToHost provides a mock function for the type mockChatService
-func (_mock *mockChatService) ChannelMsgToHost(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x0E_0x05_ChatChannelMsgToHost) (*wire.SNACMessage, error) {
-	ret := _mock.Called(ctx, sess, inFrame, inBody)
+func (_mock *mockChatService) ChannelMsgToHost(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x0E_0x05_ChatChannelMsgToHost) (*wire.SNACMessage, error) {
+	ret := _mock.Called(ctx, instance, inFrame, inBody)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ChannelMsgToHost")
@@ -49,18 +49,18 @@ func (_mock *mockChatService) ChannelMsgToHost(ctx context.Context, sess *state.
 
 	var r0 *wire.SNACMessage
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.Session, wire.SNACFrame, wire.SNAC_0x0E_0x05_ChatChannelMsgToHost) (*wire.SNACMessage, error)); ok {
-		return returnFunc(ctx, sess, inFrame, inBody)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x0E_0x05_ChatChannelMsgToHost) (*wire.SNACMessage, error)); ok {
+		return returnFunc(ctx, instance, inFrame, inBody)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.Session, wire.SNACFrame, wire.SNAC_0x0E_0x05_ChatChannelMsgToHost) *wire.SNACMessage); ok {
-		r0 = returnFunc(ctx, sess, inFrame, inBody)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x0E_0x05_ChatChannelMsgToHost) *wire.SNACMessage); ok {
+		r0 = returnFunc(ctx, instance, inFrame, inBody)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*wire.SNACMessage)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, *state.Session, wire.SNACFrame, wire.SNAC_0x0E_0x05_ChatChannelMsgToHost) error); ok {
-		r1 = returnFunc(ctx, sess, inFrame, inBody)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x0E_0x05_ChatChannelMsgToHost) error); ok {
+		r1 = returnFunc(ctx, instance, inFrame, inBody)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -74,22 +74,22 @@ type mockChatService_ChannelMsgToHost_Call struct {
 
 // ChannelMsgToHost is a helper method to define mock.On call
 //   - ctx context.Context
-//   - sess *state.Session
+//   - instance *state.SessionInstance
 //   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x0E_0x05_ChatChannelMsgToHost
-func (_e *mockChatService_Expecter) ChannelMsgToHost(ctx interface{}, sess interface{}, inFrame interface{}, inBody interface{}) *mockChatService_ChannelMsgToHost_Call {
-	return &mockChatService_ChannelMsgToHost_Call{Call: _e.mock.On("ChannelMsgToHost", ctx, sess, inFrame, inBody)}
+func (_e *mockChatService_Expecter) ChannelMsgToHost(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}) *mockChatService_ChannelMsgToHost_Call {
+	return &mockChatService_ChannelMsgToHost_Call{Call: _e.mock.On("ChannelMsgToHost", ctx, instance, inFrame, inBody)}
 }
 
-func (_c *mockChatService_ChannelMsgToHost_Call) Run(run func(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x0E_0x05_ChatChannelMsgToHost)) *mockChatService_ChannelMsgToHost_Call {
+func (_c *mockChatService_ChannelMsgToHost_Call) Run(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x0E_0x05_ChatChannelMsgToHost)) *mockChatService_ChannelMsgToHost_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *state.Session
+		var arg1 *state.SessionInstance
 		if args[1] != nil {
-			arg1 = args[1].(*state.Session)
+			arg1 = args[1].(*state.SessionInstance)
 		}
 		var arg2 wire.SNACFrame
 		if args[2] != nil {
@@ -114,7 +114,7 @@ func (_c *mockChatService_ChannelMsgToHost_Call) Return(sNACMessage *wire.SNACMe
 	return _c
 }
 
-func (_c *mockChatService_ChannelMsgToHost_Call) RunAndReturn(run func(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x0E_0x05_ChatChannelMsgToHost) (*wire.SNACMessage, error)) *mockChatService_ChannelMsgToHost_Call {
+func (_c *mockChatService_ChannelMsgToHost_Call) RunAndReturn(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x0E_0x05_ChatChannelMsgToHost) (*wire.SNACMessage, error)) *mockChatService_ChannelMsgToHost_Call {
 	_c.Call.Return(run)
 	return _c
 }

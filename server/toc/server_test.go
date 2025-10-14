@@ -26,8 +26,8 @@ func TestServer_handleTOCRequest_serverShutdown(t *testing.T) {
 		sv := Server{
 			bosProxy:       testOSCARProxy(t),
 			logger:         slog.Default(),
-			recalcWarning:  func(ctx context.Context, sess *state.Session) error { return nil },
-			lowerWarnLevel: func(ctx context.Context, sess *state.Session) {},
+			recalcWarning:  func(ctx context.Context, instance *state.SessionInstance) error { return nil },
+			lowerWarnLevel: func(ctx context.Context, instance *state.SessionInstance) {},
 		}
 
 		serverReader, _ := io.Pipe()
@@ -66,8 +66,8 @@ func TestServer_handleTOCRequest_clientReadDisconnect(t *testing.T) {
 		sv := Server{
 			bosProxy:       testOSCARProxy(t),
 			logger:         slog.Default(),
-			recalcWarning:  func(ctx context.Context, sess *state.Session) error { return nil },
-			lowerWarnLevel: func(ctx context.Context, sess *state.Session) {},
+			recalcWarning:  func(ctx context.Context, instance *state.SessionInstance) error { return nil },
+			lowerWarnLevel: func(ctx context.Context, instance *state.SessionInstance) {},
 		}
 		err := sv.handleTOCRequest(context.Background(), closeConn, sess, NewChatRegistry(), fc)
 		assert.ErrorIs(t, err, errClientReq)
@@ -101,8 +101,8 @@ func TestServer_handleTOCRequest_sessClose(t *testing.T) {
 		sv := Server{
 			bosProxy:       testOSCARProxy(t),
 			logger:         slog.Default(),
-			recalcWarning:  func(ctx context.Context, sess *state.Session) error { return nil },
-			lowerWarnLevel: func(ctx context.Context, sess *state.Session) {},
+			recalcWarning:  func(ctx context.Context, instance *state.SessionInstance) error { return nil },
+			lowerWarnLevel: func(ctx context.Context, instance *state.SessionInstance) {},
 		}
 		err := sv.handleTOCRequest(context.Background(), closeConn, sess, NewChatRegistry(), fc)
 		assert.ErrorIs(t, err, errTOCProcessing)
@@ -110,7 +110,7 @@ func TestServer_handleTOCRequest_sessClose(t *testing.T) {
 	}()
 
 	// close the session, simulating another client login kicking this session
-	sess.Close()
+	sess.CloseInstance()
 
 	// wait for handleTOCRequest to return
 	wg.Wait()
@@ -135,8 +135,8 @@ func TestServer_handleTOCRequest_replyFailure(t *testing.T) {
 		sv := Server{
 			bosProxy:       testOSCARProxy(t),
 			logger:         slog.Default(),
-			recalcWarning:  func(ctx context.Context, sess *state.Session) error { return nil },
-			lowerWarnLevel: func(ctx context.Context, sess *state.Session) {},
+			recalcWarning:  func(ctx context.Context, instance *state.SessionInstance) error { return nil },
+			lowerWarnLevel: func(ctx context.Context, instance *state.SessionInstance) {},
 		}
 		err := sv.handleTOCRequest(context.Background(), closeConn, sess, NewChatRegistry(), fc)
 		assert.ErrorIs(t, err, errServerWrite)
@@ -174,8 +174,8 @@ func TestServer_handleTOCRequest_happyPath(t *testing.T) {
 		sv := Server{
 			bosProxy:       testOSCARProxy(t),
 			logger:         slog.Default(),
-			recalcWarning:  func(ctx context.Context, sess *state.Session) error { return nil },
-			lowerWarnLevel: func(ctx context.Context, sess *state.Session) {},
+			recalcWarning:  func(ctx context.Context, instance *state.SessionInstance) error { return nil },
+			lowerWarnLevel: func(ctx context.Context, instance *state.SessionInstance) {},
 		}
 		err := sv.handleTOCRequest(context.Background(), closeConn, newTestSession("me"), NewChatRegistry(), fc)
 		assert.ErrorIs(t, err, errClientReq)

@@ -251,8 +251,8 @@ type sessionRetrieverAllSessionsParams []struct {
 	result []*state.Session
 }
 
-// retrieveSessionParams is the list of parameters passed at the mock
-// SessionRetriever.RetrieveSessionByName call site
+// retrieveSessionByNameParams is the list of parameters passed at the mock
+// SessionRetriever.RetrieveSession call site
 type retrieveSessionByNameParams []struct {
 	screenName state.IdentScreenName
 	result     *state.Session

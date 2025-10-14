@@ -49,8 +49,8 @@ type Handler struct {
 	middleware.RouteLogger
 }
 
-func (rt Handler) AdminConfirmRequest(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, _ io.Reader, rw ResponseWriter) error {
-	outSNAC, err := rt.AdminService.ConfirmRequest(ctx, sess, inFrame)
+func (rt Handler) AdminConfirmRequest(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, _ io.Reader, rw ResponseWriter) error {
+	outSNAC, err := rt.AdminService.ConfirmRequest(ctx, instance, inFrame)
 	if err != nil {
 		return err
 	}
@@ -58,12 +58,12 @@ func (rt Handler) AdminConfirmRequest(ctx context.Context, sess *state.Session, 
 	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
 }
 
-func (rt Handler) AdminInfoQuery(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+func (rt Handler) AdminInfoQuery(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inBody := wire.SNAC_0x07_0x02_AdminInfoQuery{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
 	}
-	outSNAC, err := rt.AdminService.InfoQuery(ctx, sess, inFrame, inBody)
+	outSNAC, err := rt.AdminService.InfoQuery(ctx, instance, inFrame, inBody)
 	if err != nil {
 		return err
 	}
@@ -71,12 +71,12 @@ func (rt Handler) AdminInfoQuery(ctx context.Context, sess *state.Session, inFra
 	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
 }
 
-func (rt Handler) AdminInfoChangeRequest(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+func (rt Handler) AdminInfoChangeRequest(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inBody := wire.SNAC_0x07_0x04_AdminInfoChangeRequest{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
 	}
-	outSNAC, err := rt.AdminService.InfoChangeRequest(ctx, sess, inFrame, inBody)
+	outSNAC, err := rt.AdminService.InfoChangeRequest(ctx, instance, inFrame, inBody)
 	if err != nil {
 		return err
 	}
@@ -84,22 +84,22 @@ func (rt Handler) AdminInfoChangeRequest(ctx context.Context, sess *state.Sessio
 	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
 }
 
-func (rt Handler) AlertNotifyCapabilities(ctx context.Context, _ *state.Session, inFrame wire.SNACFrame, _ io.Reader, _ ResponseWriter) error {
+func (rt Handler) AlertNotifyCapabilities(ctx context.Context, _ *state.SessionInstance, inFrame wire.SNACFrame, _ io.Reader, _ ResponseWriter) error {
 	rt.LogRequest(ctx, inFrame, nil)
 	return nil
 }
 
-func (rt Handler) AlertNotifyDisplayCapabilities(ctx context.Context, _ *state.Session, inFrame wire.SNACFrame, _ io.Reader, _ ResponseWriter) error {
+func (rt Handler) AlertNotifyDisplayCapabilities(ctx context.Context, _ *state.SessionInstance, inFrame wire.SNACFrame, _ io.Reader, _ ResponseWriter) error {
 	rt.LogRequest(ctx, inFrame, nil)
 	return nil
 }
 
-func (rt Handler) BARTUploadQuery(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+func (rt Handler) BARTUploadQuery(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inBody := wire.SNAC_0x10_0x02_BARTUploadQuery{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
 	}
-	outSNAC, err := rt.BARTService.UpsertItem(ctx, sess, inFrame, inBody)
+	outSNAC, err := rt.BARTService.UpsertItem(ctx, instance, inFrame, inBody)
 	if err != nil {
 		return err
 	}
@@ -107,7 +107,7 @@ func (rt Handler) BARTUploadQuery(ctx context.Context, sess *state.Session, inFr
 	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
 }
 
-func (rt Handler) BARTDownloadQuery(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+func (rt Handler) BARTDownloadQuery(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inBody := wire.SNAC_0x10_0x04_BARTDownloadQuery{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
@@ -120,7 +120,7 @@ func (rt Handler) BARTDownloadQuery(ctx context.Context, sess *state.Session, in
 	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
 }
 
-func (rt Handler) BARTDownload2Query(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+func (rt Handler) BARTDownload2Query(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inBody := wire.SNAC_0x10_0x06_BARTDownload2Query{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
@@ -138,7 +138,7 @@ func (rt Handler) BARTDownload2Query(ctx context.Context, sess *state.Session, i
 	return nil
 }
 
-func (rt Handler) BuddyRightsQuery(ctx context.Context, _ *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+func (rt Handler) BuddyRightsQuery(ctx context.Context, _ *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inSNAC := wire.SNAC_0x03_0x02_BuddyRightsQuery{}
 	if err := wire.UnmarshalBE(&inSNAC, r); err != nil {
 		return err
@@ -148,48 +148,48 @@ func (rt Handler) BuddyRightsQuery(ctx context.Context, _ *state.Session, inFram
 	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
 }
 
-func (rt Handler) BuddyAddBuddies(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+func (rt Handler) BuddyAddBuddies(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inSNAC := wire.SNAC_0x03_0x04_BuddyAddBuddies{}
 	if err := wire.UnmarshalBE(&inSNAC, r); err != nil {
 		return err
 	}
 	rt.LogRequest(ctx, inFrame, inSNAC)
-	return rt.BuddyService.AddBuddies(ctx, sess, inSNAC)
+	return rt.BuddyService.AddBuddies(ctx, instance, inSNAC)
 }
 
-func (rt Handler) BuddyDelBuddies(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+func (rt Handler) BuddyDelBuddies(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inSNAC := wire.SNAC_0x03_0x05_BuddyDelBuddies{}
 	if err := wire.UnmarshalBE(&inSNAC, r); err != nil {
 		return err
 	}
 	rt.LogRequest(ctx, inFrame, inSNAC)
-	return rt.BuddyService.DelBuddies(ctx, sess, inSNAC)
+	return rt.BuddyService.DelBuddies(ctx, instance, inSNAC)
 }
 
-func (rt Handler) BuddyAddTempBuddies(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+func (rt Handler) BuddyAddTempBuddies(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inSNAC := wire.SNAC_0x03_0x0F_BuddyAddTempBuddies{}
 	if err := wire.UnmarshalBE(&inSNAC, r); err != nil {
 		return err
 	}
 	rt.LogRequest(ctx, inFrame, inSNAC)
-	return rt.BuddyService.AddTempBuddies(ctx, sess, inSNAC)
+	return rt.BuddyService.AddTempBuddies(ctx, instance, inSNAC)
 }
 
-func (rt Handler) BuddyDelTempBuddies(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+func (rt Handler) BuddyDelTempBuddies(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inSNAC := wire.SNAC_0x03_0x10_BuddyDelTempBuddies{}
 	if err := wire.UnmarshalBE(&inSNAC, r); err != nil {
 		return err
 	}
 	rt.LogRequest(ctx, inFrame, inSNAC)
-	return rt.BuddyService.DelTempBuddies(ctx, sess, inSNAC)
+	return rt.BuddyService.DelTempBuddies(ctx, instance, inSNAC)
 }
 
-func (rt Handler) ChatChannelMsgToHost(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+func (rt Handler) ChatChannelMsgToHost(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inBody := wire.SNAC_0x0E_0x05_ChatChannelMsgToHost{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
 	}
-	outSNAC, err := rt.ChatService.ChannelMsgToHost(ctx, sess, inFrame, inBody)
+	outSNAC, err := rt.ChatService.ChannelMsgToHost(ctx, instance, inFrame, inBody)
 	if err != nil {
 		return err
 	}
@@ -201,13 +201,13 @@ func (rt Handler) ChatChannelMsgToHost(ctx context.Context, sess *state.Session,
 	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
 }
 
-func (rt Handler) ChatNavRequestChatRights(ctx context.Context, _ *state.Session, inFrame wire.SNACFrame, _ io.Reader, rw ResponseWriter) error {
+func (rt Handler) ChatNavRequestChatRights(ctx context.Context, _ *state.SessionInstance, inFrame wire.SNACFrame, _ io.Reader, rw ResponseWriter) error {
 	outSNAC := rt.ChatNavService.RequestChatRights(ctx, inFrame)
 	rt.LogRequestAndResponse(ctx, inFrame, nil, outSNAC.Frame, outSNAC.Body)
 	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
 }
 
-func (rt Handler) ChatNavRequestExchangeInfo(ctx context.Context, _ *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+func (rt Handler) ChatNavRequestExchangeInfo(ctx context.Context, _ *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inBody := wire.SNAC_0x0D_0x03_ChatNavRequestExchangeInfo{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
@@ -220,7 +220,7 @@ func (rt Handler) ChatNavRequestExchangeInfo(ctx context.Context, _ *state.Sessi
 	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
 }
 
-func (rt Handler) ChatNavRequestRoomInfo(ctx context.Context, _ *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+func (rt Handler) ChatNavRequestRoomInfo(ctx context.Context, _ *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inBody := wire.SNAC_0x0D_0x04_ChatNavRequestRoomInfo{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
@@ -233,12 +233,12 @@ func (rt Handler) ChatNavRequestRoomInfo(ctx context.Context, _ *state.Session, 
 	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
 }
 
-func (rt Handler) ChatNavCreateRoom(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+func (rt Handler) ChatNavCreateRoom(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inBody := wire.SNAC_0x0E_0x02_ChatRoomInfoUpdate{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
 	}
-	outSNAC, err := rt.ChatNavService.CreateRoom(ctx, sess, inFrame, inBody)
+	outSNAC, err := rt.ChatNavService.CreateRoom(ctx, instance, inFrame, inBody)
 	if err != nil {
 		return err
 	}
@@ -248,7 +248,7 @@ func (rt Handler) ChatNavCreateRoom(ctx context.Context, sess *state.Session, in
 	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
 }
 
-func (rt Handler) FeedbagRightsQuery(ctx context.Context, _ *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+func (rt Handler) FeedbagRightsQuery(ctx context.Context, _ *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inBody := wire.SNAC_0x13_0x02_FeedbagRightsQuery{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
@@ -258,8 +258,8 @@ func (rt Handler) FeedbagRightsQuery(ctx context.Context, _ *state.Session, inFr
 	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
 }
 
-func (rt Handler) FeedbagQuery(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, _ io.Reader, rw ResponseWriter) error {
-	outSNAC, err := rt.FeedbagService.Query(ctx, sess, inFrame)
+func (rt Handler) FeedbagQuery(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, _ io.Reader, rw ResponseWriter) error {
+	outSNAC, err := rt.FeedbagService.Query(ctx, instance, inFrame)
 	if err != nil {
 		return err
 	}
@@ -267,12 +267,12 @@ func (rt Handler) FeedbagQuery(ctx context.Context, sess *state.Session, inFrame
 	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
 }
 
-func (rt Handler) FeedbagQueryIfModified(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+func (rt Handler) FeedbagQueryIfModified(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inBody := wire.SNAC_0x13_0x05_FeedbagQueryIfModified{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
 	}
-	outSNAC, err := rt.FeedbagService.QueryIfModified(ctx, sess, inFrame, inBody)
+	outSNAC, err := rt.FeedbagService.QueryIfModified(ctx, instance, inFrame, inBody)
 	if err != nil {
 		return err
 	}
@@ -280,51 +280,63 @@ func (rt Handler) FeedbagQueryIfModified(ctx context.Context, sess *state.Sessio
 	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
 }
 
-func (rt Handler) FeedbagUse(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, _ io.Reader, _ ResponseWriter) error {
+func (rt Handler) FeedbagUse(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, _ io.Reader, _ ResponseWriter) error {
 	rt.LogRequest(ctx, inFrame, nil)
-	return rt.FeedbagService.Use(ctx, sess)
+	return rt.FeedbagService.Use(ctx, instance)
 }
 
-func (rt Handler) FeedbagInsertItem(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+func (rt Handler) FeedbagInsertItem(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inBody := wire.SNAC_0x13_0x08_FeedbagInsertItem{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
 	}
-	outSNAC, err := rt.FeedbagService.UpsertItem(ctx, sess, inFrame, inBody.Items)
+	outSNAC, err := rt.FeedbagService.UpsertItem(ctx, instance, inFrame, inBody.Items)
 	if err != nil {
 		return err
+	}
+	if outSNAC == nil {
+		rt.LogRequest(ctx, inFrame, inBody)
+		return nil
 	}
 	rt.LogRequestAndResponse(ctx, inFrame, inBody, outSNAC.Frame, outSNAC.Body)
 	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
 }
 
-func (rt Handler) FeedbagUpdateItem(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+func (rt Handler) FeedbagUpdateItem(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inBody := wire.SNAC_0x13_0x09_FeedbagUpdateItem{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
 	}
-	outSNAC, err := rt.FeedbagService.UpsertItem(ctx, sess, inFrame, inBody.Items)
+	outSNAC, err := rt.FeedbagService.UpsertItem(ctx, instance, inFrame, inBody.Items)
 	if err != nil {
 		return err
+	}
+	if outSNAC == nil {
+		rt.LogRequest(ctx, inFrame, inBody)
+		return nil
 	}
 	rt.LogRequestAndResponse(ctx, inFrame, inBody, outSNAC.Frame, outSNAC.Body)
 	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
 }
 
-func (rt Handler) FeedbagDeleteItem(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+func (rt Handler) FeedbagDeleteItem(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inBody := wire.SNAC_0x13_0x0A_FeedbagDeleteItem{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
 	}
-	outSNAC, err := rt.FeedbagService.DeleteItem(ctx, sess, inFrame, inBody)
+	outSNAC, err := rt.FeedbagService.DeleteItem(ctx, instance, inFrame, inBody)
 	if err != nil {
 		return err
+	}
+	if outSNAC == nil {
+		rt.LogRequest(ctx, inFrame, inBody)
+		return nil
 	}
 	rt.LogRequestAndResponse(ctx, inFrame, inBody, outSNAC.Frame, outSNAC.Body)
 	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
 }
 
-func (rt Handler) FeedbagStartCluster(ctx context.Context, _ *state.Session, inFrame wire.SNACFrame, r io.Reader, _ ResponseWriter) error {
+func (rt Handler) FeedbagStartCluster(ctx context.Context, _ *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, _ ResponseWriter) error {
 	inBody := wire.SNAC_0x13_0x11_FeedbagStartCluster{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
@@ -334,41 +346,41 @@ func (rt Handler) FeedbagStartCluster(ctx context.Context, _ *state.Session, inF
 	return nil
 }
 
-func (rt Handler) FeedbagEndCluster(ctx context.Context, _ *state.Session, inFrame wire.SNACFrame, _ io.Reader, _ ResponseWriter) error {
+func (rt Handler) FeedbagEndCluster(ctx context.Context, _ *state.SessionInstance, inFrame wire.SNACFrame, _ io.Reader, _ ResponseWriter) error {
 	rt.LogRequest(ctx, inFrame, nil)
 	return nil
 }
 
-func (rt Handler) FeedbagRespondAuthorizeToHost(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+func (rt Handler) FeedbagRespondAuthorizeToHost(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inBody := wire.SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
 	}
-	if err := rt.FeedbagService.RespondAuthorizeToHost(ctx, sess, inFrame, inBody); err != nil {
+	if err := rt.FeedbagService.RespondAuthorizeToHost(ctx, instance, inFrame, inBody); err != nil {
 		return err
 	}
 	rt.LogRequest(ctx, inFrame, inBody)
 	return nil
 }
 
-func (rt Handler) ICBMAddParameters(ctx context.Context, _ *state.Session, inFrame wire.SNACFrame, r io.Reader, _ ResponseWriter) error {
+func (rt Handler) ICBMAddParameters(ctx context.Context, _ *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, _ ResponseWriter) error {
 	inBody := wire.SNAC_0x04_0x02_ICBMAddParameters{}
 	rt.LogRequest(ctx, inFrame, inBody)
 	return wire.UnmarshalBE(&inBody, r)
 }
 
-func (rt Handler) ICBMParameterQuery(ctx context.Context, _ *state.Session, inFrame wire.SNACFrame, _ io.Reader, rw ResponseWriter) error {
+func (rt Handler) ICBMParameterQuery(ctx context.Context, _ *state.SessionInstance, inFrame wire.SNACFrame, _ io.Reader, rw ResponseWriter) error {
 	outSNAC := rt.ICBMService.ParameterQuery(ctx, inFrame)
 	rt.LogRequestAndResponse(ctx, inFrame, outSNAC, outSNAC.Frame, outSNAC.Body)
 	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
 }
 
-func (rt Handler) ICBMChannelMsgToHost(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+func (rt Handler) ICBMChannelMsgToHost(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inBody := wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
 	}
-	outSNAC, err := rt.ICBMService.ChannelMsgToHost(ctx, sess, inFrame, inBody)
+	outSNAC, err := rt.ICBMService.ChannelMsgToHost(ctx, instance, inFrame, inBody)
 	if err != nil {
 		return err
 	}
@@ -380,12 +392,12 @@ func (rt Handler) ICBMChannelMsgToHost(ctx context.Context, sess *state.Session,
 	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
 }
 
-func (rt Handler) ICBMEvilRequest(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+func (rt Handler) ICBMEvilRequest(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inBody := wire.SNAC_0x04_0x08_ICBMEvilRequest{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
 	}
-	outSNAC, err := rt.ICBMService.EvilRequest(ctx, sess, inFrame, inBody)
+	outSNAC, err := rt.ICBMService.EvilRequest(ctx, instance, inFrame, inBody)
 	if err != nil {
 		return err
 	}
@@ -393,27 +405,27 @@ func (rt Handler) ICBMEvilRequest(ctx context.Context, sess *state.Session, inFr
 	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
 }
 
-func (rt Handler) ICBMClientErr(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, _ ResponseWriter) error {
+func (rt Handler) ICBMClientErr(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, _ ResponseWriter) error {
 	inBody := wire.SNAC_0x04_0x0B_ICBMClientErr{}
 	rt.LogRequest(ctx, inFrame, inBody)
 	err := wire.UnmarshalBE(&inBody, r)
 	if err != nil {
 		return err
 	}
-	return rt.ICBMService.ClientErr(ctx, sess, inFrame, inBody)
+	return rt.ICBMService.ClientErr(ctx, instance, inFrame, inBody)
 }
 
-func (rt Handler) ICBMClientEvent(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, _ ResponseWriter) error {
+func (rt Handler) ICBMClientEvent(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, _ ResponseWriter) error {
 	inBody := wire.SNAC_0x04_0x14_ICBMClientEvent{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
 	}
 	rt.LogRequest(ctx, inFrame, inBody)
-	return rt.ICBMService.ClientEvent(ctx, sess, inFrame, inBody)
+	return rt.ICBMService.ClientEvent(ctx, instance, inFrame, inBody)
 }
 
-func (rt Handler) ICBMOfflineRetrieve(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, rw ResponseWriter) error {
-	outSNAC, err := rt.ICBMService.OfflineRetrieve(ctx, sess, inFrame)
+func (rt Handler) ICBMOfflineRetrieve(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, rw ResponseWriter) error {
+	outSNAC, err := rt.ICBMService.OfflineRetrieve(ctx, instance, inFrame)
 	if err != nil {
 		return err
 	}
@@ -421,7 +433,7 @@ func (rt Handler) ICBMOfflineRetrieve(ctx context.Context, sess *state.Session, 
 	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
 }
 
-func (rt Handler) ICQDBQuery(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inBody := wire.SNAC_0x15_0x02_BQuery{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
@@ -444,9 +456,9 @@ func (rt Handler) ICQDBQuery(ctx context.Context, sess *state.Session, inFrame w
 
 	switch icqMD.ReqType {
 	case wire.ICQDBQueryOfflineMsgReq:
-		return rt.ICQService.OfflineMsgReq(ctx, sess, icqMD.Seq)
+		return rt.ICQService.OfflineMsgReq(ctx, instance, icqMD.Seq)
 	case wire.ICQDBQueryDeleteMsgReq:
-		return rt.ICQService.DeleteMsgReq(ctx, sess, icqMD.Seq)
+		return rt.ICQService.DeleteMsgReq(ctx, instance, icqMD.Seq)
 	case wire.ICQDBQueryMetaReq:
 		if icqMD.Optional == nil {
 			return errors.New("got req without subtype")
@@ -454,7 +466,7 @@ func (rt Handler) ICQDBQuery(ctx context.Context, sess *state.Session, inFrame w
 		rt.Logger.Debug("ICQ client request",
 			"query_name", wire.ICQDBQueryName(icqMD.ReqType),
 			"query_type", wire.ICQDBQueryMetaName(icqMD.Optional.ReqSubType),
-			"uin", sess.UIN())
+			"uin", instance.UIN())
 
 		switch icqMD.Optional.ReqSubType {
 		case wire.ICQDBQueryMetaReqShortInfo:
@@ -462,19 +474,19 @@ func (rt Handler) ICQDBQuery(ctx context.Context, sess *state.Session, inFrame w
 			if err := binary.Read(buf, binary.LittleEndian, &userInfo); err != nil {
 				return nil
 			}
-			return rt.ICQService.ShortUserInfo(ctx, sess, userInfo, icqMD.Seq)
+			return rt.ICQService.ShortUserInfo(ctx, instance, userInfo, icqMD.Seq)
 		case wire.ICQDBQueryMetaReqFullInfo, wire.ICQDBQueryMetaReqFullInfo2:
 			userInfo := wire.ICQ_0x07D0_0x051F_DBQueryMetaReqSearchByUIN{}
 			if err := binary.Read(buf, binary.LittleEndian, &userInfo); err != nil {
 				return nil
 			}
-			return rt.ICQService.FullUserInfo(ctx, sess, userInfo, icqMD.Seq)
+			return rt.ICQService.FullUserInfo(ctx, instance, userInfo, icqMD.Seq)
 		case wire.ICQDBQueryMetaReqXMLReq:
 			req := wire.ICQ_0x07D0_0x0898_DBQueryMetaReqXMLReq{}
 			if err := wire.UnmarshalLE(&req, buf); err != nil {
 				return err
 			}
-			if err := rt.ICQService.XMLReqData(ctx, sess, req, icqMD.Seq); err != nil {
+			if err := rt.ICQService.XMLReqData(ctx, instance, req, icqMD.Seq); err != nil {
 				return err
 			}
 		case wire.ICQDBQueryMetaReqSetPermissions:
@@ -482,7 +494,7 @@ func (rt Handler) ICQDBQuery(ctx context.Context, sess *state.Session, inFrame w
 			if err := wire.UnmarshalLE(&req, buf); err != nil {
 				return err
 			}
-			if err := rt.ICQService.SetPermissions(ctx, sess, req, icqMD.Seq); err != nil {
+			if err := rt.ICQService.SetPermissions(ctx, instance, req, icqMD.Seq); err != nil {
 				return err
 			}
 		case wire.ICQDBQueryMetaReqSearchByUIN:
@@ -490,7 +502,7 @@ func (rt Handler) ICQDBQuery(ctx context.Context, sess *state.Session, inFrame w
 			if err := wire.UnmarshalLE(&req, buf); err != nil {
 				return err
 			}
-			if err := rt.ICQService.FindByUIN(ctx, sess, req, icqMD.Seq); err != nil {
+			if err := rt.ICQService.FindByUIN(ctx, instance, req, icqMD.Seq); err != nil {
 				return err
 			}
 		case wire.ICQDBQueryMetaReqSearchByUIN2:
@@ -504,7 +516,7 @@ func (rt Handler) ICQDBQuery(ctx context.Context, sess *state.Session, inFrame w
 			if err := wire.UnmarshalLE(&req, bytes.NewReader(rest)); err != nil {
 				return err
 			}
-			if err := rt.ICQService.FindByUIN2(ctx, sess, req, icqMD.Seq); err != nil {
+			if err := rt.ICQService.FindByUIN2(ctx, instance, req, icqMD.Seq); err != nil {
 				return err
 			}
 		case wire.ICQDBQueryMetaReqSearchByEmail:
@@ -512,7 +524,7 @@ func (rt Handler) ICQDBQuery(ctx context.Context, sess *state.Session, inFrame w
 			if err := wire.UnmarshalLE(&req, buf); err != nil {
 				return err
 			}
-			if err := rt.ICQService.FindByICQEmail(ctx, sess, req, icqMD.Seq); err != nil {
+			if err := rt.ICQService.FindByICQEmail(ctx, instance, req, icqMD.Seq); err != nil {
 				return err
 			}
 		case wire.ICQDBQueryMetaReqSearchByEmail3:
@@ -520,7 +532,7 @@ func (rt Handler) ICQDBQuery(ctx context.Context, sess *state.Session, inFrame w
 			if err := wire.UnmarshalLE(&req, buf); err != nil {
 				return err
 			}
-			if err := rt.ICQService.FindByEmail3(ctx, sess, req, icqMD.Seq); err != nil {
+			if err := rt.ICQService.FindByEmail3(ctx, instance, req, icqMD.Seq); err != nil {
 				return err
 			}
 		case wire.ICQDBQueryMetaReqSearchByDetails:
@@ -528,7 +540,7 @@ func (rt Handler) ICQDBQuery(ctx context.Context, sess *state.Session, inFrame w
 			if err := wire.UnmarshalLE(&req, buf); err != nil {
 				return err
 			}
-			if err := rt.ICQService.FindByICQName(ctx, sess, req, icqMD.Seq); err != nil {
+			if err := rt.ICQService.FindByICQName(ctx, instance, req, icqMD.Seq); err != nil {
 				return err
 			}
 		case wire.ICQDBQueryMetaReqSearchWhitePages:
@@ -536,7 +548,7 @@ func (rt Handler) ICQDBQuery(ctx context.Context, sess *state.Session, inFrame w
 			if err := wire.UnmarshalLE(&req, buf); err != nil {
 				return err
 			}
-			if err := rt.ICQService.FindByICQInterests(ctx, sess, req, icqMD.Seq); err != nil {
+			if err := rt.ICQService.FindByICQInterests(ctx, instance, req, icqMD.Seq); err != nil {
 				return err
 			}
 		case wire.ICQDBQueryMetaReqSearchWhitePages2:
@@ -544,7 +556,7 @@ func (rt Handler) ICQDBQuery(ctx context.Context, sess *state.Session, inFrame w
 			if err := wire.UnmarshalLE(&req, buf); err != nil {
 				return err
 			}
-			if err := rt.ICQService.FindByWhitePages2(ctx, sess, req, icqMD.Seq); err != nil {
+			if err := rt.ICQService.FindByWhitePages2(ctx, instance, req, icqMD.Seq); err != nil {
 				return err
 			}
 		case wire.ICQDBQueryMetaReqSetBasicInfo:
@@ -552,7 +564,7 @@ func (rt Handler) ICQDBQuery(ctx context.Context, sess *state.Session, inFrame w
 			if err := wire.UnmarshalLE(&req, buf); err != nil {
 				return err
 			}
-			if err := rt.ICQService.SetBasicInfo(ctx, sess, req, icqMD.Seq); err != nil {
+			if err := rt.ICQService.SetBasicInfo(ctx, instance, req, icqMD.Seq); err != nil {
 				return err
 			}
 		case wire.ICQDBQueryMetaReqSetWorkInfo:
@@ -560,7 +572,7 @@ func (rt Handler) ICQDBQuery(ctx context.Context, sess *state.Session, inFrame w
 			if err := wire.UnmarshalLE(&req, buf); err != nil {
 				return err
 			}
-			if err := rt.ICQService.SetWorkInfo(ctx, sess, req, icqMD.Seq); err != nil {
+			if err := rt.ICQService.SetWorkInfo(ctx, instance, req, icqMD.Seq); err != nil {
 				return err
 			}
 		case wire.ICQDBQueryMetaReqSetMoreInfo:
@@ -568,7 +580,7 @@ func (rt Handler) ICQDBQuery(ctx context.Context, sess *state.Session, inFrame w
 			if err := wire.UnmarshalLE(&req, buf); err != nil {
 				return err
 			}
-			if err := rt.ICQService.SetMoreInfo(ctx, sess, req, icqMD.Seq); err != nil {
+			if err := rt.ICQService.SetMoreInfo(ctx, instance, req, icqMD.Seq); err != nil {
 				return err
 			}
 		case wire.ICQDBQueryMetaReqSetNotes:
@@ -576,7 +588,7 @@ func (rt Handler) ICQDBQuery(ctx context.Context, sess *state.Session, inFrame w
 			if err := wire.UnmarshalLE(&req, buf); err != nil {
 				return err
 			}
-			if err := rt.ICQService.SetUserNotes(ctx, sess, req, icqMD.Seq); err != nil {
+			if err := rt.ICQService.SetUserNotes(ctx, instance, req, icqMD.Seq); err != nil {
 				return err
 			}
 		case wire.ICQDBQueryMetaReqSetEmails:
@@ -584,7 +596,7 @@ func (rt Handler) ICQDBQuery(ctx context.Context, sess *state.Session, inFrame w
 			if err := wire.UnmarshalLE(&req, buf); err != nil {
 				return err
 			}
-			if err := rt.ICQService.SetEmails(ctx, sess, req, icqMD.Seq); err != nil {
+			if err := rt.ICQService.SetEmails(ctx, instance, req, icqMD.Seq); err != nil {
 				return err
 			}
 		case wire.ICQDBQueryMetaReqSetInterests:
@@ -592,7 +604,7 @@ func (rt Handler) ICQDBQuery(ctx context.Context, sess *state.Session, inFrame w
 			if err := wire.UnmarshalLE(&req, buf); err != nil {
 				return err
 			}
-			if err := rt.ICQService.SetInterests(ctx, sess, req, icqMD.Seq); err != nil {
+			if err := rt.ICQService.SetInterests(ctx, instance, req, icqMD.Seq); err != nil {
 				return err
 			}
 		case wire.ICQDBQueryMetaReqSetAffiliations:
@@ -600,7 +612,7 @@ func (rt Handler) ICQDBQuery(ctx context.Context, sess *state.Session, inFrame w
 			if err := wire.UnmarshalLE(&req, buf); err != nil {
 				return err
 			}
-			if err := rt.ICQService.SetAffiliations(ctx, sess, req, icqMD.Seq); err != nil {
+			if err := rt.ICQService.SetAffiliations(ctx, instance, req, icqMD.Seq); err != nil {
 				return err
 			}
 		case wire.ICQDBQueryMetaReqStat0a8c,
@@ -625,27 +637,27 @@ func (rt Handler) ICQDBQuery(ctx context.Context, sess *state.Session, inFrame w
 	return nil
 }
 
-func (rt Handler) LocateRightsQuery(ctx context.Context, _ *state.Session, inFrame wire.SNACFrame, _ io.Reader, rw ResponseWriter) error {
+func (rt Handler) LocateRightsQuery(ctx context.Context, _ *state.SessionInstance, inFrame wire.SNACFrame, _ io.Reader, rw ResponseWriter) error {
 	outSNAC := rt.LocateService.RightsQuery(ctx, inFrame)
 	rt.LogRequestAndResponse(ctx, inFrame, nil, outSNAC.Frame, outSNAC.Body)
 	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
 }
 
-func (rt Handler) LocateSetInfo(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, _ ResponseWriter) error {
+func (rt Handler) LocateSetInfo(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, _ ResponseWriter) error {
 	inBody := wire.SNAC_0x02_0x04_LocateSetInfo{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
 	}
 	rt.LogRequest(ctx, inFrame, inBody)
-	return rt.LocateService.SetInfo(ctx, sess, inBody)
+	return rt.LocateService.SetInfo(ctx, instance, inBody)
 }
 
-func (rt Handler) LocateSetDirInfo(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+func (rt Handler) LocateSetDirInfo(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inBody := wire.SNAC_0x02_0x09_LocateSetDirInfo{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
 	}
-	outSNAC, err := rt.LocateService.SetDirInfo(ctx, sess, inFrame, inBody)
+	outSNAC, err := rt.LocateService.SetDirInfo(ctx, instance, inFrame, inBody)
 	if err != nil {
 		return err
 	}
@@ -653,7 +665,7 @@ func (rt Handler) LocateSetDirInfo(ctx context.Context, sess *state.Session, inF
 	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
 }
 
-func (rt Handler) LocateGetDirInfo(ctx context.Context, _ *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+func (rt Handler) LocateGetDirInfo(ctx context.Context, _ *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inBody := wire.SNAC_0x02_0x0B_LocateGetDirInfo{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
@@ -666,12 +678,12 @@ func (rt Handler) LocateGetDirInfo(ctx context.Context, _ *state.Session, inFram
 	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
 }
 
-func (rt Handler) LocateSetKeywordInfo(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+func (rt Handler) LocateSetKeywordInfo(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inBody := wire.SNAC_0x02_0x0F_LocateSetKeywordInfo{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
 	}
-	outSNAC, err := rt.LocateService.SetKeywordInfo(ctx, sess, inFrame, inBody)
+	outSNAC, err := rt.LocateService.SetKeywordInfo(ctx, instance, inFrame, inBody)
 	if err != nil {
 		return err
 	}
@@ -679,12 +691,12 @@ func (rt Handler) LocateSetKeywordInfo(ctx context.Context, sess *state.Session,
 	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
 }
 
-func (rt Handler) LocateUserInfoQuery(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+func (rt Handler) LocateUserInfoQuery(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inBody := wire.SNAC_0x02_0x05_LocateUserInfoQuery{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
 	}
-	outSNAC, err := rt.LocateService.UserInfoQuery(ctx, sess, inFrame, inBody)
+	outSNAC, err := rt.LocateService.UserInfoQuery(ctx, instance, inFrame, inBody)
 	if err != nil {
 		return err
 	}
@@ -692,7 +704,7 @@ func (rt Handler) LocateUserInfoQuery(ctx context.Context, sess *state.Session, 
 	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
 }
 
-func (rt Handler) LocateUserInfoQuery2(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+func (rt Handler) LocateUserInfoQuery2(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inBody := wire.SNAC_0x02_0x15_LocateUserInfoQuery2{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
@@ -703,7 +715,7 @@ func (rt Handler) LocateUserInfoQuery2(ctx context.Context, sess *state.Session,
 		Type:       uint16(inBody.Type2),
 		ScreenName: inBody.ScreenName,
 	}
-	outSNAC, err := rt.LocateService.UserInfoQuery(ctx, sess, inFrame, wrappedBody)
+	outSNAC, err := rt.LocateService.UserInfoQuery(ctx, instance, inFrame, wrappedBody)
 	if err != nil {
 		return err
 	}
@@ -711,7 +723,7 @@ func (rt Handler) LocateUserInfoQuery2(ctx context.Context, sess *state.Session,
 	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
 }
 
-func (rt Handler) ODirInfoQuery(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+func (rt Handler) ODirInfoQuery(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inBody := wire.SNAC_0x0F_0x02_InfoQuery{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
@@ -724,7 +736,7 @@ func (rt Handler) ODirInfoQuery(ctx context.Context, sess *state.Session, inFram
 	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
 }
 
-func (rt Handler) ODirKeywordListQuery(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+func (rt Handler) ODirKeywordListQuery(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	outSNAC, err := rt.ODirService.KeywordListQuery(ctx, inFrame)
 	if err != nil {
 		return err
@@ -733,53 +745,53 @@ func (rt Handler) ODirKeywordListQuery(ctx context.Context, sess *state.Session,
 	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
 }
 
-func (rt Handler) OServiceRateParamsQuery(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, _ io.Reader, rw ResponseWriter) error {
-	outSNAC := rt.OServiceService.RateParamsQuery(ctx, sess, inFrame)
+func (rt Handler) OServiceRateParamsQuery(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, _ io.Reader, rw ResponseWriter) error {
+	outSNAC := rt.OServiceService.RateParamsQuery(ctx, instance, inFrame)
 	rt.LogRequestAndResponse(ctx, inFrame, nil, outSNAC.Frame, outSNAC.Body)
 	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
 }
 
-func (rt Handler) OServiceRateParamsSubAdd(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+func (rt Handler) OServiceRateParamsSubAdd(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inBody := wire.SNAC_0x01_0x08_OServiceRateParamsSubAdd{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
 	}
-	rt.OServiceService.RateParamsSubAdd(ctx, sess, inBody)
+	rt.OServiceService.RateParamsSubAdd(ctx, instance, inBody)
 	rt.LogRequest(ctx, inFrame, inBody)
 	return nil
 }
 
-func (rt Handler) OServiceUserInfoQuery(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, _ io.Reader, rw ResponseWriter) error {
-	outSNAC := rt.OServiceService.UserInfoQuery(ctx, sess, inFrame)
+func (rt Handler) OServiceUserInfoQuery(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, _ io.Reader, rw ResponseWriter) error {
+	outSNAC := rt.OServiceService.UserInfoQuery(ctx, instance, inFrame)
 	rt.LogRequestAndResponse(ctx, inFrame, nil, outSNAC.Frame, outSNAC.Body)
 	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
 }
 
-func (rt Handler) OServiceIdleNotification(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, _ ResponseWriter) error {
+func (rt Handler) OServiceIdleNotification(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, _ ResponseWriter) error {
 	inBody := wire.SNAC_0x01_0x11_OServiceIdleNotification{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
 	}
 	rt.LogRequest(ctx, inFrame, inBody)
-	return rt.OServiceService.IdleNotification(ctx, sess, inBody)
+	return rt.OServiceService.IdleNotification(ctx, instance, inBody)
 }
 
-func (rt Handler) OServiceClientVersions(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+func (rt Handler) OServiceClientVersions(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inBody := wire.SNAC_0x01_0x17_OServiceClientVersions{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
 	}
-	outSNAC := rt.OServiceService.ClientVersions(ctx, sess, inFrame, inBody)
+	outSNAC := rt.OServiceService.ClientVersions(ctx, instance, inFrame, inBody)
 	rt.LogRequestAndResponse(ctx, inFrame, inBody, outSNAC.Frame, outSNAC.Body)
 	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
 }
 
-func (rt Handler) OServiceSetUserInfoFields(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+func (rt Handler) OServiceSetUserInfoFields(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inBody := wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
 	}
-	outSNAC, err := rt.OServiceService.SetUserInfoFields(ctx, sess, inFrame, inBody)
+	outSNAC, err := rt.OServiceService.SetUserInfoFields(ctx, instance, inFrame, inBody)
 	if err != nil {
 		return err
 	}
@@ -787,13 +799,13 @@ func (rt Handler) OServiceSetUserInfoFields(ctx context.Context, sess *state.Ses
 	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
 }
 
-func (rt Handler) OServiceNoop(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, _ io.Reader, rw ResponseWriter) error {
+func (rt Handler) OServiceNoop(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, _ io.Reader, rw ResponseWriter) error {
 	// no-op keep-alive
 	rt.LogRequest(ctx, inFrame, nil)
 	return nil
 }
 
-func (rt Handler) OServiceSetPrivacyFlags(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, _ ResponseWriter) error {
+func (rt Handler) OServiceSetPrivacyFlags(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, _ ResponseWriter) error {
 	inBody := wire.SNAC_0x01_0x14_OServiceSetPrivacyFlags{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
@@ -803,12 +815,12 @@ func (rt Handler) OServiceSetPrivacyFlags(ctx context.Context, sess *state.Sessi
 	return nil
 }
 
-func (rt Handler) OServiceServiceRequest(ctx context.Context, service uint16, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter, listener config.Listener) error {
+func (rt Handler) OServiceServiceRequest(ctx context.Context, service uint16, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter, listener config.Listener) error {
 	inBody := wire.SNAC_0x01_0x04_OServiceServiceRequest{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
 	}
-	outSNAC, err := rt.OServiceService.ServiceRequest(ctx, service, sess, inFrame, inBody, listener)
+	outSNAC, err := rt.OServiceService.ServiceRequest(ctx, service, instance, inFrame, inBody, listener)
 	if err != nil {
 		return err
 	}
@@ -816,62 +828,62 @@ func (rt Handler) OServiceServiceRequest(ctx context.Context, service uint16, se
 	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
 }
 
-func (rt Handler) OServiceClientOnline(ctx context.Context, service uint16, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, _ ResponseWriter) error {
+func (rt Handler) OServiceClientOnline(ctx context.Context, service uint16, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, _ ResponseWriter) error {
 	inBody := wire.SNAC_0x01_0x02_OServiceClientOnline{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
 	}
 	rt.Logger.InfoContext(ctx, "user signed on")
 	rt.LogRequest(ctx, inFrame, inBody)
-	return rt.OServiceService.ClientOnline(ctx, service, inBody, sess)
+	return rt.OServiceService.ClientOnline(ctx, service, inBody, instance)
 }
 
-func (rt Handler) PermitDenyRightsQuery(ctx context.Context, _ *state.Session, inFrame wire.SNACFrame, _ io.Reader, rw ResponseWriter) error {
+func (rt Handler) PermitDenyRightsQuery(ctx context.Context, _ *state.SessionInstance, inFrame wire.SNACFrame, _ io.Reader, rw ResponseWriter) error {
 	outSNAC := rt.PermitDenyService.RightsQuery(ctx, inFrame)
 	rt.LogRequestAndResponse(ctx, inFrame, nil, outSNAC.Frame, outSNAC.Body)
 	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
 }
 
-func (rt Handler) PermitDenyAddDenyListEntries(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+func (rt Handler) PermitDenyAddDenyListEntries(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inBody := wire.SNAC_0x09_0x07_PermitDenyAddDenyListEntries{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
 	}
 	rt.LogRequest(ctx, inFrame, inBody)
-	return rt.PermitDenyService.AddDenyListEntries(ctx, sess, inBody)
+	return rt.PermitDenyService.AddDenyListEntries(ctx, instance, inBody)
 }
 
-func (rt Handler) PermitDenyDelDenyListEntries(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+func (rt Handler) PermitDenyDelDenyListEntries(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inBody := wire.SNAC_0x09_0x08_PermitDenyDelDenyListEntries{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
 	}
 	rt.LogRequest(ctx, inFrame, inBody)
-	return rt.PermitDenyService.DelDenyListEntries(ctx, sess, inBody)
+	return rt.PermitDenyService.DelDenyListEntries(ctx, instance, inBody)
 }
 
-func (rt Handler) PermitDenyAddPermListEntries(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+func (rt Handler) PermitDenyAddPermListEntries(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inBody := wire.SNAC_0x09_0x05_PermitDenyAddPermListEntries{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
 	}
 	rt.LogRequest(ctx, inFrame, inBody)
-	return rt.PermitDenyService.AddPermListEntries(ctx, sess, inBody)
+	return rt.PermitDenyService.AddPermListEntries(ctx, instance, inBody)
 }
 
-func (rt Handler) PermitDenyDelPermListEntries(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+func (rt Handler) PermitDenyDelPermListEntries(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inBody := wire.SNAC_0x09_0x06_PermitDenyDelPermListEntries{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
 	}
 	rt.LogRequest(ctx, inFrame, inBody)
-	return rt.PermitDenyService.DelPermListEntries(ctx, sess, inBody)
+	return rt.PermitDenyService.DelPermListEntries(ctx, instance, inBody)
 }
 
 // PermitDenySetGroupPermitMask sets the classes of users I can interact with. We don't
 // apply any of these settings to the privacy mechanism, so just log them for
 // now.
-func (rt Handler) PermitDenySetGroupPermitMask(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+func (rt Handler) PermitDenySetGroupPermitMask(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inBody := wire.SNAC_0x09_0x04_PermitDenySetGroupPermitMask{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
@@ -928,7 +940,7 @@ func (rt Handler) PermitDenySetGroupPermitMask(ctx context.Context, sess *state.
 	return nil
 }
 
-func (rt Handler) StatsReportEvents(ctx context.Context, _ *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+func (rt Handler) StatsReportEvents(ctx context.Context, _ *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inBody := wire.SNAC_0x0B_0x03_StatsReportEvents{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
@@ -940,7 +952,7 @@ func (rt Handler) StatsReportEvents(ctx context.Context, _ *state.Session, inFra
 	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
 }
 
-func (rt Handler) UserLookupFindByEmail(ctx context.Context, _ *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+func (rt Handler) UserLookupFindByEmail(ctx context.Context, _ *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inBody := wire.SNAC_0x0A_0x02_UserLookupFindByEmail{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
@@ -957,178 +969,178 @@ func (rt Handler) UserLookupFindByEmail(ctx context.Context, _ *state.Session, i
 // its group and subGroup identifiers found in the SNAC frame. It returns an
 // ErrRouteNotFound error if no matching handler is found for the group:subGroup
 // pair in the request.
-func (rt Handler) Handle(ctx context.Context, server uint16, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter, listener config.Listener) error {
+func (rt Handler) Handle(ctx context.Context, server uint16, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter, listener config.Listener) error {
 	switch inFrame.FoodGroup {
 	case wire.Admin:
 		switch inFrame.SubGroup {
 		case wire.AdminAcctConfirmRequest:
-			return rt.AdminConfirmRequest(ctx, sess, inFrame, r, rw)
+			return rt.AdminConfirmRequest(ctx, instance, inFrame, r, rw)
 		case wire.AdminInfoChangeRequest:
-			return rt.AdminInfoChangeRequest(ctx, sess, inFrame, r, rw)
+			return rt.AdminInfoChangeRequest(ctx, instance, inFrame, r, rw)
 		case wire.AdminInfoQuery:
-			return rt.AdminInfoQuery(ctx, sess, inFrame, r, rw)
+			return rt.AdminInfoQuery(ctx, instance, inFrame, r, rw)
 		}
 	case wire.Alert:
 		switch inFrame.SubGroup {
 		case wire.AlertNotifyCapabilities:
-			return rt.AlertNotifyCapabilities(ctx, sess, inFrame, r, rw)
+			return rt.AlertNotifyCapabilities(ctx, instance, inFrame, r, rw)
 		case wire.AlertNotifyDisplayCapabilities:
-			return rt.AlertNotifyDisplayCapabilities(ctx, sess, inFrame, r, rw)
+			return rt.AlertNotifyDisplayCapabilities(ctx, instance, inFrame, r, rw)
 		}
 	case wire.BART:
 		switch inFrame.SubGroup {
 		case wire.BARTDownloadQuery:
-			return rt.BARTDownloadQuery(ctx, sess, inFrame, r, rw)
+			return rt.BARTDownloadQuery(ctx, instance, inFrame, r, rw)
 		case wire.BARTDownload2Query:
-			return rt.BARTDownload2Query(ctx, sess, inFrame, r, rw)
+			return rt.BARTDownload2Query(ctx, instance, inFrame, r, rw)
 		case wire.BARTUploadQuery:
-			return rt.BARTUploadQuery(ctx, sess, inFrame, r, rw)
+			return rt.BARTUploadQuery(ctx, instance, inFrame, r, rw)
 		}
 	case wire.Buddy:
 		switch inFrame.SubGroup {
 		case wire.BuddyAddBuddies:
-			return rt.BuddyAddBuddies(ctx, sess, inFrame, r, rw)
+			return rt.BuddyAddBuddies(ctx, instance, inFrame, r, rw)
 		case wire.BuddyDelBuddies:
-			return rt.BuddyDelBuddies(ctx, sess, inFrame, r, rw)
+			return rt.BuddyDelBuddies(ctx, instance, inFrame, r, rw)
 		case wire.BuddyRightsQuery:
-			return rt.BuddyRightsQuery(ctx, sess, inFrame, r, rw)
+			return rt.BuddyRightsQuery(ctx, instance, inFrame, r, rw)
 		case wire.BuddyAddTempBuddies:
-			return rt.BuddyAddTempBuddies(ctx, sess, inFrame, r, rw)
+			return rt.BuddyAddTempBuddies(ctx, instance, inFrame, r, rw)
 		case wire.BuddyDelTempBuddies:
-			return rt.BuddyDelTempBuddies(ctx, sess, inFrame, r, rw)
+			return rt.BuddyDelTempBuddies(ctx, instance, inFrame, r, rw)
 		}
 	case wire.Chat:
 		switch inFrame.SubGroup {
 		case wire.ChatChannelMsgToHost:
-			return rt.ChatChannelMsgToHost(ctx, sess, inFrame, r, rw)
+			return rt.ChatChannelMsgToHost(ctx, instance, inFrame, r, rw)
 		}
 	case wire.ChatNav:
 		switch inFrame.SubGroup {
 		case wire.ChatNavCreateRoom:
-			return rt.ChatNavCreateRoom(ctx, sess, inFrame, r, rw)
+			return rt.ChatNavCreateRoom(ctx, instance, inFrame, r, rw)
 		case wire.ChatNavRequestChatRights:
-			return rt.ChatNavRequestChatRights(ctx, sess, inFrame, r, rw)
+			return rt.ChatNavRequestChatRights(ctx, instance, inFrame, r, rw)
 		case wire.ChatNavRequestExchangeInfo:
-			return rt.ChatNavRequestExchangeInfo(ctx, sess, inFrame, r, rw)
+			return rt.ChatNavRequestExchangeInfo(ctx, instance, inFrame, r, rw)
 		case wire.ChatNavRequestRoomInfo:
-			return rt.ChatNavRequestRoomInfo(ctx, sess, inFrame, r, rw)
+			return rt.ChatNavRequestRoomInfo(ctx, instance, inFrame, r, rw)
 		}
 	case wire.Feedbag:
 		switch inFrame.SubGroup {
 		case wire.FeedbagDeleteItem:
-			return rt.FeedbagDeleteItem(ctx, sess, inFrame, r, rw)
+			return rt.FeedbagDeleteItem(ctx, instance, inFrame, r, rw)
 		case wire.FeedbagEndCluster:
-			return rt.FeedbagEndCluster(ctx, sess, inFrame, r, rw)
+			return rt.FeedbagEndCluster(ctx, instance, inFrame, r, rw)
 		case wire.FeedbagInsertItem:
-			return rt.FeedbagInsertItem(ctx, sess, inFrame, r, rw)
+			return rt.FeedbagInsertItem(ctx, instance, inFrame, r, rw)
 		case wire.FeedbagQuery:
-			return rt.FeedbagQuery(ctx, sess, inFrame, r, rw)
+			return rt.FeedbagQuery(ctx, instance, inFrame, r, rw)
 		case wire.FeedbagQueryIfModified:
-			return rt.FeedbagQueryIfModified(ctx, sess, inFrame, r, rw)
+			return rt.FeedbagQueryIfModified(ctx, instance, inFrame, r, rw)
 		case wire.FeedbagRespondAuthorizeToHost:
-			return rt.FeedbagRespondAuthorizeToHost(ctx, sess, inFrame, r, rw)
+			return rt.FeedbagRespondAuthorizeToHost(ctx, instance, inFrame, r, rw)
 		case wire.FeedbagRightsQuery:
-			return rt.FeedbagRightsQuery(ctx, sess, inFrame, r, rw)
+			return rt.FeedbagRightsQuery(ctx, instance, inFrame, r, rw)
 		case wire.FeedbagStartCluster:
-			return rt.FeedbagStartCluster(ctx, sess, inFrame, r, rw)
+			return rt.FeedbagStartCluster(ctx, instance, inFrame, r, rw)
 		case wire.FeedbagUpdateItem:
-			return rt.FeedbagUpdateItem(ctx, sess, inFrame, r, rw)
+			return rt.FeedbagUpdateItem(ctx, instance, inFrame, r, rw)
 		case wire.FeedbagUse:
-			return rt.FeedbagUse(ctx, sess, inFrame, r, rw)
+			return rt.FeedbagUse(ctx, instance, inFrame, r, rw)
 		}
 	case wire.ICQ:
 		switch inFrame.SubGroup {
 		case wire.ICQDBQuery:
-			return rt.ICQDBQuery(ctx, sess, inFrame, r, rw)
+			return rt.ICQDBQuery(ctx, instance, inFrame, r, rw)
 		}
 	case wire.ICBM:
 		switch inFrame.SubGroup {
 		case wire.ICBMAddParameters:
-			return rt.ICBMAddParameters(ctx, sess, inFrame, r, rw)
+			return rt.ICBMAddParameters(ctx, instance, inFrame, r, rw)
 		case wire.ICBMChannelMsgToHost:
-			return rt.ICBMChannelMsgToHost(ctx, sess, inFrame, r, rw)
+			return rt.ICBMChannelMsgToHost(ctx, instance, inFrame, r, rw)
 		case wire.ICBMClientErr:
-			return rt.ICBMClientErr(ctx, sess, inFrame, r, rw)
+			return rt.ICBMClientErr(ctx, instance, inFrame, r, rw)
 		case wire.ICBMClientEvent:
-			return rt.ICBMClientEvent(ctx, sess, inFrame, r, rw)
+			return rt.ICBMClientEvent(ctx, instance, inFrame, r, rw)
 		case wire.ICBMEvilRequest:
-			return rt.ICBMEvilRequest(ctx, sess, inFrame, r, rw)
+			return rt.ICBMEvilRequest(ctx, instance, inFrame, r, rw)
 		case wire.ICBMParameterQuery:
-			return rt.ICBMParameterQuery(ctx, sess, inFrame, r, rw)
+			return rt.ICBMParameterQuery(ctx, instance, inFrame, r, rw)
 		case wire.ICBMOfflineRetrieve:
-			return rt.ICBMOfflineRetrieve(ctx, sess, inFrame, rw)
+			return rt.ICBMOfflineRetrieve(ctx, instance, inFrame, rw)
 		}
 	case wire.Locate:
 		switch inFrame.SubGroup {
 		case wire.LocateGetDirInfo:
-			return rt.LocateGetDirInfo(ctx, sess, inFrame, r, rw)
+			return rt.LocateGetDirInfo(ctx, instance, inFrame, r, rw)
 		case wire.LocateRightsQuery:
-			return rt.LocateRightsQuery(ctx, sess, inFrame, r, rw)
+			return rt.LocateRightsQuery(ctx, instance, inFrame, r, rw)
 		case wire.LocateSetDirInfo:
-			return rt.LocateSetDirInfo(ctx, sess, inFrame, r, rw)
+			return rt.LocateSetDirInfo(ctx, instance, inFrame, r, rw)
 		case wire.LocateSetInfo:
-			return rt.LocateSetInfo(ctx, sess, inFrame, r, rw)
+			return rt.LocateSetInfo(ctx, instance, inFrame, r, rw)
 		case wire.LocateSetKeywordInfo:
-			return rt.LocateSetKeywordInfo(ctx, sess, inFrame, r, rw)
+			return rt.LocateSetKeywordInfo(ctx, instance, inFrame, r, rw)
 		case wire.LocateUserInfoQuery:
-			return rt.LocateUserInfoQuery(ctx, sess, inFrame, r, rw)
+			return rt.LocateUserInfoQuery(ctx, instance, inFrame, r, rw)
 		case wire.LocateUserInfoQuery2:
-			return rt.LocateUserInfoQuery2(ctx, sess, inFrame, r, rw)
+			return rt.LocateUserInfoQuery2(ctx, instance, inFrame, r, rw)
 		}
 	case wire.ODir:
 		switch inFrame.SubGroup {
 		case wire.ODirInfoQuery:
-			return rt.ODirInfoQuery(ctx, sess, inFrame, r, rw)
+			return rt.ODirInfoQuery(ctx, instance, inFrame, r, rw)
 		case wire.ODirKeywordListQuery:
-			return rt.ODirKeywordListQuery(ctx, sess, inFrame, r, rw)
+			return rt.ODirKeywordListQuery(ctx, instance, inFrame, r, rw)
 		}
 	case wire.OService:
 		switch inFrame.SubGroup {
 		case wire.OServiceClientOnline:
-			return rt.OServiceClientOnline(ctx, server, sess, inFrame, r, rw)
+			return rt.OServiceClientOnline(ctx, server, instance, inFrame, r, rw)
 		case wire.OServiceClientVersions:
-			return rt.OServiceClientVersions(ctx, sess, inFrame, r, rw)
+			return rt.OServiceClientVersions(ctx, instance, inFrame, r, rw)
 		case wire.OServiceIdleNotification:
-			return rt.OServiceIdleNotification(ctx, sess, inFrame, r, rw)
+			return rt.OServiceIdleNotification(ctx, instance, inFrame, r, rw)
 		case wire.OServiceNoop:
-			return rt.OServiceNoop(ctx, sess, inFrame, r, rw)
+			return rt.OServiceNoop(ctx, instance, inFrame, r, rw)
 		case wire.OServiceRateParamsQuery:
-			return rt.OServiceRateParamsQuery(ctx, sess, inFrame, r, rw)
+			return rt.OServiceRateParamsQuery(ctx, instance, inFrame, r, rw)
 		case wire.OServiceRateParamsSubAdd:
-			return rt.OServiceRateParamsSubAdd(ctx, sess, inFrame, r, rw)
+			return rt.OServiceRateParamsSubAdd(ctx, instance, inFrame, r, rw)
 		case wire.OServiceServiceRequest:
-			return rt.OServiceServiceRequest(ctx, server, sess, inFrame, r, rw, listener)
+			return rt.OServiceServiceRequest(ctx, server, instance, inFrame, r, rw, listener)
 		case wire.OServiceSetPrivacyFlags:
-			return rt.OServiceSetPrivacyFlags(ctx, sess, inFrame, r, rw)
+			return rt.OServiceSetPrivacyFlags(ctx, instance, inFrame, r, rw)
 		case wire.OServiceSetUserInfoFields:
-			return rt.OServiceSetUserInfoFields(ctx, sess, inFrame, r, rw)
+			return rt.OServiceSetUserInfoFields(ctx, instance, inFrame, r, rw)
 		case wire.OServiceUserInfoQuery:
-			return rt.OServiceUserInfoQuery(ctx, sess, inFrame, r, rw)
+			return rt.OServiceUserInfoQuery(ctx, instance, inFrame, r, rw)
 		}
 	case wire.PermitDeny:
 		switch inFrame.SubGroup {
 		case wire.PermitDenyAddDenyListEntries:
-			return rt.PermitDenyAddDenyListEntries(ctx, sess, inFrame, r, rw)
+			return rt.PermitDenyAddDenyListEntries(ctx, instance, inFrame, r, rw)
 		case wire.PermitDenyAddPermListEntries:
-			return rt.PermitDenyAddPermListEntries(ctx, sess, inFrame, r, rw)
+			return rt.PermitDenyAddPermListEntries(ctx, instance, inFrame, r, rw)
 		case wire.PermitDenyDelDenyListEntries:
-			return rt.PermitDenyDelDenyListEntries(ctx, sess, inFrame, r, rw)
+			return rt.PermitDenyDelDenyListEntries(ctx, instance, inFrame, r, rw)
 		case wire.PermitDenyDelPermListEntries:
-			return rt.PermitDenyDelPermListEntries(ctx, sess, inFrame, r, rw)
+			return rt.PermitDenyDelPermListEntries(ctx, instance, inFrame, r, rw)
 		case wire.PermitDenyRightsQuery:
-			return rt.PermitDenyRightsQuery(ctx, sess, inFrame, r, rw)
+			return rt.PermitDenyRightsQuery(ctx, instance, inFrame, r, rw)
 		case wire.PermitDenySetGroupPermitMask:
-			return rt.PermitDenySetGroupPermitMask(ctx, sess, inFrame, r, rw)
+			return rt.PermitDenySetGroupPermitMask(ctx, instance, inFrame, r, rw)
 		}
 	case wire.Stats:
 		switch inFrame.SubGroup {
 		case wire.StatsReportEvents:
-			return rt.StatsReportEvents(ctx, sess, inFrame, r, rw)
+			return rt.StatsReportEvents(ctx, instance, inFrame, r, rw)
 		}
 	case wire.UserLookup:
 		switch inFrame.SubGroup {
 		case wire.UserLookupFindByEmail:
-			return rt.UserLookupFindByEmail(ctx, sess, inFrame, r, rw)
+			return rt.UserLookupFindByEmail(ctx, instance, inFrame, r, rw)
 
 		}
 	}

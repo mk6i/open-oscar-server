@@ -19,7 +19,7 @@ func TestChatNavService_CreateRoom(t *testing.T) {
 	tests := []struct {
 		name          string
 		chatRoom      *state.ChatRoom
-		sess          *state.Session
+		instance      *state.SessionInstance
 		inputSNAC     wire.SNACMessage
 		want          wire.SNACMessage
 		mockParams    mockParams
@@ -29,7 +29,7 @@ func TestChatNavService_CreateRoom(t *testing.T) {
 		{
 			name:     "create private room that already exists",
 			chatRoom: &basicChatRoom,
-			sess:     newTestSession("the-screen-name"),
+			instance: newTestInstance("the-screen-name"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -86,7 +86,7 @@ func TestChatNavService_CreateRoom(t *testing.T) {
 		{
 			name:     "create private room that doesn't already exist",
 			chatRoom: &basicChatRoom,
-			sess:     newTestSession("the-screen-name"),
+			instance: newTestInstance("the-screen-name"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -151,7 +151,7 @@ func TestChatNavService_CreateRoom(t *testing.T) {
 		{
 			name:     "create public room that already exists",
 			chatRoom: &publicChatRoom,
-			sess:     newTestSession("the-screen-name"),
+			instance: newTestInstance("the-screen-name"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -208,7 +208,7 @@ func TestChatNavService_CreateRoom(t *testing.T) {
 		{
 			name:     "create public room that does not exist",
 			chatRoom: &publicChatRoom,
-			sess:     newTestSession("the-screen-name"),
+			instance: newTestInstance("the-screen-name"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -253,7 +253,7 @@ func TestChatNavService_CreateRoom(t *testing.T) {
 		{
 			name:     "create room invalid exchange number",
 			chatRoom: &basicChatRoom,
-			sess:     newTestSession("the-screen-name"),
+			instance: newTestInstance("the-screen-name"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -284,7 +284,7 @@ func TestChatNavService_CreateRoom(t *testing.T) {
 		{
 			name:     "incoming create room missing name tlv",
 			chatRoom: &basicChatRoom,
-			sess:     newTestSession("the-screen-name"),
+			instance: newTestInstance("the-screen-name"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -305,7 +305,7 @@ func TestChatNavService_CreateRoom(t *testing.T) {
 		{
 			name:     "create private room failed",
 			chatRoom: &basicChatRoom,
-			sess:     newTestSession("the-screen-name"),
+			instance: newTestInstance("the-screen-name"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -348,7 +348,7 @@ func TestChatNavService_CreateRoom(t *testing.T) {
 		{
 			name:     "create private room failed unknown error",
 			chatRoom: &basicChatRoom,
-			sess:     newTestSession("the-screen-name"),
+			instance: newTestInstance("the-screen-name"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -399,7 +399,7 @@ func TestChatNavService_CreateRoom(t *testing.T) {
 			}
 
 			svc := NewChatNavService(slog.Default(), chatRoomRegistry)
-			outputSNAC, err := svc.CreateRoom(context.Background(), tt.sess, tt.inputSNAC.Frame, tt.inputSNAC.Body.(wire.SNAC_0x0E_0x02_ChatRoomInfoUpdate))
+			outputSNAC, err := svc.CreateRoom(context.Background(), tt.instance, tt.inputSNAC.Frame, tt.inputSNAC.Body.(wire.SNAC_0x0E_0x02_ChatRoomInfoUpdate))
 			assert.ErrorIs(t, err, tt.wantErr)
 			assert.Equal(t, tt.want, outputSNAC)
 		})

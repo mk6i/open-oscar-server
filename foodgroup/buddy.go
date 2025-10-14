@@ -50,20 +50,16 @@ func (s BuddyService) RightsQuery(_ context.Context, frameIn wire.SNACFrame) wir
 }
 
 // AddBuddies adds buddies to my client-side buddy list.
-func (s BuddyService) AddBuddies(
-	ctx context.Context,
-	sess *state.Session,
-	inBody wire.SNAC_0x03_0x04_BuddyAddBuddies,
-) error {
+func (s BuddyService) AddBuddies(ctx context.Context, instance *state.SessionInstance, inBody wire.SNAC_0x03_0x04_BuddyAddBuddies) error {
 
 	for _, entry := range inBody.Buddies {
 		sn := state.NewIdentScreenName(entry.ScreenName)
-		if err := s.clientSideBuddyListManager.AddBuddy(ctx, sess.IdentScreenName(), sn); err != nil {
+		if err := s.clientSideBuddyListManager.AddBuddy(ctx, instance.IdentScreenName(), sn); err != nil {
 			return err
 		}
 	}
 
-	if !sess.SignonComplete() {
+	if !instance.SignonComplete() {
 		// client has not completed sign-on sequence, so any arrival
 		// messages sent at this point would be ignored by the client.
 		return nil
@@ -73,7 +69,7 @@ func (s BuddyService) AddBuddies(
 	for _, entry := range inBody.Buddies {
 		toNotify = append(toNotify, state.NewIdentScreenName(entry.ScreenName))
 	}
-	if err := s.buddyBroadcaster.BroadcastVisibility(ctx, sess, toNotify, true); err != nil {
+	if err := s.buddyBroadcaster.BroadcastVisibility(ctx, instance, toNotify, true); err != nil {
 		return fmt.Errorf("buddyBroadcaster.BroadcastVisibility: %w", err)
 	}
 
@@ -81,19 +77,19 @@ func (s BuddyService) AddBuddies(
 }
 
 // DelBuddies deletes buddies from my client-side buddy list.
-func (s BuddyService) DelBuddies(ctx context.Context, sess *state.Session, inBody wire.SNAC_0x03_0x05_BuddyDelBuddies) error {
+func (s BuddyService) DelBuddies(ctx context.Context, instance *state.SessionInstance, inBody wire.SNAC_0x03_0x05_BuddyDelBuddies) error {
 
 	var toNotify []state.IdentScreenName
 
 	for _, entry := range inBody.Buddies {
 		sn := state.NewIdentScreenName(entry.ScreenName)
-		if err := s.clientSideBuddyListManager.RemoveBuddy(ctx, sess.IdentScreenName(), sn); err != nil {
+		if err := s.clientSideBuddyListManager.RemoveBuddy(ctx, instance.IdentScreenName(), sn); err != nil {
 			return err
 		}
 		toNotify = append(toNotify, sn)
 	}
 
-	if err := s.buddyBroadcaster.BroadcastVisibility(ctx, sess, toNotify, true); err != nil {
+	if err := s.buddyBroadcaster.BroadcastVisibility(ctx, instance, toNotify, true); err != nil {
 		return fmt.Errorf("buddyBroadcaster.BroadcastVisibility: %w", err)
 	}
 
@@ -102,29 +98,29 @@ func (s BuddyService) DelBuddies(ctx context.Context, sess *state.Session, inBod
 
 // AddTempBuddies adds temporary buddies to the user's buddy list that persist
 // for the duration of the user's session.
-func (s BuddyService) AddTempBuddies(ctx context.Context, sess *state.Session, snac wire.SNAC_0x03_0x0F_BuddyAddTempBuddies) error {
-	var inBody wire.SNAC_0x03_0x04_BuddyAddBuddies
+func (s BuddyService) AddTempBuddies(ctx context.Context, instance *state.SessionInstance, inBody wire.SNAC_0x03_0x0F_BuddyAddTempBuddies) error {
+	var b wire.SNAC_0x03_0x04_BuddyAddBuddies
 
-	for _, buddy := range snac.Buddies {
-		inBody.Buddies = append(inBody.Buddies, struct {
+	for _, buddy := range inBody.Buddies {
+		b.Buddies = append(b.Buddies, struct {
 			ScreenName string `oscar:"len_prefix=uint8"`
 		}{ScreenName: buddy.ScreenName})
 	}
 
-	return s.AddBuddies(ctx, sess, inBody)
+	return s.AddBuddies(ctx, instance, b)
 }
 
 // DelTempBuddies deletes temporary buddies from the user's buddy list.
-func (s BuddyService) DelTempBuddies(ctx context.Context, sess *state.Session, snac wire.SNAC_0x03_0x10_BuddyDelTempBuddies) error {
-	var inBody wire.SNAC_0x03_0x05_BuddyDelBuddies
+func (s BuddyService) DelTempBuddies(ctx context.Context, instance *state.SessionInstance, inBody wire.SNAC_0x03_0x10_BuddyDelTempBuddies) error {
+	var b wire.SNAC_0x03_0x05_BuddyDelBuddies
 
-	for _, buddy := range snac.Buddies {
-		inBody.Buddies = append(inBody.Buddies, struct {
+	for _, buddy := range inBody.Buddies {
+		b.Buddies = append(b.Buddies, struct {
 			ScreenName string `oscar:"len_prefix=uint8"`
 		}{ScreenName: buddy.ScreenName})
 	}
 
-	return s.DelBuddies(ctx, sess, inBody)
+	return s.DelBuddies(ctx, instance, b)
 }
 
 // BroadcastBuddyArrived broadcasts buddy arrival with custom user info (implements DepartureNotifier)
@@ -132,8 +128,8 @@ func (s BuddyService) BroadcastBuddyArrived(ctx context.Context, screenName stat
 	return s.buddyBroadcaster.BroadcastBuddyArrived(ctx, screenName, userInfo)
 }
 
-func (s BuddyService) BroadcastBuddyDeparted(ctx context.Context, sess *state.Session) error {
-	return s.buddyBroadcaster.BroadcastBuddyDeparted(ctx, sess)
+func (s BuddyService) BroadcastBuddyDeparted(ctx context.Context, instance *state.SessionInstance) error {
+	return s.buddyBroadcaster.BroadcastBuddyDeparted(ctx, instance)
 }
 
 func newBuddyNotifier(
@@ -191,8 +187,8 @@ func (s buddyNotifier) BroadcastBuddyArrived(ctx context.Context, screenName sta
 	return nil
 }
 
-func (s buddyNotifier) BroadcastBuddyDeparted(ctx context.Context, sess *state.Session) error {
-	users, err := s.relationshipFetcher.AllRelationships(ctx, sess.IdentScreenName(), nil)
+func (s buddyNotifier) BroadcastBuddyDeparted(ctx context.Context, instance *state.SessionInstance) error {
+	users, err := s.relationshipFetcher.AllRelationships(ctx, instance.IdentScreenName(), nil)
 	if err != nil {
 		return err
 	}
@@ -215,8 +211,8 @@ func (s buddyNotifier) BroadcastBuddyDeparted(ctx context.Context, sess *state.S
 			TLVUserInfo: wire.TLVUserInfo{
 				// don't include the TLV block, otherwise the AIM client fails
 				// to process the block event
-				ScreenName:   sess.IdentScreenName().String(),
-				WarningLevel: sess.Warning(),
+				ScreenName:   instance.IdentScreenName().String(),
+				WarningLevel: instance.Warning(),
 				TLVBlock: wire.TLVBlock{
 					TLVList: wire.TLVList{
 						// this TLV needs to be set in order for departure
@@ -249,7 +245,7 @@ func (s buddyNotifier) BroadcastBuddyDeparted(ctx context.Context, sess *state.S
 // all relevant users are notified of your arrival or departure status.
 func (s buddyNotifier) BroadcastVisibility(
 	ctx context.Context,
-	you *state.Session,
+	you *state.SessionInstance,
 	filter []state.IdentScreenName,
 	doSendDepartures bool,
 ) error {
@@ -259,7 +255,7 @@ func (s buddyNotifier) BroadcastVisibility(
 		return fmt.Errorf("retrieving relationships: %w", err)
 	}
 
-	yourTLVInfo := you.TLVUserInfo()
+	yourTLVInfo := you.Session().TLVUserInfo()
 
 	for _, relationship := range relationships {
 		if relationship.BlocksYou {
@@ -284,7 +280,7 @@ func (s buddyNotifier) BroadcastVisibility(
 		} else if relationship.YouBlock && doSendDepartures {
 			if relationship.IsOnTheirList {
 				// tell them you're offline
-				s.unicastBuddyDeparted(ctx, you, theirSess.IdentScreenName())
+				s.unicastBuddyDeparted(ctx, you.Session(), theirSess.IdentScreenName())
 			}
 			if relationship.IsOnYourList {
 				// tell you they're offline

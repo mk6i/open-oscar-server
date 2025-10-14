@@ -21,8 +21,8 @@ func TestBARTService_UpsertItem(t *testing.T) {
 	cases := []struct {
 		// name is the unit test name
 		name string
-		// userSession is the session of the user adding to feedbag
-		userSession *state.Session
+		// instance is the session of the user adding to feedbag
+		instance *state.SessionInstance
 		// inputSNAC is the SNAC sent from the client to the server
 		inputSNAC wire.SNACMessage
 		// mockParams is the list of params sent to mocks that satisfy this
@@ -32,12 +32,12 @@ func TestBARTService_UpsertItem(t *testing.T) {
 		expectOutput wire.SNACMessage
 		// wantErr is the expected error
 		wantErr error
-		// sessionMatch verifies the session state after completion
-		sessionMatch func(session *state.Session)
+		// instanceMatch verifies the session state after completion
+		instanceMatch func(instance *state.SessionInstance)
 	}{
 		{
 			name: "insert new buddy icon for current session",
-			userSession: newTestSession("user_screen_name", sessOptBuddyIcon(wire.BARTID{
+			instance: newTestInstance("user_screen_name", sessOptBuddyIcon(wire.BARTID{
 				Type: wire.BARTTypesBuddyIcon,
 				BARTInfo: wire.BARTInfo{
 					Flags: wire.BARTFlagsCustom | wire.BARTFlagsUnknown,
@@ -117,8 +117,8 @@ func TestBARTService_UpsertItem(t *testing.T) {
 					},
 				},
 			},
-			sessionMatch: func(session *state.Session) {
-				have, hasIcon := session.BuddyIcon()
+			instanceMatch: func(instance *state.SessionInstance) {
+				have, hasIcon := instance.Session().BuddyIcon()
 				assert.True(t, hasIcon)
 				want := wire.BARTID{
 					Type: wire.BARTTypesBuddyIcon,
@@ -132,7 +132,7 @@ func TestBARTService_UpsertItem(t *testing.T) {
 		},
 		{
 			name: "insert existing buddy icon for current session",
-			userSession: newTestSession("user_screen_name", sessOptBuddyIcon(wire.BARTID{
+			instance: newTestInstance("user_screen_name", sessOptBuddyIcon(wire.BARTID{
 				Type: wire.BARTTypesBuddyIcon,
 				BARTInfo: wire.BARTInfo{
 					Flags: wire.BARTFlagsCustom | wire.BARTFlagsUnknown,
@@ -213,8 +213,8 @@ func TestBARTService_UpsertItem(t *testing.T) {
 					},
 				},
 			},
-			sessionMatch: func(session *state.Session) {
-				have, hasIcon := session.BuddyIcon()
+			instanceMatch: func(instance *state.SessionInstance) {
+				have, hasIcon := instance.Session().BuddyIcon()
 				assert.True(t, hasIcon)
 				want := wire.BARTID{
 					Type: wire.BARTTypesBuddyIcon,
@@ -227,8 +227,8 @@ func TestBARTService_UpsertItem(t *testing.T) {
 			},
 		},
 		{
-			name:        "insert new buddy icon, get insertion error",
-			userSession: newTestSession("user_screen_name"),
+			name:     "insert new buddy icon, get insertion error",
+			instance: newTestInstance("user_screen_name"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -255,7 +255,7 @@ func TestBARTService_UpsertItem(t *testing.T) {
 		},
 		{
 			name: "insert new buddy icon unrelated to current session",
-			userSession: newTestSession("user_screen_name", sessOptBuddyIcon(wire.BARTID{
+			instance: newTestInstance("user_screen_name", sessOptBuddyIcon(wire.BARTID{
 				Type: wire.BARTTypesBuddyIcon,
 				BARTInfo: wire.BARTInfo{
 					Flags: wire.BARTFlagsCustom | wire.BARTFlagsKnown,
@@ -300,9 +300,9 @@ func TestBARTService_UpsertItem(t *testing.T) {
 					},
 				},
 			},
-			sessionMatch: func(session *state.Session) {
+			instanceMatch: func(instance *state.SessionInstance) {
 				// assert session icon didn't change
-				have, hasIcon := session.BuddyIcon()
+				have, hasIcon := instance.Session().BuddyIcon()
 				assert.True(t, hasIcon)
 				want := wire.BARTID{
 					Type: wire.BARTTypesBuddyIcon,
@@ -343,14 +343,14 @@ func TestBARTService_UpsertItem(t *testing.T) {
 			svc := NewBARTService(slog.Default(), bartItemManager, messageRelayer, nil, nil)
 			svc.buddyUpdateBroadcaster = buddyUpdateBroadcaster
 
-			output, err := svc.UpsertItem(context.Background(), tc.userSession, tc.inputSNAC.Frame,
+			output, err := svc.UpsertItem(context.Background(), tc.instance, tc.inputSNAC.Frame,
 				tc.inputSNAC.Body.(wire.SNAC_0x10_0x02_BARTUploadQuery))
 
 			assert.ErrorIs(t, err, tc.wantErr)
 			assert.Equal(t, output, tc.expectOutput)
 
-			if tc.sessionMatch != nil {
-				tc.sessionMatch(tc.userSession)
+			if tc.instanceMatch != nil {
+				tc.instanceMatch(tc.instance)
 			}
 		})
 	}
@@ -360,8 +360,8 @@ func TestBARTService_RetrieveItem(t *testing.T) {
 	cases := []struct {
 		// name is the unit test name
 		name string
-		// userSession is the session of the user adding to feedbag
-		userSession *state.Session
+		// instance is the session of the user adding to feedbag
+		instance *state.SessionInstance
 		// inputSNAC is the SNAC sent from the client to the server
 		inputSNAC wire.SNACMessage
 		// mockParams is the list of params sent to mocks that satisfy this
@@ -373,8 +373,8 @@ func TestBARTService_RetrieveItem(t *testing.T) {
 		expectErr error
 	}{
 		{
-			name:        "retrieve buddy icon",
-			userSession: newTestSession("user_screen_name"),
+			name:     "retrieve buddy icon",
+			instance: newTestInstance("user_screen_name"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -421,8 +421,8 @@ func TestBARTService_RetrieveItem(t *testing.T) {
 			},
 		},
 		{
-			name:        "retrieve blank icon used for clearing buddy icon",
-			userSession: newTestSession("user_screen_name"),
+			name:     "retrieve blank icon used for clearing buddy icon",
+			instance: newTestInstance("user_screen_name"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -459,8 +459,8 @@ func TestBARTService_RetrieveItem(t *testing.T) {
 			},
 		},
 		{
-			name:        "retrieve item with error",
-			userSession: newTestSession("user_screen_name"),
+			name:     "retrieve item with error",
+			instance: newTestInstance("user_screen_name"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -516,8 +516,8 @@ func TestBARTService_RetrieveItemV2(t *testing.T) {
 	cases := []struct {
 		// name is the unit test name
 		name string
-		// userSession is the session of the user adding to feedbag
-		userSession *state.Session
+		// instance is the session of the user adding to feedbag
+		instance *state.SessionInstance
 		// inputSNAC is the SNAC sent from the client to the server
 		inputSNAC wire.SNACMessage
 		// mockParams is the list of params sent to mocks that satisfy this
@@ -529,8 +529,8 @@ func TestBARTService_RetrieveItemV2(t *testing.T) {
 		expectErr error
 	}{
 		{
-			name:        "retrieve single buddy icon",
-			userSession: newTestSession("user_screen_name"),
+			name:     "retrieve single buddy icon",
+			instance: newTestInstance("user_screen_name"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -590,8 +590,8 @@ func TestBARTService_RetrieveItemV2(t *testing.T) {
 			},
 		},
 		{
-			name:        "retrieve multiple buddy icons",
-			userSession: newTestSession("user_screen_name"),
+			name:     "retrieve multiple buddy icons",
+			instance: newTestInstance("user_screen_name"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -690,8 +690,8 @@ func TestBARTService_RetrieveItemV2(t *testing.T) {
 			},
 		},
 		{
-			name:        "retrieve single item with error",
-			userSession: newTestSession("user_screen_name"),
+			name:     "retrieve single item with error",
+			instance: newTestInstance("user_screen_name"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -724,8 +724,8 @@ func TestBARTService_RetrieveItemV2(t *testing.T) {
 			expectErr:    assert.AnError,
 		},
 		{
-			name:        "retrieve multiple items with error on second item",
-			userSession: newTestSession("user_screen_name"),
+			name:     "retrieve multiple items with error on second item",
+			instance: newTestInstance("user_screen_name"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -770,8 +770,8 @@ func TestBARTService_RetrieveItemV2(t *testing.T) {
 			expectErr:    assert.AnError,
 		},
 		{
-			name:        "retrieve mixed items (regular icon and clear icon)",
-			userSession: newTestSession("user_screen_name"),
+			name:     "retrieve mixed items (regular icon and clear icon)",
+			instance: newTestInstance("user_screen_name"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,

@@ -19,7 +19,7 @@ func TestOSCARProxy_RecvBOS_ChatIn(t *testing.T) {
 		// name is the unit test name
 		name string
 		// me is the TOC user session
-		me *state.Session
+		me *state.SessionInstance
 		// chatID is the chat ID
 		chatID int
 		// givenMsg is the incoming SNAC
@@ -68,7 +68,7 @@ func TestOSCARProxy_RecvBOS_ChatIn(t *testing.T) {
 				svc.RecvChat(ctx, tc.me, tc.chatID, ch)
 			}()
 
-			status := tc.me.RelayMessage(tc.givenMsg)
+			status := tc.me.RelayMessageToInstance(tc.givenMsg)
 			assert.Equal(t, state.SessSendOK, status)
 
 			gotCmd := <-ch
@@ -85,7 +85,7 @@ func TestOSCARProxy_RecvBOS_ChatUpdateBuddyArrived(t *testing.T) {
 		// name is the unit test name
 		name string
 		// me is the TOC user session
-		me *state.Session
+		me *state.SessionInstance
 		// chatID is the chat ID
 		chatID int
 		// givenMsg is the incoming SNAC
@@ -125,7 +125,7 @@ func TestOSCARProxy_RecvBOS_ChatUpdateBuddyArrived(t *testing.T) {
 				svc.RecvChat(ctx, tc.me, tc.chatID, ch)
 			}()
 
-			status := tc.me.RelayMessage(tc.givenMsg)
+			status := tc.me.RelayMessageToInstance(tc.givenMsg)
 			assert.Equal(t, state.SessSendOK, status)
 
 			gotCmd := <-ch
@@ -142,7 +142,7 @@ func TestOSCARProxy_RecvBOS_ChatUpdateBuddyLeft(t *testing.T) {
 		// name is the unit test name
 		name string
 		// me is the TOC user session
-		me *state.Session
+		me *state.SessionInstance
 		// chatID is the chat ID
 		chatID int
 		// givenMsg is the incoming SNAC
@@ -182,7 +182,7 @@ func TestOSCARProxy_RecvBOS_ChatUpdateBuddyLeft(t *testing.T) {
 				svc.RecvChat(ctx, tc.me, tc.chatID, ch)
 			}()
 
-			status := tc.me.RelayMessage(tc.givenMsg)
+			status := tc.me.RelayMessageToInstance(tc.givenMsg)
 			assert.Equal(t, state.SessSendOK, status)
 
 			gotCmd := <-ch
@@ -199,7 +199,7 @@ func TestOSCARProxy_RecvBOS_Eviled(t *testing.T) {
 		// name is the unit test name
 		name string
 		// me is the TOC user session
-		me *state.Session
+		me *state.SessionInstance
 		// givenMsg is the incoming SNAC
 		givenMsg wire.SNACMessage
 		// chatRegistry is the chat registry for the current session
@@ -252,7 +252,7 @@ func TestOSCARProxy_RecvBOS_Eviled(t *testing.T) {
 				assert.NoError(t, err)
 			}()
 
-			status := tc.me.RelayMessage(tc.givenMsg)
+			status := tc.me.RelayMessageToInstance(tc.givenMsg)
 			assert.Equal(t, state.SessSendOK, status)
 
 			gotCmd := <-ch
@@ -269,7 +269,7 @@ func TestOSCARProxy_RecvBOS_IMIn(t *testing.T) {
 		// name is the unit test name
 		name string
 		// me is the TOC user session
-		me *state.Session
+		me *state.SessionInstance
 		// givenMsg is the incoming SNAC
 		givenMsg wire.SNACMessage
 		// wantCmd is the expected TOC response
@@ -378,7 +378,7 @@ func TestOSCARProxy_RecvBOS_IMIn(t *testing.T) {
 			givenMsg: wire.SNACMessage{
 				Body: wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
 					ChannelID:   wire.ICBMChannelRendezvous,
-					TLVUserInfo: newTestSession("them").TLVUserInfo(),
+					TLVUserInfo: newTestSession("them").Session().TLVUserInfo(),
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
 							wire.NewTLVBE(wire.ICBMTLVWantEvents, []byte{}),
@@ -421,7 +421,7 @@ func TestOSCARProxy_RecvBOS_IMIn(t *testing.T) {
 				assert.NoError(t, err)
 			}()
 
-			status := tc.me.RelayMessage(tc.givenMsg)
+			status := tc.me.RelayMessageToInstance(tc.givenMsg)
 			assert.Equal(t, state.SessSendOK, status)
 
 			gotCmd := <-ch
@@ -438,7 +438,7 @@ func TestOSCARProxy_RecvBOS_UpdateBuddyArrival(t *testing.T) {
 		// name is the unit test name
 		name string
 		// me is the TOC user session
-		me *state.Session
+		me *state.SessionInstance
 		// givenMsg is the incoming SNAC
 		givenMsg wire.SNACMessage
 		// wantCmd is the expected TOC response
@@ -520,7 +520,7 @@ func TestOSCARProxy_RecvBOS_UpdateBuddyArrival(t *testing.T) {
 				assert.NoError(t, err)
 			}()
 
-			status := tc.me.RelayMessage(tc.givenMsg)
+			status := tc.me.RelayMessageToInstance(tc.givenMsg)
 			assert.Equal(t, state.SessSendOK, status)
 
 			gotCmd := <-ch
@@ -537,7 +537,7 @@ func TestOSCARProxy_RecvBOS_UpdateBuddyDeparted(t *testing.T) {
 		// name is the unit test name
 		name string
 		// me is the TOC user session
-		me *state.Session
+		me *state.SessionInstance
 		// givenMsg is the incoming SNAC
 		givenMsg wire.SNACMessage
 		// wantCmd is the expected TOC response
@@ -573,7 +573,7 @@ func TestOSCARProxy_RecvBOS_UpdateBuddyDeparted(t *testing.T) {
 				assert.NoError(t, err)
 			}()
 
-			status := tc.me.RelayMessage(tc.givenMsg)
+			status := tc.me.RelayMessageToInstance(tc.givenMsg)
 			assert.Equal(t, state.SessSendOK, status)
 
 			gotCmd := <-ch

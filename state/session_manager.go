@@ -12,26 +12,78 @@ import (
 )
 
 type sessionSlot struct {
-	sess    *Session
-	removed chan bool
+	session      *Session
+	removed      chan bool
+	multiSession bool
 }
 
-var errSessConflict = errors.New("session conflict: another session was created concurrently for this user")
+type userLock struct {
+	sync.Mutex
+	refCount int
+}
 
 // InMemorySessionManager handles the lifecycle of a user session and provides
 // synchronized message relay between sessions in the session pool. An
 // InMemorySessionManager is safe for concurrent use by multiple goroutines.
 type InMemorySessionManager struct {
-	store    map[IdentScreenName]*sessionSlot
-	mapMutex sync.RWMutex
-	logger   *slog.Logger
+	store                 map[IdentScreenName]*sessionSlot
+	mapMutex              sync.RWMutex
+	userLocks             map[IdentScreenName]*userLock
+	userLocksMutex        sync.Mutex
+	logger                *slog.Logger
+	maxConcurrentSessions int
 }
+
+const (
+	// DefaultMaxConcurrentSessions is the default maximum number of concurrent
+	// sessions allowed when multi-session is enabled.
+	DefaultMaxConcurrentSessions = 5
+)
+
+// ErrMaxConcurrentSessionsReached is returned when attempting to add a new
+// session instance but the maximum number of concurrent sessions has been
+// reached.
+var ErrMaxConcurrentSessionsReached = errors.New("maximum number of concurrent sessions reached")
 
 // NewInMemorySessionManager creates a new instance of InMemorySessionManager.
 func NewInMemorySessionManager(logger *slog.Logger) *InMemorySessionManager {
 	return &InMemorySessionManager{
-		logger: logger,
-		store:  make(map[IdentScreenName]*sessionSlot),
+		logger:                logger,
+		store:                 make(map[IdentScreenName]*sessionSlot),
+		userLocks:             make(map[IdentScreenName]*userLock),
+		maxConcurrentSessions: DefaultMaxConcurrentSessions,
+	}
+}
+
+func (s *InMemorySessionManager) lockUser(sn IdentScreenName) {
+	s.userLocksMutex.Lock()
+
+	lock, ok := s.userLocks[sn]
+	if !ok {
+		lock = &userLock{}
+		s.userLocks[sn] = lock
+	}
+
+	lock.refCount++
+	s.userLocksMutex.Unlock()
+
+	lock.Lock()
+}
+
+func (s *InMemorySessionManager) unlockUser(sn IdentScreenName) {
+	s.userLocksMutex.Lock()
+	defer s.userLocksMutex.Unlock()
+
+	lock, ok := s.userLocks[sn]
+	if !ok {
+		return
+	}
+
+	lock.Unlock()
+	lock.refCount--
+
+	if lock.refCount == 0 {
+		delete(s.userLocks, sn)
 	}
 }
 
@@ -40,10 +92,7 @@ func (s *InMemorySessionManager) RelayToAll(ctx context.Context, msg wire.SNACMe
 	s.mapMutex.RLock()
 	defer s.mapMutex.RUnlock()
 	for _, rec := range s.store {
-		if !rec.sess.SignonComplete() {
-			continue
-		}
-		s.maybeRelayMessage(ctx, msg, rec.sess)
+		s.maybeRelayMessage(ctx, msg, rec.session)
 	}
 }
 
@@ -64,60 +113,130 @@ func (s *InMemorySessionManager) RelayToScreenNames(ctx context.Context, screenN
 	}
 }
 
-func (s *InMemorySessionManager) maybeRelayMessage(ctx context.Context, msg wire.SNACMessage, sess *Session) {
-	switch sess.RelayMessage(msg) {
+func (s *InMemorySessionManager) RelayToSelf(ctx context.Context, instance *SessionInstance, msg wire.SNACMessage) {
+	switch instance.RelayMessageToInstance(msg) {
 	case SessSendClosed:
-		s.logger.WarnContext(ctx, "can't send notification because the user's session is closed", "recipient", sess.IdentScreenName(), "message", msg)
+		s.logger.WarnContext(ctx, "can't send notification because the user's session is closed", "recipient", instance.IdentScreenName(), "message", msg)
 	case SessQueueFull:
-		s.logger.WarnContext(ctx, "can't send notification because queue is full", "recipient", sess.IdentScreenName(), "message", msg)
-		sess.Close()
+		s.logger.WarnContext(ctx, "can't send notification because queue is full", "recipient", instance.IdentScreenName(), "message", msg)
+		instance.CloseInstance()
 	}
 }
 
-func (s *InMemorySessionManager) AddSession(ctx context.Context, screenName DisplayScreenName) (*Session, error) {
-	s.mapMutex.Lock()
-
-	active := s.findRec(screenName.IdentScreenName())
-	if active != nil {
-		// there's an active session that needs to be removed. don't hold the
-		// lock while we wait.
-		s.mapMutex.Unlock()
-
-		// signal to callers that this session has to go
-		active.sess.Close()
-
-		select {
-		case <-active.removed: // wait for RemoveSession to be called
-		case <-ctx.Done():
-			return nil, fmt.Errorf("waiting for previous session to terminate: %w", ctx.Err())
+func (s *InMemorySessionManager) RelayToOtherInstances(ctx context.Context, instance *SessionInstance, msg wire.SNACMessage) {
+	for _, inst := range instance.Session().Instances() {
+		if instance == inst || !inst.live() {
+			continue
 		}
+		switch inst.RelayMessageToInstance(msg) {
+		case SessSendClosed:
+			s.logger.WarnContext(ctx, "can't send notification because the user's session is closed", "recipient", instance.IdentScreenName(), "message", msg)
+		case SessQueueFull:
+			s.logger.WarnContext(ctx, "can't send notification because queue is full", "recipient", instance.IdentScreenName(), "message", msg)
+			inst.CloseInstance()
+		}
+	}
+}
 
-		// the session has been removed, let's try to replace it
-		s.mapMutex.Lock()
+func (s *InMemorySessionManager) RelayToScreenNameActiveOnly(ctx context.Context, screenName IdentScreenName, msg wire.SNACMessage) {
+	sess := s.RetrieveSession(screenName)
+	if sess == nil {
+		s.logger.WarnContext(ctx, "can't send notification because user is not online", "recipient", screenName, "message", msg)
+		return
+	}
+	s.maybeRelayMessageActiveOnly(ctx, msg, sess)
+}
+
+func (s *InMemorySessionManager) maybeRelayMessage(ctx context.Context, msg wire.SNACMessage, sess *Session) {
+	for _, instance := range sess.Instances() {
+		if !instance.live() {
+			continue
+		}
+		switch instance.RelayMessageToInstance(msg) {
+		case SessSendClosed:
+			s.logger.WarnContext(ctx, "can't send notification because the user's session is closed", "recipient", sess.IdentScreenName(), "message", msg)
+		case SessQueueFull:
+			s.logger.WarnContext(ctx, "can't send notification because queue is full", "recipient", sess.IdentScreenName(), "message", msg)
+			instance.CloseInstance()
+		}
+	}
+}
+
+func (s *InMemorySessionManager) maybeRelayMessageActiveOnly(ctx context.Context, msg wire.SNACMessage, sess *Session) {
+	for _, instance := range sess.Instances() {
+		if !instance.active() {
+			continue
+		}
+		switch instance.RelayMessageToInstance(msg) {
+		case SessSendClosed:
+			s.logger.WarnContext(ctx, "can't send notification because the user's session is closed", "recipient", sess.IdentScreenName(), "message", msg)
+		case SessQueueFull:
+			s.logger.WarnContext(ctx, "can't send notification because queue is full", "recipient", sess.IdentScreenName(), "message", msg)
+			instance.CloseInstance()
+		}
+	}
+}
+
+func (s *InMemorySessionManager) AddSession(ctx context.Context, screenName DisplayScreenName, doMultiSess bool) (*SessionInstance, error) {
+	s.lockUser(screenName.IdentScreenName())
+	defer s.unlockUser(screenName.IdentScreenName())
+
+	s.mapMutex.Lock()
+	active := s.findRec(screenName.IdentScreenName())
+	s.mapMutex.Unlock()
+
+	if active != nil {
+		if doMultiSess {
+			if !active.multiSession {
+				active.session.CloseSession()
+				return s.newSession(screenName, doMultiSess)
+			}
+
+			// Check if we've reached the maximum number of concurrent sessions
+			if active.session.InstanceCount() >= s.maxConcurrentSessions {
+				return nil, ErrMaxConcurrentSessionsReached
+			}
+
+			instance := active.session.AddInstance()
+
+			return instance, nil
+		} else {
+			// signal to callers that this session group has to go
+			active.session.CloseSession()
+
+			select {
+			case <-active.removed: // wait for RemoveSession to be called
+			case <-ctx.Done():
+				return nil, fmt.Errorf("waiting for previous session to terminate: %w", ctx.Err())
+			}
+		}
 	}
 
-	defer s.mapMutex.Unlock()
+	return s.newSession(screenName, doMultiSess)
+}
 
-	// make sure a concurrent call didn't already add a session
-	if active != nil && s.findRec(screenName.IdentScreenName()) != nil {
-		return nil, errSessConflict
-	}
-
+func (s *InMemorySessionManager) newSession(screenName DisplayScreenName, doMultiSess bool) (*SessionInstance, error) {
 	sess := NewSession()
 	sess.SetIdentScreenName(screenName.IdentScreenName())
 	sess.SetDisplayScreenName(screenName)
 
-	s.store[sess.IdentScreenName()] = &sessionSlot{
-		sess:    sess,
-		removed: make(chan bool),
-	}
+	// Create a new instance within the session group
+	instance := sess.AddInstance()
 
-	return sess, nil
+	s.mapMutex.Lock()
+	s.store[instance.IdentScreenName()] = &sessionSlot{
+		session:      sess,
+		removed:      make(chan bool),
+		multiSession: doMultiSess,
+	}
+	s.mapMutex.Unlock()
+
+	return instance, nil
 }
 
 func (s *InMemorySessionManager) findRec(identScreenName IdentScreenName) *sessionSlot {
 	for _, rec := range s.store {
-		if identScreenName == rec.sess.IdentScreenName() {
+		if identScreenName == rec.session.IdentScreenName() {
 			return rec
 		}
 	}
@@ -125,25 +244,24 @@ func (s *InMemorySessionManager) findRec(identScreenName IdentScreenName) *sessi
 }
 
 // RemoveSession takes a session out of the session pool.
-func (s *InMemorySessionManager) RemoveSession(sess *Session) {
+func (s *InMemorySessionManager) RemoveSession(instance *SessionInstance) {
 	s.mapMutex.Lock()
 	defer s.mapMutex.Unlock()
-	if rec, ok := s.store[sess.IdentScreenName()]; ok && rec.sess == sess {
-		delete(s.store, sess.IdentScreenName())
+	if rec, ok := s.store[instance.IdentScreenName()]; ok && rec.session == instance.Session() {
+		delete(s.store, instance.IdentScreenName())
 		close(rec.removed)
 	}
 }
 
-// RetrieveSession finds a session with a matching sessionID. Returns nil if
-// session is not found.
+// RetrieveSession finds a session with a matching screen name. Returns nil if
+// session is not found or if there are no active instances with complete signon.
 func (s *InMemorySessionManager) RetrieveSession(screenName IdentScreenName) *Session {
 	s.mapMutex.RLock()
 	defer s.mapMutex.RUnlock()
 	if rec, ok := s.store[screenName]; ok {
-		if !rec.sess.SignonComplete() {
-			return nil
+		if rec.session.HasLiveInstances() {
+			return rec.session
 		}
-		return rec.sess
 	}
 	return nil
 }
@@ -154,11 +272,9 @@ func (s *InMemorySessionManager) retrieveByScreenNames(screenNames []IdentScreen
 	var ret []*Session
 	for _, sn := range screenNames {
 		for _, rec := range s.store {
-			if !rec.sess.SignonComplete() {
-				continue
-			}
-			if sn == rec.sess.IdentScreenName() {
-				ret = append(ret, rec.sess)
+			if sn == rec.session.IdentScreenName() {
+				ret = append(ret, rec.session)
+				break
 			}
 		}
 	}
@@ -178,10 +294,10 @@ func (s *InMemorySessionManager) AllSessions() []*Session {
 	defer s.mapMutex.RUnlock()
 	var sessions []*Session
 	for _, rec := range s.store {
-		if !rec.sess.SignonComplete() {
+		if !rec.session.HasLiveInstances() {
 			continue
 		}
-		sessions = append(sessions, rec.sess)
+		sessions = append(sessions, rec.session)
 	}
 	return sessions
 }
@@ -206,7 +322,7 @@ type InMemoryChatSessionManager struct {
 
 // AddSession adds a user to a chat room. If screenName already exists, the old
 // session is replaced by a new one.
-func (s *InMemoryChatSessionManager) AddSession(ctx context.Context, chatCookie string, screenName DisplayScreenName) (*Session, error) {
+func (s *InMemoryChatSessionManager) AddSession(ctx context.Context, chatCookie string, screenName DisplayScreenName) (*SessionInstance, error) {
 	s.mapMutex.Lock()
 	if _, ok := s.store[chatCookie]; !ok {
 		s.store[chatCookie] = NewInMemorySessionManager(s.logger)
@@ -217,12 +333,12 @@ func (s *InMemoryChatSessionManager) AddSession(ctx context.Context, chatCookie 
 	ctx, cancel := context.WithTimeout(ctx, time.Second*5)
 	defer cancel()
 
-	sess, err := sessionManager.AddSession(ctx, screenName)
+	sess, err := sessionManager.AddSession(ctx, screenName, false)
 	if err != nil {
 		return nil, fmt.Errorf("AddSession: %w", err)
 	}
 
-	sess.SetChatRoomCookie(chatCookie)
+	sess.Session().SetChatRoomCookie(chatCookie)
 
 	s.mapMutex.Lock()
 	defer s.mapMutex.Unlock()
@@ -246,18 +362,18 @@ func (s *InMemoryChatSessionManager) AddSession(ctx context.Context, chatCookie 
 
 // RemoveSession removes a user session from a chat room. It panics if you
 // attempt to remove the session twice.
-func (s *InMemoryChatSessionManager) RemoveSession(sess *Session) {
+func (s *InMemoryChatSessionManager) RemoveSession(instance *SessionInstance) {
 	s.mapMutex.Lock()
 	defer s.mapMutex.Unlock()
 
-	sessionManager, ok := s.store[sess.ChatRoomCookie()]
+	sessionManager, ok := s.store[instance.ChatRoomCookie()]
 	if !ok {
 		panic("attempting to remove a session after its room has been deleted")
 	}
-	sessionManager.RemoveSession(sess)
+	sessionManager.RemoveSession(instance)
 
 	if sessionManager.Empty() {
-		delete(s.store, sess.ChatRoomCookie())
+		delete(s.store, instance.ChatRoomCookie())
 	}
 }
 
@@ -269,8 +385,7 @@ func (s *InMemoryChatSessionManager) RemoveUserFromAllChats(user IdentScreenName
 	for _, sessionManager := range s.store {
 		userSess := sessionManager.RetrieveSession(user)
 		if userSess != nil {
-			userSess.Close()
-			sessionManager.RemoveSession(userSess)
+			userSess.CloseSession()
 		}
 	}
 }

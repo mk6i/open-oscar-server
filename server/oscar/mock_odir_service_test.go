@@ -111,8 +111,8 @@ func (_c *mockODirService_InfoQuery_Call) RunAndReturn(run func(ctx context.Cont
 }
 
 // KeywordListQuery provides a mock function for the type mockODirService
-func (_mock *mockODirService) KeywordListQuery(context1 context.Context, sNACFrame wire.SNACFrame) (wire.SNACMessage, error) {
-	ret := _mock.Called(context1, sNACFrame)
+func (_mock *mockODirService) KeywordListQuery(ctx context.Context, inFrame wire.SNACFrame) (wire.SNACMessage, error) {
+	ret := _mock.Called(ctx, inFrame)
 
 	if len(ret) == 0 {
 		panic("no return value specified for KeywordListQuery")
@@ -121,15 +121,15 @@ func (_mock *mockODirService) KeywordListQuery(context1 context.Context, sNACFra
 	var r0 wire.SNACMessage
 	var r1 error
 	if returnFunc, ok := ret.Get(0).(func(context.Context, wire.SNACFrame) (wire.SNACMessage, error)); ok {
-		return returnFunc(context1, sNACFrame)
+		return returnFunc(ctx, inFrame)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, wire.SNACFrame) wire.SNACMessage); ok {
-		r0 = returnFunc(context1, sNACFrame)
+		r0 = returnFunc(ctx, inFrame)
 	} else {
 		r0 = ret.Get(0).(wire.SNACMessage)
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, wire.SNACFrame) error); ok {
-		r1 = returnFunc(context1, sNACFrame)
+		r1 = returnFunc(ctx, inFrame)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -142,13 +142,13 @@ type mockODirService_KeywordListQuery_Call struct {
 }
 
 // KeywordListQuery is a helper method to define mock.On call
-//   - context1 context.Context
-//   - sNACFrame wire.SNACFrame
-func (_e *mockODirService_Expecter) KeywordListQuery(context1 interface{}, sNACFrame interface{}) *mockODirService_KeywordListQuery_Call {
-	return &mockODirService_KeywordListQuery_Call{Call: _e.mock.On("KeywordListQuery", context1, sNACFrame)}
+//   - ctx context.Context
+//   - inFrame wire.SNACFrame
+func (_e *mockODirService_Expecter) KeywordListQuery(ctx interface{}, inFrame interface{}) *mockODirService_KeywordListQuery_Call {
+	return &mockODirService_KeywordListQuery_Call{Call: _e.mock.On("KeywordListQuery", ctx, inFrame)}
 }
 
-func (_c *mockODirService_KeywordListQuery_Call) Run(run func(context1 context.Context, sNACFrame wire.SNACFrame)) *mockODirService_KeywordListQuery_Call {
+func (_c *mockODirService_KeywordListQuery_Call) Run(run func(ctx context.Context, inFrame wire.SNACFrame)) *mockODirService_KeywordListQuery_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -171,7 +171,7 @@ func (_c *mockODirService_KeywordListQuery_Call) Return(sNACMessage wire.SNACMes
 	return _c
 }
 
-func (_c *mockODirService_KeywordListQuery_Call) RunAndReturn(run func(context1 context.Context, sNACFrame wire.SNACFrame) (wire.SNACMessage, error)) *mockODirService_KeywordListQuery_Call {
+func (_c *mockODirService_KeywordListQuery_Call) RunAndReturn(run func(ctx context.Context, inFrame wire.SNACFrame) (wire.SNACMessage, error)) *mockODirService_KeywordListQuery_Call {
 	_c.Call.Return(run)
 	return _c
 }

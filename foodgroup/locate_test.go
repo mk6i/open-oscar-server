@@ -3,9 +3,11 @@ package foodgroup
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 
 	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
@@ -18,8 +20,8 @@ func TestLocateService_UserInfoQuery(t *testing.T) {
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
-		// userSession is the session of the user requesting user info
-		userSession *state.Session
+		// instance is the session of the user requesting user info
+		instance *state.SessionInstance
 		// inputSNAC is the SNAC sent from client to server
 		inputSNAC wire.SNACMessage
 		// expectOutput is the SNAC sent from the server to client
@@ -47,14 +49,15 @@ func TestLocateService_UserInfoQuery(t *testing.T) {
 					retrieveSessionParams: retrieveSessionParams{
 						{
 							screenName: state.NewIdentScreenName("requested-user"),
-							result: newTestSession("requested-user",
+							result: newTestInstance("requested-user",
 								sessOptCannedSignonTime,
-								sessOptCannedAwayMessage),
+								sessOptCannedAwayMessage,
+								sessOptUserInfoFlag(wire.OServiceUserFlagUnavailable)).Session(),
 						},
 					},
 				},
 			},
-			userSession: newTestSession("user_screen_name"),
+			instance: newTestInstance("user_screen_name"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -71,10 +74,11 @@ func TestLocateService_UserInfoQuery(t *testing.T) {
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x02_0x06_LocateUserInfoReply{
-					TLVUserInfo: newTestSession("requested-user",
+					TLVUserInfo: newTestInstance("requested-user",
 						sessOptCannedSignonTime,
-						sessOptCannedAwayMessage).
-						TLVUserInfo(),
+						sessOptCannedAwayMessage,
+						sessOptUserInfoFlag(wire.OServiceUserFlagUnavailable)).
+						Session().TLVUserInfo(),
 					LocateInfo: wire.TLVRestBlock{},
 				},
 			},
@@ -101,18 +105,20 @@ func TestLocateService_UserInfoQuery(t *testing.T) {
 					retrieveSessionParams: retrieveSessionParams{
 						{
 							screenName: state.NewIdentScreenName("requested-user"),
-							result: newTestSession("requested-user",
+							result: newTestInstance("requested-user",
 								sessOptCannedSignonTime,
 								sessOptCannedAwayMessage,
+								sessOptUserInfoFlag(wire.OServiceUserFlagUnavailable),
 								sessOptProfile(state.UserProfile{
 									ProfileText: "this is my profile!",
 									MIMEType:    "text/aolrtf; charset=\"us-ascii\"",
-								})),
+									UpdateTime:  time.Now(),
+								})).Session(),
 						},
 					},
 				},
 			},
-			userSession: newTestSession("user_screen_name"),
+			instance: newTestInstance("user_screen_name"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -130,9 +136,10 @@ func TestLocateService_UserInfoQuery(t *testing.T) {
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x02_0x06_LocateUserInfoReply{
-					TLVUserInfo: newTestSession("requested-user",
+					TLVUserInfo: newTestInstance("requested-user",
 						sessOptCannedSignonTime,
-						sessOptCannedAwayMessage).TLVUserInfo(),
+						sessOptCannedAwayMessage,
+						sessOptUserInfoFlag(wire.OServiceUserFlagUnavailable)).Session().TLVUserInfo(),
 					LocateInfo: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
 							wire.NewTLVBE(wire.LocateTLVTagsInfoSigMime, `text/aolrtf; charset="us-ascii"`),
@@ -164,14 +171,15 @@ func TestLocateService_UserInfoQuery(t *testing.T) {
 					retrieveSessionParams: retrieveSessionParams{
 						{
 							screenName: state.NewIdentScreenName("requested-user"),
-							result: newTestSession("requested-user",
+							result: newTestInstance("requested-user",
 								sessOptCannedSignonTime,
-								sessOptCannedAwayMessage),
+								sessOptCannedAwayMessage,
+								sessOptUserInfoFlag(wire.OServiceUserFlagUnavailable)).Session(),
 						},
 					},
 				},
 			},
-			userSession: newTestSession("user_screen_name"),
+			instance: newTestInstance("user_screen_name"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -189,10 +197,11 @@ func TestLocateService_UserInfoQuery(t *testing.T) {
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x02_0x06_LocateUserInfoReply{
-					TLVUserInfo: newTestSession("requested-user",
+					TLVUserInfo: newTestInstance("requested-user",
 						sessOptCannedSignonTime,
-						sessOptCannedAwayMessage).
-						TLVUserInfo(),
+						sessOptCannedAwayMessage,
+						sessOptUserInfoFlag(wire.OServiceUserFlagUnavailable)).
+						Session().TLVUserInfo(),
 					LocateInfo: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
 							wire.NewTLVBE(wire.LocateTLVTagsInfoUnavailableMime, `text/aolrtf; charset="us-ascii"`),
@@ -221,7 +230,7 @@ func TestLocateService_UserInfoQuery(t *testing.T) {
 					},
 				},
 			},
-			userSession: newTestSession("user_screen_name"),
+			instance: newTestInstance("user_screen_name"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -268,7 +277,7 @@ func TestLocateService_UserInfoQuery(t *testing.T) {
 					},
 				},
 			},
-			userSession: newTestSession("user_screen_name"),
+			instance: newTestInstance("user_screen_name"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -304,11 +313,13 @@ func TestLocateService_UserInfoQuery(t *testing.T) {
 					RetrieveSession(val.screenName).
 					Return(val.result)
 			}
+			messageRelayer := newMockMessageRelayer(t)
 			svc := LocateService{
 				relationshipFetcher: relationshipFetcher,
+				messageRelayer:      messageRelayer,
 				sessionRetriever:    sessionRetriever,
 			}
-			outputSNAC, err := svc.UserInfoQuery(context.Background(), tc.userSession, tc.inputSNAC.Frame,
+			outputSNAC, err := svc.UserInfoQuery(context.Background(), tc.instance, tc.inputSNAC.Frame,
 				tc.inputSNAC.Body.(wire.SNAC_0x02_0x05_LocateUserInfoQuery))
 			assert.NoError(t, err)
 			assert.Equal(t, tc.expectOutput, outputSNAC)
@@ -320,8 +331,8 @@ func TestLocateService_SetKeywordInfo(t *testing.T) {
 	tests := []struct {
 		// name is the unit test name
 		name string
-		// userSession is the session of the user setting info
-		userSession *state.Session
+		// instance is the session of the user setting info
+		instance *state.SessionInstance
 		// inputSNAC is the SNAC sent from client to server
 		inputSNAC wire.SNACMessage
 		// expectOutput is the SNAC sent from the server to client
@@ -333,8 +344,8 @@ func TestLocateService_SetKeywordInfo(t *testing.T) {
 		wantErr error
 	}{
 		{
-			name:        "set exactly 5 interests",
-			userSession: newTestSession("test-user"),
+			name:     "set exactly 5 interests",
+			instance: newTestInstance("test-user"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -381,8 +392,8 @@ func TestLocateService_SetKeywordInfo(t *testing.T) {
 			},
 		},
 		{
-			name:        "set less than 5 interests",
-			userSession: newTestSession("test-user"),
+			name:     "set less than 5 interests",
+			instance: newTestInstance("test-user"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -427,8 +438,8 @@ func TestLocateService_SetKeywordInfo(t *testing.T) {
 			},
 		},
 		{
-			name:        "set more than 5 interests",
-			userSession: newTestSession("test-user"),
+			name:     "set more than 5 interests",
+			instance: newTestInstance("test-user"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -484,8 +495,9 @@ func TestLocateService_SetKeywordInfo(t *testing.T) {
 					SetKeywords(matchContext(), params.screenName, params.keywords).
 					Return(params.err)
 			}
-			svc := NewLocateService(nil, nil, profileManager, nil, nil, nil)
-			outputSNAC, err := svc.SetKeywordInfo(context.Background(), tt.userSession, tt.inputSNAC.Frame, tt.inputSNAC.Body.(wire.SNAC_0x02_0x0F_LocateSetKeywordInfo))
+			messageRelayer := newMockMessageRelayer(t)
+			svc := NewLocateService(nil, messageRelayer, profileManager, nil, nil, nil)
+			outputSNAC, err := svc.SetKeywordInfo(context.Background(), tt.instance, tt.inputSNAC.Frame, tt.inputSNAC.Body.(wire.SNAC_0x02_0x0F_LocateSetKeywordInfo))
 			assert.NoError(t, err)
 			assert.Equal(t, tt.expectOutput, outputSNAC)
 		})
@@ -496,8 +508,8 @@ func TestLocateService_SetDirInfo(t *testing.T) {
 	tests := []struct {
 		// name is the unit test name
 		name string
-		// userSession is the session of the user setting info
-		userSession *state.Session
+		// instance is the session of the user setting info
+		instance *state.SessionInstance
 		// inputSNAC is the SNAC sent from client to server
 		inputSNAC wire.SNACMessage
 		// expectOutput is the SNAC sent from the server to client
@@ -509,8 +521,8 @@ func TestLocateService_SetDirInfo(t *testing.T) {
 		wantErr error
 	}{
 		{
-			name:        "set directory info",
-			userSession: newTestSession("test-user"),
+			name:     "set directory info",
+			instance: newTestInstance("test-user"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -573,8 +585,9 @@ func TestLocateService_SetDirInfo(t *testing.T) {
 					SetDirectoryInfo(matchContext(), params.screenName, params.info).
 					Return(nil)
 			}
-			svc := NewLocateService(nil, nil, profileManager, nil, nil, nil)
-			outputSNAC, err := svc.SetDirInfo(context.Background(), tt.userSession, tt.inputSNAC.Frame, tt.inputSNAC.Body.(wire.SNAC_0x02_0x09_LocateSetDirInfo))
+			messageRelayer := newMockMessageRelayer(t)
+			svc := NewLocateService(nil, messageRelayer, profileManager, nil, nil, nil)
+			outputSNAC, err := svc.SetDirInfo(context.Background(), tt.instance, tt.inputSNAC.Frame, tt.inputSNAC.Body.(wire.SNAC_0x02_0x09_LocateSetDirInfo))
 			assert.NoError(t, err)
 			assert.Equal(t, tt.expectOutput, outputSNAC)
 		})
@@ -585,21 +598,32 @@ func TestLocateService_SetInfo(t *testing.T) {
 	tests := []struct {
 		// name is the unit test name
 		name string
-		// userSession is the session of the user setting info
-		userSession *state.Session
+		// instance is the session of the user setting info
+		instance *state.SessionInstance
 		// inBody is the message sent from client to server
 		inBody wire.SNAC_0x02_0x04_LocateSetInfo
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
-		// wantSessionProfile is the expected profile set on the session
-		wantSessionProfile state.UserProfile
+		// checkSession validates the state of the session
+		checkSession func(*testing.T, *state.Session)
 		// wantErr is the expected error
 		wantErr error
 	}{
 		{
-			name:        "set session profile (AIM < 6)",
-			userSession: newTestSession("test-user"),
+			name: "set session profile (AIM < 6)",
+			instance: func() *state.SessionInstance {
+				curInstance := newTestInstance("test-user")
+				curInstance.SetKerberosAuth(false)
+
+				// set up other concurrent instances
+				instance2 := curInstance.Session().AddInstance()
+				instance2.SetKerberosAuth(true)
+
+				instance3 := curInstance.Session().AddInstance()
+				instance3.SetKerberosAuth(false)
+				return curInstance
+			}(),
 			inBody: wire.SNAC_0x02_0x04_LocateSetInfo{
 				TLVRestBlock: wire.TLVRestBlock{
 					TLVList: wire.TLVList{
@@ -608,14 +632,31 @@ func TestLocateService_SetInfo(t *testing.T) {
 					},
 				},
 			},
-			wantSessionProfile: state.UserProfile{
-				ProfileText: "profile-result",
-				MIMEType:    `text/aolrtf; charset="us-ascii"`,
+			checkSession: func(t *testing.T, session *state.Session) {
+				require.Equal(t, 3, session.InstanceCount())
+
+				assert.Equal(t, "profile-result", session.Instance(1).Profile().ProfileText)
+				assert.Equal(t, `text/aolrtf; charset="us-ascii"`, session.Instance(1).Profile().MIMEType)
+				assert.NotZero(t, session.Instance(1).Profile().UpdateTime)
+
+				assert.True(t, session.Instance(2).Profile().IsZero())
+				assert.True(t, session.Instance(3).Profile().IsZero())
 			},
 		},
 		{
-			name:        "set stored profile (AIM 6-7)",
-			userSession: newTestSession("test-user", sessOptKerberosAuth),
+			name: "set stored profile (AIM 6-7)",
+			instance: func() *state.SessionInstance {
+				curInstance := newTestInstance("test-user", sessOptSetFoodGroupVersion(wire.OService, 4))
+				curInstance.SetKerberosAuth(true)
+
+				// set up other concurrent instances
+				instance2 := curInstance.Session().AddInstance()
+				instance2.SetKerberosAuth(true)
+
+				instance3 := curInstance.Session().AddInstance()
+				instance3.SetKerberosAuth(false)
+				return curInstance
+			}(),
 			inBody: wire.SNAC_0x02_0x04_LocateSetInfo{
 				TLVRestBlock: wire.TLVRestBlock{
 					TLVList: wire.TLVList{
@@ -632,19 +673,53 @@ func TestLocateService_SetInfo(t *testing.T) {
 							body: state.UserProfile{
 								ProfileText: "profile-result",
 								MIMEType:    `text/aolrtf; charset="us-ascii"`,
+								UpdateTime:  time.Now(),
+							},
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToOtherInstancesParams: relayToOtherInstancesParams{
+						{
+							screenName: state.NewIdentScreenName("test-user"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.OService,
+									SubGroup:  wire.OServiceUserInfoUpdate,
+								},
+								Body: func(val any) bool {
+									snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
+									if !ok {
+										return false
+									}
+									require.Len(t, snac.UserInfo, 4)
+									_, hasSigTime1 := snac.UserInfo[1].Uint32BE(wire.OServiceUserInfoSigTime)
+
+									return assert.True(t, hasSigTime1, "has signature update time")
+								},
 							},
 						},
 					},
 				},
 			},
-			wantSessionProfile: state.UserProfile{
-				ProfileText: "profile-result",
-				MIMEType:    `text/aolrtf; charset="us-ascii"`,
+			checkSession: func(t *testing.T, session *state.Session) {
+				require.Equal(t, 3, session.InstanceCount())
+
+				assert.Equal(t, "profile-result", session.Instance(1).Profile().ProfileText)
+				assert.Equal(t, `text/aolrtf; charset="us-ascii"`, session.Instance(1).Profile().MIMEType)
+				assert.NotZero(t, session.Instance(1).Profile().UpdateTime)
+
+				assert.Equal(t, "profile-result", session.Instance(2).Profile().ProfileText)
+				assert.Equal(t, `text/aolrtf; charset="us-ascii"`, session.Instance(2).Profile().MIMEType)
+				assert.NotZero(t, session.Instance(2).Profile().UpdateTime)
+
+				assert.True(t, session.Instance(3).Profile().IsZero())
+
 			},
 		},
 		{
-			name:        "set away message during sign on flow",
-			userSession: newTestSession("user_screen_name"),
+			name:     "set away message during sign on flow",
+			instance: newTestInstance("user_screen_name"),
 			inBody: wire.SNAC_0x02_0x04_LocateSetInfo{
 				TLVRestBlock: wire.TLVRestBlock{
 					TLVList: wire.TLVList{
@@ -657,10 +732,13 @@ func TestLocateService_SetInfo(t *testing.T) {
 					broadcastBuddyArrivedParams: broadcastBuddyArrivedParams{},
 				},
 			},
+			checkSession: func(t *testing.T, session *state.Session) {
+				assert.True(t, session.Instance(1).Profile().IsZero())
+			},
 		},
 		{
-			name:        "set away message after sign on flow",
-			userSession: newTestSession("user_screen_name", sessOptSignonComplete),
+			name:     "set away message after sign on flow",
+			instance: newTestInstance("user_screen_name", sessOptSignonComplete),
 			inBody: wire.SNAC_0x02_0x04_LocateSetInfo{
 				TLVRestBlock: wire.TLVRestBlock{
 					TLVList: wire.TLVList{
@@ -676,6 +754,9 @@ func TestLocateService_SetInfo(t *testing.T) {
 						},
 					},
 				},
+			},
+			checkSession: func(t *testing.T, session *state.Session) {
+				assert.True(t, session.Instance(1).Profile().IsZero())
 			},
 		},
 	}
@@ -699,24 +780,34 @@ func TestLocateService_SetInfo(t *testing.T) {
 					})).
 					Return(params.err)
 			}
-			svc := NewLocateService(nil, nil, profileManager, nil, nil, nil)
-			svc.buddyBroadcaster = buddyUpdateBroadcaster
-			assert.Equal(t, tt.wantErr, svc.SetInfo(context.Background(), tt.userSession, tt.inBody))
-
-			if tt.wantSessionProfile.Empty() {
-				assert.True(t, tt.userSession.Profile().Empty())
-			} else {
-				assert.Equal(t, tt.wantSessionProfile.ProfileText, tt.userSession.Profile().ProfileText)
-				assert.Equal(t, tt.wantSessionProfile.MIMEType, tt.userSession.Profile().MIMEType)
+			messageRelayer := newMockMessageRelayer(t)
+			for _, params := range tt.mockParams.relayToOtherInstancesParams {
+				if matcherFn, ok := params.message.Body.(func(val any) bool); ok {
+					messageRelayer.EXPECT().
+						RelayToOtherInstances(matchContext(), matchSession(params.screenName), mock.MatchedBy(func(message wire.SNACMessage) bool {
+							return params.message.Frame == message.Frame &&
+								matcherFn(message.Body)
+						}))
+				} else {
+					t.Fail()
+				}
 			}
+			svc := NewLocateService(nil, messageRelayer, profileManager, nil, nil, nil)
+			svc.buddyBroadcaster = buddyUpdateBroadcaster
+
+			err := svc.SetInfo(context.Background(), tt.instance, tt.inBody)
+			assert.Equal(t, tt.wantErr, err)
+
+			tt.checkSession(t, tt.instance.Session())
 		})
 	}
 }
 
 func TestLocateService_SetInfo_SetCaps(t *testing.T) {
-	svc := NewLocateService(nil, nil, nil, nil, nil, nil)
+	messageRelayer := newMockMessageRelayer(t)
+	svc := NewLocateService(nil, messageRelayer, nil, nil, nil, nil)
 
-	sess := newTestSession("screen-name")
+	instance := newTestInstance("screen-name")
 	inBody := wire.SNAC_0x02_0x04_LocateSetInfo{
 		TLVRestBlock: wire.TLVRestBlock{
 			TLVList: wire.TLVList{
@@ -735,7 +826,7 @@ func TestLocateService_SetInfo_SetCaps(t *testing.T) {
 			},
 		},
 	}
-	assert.NoError(t, svc.SetInfo(context.Background(), sess, inBody))
+	assert.NoError(t, svc.SetInfo(context.Background(), instance, inBody))
 
 	expect := [][16]byte{
 		// 748F2420-6287-11D1-8222-444553540000 (chat)
@@ -743,11 +834,12 @@ func TestLocateService_SetInfo_SetCaps(t *testing.T) {
 		// 09461346-4C7F-11D1-8222-444553540000 (avatar)
 		{9, 70, 19, 70, 76, 127, 17, 209, 130, 34, 68, 69, 83, 84, 0, 0},
 	}
-	assert.Equal(t, expect, sess.Caps())
+	assert.ElementsMatch(t, expect, instance.Session().Caps())
 }
 
 func TestLocateService_RightsQuery(t *testing.T) {
-	svc := NewLocateService(nil, nil, nil, nil, nil, nil)
+	messageRelayer := newMockMessageRelayer(t)
+	svc := NewLocateService(nil, messageRelayer, nil, nil, nil, nil)
 
 	outputSNAC := svc.RightsQuery(context.Background(), wire.SNACFrame{RequestID: 1234})
 	expectSNAC := wire.SNACMessage{
@@ -776,8 +868,8 @@ func TestLocateService_DirInfo(t *testing.T) {
 	tests := []struct {
 		// name is the unit test name
 		name string
-		// userSession is the session of the user setting info
-		userSession *state.Session
+		// instance is the session of the user setting info
+		instance *state.SessionInstance
 		// inputSNAC is the SNAC sent from client to server
 		inputSNAC wire.SNACMessage
 		// expectOutput is the SNAC sent from the server to client
@@ -789,8 +881,8 @@ func TestLocateService_DirInfo(t *testing.T) {
 		wantErr error
 	}{
 		{
-			name:        "happy path",
-			userSession: newTestSession("test-user"),
+			name:     "happy path",
+			instance: newTestInstance("test-user"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -848,8 +940,8 @@ func TestLocateService_DirInfo(t *testing.T) {
 			},
 		},
 		{
-			name:        "user not found",
-			userSession: newTestSession("test-user"),
+			name:     "user not found",
+			instance: newTestInstance("test-user"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -891,7 +983,8 @@ func TestLocateService_DirInfo(t *testing.T) {
 					User(matchContext(), params.screenName).
 					Return(params.result, params.err)
 			}
-			svc := NewLocateService(nil, nil, profileManager, nil, nil, nil)
+			messageRelayer := newMockMessageRelayer(t)
+			svc := NewLocateService(nil, messageRelayer, profileManager, nil, nil, nil)
 			outputSNAC, err := svc.DirInfo(context.Background(), tt.inputSNAC.Frame, tt.inputSNAC.Body.(wire.SNAC_0x02_0x0B_LocateGetDirInfo))
 			assert.NoError(t, err)
 			assert.Equal(t, tt.expectOutput, outputSNAC)

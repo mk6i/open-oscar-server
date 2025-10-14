@@ -39,8 +39,8 @@ func (_m *mockDirSearchService) EXPECT() *mockDirSearchService_Expecter {
 }
 
 // InfoQuery provides a mock function for the type mockDirSearchService
-func (_mock *mockDirSearchService) InfoQuery(context1 context.Context, inFrame wire.SNACFrame, inBody wire.SNAC_0x0F_0x02_InfoQuery) (wire.SNACMessage, error) {
-	ret := _mock.Called(context1, inFrame, inBody)
+func (_mock *mockDirSearchService) InfoQuery(ctx context.Context, inFrame wire.SNACFrame, inBody wire.SNAC_0x0F_0x02_InfoQuery) (wire.SNACMessage, error) {
+	ret := _mock.Called(ctx, inFrame, inBody)
 
 	if len(ret) == 0 {
 		panic("no return value specified for InfoQuery")
@@ -49,15 +49,15 @@ func (_mock *mockDirSearchService) InfoQuery(context1 context.Context, inFrame w
 	var r0 wire.SNACMessage
 	var r1 error
 	if returnFunc, ok := ret.Get(0).(func(context.Context, wire.SNACFrame, wire.SNAC_0x0F_0x02_InfoQuery) (wire.SNACMessage, error)); ok {
-		return returnFunc(context1, inFrame, inBody)
+		return returnFunc(ctx, inFrame, inBody)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, wire.SNACFrame, wire.SNAC_0x0F_0x02_InfoQuery) wire.SNACMessage); ok {
-		r0 = returnFunc(context1, inFrame, inBody)
+		r0 = returnFunc(ctx, inFrame, inBody)
 	} else {
 		r0 = ret.Get(0).(wire.SNACMessage)
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, wire.SNACFrame, wire.SNAC_0x0F_0x02_InfoQuery) error); ok {
-		r1 = returnFunc(context1, inFrame, inBody)
+		r1 = returnFunc(ctx, inFrame, inBody)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -70,14 +70,14 @@ type mockDirSearchService_InfoQuery_Call struct {
 }
 
 // InfoQuery is a helper method to define mock.On call
-//   - context1 context.Context
+//   - ctx context.Context
 //   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x0F_0x02_InfoQuery
-func (_e *mockDirSearchService_Expecter) InfoQuery(context1 interface{}, inFrame interface{}, inBody interface{}) *mockDirSearchService_InfoQuery_Call {
-	return &mockDirSearchService_InfoQuery_Call{Call: _e.mock.On("InfoQuery", context1, inFrame, inBody)}
+func (_e *mockDirSearchService_Expecter) InfoQuery(ctx interface{}, inFrame interface{}, inBody interface{}) *mockDirSearchService_InfoQuery_Call {
+	return &mockDirSearchService_InfoQuery_Call{Call: _e.mock.On("InfoQuery", ctx, inFrame, inBody)}
 }
 
-func (_c *mockDirSearchService_InfoQuery_Call) Run(run func(context1 context.Context, inFrame wire.SNACFrame, inBody wire.SNAC_0x0F_0x02_InfoQuery)) *mockDirSearchService_InfoQuery_Call {
+func (_c *mockDirSearchService_InfoQuery_Call) Run(run func(ctx context.Context, inFrame wire.SNACFrame, inBody wire.SNAC_0x0F_0x02_InfoQuery)) *mockDirSearchService_InfoQuery_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -105,7 +105,7 @@ func (_c *mockDirSearchService_InfoQuery_Call) Return(sNACMessage wire.SNACMessa
 	return _c
 }
 
-func (_c *mockDirSearchService_InfoQuery_Call) RunAndReturn(run func(context1 context.Context, inFrame wire.SNACFrame, inBody wire.SNAC_0x0F_0x02_InfoQuery) (wire.SNACMessage, error)) *mockDirSearchService_InfoQuery_Call {
+func (_c *mockDirSearchService_InfoQuery_Call) RunAndReturn(run func(ctx context.Context, inFrame wire.SNACFrame, inBody wire.SNAC_0x0F_0x02_InfoQuery) (wire.SNACMessage, error)) *mockDirSearchService_InfoQuery_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -1045,11 +1045,11 @@ func TestHandler_ChatNavCreateRoom(t *testing.T) {
 				Body: wire.SNAC_0x0D_0x09_ChatNavNavInfo{},
 			}
 
-			sess := state.NewSession()
+			instance := state.NewSession().AddInstance()
 
 			svc := newMockChatNavService(t)
 			svc.EXPECT().
-				CreateRoom(mock.Anything, sess, input.Frame, input.Body).
+				CreateRoom(mock.Anything, instance, input.Frame, input.Body).
 				Return(output, tt.serviceError)
 
 			h := Handler{
@@ -1069,7 +1069,7 @@ func TestHandler_ChatNavCreateRoom(t *testing.T) {
 			buf := &bytes.Buffer{}
 			assert.NoError(t, wire.MarshalBE(input.Body, buf))
 
-			err := h.Handle(context.TODO(), wire.BOS, sess, input.Frame, buf, responseWriter, config.Listener{})
+			err := h.Handle(context.TODO(), wire.BOS, instance, input.Frame, buf, responseWriter, config.Listener{})
 			if tt.expectedError != nil {
 				assert.ErrorIs(t, err, tt.expectedError)
 			} else {
@@ -1097,11 +1097,11 @@ func TestHandler_ChatNavCreateRoom_ReadErr(t *testing.T) {
 		Body: wire.SNAC_0x0D_0x09_ChatNavNavInfo{},
 	}
 
-	sess := state.NewSession()
+	instance := state.NewSession().AddInstance()
 
 	svc := newMockChatNavService(t)
 	svc.EXPECT().
-		CreateRoom(mock.Anything, sess, input.Frame, input.Body).
+		CreateRoom(mock.Anything, instance, input.Frame, input.Body).
 		Return(output, nil)
 
 	h := Handler{
@@ -1119,7 +1119,7 @@ func TestHandler_ChatNavCreateRoom_ReadErr(t *testing.T) {
 	buf := &bytes.Buffer{}
 	assert.NoError(t, wire.MarshalBE(input.Body, buf))
 
-	assert.NoError(t, h.Handle(context.TODO(), wire.BOS, sess, input.Frame, buf, ss, config.Listener{}))
+	assert.NoError(t, h.Handle(context.TODO(), wire.BOS, instance, input.Frame, buf, ss, config.Listener{}))
 }
 
 func TestHandler_ChatNavRequestChatRights(t *testing.T) {
@@ -1470,11 +1470,12 @@ func TestHandler_ChatChannelMsgToHost(t *testing.T) {
 
 func TestHandler_FeedbagDeleteItem(t *testing.T) {
 	tests := []struct {
-		name          string
-		inputBody     wire.SNAC_0x13_0x0A_FeedbagDeleteItem
-		serviceError  error
-		responseError error
-		expectedError error
+		name           string
+		inputBody      wire.SNAC_0x13_0x0A_FeedbagDeleteItem
+		expectedOutput *wire.SNACMessage
+		serviceError   error
+		responseError  error
+		expectedError  error
 	}{
 		{
 			name: "success",
@@ -1485,6 +1486,26 @@ func TestHandler_FeedbagDeleteItem(t *testing.T) {
 					},
 				},
 			},
+			expectedOutput: &wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagStatus,
+				},
+				Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
+					Results: []uint16{1234},
+				},
+			},
+		},
+		{
+			name: "success (nil output)",
+			inputBody: wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
+				Items: []wire.FeedbagItem{
+					{
+						Name: "my-item",
+					},
+				},
+			},
+			expectedOutput: nil,
 		},
 		{
 			name: "service error",
@@ -1493,6 +1514,15 @@ func TestHandler_FeedbagDeleteItem(t *testing.T) {
 					{
 						Name: "my-item",
 					},
+				},
+			},
+			expectedOutput: &wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagStatus,
+				},
+				Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
+					Results: []uint16{1234},
 				},
 			},
 			serviceError:  assert.AnError,
@@ -1505,6 +1535,15 @@ func TestHandler_FeedbagDeleteItem(t *testing.T) {
 					{
 						Name: "my-item",
 					},
+				},
+			},
+			expectedOutput: &wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagStatus,
+				},
+				Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
+					Results: []uint16{1234},
 				},
 			},
 			responseError: assert.AnError,
@@ -1521,20 +1560,11 @@ func TestHandler_FeedbagDeleteItem(t *testing.T) {
 				},
 				Body: tt.inputBody,
 			}
-			output := wire.SNACMessage{
-				Frame: wire.SNACFrame{
-					FoodGroup: wire.Feedbag,
-					SubGroup:  wire.FeedbagStatus,
-				},
-				Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
-					Results: []uint16{1234},
-				},
-			}
 
 			svc := newMockFeedbagService(t)
 			svc.EXPECT().
 				DeleteItem(mock.Anything, mock.Anything, input.Frame, input.Body).
-				Return(output, tt.serviceError)
+				Return(tt.expectedOutput, tt.serviceError)
 
 			h := Handler{
 				FeedbagService: svc,
@@ -1544,9 +1574,9 @@ func TestHandler_FeedbagDeleteItem(t *testing.T) {
 			}
 
 			responseWriter := newMockResponseWriter(t)
-			if tt.serviceError == nil {
+			if tt.serviceError == nil && tt.expectedOutput != nil {
 				responseWriter.EXPECT().
-					SendSNAC(output.Frame, output.Body).
+					SendSNAC(tt.expectedOutput.Frame, tt.expectedOutput.Body).
 					Return(tt.responseError)
 			}
 
@@ -1609,11 +1639,12 @@ func TestHandler_FeedbagEndCluster(t *testing.T) {
 
 func TestHandler_FeedbagInsertItem(t *testing.T) {
 	tests := []struct {
-		name          string
-		inputBody     wire.SNAC_0x13_0x08_FeedbagInsertItem
-		serviceError  error
-		responseError error
-		expectedError error
+		name           string
+		inputBody      wire.SNAC_0x13_0x08_FeedbagInsertItem
+		expectedOutput *wire.SNACMessage
+		serviceError   error
+		responseError  error
+		expectedError  error
 	}{
 		{
 			name: "success",
@@ -1622,6 +1653,26 @@ func TestHandler_FeedbagInsertItem(t *testing.T) {
 					{
 						Name: "my-item",
 					},
+				},
+			},
+			expectedOutput: nil,
+		},
+		{
+			name: "success (non-nil output)",
+			inputBody: wire.SNAC_0x13_0x08_FeedbagInsertItem{
+				Items: []wire.FeedbagItem{
+					{
+						Name: "my-item",
+					},
+				},
+			},
+			expectedOutput: &wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagStatus,
+				},
+				Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
+					Results: []uint16{1234},
 				},
 			},
 		},
@@ -1634,6 +1685,15 @@ func TestHandler_FeedbagInsertItem(t *testing.T) {
 					},
 				},
 			},
+			expectedOutput: &wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagStatus,
+				},
+				Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
+					Results: []uint16{1234},
+				},
+			},
 			serviceError:  assert.AnError,
 			expectedError: assert.AnError,
 		},
@@ -1644,6 +1704,15 @@ func TestHandler_FeedbagInsertItem(t *testing.T) {
 					{
 						Name: "my-item",
 					},
+				},
+			},
+			expectedOutput: &wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagStatus,
+				},
+				Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
+					Results: []uint16{1234},
 				},
 			},
 			responseError: assert.AnError,
@@ -1660,20 +1729,11 @@ func TestHandler_FeedbagInsertItem(t *testing.T) {
 				},
 				Body: tt.inputBody,
 			}
-			output := wire.SNACMessage{
-				Frame: wire.SNACFrame{
-					FoodGroup: wire.Feedbag,
-					SubGroup:  wire.FeedbagStatus,
-				},
-				Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
-					Results: []uint16{1234},
-				},
-			}
 
 			svc := newMockFeedbagService(t)
 			svc.EXPECT().
 				UpsertItem(mock.Anything, mock.Anything, input.Frame, tt.inputBody.Items).
-				Return(output, tt.serviceError)
+				Return(tt.expectedOutput, tt.serviceError)
 
 			h := Handler{
 				FeedbagService: svc,
@@ -1683,9 +1743,9 @@ func TestHandler_FeedbagInsertItem(t *testing.T) {
 			}
 
 			responseWriter := newMockResponseWriter(t)
-			if tt.serviceError == nil {
+			if tt.serviceError == nil && tt.expectedOutput != nil {
 				responseWriter.EXPECT().
-					SendSNAC(output.Frame, output.Body).
+					SendSNAC(tt.expectedOutput.Frame, tt.expectedOutput.Body).
 					Return(tt.responseError)
 			}
 
@@ -2041,11 +2101,12 @@ func TestHandler_FeedbagStartCluster(t *testing.T) {
 
 func TestHandler_FeedbagUpdateItem(t *testing.T) {
 	tests := []struct {
-		name          string
-		inputBody     wire.SNAC_0x13_0x09_FeedbagUpdateItem
-		serviceError  error
-		responseError error
-		expectedError error
+		name           string
+		inputBody      wire.SNAC_0x13_0x09_FeedbagUpdateItem
+		expectedOutput *wire.SNACMessage
+		serviceError   error
+		responseError  error
+		expectedError  error
 	}{
 		{
 			name: "success",
@@ -2054,6 +2115,26 @@ func TestHandler_FeedbagUpdateItem(t *testing.T) {
 					{
 						Name: "my-item",
 					},
+				},
+			},
+			expectedOutput: nil,
+		},
+		{
+			name: "success (non-nil output)",
+			inputBody: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
+				Items: []wire.FeedbagItem{
+					{
+						Name: "my-item",
+					},
+				},
+			},
+			expectedOutput: &wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagStatus,
+				},
+				Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
+					Results: []uint16{1234},
 				},
 			},
 		},
@@ -2066,6 +2147,15 @@ func TestHandler_FeedbagUpdateItem(t *testing.T) {
 					},
 				},
 			},
+			expectedOutput: &wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagStatus,
+				},
+				Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
+					Results: []uint16{1234},
+				},
+			},
 			serviceError:  assert.AnError,
 			expectedError: assert.AnError,
 		},
@@ -2076,6 +2166,15 @@ func TestHandler_FeedbagUpdateItem(t *testing.T) {
 					{
 						Name: "my-item",
 					},
+				},
+			},
+			expectedOutput: &wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagStatus,
+				},
+				Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
+					Results: []uint16{1234},
 				},
 			},
 			responseError: assert.AnError,
@@ -2092,20 +2191,11 @@ func TestHandler_FeedbagUpdateItem(t *testing.T) {
 				},
 				Body: tt.inputBody,
 			}
-			output := wire.SNACMessage{
-				Frame: wire.SNACFrame{
-					FoodGroup: wire.Feedbag,
-					SubGroup:  wire.FeedbagStatus,
-				},
-				Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
-					Results: []uint16{1234},
-				},
-			}
 
 			svc := newMockFeedbagService(t)
 			svc.EXPECT().
 				UpsertItem(mock.Anything, mock.Anything, input.Frame, tt.inputBody.Items).
-				Return(output, tt.serviceError)
+				Return(tt.expectedOutput, tt.serviceError)
 
 			h := Handler{
 				FeedbagService: svc,
@@ -2115,9 +2205,9 @@ func TestHandler_FeedbagUpdateItem(t *testing.T) {
 			}
 
 			responseWriter := newMockResponseWriter(t)
-			if tt.serviceError == nil {
+			if tt.serviceError == nil && tt.expectedOutput != nil {
 				responseWriter.EXPECT().
-					SendSNAC(output.Frame, output.Body).
+					SendSNAC(tt.expectedOutput.Frame, tt.expectedOutput.Body).
 					Return(tt.responseError)
 			}
 
@@ -2696,13 +2786,13 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		MetaRequest any
 	}
 	type reqParams struct {
-		ctx     context.Context
-		sess    *state.Session
-		inFrame wire.SNACFrame
-		inBody  wire.SNAC_0x15_0x02_BQuery
-		rw      ResponseWriter
-		seq     uint16
-		wantErr error
+		ctx      context.Context
+		instance *state.SessionInstance
+		inFrame  wire.SNACFrame
+		inBody   wire.SNAC_0x15_0x02_BQuery
+		rw       ResponseWriter
+		seq      uint16
+		wantErr  error
 	}
 	type mockParam struct {
 		req     any
@@ -2738,7 +2828,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqFullInfo - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				instance: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -2770,7 +2860,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqShortInfo - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				instance: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -2802,7 +2892,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqFullInfo2 - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				instance: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -2834,7 +2924,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqXMLReq - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				instance: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -2866,7 +2956,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSetPermissions - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				instance: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -2898,7 +2988,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSearchByUIN - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				instance: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -2930,7 +3020,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSearchByUIN2 - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				instance: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -2970,7 +3060,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSearchByEmail - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				instance: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3002,7 +3092,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSearchByEmail3 - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				instance: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3042,7 +3132,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSearchByDetails - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				instance: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3074,7 +3164,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSearchWhitePages - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				instance: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3106,7 +3196,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSearchWhitePages2 - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				instance: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3146,7 +3236,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSetBasicInfo - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				instance: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3178,7 +3268,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSetWorkInfo - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				instance: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3210,7 +3300,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSetMoreInfo - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				instance: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3242,7 +3332,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSetNotes - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				instance: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3274,7 +3364,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSetEmails - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				instance: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3320,7 +3410,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSetInterests - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				instance: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3366,7 +3456,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSetAffiliations - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				instance: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3428,7 +3518,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqStat - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				instance: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3451,7 +3541,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "unknown metadata request subtype",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				instance: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3475,7 +3565,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "OfflineMsgReq - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				instance: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3499,7 +3589,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "DeleteMsgReq - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				instance: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3523,7 +3613,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "unknown request type",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				instance: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3552,83 +3642,83 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 			switch {
 			case tt.allMockParams.fullUserInfo != nil:
 				icqService.EXPECT().
-					FullUserInfo(mock.Anything, tt.reqParams.sess, tt.allMockParams.fullUserInfo.req, tt.reqParams.seq).
+					FullUserInfo(mock.Anything, tt.reqParams.instance, tt.allMockParams.fullUserInfo.req, tt.reqParams.seq).
 					Return(tt.allMockParams.fullUserInfo.wantErr)
 			case tt.allMockParams.shortUserInfo != nil:
 				icqService.EXPECT().
-					ShortUserInfo(mock.Anything, tt.reqParams.sess, tt.allMockParams.shortUserInfo.req, tt.reqParams.seq).
+					ShortUserInfo(mock.Anything, tt.reqParams.instance, tt.allMockParams.shortUserInfo.req, tt.reqParams.seq).
 					Return(tt.allMockParams.shortUserInfo.wantErr)
 			case tt.allMockParams.xmlReqData != nil:
 				icqService.EXPECT().
-					XMLReqData(mock.Anything, tt.reqParams.sess, tt.allMockParams.xmlReqData.req, tt.reqParams.seq).
+					XMLReqData(mock.Anything, tt.reqParams.instance, tt.allMockParams.xmlReqData.req, tt.reqParams.seq).
 					Return(tt.allMockParams.xmlReqData.wantErr)
 			case tt.allMockParams.setPermissions != nil:
 				icqService.EXPECT().
-					SetPermissions(mock.Anything, tt.reqParams.sess, tt.allMockParams.setPermissions.req, tt.reqParams.seq).
+					SetPermissions(mock.Anything, tt.reqParams.instance, tt.allMockParams.setPermissions.req, tt.reqParams.seq).
 					Return(tt.allMockParams.setPermissions.wantErr)
 			case tt.allMockParams.findByUIN != nil:
 				icqService.EXPECT().
-					FindByUIN(mock.Anything, tt.reqParams.sess, tt.allMockParams.findByUIN.req, tt.reqParams.seq).
+					FindByUIN(mock.Anything, tt.reqParams.instance, tt.allMockParams.findByUIN.req, tt.reqParams.seq).
 					Return(tt.allMockParams.findByUIN.wantErr)
 			case tt.allMockParams.findByUIN2 != nil:
 				icqService.EXPECT().
-					FindByUIN2(mock.Anything, tt.reqParams.sess, tt.allMockParams.findByUIN2.req, tt.reqParams.seq).
+					FindByUIN2(mock.Anything, tt.reqParams.instance, tt.allMockParams.findByUIN2.req, tt.reqParams.seq).
 					Return(tt.allMockParams.findByUIN2.wantErr)
 			case tt.allMockParams.findByEmail != nil:
 				icqService.EXPECT().
-					FindByICQEmail(mock.Anything, tt.reqParams.sess, tt.allMockParams.findByEmail.req, tt.reqParams.seq).
+					FindByICQEmail(mock.Anything, tt.reqParams.instance, tt.allMockParams.findByEmail.req, tt.reqParams.seq).
 					Return(tt.allMockParams.findByEmail.wantErr)
 			case tt.allMockParams.findByEmail3 != nil:
 				icqService.EXPECT().
-					FindByEmail3(mock.Anything, tt.reqParams.sess, tt.allMockParams.findByEmail3.req, tt.reqParams.seq).
+					FindByEmail3(mock.Anything, tt.reqParams.instance, tt.allMockParams.findByEmail3.req, tt.reqParams.seq).
 					Return(tt.allMockParams.findByEmail3.wantErr)
 			case tt.allMockParams.findByDetails != nil:
 				icqService.EXPECT().
-					FindByICQName(mock.Anything, tt.reqParams.sess, tt.allMockParams.findByDetails.req, tt.reqParams.seq).
+					FindByICQName(mock.Anything, tt.reqParams.instance, tt.allMockParams.findByDetails.req, tt.reqParams.seq).
 					Return(tt.allMockParams.findByDetails.wantErr)
 			case tt.allMockParams.findByInterests != nil:
 				icqService.EXPECT().
-					FindByICQInterests(mock.Anything, tt.reqParams.sess, tt.allMockParams.findByInterests.req, tt.reqParams.seq).
+					FindByICQInterests(mock.Anything, tt.reqParams.instance, tt.allMockParams.findByInterests.req, tt.reqParams.seq).
 					Return(tt.allMockParams.findByInterests.wantErr)
 			case tt.allMockParams.findByWhitePages2 != nil:
 				icqService.EXPECT().
-					FindByWhitePages2(mock.Anything, tt.reqParams.sess, tt.allMockParams.findByWhitePages2.req, tt.reqParams.seq).
+					FindByWhitePages2(mock.Anything, tt.reqParams.instance, tt.allMockParams.findByWhitePages2.req, tt.reqParams.seq).
 					Return(tt.allMockParams.findByWhitePages2.wantErr)
 			case tt.allMockParams.setBasicInfo != nil:
 				icqService.EXPECT().
-					SetBasicInfo(mock.Anything, tt.reqParams.sess, tt.allMockParams.setBasicInfo.req, tt.reqParams.seq).
+					SetBasicInfo(mock.Anything, tt.reqParams.instance, tt.allMockParams.setBasicInfo.req, tt.reqParams.seq).
 					Return(tt.allMockParams.setBasicInfo.wantErr)
 			case tt.allMockParams.setWorkInfo != nil:
 				icqService.EXPECT().
-					SetWorkInfo(mock.Anything, tt.reqParams.sess, tt.allMockParams.setWorkInfo.req, tt.reqParams.seq).
+					SetWorkInfo(mock.Anything, tt.reqParams.instance, tt.allMockParams.setWorkInfo.req, tt.reqParams.seq).
 					Return(tt.allMockParams.setWorkInfo.wantErr)
 			case tt.allMockParams.setMoreInfo != nil:
 				icqService.EXPECT().
-					SetMoreInfo(mock.Anything, tt.reqParams.sess, tt.allMockParams.setMoreInfo.req, tt.reqParams.seq).
+					SetMoreInfo(mock.Anything, tt.reqParams.instance, tt.allMockParams.setMoreInfo.req, tt.reqParams.seq).
 					Return(tt.allMockParams.setMoreInfo.wantErr)
 			case tt.allMockParams.setUserNotes != nil:
 				icqService.EXPECT().
-					SetUserNotes(mock.Anything, tt.reqParams.sess, tt.allMockParams.setUserNotes.req, tt.reqParams.seq).
+					SetUserNotes(mock.Anything, tt.reqParams.instance, tt.allMockParams.setUserNotes.req, tt.reqParams.seq).
 					Return(tt.allMockParams.setUserNotes.wantErr)
 			case tt.allMockParams.setEmails != nil:
 				icqService.EXPECT().
-					SetEmails(mock.Anything, tt.reqParams.sess, tt.allMockParams.setEmails.req, tt.reqParams.seq).
+					SetEmails(mock.Anything, tt.reqParams.instance, tt.allMockParams.setEmails.req, tt.reqParams.seq).
 					Return(tt.allMockParams.setEmails.wantErr)
 			case tt.allMockParams.setInterests != nil:
 				icqService.EXPECT().
-					SetInterests(mock.Anything, tt.reqParams.sess, tt.allMockParams.setInterests.req, tt.reqParams.seq).
+					SetInterests(mock.Anything, tt.reqParams.instance, tt.allMockParams.setInterests.req, tt.reqParams.seq).
 					Return(tt.allMockParams.setInterests.wantErr)
 			case tt.allMockParams.setAffiliations != nil:
 				icqService.EXPECT().
-					SetAffiliations(mock.Anything, tt.reqParams.sess, tt.allMockParams.setAffiliations.req, tt.reqParams.seq).
+					SetAffiliations(mock.Anything, tt.reqParams.instance, tt.allMockParams.setAffiliations.req, tt.reqParams.seq).
 					Return(tt.allMockParams.setAffiliations.wantErr)
 			case tt.allMockParams.offlineMsgReq != nil:
 				icqService.EXPECT().
-					OfflineMsgReq(mock.Anything, tt.reqParams.sess, tt.reqParams.seq).
+					OfflineMsgReq(mock.Anything, tt.reqParams.instance, tt.reqParams.seq).
 					Return(tt.allMockParams.offlineMsgReq.wantErr)
 			case tt.allMockParams.deleteMsgReq != nil:
 				icqService.EXPECT().
-					DeleteMsgReq(mock.Anything, tt.reqParams.sess, tt.reqParams.seq).
+					DeleteMsgReq(mock.Anything, tt.reqParams.instance, tt.reqParams.seq).
 					Return(tt.allMockParams.deleteMsgReq.wantErr)
 			}
 
@@ -3646,7 +3736,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 				FoodGroup: wire.ICQ,
 				SubGroup:  wire.ICQDBQuery,
 			}
-			err := h.Handle(context.TODO(), wire.BOS, tt.reqParams.sess, frame, buf, nil, config.Listener{})
+			err := h.Handle(context.TODO(), wire.BOS, tt.reqParams.instance, frame, buf, nil, config.Listener{})
 			assert.ErrorIs(t, err, tt.reqParams.wantErr)
 		})
 	}
@@ -3670,8 +3760,9 @@ func TestHandler_ICQDBQuery_QIP2005UINSearchBug(t *testing.T) {
 		},
 	}
 
+	instance := state.NewSession().AddInstance()
 	icqService.EXPECT().
-		FindByUIN2(mock.Anything, &state.Session{}, expect, uint16(1)).
+		FindByUIN2(mock.Anything, instance, expect, uint16(1)).
 		Return(nil)
 
 	h := Handler{
@@ -3710,7 +3801,7 @@ func TestHandler_ICQDBQuery_QIP2005UINSearchBug(t *testing.T) {
 	b := buf.Bytes()
 	b[18] = 6 // incorrectly set TLV length to 6 (should be 4)
 
-	err := h.ICQDBQuery(nil, &state.Session{}, wire.SNACFrame{}, buf, nil)
+	err := h.ICQDBQuery(nil, instance, wire.SNACFrame{}, buf, nil)
 	assert.NoError(t, err)
 }
 
@@ -4175,10 +4266,10 @@ func TestHandler_OServiceServiceClientVersions(t *testing.T) {
 				},
 			}
 
-			sess := state.NewSession()
+			instance := state.NewSession().AddInstance()
 			svc := newMockOServiceService(t)
 			svc.EXPECT().
-				ClientVersions(mock.Anything, sess, input.Frame, input.Body).
+				ClientVersions(mock.Anything, instance, input.Frame, input.Body).
 				Return(output)
 
 			h := Handler{
@@ -4196,7 +4287,7 @@ func TestHandler_OServiceServiceClientVersions(t *testing.T) {
 			buf := &bytes.Buffer{}
 			assert.NoError(t, wire.MarshalBE(input.Body, buf))
 
-			err := h.Handle(context.Background(), wire.BOS, sess, input.Frame, buf, responseWriter, config.Listener{})
+			err := h.Handle(context.Background(), wire.BOS, instance, input.Frame, buf, responseWriter, config.Listener{})
 			if tt.expectedError != nil {
 				assert.ErrorIs(t, err, tt.expectedError)
 			} else {
@@ -4308,11 +4399,11 @@ func TestHandler_OServiceServiceRateParamsSubAdd(t *testing.T) {
 				Body: tt.inputBody,
 			}
 
-			sess := state.NewSession()
+			instance := state.NewSession().AddInstance()
 
 			svc := newMockOServiceService(t)
 			svc.EXPECT().
-				RateParamsSubAdd(mock.Anything, sess, input.Body)
+				RateParamsSubAdd(mock.Anything, instance, input.Body)
 
 			h := Handler{
 				OServiceService: svc,
@@ -4324,7 +4415,7 @@ func TestHandler_OServiceServiceRateParamsSubAdd(t *testing.T) {
 			buf := &bytes.Buffer{}
 			assert.NoError(t, wire.MarshalBE(input.Body, buf))
 
-			err := h.Handle(context.Background(), wire.BOS, sess, input.Frame, buf, nil, config.Listener{})
+			err := h.Handle(context.Background(), wire.BOS, instance, input.Frame, buf, nil, config.Listener{})
 			if tt.expectedError != nil {
 				assert.ErrorIs(t, err, tt.expectedError)
 			} else {
@@ -4710,7 +4801,7 @@ func TestHandler_PermitDenyAddDenyListEntries(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sess := state.NewSession()
+			instance := state.NewSession().AddInstance()
 			input := wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.PermitDeny,
@@ -4721,7 +4812,7 @@ func TestHandler_PermitDenyAddDenyListEntries(t *testing.T) {
 
 			svc := newMockPermitDenyService(t)
 			svc.EXPECT().
-				AddDenyListEntries(mock.Anything, sess, input.Body).
+				AddDenyListEntries(mock.Anything, instance, input.Body).
 				Return(tt.serviceError)
 
 			h := Handler{
@@ -4734,7 +4825,7 @@ func TestHandler_PermitDenyAddDenyListEntries(t *testing.T) {
 			buf := &bytes.Buffer{}
 			assert.NoError(t, wire.MarshalBE(input.Body, buf))
 
-			err := h.Handle(context.TODO(), wire.BOS, sess, input.Frame, buf, nil, config.Listener{})
+			err := h.Handle(context.TODO(), wire.BOS, instance, input.Frame, buf, nil, config.Listener{})
 			if tt.expectedError != nil {
 				assert.ErrorIs(t, err, tt.expectedError)
 			} else {
@@ -4787,7 +4878,7 @@ func TestHandler_PermitDenyDelDenyListEntries(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sess := state.NewSession()
+			instance := state.NewSession().AddInstance()
 			input := wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.PermitDeny,
@@ -4798,7 +4889,7 @@ func TestHandler_PermitDenyDelDenyListEntries(t *testing.T) {
 
 			svc := newMockPermitDenyService(t)
 			svc.EXPECT().
-				DelDenyListEntries(mock.Anything, sess, input.Body).
+				DelDenyListEntries(mock.Anything, instance, input.Body).
 				Return(tt.serviceError)
 
 			h := Handler{
@@ -4811,7 +4902,7 @@ func TestHandler_PermitDenyDelDenyListEntries(t *testing.T) {
 			buf := &bytes.Buffer{}
 			assert.NoError(t, wire.MarshalBE(input.Body, buf))
 
-			err := h.Handle(context.TODO(), wire.BOS, sess, input.Frame, buf, nil, config.Listener{})
+			err := h.Handle(context.TODO(), wire.BOS, instance, input.Frame, buf, nil, config.Listener{})
 			if tt.expectedError != nil {
 				assert.ErrorIs(t, err, tt.expectedError)
 			} else {
@@ -4864,7 +4955,7 @@ func TestHandler_PermitDenyAddPermListEntries(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sess := state.NewSession()
+			instance := state.NewSession().AddInstance()
 			input := wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.PermitDeny,
@@ -4875,7 +4966,7 @@ func TestHandler_PermitDenyAddPermListEntries(t *testing.T) {
 
 			svc := newMockPermitDenyService(t)
 			svc.EXPECT().
-				AddPermListEntries(mock.Anything, sess, input.Body).
+				AddPermListEntries(mock.Anything, instance, input.Body).
 				Return(tt.serviceError)
 
 			h := Handler{
@@ -4888,7 +4979,7 @@ func TestHandler_PermitDenyAddPermListEntries(t *testing.T) {
 			buf := &bytes.Buffer{}
 			assert.NoError(t, wire.MarshalBE(input.Body, buf))
 
-			err := h.Handle(context.TODO(), wire.BOS, sess, input.Frame, buf, nil, config.Listener{})
+			err := h.Handle(context.TODO(), wire.BOS, instance, input.Frame, buf, nil, config.Listener{})
 			if tt.expectedError != nil {
 				assert.ErrorIs(t, err, tt.expectedError)
 			} else {
@@ -4941,7 +5032,7 @@ func TestHandler_PermitDenyDelPermListEntries(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sess := state.NewSession()
+			instance := state.NewSession().AddInstance()
 			input := wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.PermitDeny,
@@ -4952,7 +5043,7 @@ func TestHandler_PermitDenyDelPermListEntries(t *testing.T) {
 
 			svc := newMockPermitDenyService(t)
 			svc.EXPECT().
-				DelPermListEntries(mock.Anything, sess, input.Body).
+				DelPermListEntries(mock.Anything, instance, input.Body).
 				Return(tt.serviceError)
 
 			h := Handler{
@@ -4965,7 +5056,7 @@ func TestHandler_PermitDenyDelPermListEntries(t *testing.T) {
 			buf := &bytes.Buffer{}
 			assert.NoError(t, wire.MarshalBE(input.Body, buf))
 
-			err := h.Handle(context.TODO(), wire.BOS, sess, input.Frame, buf, nil, config.Listener{})
+			err := h.Handle(context.TODO(), wire.BOS, instance, input.Frame, buf, nil, config.Listener{})
 			if tt.expectedError != nil {
 				assert.ErrorIs(t, err, tt.expectedError)
 			} else {
@@ -4997,7 +5088,7 @@ func TestHandler_PermitDenySetGroupPermitMask(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sess := state.NewSession()
+			instance := state.NewSession().AddInstance()
 			input := wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.PermitDeny,
@@ -5018,7 +5109,7 @@ func TestHandler_PermitDenySetGroupPermitMask(t *testing.T) {
 			buf := &bytes.Buffer{}
 			assert.NoError(t, wire.MarshalBE(input.Body, buf))
 
-			err := h.Handle(context.TODO(), wire.BOS, sess, input.Frame, buf, nil, config.Listener{})
+			err := h.Handle(context.TODO(), wire.BOS, instance, input.Frame, buf, nil, config.Listener{})
 			if tt.expectedError != nil {
 				assert.ErrorIs(t, err, tt.expectedError)
 			} else {

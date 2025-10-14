@@ -16,6 +16,10 @@ import (
 	"github.com/google/uuid"
 )
 
+// MaxConcurrentLoginsPerUser is the maximum number of concurrent logins allowed
+// for a single user.
+const MaxConcurrentLoginsPerUser = 5
+
 // NewAuthService creates a new instance of AuthService.
 func NewAuthService(
 	cfg config.Config,
@@ -30,17 +34,18 @@ func NewAuthService(
 	classes wire.RateLimitClasses,
 ) *AuthService {
 	return &AuthService{
-		chatSessionRegistry: chatSessionRegistry,
-		config:              cfg,
-		cookieBaker:         cookieBaker,
-		sessionManager:      sessionManager,
-		sessionRetriever:    sessionRetriever,
-		userManager:         userManager,
-		chatMessageRelayer:  chatMessageRelayer,
-		accountManager:      accountManager,
-		bartItemManager:     bartItemManager,
-		rateLimitClasses:    classes,
-		timeNow:             time.Now,
+		chatSessionRegistry:        chatSessionRegistry,
+		config:                     cfg,
+		cookieBaker:                cookieBaker,
+		sessionManager:             sessionManager,
+		sessionRetriever:           sessionRetriever,
+		userManager:                userManager,
+		chatMessageRelayer:         chatMessageRelayer,
+		accountManager:             accountManager,
+		bartItemManager:            bartItemManager,
+		rateLimitClasses:           classes,
+		timeNow:                    time.Now,
+		maxConcurrentLoginsPerUser: MaxConcurrentLoginsPerUser,
 	}
 }
 
@@ -48,17 +53,18 @@ func NewAuthService(
 // supports both FLAP (AIM v1.0-v3.0) and BUCP (AIM v3.5-v5.9) authentication
 // modes.
 type AuthService struct {
-	chatMessageRelayer  ChatMessageRelayer
-	chatSessionRegistry ChatSessionRegistry
-	config              config.Config
-	cookieBaker         CookieBaker
-	sessionManager      SessionRegistry
-	sessionRetriever    SessionRetriever
-	userManager         UserManager
-	accountManager      AccountManager
-	bartItemManager     BARTItemManager
-	rateLimitClasses    wire.RateLimitClasses
-	timeNow             func() time.Time
+	chatMessageRelayer         ChatMessageRelayer
+	chatSessionRegistry        ChatSessionRegistry
+	config                     config.Config
+	cookieBaker                CookieBaker
+	sessionManager             SessionRegistry
+	sessionRetriever           SessionRetriever
+	userManager                UserManager
+	accountManager             AccountManager
+	bartItemManager            BARTItemManager
+	rateLimitClasses           wire.RateLimitClasses
+	timeNow                    func() time.Time
+	maxConcurrentLoginsPerUser int
 }
 
 // RegisterChatSession adds a user to a chat room. The authCookie param is an
@@ -68,13 +74,13 @@ type AuthService struct {
 // This method does not verify that the user and chat room exist because it
 // implicitly trusts the contents of the token signed by
 // {{OServiceService.ServiceRequest}}.
-func (s AuthService) RegisterChatSession(ctx context.Context, serverCookie state.ServerCookie) (*state.Session, error) {
+func (s AuthService) RegisterChatSession(ctx context.Context, serverCookie state.ServerCookie) (*state.SessionInstance, error) {
 	sess, err := s.chatSessionRegistry.AddSession(ctx, serverCookie.ChatCookie, serverCookie.ScreenName)
 	if err != nil {
 		return nil, fmt.Errorf("AddSession: %w", err)
 	}
 
-	sess.SetRateClasses(time.Now(), s.rateLimitClasses)
+	sess.Session().SetRateClasses(time.Now(), s.rateLimitClasses)
 
 	return sess, err
 }
@@ -95,7 +101,7 @@ func (s AuthService) CrackCookie(authCookie []byte) (state.ServerCookie, error) 
 }
 
 // RegisterBOSSession adds a new session to the session registry.
-func (s AuthService) RegisterBOSSession(ctx context.Context, serverCookie state.ServerCookie) (*state.Session, error) {
+func (s AuthService) RegisterBOSSession(ctx context.Context, serverCookie state.ServerCookie) (*state.SessionInstance, error) {
 	u, err := s.userManager.User(ctx, serverCookie.ScreenName.IdentScreenName())
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve user: %w", err)
@@ -107,7 +113,14 @@ func (s AuthService) RegisterBOSSession(ctx context.Context, serverCookie state.
 	ctx, cancel := context.WithTimeout(ctx, time.Second*5)
 	defer cancel()
 
-	sess, err := s.sessionManager.AddSession(ctx, u.DisplayScreenName)
+	flag := wire.MultiConnFlag(serverCookie.MultiConnFlag)
+
+	doMultiSess := false
+	if flag == wire.MultiConnFlagsRecentClient {
+		doMultiSess = true
+	}
+
+	sess, err := s.sessionManager.AddSession(ctx, u.DisplayScreenName, doMultiSess)
 	if err != nil {
 		return nil, fmt.Errorf("AddSession: %w", err)
 	}
@@ -124,23 +137,25 @@ func (s AuthService) RegisterBOSSession(ctx context.Context, serverCookie state.
 	}
 
 	sess.SetKerberosAuth(serverCookie.KerberosAuth == 1)
-	sess.SetSignonTime(time.Now())
-	sess.SetRateClasses(time.Now(), s.rateLimitClasses)
+	sess.Session().SetSignonTime(time.Now())
+	sess.Session().SetRateClasses(time.Now(), s.rateLimitClasses)
 	// set string containing OSCAR client name and version
 	sess.SetClientID(serverCookie.ClientID)
-	sess.SetMemberSince(time.Now())
-	sess.SetOfflineMsgCount(u.OfflineMsgCount)
+	sess.Session().SetMemberSince(time.Now())
+	sess.Session().SetOfflineMsgCount(u.OfflineMsgCount)
 
-	bartID, err := s.bartItemManager.BuddyIconMetadata(ctx, sess.IdentScreenName())
-	if err != nil {
-		return nil, fmt.Errorf("BuddyIconMetadata: %w", err)
-	}
-	if bartID != nil {
-		sess.SetBuddyIcon(*bartID)
+	if _, alreadySet := sess.Session().BuddyIcon(); !alreadySet {
+		bartID, err := s.bartItemManager.BuddyIconMetadata(ctx, sess.IdentScreenName())
+		if err != nil {
+			return nil, fmt.Errorf("BuddyIconMetadata: %w", err)
+		}
+		if bartID != nil {
+			sess.Session().SetBuddyIcon(*bartID)
+		}
 	}
 
 	// indicate whether the client supports/wants multiple concurrent sessions
-	sess.SetMultiConnFlag(wire.MultiConnFlag(serverCookie.MultiConnFlag))
+	sess.SetMultiConnFlag(flag)
 
 	if u.DisplayScreenName.IsUIN() {
 		sess.SetUserInfoFlag(wire.OServiceUserFlagICQ)
@@ -149,14 +164,14 @@ func (s AuthService) RegisterBOSSession(ctx context.Context, serverCookie state.
 		if err != nil {
 			return nil, fmt.Errorf("error converting username to UIN: %w", err)
 		}
-		sess.SetUIN(uint32(uin))
+		sess.Session().SetUIN(uint32(uin))
 	}
 
 	return sess, nil
 }
 
-// RetrieveBOSSession returns a user's existing session
-func (s AuthService) RetrieveBOSSession(ctx context.Context, serverCookie state.ServerCookie) (*state.Session, error) {
+// RetrieveBOSSession returns a user's existing session instance
+func (s AuthService) RetrieveBOSSession(ctx context.Context, serverCookie state.ServerCookie) (*state.SessionInstance, error) {
 	u, err := s.userManager.User(ctx, serverCookie.ScreenName.IdentScreenName())
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve user: %w", err)
@@ -165,21 +180,24 @@ func (s AuthService) RetrieveBOSSession(ctx context.Context, serverCookie state.
 		return nil, fmt.Errorf("user not found")
 	}
 
-	return s.sessionRetriever.RetrieveSession(u.IdentScreenName), nil
+	sess := s.sessionRetriever.RetrieveSession(u.IdentScreenName)
+	if sess == nil {
+		return nil, nil
+	}
+
+	return sess.Instance(serverCookie.SessionNum), nil
 }
 
-// Signout removes this user's session and notifies users who have this user on
-// their buddy list about this user's departure. It's guaranteed that the
-// session is removed from the session pool.
-func (s AuthService) Signout(_ context.Context, sess *state.Session) {
-	s.sessionManager.RemoveSession(sess)
+// Signout removes this user's session.
+func (s AuthService) Signout(ctx context.Context, instance *state.SessionInstance) {
+	s.sessionManager.RemoveSession(instance)
 }
 
 // SignoutChat removes user from chat room and notifies remaining participants
 // of their departure.
-func (s AuthService) SignoutChat(ctx context.Context, sess *state.Session) {
-	alertUserLeft(ctx, sess, s.chatMessageRelayer)
-	s.chatSessionRegistry.RemoveSession(sess)
+func (s AuthService) SignoutChat(ctx context.Context, instance *state.SessionInstance) {
+	alertUserLeft(ctx, instance, s.chatMessageRelayer)
+	s.chatSessionRegistry.RemoveSession(instance)
 }
 
 // BUCPChallenge processes a BUCP authentication challenge request. It
@@ -187,9 +205,9 @@ func (s AuthService) SignoutChat(ctx context.Context, sess *state.Session) {
 // request. The client uses the auth key to salt the MD5 password hash provided
 // in the subsequent login request. If the account is valid, return
 // SNAC(0x17,0x07), otherwise return SNAC(0x17,0x03).
-func (s AuthService) BUCPChallenge(ctx context.Context, bodyIn wire.SNAC_0x17_0x06_BUCPChallengeRequest, newUUIDFn func() uuid.UUID) (wire.SNACMessage, error) {
+func (s AuthService) BUCPChallenge(ctx context.Context, inBody wire.SNAC_0x17_0x06_BUCPChallengeRequest, newUUID func() uuid.UUID) (wire.SNACMessage, error) {
 
-	screenName, exists := bodyIn.String(wire.LoginTLVTagsScreenName)
+	screenName, exists := inBody.String(wire.LoginTLVTagsScreenName)
 	if !exists {
 		return wire.SNACMessage{}, errors.New("screen name doesn't exist in tlv")
 	}
@@ -207,7 +225,7 @@ func (s AuthService) BUCPChallenge(ctx context.Context, bodyIn wire.SNAC_0x17_0x
 		authKey = user.AuthKey
 	case s.config.DisableAuth:
 		// can't find user, generate stub auth key
-		authKey = newUUIDFn().String()
+		authKey = newUUID().String()
 	default:
 		// can't find user, return login error
 		return wire.SNACMessage{
@@ -246,9 +264,9 @@ func (s AuthService) BUCPChallenge(ctx context.Context, bodyIn wire.SNAC_0x17_0x
 // (wire.LoginTLVTagsReconnectHere) and an authorization cookie
 // (wire.LoginTLVTagsAuthorizationCookie). Else, an error code is set
 // (wire.LoginTLVTagsErrorSubcode).
-func (s AuthService) BUCPLogin(ctx context.Context, bodyIn wire.SNAC_0x17_0x02_BUCPLoginRequest, newUserFn func(screenName state.DisplayScreenName) (state.User, error), advertisedHost string) (wire.SNACMessage, error) {
+func (s AuthService) BUCPLogin(ctx context.Context, inBody wire.SNAC_0x17_0x02_BUCPLoginRequest, newUserFn func(screenName state.DisplayScreenName) (state.User, error), advertisedHost string) (wire.SNACMessage, error) {
 
-	block, err := s.login(ctx, bodyIn.TLVList, newUserFn, advertisedHost)
+	block, err := s.login(ctx, inBody.TLVList, newUserFn, advertisedHost)
 	if err != nil {
 		return wire.SNACMessage{}, err
 	}
@@ -274,8 +292,8 @@ func (s AuthService) BUCPLogin(ctx context.Context, bodyIn wire.SNAC_0x17_0x02_B
 // (wire.LoginTLVTagsReconnectHere) and an authorization cookie
 // (wire.LoginTLVTagsAuthorizationCookie). Else, an error code is set
 // (wire.LoginTLVTagsErrorSubcode).
-func (s AuthService) FLAPLogin(ctx context.Context, frame wire.FLAPSignonFrame, newUserFn func(screenName state.DisplayScreenName) (state.User, error), advertisedHost string) (wire.TLVRestBlock, error) {
-	return s.login(ctx, frame.TLVList, newUserFn, advertisedHost)
+func (s AuthService) FLAPLogin(ctx context.Context, inFrame wire.FLAPSignonFrame, newUserFn func(screenName state.DisplayScreenName) (state.User, error), advertisedHost string) (wire.TLVRestBlock, error) {
+	return s.login(ctx, inFrame.TLVList, newUserFn, advertisedHost)
 }
 
 // KerberosLogin handles AIM-style Kerberos authentication for AIM 6.0+.
@@ -300,6 +318,7 @@ func (s AuthService) KerberosLogin(ctx context.Context, inBody wire.SNAC_0x050C_
 
 	list := wire.TLVList{
 		wire.NewTLVBE(wire.LoginTLVTagsScreenName, inBody.ClientPrincipal),
+		wire.NewTLVBE(wire.LoginTLVTagsMultiConnFlags, wire.MultiConnFlagsRecentClient),
 	}
 
 	if info.Version >= 4 {
@@ -497,6 +516,14 @@ func (s AuthService) login(ctx context.Context, tlv wire.TLVList, newUserFn func
 
 	if !loginOK {
 		return loginFailureResponse(props, wire.LoginErrInvalidPassword), nil
+	}
+
+	// limit concurrent logins per user
+	if props.multiConnFlag == uint8(wire.MultiConnFlagsRecentClient) {
+		sess := s.sessionRetriever.RetrieveSession(props.screenName.IdentScreenName())
+		if sess != nil && sess.InstanceCount() >= s.maxConcurrentLoginsPerUser {
+			return loginFailureResponse(props, wire.LoginErrRateLimitExceeded), nil
+		}
 	}
 
 	return s.loginSuccessResponse(props, advertisedHost)

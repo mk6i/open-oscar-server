@@ -18,14 +18,14 @@ func TestICQService_DeleteMsgReq(t *testing.T) {
 	tests := []struct {
 		name       string
 		seq        uint16
-		sess       *state.Session
+		instance   *state.SessionInstance
 		mockParams mockParams
 		wantErr    error
 	}{
 		{
-			name: "send offline IM, offline friend request",
-			seq:  1,
-			sess: newTestSession("11111111", sessOptUIN(11111111)),
+			name:     "send offline IM, offline friend request",
+			seq:      1,
+			instance: newTestInstance("11111111", sessOptUIN(11111111)),
 			mockParams: mockParams{
 				offlineMessageManagerParams: offlineMessageManagerParams{
 					deleteMessagesParams: deleteMessagesParams{
@@ -47,7 +47,7 @@ func TestICQService_DeleteMsgReq(t *testing.T) {
 			}
 
 			s := NewICQService(nil, nil, nil, slog.Default(), nil, offlineMessageManager)
-			err := s.DeleteMsgReq(context.Background(), tt.sess, tt.seq)
+			err := s.DeleteMsgReq(context.Background(), tt.instance, tt.seq)
 			assert.NoError(t, err)
 		})
 	}
@@ -58,7 +58,7 @@ func TestICQService_FindByICQName(t *testing.T) {
 		name       string
 		timeNow    func() time.Time
 		seq        uint16
-		sess       *state.Session
+		instance   *state.SessionInstance
 		req        wire.ICQ_0x07D0_0x0515_DBQueryMetaReqSearchByDetails
 		mockParams mockParams
 		wantErr    error
@@ -68,8 +68,8 @@ func TestICQService_FindByICQName(t *testing.T) {
 			timeNow: func() time.Time {
 				return time.Date(2020, time.August, 1, 0, 0, 0, 0, time.UTC)
 			},
-			seq:  1,
-			sess: newTestSession("11111111", sessOptUIN(11111111)),
+			seq:      1,
+			instance: newTestInstance("11111111", sessOptUIN(11111111)),
 			req: wire.ICQ_0x07D0_0x0515_DBQueryMetaReqSearchByDetails{
 				FirstName: "John",
 				LastName:  "Doe",
@@ -214,7 +214,7 @@ func TestICQService_FindByICQName(t *testing.T) {
 						},
 						{
 							screenName: state.NewIdentScreenName("123456789"),
-							result:     &state.Session{},
+							result:     state.NewSession(),
 						},
 					},
 				},
@@ -248,7 +248,7 @@ func TestICQService_FindByICQName(t *testing.T) {
 				timeNow:          tt.timeNow,
 				userFinder:       userFinder,
 			}
-			err := s.FindByICQName(context.Background(), tt.sess, tt.req, tt.seq)
+			err := s.FindByICQName(context.Background(), tt.instance, tt.req, tt.seq)
 			assert.NoError(t, err)
 		})
 	}
@@ -259,7 +259,7 @@ func TestICQService_FindByICQEmail(t *testing.T) {
 		name       string
 		timeNow    func() time.Time
 		seq        uint16
-		sess       *state.Session
+		instance   *state.SessionInstance
 		req        wire.ICQ_0x07D0_0x0529_DBQueryMetaReqSearchByEmail
 		mockParams mockParams
 		wantErr    error
@@ -269,8 +269,8 @@ func TestICQService_FindByICQEmail(t *testing.T) {
 			timeNow: func() time.Time {
 				return time.Date(2020, time.August, 1, 0, 0, 0, 0, time.UTC)
 			},
-			seq:  1,
-			sess: newTestSession("11111111", sessOptUIN(11111111)),
+			seq:      1,
+			instance: newTestInstance("11111111", sessOptUIN(11111111)),
 			req: wire.ICQ_0x07D0_0x0529_DBQueryMetaReqSearchByEmail{
 				Email: "john@example.com",
 			},
@@ -350,7 +350,7 @@ func TestICQService_FindByICQEmail(t *testing.T) {
 					retrieveSessionParams{
 						{
 							screenName: state.NewIdentScreenName("123456789"),
-							result:     &state.Session{},
+							result:     state.NewSession(),
 						},
 					},
 				},
@@ -384,7 +384,7 @@ func TestICQService_FindByICQEmail(t *testing.T) {
 				timeNow:          tt.timeNow,
 				userFinder:       userFinder,
 			}
-			err := s.FindByICQEmail(context.Background(), tt.sess, tt.req, tt.seq)
+			err := s.FindByICQEmail(context.Background(), tt.instance, tt.req, tt.seq)
 			assert.NoError(t, err)
 		})
 	}
@@ -395,7 +395,7 @@ func TestICQService_FindByEmail3(t *testing.T) {
 		name       string
 		timeNow    func() time.Time
 		seq        uint16
-		sess       *state.Session
+		instance   *state.SessionInstance
 		req        wire.ICQ_0x07D0_0x0573_DBQueryMetaReqSearchByEmail3
 		mockParams mockParams
 		wantErr    error
@@ -405,8 +405,8 @@ func TestICQService_FindByEmail3(t *testing.T) {
 			timeNow: func() time.Time {
 				return time.Date(2020, time.August, 1, 0, 0, 0, 0, time.UTC)
 			},
-			seq:  1,
-			sess: newTestSession("11111111", sessOptUIN(11111111)),
+			seq:      1,
+			instance: newTestInstance("11111111", sessOptUIN(11111111)),
 			req: wire.ICQ_0x07D0_0x0573_DBQueryMetaReqSearchByEmail3{
 				TLVRestBlock: wire.TLVRestBlock{
 					TLVList: wire.TLVList{
@@ -492,7 +492,7 @@ func TestICQService_FindByEmail3(t *testing.T) {
 					retrieveSessionParams{
 						{
 							screenName: state.NewIdentScreenName("123456789"),
-							result:     &state.Session{},
+							result:     state.NewSession(),
 						},
 					},
 				},
@@ -526,7 +526,7 @@ func TestICQService_FindByEmail3(t *testing.T) {
 				timeNow:          tt.timeNow,
 				userFinder:       userFinder,
 			}
-			err := s.FindByEmail3(context.Background(), tt.sess, tt.req, tt.seq)
+			err := s.FindByEmail3(context.Background(), tt.instance, tt.req, tt.seq)
 			assert.NoError(t, err)
 		})
 	}
@@ -537,7 +537,7 @@ func TestICQService_FindByUIN(t *testing.T) {
 		name       string
 		timeNow    func() time.Time
 		seq        uint16
-		sess       *state.Session
+		instance   *state.SessionInstance
 		req        wire.ICQ_0x07D0_0x051F_DBQueryMetaReqSearchByUIN
 		mockParams mockParams
 		wantErr    error
@@ -547,8 +547,8 @@ func TestICQService_FindByUIN(t *testing.T) {
 			timeNow: func() time.Time {
 				return time.Date(2020, time.August, 1, 0, 0, 0, 0, time.UTC)
 			},
-			seq:  1,
-			sess: newTestSession("11111111", sessOptUIN(11111111)),
+			seq:      1,
+			instance: newTestInstance("11111111", sessOptUIN(11111111)),
 			req: wire.ICQ_0x07D0_0x051F_DBQueryMetaReqSearchByUIN{
 				UIN: 123456789,
 			},
@@ -628,7 +628,7 @@ func TestICQService_FindByUIN(t *testing.T) {
 					retrieveSessionParams{
 						{
 							screenName: state.NewIdentScreenName("123456789"),
-							result:     &state.Session{},
+							result:     state.NewSession(),
 						},
 					},
 				},
@@ -662,7 +662,7 @@ func TestICQService_FindByUIN(t *testing.T) {
 				timeNow:          tt.timeNow,
 				userFinder:       userFinder,
 			}
-			err := s.FindByUIN(context.Background(), tt.sess, tt.req, tt.seq)
+			err := s.FindByUIN(context.Background(), tt.instance, tt.req, tt.seq)
 			assert.NoError(t, err)
 		})
 	}
@@ -673,7 +673,7 @@ func TestICQService_FindByUIN2(t *testing.T) {
 		name       string
 		timeNow    func() time.Time
 		seq        uint16
-		sess       *state.Session
+		instance   *state.SessionInstance
 		req        wire.ICQ_0x07D0_0x0569_DBQueryMetaReqSearchByUIN2
 		mockParams mockParams
 		wantErr    error
@@ -683,8 +683,8 @@ func TestICQService_FindByUIN2(t *testing.T) {
 			timeNow: func() time.Time {
 				return time.Date(2020, time.August, 1, 0, 0, 0, 0, time.UTC)
 			},
-			seq:  1,
-			sess: newTestSession("11111111", sessOptUIN(11111111)),
+			seq:      1,
+			instance: newTestInstance("11111111", sessOptUIN(11111111)),
 			req: wire.ICQ_0x07D0_0x0569_DBQueryMetaReqSearchByUIN2{
 				TLVRestBlock: wire.TLVRestBlock{
 					TLVList: wire.TLVList{
@@ -768,7 +768,7 @@ func TestICQService_FindByUIN2(t *testing.T) {
 					retrieveSessionParams{
 						{
 							screenName: state.NewIdentScreenName("123456789"),
-							result:     &state.Session{},
+							result:     state.NewSession(),
 						},
 					},
 				},
@@ -802,7 +802,7 @@ func TestICQService_FindByUIN2(t *testing.T) {
 				timeNow:          tt.timeNow,
 				userFinder:       userFinder,
 			}
-			err := s.FindByUIN2(context.Background(), tt.sess, tt.req, tt.seq)
+			err := s.FindByUIN2(context.Background(), tt.instance, tt.req, tt.seq)
 			assert.NoError(t, err)
 		})
 	}
@@ -813,7 +813,7 @@ func TestICQService_FindByWhitePages(t *testing.T) {
 		name       string
 		timeNow    func() time.Time
 		seq        uint16
-		sess       *state.Session
+		instance   *state.SessionInstance
 		req        wire.ICQ_0x07D0_0x0533_DBQueryMetaReqSearchWhitePages
 		mockParams mockParams
 		wantErr    error
@@ -823,8 +823,8 @@ func TestICQService_FindByWhitePages(t *testing.T) {
 			timeNow: func() time.Time {
 				return time.Date(2020, time.August, 1, 0, 0, 0, 0, time.UTC)
 			},
-			seq:  1,
-			sess: newTestSession("11111111", sessOptUIN(11111111)),
+			seq:      1,
+			instance: newTestInstance("11111111", sessOptUIN(11111111)),
 			req: wire.ICQ_0x07D0_0x0533_DBQueryMetaReqSearchWhitePages{
 				InterestsCode:    10,
 				InterestsKeyword: "knitting,crocheting,sewing",
@@ -967,7 +967,7 @@ func TestICQService_FindByWhitePages(t *testing.T) {
 						},
 						{
 							screenName: state.NewIdentScreenName("123456789"),
-							result:     &state.Session{},
+							result:     state.NewSession(),
 						},
 					},
 				},
@@ -1001,7 +1001,7 @@ func TestICQService_FindByWhitePages(t *testing.T) {
 				timeNow:          tt.timeNow,
 				userFinder:       userFinder,
 			}
-			err := s.FindByICQInterests(context.Background(), tt.sess, tt.req, tt.seq)
+			err := s.FindByICQInterests(context.Background(), tt.instance, tt.req, tt.seq)
 			assert.NoError(t, err)
 		})
 	}
@@ -1012,7 +1012,7 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 		name       string
 		timeNow    func() time.Time
 		seq        uint16
-		sess       *state.Session
+		instance   *state.SessionInstance
 		req        wire.ICQ_0x07D0_0x055F_DBQueryMetaReqSearchWhitePages2
 		mockParams mockParams
 		wantErr    error
@@ -1022,8 +1022,8 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 			timeNow: func() time.Time {
 				return time.Date(2020, time.August, 1, 0, 0, 0, 0, time.UTC)
 			},
-			seq:  1,
-			sess: newTestSession("11111111", sessOptUIN(11111111)),
+			seq:      1,
+			instance: newTestInstance("11111111", sessOptUIN(11111111)),
 			req: wire.ICQ_0x07D0_0x055F_DBQueryMetaReqSearchWhitePages2{
 				TLVRestBlock: wire.TLVRestBlock{
 					TLVList: wire.TLVList{
@@ -1172,7 +1172,7 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 						},
 						{
 							screenName: state.NewIdentScreenName("123456789"),
-							result:     &state.Session{},
+							result:     state.NewSession(),
 						},
 					},
 				},
@@ -1183,8 +1183,8 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 			timeNow: func() time.Time {
 				return time.Date(2020, time.August, 1, 0, 0, 0, 0, time.UTC)
 			},
-			seq:  1,
-			sess: newTestSession("11111111", sessOptUIN(11111111)),
+			seq:      1,
+			instance: newTestInstance("11111111", sessOptUIN(11111111)),
 			req: wire.ICQ_0x07D0_0x055F_DBQueryMetaReqSearchWhitePages2{
 				TLVRestBlock: wire.TLVRestBlock{
 					TLVList: wire.TLVList{
@@ -1325,7 +1325,7 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 				timeNow:          tt.timeNow,
 				userFinder:       userFinder,
 			}
-			err := s.FindByWhitePages2(context.Background(), tt.sess, tt.req, tt.seq)
+			err := s.FindByWhitePages2(context.Background(), tt.instance, tt.req, tt.seq)
 			assert.NoError(t, err)
 		})
 	}
@@ -1336,7 +1336,7 @@ func TestICQService_FullUserInfo(t *testing.T) {
 		name       string
 		timeNow    func() time.Time
 		seq        uint16
-		sess       *state.Session
+		instance   *state.SessionInstance
 		req        wire.ICQ_0x07D0_0x051F_DBQueryMetaReqSearchByUIN
 		mockParams mockParams
 		wantErr    error
@@ -1346,8 +1346,8 @@ func TestICQService_FullUserInfo(t *testing.T) {
 			timeNow: func() time.Time {
 				return time.Date(2020, time.August, 1, 0, 0, 0, 0, time.UTC)
 			},
-			seq:  1,
-			sess: newTestSession("11111111", sessOptUIN(11111111)),
+			seq:      1,
+			instance: newTestInstance("11111111", sessOptUIN(11111111)),
 			req: wire.ICQ_0x07D0_0x051F_DBQueryMetaReqSearchByUIN{
 				UIN: 123456789,
 			},
@@ -1755,7 +1755,7 @@ func TestICQService_FullUserInfo(t *testing.T) {
 					retrieveSessionParams{
 						{
 							screenName: state.NewIdentScreenName("123456789"),
-							result:     &state.Session{},
+							result:     state.NewSession(),
 						},
 					},
 				},
@@ -1781,7 +1781,7 @@ func TestICQService_FullUserInfo(t *testing.T) {
 				timeNow:        tt.timeNow,
 				userFinder:     userFinder,
 			}
-			err := s.FullUserInfo(context.Background(), tt.sess, tt.req, tt.seq)
+			err := s.FullUserInfo(context.Background(), tt.instance, tt.req, tt.seq)
 			assert.NoError(t, err)
 		})
 	}
@@ -1791,14 +1791,14 @@ func TestICQService_OfflineMsgReq(t *testing.T) {
 	tests := []struct {
 		name       string
 		seq        uint16
-		sess       *state.Session
+		instance   *state.SessionInstance
 		mockParams mockParams
 		wantErr    error
 	}{
 		{
-			name: "send offline IM, offline friend request",
-			seq:  1,
-			sess: newTestSession("11111111", sessOptUIN(11111111)),
+			name:     "send offline IM, offline friend request",
+			seq:      1,
+			instance: newTestInstance("11111111", sessOptUIN(11111111)),
 			mockParams: mockParams{
 				offlineMessageManagerParams: offlineMessageManagerParams{
 					retrieveMessagesParams: retrieveMessagesParams{
@@ -1959,7 +1959,7 @@ func TestICQService_OfflineMsgReq(t *testing.T) {
 			}
 
 			s := NewICQService(messageRelayer, nil, nil, slog.Default(), nil, offlineMessageManager)
-			err := s.OfflineMsgReq(context.Background(), tt.sess, tt.seq)
+			err := s.OfflineMsgReq(context.Background(), tt.instance, tt.seq)
 			assert.NoError(t, err)
 		})
 	}
@@ -1969,15 +1969,15 @@ func TestICQService_SetAffiliations(t *testing.T) {
 	tests := []struct {
 		name       string
 		seq        uint16
-		sess       *state.Session
+		instance   *state.SessionInstance
 		req        wire.ICQ_0x07D0_0x041A_DBQueryMetaReqSetAffiliations
 		mockParams mockParams
 		wantErr    error
 	}{
 		{
-			name: "happy path",
-			seq:  1,
-			sess: newTestSession("100003", sessOptUIN(100003)),
+			name:     "happy path",
+			seq:      1,
+			instance: newTestInstance("100003", sessOptUIN(100003)),
 			req: wire.ICQ_0x07D0_0x041A_DBQueryMetaReqSetAffiliations{
 				PastAffiliations: []struct {
 					Code    uint16
@@ -2069,9 +2069,9 @@ func TestICQService_SetAffiliations(t *testing.T) {
 			},
 		},
 		{
-			name: "err: unexpected affiliations count",
-			seq:  1,
-			sess: newTestSession("100003", sessOptUIN(100003)),
+			name:     "err: unexpected affiliations count",
+			seq:      1,
+			instance: newTestInstance("100003", sessOptUIN(100003)),
 			req: wire.ICQ_0x07D0_0x041A_DBQueryMetaReqSetAffiliations{
 				PastAffiliations: []struct {
 					Code    uint16
@@ -2113,7 +2113,7 @@ func TestICQService_SetAffiliations(t *testing.T) {
 				userUpdater:    userUpdater,
 				messageRelayer: messageRelayer,
 			}
-			err := s.SetAffiliations(context.Background(), tt.sess, tt.req, tt.seq)
+			err := s.SetAffiliations(context.Background(), tt.instance, tt.req, tt.seq)
 			assert.ErrorIs(t, err, tt.wantErr)
 		})
 	}
@@ -2123,15 +2123,15 @@ func TestICQService_SetEmails(t *testing.T) {
 	tests := []struct {
 		name       string
 		seq        uint16
-		sess       *state.Session
+		instance   *state.SessionInstance
 		req        wire.ICQ_0x07D0_0x040B_DBQueryMetaReqSetEmails
 		mockParams mockParams
 		wantErr    error
 	}{
 		{
-			name: "happy path",
-			seq:  1,
-			sess: newTestSession("100003", sessOptUIN(100003)),
+			name:     "happy path",
+			seq:      1,
+			instance: newTestInstance("100003", sessOptUIN(100003)),
 			req: wire.ICQ_0x07D0_0x040B_DBQueryMetaReqSetEmails{
 				Emails: []struct {
 					Publish uint8
@@ -2188,7 +2188,7 @@ func TestICQService_SetEmails(t *testing.T) {
 				logger:         slog.Default(),
 				messageRelayer: messageRelayer,
 			}
-			err := s.SetEmails(context.Background(), tt.sess, tt.req, tt.seq)
+			err := s.SetEmails(context.Background(), tt.instance, tt.req, tt.seq)
 			assert.NoError(t, err)
 		})
 	}
@@ -2198,15 +2198,15 @@ func TestICQService_SetBasicInfo(t *testing.T) {
 	tests := []struct {
 		name       string
 		seq        uint16
-		sess       *state.Session
+		instance   *state.SessionInstance
 		req        wire.ICQ_0x07D0_0x03EA_DBQueryMetaReqSetBasicInfo
 		mockParams mockParams
 		wantErr    error
 	}{
 		{
-			name: "happy path",
-			seq:  1,
-			sess: newTestSession("100003", sessOptUIN(100003)),
+			name:     "happy path",
+			seq:      1,
+			instance: newTestInstance("100003", sessOptUIN(100003)),
 			req: wire.ICQ_0x07D0_0x03EA_DBQueryMetaReqSetBasicInfo{
 				CellPhone:    "123-456-7890",
 				CountryCode:  1,
@@ -2298,7 +2298,7 @@ func TestICQService_SetBasicInfo(t *testing.T) {
 				userUpdater:    userUpdater,
 				messageRelayer: messageRelayer,
 			}
-			err := s.SetBasicInfo(context.Background(), tt.sess, tt.req, tt.seq)
+			err := s.SetBasicInfo(context.Background(), tt.instance, tt.req, tt.seq)
 			assert.NoError(t, err)
 		})
 	}
@@ -2308,15 +2308,15 @@ func TestICQService_SetInterests(t *testing.T) {
 	tests := []struct {
 		name       string
 		seq        uint16
-		sess       *state.Session
+		instance   *state.SessionInstance
 		req        wire.ICQ_0x07D0_0x0410_DBQueryMetaReqSetInterests
 		mockParams mockParams
 		wantErr    error
 	}{
 		{
-			name: "happy path",
-			seq:  1,
-			sess: newTestSession("100003", sessOptUIN(100003)),
+			name:     "happy path",
+			seq:      1,
+			instance: newTestInstance("100003", sessOptUIN(100003)),
 			req: wire.ICQ_0x07D0_0x0410_DBQueryMetaReqSetInterests{
 				Interests: []struct {
 					Code    uint16
@@ -2391,9 +2391,9 @@ func TestICQService_SetInterests(t *testing.T) {
 			},
 		},
 		{
-			name: "err: unexpected interest count",
-			seq:  1,
-			sess: newTestSession("100003", sessOptUIN(100003)),
+			name:     "err: unexpected interest count",
+			seq:      1,
+			instance: newTestInstance("100003", sessOptUIN(100003)),
 			req: wire.ICQ_0x07D0_0x0410_DBQueryMetaReqSetInterests{
 				Interests: []struct {
 					Code    uint16
@@ -2430,7 +2430,7 @@ func TestICQService_SetInterests(t *testing.T) {
 				userUpdater:    userUpdater,
 				messageRelayer: messageRelayer,
 			}
-			err := s.SetInterests(context.Background(), tt.sess, tt.req, tt.seq)
+			err := s.SetInterests(context.Background(), tt.instance, tt.req, tt.seq)
 			assert.ErrorIs(t, err, tt.wantErr)
 		})
 	}
@@ -2440,15 +2440,15 @@ func TestICQService_SetMoreInfo(t *testing.T) {
 	tests := []struct {
 		name       string
 		seq        uint16
-		sess       *state.Session
+		instance   *state.SessionInstance
 		req        wire.ICQ_0x07D0_0x03FD_DBQueryMetaReqSetMoreInfo
 		mockParams mockParams
 		wantErr    error
 	}{
 		{
-			name: "happy path",
-			seq:  1,
-			sess: newTestSession("100003", sessOptUIN(100003)),
+			name:     "happy path",
+			seq:      1,
+			instance: newTestInstance("100003", sessOptUIN(100003)),
 			req: wire.ICQ_0x07D0_0x03FD_DBQueryMetaReqSetMoreInfo{
 				Age:          0,
 				BirthDay:     7,
@@ -2529,7 +2529,7 @@ func TestICQService_SetMoreInfo(t *testing.T) {
 				userUpdater:    userUpdater,
 				messageRelayer: messageRelayer,
 			}
-			err := s.SetMoreInfo(context.Background(), tt.sess, tt.req, tt.seq)
+			err := s.SetMoreInfo(context.Background(), tt.instance, tt.req, tt.seq)
 			assert.NoError(t, err)
 		})
 	}
@@ -2539,16 +2539,16 @@ func TestICQService_SetPermissions(t *testing.T) {
 	tests := []struct {
 		name       string
 		seq        uint16
-		sess       *state.Session
+		instance   *state.SessionInstance
 		req        wire.ICQ_0x07D0_0x0424_DBQueryMetaReqSetPermissions
 		mockParams mockParams
 		wantErr    error
 	}{
 		{
-			name: "happy path",
-			seq:  1,
-			sess: newTestSession("100003", sessOptUIN(100003)),
-			req:  wire.ICQ_0x07D0_0x0424_DBQueryMetaReqSetPermissions{},
+			name:     "happy path",
+			seq:      1,
+			instance: newTestInstance("100003", sessOptUIN(100003)),
+			req:      wire.ICQ_0x07D0_0x0424_DBQueryMetaReqSetPermissions{},
 			mockParams: mockParams{
 				messageRelayerParams: messageRelayerParams{
 					relayToScreenNameParams: relayToScreenNameParams{
@@ -2594,7 +2594,7 @@ func TestICQService_SetPermissions(t *testing.T) {
 				logger:         slog.Default(),
 				messageRelayer: messageRelayer,
 			}
-			err := s.SetPermissions(context.Background(), tt.sess, tt.req, tt.seq)
+			err := s.SetPermissions(context.Background(), tt.instance, tt.req, tt.seq)
 			assert.NoError(t, err)
 		})
 	}
@@ -2604,15 +2604,15 @@ func TestICQService_SetUserNotes(t *testing.T) {
 	tests := []struct {
 		name       string
 		seq        uint16
-		sess       *state.Session
+		instance   *state.SessionInstance
 		req        wire.ICQ_0x07D0_0x0406_DBQueryMetaReqSetNotes
 		mockParams mockParams
 		wantErr    error
 	}{
 		{
-			name: "happy path",
-			seq:  1,
-			sess: newTestSession("100003", sessOptUIN(100003)),
+			name:     "happy path",
+			seq:      1,
+			instance: newTestInstance("100003", sessOptUIN(100003)),
 			req: wire.ICQ_0x07D0_0x0406_DBQueryMetaReqSetNotes{
 				Notes: "here is my note",
 			},
@@ -2678,7 +2678,7 @@ func TestICQService_SetUserNotes(t *testing.T) {
 				userUpdater:    userUpdater,
 				messageRelayer: messageRelayer,
 			}
-			err := s.SetUserNotes(context.Background(), tt.sess, tt.req, tt.seq)
+			err := s.SetUserNotes(context.Background(), tt.instance, tt.req, tt.seq)
 			assert.NoError(t, err)
 		})
 	}
@@ -2688,15 +2688,15 @@ func TestICQService_SetWorkInfo(t *testing.T) {
 	tests := []struct {
 		name       string
 		seq        uint16
-		sess       *state.Session
+		instance   *state.SessionInstance
 		req        wire.ICQ_0x07D0_0x03F3_DBQueryMetaReqSetWorkInfo
 		mockParams mockParams
 		wantErr    error
 	}{
 		{
-			name: "happy path",
-			seq:  1,
-			sess: newTestSession("100003", sessOptUIN(100003)),
+			name:     "happy path",
+			seq:      1,
+			instance: newTestInstance("100003", sessOptUIN(100003)),
 			req: wire.ICQ_0x07D0_0x03F3_DBQueryMetaReqSetWorkInfo{
 				Company:        "TechCorp Inc.",
 				Department:     "Engineering",
@@ -2784,7 +2784,7 @@ func TestICQService_SetWorkInfo(t *testing.T) {
 				userUpdater:    userUpdater,
 				messageRelayer: messageRelayer,
 			}
-			err := s.SetWorkInfo(context.Background(), tt.sess, tt.req, tt.seq)
+			err := s.SetWorkInfo(context.Background(), tt.instance, tt.req, tt.seq)
 			assert.NoError(t, err)
 		})
 	}
@@ -2795,7 +2795,7 @@ func TestICQService_ShortUserInfo(t *testing.T) {
 		name       string
 		timeNow    func() time.Time
 		seq        uint16
-		sess       *state.Session
+		instance   *state.SessionInstance
 		req        wire.ICQ_0x07D0_0x04BA_DBQueryMetaReqShortInfo
 		mockParams mockParams
 		wantErr    error
@@ -2805,8 +2805,8 @@ func TestICQService_ShortUserInfo(t *testing.T) {
 			timeNow: func() time.Time {
 				return time.Date(2020, time.August, 1, 0, 0, 0, 0, time.UTC)
 			},
-			seq:  1,
-			sess: newTestSession("11111111", sessOptUIN(11111111)),
+			seq:      1,
+			instance: newTestInstance("11111111", sessOptUIN(11111111)),
 			req: wire.ICQ_0x07D0_0x04BA_DBQueryMetaReqShortInfo{
 				UIN: 123456789,
 			},
@@ -2873,7 +2873,7 @@ func TestICQService_ShortUserInfo(t *testing.T) {
 					retrieveSessionParams{
 						{
 							screenName: state.NewIdentScreenName("123456789"),
-							result:     &state.Session{},
+							result:     state.NewSession(),
 						},
 					},
 				},
@@ -2899,7 +2899,7 @@ func TestICQService_ShortUserInfo(t *testing.T) {
 				timeNow:        tt.timeNow,
 				userFinder:     userFinder,
 			}
-			err := s.ShortUserInfo(context.Background(), tt.sess, tt.req, tt.seq)
+			err := s.ShortUserInfo(context.Background(), tt.instance, tt.req, tt.seq)
 			assert.NoError(t, err)
 		})
 	}
@@ -2910,7 +2910,7 @@ func TestICQService_XMLReqData(t *testing.T) {
 		name       string
 		timeNow    func() time.Time
 		seq        uint16
-		sess       *state.Session
+		instance   *state.SessionInstance
 		req        wire.ICQ_0x07D0_0x0898_DBQueryMetaReqXMLReq
 		mockParams mockParams
 		wantErr    error
@@ -2920,8 +2920,8 @@ func TestICQService_XMLReqData(t *testing.T) {
 			timeNow: func() time.Time {
 				return time.Date(2020, time.August, 1, 0, 0, 0, 0, time.UTC)
 			},
-			seq:  1,
-			sess: newTestSession("11111111", sessOptUIN(11111111)),
+			seq:      1,
+			instance: newTestInstance("11111111", sessOptUIN(11111111)),
 			req: wire.ICQ_0x07D0_0x0898_DBQueryMetaReqXMLReq{
 				XMLRequest: "<xml></xml>",
 			},
@@ -2969,7 +2969,7 @@ func TestICQService_XMLReqData(t *testing.T) {
 				messageRelayer: messageRelayer,
 				timeNow:        tt.timeNow,
 			}
-			err := s.XMLReqData(context.Background(), tt.sess, tt.req, tt.seq)
+			err := s.XMLReqData(context.Background(), tt.instance, tt.req, tt.seq)
 			assert.NoError(t, err)
 		})
 	}

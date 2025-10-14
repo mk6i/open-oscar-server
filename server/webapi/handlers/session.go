@@ -34,13 +34,13 @@ type SessionHandler struct {
 type AuthService interface {
 	BUCPChallenge(ctx context.Context, bodyIn wire.SNAC_0x17_0x06_BUCPChallengeRequest, newUUID func() uuid.UUID) (wire.SNACMessage, error)
 	BUCPLogin(ctx context.Context, bodyIn wire.SNAC_0x17_0x02_BUCPLoginRequest, newUserFn func(screenName state.DisplayScreenName) (state.User, error), advertisedHost string) (wire.SNACMessage, error)
-	RegisterBOSSession(ctx context.Context, authCookie state.ServerCookie) (*state.Session, error)
+	RegisterBOSSession(ctx context.Context, authCookie state.ServerCookie) (*state.SessionInstance, error)
 }
 
 // SessionManager defines methods for OSCAR session management.
 type SessionManager interface {
-	AddSession(ctx context.Context, screenName state.DisplayScreenName) (*state.Session, error)
-	RemoveSession(sess *state.Session)
+	AddSession(ctx context.Context, screenName state.DisplayScreenName) (*state.SessionInstance, error)
+	RemoveSession(instance *state.SessionInstance)
 	RelayToScreenName(ctx context.Context, screenName state.IdentScreenName, msg wire.SNACMessage)
 }
 
@@ -210,17 +210,17 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create OSCAR session for authenticated users
-	var oscarSession *state.Session
+	var oscarInstance *state.SessionInstance
 	var err error
 	if authToken != "" && h.OSCARSessionManager != nil {
 		// Create OSCAR session
-		oscarSession, err = h.OSCARSessionManager.AddSession(ctx, screenName)
+		oscarInstance, err = h.OSCARSessionManager.AddSession(ctx, screenName)
 		if err != nil {
 			h.Logger.ErrorContext(ctx, "failed to create OSCAR session", "err", err.Error())
 			// Continue without OSCAR session - WebAPI can work standalone
-			oscarSession = nil
+			oscarInstance = nil
 		} else {
-			oscarSession.SetSignonComplete()
+			oscarInstance.SetSignonComplete()
 
 			// Register buddy list
 			if h.BuddyListRegistry != nil {
@@ -231,7 +231,7 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 
 			// Broadcast buddy arrival to OSCAR clients
 			if h.BuddyBroadcaster != nil {
-				if err := h.BuddyBroadcaster.BroadcastBuddyArrived(ctx, oscarSession.IdentScreenName(), oscarSession.TLVUserInfo()); err != nil {
+				if err := h.BuddyBroadcaster.BroadcastBuddyArrived(ctx, oscarInstance.IdentScreenName(), oscarInstance.Session().TLVUserInfo()); err != nil {
 					h.Logger.ErrorContext(ctx, "failed to broadcast buddy arrival", "err", err.Error())
 				}
 			}
@@ -239,7 +239,7 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create WebAPI session
-	session, err := h.SessionManager.CreateSession(r.Context(), screenName, apiKey.DevID, events, oscarSession, h.Logger)
+	session, err := h.SessionManager.CreateSession(r.Context(), screenName, apiKey.DevID, events, oscarInstance, h.Logger)
 	if err != nil {
 		h.Logger.ErrorContext(ctx, "failed to create session", "err", err.Error())
 		h.sendError(w, http.StatusInternalServerError, "failed to create session")

@@ -26,6 +26,7 @@ type ServerCookie struct {
 	MultiConnFlag uint8
 	// KerberosAuth indicates whether the client used Kerberos for authentication.
 	KerberosAuth uint8
+	SessionNum   uint8
 }
 
 func NewHMACCookieBaker() (HMACCookieBaker, error) {

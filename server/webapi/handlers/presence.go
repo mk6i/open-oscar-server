@@ -26,7 +26,7 @@ type PresenceHandler struct {
 // BuddyBroadcaster broadcasts buddy presence updates
 type BuddyBroadcaster interface {
 	BroadcastBuddyArrived(ctx context.Context, screenName state.IdentScreenName, userInfo wire.TLVUserInfo) error
-	BroadcastBuddyDeparted(ctx context.Context, sess *state.Session) error
+	BroadcastBuddyDeparted(ctx context.Context, instance *state.SessionInstance) error
 }
 
 // ProfileManager manages user profiles (uses types.ProfileManager)
@@ -287,11 +287,10 @@ func (h *PresenceHandler) getUserPresence(screenName state.IdentScreenName) Budd
 		presence.State = "online"
 
 		// Check user status
-		statusBitmask := session.UserStatusBitmask()
-		if statusBitmask&wire.OServiceUserStatusAway != 0 {
+		if session.Away() {
 			presence.State = "away"
 			// TODO: Get away message from session
-		} else if statusBitmask&wire.OServiceUserStatusDND != 0 {
+		} else if session.AllUserStatusBitmask(wire.OServiceUserStatusDND) {
 			presence.State = "dnd"
 		}
 
@@ -409,7 +408,7 @@ func (h *PresenceHandler) SetState(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		// User visible - broadcast arrival/update
-		if err := h.BuddyBroadcaster.BroadcastBuddyArrived(ctx, oscarSession.IdentScreenName(), oscarSession.TLVUserInfo()); err != nil {
+		if err := h.BuddyBroadcaster.BroadcastBuddyArrived(ctx, oscarSession.IdentScreenName(), oscarSession.Session().TLVUserInfo()); err != nil {
 			h.Logger.ErrorContext(ctx, "failed to broadcast buddy arrived", "err", err.Error())
 		}
 	}
@@ -466,7 +465,7 @@ func (h *PresenceHandler) SetStatus(w http.ResponseWriter, r *http.Request) {
 		// We'll need to extend this based on the actual implementation
 
 		// Broadcast presence update with new status
-		if err := h.BuddyBroadcaster.BroadcastBuddyArrived(ctx, oscarSession.IdentScreenName(), oscarSession.TLVUserInfo()); err != nil {
+		if err := h.BuddyBroadcaster.BroadcastBuddyArrived(ctx, oscarSession.IdentScreenName(), oscarSession.Session().TLVUserInfo()); err != nil {
 			h.Logger.ErrorContext(ctx, "failed to broadcast status update", "err", err.Error())
 		}
 	}
@@ -632,8 +631,7 @@ func (h *PresenceHandler) Icon(w http.ResponseWriter, r *http.Request) {
 	// Check if user is online and get their state
 	screenName := state.NewIdentScreenName(name)
 	if session := h.SessionRetriever.RetrieveSession(screenName); session != nil {
-		statusBitmask := session.UserStatusBitmask()
-		if statusBitmask&wire.OServiceUserStatusAway != 0 {
+		if session.Away() {
 			iconURL = "/static/icons/away_" + iconType + "_" + size + ".png"
 		} else if session.Idle() {
 			iconURL = "/static/icons/idle_" + iconType + "_" + size + ".png"

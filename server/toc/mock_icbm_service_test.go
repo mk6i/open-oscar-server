@@ -40,8 +40,8 @@ func (_m *mockICBMService) EXPECT() *mockICBMService_Expecter {
 }
 
 // ChannelMsgToHost provides a mock function for the type mockICBMService
-func (_mock *mockICBMService) ChannelMsgToHost(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) (*wire.SNACMessage, error) {
-	ret := _mock.Called(ctx, sess, inFrame, inBody)
+func (_mock *mockICBMService) ChannelMsgToHost(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) (*wire.SNACMessage, error) {
+	ret := _mock.Called(ctx, instance, inFrame, inBody)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ChannelMsgToHost")
@@ -49,18 +49,18 @@ func (_mock *mockICBMService) ChannelMsgToHost(ctx context.Context, sess *state.
 
 	var r0 *wire.SNACMessage
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.Session, wire.SNACFrame, wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) (*wire.SNACMessage, error)); ok {
-		return returnFunc(ctx, sess, inFrame, inBody)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) (*wire.SNACMessage, error)); ok {
+		return returnFunc(ctx, instance, inFrame, inBody)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.Session, wire.SNACFrame, wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) *wire.SNACMessage); ok {
-		r0 = returnFunc(ctx, sess, inFrame, inBody)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) *wire.SNACMessage); ok {
+		r0 = returnFunc(ctx, instance, inFrame, inBody)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*wire.SNACMessage)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, *state.Session, wire.SNACFrame, wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) error); ok {
-		r1 = returnFunc(ctx, sess, inFrame, inBody)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) error); ok {
+		r1 = returnFunc(ctx, instance, inFrame, inBody)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -74,22 +74,22 @@ type mockICBMService_ChannelMsgToHost_Call struct {
 
 // ChannelMsgToHost is a helper method to define mock.On call
 //   - ctx context.Context
-//   - sess *state.Session
+//   - instance *state.SessionInstance
 //   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost
-func (_e *mockICBMService_Expecter) ChannelMsgToHost(ctx interface{}, sess interface{}, inFrame interface{}, inBody interface{}) *mockICBMService_ChannelMsgToHost_Call {
-	return &mockICBMService_ChannelMsgToHost_Call{Call: _e.mock.On("ChannelMsgToHost", ctx, sess, inFrame, inBody)}
+func (_e *mockICBMService_Expecter) ChannelMsgToHost(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}) *mockICBMService_ChannelMsgToHost_Call {
+	return &mockICBMService_ChannelMsgToHost_Call{Call: _e.mock.On("ChannelMsgToHost", ctx, instance, inFrame, inBody)}
 }
 
-func (_c *mockICBMService_ChannelMsgToHost_Call) Run(run func(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost)) *mockICBMService_ChannelMsgToHost_Call {
+func (_c *mockICBMService_ChannelMsgToHost_Call) Run(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost)) *mockICBMService_ChannelMsgToHost_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *state.Session
+		var arg1 *state.SessionInstance
 		if args[1] != nil {
-			arg1 = args[1].(*state.Session)
+			arg1 = args[1].(*state.SessionInstance)
 		}
 		var arg2 wire.SNACFrame
 		if args[2] != nil {
@@ -114,22 +114,22 @@ func (_c *mockICBMService_ChannelMsgToHost_Call) Return(sNACMessage *wire.SNACMe
 	return _c
 }
 
-func (_c *mockICBMService_ChannelMsgToHost_Call) RunAndReturn(run func(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) (*wire.SNACMessage, error)) *mockICBMService_ChannelMsgToHost_Call {
+func (_c *mockICBMService_ChannelMsgToHost_Call) RunAndReturn(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) (*wire.SNACMessage, error)) *mockICBMService_ChannelMsgToHost_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // ClientErr provides a mock function for the type mockICBMService
-func (_mock *mockICBMService) ClientErr(ctx context.Context, sess *state.Session, frame wire.SNACFrame, body wire.SNAC_0x04_0x0B_ICBMClientErr) error {
-	ret := _mock.Called(ctx, sess, frame, body)
+func (_mock *mockICBMService) ClientErr(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x0B_ICBMClientErr) error {
+	ret := _mock.Called(ctx, instance, inFrame, inBody)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ClientErr")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.Session, wire.SNACFrame, wire.SNAC_0x04_0x0B_ICBMClientErr) error); ok {
-		r0 = returnFunc(ctx, sess, frame, body)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x04_0x0B_ICBMClientErr) error); ok {
+		r0 = returnFunc(ctx, instance, inFrame, inBody)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -143,22 +143,22 @@ type mockICBMService_ClientErr_Call struct {
 
 // ClientErr is a helper method to define mock.On call
 //   - ctx context.Context
-//   - sess *state.Session
-//   - frame wire.SNACFrame
-//   - body wire.SNAC_0x04_0x0B_ICBMClientErr
-func (_e *mockICBMService_Expecter) ClientErr(ctx interface{}, sess interface{}, frame interface{}, body interface{}) *mockICBMService_ClientErr_Call {
-	return &mockICBMService_ClientErr_Call{Call: _e.mock.On("ClientErr", ctx, sess, frame, body)}
+//   - instance *state.SessionInstance
+//   - inFrame wire.SNACFrame
+//   - inBody wire.SNAC_0x04_0x0B_ICBMClientErr
+func (_e *mockICBMService_Expecter) ClientErr(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}) *mockICBMService_ClientErr_Call {
+	return &mockICBMService_ClientErr_Call{Call: _e.mock.On("ClientErr", ctx, instance, inFrame, inBody)}
 }
 
-func (_c *mockICBMService_ClientErr_Call) Run(run func(ctx context.Context, sess *state.Session, frame wire.SNACFrame, body wire.SNAC_0x04_0x0B_ICBMClientErr)) *mockICBMService_ClientErr_Call {
+func (_c *mockICBMService_ClientErr_Call) Run(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x0B_ICBMClientErr)) *mockICBMService_ClientErr_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *state.Session
+		var arg1 *state.SessionInstance
 		if args[1] != nil {
-			arg1 = args[1].(*state.Session)
+			arg1 = args[1].(*state.SessionInstance)
 		}
 		var arg2 wire.SNACFrame
 		if args[2] != nil {
@@ -183,22 +183,22 @@ func (_c *mockICBMService_ClientErr_Call) Return(err error) *mockICBMService_Cli
 	return _c
 }
 
-func (_c *mockICBMService_ClientErr_Call) RunAndReturn(run func(ctx context.Context, sess *state.Session, frame wire.SNACFrame, body wire.SNAC_0x04_0x0B_ICBMClientErr) error) *mockICBMService_ClientErr_Call {
+func (_c *mockICBMService_ClientErr_Call) RunAndReturn(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x0B_ICBMClientErr) error) *mockICBMService_ClientErr_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // ClientEvent provides a mock function for the type mockICBMService
-func (_mock *mockICBMService) ClientEvent(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x14_ICBMClientEvent) error {
-	ret := _mock.Called(ctx, sess, inFrame, inBody)
+func (_mock *mockICBMService) ClientEvent(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x14_ICBMClientEvent) error {
+	ret := _mock.Called(ctx, instance, inFrame, inBody)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ClientEvent")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.Session, wire.SNACFrame, wire.SNAC_0x04_0x14_ICBMClientEvent) error); ok {
-		r0 = returnFunc(ctx, sess, inFrame, inBody)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x04_0x14_ICBMClientEvent) error); ok {
+		r0 = returnFunc(ctx, instance, inFrame, inBody)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -212,22 +212,22 @@ type mockICBMService_ClientEvent_Call struct {
 
 // ClientEvent is a helper method to define mock.On call
 //   - ctx context.Context
-//   - sess *state.Session
+//   - instance *state.SessionInstance
 //   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x04_0x14_ICBMClientEvent
-func (_e *mockICBMService_Expecter) ClientEvent(ctx interface{}, sess interface{}, inFrame interface{}, inBody interface{}) *mockICBMService_ClientEvent_Call {
-	return &mockICBMService_ClientEvent_Call{Call: _e.mock.On("ClientEvent", ctx, sess, inFrame, inBody)}
+func (_e *mockICBMService_Expecter) ClientEvent(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}) *mockICBMService_ClientEvent_Call {
+	return &mockICBMService_ClientEvent_Call{Call: _e.mock.On("ClientEvent", ctx, instance, inFrame, inBody)}
 }
 
-func (_c *mockICBMService_ClientEvent_Call) Run(run func(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x14_ICBMClientEvent)) *mockICBMService_ClientEvent_Call {
+func (_c *mockICBMService_ClientEvent_Call) Run(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x14_ICBMClientEvent)) *mockICBMService_ClientEvent_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *state.Session
+		var arg1 *state.SessionInstance
 		if args[1] != nil {
-			arg1 = args[1].(*state.Session)
+			arg1 = args[1].(*state.SessionInstance)
 		}
 		var arg2 wire.SNACFrame
 		if args[2] != nil {
@@ -252,14 +252,14 @@ func (_c *mockICBMService_ClientEvent_Call) Return(err error) *mockICBMService_C
 	return _c
 }
 
-func (_c *mockICBMService_ClientEvent_Call) RunAndReturn(run func(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x14_ICBMClientEvent) error) *mockICBMService_ClientEvent_Call {
+func (_c *mockICBMService_ClientEvent_Call) RunAndReturn(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x14_ICBMClientEvent) error) *mockICBMService_ClientEvent_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // EvilRequest provides a mock function for the type mockICBMService
-func (_mock *mockICBMService) EvilRequest(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x08_ICBMEvilRequest) (wire.SNACMessage, error) {
-	ret := _mock.Called(ctx, sess, inFrame, inBody)
+func (_mock *mockICBMService) EvilRequest(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x08_ICBMEvilRequest) (wire.SNACMessage, error) {
+	ret := _mock.Called(ctx, instance, inFrame, inBody)
 
 	if len(ret) == 0 {
 		panic("no return value specified for EvilRequest")
@@ -267,16 +267,16 @@ func (_mock *mockICBMService) EvilRequest(ctx context.Context, sess *state.Sessi
 
 	var r0 wire.SNACMessage
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.Session, wire.SNACFrame, wire.SNAC_0x04_0x08_ICBMEvilRequest) (wire.SNACMessage, error)); ok {
-		return returnFunc(ctx, sess, inFrame, inBody)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x04_0x08_ICBMEvilRequest) (wire.SNACMessage, error)); ok {
+		return returnFunc(ctx, instance, inFrame, inBody)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.Session, wire.SNACFrame, wire.SNAC_0x04_0x08_ICBMEvilRequest) wire.SNACMessage); ok {
-		r0 = returnFunc(ctx, sess, inFrame, inBody)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x04_0x08_ICBMEvilRequest) wire.SNACMessage); ok {
+		r0 = returnFunc(ctx, instance, inFrame, inBody)
 	} else {
 		r0 = ret.Get(0).(wire.SNACMessage)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, *state.Session, wire.SNACFrame, wire.SNAC_0x04_0x08_ICBMEvilRequest) error); ok {
-		r1 = returnFunc(ctx, sess, inFrame, inBody)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x04_0x08_ICBMEvilRequest) error); ok {
+		r1 = returnFunc(ctx, instance, inFrame, inBody)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -290,22 +290,22 @@ type mockICBMService_EvilRequest_Call struct {
 
 // EvilRequest is a helper method to define mock.On call
 //   - ctx context.Context
-//   - sess *state.Session
+//   - instance *state.SessionInstance
 //   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x04_0x08_ICBMEvilRequest
-func (_e *mockICBMService_Expecter) EvilRequest(ctx interface{}, sess interface{}, inFrame interface{}, inBody interface{}) *mockICBMService_EvilRequest_Call {
-	return &mockICBMService_EvilRequest_Call{Call: _e.mock.On("EvilRequest", ctx, sess, inFrame, inBody)}
+func (_e *mockICBMService_Expecter) EvilRequest(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}) *mockICBMService_EvilRequest_Call {
+	return &mockICBMService_EvilRequest_Call{Call: _e.mock.On("EvilRequest", ctx, instance, inFrame, inBody)}
 }
 
-func (_c *mockICBMService_EvilRequest_Call) Run(run func(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x08_ICBMEvilRequest)) *mockICBMService_EvilRequest_Call {
+func (_c *mockICBMService_EvilRequest_Call) Run(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x08_ICBMEvilRequest)) *mockICBMService_EvilRequest_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *state.Session
+		var arg1 *state.SessionInstance
 		if args[1] != nil {
-			arg1 = args[1].(*state.Session)
+			arg1 = args[1].(*state.SessionInstance)
 		}
 		var arg2 wire.SNACFrame
 		if args[2] != nil {
@@ -330,7 +330,7 @@ func (_c *mockICBMService_EvilRequest_Call) Return(sNACMessage wire.SNACMessage,
 	return _c
 }
 
-func (_c *mockICBMService_EvilRequest_Call) RunAndReturn(run func(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x08_ICBMEvilRequest) (wire.SNACMessage, error)) *mockICBMService_EvilRequest_Call {
+func (_c *mockICBMService_EvilRequest_Call) RunAndReturn(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x08_ICBMEvilRequest) (wire.SNACMessage, error)) *mockICBMService_EvilRequest_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -61,7 +61,7 @@ func TestOSCARProxy_NewServeMux(t *testing.T) {
 									SubGroup:  wire.LocateUserInfoReply,
 								},
 								Body: wire.SNAC_0x02_0x06_LocateUserInfoReply{
-									TLVUserInfo: newTestSession("them").TLVUserInfo(),
+									TLVUserInfo: newTestSession("them").Session().TLVUserInfo(),
 									LocateInfo: wire.TLVRestBlock{
 										TLVList: wire.TLVList{
 											wire.NewTLVBE(wire.LocateTLVTagsInfoSigData, `"<HTML><BODY BGCOLOR="#ffffff"><FONT LANG="0"><A HREF="aim:GoChat?RoomName=General&Exchange=4">Let's chat</FONT></A><BR><BR><FONT COLOR="#ff0000" LANG="0">colorfg</FONT><FONT COLOR="#000000"> </FONT><FONT BACK="#00ff00">colorbg</FONT><FONT> </FONT><FONT SIZE=4>big</FONT><FONT SIZE=3> <B></FONT><FONT>bold</B></FONT><FONT> <I></FONT><FONT>italic</I></FONT><FONT> <U></FONT><FONT>underline</U></FONT><FONT> 8-)</FONT><HR><S>strike</S><SUB>sub</SUB><SUP>sup</SUP></BODY></HTML>"`),
@@ -94,7 +94,7 @@ func TestOSCARProxy_NewServeMux(t *testing.T) {
 									SubGroup:  wire.LocateUserInfoReply,
 								},
 								Body: wire.SNAC_0x02_0x06_LocateUserInfoReply{
-									TLVUserInfo: newTestSession("them").TLVUserInfo(),
+									TLVUserInfo: newTestSession("them").Session().TLVUserInfo(),
 									LocateInfo: wire.TLVRestBlock{
 										TLVList: wire.TLVList{
 											wire.NewTLVBE(wire.LocateTLVTagsInfoSigData, "My profile!"),
@@ -153,7 +153,7 @@ func TestOSCARProxy_NewServeMux(t *testing.T) {
 									SubGroup:  wire.LocateUserInfoReply,
 								},
 								Body: wire.SNAC_0x02_0x06_LocateUserInfoReply{
-									TLVUserInfo: newTestSession("them").TLVUserInfo(),
+									TLVUserInfo: newTestSession("them").Session().TLVUserInfo(),
 									LocateInfo: wire.TLVRestBlock{
 										TLVList: wire.TLVList{
 											wire.NewTLVBE(wire.LocateTLVTagsInfoSigData, "<HTML><BODY>My profile!</BODY></HTML>"),

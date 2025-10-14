@@ -29,13 +29,13 @@ func NewServer(
 	departureNotifier DepartureNotifier,
 	logger *slog.Logger,
 	onlineNotifier OnlineNotifier,
-	SNACHandler func(ctx context.Context, serverType uint16, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter, listener config.Listener) error,
+	SNACHandler func(ctx context.Context, serverType uint16, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter, listener config.Listener) error,
 	rateLimitUpdater RateLimitUpdater,
 	limits wire.SNACRateLimits,
 	limiter *IPRateLimiter,
 	listenerCfg []config.Listener,
-	recalcWarning func(ctx context.Context, sess *state.Session) error,
-	lowerWarnLevel func(ctx context.Context, sess *state.Session),
+	recalcWarning func(ctx context.Context, instance *state.SessionInstance) error,
+	lowerWarnLevel func(ctx context.Context, instance *state.SessionInstance),
 ) *Server {
 	oscarSvc := oscarServer{
 		AuthService:        authService,
@@ -169,6 +169,7 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn, listener c
 		_ = conn.Close()
 		s.connWg.Done()
 	}()
+	ctx = context.WithValue(ctx, "ip", conn.RemoteAddr().String())
 	if err := s.handler(ctx, conn, listener); err != nil {
 		s.logger.InfoContext(ctx, "user session failed", "err", err.Error())
 	}
@@ -188,12 +189,12 @@ type oscarServer struct {
 	DepartureNotifier
 	Logger *slog.Logger
 	OnlineNotifier
-	SNACHandler func(ctx context.Context, serverType uint16, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter, listener config.Listener) error
+	SNACHandler func(ctx context.Context, serverType uint16, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter, listener config.Listener) error
 	RateLimitUpdater
 	wire.SNACRateLimits
 	*IPRateLimiter
-	recalcWarning  func(ctx context.Context, sess *state.Session) error
-	lowerWarnLevel func(ctx context.Context, sess *state.Session)
+	recalcWarning  func(ctx context.Context, instance *state.SessionInstance) error
+	lowerWarnLevel func(ctx context.Context, instance *state.SessionInstance)
 }
 
 func (s oscarServer) routeConnection(ctx context.Context, conn net.Conn, listener config.Listener) error {
@@ -239,96 +240,150 @@ func (s oscarServer) connectToOSCARService(
 
 	s.Logger.Debug("connecting to service", "service", wire.FoodGroupName(cookie.Service))
 
-	var sess *state.Session
+	var instance *state.SessionInstance
 	switch cookie.Service {
 	case wire.BOS:
-		sess, err = s.AuthService.RegisterBOSSession(ctx, cookie)
+		instance, err = s.AuthService.RegisterBOSSession(ctx, cookie)
 		if err != nil {
+			if errors.Is(err, state.ErrMaxConcurrentSessionsReached) {
+				block := wire.TLVRestBlock{}
+				// error code indicating the signon is blocked. i can't find a
+				// more appropriate error code to indicate the maximum session limit is reached
+				block.Append(wire.NewTLVBE(0x0008, uint8(0x18)))
+				if err := flapc.NewSignoff(block); err != nil {
+					return fmt.Errorf("unable to gracefully disconnect user. %w", err)
+				}
+				return nil
+			}
 			return err
 		}
-		if sess == nil {
+		if instance == nil {
 			return errors.New("session not found")
 		}
+		defer func() {
+			instance.CloseInstance()
+		}()
 
-		if err := s.BuddyListRegistry.RegisterBuddyList(ctx, sess.IdentScreenName()); err != nil {
-			return fmt.Errorf("unable to init buddy list: %w", err)
+		if err = instance.Session().RunOnce(func() error {
+			// make buddy list visible to other users
+			if err := s.BuddyListRegistry.RegisterBuddyList(ctx, instance.IdentScreenName()); err != nil {
+				return fmt.Errorf("unable to init buddy list: %w", err)
+			}
+			// restore warning level from last session
+			if err := s.recalcWarning(ctx, instance); err != nil {
+				return fmt.Errorf("failed to recalculate warning level: %w", err)
+			}
+			// periodically decay warning level
+			go s.lowerWarnLevel(ctx, instance)
+			return nil
+		}); err != nil {
+			return err
 		}
 
-		defer func() {
-			sess.Close()
+		// Update user visibility when an instance closes, as the user's overall status may change.
+		// Example: With 1 away and 1 non-away instance, the user appears available. If the non-away
+		// instance closes, the user should appear away.
+		instance.OnClose(func() {
+			if shuttingDown(ctx) {
+				return
+			}
+			if instance.Session().Invisible() {
+				if err := s.DepartureNotifier.BroadcastBuddyDeparted(ctx, instance); err != nil {
+					s.Logger.ErrorContext(ctx, "error sending buddy departure notifications", "err", err.Error())
+				}
+			} else {
+				if err := s.DepartureNotifier.BroadcastBuddyArrived(ctx, instance.IdentScreenName(), instance.Session().TLVUserInfo()); err != nil {
+					s.Logger.ErrorContext(ctx, "error sending buddy arrival notifications", "err", err.Error())
+				}
+			}
+		})
+
+		instance.Session().OnSessionClose(func() {
+			if !shuttingDown(ctx) {
+				if err := s.DepartureNotifier.BroadcastBuddyDeparted(ctx, instance); err != nil {
+					s.Logger.ErrorContext(ctx, "error sending buddy departure notifications", "err", err.Error())
+				}
+			}
+
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
-			if err := s.DepartureNotifier.BroadcastBuddyDeparted(ctx, sess); err != nil {
-				s.Logger.ErrorContext(ctx, "error sending buddy departure notifications", "err", err.Error())
-			}
+
 			// buddy list must be cleared before session is closed, otherwise
 			// there will be a race condition that could cause the buddy list
 			// be prematurely deleted.
-			if err := s.BuddyListRegistry.UnregisterBuddyList(ctx, sess.IdentScreenName()); err != nil {
+			if err := s.BuddyListRegistry.UnregisterBuddyList(ctx, instance.IdentScreenName()); err != nil {
 				s.Logger.ErrorContext(ctx, "error removing buddy list entry", "err", err.Error())
 			}
-			s.ChatSessionManager.RemoveUserFromAllChats(sess.IdentScreenName())
-			s.Signout(ctx, sess)
-		}()
-		remoteAddr, ok := ctx.Value("ip").(string)
-		if ok {
+			s.ChatSessionManager.RemoveUserFromAllChats(instance.IdentScreenName())
+			s.AuthService.Signout(ctx, instance)
+		})
+
+		if remoteAddr, ok := ctx.Value("ip").(string); ok {
 			ip, err := netip.ParseAddrPort(remoteAddr)
 			if err != nil {
 				return errors.New("unable to parse ip addr")
 			}
-			sess.SetRemoteAddr(&ip)
+			instance.SetRemoteAddr(&ip)
 		}
 
-		if err := s.recalcWarning(ctx, sess); err != nil {
-			return fmt.Errorf("failed to recalculate warning level: %w", err)
-		}
-		go s.lowerWarnLevel(ctx, sess)
-		go s.receiveSessMessages(ctx, sess, flapc)
-
+		go s.receiveSessMessages(ctx, instance, flapc)
 	case wire.Chat:
-		sess, err = s.AuthService.RegisterChatSession(ctx, cookie)
+		instance, err = s.AuthService.RegisterChatSession(ctx, cookie)
 		if err != nil {
 			return err
 		}
-		if sess == nil {
+		if instance == nil {
 			return errors.New("session not found")
 		}
-
 		defer func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-			defer cancel()
-			s.SignoutChat(ctx, sess)
+			instance.CloseInstance()
 		}()
 
-		go s.receiveSessMessages(ctx, sess, flapc)
+		instance.Session().OnSessionClose(func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			s.SignoutChat(ctx, instance)
+		})
+
+		go s.receiveSessMessages(ctx, instance, flapc)
 	default:
-		sess, err = s.AuthService.RetrieveBOSSession(ctx, cookie)
+		instance, err = s.AuthService.RetrieveBOSSession(ctx, cookie)
 		if err != nil {
 			return err
 		}
-		if sess == nil {
+		if instance == nil {
 			return errors.New("session not found")
 		}
 	}
 
-	ctx = context.WithValue(ctx, "screenName", sess.IdentScreenName())
+	ctx = context.WithValue(ctx, "screenName", instance.IdentScreenName())
 
 	msg := s.OnlineNotifier.HostOnline(cookie.Service)
 	if err := flapc.SendSNAC(msg.Frame, msg.Body); err != nil {
 		return err
 	}
 
-	return s.dispatchIncomingMessages(ctx, cookie.Service, sess, flapc, conn, listener)
+	return s.dispatchIncomingMessages(ctx, cookie.Service, instance, flapc, conn, listener)
 }
 
-func (s oscarServer) receiveSessMessages(ctx context.Context, sess *state.Session, flapc *wire.FlapClient) {
+func shuttingDown(ctx context.Context) bool {
+	select {
+	case <-ctx.Done():
+		// server is shutting down, don't send buddy notifications
+		return true
+	default:
+	}
+	return false
+}
+
+func (s oscarServer) receiveSessMessages(ctx context.Context, instance *state.SessionInstance, flapc *wire.FlapClient) {
 	for {
 		select {
-		case <-sess.Closed():
+		case <-instance.Closed():
 			return
 		case <-ctx.Done():
 			return
-		case m := <-sess.ReceiveMessage():
+		case m := <-instance.ReceiveMessage():
 			// forward a notification sent from another client to this client
 			if err := flapc.SendSNAC(m.Frame, m.Body); err != nil {
 				middleware.LogRequestError(ctx, s.Logger, m.Frame, err)
@@ -493,7 +548,7 @@ func sendInvalidSNACErr(frameIn wire.SNACFrame, rw ResponseWriter) error {
 func (s oscarServer) dispatchIncomingMessages(
 	ctx context.Context,
 	fg uint16,
-	sess *state.Session,
+	instance *state.SessionInstance,
 	flapc *wire.FlapClient,
 	r io.ReadCloser,
 	listener config.Listener,
@@ -538,7 +593,7 @@ func (s oscarServer) dispatchIncomingMessages(
 
 				rateClassID, ok := s.SNACRateLimits.RateClassLookup(inFrame.FoodGroup, inFrame.SubGroup)
 				if ok {
-					if status := sess.EvaluateRateLimit(time.Now(), rateClassID); status == wire.RateLimitStatusLimited {
+					if status := instance.Session().EvaluateRateLimit(time.Now(), rateClassID); status == wire.RateLimitStatusLimited {
 						s.Logger.DebugContext(ctx, "rate limit exceeded, dropping SNAC",
 							"foodgroup", wire.FoodGroupName(inFrame.FoodGroup),
 							"subgroup", wire.SubGroupName(inFrame.FoodGroup, inFrame.SubGroup))
@@ -550,7 +605,7 @@ func (s oscarServer) dispatchIncomingMessages(
 
 				// route a client request to the appropriate service handler. the
 				// handler may write a response to the client connection.
-				if err := s.SNACHandler(ctx, fg, sess, inFrame, flapBuf, flapc, listener); err != nil {
+				if err := s.SNACHandler(ctx, fg, instance, inFrame, flapBuf, flapc, listener); err != nil {
 					middleware.LogRequestError(ctx, s.Logger, inFrame, err)
 					if errors.Is(err, ErrRouteNotFound) {
 						if err1 := sendInvalidSNACErr(inFrame, flapc); err1 != nil {
@@ -573,16 +628,16 @@ func (s oscarServer) dispatchIncomingMessages(
 				return fmt.Errorf("got unknown FLAP frame type. flap: %v", flap)
 			}
 		case <-time.After(1 * time.Second):
-			updates := s.RateLimitUpdater.RateLimitUpdates(ctx, sess, time.Now())
+			updates := s.RateLimitUpdater.RateLimitUpdates(ctx, instance, time.Now())
 			for _, update := range updates {
 				if err := flapc.SendSNAC(update.Frame, update.Body); err != nil {
 					middleware.LogRequestError(ctx, s.Logger, update.Frame, err)
 					return err
 				}
 			}
-		case <-sess.Closed():
+		case <-instance.Closed():
 			// add logoff reason to clients that support multi-conn
-			if sess.MultiConnFlag() == wire.MultiConnFlagsOldClient {
+			if instance.MultiConnFlag() == wire.MultiConnFlagsOldClient {
 				if err := flapc.OldSignoff(); err != nil {
 					return fmt.Errorf("unable to gracefully disconnect user. %w", err)
 				}
@@ -598,7 +653,7 @@ func (s oscarServer) dispatchIncomingMessages(
 			}
 			return nil
 		case <-ctx.Done():
-			if sess.MultiConnFlag() == wire.MultiConnFlagsOldClient {
+			if instance.MultiConnFlag() == wire.MultiConnFlagsOldClient {
 				if err := flapc.OldSignoff(); err != nil {
 					return fmt.Errorf("unable to gracefully disconnect user. %w", err)
 				}

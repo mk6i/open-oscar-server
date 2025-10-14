@@ -93,10 +93,10 @@ func (s ICBMService) ParameterQuery(_ context.Context, inFrame wire.SNACFrame) w
 // from the sender to the intended recipient. It returns wire.ICBMHostAck if
 // the wire.ICBMChannelMsgToHost message contains a request acknowledgement
 // flag.
-func (s ICBMService) ChannelMsgToHost(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) (*wire.SNACMessage, error) {
+func (s ICBMService) ChannelMsgToHost(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) (*wire.SNACMessage, error) {
 	recip := state.NewIdentScreenName(inBody.ScreenName)
 
-	rel, err := s.relationshipFetcher.Relationship(ctx, sess.IdentScreenName(), recip)
+	rel, err := s.relationshipFetcher.Relationship(ctx, instance.IdentScreenName(), recip)
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +123,7 @@ func (s ICBMService) ChannelMsgToHost(ctx context.Context, sess *state.Session, 
 		if !canSend {
 			return newICBMErr(inFrame.RequestID, wire.ErrorCodeNotLoggedOn), nil
 		}
-		msg, err := s.sendOfflineMessage(ctx, sess, inFrame, inBody)
+		msg, err := s.sendOfflineMessage(ctx, instance, inFrame, inBody)
 		if errors.Is(err, state.ErrNoUser) {
 			return newICBMErr(inFrame.RequestID, wire.ErrorCodeNotLoggedOn), nil
 		}
@@ -133,7 +133,7 @@ func (s ICBMService) ChannelMsgToHost(ctx context.Context, sess *state.Session, 
 	clientIM := wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
 		Cookie:       inBody.Cookie,
 		ChannelID:    inBody.ChannelID,
-		TLVUserInfo:  sess.TLVUserInfo(),
+		TLVUserInfo:  instance.Session().TLVUserInfo(),
 		TLVRestBlock: wire.TLVRestBlock{},
 	}
 
@@ -144,28 +144,39 @@ func (s ICBMService) ChannelMsgToHost(ctx context.Context, sess *state.Session, 
 			continue
 		}
 		if clientIM.ChannelID == wire.ICBMChannelRendezvous && tlv.Tag == wire.ICBMTLVData {
-			if tlv, err = addExternalIP(sess, tlv); err != nil {
+			if tlv, err = addExternalIP(instance, tlv); err != nil {
 				return nil, fmt.Errorf("addExternalIP: %w", err)
 			}
 		}
 		clientIM.Append(tlv)
 	}
 
-	if sess.TypingEventsEnabled() && (inBody.ChannelID == wire.ICBMChannelIM || inBody.ChannelID == wire.ICBMChannelMIME) {
+	if instance.TypingEventsEnabled() && (inBody.ChannelID == wire.ICBMChannelIM || inBody.ChannelID == wire.ICBMChannelMIME) {
 		// tell the receiver that we want to receive their typing events
 		clientIM.Append(wire.NewTLVBE(wire.ICBMTLVWantEvents, []byte{}))
 	}
 
-	s.messageRelayer.RelayToScreenName(ctx, recipSess.IdentScreenName(), wire.SNACMessage{
-		Frame: wire.SNACFrame{
-			FoodGroup: wire.ICBM,
-			SubGroup:  wire.ICBMChannelMsgToClient,
-			RequestID: wire.ReqIDFromServer,
-		},
-		Body: clientIM,
-	})
+	if recipSess.Inactive() {
+		s.messageRelayer.RelayToScreenName(ctx, recipSess.IdentScreenName(), wire.SNACMessage{
+			Frame: wire.SNACFrame{
+				FoodGroup: wire.ICBM,
+				SubGroup:  wire.ICBMChannelMsgToClient,
+				RequestID: wire.ReqIDFromServer,
+			},
+			Body: clientIM,
+		})
+	} else {
+		s.messageRelayer.RelayToScreenNameActiveOnly(ctx, recipSess.IdentScreenName(), wire.SNACMessage{
+			Frame: wire.SNACFrame{
+				FoodGroup: wire.ICBM,
+				SubGroup:  wire.ICBMChannelMsgToClient,
+				RequestID: wire.ReqIDFromServer,
+			},
+			Body: clientIM,
+		})
+	}
 
-	s.convoTracker.trackConvo(time.Now(), sess.IdentScreenName(), recipSess.IdentScreenName())
+	s.convoTracker.trackConvo(time.Now(), instance.IdentScreenName(), recipSess.IdentScreenName())
 
 	if _, requestedConfirmation := inBody.TLVRestBlock.Bytes(wire.ICBMTLVRequestHostAck); !requestedConfirmation {
 		// don't ack message
@@ -217,13 +228,13 @@ func (s ICBMService) canSendOfflineMessage(ctx context.Context, inBody wire.SNAC
 	return true, nil
 }
 
-func (s ICBMService) sendOfflineMessage(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) (*wire.SNACMessage, error) {
+func (s ICBMService) sendOfflineMessage(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) (*wire.SNACMessage, error) {
 	recip := state.NewIdentScreenName(inBody.ScreenName)
 
 	offlineMsg := state.OfflineMessage{
 		Message:   inBody,
 		Recipient: recip,
-		Sender:    sess.IdentScreenName(),
+		Sender:    instance.IdentScreenName(),
 		Sent:      s.timeNow().UTC(),
 	}
 	if _, err := s.offlineMessageSaver.SaveMessage(ctx, offlineMsg); err != nil {
@@ -237,7 +248,7 @@ func (s ICBMService) sendOfflineMessage(ctx context.Context, sess *state.Session
 		return nil, fmt.Errorf("save ICBM offline message failed: %w", err)
 	}
 
-	if sess.UIN() > 0 {
+	if instance.UIN() > 0 {
 		return newICBMErr(inFrame.RequestID, wire.ErrorCodeNotLoggedOn), nil
 	}
 
@@ -261,7 +272,7 @@ func (s ICBMService) sendOfflineMessage(ctx context.Context, sess *state.Session
 
 // addExternalIP appends the client's IP address to the TLV if it's an ICBM
 // rendezvous proposal/accept message.
-func addExternalIP(sess *state.Session, tlv wire.TLV) (wire.TLV, error) {
+func addExternalIP(instance *state.SessionInstance, tlv wire.TLV) (wire.TLV, error) {
 	frag := wire.ICBMCh2Fragment{}
 	if err := wire.UnmarshalBE(&frag, bytes.NewReader(tlv.Value)); err != nil {
 		return tlv, fmt.Errorf("wire.UnmarshalBE: %w", err)
@@ -269,8 +280,8 @@ func addExternalIP(sess *state.Session, tlv wire.TLV) (wire.TLV, error) {
 	if frag.Type != wire.ICBMRdvMessagePropose {
 		return tlv, nil
 	}
-	if frag.HasTag(wire.ICBMRdvTLVTagsRequesterIP) && sess.RemoteAddr() != nil && sess.RemoteAddr().Addr().Is4() {
-		ip := sess.RemoteAddr().Addr()
+	if frag.HasTag(wire.ICBMRdvTLVTagsRequesterIP) && instance.RemoteAddr() != nil && instance.RemoteAddr().Addr().Is4() {
+		ip := instance.RemoteAddr().Addr()
 		// replace the IP set by the client with the actual IP seen by the
 		// server. unlike AOL’s original behavior, this allows NATed clients
 		// to use rendezvous by replacing their LAN IP with the correct
@@ -289,8 +300,8 @@ func addExternalIP(sess *state.Session, tlv wire.TLV) (wire.TLV, error) {
 
 // ClientEvent relays SNAC wire.ICBMClientEvent typing events from the
 // sender to the recipient.
-func (s ICBMService) ClientEvent(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x14_ICBMClientEvent) error {
-	blocked, err := s.relationshipFetcher.Relationship(ctx, sess.IdentScreenName(), state.NewIdentScreenName(inBody.ScreenName))
+func (s ICBMService) ClientEvent(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x14_ICBMClientEvent) error {
+	blocked, err := s.relationshipFetcher.Relationship(ctx, instance.IdentScreenName(), state.NewIdentScreenName(inBody.ScreenName))
 
 	switch {
 	case err != nil:
@@ -299,7 +310,7 @@ func (s ICBMService) ClientEvent(ctx context.Context, sess *state.Session, inFra
 		return nil
 	default:
 		recipient := state.NewIdentScreenName(inBody.ScreenName)
-		s.messageRelayer.RelayToScreenName(ctx, recipient, wire.SNACMessage{
+		s.messageRelayer.RelayToScreenNameActiveOnly(ctx, recipient, wire.SNACMessage{
 			Frame: wire.SNACFrame{
 				FoodGroup: wire.ICBM,
 				SubGroup:  wire.ICBMClientEvent,
@@ -308,7 +319,7 @@ func (s ICBMService) ClientEvent(ctx context.Context, sess *state.Session, inFra
 			Body: wire.SNAC_0x04_0x14_ICBMClientEvent{
 				Cookie:     inBody.Cookie,
 				ChannelID:  inBody.ChannelID,
-				ScreenName: string(sess.DisplayScreenName()),
+				ScreenName: string(instance.DisplayScreenName()),
 				Event:      inBody.Event,
 			},
 		})
@@ -317,7 +328,7 @@ func (s ICBMService) ClientEvent(ctx context.Context, sess *state.Session, inFra
 	}
 }
 
-func (s ICBMService) ClientErr(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x0B_ICBMClientErr) error {
+func (s ICBMService) ClientErr(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x0B_ICBMClientErr) error {
 	s.messageRelayer.RelayToScreenName(ctx, state.NewIdentScreenName(inBody.ScreenName), wire.SNACMessage{
 		Frame: wire.SNACFrame{
 			FoodGroup: wire.ICBM,
@@ -327,7 +338,7 @@ func (s ICBMService) ClientErr(ctx context.Context, sess *state.Session, inFrame
 		Body: wire.SNAC_0x04_0x0B_ICBMClientErr{
 			Cookie:     inBody.Cookie,
 			ChannelID:  inBody.ChannelID,
-			ScreenName: sess.DisplayScreenName().String(),
+			ScreenName: instance.DisplayScreenName().String(),
 			Code:       inBody.Code,
 			ErrInfo:    inBody.ErrInfo,
 		},
@@ -342,16 +353,16 @@ func (s ICBMService) ClientErr(ctx context.Context, sess *state.Session, inFrame
 // non-anonymously. It returns SNAC wire.ICBMEvilReply to confirm that the
 // warning was sent. Users may not warn themselves or warn users they have
 // blocked or are blocked by.
-func (s ICBMService) EvilRequest(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x08_ICBMEvilRequest) (wire.SNACMessage, error) {
+func (s ICBMService) EvilRequest(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x08_ICBMEvilRequest) (wire.SNACMessage, error) {
 	identScreenName := state.NewIdentScreenName(inBody.ScreenName)
 
 	// don't let users warn themselves, it causes the AIM client to go into a
 	// weird state.
-	if identScreenName == sess.IdentScreenName() {
+	if identScreenName == instance.IdentScreenName() {
 		return *newICBMErr(inFrame.RequestID, wire.ErrorCodeNotSupportedByHost), nil
 	}
 
-	blocked, err := s.relationshipFetcher.Relationship(ctx, sess.IdentScreenName(), identScreenName)
+	blocked, err := s.relationshipFetcher.Relationship(ctx, instance.IdentScreenName(), identScreenName)
 	if err != nil {
 		return wire.SNACMessage{}, err
 	}
@@ -366,12 +377,12 @@ func (s ICBMService) EvilRequest(ctx context.Context, sess *state.Session, inFra
 		return *newICBMErr(inFrame.RequestID, wire.ErrorCodeNotLoggedOn), nil
 	}
 
-	if recipSess.UserInfoBitmask()&wire.OServiceUserFlagBot == wire.OServiceUserFlagBot {
+	if recipSess.AllUserInfoBitmask(wire.OServiceUserFlagBot) {
 		// target user is a bot, bots can't be warned
 		return *newICBMErr(inFrame.RequestID, wire.ErrorCodeRequestDenied), nil
 	}
 
-	canWarn := s.convoTracker.trackWarn(time.Now(), sess.IdentScreenName(), recipSess.IdentScreenName())
+	canWarn := s.convoTracker.trackWarn(time.Now(), instance.IdentScreenName(), recipSess.IdentScreenName())
 	if !canWarn {
 		// user has warned target too many times or not enough messages have
 		// been received from target
@@ -405,8 +416,8 @@ func (s ICBMService) EvilRequest(ctx context.Context, sess *state.Session, inFra
 			wire.TLVUserInfo
 		}{
 			TLVUserInfo: wire.TLVUserInfo{
-				ScreenName:   sess.DisplayScreenName().String(),
-				WarningLevel: sess.Warning(),
+				ScreenName:   instance.DisplayScreenName().String(),
+				WarningLevel: instance.Warning(),
 			},
 		}
 	}
@@ -432,8 +443,8 @@ func (s ICBMService) EvilRequest(ctx context.Context, sess *state.Session, inFra
 	}, nil
 }
 
-func (s ICBMService) OfflineRetrieve(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame) (wire.SNACMessage, error) {
-	msgList, err := s.offlineMessageManager.RetrieveMessages(ctx, sess.IdentScreenName())
+func (s ICBMService) OfflineRetrieve(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame) (wire.SNACMessage, error) {
+	msgList, err := s.offlineMessageManager.RetrieveMessages(ctx, instance.IdentScreenName())
 	if err != nil {
 		return wire.SNACMessage{}, fmt.Errorf("retrieving messages: %w", err)
 	}
@@ -464,7 +475,7 @@ func (s ICBMService) OfflineRetrieve(ctx context.Context, sess *state.Session, i
 	}
 
 	if len(msgList) > 0 {
-		if err := s.offlineMessageManager.DeleteMessages(ctx, sess.IdentScreenName()); err != nil {
+		if err := s.offlineMessageManager.DeleteMessages(ctx, instance.IdentScreenName()); err != nil {
 			return wire.SNACMessage{}, fmt.Errorf("offlineMessageManager.DeleteMessages: %w", err)
 		}
 	}
@@ -481,8 +492,8 @@ func (s ICBMService) OfflineRetrieve(ctx context.Context, sess *state.Session, i
 
 // RestoreWarningLevel restores the warning level from the last stored value at login time,
 // accounting for time passed between logins.
-func (s ICBMService) RestoreWarningLevel(ctx context.Context, sess *state.Session) error {
-	u, err := s.userManager.User(ctx, sess.IdentScreenName())
+func (s ICBMService) RestoreWarningLevel(ctx context.Context, instance *state.SessionInstance) error {
+	u, err := s.userManager.User(ctx, instance.IdentScreenName())
 	if err != nil {
 		return fmt.Errorf("failed to get user: %w", err)
 	}
@@ -505,15 +516,15 @@ func (s ICBMService) RestoreWarningLevel(ctx context.Context, sess *state.Sessio
 	// login, proportionally increasing the warning level
 	warnDelta := calcElapsedWarningLevel(u.LastWarnUpdate, s.timeNow(), s.interval)
 	newWarning := int16(u.LastWarnLevel) + warnDelta
-	sess.SetWarning(0)
-	sess.ScaleWarningAndRateLimit(newWarning, classID)
+	instance.Session().SetWarning(0)
+	instance.Session().ScaleWarningAndRateLimit(newWarning, classID)
 
-	if sess.Warning() > 0 {
+	if instance.Warning() > 0 {
 		s.logger.DebugContext(ctx, "restored warning level with time decay applied since last login",
 			"stored_level", u.LastWarnLevel,
 			"time_since_update", s.timeNow().Sub(u.LastWarnUpdate),
 			"decay_delta", warnDelta,
-			"final_level", sess.Warning(),
+			"final_level", instance.Warning(),
 		)
 	} else {
 		s.logger.DebugContext(ctx, "warning level decayed to zero since last login",
@@ -528,7 +539,7 @@ func (s ICBMService) RestoreWarningLevel(ctx context.Context, sess *state.Sessio
 
 // UpdateWarnLevel periodically updates the warning level relative to time
 // elapsed between warnings.
-func (s ICBMService) UpdateWarnLevel(ctx context.Context, sess *state.Session) {
+func (s ICBMService) UpdateWarnLevel(ctx context.Context, instance *state.SessionInstance) {
 	var inProgress bool
 	var ticker *time.Ticker
 	var tickC <-chan time.Time // nil when idle, enables/disables the select case
@@ -551,8 +562,8 @@ func (s ICBMService) UpdateWarnLevel(ctx context.Context, sess *state.Session) {
 		s.logger.DebugContext(ctx, "warning decay started")
 	}
 
-	if sess.Warning() > 0 {
-		u, err := s.userManager.User(ctx, sess.IdentScreenName())
+	if instance.Warning() > 0 {
+		u, err := s.userManager.User(ctx, instance.IdentScreenName())
 		if err != nil {
 			s.logger.ErrorContext(ctx, "failed to get user", "err", err)
 			return
@@ -563,7 +574,7 @@ func (s ICBMService) UpdateWarnLevel(ctx context.Context, sess *state.Session) {
 			interval = newInterval
 		}
 		s.logger.DebugContext(ctx, "starting warning level update with interval adjusted to next boundary",
-			"user", sess.IdentScreenName(),
+			"user", instance.IdentScreenName(),
 			"adjusted_interval", interval,
 			"default_interval", s.interval,
 			"time_since_last_update", s.timeNow().Sub(u.LastWarnUpdate),
@@ -587,24 +598,24 @@ func (s ICBMService) UpdateWarnLevel(ctx context.Context, sess *state.Session) {
 		defer close(warnCh)
 		for {
 			select {
-			case <-sess.Closed():
+			case <-instance.Closed():
 				return
 			case <-ctx.Done():
 				return
-			case warning := <-sess.WarningCh():
+			case warning := <-instance.WarningCh():
 				if warning > 0 {
 					warnCh <- struct{}{}
 				}
-				if err := s.userManager.SetWarnLevel(ctx, sess.IdentScreenName(), s.timeNow(), warning); err != nil {
+				if err := s.userManager.SetWarnLevel(ctx, instance.IdentScreenName(), s.timeNow(), warning); err != nil {
 					s.logger.ErrorContext(ctx, "failed to set warn level", "err", err)
 				}
 
-				info := sess.TLVUserInfo()
+				info := instance.Session().TLVUserInfo()
 				// lock in the current warning level to avoid race conditions
 				// where the warning level might change during this broadcast
 				// operation
 				info.WarningLevel = warning
-				if err := s.buddyBroadcaster.BroadcastBuddyArrived(ctx, sess.IdentScreenName(), info); err != nil {
+				if err := s.buddyBroadcaster.BroadcastBuddyArrived(ctx, instance.IdentScreenName(), info); err != nil {
 					s.logger.ErrorContext(ctx, "BroadcastBuddyArrived failed", "err", err)
 				} else {
 					s.logger.DebugContext(ctx, "warning lowered", "remaining", warning)
@@ -617,7 +628,7 @@ func (s ICBMService) UpdateWarnLevel(ctx context.Context, sess *state.Session) {
 
 	for {
 		select {
-		case <-sess.Closed():
+		case <-instance.Closed():
 			stopTicker()
 			return
 		case <-ctx.Done():
@@ -637,7 +648,7 @@ func (s ICBMService) UpdateWarnLevel(ctx context.Context, sess *state.Session) {
 				doReset = false
 			}
 
-			ok, warning := sess.ScaleWarningAndRateLimit(warningDecayPct, classID)
+			ok, warning := instance.Session().ScaleWarningAndRateLimit(warningDecayPct, classID)
 			if !ok {
 				s.logger.ErrorContext(ctx, "warning increment out of rage", "level", warning)
 				stopTicker()

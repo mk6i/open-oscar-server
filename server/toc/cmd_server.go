@@ -25,7 +25,7 @@ var (
 // RecvBOS routes incoming SNAC messages from the BOS server to their
 // corresponding TOC handlers. It ignores any SNAC messages for which there is
 // no TOC response.
-func (s OSCARProxy) RecvBOS(ctx context.Context, me *state.Session, chatRegistry *ChatRegistry, ch chan<- []byte) error {
+func (s OSCARProxy) RecvBOS(ctx context.Context, me *state.SessionInstance, chatRegistry *ChatRegistry, ch chan<- []byte) error {
 	for {
 		select {
 		case <-ctx.Done():
@@ -59,7 +59,7 @@ func (s OSCARProxy) RecvBOS(ctx context.Context, me *state.Session, chatRegistry
 // RecvChat routes incoming SNAC messages from the chat server to their
 // corresponding TOC handlers. It ignores any SNAC messages for which there is
 // no TOC response.
-func (s OSCARProxy) RecvChat(ctx context.Context, me *state.Session, chatID int, ch chan<- []byte) {
+func (s OSCARProxy) RecvChat(ctx context.Context, me *state.SessionInstance, chatID int, ch chan<- []byte) {
 	for {
 		select {
 		case <-ctx.Done():

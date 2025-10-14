@@ -41,16 +41,16 @@ func (_m *mockRateLimitUpdater) EXPECT() *mockRateLimitUpdater_Expecter {
 }
 
 // RateLimitUpdates provides a mock function for the type mockRateLimitUpdater
-func (_mock *mockRateLimitUpdater) RateLimitUpdates(ctx context.Context, sess *state.Session, now time.Time) []wire.SNACMessage {
-	ret := _mock.Called(ctx, sess, now)
+func (_mock *mockRateLimitUpdater) RateLimitUpdates(ctx context.Context, instance *state.SessionInstance, now time.Time) []wire.SNACMessage {
+	ret := _mock.Called(ctx, instance, now)
 
 	if len(ret) == 0 {
 		panic("no return value specified for RateLimitUpdates")
 	}
 
 	var r0 []wire.SNACMessage
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.Session, time.Time) []wire.SNACMessage); ok {
-		r0 = returnFunc(ctx, sess, now)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, time.Time) []wire.SNACMessage); ok {
+		r0 = returnFunc(ctx, instance, now)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]wire.SNACMessage)
@@ -66,21 +66,21 @@ type mockRateLimitUpdater_RateLimitUpdates_Call struct {
 
 // RateLimitUpdates is a helper method to define mock.On call
 //   - ctx context.Context
-//   - sess *state.Session
+//   - instance *state.SessionInstance
 //   - now time.Time
-func (_e *mockRateLimitUpdater_Expecter) RateLimitUpdates(ctx interface{}, sess interface{}, now interface{}) *mockRateLimitUpdater_RateLimitUpdates_Call {
-	return &mockRateLimitUpdater_RateLimitUpdates_Call{Call: _e.mock.On("RateLimitUpdates", ctx, sess, now)}
+func (_e *mockRateLimitUpdater_Expecter) RateLimitUpdates(ctx interface{}, instance interface{}, now interface{}) *mockRateLimitUpdater_RateLimitUpdates_Call {
+	return &mockRateLimitUpdater_RateLimitUpdates_Call{Call: _e.mock.On("RateLimitUpdates", ctx, instance, now)}
 }
 
-func (_c *mockRateLimitUpdater_RateLimitUpdates_Call) Run(run func(ctx context.Context, sess *state.Session, now time.Time)) *mockRateLimitUpdater_RateLimitUpdates_Call {
+func (_c *mockRateLimitUpdater_RateLimitUpdates_Call) Run(run func(ctx context.Context, instance *state.SessionInstance, now time.Time)) *mockRateLimitUpdater_RateLimitUpdates_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *state.Session
+		var arg1 *state.SessionInstance
 		if args[1] != nil {
-			arg1 = args[1].(*state.Session)
+			arg1 = args[1].(*state.SessionInstance)
 		}
 		var arg2 time.Time
 		if args[2] != nil {
@@ -100,7 +100,7 @@ func (_c *mockRateLimitUpdater_RateLimitUpdates_Call) Return(sNACMessages []wire
 	return _c
 }
 
-func (_c *mockRateLimitUpdater_RateLimitUpdates_Call) RunAndReturn(run func(ctx context.Context, sess *state.Session, now time.Time) []wire.SNACMessage) *mockRateLimitUpdater_RateLimitUpdates_Call {
+func (_c *mockRateLimitUpdater_RateLimitUpdates_Call) RunAndReturn(run func(ctx context.Context, instance *state.SessionInstance, now time.Time) []wire.SNACMessage) *mockRateLimitUpdater_RateLimitUpdates_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -40,8 +40,8 @@ func (_m *mockAdminService) EXPECT() *mockAdminService_Expecter {
 }
 
 // ConfirmRequest provides a mock function for the type mockAdminService
-func (_mock *mockAdminService) ConfirmRequest(ctx context.Context, sess *state.Session, frame wire.SNACFrame) (wire.SNACMessage, error) {
-	ret := _mock.Called(ctx, sess, frame)
+func (_mock *mockAdminService) ConfirmRequest(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame) (wire.SNACMessage, error) {
+	ret := _mock.Called(ctx, instance, inFrame)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ConfirmRequest")
@@ -49,16 +49,16 @@ func (_mock *mockAdminService) ConfirmRequest(ctx context.Context, sess *state.S
 
 	var r0 wire.SNACMessage
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.Session, wire.SNACFrame) (wire.SNACMessage, error)); ok {
-		return returnFunc(ctx, sess, frame)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame) (wire.SNACMessage, error)); ok {
+		return returnFunc(ctx, instance, inFrame)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.Session, wire.SNACFrame) wire.SNACMessage); ok {
-		r0 = returnFunc(ctx, sess, frame)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame) wire.SNACMessage); ok {
+		r0 = returnFunc(ctx, instance, inFrame)
 	} else {
 		r0 = ret.Get(0).(wire.SNACMessage)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, *state.Session, wire.SNACFrame) error); ok {
-		r1 = returnFunc(ctx, sess, frame)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *state.SessionInstance, wire.SNACFrame) error); ok {
+		r1 = returnFunc(ctx, instance, inFrame)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -72,21 +72,21 @@ type mockAdminService_ConfirmRequest_Call struct {
 
 // ConfirmRequest is a helper method to define mock.On call
 //   - ctx context.Context
-//   - sess *state.Session
-//   - frame wire.SNACFrame
-func (_e *mockAdminService_Expecter) ConfirmRequest(ctx interface{}, sess interface{}, frame interface{}) *mockAdminService_ConfirmRequest_Call {
-	return &mockAdminService_ConfirmRequest_Call{Call: _e.mock.On("ConfirmRequest", ctx, sess, frame)}
+//   - instance *state.SessionInstance
+//   - inFrame wire.SNACFrame
+func (_e *mockAdminService_Expecter) ConfirmRequest(ctx interface{}, instance interface{}, inFrame interface{}) *mockAdminService_ConfirmRequest_Call {
+	return &mockAdminService_ConfirmRequest_Call{Call: _e.mock.On("ConfirmRequest", ctx, instance, inFrame)}
 }
 
-func (_c *mockAdminService_ConfirmRequest_Call) Run(run func(ctx context.Context, sess *state.Session, frame wire.SNACFrame)) *mockAdminService_ConfirmRequest_Call {
+func (_c *mockAdminService_ConfirmRequest_Call) Run(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame)) *mockAdminService_ConfirmRequest_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *state.Session
+		var arg1 *state.SessionInstance
 		if args[1] != nil {
-			arg1 = args[1].(*state.Session)
+			arg1 = args[1].(*state.SessionInstance)
 		}
 		var arg2 wire.SNACFrame
 		if args[2] != nil {
@@ -106,14 +106,14 @@ func (_c *mockAdminService_ConfirmRequest_Call) Return(sNACMessage wire.SNACMess
 	return _c
 }
 
-func (_c *mockAdminService_ConfirmRequest_Call) RunAndReturn(run func(ctx context.Context, sess *state.Session, frame wire.SNACFrame) (wire.SNACMessage, error)) *mockAdminService_ConfirmRequest_Call {
+func (_c *mockAdminService_ConfirmRequest_Call) RunAndReturn(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame) (wire.SNACMessage, error)) *mockAdminService_ConfirmRequest_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // InfoChangeRequest provides a mock function for the type mockAdminService
-func (_mock *mockAdminService) InfoChangeRequest(ctx context.Context, sess *state.Session, frame wire.SNACFrame, body wire.SNAC_0x07_0x04_AdminInfoChangeRequest) (wire.SNACMessage, error) {
-	ret := _mock.Called(ctx, sess, frame, body)
+func (_mock *mockAdminService) InfoChangeRequest(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x07_0x04_AdminInfoChangeRequest) (wire.SNACMessage, error) {
+	ret := _mock.Called(ctx, instance, inFrame, inBody)
 
 	if len(ret) == 0 {
 		panic("no return value specified for InfoChangeRequest")
@@ -121,16 +121,16 @@ func (_mock *mockAdminService) InfoChangeRequest(ctx context.Context, sess *stat
 
 	var r0 wire.SNACMessage
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.Session, wire.SNACFrame, wire.SNAC_0x07_0x04_AdminInfoChangeRequest) (wire.SNACMessage, error)); ok {
-		return returnFunc(ctx, sess, frame, body)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x07_0x04_AdminInfoChangeRequest) (wire.SNACMessage, error)); ok {
+		return returnFunc(ctx, instance, inFrame, inBody)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.Session, wire.SNACFrame, wire.SNAC_0x07_0x04_AdminInfoChangeRequest) wire.SNACMessage); ok {
-		r0 = returnFunc(ctx, sess, frame, body)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x07_0x04_AdminInfoChangeRequest) wire.SNACMessage); ok {
+		r0 = returnFunc(ctx, instance, inFrame, inBody)
 	} else {
 		r0 = ret.Get(0).(wire.SNACMessage)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, *state.Session, wire.SNACFrame, wire.SNAC_0x07_0x04_AdminInfoChangeRequest) error); ok {
-		r1 = returnFunc(ctx, sess, frame, body)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x07_0x04_AdminInfoChangeRequest) error); ok {
+		r1 = returnFunc(ctx, instance, inFrame, inBody)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -144,22 +144,22 @@ type mockAdminService_InfoChangeRequest_Call struct {
 
 // InfoChangeRequest is a helper method to define mock.On call
 //   - ctx context.Context
-//   - sess *state.Session
-//   - frame wire.SNACFrame
-//   - body wire.SNAC_0x07_0x04_AdminInfoChangeRequest
-func (_e *mockAdminService_Expecter) InfoChangeRequest(ctx interface{}, sess interface{}, frame interface{}, body interface{}) *mockAdminService_InfoChangeRequest_Call {
-	return &mockAdminService_InfoChangeRequest_Call{Call: _e.mock.On("InfoChangeRequest", ctx, sess, frame, body)}
+//   - instance *state.SessionInstance
+//   - inFrame wire.SNACFrame
+//   - inBody wire.SNAC_0x07_0x04_AdminInfoChangeRequest
+func (_e *mockAdminService_Expecter) InfoChangeRequest(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}) *mockAdminService_InfoChangeRequest_Call {
+	return &mockAdminService_InfoChangeRequest_Call{Call: _e.mock.On("InfoChangeRequest", ctx, instance, inFrame, inBody)}
 }
 
-func (_c *mockAdminService_InfoChangeRequest_Call) Run(run func(ctx context.Context, sess *state.Session, frame wire.SNACFrame, body wire.SNAC_0x07_0x04_AdminInfoChangeRequest)) *mockAdminService_InfoChangeRequest_Call {
+func (_c *mockAdminService_InfoChangeRequest_Call) Run(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x07_0x04_AdminInfoChangeRequest)) *mockAdminService_InfoChangeRequest_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *state.Session
+		var arg1 *state.SessionInstance
 		if args[1] != nil {
-			arg1 = args[1].(*state.Session)
+			arg1 = args[1].(*state.SessionInstance)
 		}
 		var arg2 wire.SNACFrame
 		if args[2] != nil {
@@ -184,14 +184,14 @@ func (_c *mockAdminService_InfoChangeRequest_Call) Return(sNACMessage wire.SNACM
 	return _c
 }
 
-func (_c *mockAdminService_InfoChangeRequest_Call) RunAndReturn(run func(ctx context.Context, sess *state.Session, frame wire.SNACFrame, body wire.SNAC_0x07_0x04_AdminInfoChangeRequest) (wire.SNACMessage, error)) *mockAdminService_InfoChangeRequest_Call {
+func (_c *mockAdminService_InfoChangeRequest_Call) RunAndReturn(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x07_0x04_AdminInfoChangeRequest) (wire.SNACMessage, error)) *mockAdminService_InfoChangeRequest_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // InfoQuery provides a mock function for the type mockAdminService
-func (_mock *mockAdminService) InfoQuery(ctx context.Context, sess *state.Session, frame wire.SNACFrame, body wire.SNAC_0x07_0x02_AdminInfoQuery) (wire.SNACMessage, error) {
-	ret := _mock.Called(ctx, sess, frame, body)
+func (_mock *mockAdminService) InfoQuery(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x07_0x02_AdminInfoQuery) (wire.SNACMessage, error) {
+	ret := _mock.Called(ctx, instance, inFrame, inBody)
 
 	if len(ret) == 0 {
 		panic("no return value specified for InfoQuery")
@@ -199,16 +199,16 @@ func (_mock *mockAdminService) InfoQuery(ctx context.Context, sess *state.Sessio
 
 	var r0 wire.SNACMessage
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.Session, wire.SNACFrame, wire.SNAC_0x07_0x02_AdminInfoQuery) (wire.SNACMessage, error)); ok {
-		return returnFunc(ctx, sess, frame, body)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x07_0x02_AdminInfoQuery) (wire.SNACMessage, error)); ok {
+		return returnFunc(ctx, instance, inFrame, inBody)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.Session, wire.SNACFrame, wire.SNAC_0x07_0x02_AdminInfoQuery) wire.SNACMessage); ok {
-		r0 = returnFunc(ctx, sess, frame, body)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x07_0x02_AdminInfoQuery) wire.SNACMessage); ok {
+		r0 = returnFunc(ctx, instance, inFrame, inBody)
 	} else {
 		r0 = ret.Get(0).(wire.SNACMessage)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, *state.Session, wire.SNACFrame, wire.SNAC_0x07_0x02_AdminInfoQuery) error); ok {
-		r1 = returnFunc(ctx, sess, frame, body)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x07_0x02_AdminInfoQuery) error); ok {
+		r1 = returnFunc(ctx, instance, inFrame, inBody)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -222,22 +222,22 @@ type mockAdminService_InfoQuery_Call struct {
 
 // InfoQuery is a helper method to define mock.On call
 //   - ctx context.Context
-//   - sess *state.Session
-//   - frame wire.SNACFrame
-//   - body wire.SNAC_0x07_0x02_AdminInfoQuery
-func (_e *mockAdminService_Expecter) InfoQuery(ctx interface{}, sess interface{}, frame interface{}, body interface{}) *mockAdminService_InfoQuery_Call {
-	return &mockAdminService_InfoQuery_Call{Call: _e.mock.On("InfoQuery", ctx, sess, frame, body)}
+//   - instance *state.SessionInstance
+//   - inFrame wire.SNACFrame
+//   - inBody wire.SNAC_0x07_0x02_AdminInfoQuery
+func (_e *mockAdminService_Expecter) InfoQuery(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}) *mockAdminService_InfoQuery_Call {
+	return &mockAdminService_InfoQuery_Call{Call: _e.mock.On("InfoQuery", ctx, instance, inFrame, inBody)}
 }
 
-func (_c *mockAdminService_InfoQuery_Call) Run(run func(ctx context.Context, sess *state.Session, frame wire.SNACFrame, body wire.SNAC_0x07_0x02_AdminInfoQuery)) *mockAdminService_InfoQuery_Call {
+func (_c *mockAdminService_InfoQuery_Call) Run(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x07_0x02_AdminInfoQuery)) *mockAdminService_InfoQuery_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *state.Session
+		var arg1 *state.SessionInstance
 		if args[1] != nil {
-			arg1 = args[1].(*state.Session)
+			arg1 = args[1].(*state.SessionInstance)
 		}
 		var arg2 wire.SNACFrame
 		if args[2] != nil {
@@ -262,7 +262,7 @@ func (_c *mockAdminService_InfoQuery_Call) Return(sNACMessage wire.SNACMessage, 
 	return _c
 }
 
-func (_c *mockAdminService_InfoQuery_Call) RunAndReturn(run func(ctx context.Context, sess *state.Session, frame wire.SNACFrame, body wire.SNAC_0x07_0x02_AdminInfoQuery) (wire.SNACMessage, error)) *mockAdminService_InfoQuery_Call {
+func (_c *mockAdminService_InfoQuery_Call) RunAndReturn(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x07_0x02_AdminInfoQuery) (wire.SNACMessage, error)) *mockAdminService_InfoQuery_Call {
 	_c.Call.Return(run)
 	return _c
 }

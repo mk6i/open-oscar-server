@@ -171,7 +171,7 @@ func (m *BuddyListManager) getBuddyInfo(buddyName string) WebAPIBuddyInfo {
 		info.OnlineTime = session.SignonTime().Unix()
 
 		// Check away status
-		if session.AwayMessage() != "" {
+		if session.Away() {
 			info.State = "away"
 			info.AwayMsg = session.AwayMessage()
 		}
@@ -185,7 +185,7 @@ func (m *BuddyListManager) getBuddyInfo(buddyName string) WebAPIBuddyInfo {
 			}
 		}
 
-		// Status messages not currently supported in Session
+		// Status messages not currently supported in SessionInstance
 
 		// Set capabilities
 		// Capabilities parsing not implemented

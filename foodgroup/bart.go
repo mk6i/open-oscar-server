@@ -42,7 +42,7 @@ type BARTService struct {
 	logger                 *slog.Logger
 }
 
-func (s BARTService) UpsertItem(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x10_0x02_BARTUploadQuery) (wire.SNACMessage, error) {
+func (s BARTService) UpsertItem(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x10_0x02_BARTUploadQuery) (wire.SNACMessage, error) {
 	h := md5.New()
 	if _, err := h.Write(inBody.Data); err != nil {
 		return wire.SNACMessage{}, err
@@ -57,21 +57,21 @@ func (s BARTService) UpsertItem(ctx context.Context, sess *state.Session, inFram
 
 	s.logger.DebugContext(ctx, "successfully uploaded BART item", "hash", fmt.Sprintf("%x", hash))
 
-	bartID, hasIcon := sess.BuddyIcon()
+	bartID, hasIcon := instance.Session().BuddyIcon()
 	if hasIcon && bytes.Equal(hash, bartID.Hash) {
 		// unset unknown flag
 		bartID.Flags ^= wire.BARTFlagsUnknown
-		sess.SetBuddyIcon(bartID)
+		instance.Session().SetBuddyIcon(bartID)
 
-		s.messageRelayer.RelayToScreenName(ctx, sess.IdentScreenName(), wire.SNACMessage{
+		s.messageRelayer.RelayToScreenName(ctx, instance.IdentScreenName(), wire.SNACMessage{
 			Frame: wire.SNACFrame{
 				FoodGroup: wire.OService,
 				SubGroup:  wire.OServiceUserInfoUpdate,
 			},
-			Body: newOServiceUserInfoUpdate(sess),
+			Body: newOServiceUserInfoUpdate(instance),
 		})
 
-		if err := s.buddyUpdateBroadcaster.BroadcastBuddyArrived(ctx, sess.IdentScreenName(), sess.TLVUserInfo()); err != nil {
+		if err := s.buddyUpdateBroadcaster.BroadcastBuddyArrived(ctx, instance.IdentScreenName(), instance.Session().TLVUserInfo()); err != nil {
 			return wire.SNACMessage{}, err
 		}
 	} else {

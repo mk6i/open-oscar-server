@@ -26,9 +26,9 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 		service uint16
 		// listener is the connection listener
 		listener config.Listener
-		// userSession is the session of the user requesting the chat service
+		// instance is the session of the user requesting the chat service
 		// info
-		userSession *state.Session
+		instance *state.SessionInstance
 		// inputSNAC is the SNAC sent by the sender client
 		inputSNAC wire.SNACMessage
 		// expectSNACFrame is the SNAC frame sent from the server to the recipient
@@ -41,10 +41,10 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 		expectErr error
 	}{
 		{
-			name:        "request info for connecting to admin svc, return admin svc connection metadata",
-			service:     wire.BOS,
-			listener:    config.Listener{BOSAdvertisedHostPlain: "127.0.0.1:1234"},
-			userSession: newTestSession("me"),
+			name:     "request info for connecting to admin svc, return admin svc connection metadata",
+			service:  wire.BOS,
+			listener: config.Listener{BOSAdvertisedHostPlain: "127.0.0.1:1234"},
+			instance: newTestInstance("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -77,10 +77,11 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 							dataIn: []byte{
 								0x00, 0x07, // admin service
 								0x02, 'm', 'e',
-								0x0, // no client ID
-								0x0, // no chat cookie
-								0x0, // multi conn flag
-								0x0, // kerberos flag
+								0x0,  // no client ID
+								0x0,  // no chat cookie
+								0x0,  // multi conn flag
+								0x0,  // kerberos flag
+								0x01, // session num
 							},
 							cookieOut: []byte("the-cookie"),
 						},
@@ -89,10 +90,10 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 			},
 		},
 		{
-			name:        "request info for connecting to alert svc, return alert svc connection metadata",
-			service:     wire.BOS,
-			listener:    config.Listener{BOSAdvertisedHostPlain: "127.0.0.1:1234"},
-			userSession: newTestSession("me"),
+			name:     "request info for connecting to alert svc, return alert svc connection metadata",
+			service:  wire.BOS,
+			listener: config.Listener{BOSAdvertisedHostPlain: "127.0.0.1:1234"},
+			instance: newTestInstance("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -125,10 +126,11 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 							dataIn: []byte{
 								0x00, 0x18, // alert service
 								0x02, 'm', 'e',
-								0x0, // no client ID
-								0x0, // no chat cookie
-								0x0, // multi conn flag
-								0x0, // kerberos flag
+								0x0,  // no client ID
+								0x0,  // no chat cookie
+								0x0,  // multi conn flag
+								0x0,  // kerberos flag
+								0x01, // session num
 							},
 							cookieOut: []byte("the-cookie"),
 						},
@@ -137,10 +139,10 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 			},
 		},
 		{
-			name:        "request info for connecting to BART service, return BART connection metadata",
-			service:     wire.BOS,
-			listener:    config.Listener{BOSAdvertisedHostPlain: "127.0.0.1:1234"},
-			userSession: newTestSession("me"),
+			name:     "request info for connecting to BART service, return BART connection metadata",
+			service:  wire.BOS,
+			listener: config.Listener{BOSAdvertisedHostPlain: "127.0.0.1:1234"},
+			instance: newTestInstance("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -173,10 +175,11 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 							dataIn: []byte{
 								0x00, 0x10, // chatnav service
 								0x02, 'm', 'e',
-								0x0, // no client ID
-								0x0, // no chat cookie
-								0x0, // multi conn flag
-								0x0, // kerberos flag
+								0x0,  // no client ID
+								0x0,  // no chat cookie
+								0x0,  // multi conn flag
+								0x0,  // kerberos flag
+								0x01, // session num
 							},
 							cookieOut: []byte("the-cookie"),
 						},
@@ -185,10 +188,10 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 			},
 		},
 		{
-			name:        "request info for connecting to chat nav, return chat nav connection metadata",
-			service:     wire.BOS,
-			listener:    config.Listener{BOSAdvertisedHostPlain: "127.0.0.1:1234"},
-			userSession: newTestSession("me"),
+			name:     "request info for connecting to chat nav, return chat nav connection metadata",
+			service:  wire.BOS,
+			listener: config.Listener{BOSAdvertisedHostPlain: "127.0.0.1:1234"},
+			instance: newTestInstance("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -221,10 +224,11 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 							dataIn: []byte{
 								0x00, 0x0d, // chatnav service
 								0x02, 'm', 'e',
-								0x0, // no client ID
-								0x0, // no chat cookie
-								0x0, // multi conn flag
-								0x0, // kerberos flag
+								0x0,  // no client ID
+								0x0,  // no chat cookie
+								0x0,  // multi conn flag
+								0x0,  // kerberos flag
+								0x01, // session num
 							},
 							cookieOut: []byte("the-cookie"),
 						},
@@ -233,10 +237,10 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 			},
 		},
 		{
-			name:        "request info for connecting to chat room, return chat service and chat room metadata",
-			service:     wire.BOS,
-			listener:    config.Listener{BOSAdvertisedHostPlain: "127.0.0.1:1234"},
-			userSession: newTestSession("me"),
+			name:     "request info for connecting to chat room, return chat service and chat room metadata",
+			service:  wire.BOS,
+			listener: config.Listener{BOSAdvertisedHostPlain: "127.0.0.1:1234"},
+			instance: newTestInstance("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -289,8 +293,9 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 									0x02, 'm', 'e', // screen name
 									0x00, // no client ID
 									0x11, '4', '-', '0', '-', 't', 'h', 'e', '-', 'c', 'h', 'a', 't', '-', 'r', 'o', 'o', 'm',
-									0x0, // multi conn flag
-									0x0, // kerberos flag
+									0x0,  // multi conn flag
+									0x0,  // kerberos flag
+									0x01, // session num
 								},
 								cookieOut: []byte("the-auth-cookie"),
 							},
@@ -300,10 +305,10 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 			}(),
 		},
 		{
-			name:        "request info for connecting to BART service, return BART connection metadata",
-			service:     wire.BOS,
-			listener:    config.Listener{BOSAdvertisedHostPlain: "127.0.0.1:1234"},
-			userSession: newTestSession("me"),
+			name:     "request info for connecting to BART service, return BART connection metadata",
+			service:  wire.BOS,
+			listener: config.Listener{BOSAdvertisedHostPlain: "127.0.0.1:1234"},
+			instance: newTestInstance("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -336,10 +341,11 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 							dataIn: []byte{
 								0x00, 0x0F, // chatnav service
 								0x02, 'm', 'e',
-								0x0, // no client ID
-								0x0, // no chat cookie
-								0x0, // multi conn flag
-								0x0, // kerberos flag
+								0x0,  // no client ID
+								0x0,  // no chat cookie
+								0x0,  // multi conn flag
+								0x0,  // kerberos flag
+								0x01, // session num
 							},
 							cookieOut: []byte("the-cookie"),
 						},
@@ -348,10 +354,10 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 			},
 		},
 		{
-			name:        "request info for connecting to non-existent chat room, return ErrChatRoomNotFound",
-			service:     wire.BOS,
-			listener:    config.Listener{BOSAdvertisedHostPlain: "127.0.0.1:1234"},
-			userSession: newTestSession("me"),
+			name:     "request info for connecting to non-existent chat room, return ErrChatRoomNotFound",
+			service:  wire.BOS,
+			listener: config.Listener{BOSAdvertisedHostPlain: "127.0.0.1:1234"},
+			instance: newTestInstance("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -382,9 +388,9 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 			expectErr: state.ErrChatRoomNotFound,
 		},
 		{
-			name:        "request info from a non-BOS service",
-			service:     wire.Chat,
-			userSession: newTestSession("me"),
+			name:     "request info from a non-BOS service",
+			service:  wire.Chat,
+			instance: newTestInstance("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -405,9 +411,9 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 			},
 		},
 		{
-			name:        "request info for ICBM service, return invalid SNAC err",
-			service:     wire.BOS,
-			userSession: newTestSession("me"),
+			name:     "request info for ICBM service, return invalid SNAC err",
+			service:  wire.BOS,
+			instance: newTestInstance("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -428,10 +434,10 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 			},
 		},
 		{
-			name:        "request info for connecting to admin svc with SSL, return admin svc SSL connection metadata",
-			service:     wire.BOS,
-			listener:    config.Listener{BOSAdvertisedHostPlain: "127.0.0.1:1234", BOSAdvertisedHostSSL: "127.0.0.1:1235", HasSSL: true},
-			userSession: newTestSession("me"),
+			name:     "request info for connecting to admin svc with SSL, return admin svc SSL connection metadata",
+			service:  wire.BOS,
+			listener: config.Listener{BOSAdvertisedHostPlain: "127.0.0.1:1234", BOSAdvertisedHostSSL: "127.0.0.1:1235", HasSSL: true},
+			instance: newTestInstance("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -469,10 +475,11 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 							dataIn: []byte{
 								0x00, 0x07, // admin service
 								0x02, 'm', 'e',
-								0x0, // no client ID
-								0x0, // no chat cookie
-								0x0, // multi conn flag
-								0x0, // kerberos flag
+								0x0,  // no client ID
+								0x0,  // no chat cookie
+								0x0,  // multi conn flag
+								0x0,  // kerberos flag
+								0x01, // session num
 							},
 							cookieOut: []byte("the-cookie"),
 						},
@@ -481,10 +488,10 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 			},
 		},
 		{
-			name:        "request info for connecting to alert svc with SSL, return alert svc SSL connection metadata",
-			service:     wire.BOS,
-			listener:    config.Listener{BOSAdvertisedHostPlain: "127.0.0.1:1234", BOSAdvertisedHostSSL: "127.0.0.1:1235", HasSSL: true},
-			userSession: newTestSession("me"),
+			name:     "request info for connecting to alert svc with SSL, return alert svc SSL connection metadata",
+			service:  wire.BOS,
+			listener: config.Listener{BOSAdvertisedHostPlain: "127.0.0.1:1234", BOSAdvertisedHostSSL: "127.0.0.1:1235", HasSSL: true},
+			instance: newTestInstance("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -522,10 +529,11 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 							dataIn: []byte{
 								0x00, 0x18, // alert service
 								0x02, 'm', 'e',
-								0x0, // no client ID
-								0x0, // no chat cookie
-								0x0, // multi conn flag
-								0x0, // kerberos flag
+								0x0,  // no client ID
+								0x0,  // no chat cookie
+								0x0,  // multi conn flag
+								0x0,  // kerberos flag
+								0x01, // session num
 							},
 							cookieOut: []byte("the-cookie"),
 						},
@@ -534,10 +542,10 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 			},
 		},
 		{
-			name:        "request info for connecting to BART service with SSL, return BART SSL connection metadata",
-			service:     wire.BOS,
-			listener:    config.Listener{BOSAdvertisedHostPlain: "127.0.0.1:1234", BOSAdvertisedHostSSL: "127.0.0.1:1235", HasSSL: true},
-			userSession: newTestSession("me"),
+			name:     "request info for connecting to BART service with SSL, return BART SSL connection metadata",
+			service:  wire.BOS,
+			listener: config.Listener{BOSAdvertisedHostPlain: "127.0.0.1:1234", BOSAdvertisedHostSSL: "127.0.0.1:1235", HasSSL: true},
+			instance: newTestInstance("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -575,10 +583,11 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 							dataIn: []byte{
 								0x00, 0x10, // BART service
 								0x02, 'm', 'e',
-								0x0, // no client ID
-								0x0, // no chat cookie
-								0x0, // multi conn flag
-								0x0, // kerberos flag
+								0x0,  // no client ID
+								0x0,  // no chat cookie
+								0x0,  // multi conn flag
+								0x0,  // kerberos flag
+								0x01, // session num
 							},
 							cookieOut: []byte("the-cookie"),
 						},
@@ -587,10 +596,10 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 			},
 		},
 		{
-			name:        "request info for connecting to chat nav with SSL, return chat nav SSL connection metadata",
-			service:     wire.BOS,
-			listener:    config.Listener{BOSAdvertisedHostPlain: "127.0.0.1:1234", BOSAdvertisedHostSSL: "127.0.0.1:1235", HasSSL: true},
-			userSession: newTestSession("me"),
+			name:     "request info for connecting to chat nav with SSL, return chat nav SSL connection metadata",
+			service:  wire.BOS,
+			listener: config.Listener{BOSAdvertisedHostPlain: "127.0.0.1:1234", BOSAdvertisedHostSSL: "127.0.0.1:1235", HasSSL: true},
+			instance: newTestInstance("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -628,10 +637,11 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 							dataIn: []byte{
 								0x00, 0x0d, // chatnav service
 								0x02, 'm', 'e',
-								0x0, // no client ID
-								0x0, // no chat cookie
-								0x0, // multi conn flag
-								0x0, // kerberos flag
+								0x0,  // no client ID
+								0x0,  // no chat cookie
+								0x0,  // multi conn flag
+								0x0,  // kerberos flag
+								0x01, // session num
 							},
 							cookieOut: []byte("the-cookie"),
 						},
@@ -640,10 +650,10 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 			},
 		},
 		{
-			name:        "request info for connecting to chat room with SSL, return chat service SSL connection metadata",
-			service:     wire.BOS,
-			listener:    config.Listener{BOSAdvertisedHostPlain: "127.0.0.1:1234", BOSAdvertisedHostSSL: "127.0.0.1:1235", HasSSL: true},
-			userSession: newTestSession("me"),
+			name:     "request info for connecting to chat room with SSL, return chat service SSL connection metadata",
+			service:  wire.BOS,
+			listener: config.Listener{BOSAdvertisedHostPlain: "127.0.0.1:1234", BOSAdvertisedHostSSL: "127.0.0.1:1235", HasSSL: true},
+			instance: newTestInstance("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -697,8 +707,9 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 									0x02, 'm', 'e', // screen name
 									0x00, // no client ID
 									0x11, '4', '-', '0', '-', 't', 'h', 'e', '-', 'c', 'h', 'a', 't', '-', 'r', 'o', 'o', 'm',
-									0x0, // multi conn flag
-									0x0, // kerberos flag
+									0x0,  // multi conn flag
+									0x0,  // kerberos flag
+									0x01, // session num
 								},
 								cookieOut: []byte("the-auth-cookie"),
 							},
@@ -708,10 +719,10 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 			}(),
 		},
 		{
-			name:        "request info for connecting to ODir service with SSL, return ODir SSL connection metadata",
-			service:     wire.BOS,
-			listener:    config.Listener{BOSAdvertisedHostPlain: "127.0.0.1:1234", BOSAdvertisedHostSSL: "127.0.0.1:1235", HasSSL: true},
-			userSession: newTestSession("me"),
+			name:     "request info for connecting to ODir service with SSL, return ODir SSL connection metadata",
+			service:  wire.BOS,
+			listener: config.Listener{BOSAdvertisedHostPlain: "127.0.0.1:1234", BOSAdvertisedHostSSL: "127.0.0.1:1235", HasSSL: true},
+			instance: newTestInstance("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -749,10 +760,11 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 							dataIn: []byte{
 								0x00, 0x0F, // ODir service
 								0x02, 'm', 'e',
-								0x0, // no client ID
-								0x0, // no chat cookie
-								0x0, // multi conn flag
-								0x0, // kerberos flag
+								0x0,  // no client ID
+								0x0,  // no chat cookie
+								0x0,  // multi conn flag
+								0x0,  // kerberos flag
+								0x01, // session num
 							},
 							cookieOut: []byte("the-cookie"),
 						},
@@ -761,10 +773,10 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 			},
 		},
 		{
-			name:        "request SSL service but listener doesn't support SSL, return error",
-			service:     wire.BOS,
-			listener:    config.Listener{BOSAdvertisedHostPlain: "127.0.0.1:1234", HasSSL: false},
-			userSession: newTestSession("me"),
+			name:     "request SSL service but listener doesn't support SSL, return error",
+			service:  wire.BOS,
+			listener: config.Listener{BOSAdvertisedHostPlain: "127.0.0.1:1234", HasSSL: false},
+			instance: newTestInstance("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -816,7 +828,7 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 			//
 			svc := NewOServiceService(config.Config{}, nil, slog.Default(), cookieIssuer, chatRoomManager, nil, nil, nil, wire.DefaultSNACRateLimits(), chatMessageRelayer, nil, nil)
 
-			outputSNAC, err := svc.ServiceRequest(context.Background(), tc.service, tc.userSession, tc.inputSNAC.Frame,
+			outputSNAC, err := svc.ServiceRequest(context.Background(), tc.service, tc.instance, tc.inputSNAC.Frame,
 				tc.inputSNAC.Body.(wire.SNAC_0x01_0x04_OServiceServiceRequest), tc.listener)
 			assert.ErrorIs(t, err, tc.expectErr)
 			if tc.expectErr != nil {
@@ -834,8 +846,8 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 	cases := []struct {
 		// name is the unit test name
 		name string
-		// userSession is the session of the user whose info is being set
-		userSession *state.Session
+		// instance is the session of the user whose info is being set
+		instance *state.SessionInstance
 		// inputSNAC is the SNAC sent from the client to the server
 		inputSNAC wire.SNACMessage
 		// expectOutput is the SNAC reply sent from the server back to the
@@ -856,8 +868,8 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 		mockParams mockParams
 	}{
 		{
-			name:        "set user status to visible aim < 6",
-			userSession: newTestSession("me"),
+			name:     "set user status to visible aim < 6",
+			instance: newTestInstance("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -876,7 +888,17 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 					SubGroup:  wire.OServiceUserInfoUpdate,
 					RequestID: 1234,
 				},
-				Body: newOServiceUserInfoUpdate(newTestSession("me")),
+				Body: func(val any) bool {
+					snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
+					if !ok {
+						return false
+					}
+					if len(snac.UserInfo) == 0 {
+						return false
+					}
+					status, hasStatus := snac.UserInfo[0].Uint32BE(wire.OServiceUserInfoStatus)
+					return hasStatus && status == uint32(0x0000)
+				},
 			},
 			mockParams: mockParams{
 				buddyBroadcasterParams: buddyBroadcasterParams{
@@ -889,8 +911,8 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 			},
 		},
 		{
-			name:        "set user status to invisible aim < 6",
-			userSession: newTestSession("me"),
+			name:     "set user status to invisible aim < 6",
+			instance: newTestInstance("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -909,7 +931,17 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 					SubGroup:  wire.OServiceUserInfoUpdate,
 					RequestID: 1234,
 				},
-				Body: newOServiceUserInfoUpdate(newTestSession("me", sessOptInvisible)),
+				Body: func(val any) bool {
+					snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
+					if !ok {
+						return false
+					}
+					if len(snac.UserInfo) == 0 {
+						return false
+					}
+					status, hasStatus := snac.UserInfo[0].Uint32BE(wire.OServiceUserInfoStatus)
+					return hasStatus && status == uint32(0x0100)
+				},
 			},
 			mockParams: mockParams{
 				buddyBroadcasterParams: buddyBroadcasterParams{
@@ -922,8 +954,8 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 			},
 		},
 		{
-			name:        "set user status to visible aim >= 6",
-			userSession: newTestSession("me", sessOptSetFoodGroupVersion(wire.OService, 4)),
+			name:     "set user status to visible aim >= 6",
+			instance: newTestInstance("me", sessOptSetFoodGroupVersion(wire.OService, 4)),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -942,7 +974,17 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 					SubGroup:  wire.OServiceUserInfoUpdate,
 					RequestID: 1234,
 				},
-				Body: newOServiceUserInfoUpdate(newTestSession("me", sessOptSetFoodGroupVersion(wire.OService, 4))),
+				Body: func(val any) bool {
+					snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
+					if !ok {
+						return false
+					}
+					if len(snac.UserInfo) == 0 {
+						return false
+					}
+					status, hasStatus := snac.UserInfo[0].Uint32BE(wire.OServiceUserInfoStatus)
+					return hasStatus && status == uint32(0x0000)
+				},
 			},
 			mockParams: mockParams{
 				buddyBroadcasterParams: buddyBroadcasterParams{
@@ -955,8 +997,8 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 			},
 		},
 		{
-			name:        "set user status to invisible aim >= 6",
-			userSession: newTestSession("me", sessOptSetFoodGroupVersion(wire.OService, 4)),
+			name:     "set user status to invisible aim >= 6",
+			instance: newTestInstance("me", sessOptSetFoodGroupVersion(wire.OService, 4)),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -975,7 +1017,17 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 					SubGroup:  wire.OServiceUserInfoUpdate,
 					RequestID: 1234,
 				},
-				Body: newOServiceUserInfoUpdate(newTestSession("me", sessOptSetFoodGroupVersion(wire.OService, 4), sessOptInvisible)),
+				Body: func(val any) bool {
+					snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
+					if !ok {
+						return false
+					}
+					if len(snac.UserInfo) == 0 {
+						return false
+					}
+					status, hasStatus := snac.UserInfo[0].Uint32BE(wire.OServiceUserInfoStatus)
+					return hasStatus && status == uint32(0x0100)
+				},
 			},
 			mockParams: mockParams{
 				buddyBroadcasterParams: buddyBroadcasterParams{
@@ -1009,13 +1061,18 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 				logger:           slog.Default(),
 				buddyBroadcaster: buddyUpdateBroadcaster,
 			}
-			outputSNAC, err := svc.SetUserInfoFields(nil, tc.userSession, tc.inputSNAC.Frame,
+			outputSNAC, err := svc.SetUserInfoFields(nil, tc.instance, tc.inputSNAC.Frame,
 				tc.inputSNAC.Body.(wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields))
 			assert.ErrorIs(t, err, tc.expectErr)
 			if tc.expectErr != nil {
 				return
 			}
-			assert.Equal(t, tc.expectOutput, outputSNAC)
+			assert.Equal(t, tc.expectOutput.Frame, outputSNAC.Frame)
+			if matcherFn, ok := tc.expectOutput.Body.(func(val any) bool); ok {
+				assert.True(t, matcherFn(outputSNAC.Body), "Body matcher function failed")
+			} else {
+				assert.Equal(t, tc.expectOutput.Body, outputSNAC.Body)
+			}
 		})
 	}
 }
@@ -1340,9 +1397,9 @@ func TestOServiceService_RateParamsQuery(t *testing.T) {
 	cases := []struct {
 		// name is the unit test name
 		name string
-		// userSession is the session of the user requesting the chat service
+		// instance is the session of the user requesting the chat service
 		// info
-		userSession *state.Session
+		instance *state.SessionInstance
 		// inputSNAC is the SNAC sent by the sender client
 		inputSNAC wire.SNACMessage
 		// expectSNACFrame is the SNAC frame sent from the server to the recipient
@@ -1354,8 +1411,8 @@ func TestOServiceService_RateParamsQuery(t *testing.T) {
 		timeNow func() time.Time
 	}{
 		{
-			name:        "get rate limits for AIM > 1.x clients",
-			userSession: newTestSession("me", sessOptSetFoodGroupVersion(wire.OService, 3), sessOptSetRateClasses(rateClasses)),
+			name:     "get rate limits for AIM > 1.x clients",
+			instance: newTestInstance("me", sessOptSetFoodGroupVersion(wire.OService, 3), sessOptSetRateClasses(rateClasses)),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{RequestID: 1234},
 			},
@@ -1461,8 +1518,8 @@ func TestOServiceService_RateParamsQuery(t *testing.T) {
 			},
 		},
 		{
-			name:        "get rate limits for AIM 1.x client",
-			userSession: newTestSession("me", sessClientID("AOL Instant Messenger (TM), version 1."), sessOptSetRateClasses(rateClasses)),
+			name:     "get rate limits for AIM 1.x client",
+			instance: newTestInstance("me", sessClientID("AOL Instant Messenger (TM), version 1."), sessOptSetRateClasses(rateClasses)),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{RequestID: 1234},
 			},
@@ -1534,7 +1591,7 @@ func TestOServiceService_RateParamsQuery(t *testing.T) {
 				snacRateLimits: wire.DefaultSNACRateLimits(),
 				timeNow:        tc.timeNow,
 			}
-			have := svc.RateParamsQuery(context.Background(), tc.userSession, tc.inputSNAC.Frame)
+			have := svc.RateParamsQuery(context.Background(), tc.instance, tc.inputSNAC.Frame)
 			assert.ElementsMatch(t, tc.expectOutput.Body.(wire.SNAC_0x01_0x07_OServiceRateParamsReply).RateGroups[0].Pairs,
 				have.Body.(wire.SNAC_0x01_0x07_OServiceRateParamsReply).RateGroups[0].Pairs)
 			assert.ElementsMatch(t, tc.expectOutput.Body.(wire.SNAC_0x01_0x07_OServiceRateParamsReply).RateGroups[1].Pairs,
@@ -1727,8 +1784,8 @@ func TestOServiceService_ClientVersions(t *testing.T) {
 		},
 	}
 
-	sess := newTestSession("me")
-	have := svc.ClientVersions(context.Background(), sess, wire.SNACFrame{
+	instance := newTestInstance("me")
+	have := svc.ClientVersions(context.Background(), instance, wire.SNACFrame{
 		RequestID: 1234,
 	}, wire.SNAC_0x01_0x17_OServiceClientVersions{
 		Versions: []uint16{5, 6, 7, 8},
@@ -1742,100 +1799,173 @@ func TestNewOServiceUserInfoUpdate(t *testing.T) {
 	profileUpdated := time.Unix(1_700_100_000, 0)
 	signonTime := time.Now().Add(-3 * time.Second)
 
-	tests := []struct {
-		name              string
-		session           *state.Session
-		expectSigTime     bool
-		sigTime           time.Time
-		expectSecondBlock bool
-	}{
-		{
-			name: "OService version < 4 without profile",
-			session: newTestSession("me",
-				sessOptMemberSince(memberSince),
-				sessOptSignonTime(signonTime)),
-		},
-		{
-			name: "includes profile update time when set",
-			session: newTestSession("me",
-				sessOptMemberSince(memberSince),
-				sessOptSignonTime(signonTime),
-				sessOptProfile(state.UserProfile{UpdateTime: profileUpdated})),
-			expectSigTime: true,
-			sigTime:       profileUpdated,
-		},
-		{
-			name: "duplicates user info for aim >= 4",
-			session: newTestSession("me",
-				sessOptMemberSince(memberSince),
-				sessOptSignonTime(signonTime),
-				sessOptSetFoodGroupVersion(wire.OService, 4)),
-			expectSecondBlock: true,
-		},
-	}
+	t.Run("OService version < 4 without profile", func(t *testing.T) {
+		session := newTestInstance("me",
+			sessOptMemberSince(memberSince),
+			sessOptSignonTime(signonTime))
+		signon := session.SignonTime()
+		onlineLowerBound := uint32(time.Since(signon).Seconds())
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			signon := tt.session.SignonTime()
-			onlineLowerBound := uint32(time.Since(signon).Seconds())
+		got := newOServiceUserInfoUpdate(session)
 
-			got := newOServiceUserInfoUpdate(tt.session)
+		require.Len(t, got.UserInfo, 1)
 
-			expectedLen := 1
-			if tt.expectSecondBlock {
-				expectedLen = 2
-			}
-			require.Len(t, got.UserInfo, expectedLen)
+		memberVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoMemberSince)
+		require.True(t, ok)
+		require.Equal(t, uint32(memberSince.Unix()), memberVal)
 
-			memberVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoMemberSince)
-			require.True(t, ok)
-			require.Equal(t, uint32(memberSince.Unix()), memberVal)
+		signonVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoSignonTOD)
+		require.True(t, ok)
+		require.Equal(t, uint32(signon.Unix()), signonVal)
 
-			signonVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoSignonTOD)
-			require.True(t, ok)
-			require.Equal(t, uint32(signon.Unix()), signonVal)
+		onlineVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoOnlineTime)
+		require.True(t, ok)
+		require.GreaterOrEqual(t, onlineVal, onlineLowerBound)
+		require.LessOrEqual(t, onlineVal-onlineLowerBound, uint32(2))
 
-			onlineVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoOnlineTime)
-			require.True(t, ok)
-			require.GreaterOrEqual(t, onlineVal, onlineLowerBound)
-			require.LessOrEqual(t, onlineVal-onlineLowerBound, uint32(2))
+		hasSigTime := got.UserInfo[0].HasTag(wire.OServiceUserInfoSigTime)
+		require.False(t, hasSigTime)
 
-			hasSigTime := got.UserInfo[0].HasTag(wire.OServiceUserInfoSigTime)
-			require.Equal(t, tt.expectSigTime, hasSigTime)
-			if tt.expectSigTime {
-				sigVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoSigTime)
-				require.True(t, ok)
-				require.Equal(t, uint32(tt.sigTime.Unix()), sigVal)
-			}
+		require.False(t, got.UserInfo[0].HasTag(wire.OServiceUserInfoPrimaryInstance))
+	})
 
-			if tt.expectSecondBlock {
-				primaryBytes, ok := got.UserInfo[0].Bytes(wire.OServiceUserInfoPrimaryInstance)
-				require.True(t, ok)
-				require.Equal(t, []byte{0x01}, primaryBytes)
+	t.Run("includes profile update time when set", func(t *testing.T) {
+		session := newTestInstance("me",
+			sessOptMemberSince(memberSince),
+			sessOptSignonTime(signonTime),
+			sessOptProfile(state.UserProfile{UpdateTime: profileUpdated}),
+			sessOptSetFoodGroupVersion(wire.OService, 4))
+		signon := session.SignonTime()
+		onlineLowerBound := uint32(time.Since(signon).Seconds())
 
-				instanceBytes, ok := got.UserInfo[1].Bytes(wire.OServiceUserInfoMyInstanceNum)
-				require.True(t, ok)
-				require.Equal(t, []byte{0x01}, instanceBytes)
+		got := newOServiceUserInfoUpdate(session)
 
-				require.Equal(t, got.UserInfo[0].ScreenName, got.UserInfo[1].ScreenName)
-			} else {
-				require.False(t, got.UserInfo[0].HasTag(wire.OServiceUserInfoPrimaryInstance))
-			}
-		})
-	}
+		require.Len(t, got.UserInfo, 2)
+
+		memberVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoMemberSince)
+		require.True(t, ok)
+		require.Equal(t, uint32(memberSince.Unix()), memberVal)
+
+		signonVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoSignonTOD)
+		require.True(t, ok)
+		require.Equal(t, uint32(signon.Unix()), signonVal)
+
+		onlineVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoOnlineTime)
+		require.True(t, ok)
+		require.GreaterOrEqual(t, onlineVal, onlineLowerBound)
+		require.LessOrEqual(t, onlineVal-onlineLowerBound, uint32(2))
+
+		hasSigTime := got.UserInfo[0].HasTag(wire.OServiceUserInfoSigTime)
+		require.False(t, hasSigTime)
+
+		// Signature time is in the instance block, not UserInfo[0]
+		hasSigTimeInstance := got.UserInfo[1].HasTag(wire.OServiceUserInfoSigTime)
+		require.True(t, hasSigTimeInstance)
+		sigVal, ok := got.UserInfo[1].Uint32BE(wire.OServiceUserInfoSigTime)
+		require.True(t, ok)
+		require.Equal(t, uint32(profileUpdated.Unix()), sigVal)
+
+		require.False(t, got.UserInfo[0].HasTag(wire.OServiceUserInfoPrimaryInstance))
+	})
+
+	t.Run("appends additional instance info when food group version >= 4", func(t *testing.T) {
+		session := newTestInstance("me",
+			sessOptMemberSince(memberSince),
+			sessOptSignonTime(signonTime),
+			sessOptSetFoodGroupVersion(wire.OService, 4))
+		signon := session.SignonTime()
+		onlineLowerBound := uint32(time.Since(signon).Seconds())
+
+		got := newOServiceUserInfoUpdate(session)
+
+		require.Len(t, got.UserInfo, 2)
+
+		memberVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoMemberSince)
+		require.True(t, ok)
+		require.Equal(t, uint32(memberSince.Unix()), memberVal)
+
+		signonVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoSignonTOD)
+		require.True(t, ok)
+		require.Equal(t, uint32(signon.Unix()), signonVal)
+
+		onlineVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoOnlineTime)
+		require.True(t, ok)
+		require.GreaterOrEqual(t, onlineVal, onlineLowerBound)
+		require.LessOrEqual(t, onlineVal-onlineLowerBound, uint32(2))
+
+		hasSigTime := got.UserInfo[0].HasTag(wire.OServiceUserInfoSigTime)
+		require.False(t, hasSigTime)
+
+		instanceBytes, ok := got.UserInfo[0].Bytes(wire.OServiceUserInfoMyInstanceNum)
+		require.True(t, ok)
+		require.Equal(t, []byte{0x01}, instanceBytes)
+
+		primaryBytes, ok := got.UserInfo[1].Bytes(wire.OServiceUserInfoPrimaryInstance)
+		require.True(t, ok)
+		require.Equal(t, []byte{0x01}, primaryBytes)
+
+		require.Equal(t, got.UserInfo[0].ScreenName, got.UserInfo[1].ScreenName)
+	})
+
+	t.Run("includes info for all instances when session has 2 instances", func(t *testing.T) {
+		session := newTestInstance("me",
+			sessOptMemberSince(memberSince),
+			sessOptSignonTime(signonTime),
+			sessOptSetFoodGroupVersion(wire.OService, 4))
+		// Add a second instance to the session
+		session.Session().AddInstance()
+		signon := session.SignonTime()
+		onlineLowerBound := uint32(time.Since(signon).Seconds())
+
+		got := newOServiceUserInfoUpdate(session)
+
+		require.Len(t, got.UserInfo, 3)
+
+		memberVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoMemberSince)
+		require.True(t, ok)
+		require.Equal(t, uint32(memberSince.Unix()), memberVal)
+
+		signonVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoSignonTOD)
+		require.True(t, ok)
+		require.Equal(t, uint32(signon.Unix()), signonVal)
+
+		onlineVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoOnlineTime)
+		require.True(t, ok)
+		require.GreaterOrEqual(t, onlineVal, onlineLowerBound)
+		require.LessOrEqual(t, onlineVal-onlineLowerBound, uint32(2))
+
+		hasSigTime := got.UserInfo[0].HasTag(wire.OServiceUserInfoSigTime)
+		require.False(t, hasSigTime)
+
+		instanceBytes, ok := got.UserInfo[0].Bytes(wire.OServiceUserInfoMyInstanceNum)
+		require.True(t, ok)
+		require.Equal(t, []byte{0x01}, instanceBytes)
+
+		// First instance block
+		primary1Bytes, ok := got.UserInfo[1].Bytes(wire.OServiceUserInfoPrimaryInstance)
+		require.True(t, ok)
+		require.Equal(t, []byte{0x01}, primary1Bytes)
+		require.Equal(t, got.UserInfo[0].ScreenName, got.UserInfo[1].ScreenName)
+
+		// Second instance block
+		primary2Bytes, ok := got.UserInfo[2].Bytes(wire.OServiceUserInfoPrimaryInstance)
+		require.True(t, ok)
+		require.Equal(t, []byte{0x02}, primary2Bytes)
+		require.Equal(t, got.UserInfo[0].ScreenName, got.UserInfo[2].ScreenName)
+	})
 }
 
 func TestOServiceService_UserInfoQuery(t *testing.T) {
 	tests := []struct {
-		name    string
-		sess    *state.Session
-		given   wire.SNACMessage
-		want    wire.SNACMessage
-		wantErr error
+		name     string
+		instance *state.SessionInstance
+		given    wire.SNACMessage
+		want     wire.SNACMessage
+		wantErr  error
 	}{
 		{
-			name: "happy path windows aim < 6",
-			sess: newTestSession("me"),
+			name:     "happy path windows aim < 6",
+			instance: newTestInstance("me"),
 			given: wire.SNACMessage{
 				Frame: wire.SNACFrame{RequestID: 1234},
 			},
@@ -1845,12 +1975,12 @@ func TestOServiceService_UserInfoQuery(t *testing.T) {
 					SubGroup:  wire.OServiceUserInfoUpdate,
 					RequestID: 1234,
 				},
-				Body: newOServiceUserInfoUpdate(newTestSession("me")),
+				Body: newOServiceUserInfoUpdate(newTestInstance("me")),
 			},
 		},
 		{
-			name: "happy path windows aim >= 6",
-			sess: newTestSession("me", sessOptSetFoodGroupVersion(wire.OService, 4)),
+			name:     "happy path windows aim >= 6",
+			instance: newTestInstance("me", sessOptSetFoodGroupVersion(wire.OService, 4)),
 			given: wire.SNACMessage{
 				Frame: wire.SNACFrame{RequestID: 1234},
 			},
@@ -1860,7 +1990,7 @@ func TestOServiceService_UserInfoQuery(t *testing.T) {
 					SubGroup:  wire.OServiceUserInfoUpdate,
 					RequestID: 1234,
 				},
-				Body: newOServiceUserInfoUpdate(newTestSession("me", sessOptSetFoodGroupVersion(wire.OService, 4))),
+				Body: newOServiceUserInfoUpdate(newTestInstance("me", sessOptSetFoodGroupVersion(wire.OService, 4))),
 			},
 		},
 	}
@@ -1871,7 +2001,7 @@ func TestOServiceService_UserInfoQuery(t *testing.T) {
 				cfg:    config.Config{},
 				logger: slog.Default(),
 			}
-			have := svc.UserInfoQuery(context.Background(), tt.sess, tt.given.Frame)
+			have := svc.UserInfoQuery(context.Background(), tt.instance, tt.given.Frame)
 			assert.Equal(t, tt.want, have)
 		})
 	}
@@ -1879,17 +2009,17 @@ func TestOServiceService_UserInfoQuery(t *testing.T) {
 
 func TestOServiceService_IdleNotification(t *testing.T) {
 	tests := []struct {
-		name   string
-		sess   *state.Session
-		bodyIn wire.SNAC_0x01_0x11_OServiceIdleNotification
+		name     string
+		instance *state.SessionInstance
+		bodyIn   wire.SNAC_0x01_0x11_OServiceIdleNotification
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
 		wantErr    error
 	}{
 		{
-			name: "set idle from active",
-			sess: newTestSession("me"),
+			name:     "set idle from active",
+			instance: newTestInstance("me"),
 			bodyIn: wire.SNAC_0x01_0x11_OServiceIdleNotification{
 				IdleTime: 90,
 			},
@@ -1904,8 +2034,8 @@ func TestOServiceService_IdleNotification(t *testing.T) {
 			},
 		},
 		{
-			name: "set active from idle",
-			sess: newTestSession("me", sessOptIdle(90*time.Second)),
+			name:     "set active from idle",
+			instance: newTestInstance("me", sessOptIdle(90*time.Second)),
 			bodyIn: wire.SNAC_0x01_0x11_OServiceIdleNotification{
 				IdleTime: 0,
 			},
@@ -1935,7 +2065,7 @@ func TestOServiceService_IdleNotification(t *testing.T) {
 				logger:           slog.Default(),
 				buddyBroadcaster: buddyUpdateBroadcaster,
 			}
-			haveErr := svc.IdleNotification(nil, tt.sess, tt.bodyIn)
+			haveErr := svc.IdleNotification(nil, tt.instance, tt.bodyIn)
 			assert.ErrorIs(t, tt.wantErr, haveErr)
 		})
 	}
@@ -1943,14 +2073,14 @@ func TestOServiceService_IdleNotification(t *testing.T) {
 
 func TestOServiceService_ClientOnline(t *testing.T) {
 	chatRoom := state.NewChatRoom("the-chat-room", state.NewIdentScreenName("creator"), state.PrivateExchange)
-	chatter1 := newTestSession("chatter-1", sessOptChatRoomCookie(chatRoom.Cookie()))
-	chatter2 := newTestSession("chatter-2", sessOptChatRoomCookie(chatRoom.Cookie()))
+	chatter1 := newTestInstance("chatter-1", sessOptChatRoomCookie(chatRoom.Cookie()))
+	chatter2 := newTestInstance("chatter-2", sessOptChatRoomCookie(chatRoom.Cookie()))
 
 	tests := []struct {
 		// name is the name of the test
 		name string
 		// joiningChatter is the session of the arriving user
-		sess *state.Session
+		instance *state.SessionInstance
 		// bodyIn is the SNAC body sent from the arriving user's client to the
 		// server
 		bodyIn wire.SNAC_0x01_0x02_OServiceClientOnline
@@ -1961,14 +2091,16 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
-		// wantSess is the expected session state after the method is called
-		wantSess *state.Session
+		// validateSess verifies the session state after the handler has run
+		validateSess func(t *testing.T, instance *state.SessionInstance)
+		// cfg is the config to use for this test. Zero value uses default config.Config{}
+		cfg config.Config
 	}{
 		{
-			name:    "notify that BOS user is online",
-			sess:    newTestSession("me", sessOptCannedSignonTime),
-			bodyIn:  wire.SNAC_0x01_0x02_OServiceClientOnline{},
-			service: wire.BOS,
+			name:     "notify that BOS user is online",
+			instance: newTestInstance("me", sessOptCannedSignonTime),
+			bodyIn:   wire.SNAC_0x01_0x02_OServiceClientOnline{},
+			service:  wire.BOS,
 			mockParams: mockParams{
 				buddyBroadcasterParams: buddyBroadcasterParams{
 					broadcastVisibilityParams: broadcastVisibilityParams{
@@ -1997,13 +2129,15 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 					},
 				},
 			},
-			wantSess: newTestSession("me", sessOptCannedSignonTime, sessOptSignonComplete),
+			validateSess: func(t *testing.T, instance *state.SessionInstance) {
+				assert.True(t, instance.SignonComplete())
+			},
 		},
 		{
-			name:    "notify that BOS user is online via Kerberos auth, does not have stored profile",
-			sess:    newTestSession("me", sessOptCannedSignonTime, sessOptKerberosAuth),
-			bodyIn:  wire.SNAC_0x01_0x02_OServiceClientOnline{},
-			service: wire.BOS,
+			name:     "notify that BOS user is online via Kerberos auth, does not have stored profile",
+			instance: newTestInstance("me", sessOptCannedSignonTime, sessOptKerberosAuth),
+			bodyIn:   wire.SNAC_0x01_0x02_OServiceClientOnline{},
+			service:  wire.BOS,
 			mockParams: mockParams{
 				buddyBroadcasterParams: buddyBroadcasterParams{
 					broadcastVisibilityParams: broadcastVisibilityParams{
@@ -2040,13 +2174,16 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 					},
 				},
 			},
-			wantSess: newTestSession("me", sessOptCannedSignonTime, sessOptSignonComplete),
+			validateSess: func(t *testing.T, instance *state.SessionInstance) {
+				assert.True(t, instance.SignonComplete())
+				assert.True(t, instance.Session().Profile().IsZero())
+			},
 		},
 		{
-			name:    "notify that BOS user is online via Kerberos auth, has stored profile",
-			sess:    newTestSession("me", sessOptCannedSignonTime, sessOptKerberosAuth),
-			bodyIn:  wire.SNAC_0x01_0x02_OServiceClientOnline{},
-			service: wire.BOS,
+			name:     "notify that BOS user is online via Kerberos auth, has stored profile",
+			instance: newTestInstance("me", sessOptCannedSignonTime, sessOptKerberosAuth),
+			bodyIn:   wire.SNAC_0x01_0x02_OServiceClientOnline{},
+			service:  wire.BOS,
 			mockParams: mockParams{
 				buddyBroadcasterParams: buddyBroadcasterParams{
 					broadcastVisibilityParams: broadcastVisibilityParams{
@@ -2072,6 +2209,8 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 								},
 							},
 						},
+					},
+					relayToSelfParams: relayToSelfParams{
 						{
 							screenName: state.NewIdentScreenName("me"),
 							message: wire.SNACMessage{
@@ -2079,7 +2218,13 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 									FoodGroup: wire.OService,
 									SubGroup:  wire.OServiceUserInfoUpdate,
 								},
-								Body: newOServiceUserInfoUpdate(newTestSession("me", sessOptCannedSignonTime)),
+								Body: newOServiceUserInfoUpdate(newTestInstance("me", sessOptCannedSignonTime, sessOptProfile(
+									state.UserProfile{
+										ProfileText: "profile-result",
+										MIMEType:    `text/aolrtf; charset="us-ascii"`,
+										UpdateTime:  time.Unix(100000, 0),
+									},
+								))),
 							},
 						},
 					},
@@ -2091,27 +2236,24 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 							result: state.UserProfile{
 								ProfileText: "profile-result",
 								MIMEType:    `text/aolrtf; charset="us-ascii"`,
+								UpdateTime:  time.Unix(100000, 0),
 							},
 						},
 					},
 				},
 			},
-			wantSess: newTestSession("me",
-				sessOptCannedSignonTime,
-				sessOptSignonComplete,
-				sessOptProfile(
-					state.UserProfile{
-						ProfileText: "profile-result",
-						MIMEType:    `text/aolrtf; charset="us-ascii"`,
-					},
-				),
-			),
+			validateSess: func(t *testing.T, instance *state.SessionInstance) {
+				assert.True(t, instance.SignonComplete())
+				assert.False(t, instance.Session().Profile().IsZero(), "profile update  time is non-zero")
+				assert.Equal(t, "profile-result", instance.Session().Profile().ProfileText, "profile text matches")
+				assert.Equal(t, `text/aolrtf; charset="us-ascii"`, instance.Session().Profile().MIMEType, "profile mimetype matches")
+			},
 		},
 		{
-			name:    "notify that BOS user is online with 0 offline messages, no notification sent",
-			sess:    newTestSession("me", sessOptCannedSignonTime, sessOptOfflineMsgCount(0)),
-			bodyIn:  wire.SNAC_0x01_0x02_OServiceClientOnline{},
-			service: wire.BOS,
+			name:     "notify that BOS user is online with 0 offline messages, no notification sent",
+			instance: newTestInstance("me", sessOptCannedSignonTime, sessOptOfflineMsgCount(0)),
+			bodyIn:   wire.SNAC_0x01_0x02_OServiceClientOnline{},
+			service:  wire.BOS,
 			mockParams: mockParams{
 				buddyBroadcasterParams: buddyBroadcasterParams{
 					broadcastVisibilityParams: broadcastVisibilityParams{
@@ -2140,13 +2282,16 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 					},
 				},
 			},
-			wantSess: newTestSession("me", sessOptCannedSignonTime, sessOptSignonComplete, sessOptOfflineMsgCount(0)),
+			validateSess: func(t *testing.T, instance *state.SessionInstance) {
+				assert.True(t, instance.SignonComplete())
+				assert.Equal(t, 0, instance.OfflineMsgCount())
+			},
 		},
 		{
-			name:    "notify that BOS user is online with offline messages, send notification and reset count",
-			sess:    newTestSession("me", sessOptCannedSignonTime, sessOptOfflineMsgCount(3)),
-			bodyIn:  wire.SNAC_0x01_0x02_OServiceClientOnline{},
-			service: wire.BOS,
+			name:     "notify that BOS user is online with offline messages, send notification and reset count",
+			instance: newTestInstance("me", sessOptCannedSignonTime, sessOptOfflineMsgCount(3)),
+			bodyIn:   wire.SNAC_0x01_0x02_OServiceClientOnline{},
+			service:  wire.BOS,
 			mockParams: mockParams{
 				buddyBroadcasterParams: buddyBroadcasterParams{
 					broadcastVisibilityParams: broadcastVisibilityParams{
@@ -2175,28 +2320,11 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 						{
 							screenName: state.NewIdentScreenName("me"),
 							message: func() wire.SNACMessage {
-								msg := "You just received 3 IM(s) while you were offline. If you do " +
-									"not wish to receive offline messages, please go to " +
-									"<a href=\"http://settings.aim.com/?loc=en-zz\">IM Settings</a>."
-								frags, _ := wire.ICBMFragmentList(msg)
-								return wire.SNACMessage{
-									Frame: wire.SNACFrame{
-										FoodGroup: wire.ICBM,
-										SubGroup:  wire.ICBMChannelMsgToClient,
-										RequestID: wire.ReqIDFromServer,
-									},
-									Body: wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
-										ChannelID: wire.ICBMChannelIM,
-										TLVUserInfo: wire.TLVUserInfo{
-											ScreenName: "AOL System Msg",
-										},
-										TLVRestBlock: wire.TLVRestBlock{
-											TLVList: []wire.TLV{
-												wire.NewTLVBE(wire.ICBMTLVAOLIMData, frags),
-											},
-										},
-									},
-								}
+								msg, err := systemMessage("You just received 3 IM(s) while you were offline. If you " +
+									"do not wish to receive offline messages, please go to " +
+									"<a href=\"https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=RDdQw4w9WgXcQ&start_radio=1&pp=ygUJcmljayByb2xsoAcB\">IM Settings</a>.")
+								require.NoError(t, err)
+								return msg
 							}(),
 						},
 					},
@@ -2211,14 +2339,24 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 					},
 				},
 			},
-			wantSess: newTestSession("me", sessOptCannedSignonTime, sessOptSignonComplete, sessOptOfflineMsgCount(0)),
+			validateSess: func(t *testing.T, instance *state.SessionInstance) {
+				assert.True(t, instance.SignonComplete())
+				assert.Equal(t, 0, instance.OfflineMsgCount())
+			},
 		},
 		{
-			name:    "notify that BOS user is online with offline messages, SetOfflineMsgCount fails",
-			sess:    newTestSession("me", sessOptCannedSignonTime, sessOptOfflineMsgCount(2)),
+			name: "notify that BOS user is logged in to multiple locations",
+			instance: func() *state.SessionInstance {
+				instance1 := newTestInstance("me")
+				instance1.SetSignonComplete()
+				instance2 := instance1.Session().AddInstance()
+				instance2.SetSignonComplete()
+				instance3 := instance1.Session().AddInstance()
+				// instance 3 is not yet signed on
+				return instance3
+			}(),
 			bodyIn:  wire.SNAC_0x01_0x02_OServiceClientOnline{},
 			service: wire.BOS,
-			wantErr: assert.AnError,
 			mockParams: mockParams{
 				buddyBroadcasterParams: buddyBroadcasterParams{
 					broadcastVisibilityParams: broadcastVisibilityParams{
@@ -2244,32 +2382,104 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 								},
 							},
 						},
+					},
+					relayToOtherInstancesParams: relayToOtherInstancesParams{
 						{
 							screenName: state.NewIdentScreenName("me"),
 							message: func() wire.SNACMessage {
-								msg := "You just received 2 IM(s) while you were offline. If you do " +
-									"not wish to receive offline messages, please go to " +
-									"<a href=\"http://settings.aim.com/?loc=en-zz\">IM Settings</a>."
-								frags, _ := wire.ICBMFragmentList(msg)
-								return wire.SNACMessage{
-									Frame: wire.SNACFrame{
-										FoodGroup: wire.ICBM,
-										SubGroup:  wire.ICBMChannelMsgToClient,
-										RequestID: wire.ReqIDFromServer,
-									},
-									Body: wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
-										ChannelID: wire.ICBMChannelIM,
-										TLVUserInfo: wire.TLVUserInfo{
-											ScreenName: "AOL System Msg",
-										},
-										TLVRestBlock: wire.TLVRestBlock{
-											TLVList: []wire.TLV{
-												wire.NewTLVBE(wire.ICBMTLVAOLIMData, frags),
-											},
-										},
-									},
-								}
+								msg, err := systemMessage("Your screen name (me) is now signed into Open OSCAR Server in 3 locations. Click " +
+									"<a href=\"https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=RDdQw4w9WgXcQ&start_radio=1&pp=ygUJcmljayByb2xsoAcB\">here</a> " +
+									"for more information.")
+								require.NoError(t, err)
+								return msg
 							}(),
+						},
+					},
+				},
+			},
+			validateSess: func(t *testing.T, instance *state.SessionInstance) {
+				assert.True(t, instance.Session().Instance(3).SignonComplete())
+			},
+		},
+		{
+			name: "BOS user is logged in to multiple locations, DisableMultiLoginNotif is true, no notification sent",
+			instance: func() *state.SessionInstance {
+				instance1 := newTestInstance("me")
+				instance1.SetSignonComplete()
+				instance2 := instance1.Session().AddInstance()
+				instance2.SetSignonComplete()
+				instance3 := instance1.Session().AddInstance()
+				// instance 3 is not yet signed on
+				return instance3
+			}(),
+			bodyIn:  wire.SNAC_0x01_0x02_OServiceClientOnline{},
+			service: wire.BOS,
+			cfg: config.Config{
+				DisableMultiLoginNotif: true,
+			},
+			mockParams: mockParams{
+				buddyBroadcasterParams: buddyBroadcasterParams{
+					broadcastVisibilityParams: broadcastVisibilityParams{
+						{
+							from:             state.NewIdentScreenName("me"),
+							filter:           nil,
+							doSendDepartures: false,
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Stats,
+									SubGroup:  wire.StatsSetMinReportInterval,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x0B_0x02_StatsSetMinReportInterval{
+									MinReportInterval: 1,
+								},
+							},
+						},
+					},
+					// relayToOtherInstancesParams is intentionally omitted - notification should not be sent
+				},
+			},
+			validateSess: func(t *testing.T, instance *state.SessionInstance) {
+				assert.True(t, instance.Session().Instance(3).SignonComplete())
+			},
+		},
+		{
+			name:     "notify that BOS user is online with offline messages, SetOfflineMsgCount fails",
+			instance: newTestInstance("me", sessOptCannedSignonTime, sessOptOfflineMsgCount(2)),
+			bodyIn:   wire.SNAC_0x01_0x02_OServiceClientOnline{},
+			service:  wire.BOS,
+			wantErr:  assert.AnError,
+			mockParams: mockParams{
+				buddyBroadcasterParams: buddyBroadcasterParams{
+					broadcastVisibilityParams: broadcastVisibilityParams{
+						{
+							from:             state.NewIdentScreenName("me"),
+							filter:           nil,
+							doSendDepartures: false,
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Stats,
+									SubGroup:  wire.StatsSetMinReportInterval,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x0B_0x02_StatsSetMinReportInterval{
+									MinReportInterval: 1,
+								},
+							},
 						},
 					},
 				},
@@ -2283,13 +2493,16 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 					},
 				},
 			},
-			wantSess: newTestSession("me", sessOptCannedSignonTime, sessOptSignonComplete, sessOptOfflineMsgCount(0)),
+			validateSess: func(t *testing.T, instance *state.SessionInstance) {
+				assert.True(t, instance.SignonComplete())
+				assert.Equal(t, 2, instance.OfflineMsgCount())
+			},
 		},
 		{
-			name:    "upon joining, send chat room metadata and participant list to joining user; alert arrival to existing participants",
-			sess:    chatter1,
-			bodyIn:  wire.SNAC_0x01_0x02_OServiceClientOnline{},
-			service: wire.Chat,
+			name:     "upon joining, send chat room metadata and participant list to joining user; alert arrival to existing participants",
+			instance: chatter1,
+			bodyIn:   wire.SNAC_0x01_0x02_OServiceClientOnline{},
+			service:  wire.Chat,
 			mockParams: mockParams{
 				chatMessageRelayerParams: chatMessageRelayerParams{
 					chatRelayToAllExceptParams: chatRelayToAllExceptParams{
@@ -2303,7 +2516,7 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 								},
 								Body: wire.SNAC_0x0E_0x03_ChatUsersJoined{
 									Users: []wire.TLVUserInfo{
-										chatter1.TLVUserInfo(),
+										chatter1.Session().TLVUserInfo(),
 									},
 								},
 							},
@@ -2313,8 +2526,8 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 						{
 							cookie: chatRoom.Cookie(),
 							sessions: []*state.Session{
-								chatter1,
-								chatter2,
+								chatter1.Session(),
+								chatter2.Session(),
 							},
 						},
 					},
@@ -2348,8 +2561,8 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 								},
 								Body: wire.SNAC_0x0E_0x03_ChatUsersJoined{
 									Users: []wire.TLVUserInfo{
-										chatter1.TLVUserInfo(),
-										chatter2.TLVUserInfo(),
+										chatter1.Session().TLVUserInfo(),
+										chatter2.Session().TLVUserInfo(),
 									},
 								},
 							},
@@ -2365,7 +2578,9 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 					},
 				},
 			},
-			wantSess: newTestSession("me", sessOptCannedSignonTime, sessOptSignonComplete),
+			validateSess: func(t *testing.T, instance *state.SessionInstance) {
+				assert.True(t, instance.SignonComplete())
+			},
 		},
 	}
 	for _, tt := range tests {
@@ -2381,6 +2596,17 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 				messageRelayer.EXPECT().
 					RelayToScreenName(matchContext(), params.screenName, params.message)
 			}
+			for _, params := range tt.mockParams.relayToSelfParams {
+				messageRelayer.EXPECT().
+					RelayToSelf(matchContext(), mock.Anything, mock.MatchedBy(func(msg wire.SNACMessage) bool {
+						return msg.Frame.FoodGroup == params.message.Frame.FoodGroup &&
+							msg.Frame.SubGroup == params.message.Frame.SubGroup
+					}))
+			}
+			for _, params := range tt.mockParams.relayToOtherInstancesParams {
+				messageRelayer.EXPECT().
+					RelayToOtherInstances(matchContext(), matchSession(params.screenName), params.message)
+			}
 			chatRoomManager := newMockChatRoomRegistry(t)
 			for _, params := range tt.mockParams.chatRoomByCookieParams {
 				chatRoomManager.EXPECT().
@@ -2390,7 +2616,7 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 			chatMessageRelayer := newMockChatMessageRelayer(t)
 			for _, params := range tt.mockParams.chatRelayToAllExceptParams {
 				chatMessageRelayer.EXPECT().
-					RelayToAllExcept(mock.Anything, params.cookie, params.screenName, params.message)
+					RelayToAllExcept(matchContext(), params.cookie, params.screenName, params.message)
 			}
 			for _, params := range tt.mockParams.chatAllSessionsParams {
 				chatMessageRelayer.EXPECT().
@@ -2399,12 +2625,12 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 			}
 			for _, params := range tt.mockParams.chatRelayToScreenNameParams {
 				chatMessageRelayer.EXPECT().
-					RelayToScreenName(mock.Anything, params.cookie, params.screenName, params.message)
+					RelayToScreenName(matchContext(), params.cookie, params.screenName, params.message)
 			}
 			profileManager := newMockProfileManager(t)
 			for _, params := range tt.mockParams.profileManagerParams.retrieveProfileParams {
 				profileManager.EXPECT().
-					Profile(mock.Anything, params.screenName).
+					Profile(matchContext(), params.screenName).
 					Return(params.result, params.err)
 			}
 			offlineMessageManager := newMockOfflineMessageManager(t)
@@ -2414,13 +2640,12 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 					Return(params.err)
 			}
 
-			svc := NewOServiceService(config.Config{}, messageRelayer, slog.Default(), nil, chatRoomManager, nil, nil, nil, wire.DefaultSNACRateLimits(), chatMessageRelayer, profileManager, offlineMessageManager)
+			svc := NewOServiceService(tt.cfg, messageRelayer, slog.Default(), nil, chatRoomManager, nil, nil, nil, wire.DefaultSNACRateLimits(), chatMessageRelayer, profileManager, offlineMessageManager)
 			svc.buddyBroadcaster = buddyUpdateBroadcaster
-			haveErr := svc.ClientOnline(context.Background(), tt.service, tt.bodyIn, tt.sess)
+			haveErr := svc.ClientOnline(context.Background(), tt.service, tt.bodyIn, tt.instance)
 			assert.ErrorIs(t, haveErr, tt.wantErr)
-			assert.Equal(t, tt.wantSess.SignonComplete(), tt.sess.SignonComplete())
-			assert.Equal(t, tt.wantSess.Profile(), tt.sess.Profile())
-			assert.Equal(t, tt.wantSess.OfflineMsgCount(), tt.sess.OfflineMsgCount())
+
+			tt.validateSess(t, tt.instance)
 		})
 	}
 }
@@ -2492,17 +2717,17 @@ func TestOServiceService_RateLimitUpdates(t *testing.T) {
 
 	t.Run("(win aim 1.x) transition state from clear > alert > limited > clear, then change rate limit param", func(t *testing.T) {
 		now := time.Now()
-		sess := newTestSession("me")
-		sess.SetRateClasses(now, wire.NewRateLimitClasses(rateClasses))
+		instance := newTestInstance("me")
+		instance.Session().SetRateClasses(now, wire.NewRateLimitClasses(rateClasses))
 
 		classId := wire.RateLimitClassID(3)
-		sess.SubscribeRateLimits([]wire.RateLimitClassID{classId})
+		instance.Session().SubscribeRateLimits([]wire.RateLimitClassID{classId})
 
 		// get into an alert state
 		maxTries := 4
 		for i := 1; i <= maxTries; i++ {
 			now = now.Add(time.Millisecond)
-			if s := sess.EvaluateRateLimit(now, classId); s == wire.RateLimitStatusAlert {
+			if s := instance.Session().EvaluateRateLimit(now, classId); s == wire.RateLimitStatusAlert {
 				break
 			}
 			if i == maxTries {
@@ -2511,7 +2736,7 @@ func TestOServiceService_RateLimitUpdates(t *testing.T) {
 			}
 		}
 
-		outputSNACs := svc.RateLimitUpdates(context.Background(), sess, now)
+		outputSNACs := svc.RateLimitUpdates(context.Background(), instance, now)
 		expect := wire.SNACMessage{
 			Frame: wire.SNACFrame{
 				FoodGroup: wire.OService,
@@ -2538,7 +2763,7 @@ func TestOServiceService_RateLimitUpdates(t *testing.T) {
 		maxTries = 4
 		for i := 1; i <= maxTries; i++ {
 			now = now.Add(time.Millisecond)
-			if s := sess.EvaluateRateLimit(now, classId); s == wire.RateLimitStatusLimited {
+			if s := instance.Session().EvaluateRateLimit(now, classId); s == wire.RateLimitStatusLimited {
 				break
 			}
 			if i == maxTries {
@@ -2547,7 +2772,7 @@ func TestOServiceService_RateLimitUpdates(t *testing.T) {
 			}
 		}
 
-		outputSNACs = svc.RateLimitUpdates(context.Background(), sess, now)
+		outputSNACs = svc.RateLimitUpdates(context.Background(), instance, now)
 		expect = wire.SNACMessage{
 			Frame: wire.SNACFrame{
 				FoodGroup: wire.OService,
@@ -2574,7 +2799,7 @@ func TestOServiceService_RateLimitUpdates(t *testing.T) {
 		now = now.Add(time.Minute)
 
 		// verify that the clear threshold has been reached
-		outputSNACs = svc.RateLimitUpdates(context.Background(), sess, now)
+		outputSNACs = svc.RateLimitUpdates(context.Background(), instance, now)
 		expect = wire.SNACMessage{
 			Frame: wire.SNACFrame{
 				FoodGroup: wire.OService,
@@ -2600,9 +2825,9 @@ func TestOServiceService_RateLimitUpdates(t *testing.T) {
 		// verify rate class param changes are detected
 		classesCopy := rateClasses
 		classesCopy[2].DisconnectLevel--
-		sess.SetRateClasses(now, wire.NewRateLimitClasses(classesCopy))
+		instance.Session().SetRateClasses(now, wire.NewRateLimitClasses(classesCopy))
 
-		outputSNACs = svc.RateLimitUpdates(context.Background(), sess, now)
+		outputSNACs = svc.RateLimitUpdates(context.Background(), instance, now)
 		expect = wire.SNACMessage{
 			Frame: wire.SNACFrame{
 				FoodGroup: wire.OService,
@@ -2628,21 +2853,21 @@ func TestOServiceService_RateLimitUpdates(t *testing.T) {
 
 	t.Run("(win aim > 1.x) transition state from clear > alert > limited > clear", func(t *testing.T) {
 		now := time.Now()
-		sess := newTestSession("me")
-		sess.SetRateClasses(now, wire.NewRateLimitClasses(rateClasses))
+		instance := newTestInstance("me")
+		instance.Session().SetRateClasses(now, wire.NewRateLimitClasses(rateClasses))
 
 		var versions [wire.MDir + 1]uint16
 		versions[wire.OService] = 3
-		sess.SetFoodGroupVersions(versions)
+		instance.SetFoodGroupVersions(versions)
 
 		classId := wire.RateLimitClassID(3)
-		sess.SubscribeRateLimits([]wire.RateLimitClassID{classId})
+		instance.Session().SubscribeRateLimits([]wire.RateLimitClassID{classId})
 
 		// get into an alert state
 		maxTries := 4
 		for i := 1; i <= maxTries; i++ {
 			now = now.Add(time.Millisecond)
-			if s := sess.EvaluateRateLimit(now, classId); s == wire.RateLimitStatusAlert {
+			if s := instance.Session().EvaluateRateLimit(now, classId); s == wire.RateLimitStatusAlert {
 				break
 			}
 			if i == maxTries {
@@ -2651,7 +2876,7 @@ func TestOServiceService_RateLimitUpdates(t *testing.T) {
 			}
 		}
 
-		outputSNACs := svc.RateLimitUpdates(context.Background(), sess, now)
+		outputSNACs := svc.RateLimitUpdates(context.Background(), instance, now)
 		expect := wire.SNACMessage{
 			Frame: wire.SNACFrame{
 				FoodGroup: wire.OService,
@@ -2684,7 +2909,7 @@ func TestOServiceService_RateLimitUpdates(t *testing.T) {
 		maxTries = 4
 		for i := 1; i <= maxTries; i++ {
 			now = now.Add(time.Millisecond)
-			if s := sess.EvaluateRateLimit(now, classId); s == wire.RateLimitStatusLimited {
+			if s := instance.Session().EvaluateRateLimit(now, classId); s == wire.RateLimitStatusLimited {
 				break
 			}
 			if i == maxTries {
@@ -2693,7 +2918,7 @@ func TestOServiceService_RateLimitUpdates(t *testing.T) {
 			}
 		}
 
-		outputSNACs = svc.RateLimitUpdates(context.Background(), sess, now)
+		outputSNACs = svc.RateLimitUpdates(context.Background(), instance, now)
 		expect = wire.SNACMessage{
 			Frame: wire.SNACFrame{
 				FoodGroup: wire.OService,
@@ -2726,7 +2951,7 @@ func TestOServiceService_RateLimitUpdates(t *testing.T) {
 		now = now.Add(time.Minute)
 
 		// verify that the clear threshold has been reached
-		outputSNACs = svc.RateLimitUpdates(context.Background(), sess, now)
+		outputSNACs = svc.RateLimitUpdates(context.Background(), instance, now)
 		expect = wire.SNACMessage{
 			Frame: wire.SNACFrame{
 				FoodGroup: wire.OService,
@@ -2759,9 +2984,9 @@ func TestOServiceService_RateLimitUpdates(t *testing.T) {
 		// verify rate class param changes are detected
 		classesCopy := rateClasses
 		classesCopy[2].DisconnectLevel--
-		sess.SetRateClasses(now, wire.NewRateLimitClasses(classesCopy))
+		instance.Session().SetRateClasses(now, wire.NewRateLimitClasses(classesCopy))
 
-		outputSNACs = svc.RateLimitUpdates(context.Background(), sess, now)
+		outputSNACs = svc.RateLimitUpdates(context.Background(), instance, now)
 		expect = wire.SNACMessage{
 			Frame: wire.SNACFrame{
 				FoodGroup: wire.OService,
@@ -2849,10 +3074,10 @@ func TestOServiceService_RateParamsSubAdd(t *testing.T) {
 	t.Run("happy path", func(t *testing.T) {
 		classes := classes
 
-		sess := newTestSession("me")
-		sess.SetRateClasses(time.Now(), wire.NewRateLimitClasses(classes))
+		instance := newTestInstance("me")
+		instance.Session().SetRateClasses(time.Now(), wire.NewRateLimitClasses(classes))
 
-		deltas, _ := sess.ObserveRateChanges(time.Now())
+		deltas, _ := instance.Session().ObserveRateChanges(time.Now())
 		assert.Len(t, deltas, 0)
 
 		// expect 3 rate limit class changes
@@ -2861,14 +3086,14 @@ func TestOServiceService_RateParamsSubAdd(t *testing.T) {
 		classes[2].MaxLevel = 8888
 		classes[3].MaxLevel = 8888
 		classes[4].MaxLevel = 8888
-		sess.SetRateClasses(time.Now(), wire.NewRateLimitClasses(classes))
+		instance.Session().SetRateClasses(time.Now(), wire.NewRateLimitClasses(classes))
 
 		snac := wire.SNAC_0x01_0x08_OServiceRateParamsSubAdd{
 			ClassIDs: []uint16{2, 5},
 		}
-		svc.RateParamsSubAdd(context.Background(), sess, snac)
+		svc.RateParamsSubAdd(context.Background(), instance, snac)
 
-		deltas, _ = sess.ObserveRateChanges(time.Now())
+		deltas, _ = instance.Session().ObserveRateChanges(time.Now())
 		assert.Len(t, deltas, 2)
 
 		// expect 5 rate limit class changes
@@ -2877,24 +3102,24 @@ func TestOServiceService_RateParamsSubAdd(t *testing.T) {
 		classes[2].MaxLevel = 9999
 		classes[3].MaxLevel = 9999
 		classes[4].MaxLevel = 9999
-		sess.SetRateClasses(time.Now(), wire.NewRateLimitClasses(classes))
+		instance.Session().SetRateClasses(time.Now(), wire.NewRateLimitClasses(classes))
 
 		snac = wire.SNAC_0x01_0x08_OServiceRateParamsSubAdd{
 			ClassIDs: []uint16{1, 3, 4},
 		}
-		svc.RateParamsSubAdd(context.Background(), sess, snac)
+		svc.RateParamsSubAdd(context.Background(), instance, snac)
 
-		deltas, _ = sess.ObserveRateChanges(time.Now())
+		deltas, _ = instance.Session().ObserveRateChanges(time.Now())
 		assert.Len(t, deltas, 5)
 	})
 
 	t.Run("empty subscribe list", func(t *testing.T) {
 		classes := classes
 
-		sess := newTestSession("me")
-		sess.SetRateClasses(time.Now(), wire.NewRateLimitClasses(classes))
+		instance := newTestInstance("me")
+		instance.Session().SetRateClasses(time.Now(), wire.NewRateLimitClasses(classes))
 
-		deltas, _ := sess.ObserveRateChanges(time.Now())
+		deltas, _ := instance.Session().ObserveRateChanges(time.Now())
 		assert.Len(t, deltas, 0)
 
 		// expect 3 rate limit class changes
@@ -2903,24 +3128,24 @@ func TestOServiceService_RateParamsSubAdd(t *testing.T) {
 		classes[2].MaxLevel = 8888
 		classes[3].MaxLevel = 8888
 		classes[4].MaxLevel = 8888
-		sess.SetRateClasses(time.Now(), wire.NewRateLimitClasses(classes))
+		instance.Session().SetRateClasses(time.Now(), wire.NewRateLimitClasses(classes))
 
 		snac := wire.SNAC_0x01_0x08_OServiceRateParamsSubAdd{
 			ClassIDs: []uint16{},
 		}
-		svc.RateParamsSubAdd(context.Background(), sess, snac)
+		svc.RateParamsSubAdd(context.Background(), instance, snac)
 
-		deltas, _ = sess.ObserveRateChanges(time.Now())
+		deltas, _ = instance.Session().ObserveRateChanges(time.Now())
 		assert.Empty(t, deltas)
 	})
 
 	t.Run("class IDs out of range", func(t *testing.T) {
 		classes := classes
 
-		sess := newTestSession("me")
-		sess.SetRateClasses(time.Now(), wire.NewRateLimitClasses(classes))
+		instance := newTestInstance("me")
+		instance.Session().SetRateClasses(time.Now(), wire.NewRateLimitClasses(classes))
 
-		deltas, _ := sess.ObserveRateChanges(time.Now())
+		deltas, _ := instance.Session().ObserveRateChanges(time.Now())
 		assert.Len(t, deltas, 0)
 
 		// expect 3 rate limit class changes
@@ -2929,14 +3154,14 @@ func TestOServiceService_RateParamsSubAdd(t *testing.T) {
 		classes[2].MaxLevel = 8888
 		classes[3].MaxLevel = 8888
 		classes[4].MaxLevel = 8888
-		sess.SetRateClasses(time.Now(), wire.NewRateLimitClasses(classes))
+		instance.Session().SetRateClasses(time.Now(), wire.NewRateLimitClasses(classes))
 
 		snac := wire.SNAC_0x01_0x08_OServiceRateParamsSubAdd{
 			ClassIDs: []uint16{0, 6},
 		}
-		svc.RateParamsSubAdd(context.Background(), sess, snac)
+		svc.RateParamsSubAdd(context.Background(), instance, snac)
 
-		deltas, _ = sess.ObserveRateChanges(time.Now())
+		deltas, _ = instance.Session().ObserveRateChanges(time.Now())
 		assert.Empty(t, deltas)
 	})
 }

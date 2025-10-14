@@ -69,21 +69,21 @@ func NewOServiceService(
 // It returns SNAC wire.OServiceHostVersions containing the server's supported
 // food group versions.
 // todo this documentation
-func (s OServiceService) ClientVersions(ctx context.Context, sess *state.Session, frame wire.SNACFrame, bodyIn wire.SNAC_0x01_0x17_OServiceClientVersions) wire.SNACMessage {
+func (s OServiceService) ClientVersions(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x01_0x17_OServiceClientVersions) wire.SNACMessage {
 	var versions [wire.MDir + 1]uint16
 
-	if len(bodyIn.Versions)%2 != 0 {
+	if len(inBody.Versions)%2 != 0 {
 		s.logger.ErrorContext(ctx, "got uneven food group length")
 		return wire.SNACMessage{}
 	}
 
-	for i := 0; i < len(bodyIn.Versions); i += 2 {
-		fg := bodyIn.Versions[i]
+	for i := 0; i < len(inBody.Versions); i += 2 {
+		fg := inBody.Versions[i]
 		if fg < wire.OService || fg > wire.MDir {
 			s.logger.ErrorContext(ctx, "invalid food group ID", "id", fg)
 			continue
 		}
-		ver := bodyIn.Versions[i+1]
+		ver := inBody.Versions[i+1]
 		if ver < 1 {
 			s.logger.ErrorContext(ctx, "invalid food group version", "version", ver)
 			continue
@@ -91,16 +91,16 @@ func (s OServiceService) ClientVersions(ctx context.Context, sess *state.Session
 		versions[fg] = ver
 	}
 
-	sess.SetFoodGroupVersions(versions)
+	instance.SetFoodGroupVersions(versions)
 
 	return wire.SNACMessage{
 		Frame: wire.SNACFrame{
 			FoodGroup: wire.OService,
 			SubGroup:  wire.OServiceHostVersions,
-			RequestID: frame.RequestID,
+			RequestID: inFrame.RequestID,
 		},
 		Body: wire.SNAC_0x01_0x18_OServiceHostVersions{
-			Versions: bodyIn.Versions,
+			Versions: inBody.Versions,
 		},
 	}
 }
@@ -121,7 +121,7 @@ func (s OServiceService) ClientVersions(ctx context.Context, sess *state.Session
 // AIM clients silently fail when they expect a rate limit rule that does not
 // exist in this response. When support for a new food group is added to the
 // server, update this function accordingly.
-func (s OServiceService) RateParamsQuery(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame) wire.SNACMessage {
+func (s OServiceService) RateParamsQuery(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame) wire.SNACMessage {
 	// not contain LastTime and CurrentStatus fields.
 	var limits = wire.SNAC_0x01_0x07_OServiceRateParamsReply{
 		RateClasses: []wire.RateParamsSNAC{},
@@ -170,7 +170,7 @@ func (s OServiceService) RateParamsQuery(ctx context.Context, sess *state.Sessio
 		},
 	}
 
-	for _, class := range sess.RateLimitStates() {
+	for _, class := range instance.RateLimitStates() {
 		str := wire.RateParamsSNAC{
 			ID:              uint16(class.ID),
 			WindowSize:      uint32(class.WindowSize),
@@ -181,7 +181,7 @@ func (s OServiceService) RateParamsQuery(ctx context.Context, sess *state.Sessio
 			CurrentLevel:    uint32(class.CurrentLevel),
 			MaxLevel:        uint32(class.MaxLevel),
 		}
-		if sess.FoodGroupVersions()[wire.OService] > 1 {
+		if instance.FoodGroupVersions()[wire.OService] > 1 {
 			str.V2Params = &struct {
 				LastTime      uint32
 				DroppingSNACs uint8
@@ -213,70 +213,76 @@ func (s OServiceService) RateParamsQuery(ctx context.Context, sess *state.Sessio
 
 // UserInfoQuery returns SNAC wire.OServiceUserInfoUpdate containing
 // the user's info.
-func (s OServiceService) UserInfoQuery(_ context.Context, sess *state.Session, inFrame wire.SNACFrame) wire.SNACMessage {
+func (s OServiceService) UserInfoQuery(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame) wire.SNACMessage {
 	return wire.SNACMessage{
 		Frame: wire.SNACFrame{
 			FoodGroup: wire.OService,
 			SubGroup:  wire.OServiceUserInfoUpdate,
 			RequestID: inFrame.RequestID,
 		},
-		Body: newOServiceUserInfoUpdate(sess),
+		Body: newOServiceUserInfoUpdate(instance),
 	}
 }
 
-// SetUserInfoFields sets the user's visibility status to visible or invisible.
-// The visibility status is set according to the inFrame TLV entry under key
-// wire.OServiceUserInfoStatus. If the value is 0x0000, set invisible. If set
-// to 0x0100, set invisible. Else, return an error for any other value.
-// It returns SNAC wire.OServiceUserInfoUpdate containing the user's info.
-func (s OServiceService) SetUserInfoFields(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields) (wire.SNACMessage, error) {
+// SetUserInfoFields updates user info fields (e.g., invisible, away) and broadcasts
+// presence changes to buddies. Returns an updated user info message.
+func (s OServiceService) SetUserInfoFields(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields) (wire.SNACMessage, error) {
 	if status, hasStatus := inBody.Uint32BE(wire.OServiceUserInfoStatus); hasStatus {
-		sess.SetUserStatusBitmask(status)
-		if sess.Invisible() {
-			if err := s.buddyBroadcaster.BroadcastBuddyDeparted(ctx, sess); err != nil {
+		instance.SetUserStatusBitmask(status)
+
+		if instance.Session().Invisible() {
+			if err := s.buddyBroadcaster.BroadcastBuddyDeparted(ctx, instance); err != nil {
 				return wire.SNACMessage{}, err
 			}
 		} else {
-			if err := s.buddyBroadcaster.BroadcastBuddyArrived(ctx, sess.IdentScreenName(), sess.TLVUserInfo()); err != nil {
+			if err := s.buddyBroadcaster.BroadcastBuddyArrived(ctx, instance.IdentScreenName(), instance.Session().TLVUserInfo()); err != nil {
 				return wire.SNACMessage{}, err
 			}
-
 		}
 	}
+
+	// reflect the status of this instance back to the caller, even though
+	// it does not reflect aggregated state of the session. this is necessary
+	// for the "invisible" button to properly toggle on the client.
+	info := instance.Session().TLVUserInfo()
+	info.Replace(wire.NewTLVBE(wire.OServiceUserInfoStatus, instance.UserStatusBitmask()))
+
 	return wire.SNACMessage{
 		Frame: wire.SNACFrame{
 			FoodGroup: wire.OService,
 			SubGroup:  wire.OServiceUserInfoUpdate,
 			RequestID: inFrame.RequestID,
 		},
-		Body: newOServiceUserInfoUpdate(sess),
+		Body: wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate{
+			UserInfo: []wire.TLVUserInfo{info},
+		},
 	}, nil
 }
 
 // IdleNotification sets the user idle time.
 // Set session idle time to the value of bodyIn.IdleTime. Return a user arrival
 // message to all users who have this user on their buddy list.
-func (s OServiceService) IdleNotification(ctx context.Context, sess *state.Session, bodyIn wire.SNAC_0x01_0x11_OServiceIdleNotification) error {
-	if bodyIn.IdleTime == 0 {
-		sess.UnsetIdle()
+func (s OServiceService) IdleNotification(ctx context.Context, instance *state.SessionInstance, inBody wire.SNAC_0x01_0x11_OServiceIdleNotification) error {
+	if inBody.IdleTime == 0 {
+		instance.UnsetIdle()
 	} else {
-		sess.SetIdle(time.Duration(bodyIn.IdleTime) * time.Second)
+		instance.SetIdle(time.Duration(inBody.IdleTime) * time.Second)
 	}
-	return s.buddyBroadcaster.BroadcastBuddyArrived(ctx, sess.IdentScreenName(), sess.TLVUserInfo())
+	return s.buddyBroadcaster.BroadcastBuddyArrived(ctx, instance.IdentScreenName(), instance.Session().TLVUserInfo())
 }
 
 // SetPrivacyFlags sets client privacy settings. Currently, there's no action
 // to take when these flags are set. This method simply logs the flags set by
 // the client.
-func (s OServiceService) SetPrivacyFlags(ctx context.Context, bodyIn wire.SNAC_0x01_0x14_OServiceSetPrivacyFlags) {
+func (s OServiceService) SetPrivacyFlags(ctx context.Context, inBody wire.SNAC_0x01_0x14_OServiceSetPrivacyFlags) {
 	attrs := slog.Group("request",
 		slog.String("food_group", wire.FoodGroupName(wire.OService)),
 		slog.String("sub_group", wire.SubGroupName(wire.OService, wire.OServiceSetPrivacyFlags)))
 
-	if bodyIn.MemberFlag() {
+	if inBody.MemberFlag() {
 		s.logger.LogAttrs(ctx, slog.LevelDebug, "client set member privacy flag, but we're not going to do anything", attrs)
 	}
-	if bodyIn.IdleFlag() {
+	if inBody.IdleFlag() {
 		s.logger.LogAttrs(ctx, slog.LevelDebug, "client set idle privacy flag, but we're not going to do anything", attrs)
 	}
 }
@@ -285,10 +291,10 @@ func (s OServiceService) SetPrivacyFlags(ctx context.Context, bodyIn wire.SNAC_0
 // that notifications will be queued after calling this method. I don't see the
 // point of doing that since all clients appear to call RateParamsQuery at
 // sign-on for all rate classes.
-func (s OServiceService) RateParamsSubAdd(ctx context.Context, sess *state.Session, snac wire.SNAC_0x01_0x08_OServiceRateParamsSubAdd) {
-	ids := make([]wire.RateLimitClassID, 0, len(snac.ClassIDs))
+func (s OServiceService) RateParamsSubAdd(ctx context.Context, instance *state.SessionInstance, inBody wire.SNAC_0x01_0x08_OServiceRateParamsSubAdd) {
+	ids := make([]wire.RateLimitClassID, 0, len(inBody.ClassIDs))
 
-	for _, id := range snac.ClassIDs {
+	for _, id := range inBody.ClassIDs {
 		if id < 1 || id > 5 {
 			s.logger.DebugContext(ctx, "snac class ID out of range")
 			continue
@@ -301,7 +307,7 @@ func (s OServiceService) RateParamsSubAdd(ctx context.Context, sess *state.Sessi
 	}
 
 	s.logger.DebugContext(ctx, "subscribing to rate limit updates", "classes", ids)
-	sess.SubscribeRateLimits(ids)
+	instance.Session().SubscribeRateLimits(ids)
 }
 
 // HostOnline returns SNAC wire.OServiceHostOnline containing the list of food
@@ -431,13 +437,13 @@ func (s OServiceService) HostOnline(service uint16) wire.SNACMessage {
 // rate limit class params or rate limit states for the current session.
 // Changes are reported relative to the previous invocation for this session.
 // Only newly observed transitions or updated rate parameters will be included.
-func (s OServiceService) RateLimitUpdates(ctx context.Context, sess *state.Session, now time.Time) []wire.SNACMessage {
+func (s OServiceService) RateLimitUpdates(ctx context.Context, instance *state.SessionInstance, now time.Time) []wire.SNACMessage {
 	msgs := make([]wire.SNACMessage, 0, 5)
-	classDelta, stateDelta := sess.ObserveRateChanges(now)
+	classDelta, stateDelta := instance.Session().ObserveRateChanges(now)
 
 	for _, curRate := range classDelta {
 		s.logger.DebugContext(ctx, "rate limit class changed", "class", curRate.ID)
-		msgs = append(msgs, buildRateLimitUpdate(1, curRate, sess, now))
+		msgs = append(msgs, buildRateLimitUpdate(1, curRate, instance, now))
 	}
 
 	for _, curRate := range stateDelta {
@@ -457,7 +463,7 @@ func (s OServiceService) RateLimitUpdates(ctx context.Context, sess *state.Sessi
 			continue
 		}
 
-		msgs = append(msgs, buildRateLimitUpdate(code, curRate, sess, now))
+		msgs = append(msgs, buildRateLimitUpdate(code, curRate, instance, now))
 	}
 
 	return msgs
@@ -470,7 +476,7 @@ func (s OServiceService) RateLimitUpdates(ctx context.Context, sess *state.Sessi
 // If OService version 2 or higher is supported, additional metadata such as
 // time since last status change and whether SNACs are currently being dropped
 // will be included.
-func buildRateLimitUpdate(code uint16, curRate state.RateClassState, sess *state.Session, now time.Time) wire.SNACMessage {
+func buildRateLimitUpdate(code uint16, curRate state.RateClassState, instance *state.SessionInstance, now time.Time) wire.SNACMessage {
 	var droppingSNACs uint8
 	if curRate.CurrentStatus == wire.RateLimitStatusLimited {
 		droppingSNACs = 1
@@ -487,7 +493,7 @@ func buildRateLimitUpdate(code uint16, curRate state.RateClassState, sess *state
 		MaxLevel:        uint32(curRate.MaxLevel),
 	}
 
-	if sess.FoodGroupVersions()[wire.OService] > 1 {
+	if instance.FoodGroupVersions()[wire.OService] > 1 {
 		rate.V2Params = &struct {
 			LastTime      uint32
 			DroppingSNACs uint8
@@ -512,7 +518,7 @@ func buildRateLimitUpdate(code uint16, curRate state.RateClassState, sess *state
 
 // ServiceRequest handles service discovery, providing a host name and metadata
 // for connecting to the food group service specified in inFrame.
-func (s OServiceService) ServiceRequest(ctx context.Context, service uint16, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x01_0x04_OServiceServiceRequest, listener config.Listener) (wire.SNACMessage, error) {
+func (s OServiceService) ServiceRequest(ctx context.Context, service uint16, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x01_0x04_OServiceServiceRequest, listener config.Listener) (wire.SNACMessage, error) {
 	if service != wire.BOS {
 		return wire.SNACMessage{
 			Frame: wire.SNACFrame{
@@ -553,7 +559,8 @@ func (s OServiceService) ServiceRequest(ctx context.Context, service uint16, ses
 		case wire.Admin, wire.Alert, wire.BART, wire.ChatNav, wire.ODir:
 			return fnIssueCookie(state.ServerCookie{
 				Service:    inBody.FoodGroup,
-				ScreenName: sess.DisplayScreenName(),
+				ScreenName: instance.DisplayScreenName(),
+				SessionNum: instance.Num(),
 			})
 		case wire.Chat:
 			roomMeta, ok := inBody.Bytes(0x01)
@@ -574,7 +581,8 @@ func (s OServiceService) ServiceRequest(ctx context.Context, service uint16, ses
 			return fnIssueCookie(state.ServerCookie{
 				Service:    wire.Chat,
 				ChatCookie: room.Cookie(),
-				ScreenName: sess.DisplayScreenName(),
+				ScreenName: instance.DisplayScreenName(),
+				SessionNum: instance.Num(),
 			})
 		default:
 			return nil, nil
@@ -634,13 +642,12 @@ func (s OServiceService) ServiceRequest(ctx context.Context, service uint16, ses
 //   - Send current user the chat room metadata
 //   - Announce current user's arrival to other chat room participants
 //   - Send current user the chat room participant list
-func (s OServiceService) ClientOnline(ctx context.Context, service uint16, bodyIn wire.SNAC_0x01_0x02_OServiceClientOnline, sess *state.Session) error {
-	sess.SetSignonComplete()
+func (s OServiceService) ClientOnline(ctx context.Context, service uint16, inBody wire.SNAC_0x01_0x02_OServiceClientOnline, instance *state.SessionInstance) error {
+	instance.SetSignonComplete()
 
 	switch service {
 	case wire.BOS:
-
-		if err := s.buddyBroadcaster.BroadcastVisibility(ctx, sess, nil, false); err != nil {
+		if err := s.buddyBroadcaster.BroadcastVisibility(ctx, instance, nil, false); err != nil {
 			return fmt.Errorf("unable to send buddy arrival notification: %w", err)
 		}
 
@@ -654,40 +661,48 @@ func (s OServiceService) ClientOnline(ctx context.Context, service uint16, bodyI
 				MinReportInterval: 1,
 			},
 		}
-		s.messageRelayer.RelayToScreenName(ctx, sess.IdentScreenName(), msg)
+		s.messageRelayer.RelayToScreenName(ctx, instance.IdentScreenName(), msg)
 
 		// set stored profile
-		if sess.KerberosAuth() {
+		if instance.KerberosAuth() {
 			// normally, the SupportHostSig TLV indicates that the profile should
 			// be stored server-side. however, some AIM 6 clients expect server-side
 			// profiles but do not send this TLV. in order to cover all bases, just
 			// save the profile for all kerberos-based clients.
-			profile, err := s.profileManager.Profile(ctx, sess.IdentScreenName())
+			profile, err := s.profileManager.Profile(ctx, instance.IdentScreenName())
 			if err != nil {
 				return fmt.Errorf("unable to reload profile: %w", err)
 			}
 
-			if !profile.Empty() {
-				sess.SetProfile(profile)
+			if !profile.IsZero() {
+				instance.SetProfile(profile)
 
 				// notify client that the server-side profile is ready for retrieval
-				s.messageRelayer.RelayToScreenName(ctx, sess.IdentScreenName(), wire.SNACMessage{
+				s.messageRelayer.RelayToSelf(ctx, instance, wire.SNACMessage{
 					Frame: wire.SNACFrame{
 						FoodGroup: wire.OService,
 						SubGroup:  wire.OServiceUserInfoUpdate,
 					},
-					Body: newOServiceUserInfoUpdate(sess),
+					Body: newOServiceUserInfoUpdate(instance),
 				})
 			}
 		}
 
-		if sess.OfflineMsgCount() > 0 {
-			if err := s.sendOfflineMessageNotification(ctx, sess); err != nil {
+		if instance.OfflineMsgCount() > 0 {
+			if err := s.sendOfflineMessageNotification(ctx, instance); err != nil {
 				return fmt.Errorf("send offline message notification: %w", err)
 			}
 		}
+
+		if !s.cfg.DisableMultiLoginNotif && instance.Session().InstanceCount() > 1 {
+			if err := s.sendMultipleInstanceNotification(ctx, instance); err != nil {
+				return fmt.Errorf("send multiple instance notification: %w", err)
+			}
+		}
+
+		return nil
 	case wire.Chat:
-		room, err := s.chatRoomManager.ChatRoomByCookie(ctx, sess.ChatRoomCookie())
+		room, err := s.chatRoomManager.ChatRoomByCookie(ctx, instance.ChatRoomCookie())
 		if err != nil {
 			return fmt.Errorf("error getting chat room: %w", err)
 		}
@@ -695,27 +710,63 @@ func (s OServiceService) ClientOnline(ctx context.Context, service uint16, bodyI
 		// Do not change the order of the following 3 methods. macOS client v4.0.9
 		// requires this exact sequence, otherwise the chat session prematurely
 		// closes seconds after users join a chat room.
-		setOnlineChatUsers(ctx, sess, s.chatMessageRelayer)
-		sendChatRoomInfoUpdate(ctx, sess, s.chatMessageRelayer, room)
-		alertUserJoined(ctx, sess, s.chatMessageRelayer)
+		setOnlineChatUsers(ctx, instance, s.chatMessageRelayer)
+		sendChatRoomInfoUpdate(ctx, instance, s.chatMessageRelayer, room)
+		alertUserJoined(ctx, instance, s.chatMessageRelayer)
+		return nil
 	default:
-		s.logger.DebugContext(ctx, "client is online", "group_versions", bodyIn.GroupVersions)
+		s.logger.DebugContext(ctx, "client is online", "group_versions", inBody.GroupVersions)
+		return nil
 	}
-	return nil
 }
 
 // sendOfflineMessageNotification sends an IM notifying the user of their
 // offline message count and resets the count to zero.
-func (s OServiceService) sendOfflineMessageNotification(ctx context.Context, sess *state.Session) error {
-	msg := fmt.Sprintf("You just received %d IM(s) while you were offline. If you do "+
-		"not wish to receive offline messages, please go to "+
-		"<a href=\"http://settings.aim.com/?loc=en-zz\">IM Settings</a>.", sess.OfflineMsgCount())
-	frags, err := wire.ICBMFragmentList(msg)
-	if err != nil {
-		return fmt.Errorf("creating ICBM fragments: %w", err)
+func (s OServiceService) sendOfflineMessageNotification(ctx context.Context, instance *state.SessionInstance) error {
+	if err := s.offlineMessageManager.SetOfflineMsgCount(ctx, instance.IdentScreenName(), 0); err != nil {
+		return fmt.Errorf("deleting offline messages: %w", err)
 	}
 
-	s.messageRelayer.RelayToScreenName(ctx, sess.IdentScreenName(), wire.SNACMessage{
+	msg := fmt.Sprintf("You just received %d IM(s) while you were offline. If you do "+
+		"not wish to receive offline messages, please go to "+
+		"<a href=\"https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=RDdQw4w9WgXcQ&start_radio=1&pp=ygUJcmljayByb2xsoAcB\">IM Settings</a>.", instance.OfflineMsgCount())
+
+	message, err := systemMessage(msg)
+	if err != nil {
+		return err
+	}
+
+	s.messageRelayer.RelayToScreenName(ctx, instance.IdentScreenName(), message)
+
+	instance.Session().SetOfflineMsgCount(0)
+
+	return nil
+}
+
+// sendMultipleInstanceNotification sends an IM notifying the user that their
+// account is signed in to multiple locations.
+func (s OServiceService) sendMultipleInstanceNotification(ctx context.Context, instance *state.SessionInstance) error {
+	msg := fmt.Sprintf("Your screen name (%s) is now signed into Open OSCAR Server in %d locations. Click "+
+		"<a href=\"https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=RDdQw4w9WgXcQ&start_radio=1&pp=ygUJcmljayByb2xsoAcB\">here</a> "+
+		"for more information.", instance.DisplayScreenName(), instance.Session().InstanceCount())
+
+	message, err := systemMessage(msg)
+	if err != nil {
+		return err
+	}
+
+	s.messageRelayer.RelayToOtherInstances(ctx, instance, message)
+
+	return nil
+}
+
+func systemMessage(msg string) (wire.SNACMessage, error) {
+	frags, err := wire.ICBMFragmentList(msg)
+	if err != nil {
+		return wire.SNACMessage{}, fmt.Errorf("creating ICBM fragments: %w", err)
+	}
+
+	return wire.SNACMessage{
 		Frame: wire.SNACFrame{
 			FoodGroup: wire.ICBM,
 			SubGroup:  wire.ICBMChannelMsgToClient,
@@ -724,7 +775,7 @@ func (s OServiceService) sendOfflineMessageNotification(ctx context.Context, ses
 		Body: wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
 			ChannelID: wire.ICBMChannelIM,
 			TLVUserInfo: wire.TLVUserInfo{
-				ScreenName: "AOL System Msg",
+				ScreenName: "OOS System Msg",
 			},
 			TLVRestBlock: wire.TLVRestBlock{
 				TLVList: []wire.TLV{
@@ -732,50 +783,83 @@ func (s OServiceService) sendOfflineMessageNotification(ctx context.Context, ses
 				},
 			},
 		},
-	})
-
-	//todo: do the following in a doOnce()
-	sess.SetOfflineMsgCount(0)
-	if err := s.offlineMessageManager.SetOfflineMsgCount(ctx, sess.IdentScreenName(), 0); err != nil {
-		return fmt.Errorf("deleting offline messages: %w", err)
-	}
-
-	return nil
+	}, nil
 }
 
 // newOServiceUserInfoUpdate constructs SNAC(0x01,0x0F) for user info updates.
 // For OService version 4 and above, it appends a duplicate TLVUserInfo block.
 // AIM 6+ expects at least two user info blocks to support multi-session:
 // the first represents overall state; subsequent ones represent client instances.
-func newOServiceUserInfoUpdate(sess *state.Session) wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate {
-	info := sess.TLVUserInfo()
+func newOServiceUserInfoUpdate(instance *state.SessionInstance) wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate {
+	info := instance.Session().TLVUserInfo()
 	userInfo := []wire.TLVUserInfo{info}
 
 	// set registration date
-	userInfo[0].Append(wire.NewTLVBE(wire.OServiceUserInfoMemberSince, uint32(sess.MemberSince().Unix())))
+	userInfo[0].Append(wire.NewTLVBE(wire.OServiceUserInfoMemberSince, uint32(instance.Session().MemberSince().Unix())))
 	// set sign-on time
-	userInfo[0].Append(wire.NewTLVBE(wire.OServiceUserInfoSignonTOD, uint32(sess.SignonTime().Unix())))
+	userInfo[0].Append(wire.NewTLVBE(wire.OServiceUserInfoSignonTOD, uint32(instance.SignonTime().Unix())))
 	// set current session length (seconds)
-	userInfo[0].Append(wire.NewTLVBE(wire.OServiceUserInfoOnlineTime, uint32(time.Since(sess.SignonTime()).Seconds())))
+	userInfo[0].Append(wire.NewTLVBE(wire.OServiceUserInfoOnlineTime, uint32(time.Since(instance.SignonTime()).Seconds())))
 
-	profile := sess.Profile()
-	if !profile.UpdateTime.IsZero() {
-		// set profile update time if the profile was set
-		userInfo[0].Append(wire.NewTLVBE(wire.OServiceUserInfoSigTime, uint32(profile.UpdateTime.Unix())))
-	}
+	if instance.FoodGroupVersions()[wire.OService] >= 4 {
 
-	if sess.FoodGroupVersions()[wire.OService] >= 4 {
-		// ideally, the second block should contain only instance-specific TLVs,
-		// but since the exact structure is unclear, we temporarily duplicate the first.
-		userInfo = append(userInfo, info)
-		// identify the primary session
-		userInfo[0].Append(wire.NewTLVBE(wire.OServiceUserInfoPrimaryInstance, []byte{0x01}))
-		// identify the first session (currently only 1x concurrent session supported)
-		userInfo[1].Append(wire.NewTLVBE(wire.OServiceUserInfoMyInstanceNum, []byte{0x01}))
+		userInfo[0].Append(wire.NewTLVBE(wire.OServiceUserInfoMyInstanceNum, []byte{instance.Num()}))
+
+		for _, instance := range instance.Session().Instances() {
+			instanceInfo := wire.TLVUserInfo{
+				ScreenName:   instance.DisplayScreenName().String(),
+				WarningLevel: instance.Warning(),
+			}
+
+			// sign-in timestamp
+			instanceInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoSignonTOD, uint32(instance.SignonTime().Unix())))
+
+			// use the first instance as a template
+			uFlags := instance.UserInfoBitmask()
+
+			if instance.Session().Away() {
+				uFlags |= wire.OServiceUserFlagUnavailable
+			}
+			instanceInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoUserFlags, uFlags))
+
+			// user status flags - user-level (shared)
+			var statusBitmask uint32
+			if instance.Invisible() {
+				statusBitmask |= wire.OServiceUserStatusInvisible
+			}
+			instanceInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoStatus, statusBitmask))
+
+			if instance == instance {
+				if icon, hasIcon := instance.Session().BuddyIcon(); hasIcon {
+					// set buddy icon metadata, if user has buddy icon
+					if icon.Type != 0 {
+						instanceInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, icon))
+					}
+				}
+			}
+
+			//Get the best instance for each TLV value
+			//mostCapableCaps := instance.getMostCapableCaps()
+			//capabilities - show most capable instance (union of all capabilities)
+			instanceInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoOscarCaps, instance.Session().Caps()))
+
+			instanceInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoMySubscriptions, uint32(0)))
+
+			if instance == instance {
+				profile := instance.Profile()
+				if !profile.UpdateTime.IsZero() {
+					// set profile update time if the profile was set
+					instanceInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoSigTime, uint32(profile.UpdateTime.Unix())))
+				}
+			}
+
+			instanceInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoPrimaryInstance, []byte{instance.Num()}))
+
+			userInfo = append(userInfo, instanceInfo)
+		}
 	}
 
 	return wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate{
 		UserInfo: userInfo,
 	}
-
 }

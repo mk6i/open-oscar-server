@@ -224,23 +224,53 @@ paths:
                           type: string
                           description: User's AIM screen name or ICQ UIN.
                         online_seconds:
-                          type: number
+                          type: integer
                           description: Number of seconds this user session has been online.
+                        is_away:
+                          type: boolean
+                          description: If true, indicates the user is away.
                         away_message:
                           type: string
-                          description: User's AIM away message HTML. Empty if the user is not away.
+                          description: User's AIM away message HTML.
                         idle_seconds:
-                          type: number
+                          type: integer
                           description: Number of seconds this user session has been idle. 0 if not idle.
+                        is_invisible:
+                          type: boolean
+                          description: If true, indicates the user is invisible.
                         is_icq:
                           type: boolean
                           description: If true, indicates an ICQ user instead of an AIM user.
-                        remote_addr:
-                          type: string
-                          description: Remote IP address of the user's connection to BOS or TOC
-                        remote_port:
+                        instance_count:
                           type: integer
-                          description: Remote port number of the user's connection to BOS or TOC
+                          description: Number of concurrent clients signed in for this user.
+                        instances:
+                          type: array
+                          description: Array of session instances for this user.
+                          items:
+                            type: object
+                            properties:
+                              num:
+                                type: integer
+                                description: Instance number for this session instance.
+                              idle_seconds:
+                                type: integer
+                                description: Number of seconds this instance has been idle. 0 if not idle.
+                              is_away:
+                                type: boolean
+                                description: If true, indicates this instance is away.
+                              away_message:
+                                type: string
+                                description: This instance's AIM away message HTML.
+                              is_invisible:
+                                type: boolean
+                                description: If true, indicates this instance is invisible.
+                              remote_addr:
+                                type: string
+                                description: Remote IP address of the user's connection to BOS or TOC.
+                              remote_port:
+                                type: integer
+                                description: Remote port number of the user's connection to BOS or TOC.
 
   /session/{screenname}:
     get:
@@ -284,15 +314,39 @@ paths:
                         idle_seconds:
                           type: number
                           description: Number of seconds this user session has been idle. 0 if not idle.
+                        is_invisible:
+                          type: boolean
+                          description: If true, indicates the user is invisible.
                         is_icq:
                           type: boolean
                           description: If true, indicates an ICQ user instead of an AIM user.
-                        remote_addr:
-                          type: string
-                          description: Remote IP address of the user's connection to BOS or TOC
-                        remote_port:
-                          type: integer
-                          description: Remote port number of the user's connection to BOS or TOC
+                        instances:
+                          type: array
+                          description: Array of session instances for this user.
+                          items:
+                            type: object
+                            properties:
+                              num:
+                                type: integer
+                                description: Instance number for this session instance.
+                              idle_seconds:
+                                type: integer
+                                description: Number of seconds this instance has been idle. 0 if not idle.
+                              is_away:
+                                type: boolean
+                                description: If true, indicates this instance is away.
+                              away_message:
+                                type: string
+                                description: This instance's AIM away message HTML.
+                              is_invisible:
+                                type: boolean
+                                description: If true, indicates this instance is invisible.
+                              remote_addr:
+                                type: string
+                                description: Remote IP address of the user's connection to BOS or TOC
+                              remote_port:
+                                type: integer
+                                description: Remote port number of the user's connection to BOS or TOC
         '404':
           description: User not found.
     delete:

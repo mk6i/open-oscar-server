@@ -19,7 +19,7 @@ var (
 	ErrDupUser = errors.New("user already exists")
 	// ErrNoUser indicates that a user does not exist.
 	ErrNoUser = errors.New("user does not exist")
-	// ErrNoEmail indicates that a user has not set an email address.
+	// ErrNoEmailAddress indicates that a user has not set an email address.
 	ErrNoEmailAddress = errors.New("user has no email address")
 )
 
@@ -220,9 +220,14 @@ type UserProfile struct {
 	UpdateTime time.Time
 }
 
-// Empty returns true if the profile has not been set (all fields are zero values).
-func (p UserProfile) Empty() bool {
-	return p.ProfileText == "" && p.MIMEType == "" && p.UpdateTime.IsZero()
+// IsZero returns true if the profile has not been set.
+func (p UserProfile) IsZero() bool {
+	return p.UpdateTime.IsZero()
+}
+
+// IsEmpty returns true of the profile is empty (including not set).
+func (p UserProfile) IsEmpty() bool {
+	return p.IsZero() || p.ProfileText == "" || p.ProfileText == "\x00"
 }
 
 // AIMNameAndAddr holds name and address AIM directory information.

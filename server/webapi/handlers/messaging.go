@@ -123,7 +123,7 @@ func (h *MessagingHandler) SendIM(w http.ResponseWriter, r *http.Request) {
 	// Get sender's OSCAR session if available
 	var senderInfo wire.TLVUserInfo
 	if sess.OSCARSession != nil {
-		senderInfo = sess.OSCARSession.TLVUserInfo()
+		senderInfo = sess.OSCARSession.Session().TLVUserInfo()
 	} else {
 		// Create minimal user info for web-only sessions
 		senderInfo = wire.TLVUserInfo{

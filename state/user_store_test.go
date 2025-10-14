@@ -255,7 +255,7 @@ func TestProfile(t *testing.T) {
 		t.Fatalf("failed to retrieve profile: %s", err.Error())
 	}
 
-	if !profile.Empty() {
+	if !profile.IsZero() {
 		t.Fatalf("expected empty profile for %s", screenName)
 	}
 
@@ -321,7 +321,7 @@ func TestProfileNonExistent(t *testing.T) {
 
 	prof, err := f.Profile(context.Background(), screenName)
 	assert.NoError(t, err)
-	assert.True(t, prof.Empty())
+	assert.True(t, prof.IsZero())
 	assert.Equal(t, "", prof.MIMEType)
 	assert.True(t, prof.UpdateTime.IsZero())
 }

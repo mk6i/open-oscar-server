@@ -289,9 +289,10 @@ type sessionRegistryParams struct {
 // addSessionParams is the list of parameters passed at the mock
 // SessionRegistry.AddSession call site
 type addSessionParams []struct {
-	screenName state.DisplayScreenName
-	result     *state.Session
-	err        error
+	screenName  state.DisplayScreenName
+	doMultiSess bool
+	result      *state.SessionInstance
+	err         error
 }
 
 // removeSessionParams is the list of parameters passed at the mock
@@ -367,6 +368,16 @@ type feedbagDeleteParams []struct {
 type messageRelayerParams struct {
 	relayToScreenNamesParams
 	relayToScreenNameParams
+	relayToOtherInstancesParams
+	relayToScreenNameActiveOnlyParams
+	relayToSelfParams
+}
+
+// relayToSelfParams is the list of parameters passed at the mock
+// MessageRelayer.RelayToSelf call site
+type relayToSelfParams []struct {
+	screenName state.IdentScreenName
+	message    wire.SNACMessage
 }
 
 // relayToScreenNamesParams is the list of parameters passed at the mock
@@ -379,6 +390,20 @@ type relayToScreenNamesParams []struct {
 // relayToScreenNameParams is the list of parameters passed at the mock
 // MessageRelayer.RelayToScreenName call site
 type relayToScreenNameParams []struct {
+	screenName state.IdentScreenName
+	message    wire.SNACMessage
+}
+
+// relayToOtherInstancesParams is the list of parameters passed at the mock
+// MessageRelayer.RelayToOtherInstances call site
+type relayToOtherInstancesParams []struct {
+	screenName state.IdentScreenName
+	message    wire.SNACMessage
+}
+
+// relayToScreenNameActiveOnlyParams is the list of parameters passed at the mock
+// MessageRelayer.RelayToScreenNameActiveOnly call site
+type relayToScreenNameActiveOnlyParams []struct {
 	screenName state.IdentScreenName
 	message    wire.SNACMessage
 }
@@ -734,159 +759,195 @@ type createChatRoomParams []struct {
 }
 
 // sessOptWarning sets a warning level on the session object
-func sessOptWarning(level int16) func(session *state.Session) {
-	return func(session *state.Session) {
-		session.SetWarning(uint16(level))
+func sessOptWarning(level int16) func(instance *state.SessionInstance) {
+	return func(instance *state.SessionInstance) {
+		instance.Session().SetWarning(uint16(level))
 	}
 }
 
 // sessOptCannedAwayMessage sets a canned away message ("this is my away
 // message!") on the session object
-func sessOptCannedAwayMessage(session *state.Session) {
-	session.SetAwayMessage("this is my away message!")
+func sessOptCannedAwayMessage(instance *state.SessionInstance) {
+	instance.SetAwayMessage("this is my away message!")
+}
+
+// sessOptUserInfoFlag sets a user info flag on the session object
+func sessOptUserInfoFlag(flag uint16) func(instance *state.SessionInstance) {
+	return func(instance *state.SessionInstance) {
+		instance.SetUserInfoFlag(flag)
+	}
 }
 
 // sessOptCannedSignonTime sets a canned sign-on time (1696790127565) on the
 // session object
-func sessOptCannedSignonTime(session *state.Session) {
-	session.SetSignonTime(time.UnixMilli(1696790127565))
+func sessOptCannedSignonTime(instance *state.SessionInstance) {
+	instance.Session().SetSignonTime(time.UnixMilli(1696790127565))
 }
 
 // sessOptChatRoomCookie sets cookie on the session object
-func sessOptChatRoomCookie(cookie string) func(session *state.Session) {
-	return func(session *state.Session) {
-		session.SetChatRoomCookie(cookie)
+func sessOptChatRoomCookie(cookie string) func(instance *state.SessionInstance) {
+	return func(instance *state.SessionInstance) {
+		instance.Session().SetChatRoomCookie(cookie)
 	}
 }
 
 // sessOptBot sets the bot flag to true on the session
 // object
-func sessOptBot(session *state.Session) {
-	session.SetUserInfoFlag(wire.OServiceUserFlagBot)
+func sessOptBot(instance *state.SessionInstance) {
+	instance.SetUserInfoFlag(wire.OServiceUserFlagBot)
 }
 
 // sessOptInvisible sets the invisible flag to true on the session
 // object
-func sessOptInvisible(session *state.Session) {
-	session.SetUserStatusBitmask(wire.OServiceUserStatusInvisible)
+func sessOptInvisible(instance *state.SessionInstance) {
+	instance.SetUserStatusBitmask(wire.OServiceUserStatusInvisible)
 }
 
 // sessOptIdle sets the idle flag to dur on the session object
-func sessOptIdle(dur time.Duration) func(session *state.Session) {
-	return func(session *state.Session) {
-		session.SetIdle(dur)
+func sessOptIdle(dur time.Duration) func(instance *state.SessionInstance) {
+	return func(instance *state.SessionInstance) {
+		instance.SetIdle(dur)
 	}
 }
 
 // sessOptSignonComplete sets the sign on complete flag to true
-func sessOptSignonComplete(session *state.Session) {
-	session.SetSignonComplete()
+func sessOptSignonComplete(instance *state.SessionInstance) {
+	instance.SetSignonComplete()
 }
 
 // sessOptCaps sets caps
-func sessOptUIN(UIN uint32) func(session *state.Session) {
-	return func(session *state.Session) {
-		session.SetUIN(UIN)
+func sessOptUIN(UIN uint32) func(instance *state.SessionInstance) {
+	return func(instance *state.SessionInstance) {
+		instance.Session().SetUIN(UIN)
 	}
 }
 
 // sessOptCaps sets caps
-func sessOptWantTypingEvents(session *state.Session) {
-	session.SetTypingEventsEnabled(true)
+func sessOptWantTypingEvents(instance *state.SessionInstance) {
+	instance.Session().SetTypingEventsEnabled(true)
 }
 
 // sessOptSetFoodGroupVersion sets food group versions
-func sessOptSetFoodGroupVersion(foodGroup uint16, version uint16) func(session *state.Session) {
-	return func(session *state.Session) {
+func sessOptSetFoodGroupVersion(foodGroup uint16, version uint16) func(instance *state.SessionInstance) {
+	return func(instance *state.SessionInstance) {
 		var versions [wire.MDir + 1]uint16
 		versions[foodGroup] = version
-		session.SetFoodGroupVersions(versions)
+		instance.SetFoodGroupVersions(versions)
 	}
 }
 
 // sessOptSetRateClasses sets rate limit classes
-func sessOptSetRateClasses(classes wire.RateLimitClasses) func(session *state.Session) {
-	return func(session *state.Session) {
-		session.SetRateClasses(time.Now(), classes)
+func sessOptSetRateClasses(classes wire.RateLimitClasses) func(instance *state.SessionInstance) {
+	return func(instance *state.SessionInstance) {
+		instance.Session().SetRateClasses(time.Now(), classes)
 	}
 }
 
 // sessOptMemberSince sets the member since timestamp on the session object.
-func sessOptMemberSince(t time.Time) func(session *state.Session) {
-	return func(session *state.Session) {
-		session.SetMemberSince(t)
+func sessOptMemberSince(t time.Time) func(instance *state.SessionInstance) {
+	return func(instance *state.SessionInstance) {
+		instance.Session().SetMemberSince(t)
 	}
 }
 
 // sessOptSignonTime sets the sign-on time on the session object.
-func sessOptSignonTime(t time.Time) func(session *state.Session) {
-	return func(session *state.Session) {
-		session.SetSignonTime(t)
+func sessOptSignonTime(t time.Time) func(instance *state.SessionInstance) {
+	return func(instance *state.SessionInstance) {
+		instance.Session().SetSignonTime(t)
 	}
 }
 
 // sessOptProfile sets profile
-func sessOptProfile(profile state.UserProfile) func(session *state.Session) {
-	return func(session *state.Session) {
-		session.SetProfile(profile)
+func sessOptProfile(profile state.UserProfile) func(instance *state.SessionInstance) {
+	return func(instance *state.SessionInstance) {
+		instance.SetProfile(profile)
 	}
 }
 
 // sessOptKerberosAuth indicates the session signed on
-func sessOptKerberosAuth(session *state.Session) {
-	session.SetKerberosAuth(true)
+func sessOptKerberosAuth(instance *state.SessionInstance) {
+	instance.SetKerberosAuth(true)
 }
 
 // sessClientID sets the client ID
-func sessClientID(clientID string) func(session *state.Session) {
-	return func(session *state.Session) {
-		session.SetClientID(clientID)
+func sessClientID(clientID string) func(instance *state.SessionInstance) {
+	return func(instance *state.SessionInstance) {
+		instance.SetClientID(clientID)
 	}
 }
 
 // sessRemoteAddr sets the client's ip address / port
-func sessRemoteAddr(remoteAddr netip.AddrPort) func(session *state.Session) {
-	return func(session *state.Session) {
-		session.SetRemoteAddr(&remoteAddr)
+func sessRemoteAddr(remoteAddr netip.AddrPort) func(instance *state.SessionInstance) {
+	return func(instance *state.SessionInstance) {
+		instance.SetRemoteAddr(&remoteAddr)
 	}
 }
 
+// sessOptAllInactive makes all instances in the session group inactive (away/idle/closed)
+func sessOptAllInactive(instance *state.SessionInstance) {
+	// Set away message to make instance inactive
+	instance.SetAwayMessage("away message")
+	// Also set idle to ensure it's inactive
+	instance.SetIdle(time.Hour)
+}
+
+// sessOptSomeActive ensures some instances are active (not all inactive)
+func sessOptSomeActive(instance *state.SessionInstance) {
+	// Don't set away message or idle - keep instance active
+	// This simulates a multisession scenario where at least one instance is active
+}
+
+// sessOptClosed makes the session instance closed (inactive)
+func sessOptClosed(instance *state.SessionInstance) {
+	instance.CloseInstance()
+}
+
+// sessOptMixedStates simulates a multisession scenario with mixed states
+// This would require multiple instances, but for testing purposes we'll just
+// keep the instance active to simulate having some active sessions
+func sessOptMixedStates(instance *state.SessionInstance) {
+	// Keep instance active to simulate mixed states scenario
+	// In a real multisession scenario, this would have multiple instances
+	// with some active and some inactive
+}
+
 // sessBuddyIcon sets session buddy icon
-func sessOptBuddyIcon(icon wire.BARTID) func(session *state.Session) {
-	return func(session *state.Session) {
-		session.SetBuddyIcon(icon)
+func sessOptBuddyIcon(icon wire.BARTID) func(instance *state.SessionInstance) {
+	return func(instance *state.SessionInstance) {
+		instance.Session().SetBuddyIcon(icon)
 	}
 }
 
 // sessOptOfflineMsgCount sets the offline message count on the session object.
-func sessOptOfflineMsgCount(count int) func(session *state.Session) {
-	return func(session *state.Session) {
-		session.SetOfflineMsgCount(count)
+func sessOptOfflineMsgCount(count int) func(instance *state.SessionInstance) {
+	return func(instance *state.SessionInstance) {
+		instance.Session().SetOfflineMsgCount(count)
 	}
 }
 
-// newTestSession creates a session object with 0 or more functional options
+// newTestInstance creates a session object with 0 or more functional options
 // applied
-func newTestSession(screenName state.DisplayScreenName, options ...func(session *state.Session)) *state.Session {
-	s := state.NewSession()
-	s.SetIdentScreenName(screenName.IdentScreenName())
-	s.SetDisplayScreenName(screenName)
-	s.SetRateClasses(time.Now(), wire.DefaultRateLimitClasses())
+func newTestInstance(screenName state.DisplayScreenName, options ...func(instance *state.SessionInstance)) *state.SessionInstance {
+	session := state.NewSession()
+	session.SetIdentScreenName(screenName.IdentScreenName())
+	session.SetDisplayScreenName(screenName)
+	session.SetRateClasses(time.Now(), wire.DefaultRateLimitClasses())
+	instance := session.AddInstance()
 	for _, op := range options {
-		op(s)
+		op(instance)
 	}
-	return s
+	return instance
 }
 
-func userInfoWithBARTIcon(sess *state.Session, bid wire.BARTID) wire.TLVUserInfo {
-	info := sess.TLVUserInfo()
+func userInfoWithBARTIcon(instance *state.SessionInstance, bid wire.BARTID) wire.TLVUserInfo {
+	info := instance.Session().TLVUserInfo()
 	info.Append(wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, bid))
 	return info
 }
 
 // matchSession matches a mock call based session ident screen name.
 func matchSession(mustMatch state.IdentScreenName) interface{} {
-	return mock.MatchedBy(func(s *state.Session) bool {
+	return mock.MatchedBy(func(s *state.SessionInstance) bool {
 		return mustMatch == s.IdentScreenName()
 	})
 }

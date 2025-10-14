@@ -38,8 +38,8 @@ func TestPermitDenyService_AddDenyListEntries(t *testing.T) {
 	tests := []struct {
 		// name is the name of the test
 		name string
-		// sess is the client session
-		sess *state.Session
+		// instance is the client session instance
+		instance *state.SessionInstance
 		// bodyIn is the input SNAC
 		bodyIn wire.SNAC_0x09_0x07_PermitDenyAddDenyListEntries
 		// expectOutput is the expected return SNAC value
@@ -51,8 +51,8 @@ func TestPermitDenyService_AddDenyListEntries(t *testing.T) {
 		wantErr error
 	}{
 		{
-			name: "set FeedbagPDModePermitAll",
-			sess: newTestSession("me", sessOptSignonComplete),
+			name:     "set FeedbagPDModePermitAll",
+			instance: newTestInstance("me", sessOptSignonComplete),
 			bodyIn: wire.SNAC_0x09_0x07_PermitDenyAddDenyListEntries{
 				Users: []struct {
 					ScreenName string `oscar:"len_prefix=uint8"`
@@ -80,9 +80,9 @@ func TestPermitDenyService_AddDenyListEntries(t *testing.T) {
 			},
 		},
 		{
-			name:   "set FeedbagPDModeDenySome - 0 users",
-			sess:   newTestSession("me", sessOptSignonComplete),
-			bodyIn: wire.SNAC_0x09_0x07_PermitDenyAddDenyListEntries{},
+			name:     "set FeedbagPDModeDenySome - 0 users",
+			instance: newTestInstance("me", sessOptSignonComplete),
+			bodyIn:   wire.SNAC_0x09_0x07_PermitDenyAddDenyListEntries{},
 			mockParams: mockParams{
 				clientSideBuddyListManagerParams: clientSideBuddyListManagerParams{
 					setPDModeParams: setPDModeParams{
@@ -103,8 +103,8 @@ func TestPermitDenyService_AddDenyListEntries(t *testing.T) {
 			},
 		},
 		{
-			name: "set FeedbagPDModeDenySome - 1 user",
-			sess: newTestSession("me", sessOptSignonComplete),
+			name:     "set FeedbagPDModeDenySome - 1 user",
+			instance: newTestInstance("me", sessOptSignonComplete),
 			bodyIn: wire.SNAC_0x09_0x07_PermitDenyAddDenyListEntries{
 				Users: []struct {
 					ScreenName string `oscar:"len_prefix=uint8"`
@@ -138,8 +138,8 @@ func TestPermitDenyService_AddDenyListEntries(t *testing.T) {
 			},
 		},
 		{
-			name: "set FeedbagPDModeDenySome sign on incomplete - 1 user",
-			sess: newTestSession("me"),
+			name:     "set FeedbagPDModeDenySome sign on incomplete - 1 user",
+			instance: newTestInstance("me"),
 			bodyIn: wire.SNAC_0x09_0x07_PermitDenyAddDenyListEntries{
 				Users: []struct {
 					ScreenName string `oscar:"len_prefix=uint8"`
@@ -168,8 +168,8 @@ func TestPermitDenyService_AddDenyListEntries(t *testing.T) {
 			},
 		},
 		{
-			name: "set FeedbagPDModeDenySome - 2 users",
-			sess: newTestSession("me", sessOptSignonComplete),
+			name:     "set FeedbagPDModeDenySome - 2 users",
+			instance: newTestInstance("me", sessOptSignonComplete),
 			bodyIn: wire.SNAC_0x09_0x07_PermitDenyAddDenyListEntries{
 				Users: []struct {
 					ScreenName string `oscar:"len_prefix=uint8"`
@@ -232,7 +232,7 @@ func TestPermitDenyService_AddDenyListEntries(t *testing.T) {
 				buddyBroadcaster:           mockBuddyBroadcaster,
 				clientSideBuddyListManager: clientSideBuddyListManager,
 			}
-			err := svc.AddDenyListEntries(context.TODO(), tt.sess, tt.bodyIn)
+			err := svc.AddDenyListEntries(context.TODO(), tt.instance, tt.bodyIn)
 			assert.Equal(t, tt.wantErr, err)
 		})
 	}
@@ -242,8 +242,8 @@ func TestPermitDenyService_AddPermListEntries(t *testing.T) {
 	tests := []struct {
 		// name is the name of the test
 		name string
-		// sess is the client session
-		sess *state.Session
+		// instance is the client session
+		instance *state.SessionInstance
 		// bodyIn is the input SNAC
 		bodyIn wire.SNAC_0x09_0x05_PermitDenyAddPermListEntries
 		// expectOutput is the expected return SNAC value
@@ -255,8 +255,8 @@ func TestPermitDenyService_AddPermListEntries(t *testing.T) {
 		wantErr error
 	}{
 		{
-			name: "set FeedbagPDModeDenyAll",
-			sess: newTestSession("me", sessOptSignonComplete),
+			name:     "set FeedbagPDModeDenyAll",
+			instance: newTestInstance("me", sessOptSignonComplete),
 			bodyIn: wire.SNAC_0x09_0x05_PermitDenyAddPermListEntries{
 				Users: []struct {
 					ScreenName string `oscar:"len_prefix=uint8"`
@@ -284,9 +284,9 @@ func TestPermitDenyService_AddPermListEntries(t *testing.T) {
 			},
 		},
 		{
-			name:   "set FeedbagPDModePermitSome - 0 users",
-			sess:   newTestSession("me", sessOptSignonComplete),
-			bodyIn: wire.SNAC_0x09_0x05_PermitDenyAddPermListEntries{},
+			name:     "set FeedbagPDModePermitSome - 0 users",
+			instance: newTestInstance("me", sessOptSignonComplete),
+			bodyIn:   wire.SNAC_0x09_0x05_PermitDenyAddPermListEntries{},
 			mockParams: mockParams{
 				clientSideBuddyListManagerParams: clientSideBuddyListManagerParams{
 					setPDModeParams: setPDModeParams{
@@ -307,8 +307,8 @@ func TestPermitDenyService_AddPermListEntries(t *testing.T) {
 			},
 		},
 		{
-			name: "set FeedbagPDModePermitSome - 1 user",
-			sess: newTestSession("me", sessOptSignonComplete),
+			name:     "set FeedbagPDModePermitSome - 1 user",
+			instance: newTestInstance("me", sessOptSignonComplete),
 			bodyIn: wire.SNAC_0x09_0x05_PermitDenyAddPermListEntries{
 				Users: []struct {
 					ScreenName string `oscar:"len_prefix=uint8"`
@@ -342,8 +342,8 @@ func TestPermitDenyService_AddPermListEntries(t *testing.T) {
 			},
 		},
 		{
-			name: "set FeedbagPDModePermitSome sign on incomplete - 1 user",
-			sess: newTestSession("me"),
+			name:     "set FeedbagPDModePermitSome sign on incomplete - 1 user",
+			instance: newTestInstance("me"),
 			bodyIn: wire.SNAC_0x09_0x05_PermitDenyAddPermListEntries{
 				Users: []struct {
 					ScreenName string `oscar:"len_prefix=uint8"`
@@ -372,8 +372,8 @@ func TestPermitDenyService_AddPermListEntries(t *testing.T) {
 			},
 		},
 		{
-			name: "set FeedbagPDModePermitSome - 2 users",
-			sess: newTestSession("me", sessOptSignonComplete),
+			name:     "set FeedbagPDModePermitSome - 2 users",
+			instance: newTestInstance("me", sessOptSignonComplete),
 			bodyIn: wire.SNAC_0x09_0x05_PermitDenyAddPermListEntries{
 				Users: []struct {
 					ScreenName string `oscar:"len_prefix=uint8"`
@@ -436,7 +436,7 @@ func TestPermitDenyService_AddPermListEntries(t *testing.T) {
 				buddyBroadcaster:           mockBuddyBroadcaster,
 				clientSideBuddyListManager: clientSideBuddyListManager,
 			}
-			err := svc.AddPermListEntries(context.TODO(), tt.sess, tt.bodyIn)
+			err := svc.AddPermListEntries(context.TODO(), tt.instance, tt.bodyIn)
 			assert.Equal(t, tt.wantErr, err)
 		})
 	}
@@ -446,8 +446,8 @@ func TestPermitDenyService_DelDenyListEntries(t *testing.T) {
 	tests := []struct {
 		// name is the name of the test
 		name string
-		// sess is the client session
-		sess *state.Session
+		// instance is the client session
+		instance *state.SessionInstance
 		// bodyIn is the input SNAC
 		bodyIn wire.SNAC_0x09_0x08_PermitDenyDelDenyListEntries
 		// expectOutput is the expected return SNAC value
@@ -459,8 +459,8 @@ func TestPermitDenyService_DelDenyListEntries(t *testing.T) {
 		wantErr error
 	}{
 		{
-			name: "remove 0 deny list entries",
-			sess: newTestSession("me", sessOptSignonComplete),
+			name:     "remove 0 deny list entries",
+			instance: newTestInstance("me", sessOptSignonComplete),
 			bodyIn: wire.SNAC_0x09_0x08_PermitDenyDelDenyListEntries{
 				Users: []struct {
 					ScreenName string `oscar:"len_prefix=uint8"`
@@ -468,8 +468,8 @@ func TestPermitDenyService_DelDenyListEntries(t *testing.T) {
 			},
 		},
 		{
-			name: "sign on incomplete remove 1 deny list entries",
-			sess: newTestSession("me"),
+			name:     "sign on incomplete remove 1 deny list entries",
+			instance: newTestInstance("me"),
 			bodyIn: wire.SNAC_0x09_0x08_PermitDenyDelDenyListEntries{
 				Users: []struct {
 					ScreenName string `oscar:"len_prefix=uint8"`
@@ -492,8 +492,8 @@ func TestPermitDenyService_DelDenyListEntries(t *testing.T) {
 			},
 		},
 		{
-			name: "remove 2 deny list entries",
-			sess: newTestSession("me", sessOptSignonComplete),
+			name:     "remove 2 deny list entries",
+			instance: newTestInstance("me", sessOptSignonComplete),
 			bodyIn: wire.SNAC_0x09_0x08_PermitDenyDelDenyListEntries{
 				Users: []struct {
 					ScreenName string `oscar:"len_prefix=uint8"`
@@ -548,7 +548,7 @@ func TestPermitDenyService_DelDenyListEntries(t *testing.T) {
 				buddyBroadcaster:           mockBuddyBroadcaster,
 				clientSideBuddyListManager: clientSideBuddyListManager,
 			}
-			err := svc.DelDenyListEntries(context.TODO(), tt.sess, tt.bodyIn)
+			err := svc.DelDenyListEntries(context.TODO(), tt.instance, tt.bodyIn)
 			assert.Equal(t, tt.wantErr, err)
 		})
 	}
@@ -558,8 +558,8 @@ func TestPermitDenyService_DelPermListEntries(t *testing.T) {
 	tests := []struct {
 		// name is the name of the test
 		name string
-		// sess is the client session
-		sess *state.Session
+		// instance is the client session
+		instance *state.SessionInstance
 		// bodyIn is the input SNAC
 		bodyIn wire.SNAC_0x09_0x06_PermitDenyDelPermListEntries
 		// expectOutput is the expected return SNAC value
@@ -571,8 +571,8 @@ func TestPermitDenyService_DelPermListEntries(t *testing.T) {
 		wantErr error
 	}{
 		{
-			name: "remove 0 deny list entries",
-			sess: newTestSession("me", sessOptSignonComplete),
+			name:     "remove 0 deny list entries",
+			instance: newTestInstance("me", sessOptSignonComplete),
 			bodyIn: wire.SNAC_0x09_0x06_PermitDenyDelPermListEntries{
 				Users: []struct {
 					ScreenName string `oscar:"len_prefix=uint8"`
@@ -580,8 +580,8 @@ func TestPermitDenyService_DelPermListEntries(t *testing.T) {
 			},
 		},
 		{
-			name: "sign on incomplete remove 1 deny list entries",
-			sess: newTestSession("me"),
+			name:     "sign on incomplete remove 1 deny list entries",
+			instance: newTestInstance("me"),
 			bodyIn: wire.SNAC_0x09_0x06_PermitDenyDelPermListEntries{
 				Users: []struct {
 					ScreenName string `oscar:"len_prefix=uint8"`
@@ -604,8 +604,8 @@ func TestPermitDenyService_DelPermListEntries(t *testing.T) {
 			},
 		},
 		{
-			name: "remove 2 deny list entries",
-			sess: newTestSession("me", sessOptSignonComplete),
+			name:     "remove 2 deny list entries",
+			instance: newTestInstance("me", sessOptSignonComplete),
 			bodyIn: wire.SNAC_0x09_0x06_PermitDenyDelPermListEntries{
 				Users: []struct {
 					ScreenName string `oscar:"len_prefix=uint8"`
@@ -660,7 +660,7 @@ func TestPermitDenyService_DelPermListEntries(t *testing.T) {
 				buddyBroadcaster:           mockBuddyBroadcaster,
 				clientSideBuddyListManager: clientSideBuddyListManager,
 			}
-			err := svc.DelPermListEntries(context.TODO(), tt.sess, tt.bodyIn)
+			err := svc.DelPermListEntries(context.TODO(), tt.instance, tt.bodyIn)
 			assert.Equal(t, tt.wantErr, err)
 		})
 	}

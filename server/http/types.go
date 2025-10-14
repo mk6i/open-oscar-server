@@ -121,7 +121,8 @@ type SessionRetriever interface {
 	AllSessions() []*state.Session
 
 	// RetrieveSession returns the session associated with the given screen name,
-	// or nil if no active session exists.
+	// or nil if no active session exists. Returns the Session object if there
+	// are active instances with complete signon.
 	RetrieveSession(screenName state.IdentScreenName) *state.Session
 }
 
@@ -185,14 +186,26 @@ type userAccountPatch struct {
 }
 
 type sessionHandle struct {
-	ID            string  `json:"id"`
-	ScreenName    string  `json:"screen_name"`
-	OnlineSeconds float64 `json:"online_seconds"`
-	AwayMessage   string  `json:"away_message"`
-	IdleSeconds   float64 `json:"idle_seconds"`
-	IsICQ         bool    `json:"is_icq"`
-	RemoteAddr    string  `json:"remote_addr,omitempty"`
-	RemotePort    uint16  `json:"remote_port,omitempty"`
+	ID            string           `json:"id"`
+	ScreenName    string           `json:"screen_name"`
+	OnlineSeconds int              `json:"online_seconds"`
+	IsAway        bool             `json:"is_away"`
+	AwayMessage   string           `json:"away_message"`
+	IdleSeconds   int              `json:"idle_seconds"`
+	IsInvisible   bool             `json:"is_invisible"`
+	IsICQ         bool             `json:"is_icq"`
+	InstanceCount int              `json:"instance_count"`
+	Instances     []instanceHandle `json:"instances"`
+}
+
+type instanceHandle struct {
+	Num         int    `json:"num"`
+	IdleSeconds int    `json:"idle_seconds"`
+	IsAway      bool   `json:"is_away"`
+	AwayMessage string `json:"away_message"`
+	IsInvisible bool   `json:"is_invisible"`
+	RemoteAddr  string `json:"remote_addr"`
+	RemotePort  int    `json:"remote_port"`
 }
 
 type chatRoomCreate struct {

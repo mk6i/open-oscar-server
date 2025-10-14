@@ -103,16 +103,16 @@ func (_c *mockbuddyBroadcaster_BroadcastBuddyArrived_Call) RunAndReturn(run func
 }
 
 // BroadcastBuddyDeparted provides a mock function for the type mockbuddyBroadcaster
-func (_mock *mockbuddyBroadcaster) BroadcastBuddyDeparted(ctx context.Context, sess *state.Session) error {
-	ret := _mock.Called(ctx, sess)
+func (_mock *mockbuddyBroadcaster) BroadcastBuddyDeparted(ctx context.Context, instance *state.SessionInstance) error {
+	ret := _mock.Called(ctx, instance)
 
 	if len(ret) == 0 {
 		panic("no return value specified for BroadcastBuddyDeparted")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.Session) error); ok {
-		r0 = returnFunc(ctx, sess)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance) error); ok {
+		r0 = returnFunc(ctx, instance)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -126,20 +126,20 @@ type mockbuddyBroadcaster_BroadcastBuddyDeparted_Call struct {
 
 // BroadcastBuddyDeparted is a helper method to define mock.On call
 //   - ctx context.Context
-//   - sess *state.Session
-func (_e *mockbuddyBroadcaster_Expecter) BroadcastBuddyDeparted(ctx interface{}, sess interface{}) *mockbuddyBroadcaster_BroadcastBuddyDeparted_Call {
-	return &mockbuddyBroadcaster_BroadcastBuddyDeparted_Call{Call: _e.mock.On("BroadcastBuddyDeparted", ctx, sess)}
+//   - instance *state.SessionInstance
+func (_e *mockbuddyBroadcaster_Expecter) BroadcastBuddyDeparted(ctx interface{}, instance interface{}) *mockbuddyBroadcaster_BroadcastBuddyDeparted_Call {
+	return &mockbuddyBroadcaster_BroadcastBuddyDeparted_Call{Call: _e.mock.On("BroadcastBuddyDeparted", ctx, instance)}
 }
 
-func (_c *mockbuddyBroadcaster_BroadcastBuddyDeparted_Call) Run(run func(ctx context.Context, sess *state.Session)) *mockbuddyBroadcaster_BroadcastBuddyDeparted_Call {
+func (_c *mockbuddyBroadcaster_BroadcastBuddyDeparted_Call) Run(run func(ctx context.Context, instance *state.SessionInstance)) *mockbuddyBroadcaster_BroadcastBuddyDeparted_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *state.Session
+		var arg1 *state.SessionInstance
 		if args[1] != nil {
-			arg1 = args[1].(*state.Session)
+			arg1 = args[1].(*state.SessionInstance)
 		}
 		run(
 			arg0,
@@ -154,13 +154,13 @@ func (_c *mockbuddyBroadcaster_BroadcastBuddyDeparted_Call) Return(err error) *m
 	return _c
 }
 
-func (_c *mockbuddyBroadcaster_BroadcastBuddyDeparted_Call) RunAndReturn(run func(ctx context.Context, sess *state.Session) error) *mockbuddyBroadcaster_BroadcastBuddyDeparted_Call {
+func (_c *mockbuddyBroadcaster_BroadcastBuddyDeparted_Call) RunAndReturn(run func(ctx context.Context, instance *state.SessionInstance) error) *mockbuddyBroadcaster_BroadcastBuddyDeparted_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // BroadcastVisibility provides a mock function for the type mockbuddyBroadcaster
-func (_mock *mockbuddyBroadcaster) BroadcastVisibility(ctx context.Context, you *state.Session, filter []state.IdentScreenName, sendDepartures bool) error {
+func (_mock *mockbuddyBroadcaster) BroadcastVisibility(ctx context.Context, you *state.SessionInstance, filter []state.IdentScreenName, sendDepartures bool) error {
 	ret := _mock.Called(ctx, you, filter, sendDepartures)
 
 	if len(ret) == 0 {
@@ -168,7 +168,7 @@ func (_mock *mockbuddyBroadcaster) BroadcastVisibility(ctx context.Context, you 
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.Session, []state.IdentScreenName, bool) error); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, []state.IdentScreenName, bool) error); ok {
 		r0 = returnFunc(ctx, you, filter, sendDepartures)
 	} else {
 		r0 = ret.Error(0)
@@ -183,22 +183,22 @@ type mockbuddyBroadcaster_BroadcastVisibility_Call struct {
 
 // BroadcastVisibility is a helper method to define mock.On call
 //   - ctx context.Context
-//   - you *state.Session
+//   - you *state.SessionInstance
 //   - filter []state.IdentScreenName
 //   - sendDepartures bool
 func (_e *mockbuddyBroadcaster_Expecter) BroadcastVisibility(ctx interface{}, you interface{}, filter interface{}, sendDepartures interface{}) *mockbuddyBroadcaster_BroadcastVisibility_Call {
 	return &mockbuddyBroadcaster_BroadcastVisibility_Call{Call: _e.mock.On("BroadcastVisibility", ctx, you, filter, sendDepartures)}
 }
 
-func (_c *mockbuddyBroadcaster_BroadcastVisibility_Call) Run(run func(ctx context.Context, you *state.Session, filter []state.IdentScreenName, sendDepartures bool)) *mockbuddyBroadcaster_BroadcastVisibility_Call {
+func (_c *mockbuddyBroadcaster_BroadcastVisibility_Call) Run(run func(ctx context.Context, you *state.SessionInstance, filter []state.IdentScreenName, sendDepartures bool)) *mockbuddyBroadcaster_BroadcastVisibility_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *state.Session
+		var arg1 *state.SessionInstance
 		if args[1] != nil {
-			arg1 = args[1].(*state.Session)
+			arg1 = args[1].(*state.SessionInstance)
 		}
 		var arg2 []state.IdentScreenName
 		if args[2] != nil {
@@ -223,7 +223,7 @@ func (_c *mockbuddyBroadcaster_BroadcastVisibility_Call) Return(err error) *mock
 	return _c
 }
 
-func (_c *mockbuddyBroadcaster_BroadcastVisibility_Call) RunAndReturn(run func(ctx context.Context, you *state.Session, filter []state.IdentScreenName, sendDepartures bool) error) *mockbuddyBroadcaster_BroadcastVisibility_Call {
+func (_c *mockbuddyBroadcaster_BroadcastVisibility_Call) RunAndReturn(run func(ctx context.Context, you *state.SessionInstance, filter []state.IdentScreenName, sendDepartures bool) error) *mockbuddyBroadcaster_BroadcastVisibility_Call {
 	_c.Call.Return(run)
 	return _c
 }

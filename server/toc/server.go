@@ -127,8 +127,8 @@ func NewServer(
 	logger *slog.Logger,
 	BOSProxy OSCARProxy,
 	ipRateLimiter *IPRateLimiter,
-	recalcWarning func(ctx context.Context, sess *state.Session) error,
-	lowerWarnLevel func(ctx context.Context, sess *state.Session),
+	recalcWarning func(ctx context.Context, instance *state.SessionInstance) error,
+	lowerWarnLevel func(ctx context.Context, instance *state.SessionInstance),
 ) *Server {
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -165,8 +165,8 @@ type Server struct {
 	bosProxy           OSCARProxy
 	logger             *slog.Logger
 	loginIPRateLimiter *IPRateLimiter
-	recalcWarning      func(ctx context.Context, sess *state.Session) error
-	lowerWarnLevel     func(ctx context.Context, sess *state.Session)
+	recalcWarning      func(ctx context.Context, instance *state.SessionInstance) error
+	lowerWarnLevel     func(ctx context.Context, instance *state.SessionInstance)
 
 	listenerCfg []string
 	listeners   []net.Listener
@@ -394,7 +394,7 @@ func (s *Server) dispatchFLAP(ctx context.Context, conn net.Conn) error {
 func (s *Server) handleTOCRequest(
 	ctx context.Context,
 	closeConn func(),
-	sessBOS *state.Session,
+	sessBOS *state.SessionInstance,
 	chatRegistry *ChatRegistry,
 	clientFlap *wire.FlapClient,
 ) error {
@@ -436,7 +436,7 @@ func (s *Server) handleTOCRequest(
 	return g.Wait()
 }
 
-func (s *Server) runClientCommands(ctx context.Context, doAsync func(f func() error), sessBOS *state.Session, chatRegistry *ChatRegistry, clientFlap *wire.FlapClient, toCh chan<- []byte) error {
+func (s *Server) runClientCommands(ctx context.Context, doAsync func(f func() error), sessBOS *state.SessionInstance, chatRegistry *ChatRegistry, clientFlap *wire.FlapClient, toCh chan<- []byte) error {
 	for {
 		clientFrame, err := clientFlap.ReceiveFLAP()
 		if err != nil {
@@ -495,7 +495,7 @@ func (s *Server) sendToClient(ctx context.Context, toClient <-chan []byte, clien
 	}
 }
 
-func (s *Server) login(ctx context.Context, clientFlap *wire.FlapClient) (*state.Session, error) {
+func (s *Server) login(ctx context.Context, clientFlap *wire.FlapClient) (*state.SessionInstance, error) {
 	clientFrame, err := clientFlap.ReceiveFLAP()
 	if err != nil {
 		if errors.Is(err, io.EOF) {

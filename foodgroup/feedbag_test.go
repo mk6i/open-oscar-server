@@ -19,21 +19,23 @@ func TestFeedbagService_Query(t *testing.T) {
 	cases := []struct {
 		// name is the unit test name
 		name string
-		// userSession is the session of the user adding to feedbag
-		userSession *state.Session
+		// instance is the session of the user adding to feedbag
+		instance *state.SessionInstance
 		// inputSNAC is the SNAC sent from the client to the server
 		inputSNAC wire.SNACMessage
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
 		// expectOutput is the SNAC sent from the server to client
-		expectOutput wire.SNACMessage
+		expectOutput *wire.SNACMessage
 	}{
 		{
-			name:        "retrieve empty feedbag",
-			userSession: newTestSession("me"),
+			name:     "retrieve empty feedbag",
+			instance: newTestInstance("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagInsertItem,
 					RequestID: 1234,
 				},
 			},
@@ -48,7 +50,7 @@ func TestFeedbagService_Query(t *testing.T) {
 					feedbagLastModifiedParams: feedbagLastModifiedParams{},
 				},
 			},
-			expectOutput: wire.SNACMessage{
+			expectOutput: &wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.Feedbag,
 					SubGroup:  wire.FeedbagReply,
@@ -60,10 +62,12 @@ func TestFeedbagService_Query(t *testing.T) {
 			},
 		},
 		{
-			name:        "retrieve feedbag with items",
-			userSession: newTestSession("me"),
+			name:     "retrieve feedbag with items",
+			instance: newTestInstance("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagInsertItem,
 					RequestID: 1234,
 				},
 			},
@@ -90,7 +94,7 @@ func TestFeedbagService_Query(t *testing.T) {
 					},
 				},
 			},
-			expectOutput: wire.SNACMessage{
+			expectOutput: &wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.Feedbag,
 					SubGroup:  wire.FeedbagReply,
@@ -129,9 +133,9 @@ func TestFeedbagService_Query(t *testing.T) {
 			svc := FeedbagService{
 				feedbagManager: feedbagManager,
 			}
-			outputSNAC, err := svc.Query(context.Background(), tc.userSession, tc.inputSNAC.Frame)
+			outputSNAC, err := svc.Query(context.Background(), tc.instance, tc.inputSNAC.Frame)
 			assert.NoError(t, err)
-			assert.Equal(t, tc.expectOutput, outputSNAC)
+			assert.Equal(t, *tc.expectOutput, outputSNAC)
 		})
 	}
 }
@@ -140,21 +144,23 @@ func TestFeedbagService_QueryIfModified(t *testing.T) {
 	cases := []struct {
 		// name is the unit test name
 		name string
-		// userSession is the session of the user adding to feedbag
-		userSession *state.Session
+		// instance is the session of the user adding to feedbag
+		instance *state.SessionInstance
 		// inputSNAC is the SNAC sent from the client to the server
 		inputSNAC wire.SNACMessage
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
 		// expectOutput is the SNAC sent from the server to client
-		expectOutput wire.SNACMessage
+		expectOutput *wire.SNACMessage
 	}{
 		{
-			name:        "retrieve empty feedbag",
-			userSession: newTestSession("me"),
+			name:     "retrieve empty feedbag",
+			instance: newTestInstance("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagInsertItem,
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x13_0x05_FeedbagQueryIfModified{
@@ -171,7 +177,7 @@ func TestFeedbagService_QueryIfModified(t *testing.T) {
 					},
 				},
 			},
-			expectOutput: wire.SNACMessage{
+			expectOutput: &wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.Feedbag,
 					SubGroup:  wire.FeedbagReply,
@@ -183,10 +189,12 @@ func TestFeedbagService_QueryIfModified(t *testing.T) {
 			},
 		},
 		{
-			name:        "retrieve feedbag with items",
-			userSession: newTestSession("me"),
+			name:     "retrieve feedbag with items",
+			instance: newTestInstance("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagInsertItem,
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x13_0x05_FeedbagQueryIfModified{
@@ -216,7 +224,7 @@ func TestFeedbagService_QueryIfModified(t *testing.T) {
 					},
 				},
 			},
-			expectOutput: wire.SNACMessage{
+			expectOutput: &wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.Feedbag,
 					SubGroup:  wire.FeedbagReply,
@@ -237,10 +245,12 @@ func TestFeedbagService_QueryIfModified(t *testing.T) {
 			},
 		},
 		{
-			name:        "retrieve not-modified response",
-			userSession: newTestSession("me"),
+			name:     "retrieve not-modified response",
+			instance: newTestInstance("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagInsertItem,
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x13_0x05_FeedbagQueryIfModified{
@@ -270,7 +280,7 @@ func TestFeedbagService_QueryIfModified(t *testing.T) {
 					},
 				},
 			},
-			expectOutput: wire.SNACMessage{
+			expectOutput: &wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.Feedbag,
 					SubGroup:  wire.FeedbagReplyNotModified,
@@ -306,13 +316,13 @@ func TestFeedbagService_QueryIfModified(t *testing.T) {
 			svc := FeedbagService{
 				feedbagManager: feedbagManager,
 			}
-			outputSNAC, err := svc.QueryIfModified(context.Background(), tc.userSession, tc.inputSNAC.Frame,
+			outputSNAC, err := svc.QueryIfModified(context.Background(), tc.instance, tc.inputSNAC.Frame,
 				tc.inputSNAC.Body.(wire.SNAC_0x13_0x05_FeedbagQueryIfModified))
 			assert.NoError(t, err)
 			//
 			// verify output
 			//
-			assert.Equal(t, tc.expectOutput, outputSNAC)
+			assert.Equal(t, *tc.expectOutput, outputSNAC)
 		})
 	}
 }
@@ -375,25 +385,25 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 	cases := []struct {
 		// name is the unit test name
 		name string
-		// userSession is the session of the user adding to feedbag
-		userSession *state.Session
+		// instance is the session of the user adding to feedbag
+		instance *state.SessionInstance
 		// inputSNAC is the SNAC sent from the client to the server
 		inputSNAC wire.SNACMessage
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
 		// expectOutput is the SNAC sent from the server to client
-		expectOutput wire.SNACMessage
-		// wantTypingEventsEnabled indicates that the session should have typing events enabled
-		wantTypingEventsEnabled bool
-		// sessionMatch verifies the session state after completion
-		sessionMatch func(session *state.Session)
+		expectOutput *wire.SNACMessage
+		// instanceMatch verifies the session state after completion
+		instanceMatch func(instance *state.SessionInstance)
 	}{
 		{
-			name:        "add buddies",
-			userSession: newTestSession("me"),
+			name:     "add buddies",
+			instance: newTestInstance("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagInsertItem,
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x13_0x08_FeedbagInsertItem{
@@ -438,23 +448,57 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 						},
 					},
 				},
-			},
-			expectOutput: wire.SNACMessage{
-				Frame: wire.SNACFrame{
-					FoodGroup: wire.Feedbag,
-					SubGroup:  wire.FeedbagStatus,
-					RequestID: 1234,
+				messageRelayerParams: messageRelayerParams{
+					relayToOtherInstancesParams: relayToOtherInstancesParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagInsertItem,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
+									Items: []wire.FeedbagItem{
+										{
+											ClassID: wire.FeedbagClassIDPermit,
+											Name:    "buddy1",
+										},
+										{
+											ClassID: wire.FeedbagClassIDPermit,
+											Name:    "buddy2",
+										},
+									},
+								},
+							},
+						},
+					},
+					relayToSelfParams: relayToSelfParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagStatus,
+									RequestID: 1234,
+								},
+								Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
+									Results: []uint16{0x0000, 0x0000},
+								},
+							},
+						},
+					},
 				},
-				Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
-					Results: []uint16{0x0000, 0x0000},
-				},
 			},
+			expectOutput: nil,
 		},
 		{
-			name:        "disable typing events",
-			userSession: newTestSession("me"),
+			name:     "disable typing events",
+			instance: newTestInstance("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagInsertItem,
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x13_0x08_FeedbagInsertItem{
@@ -488,24 +532,57 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 						},
 					},
 				},
-			},
-			expectOutput: wire.SNACMessage{
-				Frame: wire.SNACFrame{
-					FoodGroup: wire.Feedbag,
-					SubGroup:  wire.FeedbagStatus,
-					RequestID: 1234,
+				messageRelayerParams: messageRelayerParams{
+					relayToOtherInstancesParams: relayToOtherInstancesParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagInsertItem,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
+									Items: []wire.FeedbagItem{
+										{
+											ClassID: wire.FeedbagClassIdBuddyPrefs,
+											TLVLBlock: wire.TLVLBlock{
+												TLVList: wire.TLVList{
+													wire.NewTLVBE(wire.FeedbagAttributesBuddyPrefs, uint32(0x8000)),
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+					relayToSelfParams: relayToSelfParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagStatus,
+									RequestID: 1234,
+								},
+								Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
+									Results: []uint16{0x0000},
+								},
+							},
+						},
+					},
 				},
-				Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
-					Results: []uint16{0x0000},
-				},
 			},
-			wantTypingEventsEnabled: false,
+			expectOutput: nil,
 		},
 		{
-			name:        "enable typing events",
-			userSession: newTestSession("me"),
+			name:     "enable typing events",
+			instance: newTestInstance("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagInsertItem,
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x13_0x08_FeedbagInsertItem{
@@ -539,24 +616,60 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 						},
 					},
 				},
-			},
-			expectOutput: wire.SNACMessage{
-				Frame: wire.SNACFrame{
-					FoodGroup: wire.Feedbag,
-					SubGroup:  wire.FeedbagStatus,
-					RequestID: 1234,
+				messageRelayerParams: messageRelayerParams{
+					relayToOtherInstancesParams: relayToOtherInstancesParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagInsertItem,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
+									Items: []wire.FeedbagItem{
+										{
+											ClassID: wire.FeedbagClassIdBuddyPrefs,
+											TLVLBlock: wire.TLVLBlock{
+												TLVList: wire.TLVList{
+													wire.NewTLVBE(wire.FeedbagAttributesBuddyPrefs, uint32(wire.FeedbagBuddyPrefsWantsTypingEvents)),
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+					relayToSelfParams: relayToSelfParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagStatus,
+									RequestID: 1234,
+								},
+								Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
+									Results: []uint16{0x0000},
+								},
+							},
+						},
+					},
 				},
-				Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
-					Results: []uint16{0x0000},
-				},
 			},
-			wantTypingEventsEnabled: true,
+			expectOutput: nil,
+			instanceMatch: func(instance *state.SessionInstance) {
+				assert.True(t, instance.TypingEventsEnabled())
+			},
 		},
 		{
-			name:        "block buddies",
-			userSession: newTestSession("me"),
+			name:     "block buddies",
+			instance: newTestInstance("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagInsertItem,
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x13_0x08_FeedbagInsertItem{
@@ -601,23 +714,57 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 						},
 					},
 				},
-			},
-			expectOutput: wire.SNACMessage{
-				Frame: wire.SNACFrame{
-					FoodGroup: wire.Feedbag,
-					SubGroup:  wire.FeedbagStatus,
-					RequestID: 1234,
+				messageRelayerParams: messageRelayerParams{
+					relayToOtherInstancesParams: relayToOtherInstancesParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagInsertItem,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
+									Items: []wire.FeedbagItem{
+										{
+											ClassID: wire.FeedbagClassIDDeny,
+											Name:    "buddy1",
+										},
+										{
+											ClassID: wire.FeedbagClassIDDeny,
+											Name:    "buddy2",
+										},
+									},
+								},
+							},
+						},
+					},
+					relayToSelfParams: relayToSelfParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagStatus,
+									RequestID: 1234,
+								},
+								Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
+									Results: []uint16{0x0000, 0x0000},
+								},
+							},
+						},
+					},
 				},
-				Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
-					Results: []uint16{0x0000, 0x0000},
-				},
 			},
+			expectOutput: nil,
 		},
 		{
-			name:        "permit buddies",
-			userSession: newTestSession("me"),
+			name:     "permit buddies",
+			instance: newTestInstance("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagInsertItem,
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x13_0x08_FeedbagInsertItem{
@@ -662,23 +809,57 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 						},
 					},
 				},
-			},
-			expectOutput: wire.SNACMessage{
-				Frame: wire.SNACFrame{
-					FoodGroup: wire.Feedbag,
-					SubGroup:  wire.FeedbagStatus,
-					RequestID: 1234,
+				messageRelayerParams: messageRelayerParams{
+					relayToOtherInstancesParams: relayToOtherInstancesParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagInsertItem,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
+									Items: []wire.FeedbagItem{
+										{
+											ClassID: wire.FeedbagClassIDPermit,
+											Name:    "buddy1",
+										},
+										{
+											ClassID: wire.FeedbagClassIDPermit,
+											Name:    "buddy2",
+										},
+									},
+								},
+							},
+						},
+					},
+					relayToSelfParams: relayToSelfParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagStatus,
+									RequestID: 1234,
+								},
+								Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
+									Results: []uint16{0x0000, 0x0000},
+								},
+							},
+						},
+					},
 				},
-				Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
-					Results: []uint16{0x0000, 0x0000},
-				},
 			},
+			expectOutput: nil,
 		},
 		{
-			name:        "set privacy mode",
-			userSession: newTestSession("me"),
+			name:     "set privacy mode",
+			instance: newTestInstance("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagInsertItem,
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x13_0x08_FeedbagInsertItem{
@@ -710,23 +891,52 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 						},
 					},
 				},
-			},
-			expectOutput: wire.SNACMessage{
-				Frame: wire.SNACFrame{
-					FoodGroup: wire.Feedbag,
-					SubGroup:  wire.FeedbagStatus,
-					RequestID: 1234,
+				messageRelayerParams: messageRelayerParams{
+					relayToOtherInstancesParams: relayToOtherInstancesParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagInsertItem,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
+									Items: []wire.FeedbagItem{
+										{
+											ClassID: wire.FeedbagClassIdPdinfo,
+										},
+									},
+								},
+							},
+						},
+					},
+					relayToSelfParams: relayToSelfParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagStatus,
+									RequestID: 1234,
+								},
+								Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
+									Results: []uint16{0x0000},
+								},
+							},
+						},
+					},
 				},
-				Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
-					Results: []uint16{0x0000},
-				},
 			},
+			expectOutput: nil,
 		},
 		{
-			name:        "user blocks themselves, receives error",
-			userSession: newTestSession("me"),
+			name:     "user blocks themselves, receives error",
+			instance: newTestInstance("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagInsertItem,
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x13_0x08_FeedbagInsertItem{
@@ -738,7 +948,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					},
 				},
 			},
-			expectOutput: wire.SNACMessage{
+			expectOutput: &wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.Feedbag,
 					SubGroup:  wire.FeedbagErr,
@@ -750,10 +960,12 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 			},
 		},
 		{
-			name:        "add icon hash to feedbag, icon doesn't exist in BART store, instruct client to upload icon",
-			userSession: newTestSession("me"),
+			name:     "add icon hash to feedbag, icon doesn't exist in BART store, instruct client to upload icon",
+			instance: newTestInstance("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagInsertItem,
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x13_0x08_FeedbagInsertItem{
@@ -810,6 +1022,55 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.OService,
+									SubGroup:  wire.OServiceUserInfoUpdate,
+								},
+								Body: func(val any) bool {
+									snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
+									if !ok {
+										return false
+									}
+									bartID, exists := snac.UserInfo[0].Bytes(wire.OServiceUserInfoBARTInfo)
+									return assert.True(t, exists) &&
+										assert.Equal(t, "me", snac.UserInfo[0].ScreenName) &&
+										assert.True(t, bytes.Contains(bartID, []byte{'t', 'h', 'e', 'h', 'a', 's', 'h'}), "user info BART hash doesn't match")
+								},
+							},
+						},
+					},
+					relayToOtherInstancesParams: relayToOtherInstancesParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagInsertItem,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
+									Items: []wire.FeedbagItem{
+										{
+											Name:    fmt.Sprintf("%d", wire.BARTTypesBuddyIcon),
+											ClassID: wire.FeedbagClassIdBart,
+											TLVLBlock: wire.TLVLBlock{
+												TLVList: wire.TLVList{
+													wire.NewTLVBE(wire.FeedbagAttributesBartInfo, wire.BARTInfo{
+														Flags: wire.BARTFlagsCustom,
+														Hash:  []byte{'t', 'h', 'e', 'h', 'a', 's', 'h'},
+													}),
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+					relayToSelfParams: relayToSelfParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.OService,
 									SubGroup:  wire.OServiceBartReply,
 								},
 								Body: wire.SNAC_0x01_0x21_OServiceBARTReply{
@@ -827,36 +1088,21 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 							screenName: state.NewIdentScreenName("me"),
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
-									FoodGroup: wire.OService,
-									SubGroup:  wire.OServiceUserInfoUpdate,
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagStatus,
+									RequestID: 1234,
 								},
-								Body: func(val any) bool {
-									snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
-									if !ok {
-										return false
-									}
-									bartID, exists := snac.UserInfo[0].Bytes(wire.OServiceUserInfoBARTInfo)
-									return assert.True(t, exists) &&
-										assert.Equal(t, "me", snac.UserInfo[0].ScreenName) &&
-										assert.True(t, bytes.Contains(bartID, []byte{'t', 'h', 'e', 'h', 'a', 's', 'h'}), "user info BART hash doesn't match")
+								Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
+									Results: []uint16{0x0000},
 								},
 							},
 						},
 					},
 				},
 			},
-			expectOutput: wire.SNACMessage{
-				Frame: wire.SNACFrame{
-					FoodGroup: wire.Feedbag,
-					SubGroup:  wire.FeedbagStatus,
-					RequestID: 1234,
-				},
-				Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
-					Results: []uint16{0x0000},
-				},
-			},
-			sessionMatch: func(session *state.Session) {
-				have, hasIcon := session.BuddyIcon()
+			expectOutput: nil,
+			instanceMatch: func(instance *state.SessionInstance) {
+				have, hasIcon := instance.Session().BuddyIcon()
 				assert.True(t, hasIcon)
 				want := wire.BARTID{
 					Type: wire.BARTTypesBuddyIcon,
@@ -869,10 +1115,12 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 			},
 		},
 		{
-			name:        "add icon hash to feedbag, icon already exists in BART store, notify buddies about icon change",
-			userSession: newTestSession("me"),
+			name:     "add icon hash to feedbag, icon already exists in BART store, notify buddies about icon change",
+			instance: newTestInstance("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagInsertItem,
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x13_0x08_FeedbagInsertItem{
@@ -932,6 +1180,55 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.OService,
+									SubGroup:  wire.OServiceUserInfoUpdate,
+								},
+								Body: func(val any) bool {
+									snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
+									if !ok {
+										return false
+									}
+									bartID, exists := snac.UserInfo[0].Bytes(wire.OServiceUserInfoBARTInfo)
+									return assert.True(t, exists) &&
+										assert.Equal(t, "me", snac.UserInfo[0].ScreenName) &&
+										assert.True(t, bytes.Contains(bartID, []byte{'t', 'h', 'e', 'h', 'a', 's', 'h'}), "user info BART hash doesn't match")
+								},
+							},
+						},
+					},
+					relayToOtherInstancesParams: relayToOtherInstancesParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagInsertItem,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
+									Items: []wire.FeedbagItem{
+										{
+											Name:    fmt.Sprintf("%d", wire.BARTTypesBuddyIcon),
+											ClassID: wire.FeedbagClassIdBart,
+											TLVLBlock: wire.TLVLBlock{
+												TLVList: wire.TLVList{
+													wire.NewTLVBE(wire.FeedbagAttributesBartInfo, wire.BARTInfo{
+														Flags: wire.BARTFlagsCustom,
+														Hash:  []byte{'t', 'h', 'e', 'h', 'a', 's', 'h'},
+													}),
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+					relayToSelfParams: relayToSelfParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.OService,
 									SubGroup:  wire.OServiceBartReply,
 								},
 								Body: wire.SNAC_0x01_0x21_OServiceBARTReply{
@@ -949,18 +1246,12 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 							screenName: state.NewIdentScreenName("me"),
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
-									FoodGroup: wire.OService,
-									SubGroup:  wire.OServiceUserInfoUpdate,
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagStatus,
+									RequestID: 1234,
 								},
-								Body: func(val any) bool {
-									snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
-									if !ok {
-										return false
-									}
-									bartID, exists := snac.UserInfo[0].Bytes(wire.OServiceUserInfoBARTInfo)
-									return assert.True(t, exists) &&
-										assert.Equal(t, "me", snac.UserInfo[0].ScreenName) &&
-										assert.True(t, bytes.Contains(bartID, []byte{'t', 'h', 'e', 'h', 'a', 's', 'h'}), "user info BART hash doesn't match")
+								Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
+									Results: []uint16{0x0000},
 								},
 							},
 						},
@@ -974,18 +1265,9 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					},
 				},
 			},
-			expectOutput: wire.SNACMessage{
-				Frame: wire.SNACFrame{
-					FoodGroup: wire.Feedbag,
-					SubGroup:  wire.FeedbagStatus,
-					RequestID: 1234,
-				},
-				Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
-					Results: []uint16{0x0000},
-				},
-			},
-			sessionMatch: func(session *state.Session) {
-				have, hasIcon := session.BuddyIcon()
+			expectOutput: nil,
+			instanceMatch: func(instance *state.SessionInstance) {
+				have, hasIcon := instance.Session().BuddyIcon()
 				assert.True(t, hasIcon)
 				want := wire.BARTID{
 					Type: wire.BARTTypesBuddyIcon,
@@ -998,10 +1280,12 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 			},
 		},
 		{
-			name:        "clear icon, notify buddies about icon change",
-			userSession: newTestSession("me"),
+			name:     "clear icon, notify buddies about icon change",
+			instance: newTestInstance("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagInsertItem,
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x13_0x08_FeedbagInsertItem{
@@ -1051,7 +1335,34 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					},
 				},
 				messageRelayerParams: messageRelayerParams{
-					relayToScreenNameParams: relayToScreenNameParams{
+					relayToOtherInstancesParams: relayToOtherInstancesParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagInsertItem,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
+									Items: []wire.FeedbagItem{
+										{
+											Name:    fmt.Sprintf("%d", wire.BARTTypesBuddyIcon),
+											ClassID: wire.FeedbagClassIdBart,
+											TLVLBlock: wire.TLVLBlock{
+												TLVList: wire.TLVList{
+													wire.NewTLVBE(wire.FeedbagAttributesBartInfo, wire.BARTInfo{
+														Hash: wire.GetClearIconHash(),
+													}),
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+					relayToSelfParams: relayToSelfParams{
 						{
 							screenName: state.NewIdentScreenName("me"),
 							message: wire.SNACMessage{
@@ -1074,6 +1385,21 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 							screenName: state.NewIdentScreenName("me"),
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagStatus,
+									RequestID: 1234,
+								},
+								Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
+									Results: []uint16{0x0000},
+								},
+							},
+						},
+					},
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
 									FoodGroup: wire.OService,
 									SubGroup:  wire.OServiceUserInfoUpdate,
 								},
@@ -1092,27 +1418,20 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					},
 				},
 			},
-			expectOutput: wire.SNACMessage{
-				Frame: wire.SNACFrame{
-					FoodGroup: wire.Feedbag,
-					SubGroup:  wire.FeedbagStatus,
-					RequestID: 1234,
-				},
-				Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
-					Results: []uint16{0x0000},
-				},
-			},
-			sessionMatch: func(session *state.Session) {
-				bartInfo, hasIcon := session.BuddyIcon()
+			expectOutput: nil,
+			instanceMatch: func(instance *state.SessionInstance) {
+				bartInfo, hasIcon := instance.Session().BuddyIcon()
 				assert.True(t, hasIcon)
 				assert.Equal(t, wire.GetClearIconHash(), bartInfo.Hash)
 			},
 		},
 		{
-			name:        "add non-icon to feedbag, icon doesn't exist in BART store, don't broadcast change",
-			userSession: newTestSession("me"),
+			name:     "add non-icon to feedbag, icon doesn't exist in BART store, don't broadcast change",
+			instance: newTestInstance("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagInsertItem,
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x13_0x08_FeedbagInsertItem{
@@ -1163,7 +1482,35 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					},
 				},
 				messageRelayerParams: messageRelayerParams{
-					relayToScreenNameParams: relayToScreenNameParams{
+					relayToOtherInstancesParams: relayToOtherInstancesParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagInsertItem,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
+									Items: []wire.FeedbagItem{
+										{
+											Name:    fmt.Sprintf("%d", wire.BARTTypesArriveSound),
+											ClassID: wire.FeedbagClassIdBart,
+											TLVLBlock: wire.TLVLBlock{
+												TLVList: wire.TLVList{
+													wire.NewTLVBE(wire.FeedbagAttributesBartInfo, wire.BARTInfo{
+														Flags: wire.BARTFlagsCustom,
+														Hash:  []byte{'t', 'h', 'e', 'h', 'a', 's', 'h'},
+													}),
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+					relayToSelfParams: relayToSelfParams{
 						{
 							screenName: state.NewIdentScreenName("me"),
 							message: wire.SNACMessage{
@@ -1182,21 +1529,25 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 								},
 							},
 						},
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagStatus,
+									RequestID: 1234,
+								},
+								Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
+									Results: []uint16{0x0000},
+								},
+							},
+						},
 					},
 				},
 			},
-			expectOutput: wire.SNACMessage{
-				Frame: wire.SNACFrame{
-					FoodGroup: wire.Feedbag,
-					SubGroup:  wire.FeedbagStatus,
-					RequestID: 1234,
-				},
-				Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
-					Results: []uint16{0x0000},
-				},
-			},
-			sessionMatch: func(session *state.Session) {
-				_, hasIcon := session.BuddyIcon()
+			expectOutput: nil,
+			instanceMatch: func(instance *state.SessionInstance) {
+				_, hasIcon := instance.Session().BuddyIcon()
 				assert.False(t, hasIcon)
 			},
 		},
@@ -1223,6 +1574,14 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 						RelayToScreenName(matchContext(), params.screenName, params.message)
 				}
 			}
+			for _, params := range tc.mockParams.messageRelayerParams.relayToOtherInstancesParams {
+				messageRelayer.EXPECT().
+					RelayToOtherInstances(mock.Anything, mock.Anything, params.message)
+			}
+			for _, params := range tc.mockParams.messageRelayerParams.relayToSelfParams {
+				messageRelayer.EXPECT().
+					RelayToSelf(mock.Anything, mock.Anything, params.message)
+			}
 			bartItemManager := newMockBARTItemManager(t)
 			for _, params := range tc.mockParams.bartItemManagerParams.bartItemManagerRetrieveParams {
 				bartItemManager.EXPECT().
@@ -1244,15 +1603,13 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 			}
 			svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, bartItemManager, nil, nil)
 			svc.buddyBroadcaster = buddyUpdateBroadcaster
-			output, err := svc.UpsertItem(context.Background(), tc.userSession, tc.inputSNAC.Frame,
+			output, err := svc.UpsertItem(context.Background(), tc.instance, tc.inputSNAC.Frame,
 				tc.inputSNAC.Body.(wire.SNAC_0x13_0x08_FeedbagInsertItem).Items)
 			assert.NoError(t, err)
-			assert.Equal(t, output, tc.expectOutput)
+			assert.Equal(t, tc.expectOutput, output)
 
-			assert.Equal(t, tc.wantTypingEventsEnabled, tc.userSession.TypingEventsEnabled())
-
-			if tc.sessionMatch != nil {
-				tc.sessionMatch(tc.userSession)
+			if tc.instanceMatch != nil {
+				tc.instanceMatch(tc.instance)
 			}
 		})
 	}
@@ -1262,21 +1619,23 @@ func TestFeedbagService_DeleteItem(t *testing.T) {
 	cases := []struct {
 		// name is the unit test name
 		name string
-		// userSession is the session of the user adding to feedbag
-		userSession *state.Session
+		// instance is the session of the user adding to feedbag
+		instance *state.SessionInstance
 		// inputSNAC is the SNAC sent from the client to the server
 		inputSNAC wire.SNACMessage
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
 		// expectOutput is the SNAC sent from the server to client
-		expectOutput wire.SNACMessage
+		expectOutput *wire.SNACMessage
 	}{
 		{
-			name:        "delete buddies",
-			userSession: newTestSession("me"),
+			name:     "delete buddies",
+			instance: newTestInstance("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagDeleteItem,
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
@@ -1329,17 +1688,53 @@ func TestFeedbagService_DeleteItem(t *testing.T) {
 						},
 					},
 				},
-			},
-			expectOutput: wire.SNACMessage{
-				Frame: wire.SNACFrame{
-					FoodGroup: wire.Feedbag,
-					SubGroup:  wire.FeedbagStatus,
-					RequestID: 1234,
+				messageRelayerParams: messageRelayerParams{
+					relayToOtherInstancesParams: relayToOtherInstancesParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagDeleteItem,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
+									Items: []wire.FeedbagItem{
+										{
+											ClassID: wire.FeedbagClassIdBuddy,
+											Name:    "buddy1",
+										},
+										{
+											ClassID: wire.FeedbagClassIdBuddy,
+											Name:    "buddy2",
+										},
+										{
+											ClassID: wire.FeedbagClassIdGroup,
+											Name:    "group",
+										},
+									},
+								},
+							},
+						},
+					},
+					relayToSelfParams: relayToSelfParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagStatus,
+									RequestID: 1234,
+								},
+								Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
+									Results: []uint16{0x0000, 0x0000, 0x0000},
+								},
+							},
+						},
+					},
 				},
-				Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
-					Results: []uint16{0x0000, 0x0000, 0x0000},
-				},
 			},
+			expectOutput: nil,
 		},
 	}
 
@@ -1357,13 +1752,22 @@ func TestFeedbagService_DeleteItem(t *testing.T) {
 					BroadcastVisibility(mock.Anything, matchSession(params.from), params.filter, true).
 					Return(params.err)
 			}
+			messageRelayer := newMockMessageRelayer(t)
+			for _, params := range tc.mockParams.messageRelayerParams.relayToOtherInstancesParams {
+				messageRelayer.EXPECT().
+					RelayToOtherInstances(mock.Anything, mock.Anything, params.message)
+			}
+			for _, params := range tc.mockParams.messageRelayerParams.relayToSelfParams {
+				messageRelayer.EXPECT().
+					RelayToSelf(mock.Anything, mock.Anything, params.message)
+			}
 
 			svc := FeedbagService{
 				buddyBroadcaster: buddyUpdateBroadcast,
 				feedbagManager:   feedbagManager,
-				messageRelayer:   nil,
+				messageRelayer:   messageRelayer,
 			}
-			output, err := svc.DeleteItem(context.Background(), tc.userSession, tc.inputSNAC.Frame,
+			output, err := svc.DeleteItem(context.Background(), tc.instance, tc.inputSNAC.Frame,
 				tc.inputSNAC.Body.(wire.SNAC_0x13_0x0A_FeedbagDeleteItem))
 			assert.NoError(t, err)
 			assert.Equal(t, output, tc.expectOutput)
@@ -1375,8 +1779,8 @@ func TestFeedbagService_Use(t *testing.T) {
 	tests := []struct {
 		// name is the name of the test
 		name string
-		// sess is the user's session
-		sess *state.Session
+		// instance is the user's session
+		instance *state.SessionInstance
 		// bodyIn is the SNAC body sent from the arriving user's client to the
 		// server
 		bodyIn wire.SNAC_0x01_0x02_OServiceClientOnline
@@ -1390,9 +1794,9 @@ func TestFeedbagService_Use(t *testing.T) {
 		wantErr error
 	}{
 		{
-			name:   "enable user's feedbag, no feedbag buddy params item",
-			sess:   newTestSession("me"),
-			bodyIn: wire.SNAC_0x01_0x02_OServiceClientOnline{},
+			name:     "enable user's feedbag, no feedbag buddy params item",
+			instance: newTestInstance("me"),
+			bodyIn:   wire.SNAC_0x01_0x02_OServiceClientOnline{},
 			mockParams: mockParams{
 				feedbagManagerParams: feedbagManagerParams{
 					useParams: useParams{
@@ -1410,9 +1814,9 @@ func TestFeedbagService_Use(t *testing.T) {
 			wantTypingEventsEnabled: false,
 		},
 		{
-			name:   "enable user's feedbag and set typing events disabled",
-			sess:   newTestSession("me"),
-			bodyIn: wire.SNAC_0x01_0x02_OServiceClientOnline{},
+			name:     "enable user's feedbag and set typing events disabled",
+			instance: newTestInstance("me"),
+			bodyIn:   wire.SNAC_0x01_0x02_OServiceClientOnline{},
 			mockParams: mockParams{
 				feedbagManagerParams: feedbagManagerParams{
 					useParams: useParams{
@@ -1440,9 +1844,9 @@ func TestFeedbagService_Use(t *testing.T) {
 			wantTypingEventsEnabled: false,
 		},
 		{
-			name:   "enable user's feedbag and set typing events enabled",
-			sess:   newTestSession("me"),
-			bodyIn: wire.SNAC_0x01_0x02_OServiceClientOnline{},
+			name:     "enable user's feedbag and set typing events enabled",
+			instance: newTestInstance("me"),
+			bodyIn:   wire.SNAC_0x01_0x02_OServiceClientOnline{},
 			mockParams: mockParams{
 				feedbagManagerParams: feedbagManagerParams{
 					useParams: useParams{
@@ -1486,10 +1890,10 @@ func TestFeedbagService_Use(t *testing.T) {
 
 			svc := NewFeedbagService(slog.Default(), nil, feedbagManager, nil, nil, nil)
 
-			haveErr := svc.Use(context.Background(), tt.sess)
+			haveErr := svc.Use(context.Background(), tt.instance)
 			assert.ErrorIs(t, tt.wantErr, haveErr)
 
-			assert.Equal(t, tt.wantTypingEventsEnabled, tt.sess.TypingEventsEnabled())
+			assert.Equal(t, tt.wantTypingEventsEnabled, tt.instance.TypingEventsEnabled())
 		})
 	}
 }
@@ -1497,14 +1901,14 @@ func TestFeedbagService_Use(t *testing.T) {
 func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 	tests := []struct {
 		name       string
-		sess       *state.Session
+		instance   *state.SessionInstance
 		bodyIn     wire.SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost
 		mockParams mockParams
 		wantErr    error
 	}{
 		{
-			name: "authorization accepted",
-			sess: newTestSession("100001", sessOptUIN(100001)),
+			name:     "authorization accepted",
+			instance: newTestInstance("100001", sessOptUIN(100001)),
 			bodyIn: wire.SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost{
 				ScreenName: "100003",
 				Accepted:   1,
@@ -1521,7 +1925,7 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 								},
 								Body: wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
 									ChannelID:   wire.ICBMChannelICQ,
-									TLVUserInfo: newTestSession("100001").TLVUserInfo(),
+									TLVUserInfo: newTestInstance("100001").Session().TLVUserInfo(),
 									TLVRestBlock: wire.TLVRestBlock{
 										TLVList: wire.TLVList{
 											wire.NewTLVLE(wire.ICBMTLVData, wire.ICBMCh4Message{
@@ -1539,8 +1943,8 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 			},
 		},
 		{
-			name: "authorization denied (with reason)",
-			sess: newTestSession("100001", sessOptUIN(100001)),
+			name:     "authorization denied (with reason)",
+			instance: newTestInstance("100001", sessOptUIN(100001)),
 			bodyIn: wire.SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost{
 				ScreenName: "100003",
 				Accepted:   0,
@@ -1558,7 +1962,7 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 								},
 								Body: wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
 									ChannelID:   wire.ICBMChannelICQ,
-									TLVUserInfo: newTestSession("100001").TLVUserInfo(),
+									TLVUserInfo: newTestInstance("100001").Session().TLVUserInfo(),
 									TLVRestBlock: wire.TLVRestBlock{
 										TLVList: wire.TLVList{
 											wire.NewTLVLE(wire.ICBMTLVData, wire.ICBMCh4Message{
@@ -1586,7 +1990,7 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 			}
 
 			svc := NewFeedbagService(slog.Default(), messageRelayer, nil, nil, nil, nil)
-			haveErr := svc.RespondAuthorizeToHost(context.Background(), tt.sess, wire.SNACFrame{}, tt.bodyIn)
+			haveErr := svc.RespondAuthorizeToHost(context.Background(), tt.instance, wire.SNACFrame{}, tt.bodyIn)
 			assert.ErrorIs(t, tt.wantErr, haveErr)
 		})
 	}

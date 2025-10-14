@@ -76,7 +76,7 @@ func (s ChatNavService) RequestChatRights(_ context.Context, inFrame wire.SNACFr
 // CreateRoom creates and returns a chat room or returns an existing chat
 // room. It returns SNAC wire.ChatNavNavInfo, which contains metadata for the
 // chat room.
-func (s ChatNavService) CreateRoom(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x0E_0x02_ChatRoomInfoUpdate) (wire.SNACMessage, error) {
+func (s ChatNavService) CreateRoom(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x0E_0x02_ChatRoomInfoUpdate) (wire.SNACMessage, error) {
 	if err := validateExchange(inBody.Exchange); err != nil {
 		s.logger.Debug("error validating exchange: " + err.Error())
 		return sendChatNavErrorSNAC(inFrame, wire.ErrorCodeNotSupportedByHost)
@@ -100,7 +100,7 @@ func (s ChatNavService) CreateRoom(ctx context.Context, sess *state.Session, inF
 			return sendChatNavErrorSNAC(inFrame, wire.ErrorCodeNoMatch)
 		}
 
-		room = state.NewChatRoom(name, sess.IdentScreenName(), inBody.Exchange)
+		room = state.NewChatRoom(name, instance.IdentScreenName(), inBody.Exchange)
 
 		if err := s.chatRoomManager.CreateChatRoom(ctx, &room); err != nil {
 			return wire.SNACMessage{}, fmt.Errorf("%w: %w", errChatNavRoomCreateFailed, err)

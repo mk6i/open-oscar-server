@@ -40,8 +40,8 @@ func (_m *mockChatNavService) EXPECT() *mockChatNavService_Expecter {
 }
 
 // CreateRoom provides a mock function for the type mockChatNavService
-func (_mock *mockChatNavService) CreateRoom(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x0E_0x02_ChatRoomInfoUpdate) (wire.SNACMessage, error) {
-	ret := _mock.Called(ctx, sess, inFrame, inBody)
+func (_mock *mockChatNavService) CreateRoom(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x0E_0x02_ChatRoomInfoUpdate) (wire.SNACMessage, error) {
+	ret := _mock.Called(ctx, instance, inFrame, inBody)
 
 	if len(ret) == 0 {
 		panic("no return value specified for CreateRoom")
@@ -49,16 +49,16 @@ func (_mock *mockChatNavService) CreateRoom(ctx context.Context, sess *state.Ses
 
 	var r0 wire.SNACMessage
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.Session, wire.SNACFrame, wire.SNAC_0x0E_0x02_ChatRoomInfoUpdate) (wire.SNACMessage, error)); ok {
-		return returnFunc(ctx, sess, inFrame, inBody)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x0E_0x02_ChatRoomInfoUpdate) (wire.SNACMessage, error)); ok {
+		return returnFunc(ctx, instance, inFrame, inBody)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.Session, wire.SNACFrame, wire.SNAC_0x0E_0x02_ChatRoomInfoUpdate) wire.SNACMessage); ok {
-		r0 = returnFunc(ctx, sess, inFrame, inBody)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x0E_0x02_ChatRoomInfoUpdate) wire.SNACMessage); ok {
+		r0 = returnFunc(ctx, instance, inFrame, inBody)
 	} else {
 		r0 = ret.Get(0).(wire.SNACMessage)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, *state.Session, wire.SNACFrame, wire.SNAC_0x0E_0x02_ChatRoomInfoUpdate) error); ok {
-		r1 = returnFunc(ctx, sess, inFrame, inBody)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x0E_0x02_ChatRoomInfoUpdate) error); ok {
+		r1 = returnFunc(ctx, instance, inFrame, inBody)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -72,22 +72,22 @@ type mockChatNavService_CreateRoom_Call struct {
 
 // CreateRoom is a helper method to define mock.On call
 //   - ctx context.Context
-//   - sess *state.Session
+//   - instance *state.SessionInstance
 //   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x0E_0x02_ChatRoomInfoUpdate
-func (_e *mockChatNavService_Expecter) CreateRoom(ctx interface{}, sess interface{}, inFrame interface{}, inBody interface{}) *mockChatNavService_CreateRoom_Call {
-	return &mockChatNavService_CreateRoom_Call{Call: _e.mock.On("CreateRoom", ctx, sess, inFrame, inBody)}
+func (_e *mockChatNavService_Expecter) CreateRoom(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}) *mockChatNavService_CreateRoom_Call {
+	return &mockChatNavService_CreateRoom_Call{Call: _e.mock.On("CreateRoom", ctx, instance, inFrame, inBody)}
 }
 
-func (_c *mockChatNavService_CreateRoom_Call) Run(run func(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x0E_0x02_ChatRoomInfoUpdate)) *mockChatNavService_CreateRoom_Call {
+func (_c *mockChatNavService_CreateRoom_Call) Run(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x0E_0x02_ChatRoomInfoUpdate)) *mockChatNavService_CreateRoom_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *state.Session
+		var arg1 *state.SessionInstance
 		if args[1] != nil {
-			arg1 = args[1].(*state.Session)
+			arg1 = args[1].(*state.SessionInstance)
 		}
 		var arg2 wire.SNACFrame
 		if args[2] != nil {
@@ -112,7 +112,7 @@ func (_c *mockChatNavService_CreateRoom_Call) Return(sNACMessage wire.SNACMessag
 	return _c
 }
 
-func (_c *mockChatNavService_CreateRoom_Call) RunAndReturn(run func(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x0E_0x02_ChatRoomInfoUpdate) (wire.SNACMessage, error)) *mockChatNavService_CreateRoom_Call {
+func (_c *mockChatNavService_CreateRoom_Call) RunAndReturn(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x0E_0x02_ChatRoomInfoUpdate) (wire.SNACMessage, error)) *mockChatNavService_CreateRoom_Call {
 	_c.Call.Return(run)
 	return _c
 }

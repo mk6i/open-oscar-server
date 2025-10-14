@@ -16,8 +16,8 @@ func TestChatService_ChannelMsgToHost(t *testing.T) {
 	cases := []struct {
 		// name is the unit test name
 		name string
-		// userSession is the session of the user sending the chat message
-		userSession *state.Session
+		// instance is the session of the user sending the chat message
+		instance *state.SessionInstance
 		// inputSNAC is the SNAC sent by the sender client
 		inputSNAC wire.SNACMessage
 		// mockParams is the list of params sent to mocks that satisfy this
@@ -33,7 +33,7 @@ func TestChatService_ChannelMsgToHost(t *testing.T) {
 	}{
 		{
 			name: "send chat room message, expect acknowledgement to sender client",
-			userSession: newTestSession("user_sending_chat_msg", sessOptCannedSignonTime,
+			instance: newTestInstance("user_sending_chat_msg", sessOptCannedSignonTime,
 				sessOptChatRoomCookie("the-chat-cookie")),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
@@ -79,7 +79,7 @@ func TestChatService_ChannelMsgToHost(t *testing.T) {
 									TLVRestBlock: wire.TLVRestBlock{
 										TLVList: wire.TLVList{
 											wire.NewTLVBE(wire.ChatTLVSenderInformation,
-												newTestSession("user_sending_chat_msg", sessOptCannedSignonTime).TLVUserInfo()),
+												newTestInstance("user_sending_chat_msg", sessOptCannedSignonTime).Session().TLVUserInfo()),
 											wire.NewTLVBE(wire.ChatTLVPublicWhisperFlag, []byte{}),
 											wire.NewTLVBE(wire.ChatTLVMessageInfo, wire.TLVRestBlock{
 												TLVList: wire.TLVList{
@@ -107,7 +107,7 @@ func TestChatService_ChannelMsgToHost(t *testing.T) {
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
 							wire.NewTLVBE(wire.ChatTLVSenderInformation,
-								newTestSession("user_sending_chat_msg", sessOptCannedSignonTime).TLVUserInfo()),
+								newTestInstance("user_sending_chat_msg", sessOptCannedSignonTime).Session().TLVUserInfo()),
 							wire.NewTLVBE(wire.ChatTLVPublicWhisperFlag, []byte{}),
 							wire.NewTLVBE(wire.ChatTLVMessageInfo, wire.TLVRestBlock{
 								TLVList: wire.TLVList{
@@ -122,7 +122,7 @@ func TestChatService_ChannelMsgToHost(t *testing.T) {
 		},
 		{
 			name: "send chat whisper",
-			userSession: newTestSession("user_sending_chat_msg", sessOptCannedSignonTime,
+			instance: newTestInstance("user_sending_chat_msg", sessOptCannedSignonTime,
 				sessOptChatRoomCookie("the-chat-cookie")),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
@@ -161,7 +161,7 @@ func TestChatService_ChannelMsgToHost(t *testing.T) {
 									TLVRestBlock: wire.TLVRestBlock{
 										TLVList: wire.TLVList{
 											wire.NewTLVBE(wire.ChatTLVSenderInformation,
-												newTestSession("user_sending_chat_msg", sessOptCannedSignonTime).TLVUserInfo()),
+												newTestInstance("user_sending_chat_msg", sessOptCannedSignonTime).Session().TLVUserInfo()),
 											wire.NewTLVBE(wire.ChatTLVMessageInfo, wire.TLVRestBlock{
 												TLVList: wire.TLVList{
 													wire.NewTLVBE(wire.ChatTLVMessageInfoText,
@@ -180,7 +180,7 @@ func TestChatService_ChannelMsgToHost(t *testing.T) {
 		},
 		{
 			name: "send die roll",
-			userSession: newTestSession("user_sending_chat_msg", sessOptCannedSignonTime,
+			instance: newTestInstance("user_sending_chat_msg", sessOptCannedSignonTime,
 				sessOptChatRoomCookie("the-chat-cookie")),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
@@ -225,7 +225,7 @@ func TestChatService_ChannelMsgToHost(t *testing.T) {
 									Channel: 14,
 									TLVRestBlock: wire.TLVRestBlock{
 										TLVList: wire.TLVList{
-											wire.NewTLVBE(wire.ChatTLVSenderInformation, sessOnlineHost.TLVUserInfo()),
+											wire.NewTLVBE(wire.ChatTLVSenderInformation, sessOnlineHost.Session().TLVUserInfo()),
 											wire.NewTLVBE(wire.ChatTLVPublicWhisperFlag, []byte{}),
 											wire.NewTLVBE(wire.ChatTLVMessageInfo, wire.TLVRestBlock{
 												TLVList: wire.TLVList{
@@ -254,7 +254,7 @@ func TestChatService_ChannelMsgToHost(t *testing.T) {
 					Channel: 14,
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
-							wire.NewTLVBE(wire.ChatTLVSenderInformation, sessOnlineHost.TLVUserInfo()),
+							wire.NewTLVBE(wire.ChatTLVSenderInformation, sessOnlineHost.Session().TLVUserInfo()),
 							wire.NewTLVBE(wire.ChatTLVPublicWhisperFlag, []byte{}),
 							wire.NewTLVBE(wire.ChatTLVMessageInfo, wire.TLVRestBlock{
 								TLVList: wire.TLVList{
@@ -281,7 +281,7 @@ func TestChatService_ChannelMsgToHost(t *testing.T) {
 		{
 			name: "send chat room message with macOS client 4.0.9 bug containing bad channel ID, expect message to " +
 				"client on MIME channel",
-			userSession: newTestSession("user_sending_chat_msg", sessOptCannedSignonTime,
+			instance: newTestInstance("user_sending_chat_msg", sessOptCannedSignonTime,
 				sessOptChatRoomCookie("the-chat-cookie")),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
@@ -323,7 +323,7 @@ func TestChatService_ChannelMsgToHost(t *testing.T) {
 									TLVRestBlock: wire.TLVRestBlock{
 										TLVList: wire.TLVList{
 											wire.NewTLVBE(wire.ChatTLVSenderInformation,
-												newTestSession("user_sending_chat_msg", sessOptCannedSignonTime).TLVUserInfo()),
+												newTestInstance("user_sending_chat_msg", sessOptCannedSignonTime).Session().TLVUserInfo()),
 											wire.NewTLVBE(wire.ChatTLVPublicWhisperFlag, []byte{}),
 											wire.NewTLVBE(wire.ChatTLVMessageInfo, wire.TLVRestBlock{
 												TLVList: wire.TLVList{
@@ -343,7 +343,7 @@ func TestChatService_ChannelMsgToHost(t *testing.T) {
 		},
 		{
 			name: "send chat room message, don't expect acknowledgement to sender client",
-			userSession: newTestSession("user_sending_chat_msg", sessOptCannedSignonTime,
+			instance: newTestInstance("user_sending_chat_msg", sessOptCannedSignonTime,
 				sessOptChatRoomCookie("the-chat-cookie")),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
@@ -385,7 +385,7 @@ func TestChatService_ChannelMsgToHost(t *testing.T) {
 									TLVRestBlock: wire.TLVRestBlock{
 										TLVList: wire.TLVList{
 											wire.NewTLVBE(wire.ChatTLVSenderInformation,
-												newTestSession("user_sending_chat_msg", sessOptCannedSignonTime).TLVUserInfo()),
+												newTestInstance("user_sending_chat_msg", sessOptCannedSignonTime).Session().TLVUserInfo()),
 											wire.NewTLVBE(wire.ChatTLVPublicWhisperFlag, []byte{}),
 											wire.NewTLVBE(wire.ChatTLVMessageInfo, wire.TLVRestBlock{
 												TLVList: wire.TLVList{
@@ -404,7 +404,7 @@ func TestChatService_ChannelMsgToHost(t *testing.T) {
 		},
 		{
 			name: "send chat room message, expect that TLVs that crash macos client",
-			userSession: newTestSession("user_sending_chat_msg", sessOptCannedSignonTime,
+			instance: newTestInstance("user_sending_chat_msg", sessOptCannedSignonTime,
 				sessOptChatRoomCookie("the-chat-cookie")),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
@@ -448,7 +448,7 @@ func TestChatService_ChannelMsgToHost(t *testing.T) {
 									TLVRestBlock: wire.TLVRestBlock{
 										TLVList: wire.TLVList{
 											wire.NewTLVBE(wire.ChatTLVSenderInformation,
-												newTestSession("user_sending_chat_msg", sessOptCannedSignonTime).TLVUserInfo()),
+												newTestInstance("user_sending_chat_msg", sessOptCannedSignonTime).Session().TLVUserInfo()),
 											wire.NewTLVBE(wire.ChatTLVPublicWhisperFlag, []byte{}),
 											wire.NewTLVBE(wire.ChatTLVMessageInfo, wire.TLVRestBlock{
 												TLVList: wire.TLVList{
@@ -481,7 +481,7 @@ func TestChatService_ChannelMsgToHost(t *testing.T) {
 
 			svc := NewChatService(chatMessageRelayer)
 			svc.randRollDie = tc.randRollDie
-			outputSNAC, err := svc.ChannelMsgToHost(context.Background(), tc.userSession, tc.inputSNAC.Frame,
+			outputSNAC, err := svc.ChannelMsgToHost(context.Background(), tc.instance, tc.inputSNAC.Frame,
 				tc.inputSNAC.Body.(wire.SNAC_0x0E_0x05_ChatChannelMsgToHost))
 			assert.ErrorIs(t, err, tc.wantErr)
 			assert.Equal(t, tc.expectOutput, outputSNAC)

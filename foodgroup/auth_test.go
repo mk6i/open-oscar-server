@@ -43,9 +43,11 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 		expectOutput wire.SNACMessage
 		// wantErr is the error we expect from the method
 		wantErr error
+		// maxConcurrentLoginsPerUser is the maximum concurrent logins per user (only set for MultiConnFlagsRecentClient tests)
+		maxConcurrentLoginsPerUser int
 	}{
 		{
-			name:           "AIM account exists, correct password, login OK",
+			name:           "AIM account exists, correct password, login OK, no concurrent logins",
 			advertisedHost: "127.0.0.1:5190",
 			inputSNAC: wire.SNAC_0x17_0x02_BUCPLoginRequest{
 				TLVRestBlock: wire.TLVRestBlock{
@@ -81,6 +83,14 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 						},
 					},
 				},
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams: retrieveSessionParams{
+						{
+							screenName: user.IdentScreenName,
+							result:     nil,
+						},
+					},
+				},
 			},
 			expectOutput: wire.SNACMessage{
 				Frame: wire.SNACFrame{
@@ -97,6 +107,133 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 					},
 				},
 			},
+			maxConcurrentLoginsPerUser: 2,
+		},
+		{
+			name:           "AIM account exists, correct password, login OK, concurrent logins under limit",
+			advertisedHost: "127.0.0.1:5190",
+			inputSNAC: wire.SNAC_0x17_0x02_BUCPLoginRequest{
+				TLVRestBlock: wire.TLVRestBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.LoginTLVTagsScreenName, user.DisplayScreenName),
+						wire.NewTLVBE(wire.LoginTLVTagsPasswordHash, user.StrongMD5Pass),
+						wire.NewTLVBE(wire.LoginTLVTagsMultiConnFlags, wire.MultiConnFlagsRecentClient),
+					},
+				},
+			},
+			mockParams: mockParams{
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{
+							screenName: user.IdentScreenName,
+							result:     &user,
+						},
+					},
+				},
+				cookieBakerParams: cookieBakerParams{
+					cookieIssueParams: cookieIssueParams{
+						{
+							dataIn: func() []byte {
+								loginCookie := state.ServerCookie{
+									ScreenName:    user.DisplayScreenName,
+									MultiConnFlag: uint8(wire.MultiConnFlagsRecentClient),
+								}
+								buf := &bytes.Buffer{}
+								assert.NoError(t, wire.MarshalBE(loginCookie, buf))
+								return buf.Bytes()
+							}(),
+							cookieOut: []byte("the-cookie"),
+						},
+					},
+				},
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams: retrieveSessionParams{
+						{
+							screenName: user.IdentScreenName,
+							result: func() *state.Session {
+								// Create a session with 1 instance, under the limit
+								sess := state.NewSession()
+								sess.SetIdentScreenName(user.IdentScreenName)
+								sess.SetDisplayScreenName(user.DisplayScreenName)
+								sess.AddInstance()
+								return sess
+							}(),
+						},
+					},
+				},
+			},
+			expectOutput: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.BUCP,
+					SubGroup:  wire.BUCPLoginResponse,
+				},
+				Body: wire.SNAC_0x17_0x03_BUCPLoginResponse{
+					TLVRestBlock: wire.TLVRestBlock{
+						TLVList: wire.TLVList{
+							wire.NewTLVBE(wire.LoginTLVTagsScreenName, user.DisplayScreenName),
+							wire.NewTLVBE(wire.LoginTLVTagsReconnectHere, "127.0.0.1:5190"),
+							wire.NewTLVBE(wire.LoginTLVTagsAuthorizationCookie, []byte("the-cookie")),
+						},
+					},
+				},
+			},
+			maxConcurrentLoginsPerUser: 2,
+		},
+
+		{
+			name:           "login fails when concurrent login limit is reached",
+			advertisedHost: "127.0.0.1:5190",
+			inputSNAC: wire.SNAC_0x17_0x02_BUCPLoginRequest{
+				TLVRestBlock: wire.TLVRestBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.LoginTLVTagsScreenName, user.DisplayScreenName),
+						wire.NewTLVBE(wire.LoginTLVTagsPasswordHash, user.StrongMD5Pass),
+						wire.NewTLVBE(wire.LoginTLVTagsMultiConnFlags, wire.MultiConnFlagsRecentClient),
+					},
+				},
+			},
+			mockParams: mockParams{
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{
+							screenName: user.IdentScreenName,
+							result:     &user,
+						},
+					},
+				},
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams: retrieveSessionParams{
+						{
+							screenName: user.IdentScreenName,
+							result: func() *state.Session {
+								// Create a session with 2 instances (the max allowed)
+								// This will cause InstanceCount() to return 2, which equals the limit of 2
+								sess := state.NewSession()
+								sess.SetIdentScreenName(user.IdentScreenName)
+								sess.SetDisplayScreenName(user.DisplayScreenName)
+								sess.AddInstance()
+								sess.AddInstance()
+								return sess
+							}(),
+						},
+					},
+				},
+			},
+			expectOutput: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.BUCP,
+					SubGroup:  wire.BUCPLoginResponse,
+				},
+				Body: wire.SNAC_0x17_0x03_BUCPLoginResponse{
+					TLVRestBlock: wire.TLVRestBlock{
+						TLVList: []wire.TLV{
+							wire.NewTLVBE(wire.LoginTLVTagsScreenName, user.DisplayScreenName),
+							wire.NewTLVBE(wire.LoginTLVTagsErrorSubcode, wire.LoginErrRateLimitExceeded),
+						},
+					},
+				},
+			},
+			maxConcurrentLoginsPerUser: 2,
 		},
 		{
 			name:           "ICQ account exists, correct password, login OK",
@@ -629,10 +766,19 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 					Return(params.cookieOut, params.err)
 			}
 
+			sessionRetriever := newMockSessionRetriever(t)
+			for _, params := range tc.mockParams.sessionRetrieverParams.retrieveSessionParams {
+				sessionRetriever.EXPECT().
+					RetrieveSession(params.screenName).
+					Return(params.result)
+			}
+
 			svc := AuthService{
-				config:      tc.cfg,
-				cookieBaker: cookieBaker,
-				userManager: userManager,
+				config:                     tc.cfg,
+				cookieBaker:                cookieBaker,
+				userManager:                userManager,
+				sessionRetriever:           sessionRetriever,
+				maxConcurrentLoginsPerUser: 2,
 			}
 			outputSNAC, err := svc.BUCPLogin(context.Background(), tc.inputSNAC, tc.newUserFn, tc.advertisedHost)
 			assert.ErrorIs(t, err, tc.wantErr)
@@ -1138,14 +1284,25 @@ func TestAuthService_KerberosLogin(t *testing.T) {
 						{
 							dataIn: func() []byte {
 								loginCookie := state.ServerCookie{
-									ScreenName:   user.DisplayScreenName,
-									KerberosAuth: 1,
+									Service:       wire.BOS,
+									ScreenName:    user.DisplayScreenName,
+									ClientID:      "",
+									MultiConnFlag: uint8(wire.MultiConnFlagsRecentClient),
+									KerberosAuth:  1,
 								}
 								buf := &bytes.Buffer{}
 								assert.NoError(t, wire.MarshalBE(loginCookie, buf))
 								return buf.Bytes()
 							}(),
 							cookieOut: []byte("the-cookie"),
+						},
+					},
+				},
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams: retrieveSessionParams{
+						{
+							screenName: user.IdentScreenName,
+							result:     nil,
 						},
 					},
 				},
@@ -1264,14 +1421,25 @@ func TestAuthService_KerberosLogin(t *testing.T) {
 						{
 							dataIn: func() []byte {
 								loginCookie := state.ServerCookie{
-									ScreenName:   user.DisplayScreenName,
-									KerberosAuth: 1,
+									Service:       wire.BOS,
+									ScreenName:    user.DisplayScreenName,
+									ClientID:      "",
+									MultiConnFlag: uint8(wire.MultiConnFlagsRecentClient),
+									KerberosAuth:  1,
 								}
 								buf := &bytes.Buffer{}
 								assert.NoError(t, wire.MarshalBE(loginCookie, buf))
 								return buf.Bytes()
 							}(),
 							cookieOut: []byte("the-cookie"),
+						},
+					},
+				},
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams: retrieveSessionParams{
+						{
+							screenName: user.IdentScreenName,
+							result:     nil,
 						},
 					},
 				},
@@ -1375,11 +1543,19 @@ func TestAuthService_KerberosLogin(t *testing.T) {
 					Issue(params.dataIn).
 					Return(params.cookieOut, params.err)
 			}
+			sessionRetriever := newMockSessionRetriever(t)
+			for _, params := range tc.mockParams.sessionRetrieverParams.retrieveSessionParams {
+				sessionRetriever.EXPECT().
+					RetrieveSession(params.screenName).
+					Return(params.result)
+			}
 			svc := AuthService{
-				config:      tc.cfg,
-				cookieBaker: cookieBaker,
-				userManager: userManager,
-				timeNow:     tc.timeNow,
+				config:                     tc.cfg,
+				cookieBaker:                cookieBaker,
+				userManager:                userManager,
+				sessionRetriever:           sessionRetriever,
+				timeNow:                    tc.timeNow,
+				maxConcurrentLoginsPerUser: 2,
 			}
 			outputSNAC, err := svc.KerberosLogin(context.Background(), tc.inputSNAC, tc.newUserFn, tc.advertisedHost)
 			assert.ErrorIs(t, err, tc.wantErr)
@@ -1553,17 +1729,17 @@ func TestAuthService_BUCPChallengeRequest(t *testing.T) {
 }
 
 func TestAuthService_RegisterChatSession_HappyPath(t *testing.T) {
-	sess := newTestSession("ScreenName")
+	instance := newTestInstance("ScreenName")
 
 	serverCookie := state.ServerCookie{
 		ChatCookie: "the-chat-cookie",
-		ScreenName: sess.DisplayScreenName(),
+		ScreenName: instance.DisplayScreenName(),
 	}
 
 	chatSessionRegistry := newMockChatSessionRegistry(t)
 	chatSessionRegistry.EXPECT().
-		AddSession(mock.Anything, serverCookie.ChatCookie, sess.DisplayScreenName()).
-		Return(sess, nil)
+		AddSession(mock.Anything, serverCookie.ChatCookie, instance.DisplayScreenName()).
+		Return(instance, nil)
 
 	chatCookieBuf := &bytes.Buffer{}
 	assert.NoError(t, wire.MarshalBE(serverCookie, chatCookieBuf))
@@ -1572,7 +1748,7 @@ func TestAuthService_RegisterChatSession_HappyPath(t *testing.T) {
 
 	have, err := svc.RegisterChatSession(context.Background(), serverCookie)
 	assert.NoError(t, err)
-	assert.Equal(t, sess, have)
+	assert.Equal(t, instance, have)
 }
 
 func TestAuthService_RegisterBOSSession(t *testing.T) {
@@ -1594,7 +1770,7 @@ func TestAuthService_RegisterBOSSession(t *testing.T) {
 		// method's dependencies
 		mockParams mockParams
 		// wantSess asserts the values of one or more session properties
-		wantSess func(*state.Session) bool
+		wantSess func(*state.SessionInstance) bool
 		// wantErr is the error we expect from the method
 		wantErr error
 	}{
@@ -1605,8 +1781,9 @@ func TestAuthService_RegisterBOSSession(t *testing.T) {
 				sessionRegistryParams: sessionRegistryParams{
 					addSessionParams: addSessionParams{
 						{
-							screenName: screenName,
-							result:     newTestSession(screenName),
+							screenName:  screenName,
+							doMultiSess: false,
+							result:      newTestInstance(screenName),
 						},
 					},
 				},
@@ -1644,7 +1821,7 @@ func TestAuthService_RegisterBOSSession(t *testing.T) {
 					},
 				},
 			},
-			wantSess: func(session *state.Session) bool {
+			wantSess: func(instance *state.SessionInstance) bool {
 				want := wire.BARTID{
 					Type: wire.BARTTypesBuddyIcon,
 					BARTInfo: wire.BARTInfo{
@@ -1652,7 +1829,7 @@ func TestAuthService_RegisterBOSSession(t *testing.T) {
 						Hash:  []byte{'m', 'y', 'i', 'c', 'o', 'n'},
 					},
 				}
-				has, hasIcon := session.BuddyIcon()
+				has, hasIcon := instance.Session().BuddyIcon()
 				return assert.True(t, hasIcon) && assert.Equal(t, want, has)
 			},
 		},
@@ -1663,8 +1840,9 @@ func TestAuthService_RegisterBOSSession(t *testing.T) {
 				sessionRegistryParams: sessionRegistryParams{
 					addSessionParams: addSessionParams{
 						{
-							screenName: screenName,
-							result:     newTestSession(screenName),
+							screenName:  screenName,
+							doMultiSess: false,
+							result:      newTestInstance(screenName),
 						},
 					},
 				},
@@ -1697,8 +1875,8 @@ func TestAuthService_RegisterBOSSession(t *testing.T) {
 					},
 				},
 			},
-			wantSess: func(session *state.Session) bool {
-				return session.UserInfoBitmask()&wire.OServiceUserFlagBot == wire.OServiceUserFlagBot
+			wantSess: func(instance *state.SessionInstance) bool {
+				return instance.Session().AllUserInfoBitmask(wire.OServiceUserFlagBot)
 			},
 		},
 		{
@@ -1709,7 +1887,7 @@ func TestAuthService_RegisterBOSSession(t *testing.T) {
 					addSessionParams: addSessionParams{
 						{
 							screenName: uin,
-							result:     newTestSession(uin),
+							result:     newTestInstance(uin),
 						},
 					},
 				},
@@ -1741,9 +1919,9 @@ func TestAuthService_RegisterBOSSession(t *testing.T) {
 					},
 				},
 			},
-			wantSess: func(sess *state.Session) bool {
-				uinMatches := fmt.Sprintf("%d", sess.UIN()) == uin.String()
-				flagsMatch := sess.UserInfoBitmask()&wire.OServiceUserFlagICQ == wire.OServiceUserFlagICQ
+			wantSess: func(instance *state.SessionInstance) bool {
+				uinMatches := fmt.Sprintf("%d", instance.UIN()) == uin.String()
+				flagsMatch := instance.Session().AllUserInfoBitmask(wire.OServiceUserFlagICQ)
 				return uinMatches && flagsMatch
 			},
 		},
@@ -1754,7 +1932,7 @@ func TestAuthService_RegisterBOSSession(t *testing.T) {
 			sessionRegistry := newMockSessionRegistry(t)
 			for _, params := range tc.mockParams.addSessionParams {
 				sessionRegistry.EXPECT().
-					AddSession(mock.Anything, params.screenName).
+					AddSession(mock.Anything, params.screenName, params.doMultiSess).
 					Return(params.result, params.err)
 			}
 			userManager := newMockUserManager(t)
@@ -1790,45 +1968,47 @@ func TestAuthService_RegisterBOSSession(t *testing.T) {
 }
 
 func TestAuthService_RetrieveBOSSession_HappyPath(t *testing.T) {
-	sess := newTestSession("screenName")
+	instance := newTestInstance("screenName", sessOptSignonComplete)
 
 	aimAuthCookie := state.ServerCookie{
-		ScreenName: sess.DisplayScreenName(),
+		ScreenName: instance.DisplayScreenName(),
+		SessionNum: instance.Num(),
 	}
 
 	sessionRetriever := newMockSessionRetriever(t)
 	sessionRetriever.EXPECT().
-		RetrieveSession(sess.IdentScreenName()).
-		Return(sess)
+		RetrieveSession(instance.IdentScreenName()).
+		Return(instance.Session())
 
 	userManager := newMockUserManager(t)
 	userManager.EXPECT().
-		User(matchContext(), sess.IdentScreenName()).
-		Return(&state.User{IdentScreenName: sess.IdentScreenName()}, nil)
+		User(matchContext(), instance.IdentScreenName()).
+		Return(&state.User{IdentScreenName: instance.IdentScreenName()}, nil)
 
 	svc := NewAuthService(config.Config{}, nil, sessionRetriever, nil, userManager, nil, nil, nil, nil, wire.DefaultRateLimitClasses())
 
 	have, err := svc.RetrieveBOSSession(context.Background(), aimAuthCookie)
 	assert.NoError(t, err)
-	assert.Equal(t, sess, have)
+	assert.Equal(t, instance, have)
 }
 
 func TestAuthService_RetrieveBOSSession_SessionNotFound(t *testing.T) {
-	sess := newTestSession("screenName")
+	instance := newTestInstance("screenName")
 
 	aimAuthCookie := state.ServerCookie{
-		ScreenName: sess.DisplayScreenName(),
+		ScreenName: instance.DisplayScreenName(),
+		SessionNum: instance.Num(),
 	}
 
 	sessionRetriever := newMockSessionRetriever(t)
 	sessionRetriever.EXPECT().
-		RetrieveSession(sess.IdentScreenName()).
+		RetrieveSession(instance.IdentScreenName()).
 		Return(nil)
 
 	userManager := newMockUserManager(t)
 	userManager.EXPECT().
-		User(matchContext(), sess.IdentScreenName()).
-		Return(&state.User{IdentScreenName: sess.IdentScreenName()}, nil)
+		User(matchContext(), instance.IdentScreenName()).
+		Return(&state.User{IdentScreenName: instance.IdentScreenName()}, nil)
 
 	svc := NewAuthService(config.Config{}, nil, sessionRetriever, nil, userManager, nil, nil, nil, nil, wire.DefaultRateLimitClasses())
 
@@ -1841,15 +2021,15 @@ func TestAuthService_SignoutChat(t *testing.T) {
 	tests := []struct {
 		// name is the unit test name
 		name string
-		// userSession is the session of the user signing out
-		userSession *state.Session
+		// instance is the session of the user signing out
+		instance *state.SessionInstance
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
 	}{
 		{
-			name:        "user signs out of chat room, room is empty after user leaves",
-			userSession: newTestSession("me", sessOptCannedSignonTime, sessOptChatRoomCookie("the-chat-cookie")),
+			name:     "user signs out of chat room, room is empty after user leaves",
+			instance: newTestInstance("me", sessOptCannedSignonTime, sessOptChatRoomCookie("the-chat-cookie")),
 			mockParams: mockParams{
 				chatMessageRelayerParams: chatMessageRelayerParams{
 					chatRelayToAllExceptParams: chatRelayToAllExceptParams{
@@ -1862,7 +2042,7 @@ func TestAuthService_SignoutChat(t *testing.T) {
 								},
 								Body: wire.SNAC_0x0E_0x04_ChatUsersLeft{
 									Users: []wire.TLVUserInfo{
-										newTestSession("me", sessOptCannedSignonTime, sessOptChatRoomCookie("the-chat-cookie")).TLVUserInfo(),
+										newTestInstance("me", sessOptCannedSignonTime, sessOptChatRoomCookie("the-chat-cookie")).Session().TLVUserInfo(),
 									},
 								},
 							},
@@ -1879,8 +2059,8 @@ func TestAuthService_SignoutChat(t *testing.T) {
 			},
 		},
 		{
-			name:        "user signs out of chat room, room is not empty after user leaves",
-			userSession: newTestSession("me", sessOptCannedSignonTime, sessOptChatRoomCookie("the-chat-cookie")),
+			name:     "user signs out of chat room, room is not empty after user leaves",
+			instance: newTestInstance("me", sessOptCannedSignonTime, sessOptChatRoomCookie("the-chat-cookie")),
 			mockParams: mockParams{
 				chatMessageRelayerParams: chatMessageRelayerParams{
 					chatRelayToAllExceptParams: chatRelayToAllExceptParams{
@@ -1893,7 +2073,7 @@ func TestAuthService_SignoutChat(t *testing.T) {
 								},
 								Body: wire.SNAC_0x0E_0x04_ChatUsersLeft{
 									Users: []wire.TLVUserInfo{
-										newTestSession("me", sessOptCannedSignonTime, sessOptChatRoomCookie("the-chat-cookie")).TLVUserInfo(),
+										newTestInstance("me", sessOptCannedSignonTime, sessOptChatRoomCookie("the-chat-cookie")).Session().TLVUserInfo(),
 									},
 								},
 							},
@@ -1915,7 +2095,7 @@ func TestAuthService_SignoutChat(t *testing.T) {
 			chatMessageRelayer := newMockChatMessageRelayer(t)
 			for _, params := range tt.mockParams.chatRelayToAllExceptParams {
 				chatMessageRelayer.EXPECT().
-					RelayToAllExcept(matchContext(), tt.userSession.ChatRoomCookie(), params.screenName, params.message)
+					RelayToAllExcept(matchContext(), tt.instance.ChatRoomCookie(), params.screenName, params.message)
 			}
 			sessionManager := newMockChatSessionRegistry(t)
 			for _, params := range tt.mockParams.removeSessionParams {
@@ -1924,7 +2104,7 @@ func TestAuthService_SignoutChat(t *testing.T) {
 			}
 
 			svc := NewAuthService(config.Config{}, nil, nil, sessionManager, nil, nil, chatMessageRelayer, nil, nil, wire.DefaultRateLimitClasses())
-			svc.SignoutChat(context.Background(), tt.userSession)
+			svc.SignoutChat(context.Background(), tt.instance)
 		})
 	}
 }
@@ -1933,8 +2113,8 @@ func TestAuthService_Signout(t *testing.T) {
 	tests := []struct {
 		// name is the unit test name
 		name string
-		// userSession is the session of the user signing out
-		userSession *state.Session
+		// instance is the session of the user signing out
+		instance *state.SessionInstance
 		// wantErr is the error we expect from the method
 		wantErr error
 		// mockParams is the list of params sent to mocks that satisfy this
@@ -1942,8 +2122,8 @@ func TestAuthService_Signout(t *testing.T) {
 		mockParams mockParams
 	}{
 		{
-			name:        "user signs out of chat room, room is empty after user leaves",
-			userSession: newTestSession("me", sessOptCannedSignonTime),
+			name:     "user signs out of chat room, room is empty after user leaves",
+			instance: newTestInstance("me", sessOptCannedSignonTime),
 			mockParams: mockParams{
 				buddyBroadcasterParams: buddyBroadcasterParams{
 					broadcastBuddyDepartedParams: broadcastBuddyDepartedParams{
@@ -1970,7 +2150,7 @@ func TestAuthService_Signout(t *testing.T) {
 			}
 			svc := NewAuthService(config.Config{}, sessionManager, nil, nil, nil, nil, nil, nil, nil, wire.DefaultRateLimitClasses())
 
-			svc.Signout(context.Background(), tt.userSession)
+			svc.Signout(context.Background(), tt.instance)
 		})
 	}
 }

@@ -47,17 +47,17 @@ type ICQService struct {
 	offlineMessageManager OfflineMessageManager
 }
 
-func (s ICQService) DeleteMsgReq(ctx context.Context, sess *state.Session, seq uint16) error {
-	if err := s.offlineMessageManager.DeleteMessages(ctx, sess.IdentScreenName()); err != nil {
+func (s ICQService) DeleteMsgReq(ctx context.Context, instance *state.SessionInstance, seq uint16) error {
+	if err := s.offlineMessageManager.DeleteMessages(ctx, instance.IdentScreenName()); err != nil {
 		return fmt.Errorf("deleting messages: %w", err)
 	}
 	return nil
 }
 
-func (s ICQService) FindByICQName(ctx context.Context, sess *state.Session, req wire.ICQ_0x07D0_0x0515_DBQueryMetaReqSearchByDetails, seq uint16) error {
+func (s ICQService) FindByICQName(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x0515_DBQueryMetaReqSearchByDetails, seq uint16) error {
 	resp := wire.ICQ_0x07DA_0x01AE_DBQueryMetaReplyLastUserFound{
 		ICQMetadata: wire.ICQMetadata{
-			UIN:     sess.UIN(),
+			UIN:     instance.UIN(),
 			ReqType: wire.ICQDBQueryMetaReply,
 			Seq:     seq,
 		},
@@ -65,18 +65,18 @@ func (s ICQService) FindByICQName(ctx context.Context, sess *state.Session, req 
 		ReqSubType: wire.ICQDBQueryMetaReplyLastUserFound,
 	}
 
-	res, err := s.userFinder.FindByICQName(ctx, req.FirstName, req.LastName, req.NickName)
+	res, err := s.userFinder.FindByICQName(ctx, inBody.FirstName, inBody.LastName, inBody.NickName)
 
 	if err != nil {
 		s.logger.Error("FindByICQName failed", "err", err.Error())
 		resp.Success = wire.ICQStatusCodeErr
-		return s.reply(ctx, sess, wire.ICQMessageReplyEnvelope{
+		return s.reply(ctx, instance, wire.ICQMessageReplyEnvelope{
 			Message: resp,
 		})
 	}
 	if len(res) == 0 {
 		resp.Success = wire.ICQStatusCodeFail
-		return s.reply(ctx, sess, wire.ICQMessageReplyEnvelope{
+		return s.reply(ctx, instance, wire.ICQMessageReplyEnvelope{
 			Message: resp,
 		})
 	}
@@ -88,7 +88,7 @@ func (s ICQService) FindByICQName(ctx context.Context, sess *state.Session, req 
 			resp.ReqSubType = wire.ICQDBQueryMetaReplyUserFound
 		}
 		resp.Details = s.createResult(res[i])
-		if err := s.reply(ctx, sess, wire.ICQMessageReplyEnvelope{
+		if err := s.reply(ctx, instance, wire.ICQMessageReplyEnvelope{
 			Message: resp,
 		}); err != nil {
 			return err
@@ -98,10 +98,10 @@ func (s ICQService) FindByICQName(ctx context.Context, sess *state.Session, req 
 	return nil
 }
 
-func (s ICQService) FindByICQEmail(ctx context.Context, sess *state.Session, req wire.ICQ_0x07D0_0x0529_DBQueryMetaReqSearchByEmail, seq uint16) error {
+func (s ICQService) FindByICQEmail(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x0529_DBQueryMetaReqSearchByEmail, seq uint16) error {
 	resp := wire.ICQ_0x07DA_0x01AE_DBQueryMetaReplyLastUserFound{
 		ICQMetadata: wire.ICQMetadata{
-			UIN:     sess.UIN(),
+			UIN:     instance.UIN(),
 			ReqType: wire.ICQDBQueryMetaReply,
 			Seq:     seq,
 		},
@@ -110,7 +110,7 @@ func (s ICQService) FindByICQEmail(ctx context.Context, sess *state.Session, req
 	}
 	resp.LastResult()
 
-	res, err := s.userFinder.FindByICQEmail(ctx, req.Email)
+	res, err := s.userFinder.FindByICQEmail(ctx, inBody.Email)
 
 	switch {
 	case errors.Is(err, state.ErrNoUser):
@@ -123,13 +123,13 @@ func (s ICQService) FindByICQEmail(ctx context.Context, sess *state.Session, req
 		resp.Details = s.createResult(res)
 	}
 
-	return s.reply(ctx, sess, wire.ICQMessageReplyEnvelope{
+	return s.reply(ctx, instance, wire.ICQMessageReplyEnvelope{
 		Message: resp,
 	})
 }
 
-func (s ICQService) FindByEmail3(ctx context.Context, sess *state.Session, req wire.ICQ_0x07D0_0x0573_DBQueryMetaReqSearchByEmail3, seq uint16) error {
-	b, hasEmail := req.Bytes(wire.ICQTLVTagsEmail)
+func (s ICQService) FindByEmail3(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x0573_DBQueryMetaReqSearchByEmail3, seq uint16) error {
+	b, hasEmail := inBody.Bytes(wire.ICQTLVTagsEmail)
 	if !hasEmail {
 		return errors.New("unable to get email from request")
 	}
@@ -141,7 +141,7 @@ func (s ICQService) FindByEmail3(ctx context.Context, sess *state.Session, req w
 
 	resp := wire.ICQ_0x07DA_0x01AE_DBQueryMetaReplyLastUserFound{
 		ICQMetadata: wire.ICQMetadata{
-			UIN:     sess.UIN(),
+			UIN:     instance.UIN(),
 			ReqType: wire.ICQDBQueryMetaReply,
 			Seq:     seq,
 		},
@@ -163,15 +163,15 @@ func (s ICQService) FindByEmail3(ctx context.Context, sess *state.Session, req w
 		resp.Details = s.createResult(res)
 	}
 
-	return s.reply(ctx, sess, wire.ICQMessageReplyEnvelope{
+	return s.reply(ctx, instance, wire.ICQMessageReplyEnvelope{
 		Message: resp,
 	})
 }
 
-func (s ICQService) FindByICQInterests(ctx context.Context, sess *state.Session, req wire.ICQ_0x07D0_0x0533_DBQueryMetaReqSearchWhitePages, seq uint16) error {
+func (s ICQService) FindByICQInterests(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x0533_DBQueryMetaReqSearchWhitePages, seq uint16) error {
 	resp := wire.ICQ_0x07DA_0x01AE_DBQueryMetaReplyLastUserFound{
 		ICQMetadata: wire.ICQMetadata{
-			UIN:     sess.UIN(),
+			UIN:     instance.UIN(),
 			ReqType: wire.ICQDBQueryMetaReply,
 			Seq:     seq,
 		},
@@ -179,19 +179,19 @@ func (s ICQService) FindByICQInterests(ctx context.Context, sess *state.Session,
 		ReqSubType: wire.ICQDBQueryMetaReplyLastUserFound,
 	}
 
-	interests := strings.Split(req.InterestsKeyword, ",")
-	res, err := s.userFinder.FindByICQInterests(ctx, req.InterestsCode, interests)
+	interests := strings.Split(inBody.InterestsKeyword, ",")
+	res, err := s.userFinder.FindByICQInterests(ctx, inBody.InterestsCode, interests)
 
 	if err != nil {
 		s.logger.Error("FindByICQInterests failed", "err", err.Error())
 		resp.Success = wire.ICQStatusCodeErr
-		return s.reply(ctx, sess, wire.ICQMessageReplyEnvelope{
+		return s.reply(ctx, instance, wire.ICQMessageReplyEnvelope{
 			Message: resp,
 		})
 	}
 	if len(res) == 0 {
 		resp.Success = wire.ICQStatusCodeFail
-		return s.reply(ctx, sess, wire.ICQMessageReplyEnvelope{
+		return s.reply(ctx, instance, wire.ICQMessageReplyEnvelope{
 			Message: resp,
 		})
 	}
@@ -203,7 +203,7 @@ func (s ICQService) FindByICQInterests(ctx context.Context, sess *state.Session,
 			resp.ReqSubType = wire.ICQDBQueryMetaReplyUserFound
 		}
 		resp.Details = s.createResult(res[i])
-		if err := s.reply(ctx, sess, wire.ICQMessageReplyEnvelope{
+		if err := s.reply(ctx, instance, wire.ICQMessageReplyEnvelope{
 			Message: resp,
 		}); err != nil {
 			return err
@@ -213,10 +213,10 @@ func (s ICQService) FindByICQInterests(ctx context.Context, sess *state.Session,
 	return nil
 }
 
-func (s ICQService) FindByWhitePages2(ctx context.Context, sess *state.Session, req wire.ICQ_0x07D0_0x055F_DBQueryMetaReqSearchWhitePages2, seq uint16) error {
+func (s ICQService) FindByWhitePages2(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x055F_DBQueryMetaReqSearchWhitePages2, seq uint16) error {
 
 	users, err := func() ([]state.User, error) {
-		if keyword, hasKeyword := req.ICQString(wire.ICQTLVTagsWhitepagesSearchKeywords); hasKeyword {
+		if keyword, hasKeyword := inBody.ICQString(wire.ICQTLVTagsWhitepagesSearchKeywords); hasKeyword {
 			res, err := s.userFinder.FindByICQKeyword(ctx, keyword)
 			if err != nil {
 				return nil, fmt.Errorf("FindByICQKeyword failed: %w", err)
@@ -224,9 +224,9 @@ func (s ICQService) FindByWhitePages2(ctx context.Context, sess *state.Session, 
 			return res, nil
 		}
 
-		bNick, hasNick := req.ICQString(wire.ICQTLVTagsNickname)
-		bFirst, hasFirst := req.ICQString(wire.ICQTLVTagsFirstName)
-		bLast, hastLast := req.ICQString(wire.ICQTLVTagsLastName)
+		bNick, hasNick := inBody.ICQString(wire.ICQTLVTagsNickname)
+		bFirst, hasFirst := inBody.ICQString(wire.ICQTLVTagsFirstName)
+		bLast, hastLast := inBody.ICQString(wire.ICQTLVTagsLastName)
 
 		if hasNick || hasFirst || hastLast {
 			res, err := s.userFinder.FindByICQName(ctx, bFirst, bLast, bNick)
@@ -241,7 +241,7 @@ func (s ICQService) FindByWhitePages2(ctx context.Context, sess *state.Session, 
 
 	resp := wire.ICQ_0x07DA_0x01AE_DBQueryMetaReplyLastUserFound{
 		ICQMetadata: wire.ICQMetadata{
-			UIN:     sess.UIN(),
+			UIN:     instance.UIN(),
 			ReqType: wire.ICQDBQueryMetaReply,
 			Seq:     seq,
 		},
@@ -252,14 +252,14 @@ func (s ICQService) FindByWhitePages2(ctx context.Context, sess *state.Session, 
 	if err != nil {
 		s.logger.Error("FindByWhitePages2 failed", "err", err.Error())
 		resp.Success = wire.ICQStatusCodeErr
-		return s.reply(ctx, sess, wire.ICQMessageReplyEnvelope{
+		return s.reply(ctx, instance, wire.ICQMessageReplyEnvelope{
 			Message: resp,
 		})
 	}
 
 	if len(users) == 0 {
 		resp.Success = wire.ICQStatusCodeFail
-		return s.reply(ctx, sess, wire.ICQMessageReplyEnvelope{
+		return s.reply(ctx, instance, wire.ICQMessageReplyEnvelope{
 			Message: resp,
 		})
 	}
@@ -271,7 +271,7 @@ func (s ICQService) FindByWhitePages2(ctx context.Context, sess *state.Session, 
 			resp.ReqSubType = wire.ICQDBQueryMetaReplyUserFound
 		}
 		resp.Details = s.createResult(users[i])
-		if err := s.reply(ctx, sess, wire.ICQMessageReplyEnvelope{
+		if err := s.reply(ctx, instance, wire.ICQMessageReplyEnvelope{
 			Message: resp,
 		}); err != nil {
 			return err
@@ -281,10 +281,10 @@ func (s ICQService) FindByWhitePages2(ctx context.Context, sess *state.Session, 
 	return nil
 }
 
-func (s ICQService) FindByUIN(ctx context.Context, sess *state.Session, req wire.ICQ_0x07D0_0x051F_DBQueryMetaReqSearchByUIN, seq uint16) error {
+func (s ICQService) FindByUIN(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x051F_DBQueryMetaReqSearchByUIN, seq uint16) error {
 	resp := wire.ICQ_0x07DA_0x01AE_DBQueryMetaReplyLastUserFound{
 		ICQMetadata: wire.ICQMetadata{
-			UIN:     sess.UIN(),
+			UIN:     instance.UIN(),
 			ReqType: wire.ICQDBQueryMetaReply,
 			Seq:     seq,
 		},
@@ -293,7 +293,7 @@ func (s ICQService) FindByUIN(ctx context.Context, sess *state.Session, req wire
 	}
 	resp.LastResult()
 
-	res, err := s.userFinder.FindByUIN(ctx, req.UIN)
+	res, err := s.userFinder.FindByUIN(ctx, inBody.UIN)
 
 	switch {
 	case errors.Is(err, state.ErrNoUser):
@@ -306,20 +306,20 @@ func (s ICQService) FindByUIN(ctx context.Context, sess *state.Session, req wire
 		resp.Details = s.createResult(res)
 	}
 
-	return s.reply(ctx, sess, wire.ICQMessageReplyEnvelope{
+	return s.reply(ctx, instance, wire.ICQMessageReplyEnvelope{
 		Message: resp,
 	})
 }
 
-func (s ICQService) FindByUIN2(ctx context.Context, sess *state.Session, req wire.ICQ_0x07D0_0x0569_DBQueryMetaReqSearchByUIN2, seq uint16) error {
-	UIN, hasUIN := req.Uint32LE(wire.ICQTLVTagsUIN)
+func (s ICQService) FindByUIN2(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x0569_DBQueryMetaReqSearchByUIN2, seq uint16) error {
+	UIN, hasUIN := inBody.Uint32LE(wire.ICQTLVTagsUIN)
 	if !hasUIN {
 		return errors.New("unable to get UIN from request")
 	}
 
 	resp := wire.ICQ_0x07DA_0x01AE_DBQueryMetaReplyLastUserFound{
 		ICQMetadata: wire.ICQMetadata{
-			UIN:     sess.UIN(),
+			UIN:     instance.UIN(),
 			ReqType: wire.ICQDBQueryMetaReply,
 			Seq:     seq,
 		},
@@ -341,54 +341,54 @@ func (s ICQService) FindByUIN2(ctx context.Context, sess *state.Session, req wir
 		resp.Details = s.createResult(res)
 	}
 
-	return s.reply(ctx, sess, wire.ICQMessageReplyEnvelope{
+	return s.reply(ctx, instance, wire.ICQMessageReplyEnvelope{
 		Message: resp,
 	})
 }
 
-func (s ICQService) FullUserInfo(ctx context.Context, sess *state.Session, req wire.ICQ_0x07D0_0x051F_DBQueryMetaReqSearchByUIN, seq uint16) error {
+func (s ICQService) FullUserInfo(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x051F_DBQueryMetaReqSearchByUIN, seq uint16) error {
 
-	user, err := s.userFinder.FindByUIN(ctx, req.UIN)
+	user, err := s.userFinder.FindByUIN(ctx, inBody.UIN)
 	if err != nil {
 		return err
 	}
 
-	if err := s.userInfo(ctx, sess, user, seq); err != nil {
+	if err := s.userInfo(ctx, instance, user, seq); err != nil {
 		return err
 	}
 
-	if err := s.moreUserInfo(ctx, sess, user, seq); err != nil {
+	if err := s.moreUserInfo(ctx, instance, user, seq); err != nil {
 		return err
 	}
 
-	if err := s.extraEmails(ctx, sess, user, seq); err != nil {
+	if err := s.extraEmails(ctx, instance, user, seq); err != nil {
 		return err
 	}
 
-	if err := s.homepageCat(ctx, sess, user, seq); err != nil {
+	if err := s.homepageCat(ctx, instance, user, seq); err != nil {
 		return err
 	}
 
-	if err := s.workInfo(ctx, sess, user, seq); err != nil {
+	if err := s.workInfo(ctx, instance, user, seq); err != nil {
 		return err
 	}
 
-	if err := s.notes(ctx, sess, user, seq); err != nil {
+	if err := s.notes(ctx, instance, user, seq); err != nil {
 		return err
 	}
 
-	if err := s.interests(ctx, sess, user, seq); err != nil {
+	if err := s.interests(ctx, instance, user, seq); err != nil {
 		return err
 	}
 
-	if err := s.affiliations(ctx, sess, user, seq); err != nil {
+	if err := s.affiliations(ctx, instance, user, seq); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (s ICQService) OfflineMsgReq(ctx context.Context, sess *state.Session, seq uint16) error {
-	messages, err := s.offlineMessageManager.RetrieveMessages(ctx, sess.IdentScreenName())
+func (s ICQService) OfflineMsgReq(ctx context.Context, instance *state.SessionInstance, seq uint16) error {
+	messages, err := s.offlineMessageManager.RetrieveMessages(ctx, instance.IdentScreenName())
 	if err != nil {
 		return fmt.Errorf("retrieving messages: %w", err)
 	}
@@ -396,7 +396,7 @@ func (s ICQService) OfflineMsgReq(ctx context.Context, sess *state.Session, seq 
 	for _, msgIn := range messages {
 		reply := wire.ICQ_0x0041_DBQueryOfflineMsgReply{
 			ICQMetadata: wire.ICQMetadata{
-				UIN:     sess.UIN(),
+				UIN:     instance.UIN(),
 				ReqType: wire.ICQDBQueryOfflineMsgReply,
 				Seq:     seq,
 			},
@@ -441,7 +441,7 @@ func (s ICQService) OfflineMsgReq(ctx context.Context, sess *state.Session, seq 
 		msgOut := wire.ICQMessageReplyEnvelope{
 			Message: reply,
 		}
-		if err := s.reply(ctx, sess, msgOut); err != nil {
+		if err := s.reply(ctx, instance, msgOut); err != nil {
 			return fmt.Errorf("sending offline message: %w", err)
 		}
 	}
@@ -449,7 +449,7 @@ func (s ICQService) OfflineMsgReq(ctx context.Context, sess *state.Session, seq 
 	eofMsg := wire.ICQMessageReplyEnvelope{
 		Message: wire.ICQ_0x0042_DBQueryOfflineMsgReplyLast{
 			ICQMetadata: wire.ICQMetadata{
-				UIN:     sess.UIN(),
+				UIN:     instance.UIN(),
 				ReqType: wire.ICQDBQueryOfflineMsgReplyLast,
 				Seq:     seq,
 			},
@@ -457,157 +457,157 @@ func (s ICQService) OfflineMsgReq(ctx context.Context, sess *state.Session, seq 
 		},
 	}
 
-	return s.reply(ctx, sess, eofMsg)
+	return s.reply(ctx, instance, eofMsg)
 }
 
-func (s ICQService) SetAffiliations(ctx context.Context, sess *state.Session, req wire.ICQ_0x07D0_0x041A_DBQueryMetaReqSetAffiliations, seq uint16) error {
-	if len(req.PastAffiliations) != 3 || len(req.Affiliations) != 3 {
+func (s ICQService) SetAffiliations(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x041A_DBQueryMetaReqSetAffiliations, seq uint16) error {
+	if len(inBody.PastAffiliations) != 3 || len(inBody.Affiliations) != 3 {
 		return fmt.Errorf("%w: expected 3 past affiliations and 3 affiliations", errICQBadRequest)
 	}
 	u := state.ICQAffiliations{
-		PastCode1:       req.PastAffiliations[0].Code,
-		PastKeyword1:    req.PastAffiliations[0].Keyword,
-		PastCode2:       req.PastAffiliations[1].Code,
-		PastKeyword2:    req.PastAffiliations[1].Keyword,
-		PastCode3:       req.PastAffiliations[2].Code,
-		PastKeyword3:    req.PastAffiliations[2].Keyword,
-		CurrentCode1:    req.Affiliations[0].Code,
-		CurrentKeyword1: req.Affiliations[0].Keyword,
-		CurrentCode2:    req.Affiliations[1].Code,
-		CurrentKeyword2: req.Affiliations[1].Keyword,
-		CurrentCode3:    req.Affiliations[2].Code,
-		CurrentKeyword3: req.Affiliations[2].Keyword,
+		PastCode1:       inBody.PastAffiliations[0].Code,
+		PastKeyword1:    inBody.PastAffiliations[0].Keyword,
+		PastCode2:       inBody.PastAffiliations[1].Code,
+		PastKeyword2:    inBody.PastAffiliations[1].Keyword,
+		PastCode3:       inBody.PastAffiliations[2].Code,
+		PastKeyword3:    inBody.PastAffiliations[2].Keyword,
+		CurrentCode1:    inBody.Affiliations[0].Code,
+		CurrentKeyword1: inBody.Affiliations[0].Keyword,
+		CurrentCode2:    inBody.Affiliations[1].Code,
+		CurrentKeyword2: inBody.Affiliations[1].Keyword,
+		CurrentCode3:    inBody.Affiliations[2].Code,
+		CurrentKeyword3: inBody.Affiliations[2].Keyword,
 	}
 
-	if err := s.userUpdater.SetAffiliations(ctx, sess.IdentScreenName(), u); err != nil {
+	if err := s.userUpdater.SetAffiliations(ctx, instance.IdentScreenName(), u); err != nil {
 		return err
 	}
 
-	return s.reqAck(ctx, sess, seq, wire.ICQDBQueryMetaReplySetAffiliations)
+	return s.reqAck(ctx, instance, seq, wire.ICQDBQueryMetaReplySetAffiliations)
 }
 
-func (s ICQService) SetBasicInfo(ctx context.Context, sess *state.Session, req wire.ICQ_0x07D0_0x03EA_DBQueryMetaReqSetBasicInfo, seq uint16) error {
+func (s ICQService) SetBasicInfo(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x03EA_DBQueryMetaReqSetBasicInfo, seq uint16) error {
 	u := state.ICQBasicInfo{
-		CellPhone:    req.CellPhone,
-		CountryCode:  req.CountryCode,
-		EmailAddress: req.EmailAddress,
-		FirstName:    req.FirstName,
-		GMTOffset:    req.GMTOffset,
-		Address:      req.HomeAddress,
-		City:         req.City,
-		Fax:          req.Fax,
-		Phone:        req.Phone,
-		State:        req.State,
-		LastName:     req.LastName,
-		Nickname:     req.Nickname,
-		PublishEmail: req.PublishEmail == wire.ICQUserFlagPublishEmailYes,
-		ZIPCode:      req.ZIP,
+		CellPhone:    inBody.CellPhone,
+		CountryCode:  inBody.CountryCode,
+		EmailAddress: inBody.EmailAddress,
+		FirstName:    inBody.FirstName,
+		GMTOffset:    inBody.GMTOffset,
+		Address:      inBody.HomeAddress,
+		City:         inBody.City,
+		Fax:          inBody.Fax,
+		Phone:        inBody.Phone,
+		State:        inBody.State,
+		LastName:     inBody.LastName,
+		Nickname:     inBody.Nickname,
+		PublishEmail: inBody.PublishEmail == wire.ICQUserFlagPublishEmailYes,
+		ZIPCode:      inBody.ZIP,
 	}
 
-	if err := s.userUpdater.SetBasicInfo(ctx, sess.IdentScreenName(), u); err != nil {
+	if err := s.userUpdater.SetBasicInfo(ctx, instance.IdentScreenName(), u); err != nil {
 		return err
 	}
 
-	return s.reqAck(ctx, sess, seq, wire.ICQDBQueryMetaReplySetBasicInfo)
+	return s.reqAck(ctx, instance, seq, wire.ICQDBQueryMetaReplySetBasicInfo)
 }
 
-func (s ICQService) SetEmails(ctx context.Context, sess *state.Session, req wire.ICQ_0x07D0_0x040B_DBQueryMetaReqSetEmails, seq uint16) error {
-	if len(req.Emails) > 0 {
+func (s ICQService) SetEmails(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x040B_DBQueryMetaReqSetEmails, seq uint16) error {
+	if len(inBody.Emails) > 0 {
 		s.logger.Debug("adding additional emails is not yet supported")
 	}
-	return s.reqAck(ctx, sess, seq, wire.ICQDBQueryMetaReplySetEmails)
+	return s.reqAck(ctx, instance, seq, wire.ICQDBQueryMetaReplySetEmails)
 }
 
-func (s ICQService) SetInterests(ctx context.Context, sess *state.Session, req wire.ICQ_0x07D0_0x0410_DBQueryMetaReqSetInterests, seq uint16) error {
-	if len(req.Interests) != 4 {
+func (s ICQService) SetInterests(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x0410_DBQueryMetaReqSetInterests, seq uint16) error {
+	if len(inBody.Interests) != 4 {
 		return fmt.Errorf("%w: expected 4 interests", errICQBadRequest)
 	}
 	u := state.ICQInterests{
-		Code1:    req.Interests[0].Code,
-		Keyword1: req.Interests[0].Keyword,
-		Code2:    req.Interests[1].Code,
-		Keyword2: req.Interests[1].Keyword,
-		Code3:    req.Interests[2].Code,
-		Keyword3: req.Interests[2].Keyword,
-		Code4:    req.Interests[3].Code,
-		Keyword4: req.Interests[3].Keyword,
+		Code1:    inBody.Interests[0].Code,
+		Keyword1: inBody.Interests[0].Keyword,
+		Code2:    inBody.Interests[1].Code,
+		Keyword2: inBody.Interests[1].Keyword,
+		Code3:    inBody.Interests[2].Code,
+		Keyword3: inBody.Interests[2].Keyword,
+		Code4:    inBody.Interests[3].Code,
+		Keyword4: inBody.Interests[3].Keyword,
 	}
 
-	if err := s.userUpdater.SetInterests(ctx, sess.IdentScreenName(), u); err != nil {
+	if err := s.userUpdater.SetInterests(ctx, instance.IdentScreenName(), u); err != nil {
 		return err
 	}
 
-	return s.reqAck(ctx, sess, seq, wire.ICQDBQueryMetaReplySetInterests)
+	return s.reqAck(ctx, instance, seq, wire.ICQDBQueryMetaReplySetInterests)
 }
 
-func (s ICQService) SetMoreInfo(ctx context.Context, sess *state.Session, req wire.ICQ_0x07D0_0x03FD_DBQueryMetaReqSetMoreInfo, seq uint16) error {
+func (s ICQService) SetMoreInfo(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x03FD_DBQueryMetaReqSetMoreInfo, seq uint16) error {
 	u := state.ICQMoreInfo{
-		Gender:       req.Gender,
-		HomePageAddr: req.HomePageAddr,
-		BirthYear:    req.BirthYear,
-		BirthMonth:   req.BirthMonth,
-		BirthDay:     req.BirthDay,
-		Lang1:        req.Lang1,
-		Lang2:        req.Lang2,
-		Lang3:        req.Lang3,
+		Gender:       inBody.Gender,
+		HomePageAddr: inBody.HomePageAddr,
+		BirthYear:    inBody.BirthYear,
+		BirthMonth:   inBody.BirthMonth,
+		BirthDay:     inBody.BirthDay,
+		Lang1:        inBody.Lang1,
+		Lang2:        inBody.Lang2,
+		Lang3:        inBody.Lang3,
 	}
 
-	if err := s.userUpdater.SetMoreInfo(ctx, sess.IdentScreenName(), u); err != nil {
+	if err := s.userUpdater.SetMoreInfo(ctx, instance.IdentScreenName(), u); err != nil {
 		return err
 	}
 
-	return s.reqAck(ctx, sess, seq, wire.ICQDBQueryMetaReplySetMoreInfo)
+	return s.reqAck(ctx, instance, seq, wire.ICQDBQueryMetaReplySetMoreInfo)
 }
 
-func (s ICQService) SetPermissions(ctx context.Context, sess *state.Session, req wire.ICQ_0x07D0_0x0424_DBQueryMetaReqSetPermissions, seq uint16) error {
+func (s ICQService) SetPermissions(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x0424_DBQueryMetaReqSetPermissions, seq uint16) error {
 	s.logger.Debug("setting permissions is not yet supported")
-	return s.reqAck(ctx, sess, seq, wire.ICQDBQueryMetaReplySetPermissions)
+	return s.reqAck(ctx, instance, seq, wire.ICQDBQueryMetaReplySetPermissions)
 }
 
-func (s ICQService) SetUserNotes(ctx context.Context, sess *state.Session, req wire.ICQ_0x07D0_0x0406_DBQueryMetaReqSetNotes, seq uint16) error {
+func (s ICQService) SetUserNotes(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x0406_DBQueryMetaReqSetNotes, seq uint16) error {
 	u := state.ICQUserNotes{
-		Notes: req.Notes,
+		Notes: inBody.Notes,
 	}
 
-	if err := s.userUpdater.SetUserNotes(ctx, sess.IdentScreenName(), u); err != nil {
+	if err := s.userUpdater.SetUserNotes(ctx, instance.IdentScreenName(), u); err != nil {
 		return err
 	}
 
-	return s.reqAck(ctx, sess, seq, wire.ICQDBQueryMetaReplySetNotes)
+	return s.reqAck(ctx, instance, seq, wire.ICQDBQueryMetaReplySetNotes)
 }
 
-func (s ICQService) SetWorkInfo(ctx context.Context, sess *state.Session, req wire.ICQ_0x07D0_0x03F3_DBQueryMetaReqSetWorkInfo, seq uint16) error {
+func (s ICQService) SetWorkInfo(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x03F3_DBQueryMetaReqSetWorkInfo, seq uint16) error {
 	icqWorkInfo := state.ICQWorkInfo{
-		Company:        req.Company,
-		Department:     req.Department,
-		OccupationCode: req.OccupationCode,
-		Position:       req.Position,
-		Address:        req.Address,
-		City:           req.City,
-		CountryCode:    req.CountryCode,
-		Fax:            req.Fax,
-		Phone:          req.Phone,
-		State:          req.State,
-		WebPage:        req.WebPage,
-		ZIPCode:        req.ZIP,
+		Company:        inBody.Company,
+		Department:     inBody.Department,
+		OccupationCode: inBody.OccupationCode,
+		Position:       inBody.Position,
+		Address:        inBody.Address,
+		City:           inBody.City,
+		CountryCode:    inBody.CountryCode,
+		Fax:            inBody.Fax,
+		Phone:          inBody.Phone,
+		State:          inBody.State,
+		WebPage:        inBody.WebPage,
+		ZIPCode:        inBody.ZIP,
 	}
 
-	if err := s.userUpdater.SetWorkInfo(ctx, sess.IdentScreenName(), icqWorkInfo); err != nil {
+	if err := s.userUpdater.SetWorkInfo(ctx, instance.IdentScreenName(), icqWorkInfo); err != nil {
 		return err
 	}
 
-	return s.reqAck(ctx, sess, seq, wire.ICQDBQueryMetaReplySetWorkInfo)
+	return s.reqAck(ctx, instance, seq, wire.ICQDBQueryMetaReplySetWorkInfo)
 }
 
-func (s ICQService) ShortUserInfo(ctx context.Context, sess *state.Session, req wire.ICQ_0x07D0_0x04BA_DBQueryMetaReqShortInfo, seq uint16) error {
-	user, err := s.userFinder.FindByUIN(ctx, req.UIN)
+func (s ICQService) ShortUserInfo(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x04BA_DBQueryMetaReqShortInfo, seq uint16) error {
+	user, err := s.userFinder.FindByUIN(ctx, inBody.UIN)
 	if err != nil {
 		return err
 	}
 
 	info := wire.ICQ_0x07DA_0x0104_DBQueryMetaReplyShortInfo{
 		ICQMetadata: wire.ICQMetadata{
-			UIN:     sess.UIN(),
+			UIN:     instance.UIN(),
 			ReqType: wire.ICQDBQueryMetaReply,
 			Seq:     seq,
 		},
@@ -627,14 +627,14 @@ func (s ICQService) ShortUserInfo(ctx context.Context, sess *state.Session, req 
 		Message: info,
 	}
 
-	return s.reply(ctx, sess, msg)
+	return s.reply(ctx, instance, msg)
 }
 
-func (s ICQService) XMLReqData(ctx context.Context, sess *state.Session, req wire.ICQ_0x07D0_0x0898_DBQueryMetaReqXMLReq, seq uint16) error {
+func (s ICQService) XMLReqData(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x0898_DBQueryMetaReqXMLReq, seq uint16) error {
 	msg := wire.ICQMessageReplyEnvelope{
 		Message: wire.ICQ_0x07DA_0x08A2_DBQueryMetaReplyXMLData{
 			ICQMetadata: wire.ICQMetadata{
-				UIN:     sess.UIN(),
+				UIN:     instance.UIN(),
 				ReqType: wire.ICQDBQueryMetaReply,
 				Seq:     seq,
 			},
@@ -642,14 +642,14 @@ func (s ICQService) XMLReqData(ctx context.Context, sess *state.Session, req wir
 			Success:    wire.ICQStatusCodeFail,
 		},
 	}
-	return s.reply(ctx, sess, msg)
+	return s.reply(ctx, instance, msg)
 }
 
-func (s ICQService) affiliations(ctx context.Context, sess *state.Session, user state.User, seq uint16) error {
+func (s ICQService) affiliations(ctx context.Context, instance *state.SessionInstance, user state.User, seq uint16) error {
 	msg := wire.ICQMessageReplyEnvelope{
 		Message: wire.ICQ_0x07DA_0x00FA_DBQueryMetaReplyAffiliations{
 			ICQMetadata: wire.ICQMetadata{
-				UIN:     sess.UIN(),
+				UIN:     instance.UIN(),
 				ReqType: wire.ICQDBQueryMetaReply,
 				Seq:     seq,
 			},
@@ -694,7 +694,7 @@ func (s ICQService) affiliations(ctx context.Context, sess *state.Session, user 
 		},
 	}
 
-	return s.reply(ctx, sess, msg)
+	return s.reply(ctx, instance, msg)
 }
 
 func (s ICQService) createResult(res state.User) wire.ICQUserSearchRecord {
@@ -720,11 +720,11 @@ func (s ICQService) createResult(res state.User) wire.ICQUserSearchRecord {
 	return searchRecord
 }
 
-func (s ICQService) extraEmails(ctx context.Context, sess *state.Session, user state.User, seq uint16) error {
+func (s ICQService) extraEmails(ctx context.Context, instance *state.SessionInstance, user state.User, seq uint16) error {
 	msg := wire.ICQMessageReplyEnvelope{
 		Message: wire.ICQ_0x07DA_0x00EB_DBQueryMetaReplyExtEmailInfo{
 			ICQMetadata: wire.ICQMetadata{
-				UIN:     sess.UIN(),
+				UIN:     instance.UIN(),
 				ReqType: wire.ICQDBQueryMetaReply,
 				Seq:     seq,
 			},
@@ -733,14 +733,14 @@ func (s ICQService) extraEmails(ctx context.Context, sess *state.Session, user s
 		},
 	}
 
-	return s.reply(ctx, sess, msg)
+	return s.reply(ctx, instance, msg)
 }
 
-func (s ICQService) homepageCat(ctx context.Context, sess *state.Session, user state.User, seq uint16) error {
+func (s ICQService) homepageCat(ctx context.Context, instance *state.SessionInstance, user state.User, seq uint16) error {
 	msg := wire.ICQMessageReplyEnvelope{
 		Message: wire.ICQ_0x07DA_0x010E_DBQueryMetaReplyHomePageCat{
 			ICQMetadata: wire.ICQMetadata{
-				UIN:     sess.UIN(),
+				UIN:     instance.UIN(),
 				ReqType: wire.ICQDBQueryMetaReply,
 				Seq:     seq,
 			},
@@ -749,14 +749,14 @@ func (s ICQService) homepageCat(ctx context.Context, sess *state.Session, user s
 		},
 	}
 
-	return s.reply(ctx, sess, msg)
+	return s.reply(ctx, instance, msg)
 }
 
-func (s ICQService) interests(ctx context.Context, sess *state.Session, user state.User, seq uint16) error {
+func (s ICQService) interests(ctx context.Context, instance *state.SessionInstance, user state.User, seq uint16) error {
 	msg := wire.ICQMessageReplyEnvelope{
 		Message: wire.ICQ_0x07DA_0x00F0_DBQueryMetaReplyInterests{
 			ICQMetadata: wire.ICQMetadata{
-				UIN:     sess.UIN(),
+				UIN:     instance.UIN(),
 				ReqType: wire.ICQDBQueryMetaReply,
 				Seq:     seq,
 			},
@@ -786,14 +786,14 @@ func (s ICQService) interests(ctx context.Context, sess *state.Session, user sta
 		},
 	}
 
-	return s.reply(ctx, sess, msg)
+	return s.reply(ctx, instance, msg)
 }
 
-func (s ICQService) moreUserInfo(ctx context.Context, sess *state.Session, user state.User, seq uint16) error {
+func (s ICQService) moreUserInfo(ctx context.Context, instance *state.SessionInstance, user state.User, seq uint16) error {
 	msg := wire.ICQMessageReplyEnvelope{
 		Message: wire.ICQ_0x07DA_0x00DC_DBQueryMetaReplyMoreInfo{
 			ICQMetadata: wire.ICQMetadata{
-				UIN:     sess.UIN(),
+				UIN:     instance.UIN(),
 				ReqType: wire.ICQDBQueryMetaReply,
 				Seq:     seq,
 			},
@@ -817,14 +817,14 @@ func (s ICQService) moreUserInfo(ctx context.Context, sess *state.Session, user 
 		},
 	}
 
-	return s.reply(ctx, sess, msg)
+	return s.reply(ctx, instance, msg)
 }
 
-func (s ICQService) notes(ctx context.Context, sess *state.Session, user state.User, seq uint16) error {
+func (s ICQService) notes(ctx context.Context, instance *state.SessionInstance, user state.User, seq uint16) error {
 	msg := wire.ICQMessageReplyEnvelope{
 		Message: wire.ICQ_0x07DA_0x00E6_DBQueryMetaReplyNotes{
 			ICQMetadata: wire.ICQMetadata{
-				UIN:     sess.UIN(),
+				UIN:     instance.UIN(),
 				ReqType: wire.ICQDBQueryMetaReply,
 				Seq:     seq,
 			},
@@ -836,10 +836,10 @@ func (s ICQService) notes(ctx context.Context, sess *state.Session, user state.U
 		},
 	}
 
-	return s.reply(ctx, sess, msg)
+	return s.reply(ctx, instance, msg)
 }
 
-func (s ICQService) reply(ctx context.Context, sess *state.Session, message wire.ICQMessageReplyEnvelope) error {
+func (s ICQService) reply(ctx context.Context, instance *state.SessionInstance, message wire.ICQMessageReplyEnvelope) error {
 	msg := wire.SNACMessage{
 		Frame: wire.SNACFrame{
 			FoodGroup: wire.ICQ,
@@ -854,15 +854,15 @@ func (s ICQService) reply(ctx context.Context, sess *state.Session, message wire
 		},
 	}
 
-	s.messageRelayer.RelayToScreenName(ctx, sess.IdentScreenName(), msg)
+	s.messageRelayer.RelayToScreenName(ctx, instance.IdentScreenName(), msg)
 	return nil
 }
 
-func (s ICQService) reqAck(ctx context.Context, sess *state.Session, seq uint16, subType uint16) error {
+func (s ICQService) reqAck(ctx context.Context, instance *state.SessionInstance, seq uint16, subType uint16) error {
 	msg := wire.ICQMessageReplyEnvelope{
 		Message: wire.ICQ_0x07DA_0x00DC_DBQueryMetaReplyMoreInfo{
 			ICQMetadata: wire.ICQMetadata{
-				UIN:     sess.UIN(),
+				UIN:     instance.UIN(),
 				ReqType: wire.ICQDBQueryMetaReply,
 				Seq:     seq,
 			},
@@ -871,13 +871,13 @@ func (s ICQService) reqAck(ctx context.Context, sess *state.Session, seq uint16,
 		},
 	}
 
-	return s.reply(ctx, sess, msg)
+	return s.reply(ctx, instance, msg)
 }
 
-func (s ICQService) userInfo(ctx context.Context, sess *state.Session, user state.User, seq uint16) error {
+func (s ICQService) userInfo(ctx context.Context, instance *state.SessionInstance, user state.User, seq uint16) error {
 	userInfo := wire.ICQ_0x07DA_0x00C8_DBQueryMetaReplyBasicInfo{
 		ICQMetadata: wire.ICQMetadata{
-			UIN:     sess.UIN(),
+			UIN:     instance.UIN(),
 			ReqType: wire.ICQDBQueryMetaReply,
 			Seq:     seq,
 		},
@@ -910,15 +910,15 @@ func (s ICQService) userInfo(ctx context.Context, sess *state.Session, user stat
 	msg := wire.ICQMessageReplyEnvelope{
 		Message: userInfo,
 	}
-	return s.reply(ctx, sess, msg)
+	return s.reply(ctx, instance, msg)
 
 }
 
-func (s ICQService) workInfo(ctx context.Context, sess *state.Session, user state.User, seq uint16) error {
+func (s ICQService) workInfo(ctx context.Context, instance *state.SessionInstance, user state.User, seq uint16) error {
 	msg := wire.ICQMessageReplyEnvelope{
 		Message: wire.ICQ_0x07DA_0x00D2_DBQueryMetaReplyWorkInfo{
 			ICQMetadata: wire.ICQMetadata{
-				UIN:     sess.UIN(),
+				UIN:     instance.UIN(),
 				ReqType: wire.ICQDBQueryMetaReply,
 				Seq:     seq,
 			},
@@ -940,5 +940,5 @@ func (s ICQService) workInfo(ctx context.Context, sess *state.Session, user stat
 			},
 		},
 	}
-	return s.reply(ctx, sess, msg)
+	return s.reply(ctx, instance, msg)
 }

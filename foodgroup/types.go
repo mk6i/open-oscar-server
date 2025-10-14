@@ -15,11 +15,11 @@
 // The following is a typical food group method signature. This example
 // illustrates the ICBM ChannelMsgToHost operation.
 //
-//	ChannelMsgToHost(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) (*wire.SNACMessage, error)
+//	ChannelMsgToHost(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) (*wire.SNACMessage, error)
 //
 // Params:
 //   - ctx context.Context is the client request context.
-//   - sess *state.Session is the client's session object.
+//   - instance *state.SessionInstance is the client's session object.
 //   - inFrame wire.SNACFrame is the request SNAC frame that contains the food group and subgroup parameters.
 //   - inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost contains the body of the SNAC message. In this case, it contains instant message text and metadata.
 //
@@ -90,11 +90,11 @@ type buddyBroadcaster interface {
 	BroadcastBuddyArrived(ctx context.Context, screenName state.IdentScreenName, userInfo wire.TLVUserInfo) error
 
 	// BroadcastBuddyDeparted notifies all relevant users that the given user has gone offline.
-	BroadcastBuddyDeparted(ctx context.Context, sess *state.Session) error
+	BroadcastBuddyDeparted(ctx context.Context, instance *state.SessionInstance) error
 
 	// BroadcastVisibility sends presence updates to the specified filter list.
 	// If sendDepartures is true, departure events are sent as well.
-	BroadcastVisibility(ctx context.Context, you *state.Session, filter []state.IdentScreenName, sendDepartures bool) error
+	BroadcastVisibility(ctx context.Context, you *state.SessionInstance, filter []state.IdentScreenName, sendDepartures bool) error
 }
 
 // BARTItemManager is the interface for managing BART (Buddy Art) assets.
@@ -170,10 +170,10 @@ type ChatSessionRegistry interface {
 	// param identifies the chat room to which screenName is added. It returns
 	// the newly created session instance registered in the chat session
 	// manager.
-	AddSession(ctx context.Context, chatCookie string, screenName state.DisplayScreenName) (*state.Session, error)
+	AddSession(ctx context.Context, chatCookie string, screenName state.DisplayScreenName) (*state.SessionInstance, error)
 
 	// RemoveSession removes a session from the chat session manager.
-	RemoveSession(sess *state.Session)
+	RemoveSession(instance *state.SessionInstance)
 }
 
 // ClientSideBuddyListManager defines operations for managing a user's buddy list,
@@ -289,6 +289,15 @@ type MessageRelayer interface {
 
 	// RelayToScreenName sends the given SNAC message to a single screen name.
 	RelayToScreenName(ctx context.Context, screenName state.IdentScreenName, msg wire.SNACMessage)
+
+	// RelayToOtherInstances forwards a SNAC to other concurrent instances for the same user
+	RelayToOtherInstances(ctx context.Context, instance *state.SessionInstance, msg wire.SNACMessage)
+
+	// RelayToScreenNameActiveOnly sends the given SNAC message to active sessions (not away or idle) for a single screen name.
+	RelayToScreenNameActiveOnly(ctx context.Context, screenName state.IdentScreenName, msg wire.SNACMessage)
+
+	// RelayToSelf forwards a SNAC to the current session instance.
+	RelayToSelf(ctx context.Context, instance *state.SessionInstance, msg wire.SNACMessage)
 }
 
 // OfflineMessageManager defines operations for managing offline messages.
@@ -351,18 +360,20 @@ type SessionRegistry interface {
 	//
 	// When multiple concurrent calls are made for the same screen name, only one will succeed;
 	// the others will return an error once the context is done.
-	AddSession(ctx context.Context, screenName state.DisplayScreenName) (*state.Session, error)
+	// If doMultiSess is true, allows multiple sessions for the same screen name.
+	AddSession(ctx context.Context, screenName state.DisplayScreenName, doMultiSess bool) (*state.SessionInstance, error)
 
 	// RemoveSession removes the given session from the registry, allowing future sessions
 	// to be created for the same screen name.
-	RemoveSession(sess *state.Session)
+	RemoveSession(instance *state.SessionInstance)
 }
 
 // SessionRetriever defines a method for retrieving an active session
 // associated with a given screen name.
 type SessionRetriever interface {
 	// RetrieveSession returns the session associated with the given screen name,
-	// or nil if no active session exists.
+	// or nil if no active session exists. Returns the Session object if there
+	// are active instances with complete signon.
 	RetrieveSession(screenName state.IdentScreenName) *state.Session
 }
 
