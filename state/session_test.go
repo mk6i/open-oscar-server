@@ -337,10 +337,7 @@ loop:
 }
 
 func TestSession_SendMessage_SessSendClosed(t *testing.T) {
-	s := Session{
-		msgCh:  make(chan wire.SNACMessage, 1),
-		stopCh: make(chan struct{}),
-	}
+	s := NewSession()
 	s.Close()
 	if res := s.RelayMessage(wire.SNACMessage{}); res != SessSendClosed {
 		t.Fatalf("expected SessSendClosed, got %+v", res)
@@ -348,25 +345,21 @@ func TestSession_SendMessage_SessSendClosed(t *testing.T) {
 }
 
 func TestSession_SendMessage_SessQueueFull(t *testing.T) {
-	bufSize := 10
-	s := Session{
-		msgCh:  make(chan wire.SNACMessage, bufSize),
-		stopCh: make(chan struct{}),
-	}
-	for i := 0; i < bufSize; i++ {
+	s := NewSession()
+	// Fill up the message channel (default buffer size is 1000)
+	for i := 0; i < 1000; i++ {
 		assert.Equal(t, SessSendOK, s.RelayMessage(wire.SNACMessage{}))
 	}
 	assert.Equal(t, SessQueueFull, s.RelayMessage(wire.SNACMessage{}))
 }
 
 func TestSession_Close_Twice(t *testing.T) {
-	s := Session{
-		stopCh: make(chan struct{}),
-	}
+	s := NewSession()
 	s.Close()
 	s.Close() // make sure close is idempotent
-	if !s.closed {
-		t.Fatal("expected session to be closed")
+	// Check that the session is closed by trying to relay a message
+	if res := s.RelayMessage(wire.SNACMessage{}); res != SessSendClosed {
+		t.Fatalf("expected SessSendClosed, got %+v", res)
 	}
 	select {
 	case <-s.Closed():
