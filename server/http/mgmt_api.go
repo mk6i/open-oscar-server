@@ -247,7 +247,7 @@ func getSessionHandler(w http.ResponseWriter, r *http.Request, sessionRetriever 
 	var allUsers []*state.Session
 
 	if screenName := r.PathValue("screenname"); screenName != "" {
-		session := sessionRetriever.RetrieveSession(state.NewIdentScreenName(screenName))
+		session := sessionRetriever.RetrieveSession(state.NewIdentScreenName(screenName), 0)
 		if session == nil {
 			http.Error(w, "session not found", http.StatusNotFound)
 			return
@@ -297,7 +297,7 @@ func deleteSessionHandler(w http.ResponseWriter, r *http.Request, sessionRetriev
 	w.Header().Set("Content-Type", "application/json")
 
 	if screenName := r.PathValue("screenname"); screenName != "" {
-		session := sessionRetriever.RetrieveSession(state.NewIdentScreenName(screenName))
+		session := sessionRetriever.RetrieveSession(state.NewIdentScreenName(screenName), 0)
 		if session == nil {
 			errorMsg(w, "session not found", http.StatusNotFound)
 			return

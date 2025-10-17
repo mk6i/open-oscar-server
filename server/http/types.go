@@ -121,8 +121,10 @@ type SessionRetriever interface {
 	AllSessions() []*state.Session
 
 	// RetrieveSession returns the session associated with the given screen name,
-	// or nil if no active session exists.
-	RetrieveSession(screenName state.IdentScreenName) *state.Session
+	// or nil if no active session exists. If sessionNum is provided (non-zero),
+	// returns the specific instance with that session number, otherwise returns
+	// the first active instance.
+	RetrieveSession(screenName state.IdentScreenName, sessionNum uint8) *state.Session
 }
 
 // UserManager defines methods for accessing and inserting AIM user records.

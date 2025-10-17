@@ -12,8 +12,8 @@ import (
 )
 
 type sessionSlot struct {
-	sess    *Session
-	removed chan bool
+	sessionGroup *SessionGroup
+	removed      chan bool
 }
 
 var errSessConflict = errors.New("session conflict: another session was created concurrently for this user")
@@ -40,16 +40,22 @@ func (s *InMemorySessionManager) RelayToAll(ctx context.Context, msg wire.SNACMe
 	s.mapMutex.RLock()
 	defer s.mapMutex.RUnlock()
 	for _, rec := range s.store {
-		if !rec.sess.SignonComplete() {
-			continue
+		// Relay to all active instances in the session group
+		for _, instance := range rec.sessionGroup.GetActiveInstances() {
+			if !instance.SignonComplete() {
+				continue
+			}
+			s.maybeRelayMessage(ctx, msg, &Session{
+				SessionGroup: rec.sessionGroup,
+				Instance:     instance,
+			})
 		}
-		s.maybeRelayMessage(ctx, msg, rec.sess)
 	}
 }
 
 // RelayToScreenName relays a message to a session with a matching screen name.
 func (s *InMemorySessionManager) RelayToScreenName(ctx context.Context, screenName IdentScreenName, msg wire.SNACMessage) {
-	sess := s.RetrieveSession(screenName)
+	sess := s.RetrieveSession(screenName, 0)
 	if sess == nil {
 		s.logger.WarnContext(ctx, "can't send notification because user is not online", "recipient", screenName, "message", msg)
 		return
@@ -74,26 +80,47 @@ func (s *InMemorySessionManager) maybeRelayMessage(ctx context.Context, msg wire
 	}
 }
 
-func (s *InMemorySessionManager) AddSession(ctx context.Context, screenName DisplayScreenName) (*Session, error) {
+func (s *InMemorySessionManager) AddSession(ctx context.Context, screenName DisplayScreenName, doMultiSess bool) (*Session, error) {
 	s.mapMutex.Lock()
 
 	active := s.findRec(screenName.IdentScreenName())
 	if active != nil {
-		// there's an active session that needs to be removed. don't hold the
-		// lock while we wait.
-		s.mapMutex.Unlock()
+		if doMultiSess {
+			// Multi-session mode: add a new instance to the existing session group
+			s.mapMutex.Unlock()
 
-		// signal to callers that this session has to go
-		active.sess.Close()
+			// Create a new instance within the existing session group
+			instance := NewInstance(active.sessionGroup)
+			active.sessionGroup.AddInstance(instance)
 
-		select {
-		case <-active.removed: // wait for RemoveSession to be called
-		case <-ctx.Done():
-			return nil, fmt.Errorf("waiting for previous session to terminate: %w", ctx.Err())
+			// Create a Session wrapper for backward compatibility
+			sess := &Session{
+				SessionGroup: active.sessionGroup,
+				Instance:     instance,
+			}
+
+			return sess, nil
+		} else {
+			// Single-session mode: replace the existing session group
+			// there's an active session that needs to be removed. don't hold the
+			// lock while we wait.
+			s.mapMutex.Unlock()
+
+			// signal to callers that this session group has to go
+			// Close all instances in the session group
+			for _, instance := range active.sessionGroup.GetInstances() {
+				instance.Close()
+			}
+
+			select {
+			case <-active.removed: // wait for RemoveSession to be called
+			case <-ctx.Done():
+				return nil, fmt.Errorf("waiting for previous session to terminate: %w", ctx.Err())
+			}
+
+			// the session has been removed, let's try to replace it
+			s.mapMutex.Lock()
 		}
-
-		// the session has been removed, let's try to replace it
-		s.mapMutex.Lock()
 	}
 
 	defer s.mapMutex.Unlock()
@@ -103,13 +130,23 @@ func (s *InMemorySessionManager) AddSession(ctx context.Context, screenName Disp
 		return nil, errSessConflict
 	}
 
-	sess := NewSession()
-	sess.SetIdentScreenName(screenName.IdentScreenName())
-	sess.SetDisplayScreenName(screenName)
+	sessionGroup := NewSessionGroup()
+	sessionGroup.SetIdentScreenName(screenName.IdentScreenName())
+	sessionGroup.SetDisplayScreenName(screenName)
+
+	// Create a new instance within the session group
+	instance := NewInstance(sessionGroup)
+	sessionGroup.AddInstance(instance)
+
+	// Create a Session wrapper for backward compatibility
+	sess := &Session{
+		SessionGroup: sessionGroup,
+		Instance:     instance,
+	}
 
 	s.store[sess.IdentScreenName()] = &sessionSlot{
-		sess:    sess,
-		removed: make(chan bool),
+		sessionGroup: sessionGroup,
+		removed:      make(chan bool),
 	}
 
 	return sess, nil
@@ -117,7 +154,7 @@ func (s *InMemorySessionManager) AddSession(ctx context.Context, screenName Disp
 
 func (s *InMemorySessionManager) findRec(identScreenName IdentScreenName) *sessionSlot {
 	for _, rec := range s.store {
-		if identScreenName == rec.sess.IdentScreenName() {
+		if identScreenName == rec.sessionGroup.IdentScreenName() {
 			return rec
 		}
 	}
@@ -128,22 +165,52 @@ func (s *InMemorySessionManager) findRec(identScreenName IdentScreenName) *sessi
 func (s *InMemorySessionManager) RemoveSession(sess *Session) {
 	s.mapMutex.Lock()
 	defer s.mapMutex.Unlock()
-	if rec, ok := s.store[sess.IdentScreenName()]; ok && rec.sess == sess {
-		delete(s.store, sess.IdentScreenName())
-		close(rec.removed)
+	if rec, ok := s.store[sess.IdentScreenName()]; ok && rec.sessionGroup == sess.SessionGroup {
+		// Close the instance first
+		sess.Instance.Close()
+
+		// Check if the SessionGroup is now empty
+		activeInstances := rec.sessionGroup.GetActiveInstances()
+		if len(activeInstances) == 0 {
+			// No active instances left, remove the entire SessionGroup
+			delete(s.store, sess.IdentScreenName())
+			close(rec.removed)
+		}
 	}
 }
 
 // RetrieveSession finds a session with a matching sessionID. Returns nil if
-// session is not found.
-func (s *InMemorySessionManager) RetrieveSession(screenName IdentScreenName) *Session {
+// session is not found. If sessionNum is provided (non-zero), returns the
+// specific instance with that session number, otherwise returns the first
+// active instance.
+func (s *InMemorySessionManager) RetrieveSession(screenName IdentScreenName, sessionNum uint8) *Session {
 	s.mapMutex.RLock()
 	defer s.mapMutex.RUnlock()
 	if rec, ok := s.store[screenName]; ok {
-		if !rec.sess.SignonComplete() {
-			return nil
+		activeInstances := rec.sessionGroup.GetActiveInstances()
+		if len(activeInstances) > 0 {
+			var targetInstance *Instance
+
+			if sessionNum != 0 {
+				// Find specific instance by session number
+				for _, instance := range activeInstances {
+					if instance.InstanceNum() == sessionNum {
+						targetInstance = instance
+						break
+					}
+				}
+			} else {
+				// Return the first active instance for backward compatibility
+				targetInstance = activeInstances[0]
+			}
+
+			if targetInstance != nil && targetInstance.SignonComplete() {
+				return &Session{
+					SessionGroup: rec.sessionGroup,
+					Instance:     targetInstance,
+				}
+			}
 		}
-		return rec.sess
 	}
 	return nil
 }
@@ -154,11 +221,19 @@ func (s *InMemorySessionManager) retrieveByScreenNames(screenNames []IdentScreen
 	var ret []*Session
 	for _, sn := range screenNames {
 		for _, rec := range s.store {
-			if !rec.sess.SignonComplete() {
-				continue
-			}
-			if sn == rec.sess.IdentScreenName() {
-				ret = append(ret, rec.sess)
+			if sn == rec.sessionGroup.IdentScreenName() {
+				// Return the first active instance as a Session for backward compatibility
+				activeInstances := rec.sessionGroup.GetActiveInstances()
+				if len(activeInstances) > 0 {
+					instance := activeInstances[0]
+					if instance.SignonComplete() {
+						ret = append(ret, &Session{
+							SessionGroup: rec.sessionGroup,
+							Instance:     instance,
+						})
+					}
+				}
+				break
 			}
 		}
 	}
@@ -178,10 +253,15 @@ func (s *InMemorySessionManager) AllSessions() []*Session {
 	defer s.mapMutex.RUnlock()
 	var sessions []*Session
 	for _, rec := range s.store {
-		if !rec.sess.SignonComplete() {
-			continue
+		// Return all active instances as Sessions for backward compatibility
+		for _, instance := range rec.sessionGroup.GetActiveInstances() {
+			if instance.SignonComplete() {
+				sessions = append(sessions, &Session{
+					SessionGroup: rec.sessionGroup,
+					Instance:     instance,
+				})
+			}
 		}
-		sessions = append(sessions, rec.sess)
 	}
 	return sessions
 }
@@ -217,7 +297,7 @@ func (s *InMemoryChatSessionManager) AddSession(ctx context.Context, chatCookie 
 	ctx, cancel := context.WithTimeout(ctx, time.Second*5)
 	defer cancel()
 
-	sess, err := sessionManager.AddSession(ctx, screenName)
+	sess, err := sessionManager.AddSession(ctx, screenName, false)
 	if err != nil {
 		return nil, fmt.Errorf("AddSession: %w", err)
 	}
@@ -267,7 +347,7 @@ func (s *InMemoryChatSessionManager) RemoveUserFromAllChats(user IdentScreenName
 	defer s.mapMutex.Unlock()
 
 	for _, sessionManager := range s.store {
-		userSess := sessionManager.RetrieveSession(user)
+		userSess := sessionManager.RetrieveSession(user, 0)
 		if userSess != nil {
 			userSess.Close()
 			sessionManager.RemoveSession(userSess)

@@ -266,7 +266,7 @@ func (s buddyNotifier) BroadcastVisibility(
 			continue // they block you, don't send them notifications
 		}
 
-		theirSess := s.sessionRetriever.RetrieveSession(relationship.User)
+		theirSess := s.sessionRetriever.RetrieveSession(relationship.User, 0)
 		if theirSess == nil {
 			continue // they are offline
 		}
