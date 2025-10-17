@@ -351,7 +351,8 @@ type SessionRegistry interface {
 	//
 	// When multiple concurrent calls are made for the same screen name, only one will succeed;
 	// the others will return an error once the context is done.
-	AddSession(ctx context.Context, screenName state.DisplayScreenName) (*state.Session, error)
+	// If doMultiSess is true, allows multiple sessions for the same screen name.
+	AddSession(ctx context.Context, screenName state.DisplayScreenName, doMultiSess bool) (*state.Session, error)
 
 	// RemoveSession removes the given session from the registry, allowing future sessions
 	// to be created for the same screen name.
@@ -362,8 +363,10 @@ type SessionRegistry interface {
 // associated with a given screen name.
 type SessionRetriever interface {
 	// RetrieveSession returns the session associated with the given screen name,
-	// or nil if no active session exists.
-	RetrieveSession(screenName state.IdentScreenName) *state.Session
+	// or nil if no active session exists. If sessionNum is provided (non-zero),
+	// returns the specific instance with that session number, otherwise returns
+	// the first active instance.
+	RetrieveSession(screenName state.IdentScreenName, sessionNum uint8) *state.Session
 }
 
 // UserManager defines methods for accessing and inserting AIM user records.

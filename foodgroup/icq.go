@@ -713,7 +713,7 @@ func (s ICQService) createResult(res state.User) wire.ICQUserSearchRecord {
 		searchRecord.Authorization = 1
 	}
 
-	userSess := s.sessionRetriever.RetrieveSession(res.IdentScreenName)
+	userSess := s.sessionRetriever.RetrieveSession(res.IdentScreenName, 0)
 	if userSess != nil {
 		searchRecord.OnlineStatus = 1
 	}

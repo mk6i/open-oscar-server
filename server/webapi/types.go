@@ -109,7 +109,7 @@ type AdminService interface {
 // SessionRetriever provides methods to retrieve OSCAR sessions.
 type SessionRetriever interface {
 	AllSessions() []*state.Session
-	RetrieveSession(screenName state.IdentScreenName) *state.Session
+	RetrieveSession(screenName state.IdentScreenName, sessionNum uint8) *state.Session
 }
 
 // FeedbagRetriever provides methods to retrieve buddy list data.

@@ -92,6 +92,8 @@ type Session struct {
 
 	// Active instances for this user
 	instances []*Instance
+	// Instance counter for this session group
+	instanceCounter uint8
 }
 
 // Instance represents a single session instance with per-session data.
@@ -102,7 +104,7 @@ type Instance struct {
 	mutex sync.RWMutex
 
 	// Unique instance identifier
-	instanceID string
+	instanceNum uint8
 
 	// Per-session connection state
 	remoteAddr     *netip.AddrPort
@@ -168,17 +170,18 @@ func NewSessionGroup() *SessionGroup {
 		userStatusBitmask: wire.OServiceUserStatusAvailable,
 		warningCh:         make(chan uint16, 1),
 		instances:         make([]*Instance, 0),
+		instanceCounter:   0,
 	}
 }
 
 // NewInstance creates a new Instance within a SessionGroup.
 func NewInstance(sessionGroup *SessionGroup) *Instance {
 	now := time.Now()
-	instanceID := generateInstanceID()
+	instanceNum := sessionGroup.generateInstanceNum()
 
 	return &Instance{
 		SessionGroup:      sessionGroup,
-		instanceID:        instanceID,
+		instanceNum:       instanceNum,
 		msgCh:             make(chan wire.SNACMessage, 1000),
 		nowFn:             time.Now,
 		stopCh:            make(chan struct{}),
@@ -204,7 +207,7 @@ func (sg *SessionGroup) RemoveInstance(instance *Instance) {
 	sg.mutex.Lock()
 	defer sg.mutex.Unlock()
 	for i, inst := range sg.instances {
-		if inst.instanceID == instance.instanceID {
+		if inst.instanceNum == instance.instanceNum {
 			sg.instances = append(sg.instances[:i], sg.instances[i+1:]...)
 			break
 		}
@@ -946,9 +949,9 @@ func (i *Instance) Closed() <-chan struct{} {
 	return i.stopCh
 }
 
-// InstanceID returns the unique instance identifier.
-func (i *Instance) InstanceID() string {
-	return i.instanceID
+// InstanceNum returns the unique instance identifier.
+func (i *Instance) InstanceNum() uint8 {
+	return i.instanceNum
 }
 
 // ============================================================================
@@ -978,19 +981,16 @@ func (s *Session) EvaluateRateLimit(now time.Time, rateClassID wire.RateLimitCla
 
 // Helper functions
 
-func generateInstanceID() string {
-	// Simple instance ID generation - in a real implementation,
-	// this might use UUID or a more sophisticated approach
-	return time.Now().Format("20060102150405") + "-" + randomString(8)
-}
+// generateInstanceNum generates the next instance number for this session group.
+func (sg *SessionGroup) generateInstanceNum() uint8 {
+	sg.mutex.Lock()
+	defer sg.mutex.Unlock()
 
-func randomString(length int) string {
-	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	b := make([]byte, length)
-	for i := range b {
-		b[i] = charset[time.Now().UnixNano()%int64(len(charset))]
+	sg.instanceCounter++
+	if sg.instanceCounter == 0 {
+		sg.instanceCounter = 1 // Start from 1, skip 0
 	}
-	return string(b)
+	return sg.instanceCounter
 }
 
 func defaultFoodGroupVersions() [wire.MDir + 1]uint16 {
