@@ -554,6 +554,7 @@ func (s OServiceService) ServiceRequest(ctx context.Context, service uint16, ses
 			return fnIssueCookie(state.ServerCookie{
 				Service:    inBody.FoodGroup,
 				ScreenName: sess.DisplayScreenName(),
+				SessionNum: sess.InstanceNum(),
 			})
 		case wire.Chat:
 			roomMeta, ok := inBody.Bytes(0x01)
@@ -575,6 +576,7 @@ func (s OServiceService) ServiceRequest(ctx context.Context, service uint16, ses
 				Service:    wire.Chat,
 				ChatCookie: room.Cookie(),
 				ScreenName: sess.DisplayScreenName(),
+				SessionNum: sess.InstanceNum(),
 			})
 		default:
 			return nil, nil

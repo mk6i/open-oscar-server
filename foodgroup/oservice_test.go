@@ -77,9 +77,10 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 							dataIn: []byte{
 								0x00, 0x07, // admin service
 								0x02, 'm', 'e',
-								0x0, // no client ID
-								0x0, // no chat cookie
-								0x0, // multi conn flag
+								0x0,  // no client ID
+								0x0,  // no chat cookie
+								0x0,  // multi conn flag
+								0x01, // session num
 								0x0, // kerberos flag
 							},
 							cookieOut: []byte("the-cookie"),
@@ -125,9 +126,10 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 							dataIn: []byte{
 								0x00, 0x18, // alert service
 								0x02, 'm', 'e',
-								0x0, // no client ID
-								0x0, // no chat cookie
-								0x0, // multi conn flag
+								0x0,  // no client ID
+								0x0,  // no chat cookie
+								0x0,  // multi conn flag
+								0x01, // session num
 								0x0, // kerberos flag
 							},
 							cookieOut: []byte("the-cookie"),
@@ -173,9 +175,10 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 							dataIn: []byte{
 								0x00, 0x10, // chatnav service
 								0x02, 'm', 'e',
-								0x0, // no client ID
-								0x0, // no chat cookie
-								0x0, // multi conn flag
+								0x0,  // no client ID
+								0x0,  // no chat cookie
+								0x0,  // multi conn flag
+								0x01, // session num
 								0x0, // kerberos flag
 							},
 							cookieOut: []byte("the-cookie"),
@@ -221,9 +224,10 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 							dataIn: []byte{
 								0x00, 0x0d, // chatnav service
 								0x02, 'm', 'e',
-								0x0, // no client ID
-								0x0, // no chat cookie
-								0x0, // multi conn flag
+								0x0,  // no client ID
+								0x0,  // no chat cookie
+								0x0,  // multi conn flag
+								0x01, // session num
 								0x0, // kerberos flag
 							},
 							cookieOut: []byte("the-cookie"),
@@ -289,7 +293,8 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 									0x02, 'm', 'e', // screen name
 									0x00, // no client ID
 									0x11, '4', '-', '0', '-', 't', 'h', 'e', '-', 'c', 'h', 'a', 't', '-', 'r', 'o', 'o', 'm',
-									0x0, // multi conn flag
+									0x0,  // multi conn flag
+									0x01, // session num
 									0x0, // kerberos flag
 								},
 								cookieOut: []byte("the-auth-cookie"),
@@ -336,9 +341,10 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 							dataIn: []byte{
 								0x00, 0x0F, // chatnav service
 								0x02, 'm', 'e',
-								0x0, // no client ID
-								0x0, // no chat cookie
-								0x0, // multi conn flag
+								0x0,  // no client ID
+								0x0,  // no chat cookie
+								0x0,  // multi conn flag
+								0x01, // session num
 								0x0, // kerberos flag
 							},
 							cookieOut: []byte("the-cookie"),
@@ -469,9 +475,10 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 							dataIn: []byte{
 								0x00, 0x07, // admin service
 								0x02, 'm', 'e',
-								0x0, // no client ID
-								0x0, // no chat cookie
-								0x0, // multi conn flag
+								0x0,  // no client ID
+								0x0,  // no chat cookie
+								0x0,  // multi conn flag
+								0x01, // session num
 								0x0, // kerberos flag
 							},
 							cookieOut: []byte("the-cookie"),
@@ -522,9 +529,10 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 							dataIn: []byte{
 								0x00, 0x18, // alert service
 								0x02, 'm', 'e',
-								0x0, // no client ID
-								0x0, // no chat cookie
-								0x0, // multi conn flag
+								0x0,  // no client ID
+								0x0,  // no chat cookie
+								0x0,  // multi conn flag
+								0x01, // session num
 								0x0, // kerberos flag
 							},
 							cookieOut: []byte("the-cookie"),
@@ -575,9 +583,10 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 							dataIn: []byte{
 								0x00, 0x10, // BART service
 								0x02, 'm', 'e',
-								0x0, // no client ID
-								0x0, // no chat cookie
-								0x0, // multi conn flag
+								0x0,  // no client ID
+								0x0,  // no chat cookie
+								0x0,  // multi conn flag
+								0x01, // session num
 								0x0, // kerberos flag
 							},
 							cookieOut: []byte("the-cookie"),
@@ -628,9 +637,10 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 							dataIn: []byte{
 								0x00, 0x0d, // chatnav service
 								0x02, 'm', 'e',
-								0x0, // no client ID
-								0x0, // no chat cookie
-								0x0, // multi conn flag
+								0x0,  // no client ID
+								0x0,  // no chat cookie
+								0x0,  // multi conn flag
+								0x01, // session num
 								0x0, // kerberos flag
 							},
 							cookieOut: []byte("the-cookie"),
@@ -697,7 +707,8 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 									0x02, 'm', 'e', // screen name
 									0x00, // no client ID
 									0x11, '4', '-', '0', '-', 't', 'h', 'e', '-', 'c', 'h', 'a', 't', '-', 'r', 'o', 'o', 'm',
-									0x0, // multi conn flag
+									0x0,  // multi conn flag
+									0x01, // session num
 									0x0, // kerberos flag
 								},
 								cookieOut: []byte("the-auth-cookie"),
@@ -749,9 +760,10 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 							dataIn: []byte{
 								0x00, 0x0F, // ODir service
 								0x02, 'm', 'e',
-								0x0, // no client ID
-								0x0, // no chat cookie
-								0x0, // multi conn flag
+								0x0,  // no client ID
+								0x0,  // no chat cookie
+								0x0,  // multi conn flag
+								0x01, // session num
 								0x0, // kerberos flag
 							},
 							cookieOut: []byte("the-cookie"),
