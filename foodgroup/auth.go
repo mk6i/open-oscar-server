@@ -107,7 +107,14 @@ func (s AuthService) RegisterBOSSession(ctx context.Context, serverCookie state.
 	ctx, cancel := context.WithTimeout(ctx, time.Second*5)
 	defer cancel()
 
-	sess, err := s.sessionManager.AddSession(ctx, u.DisplayScreenName, false)
+	flag := wire.MultiConnFlag(serverCookie.MultiConnFlag)
+
+	doMultiSess := false
+	if flag == wire.MultiConnFlagsRecentClient {
+		doMultiSess = true
+	}
+
+	sess, err := s.sessionManager.AddSession(ctx, u.DisplayScreenName, doMultiSess)
 	if err != nil {
 		return nil, fmt.Errorf("AddSession: %w", err)
 	}
@@ -140,7 +147,7 @@ func (s AuthService) RegisterBOSSession(ctx context.Context, serverCookie state.
 	}
 
 	// indicate whether the client supports/wants multiple concurrent sessions
-	sess.SetMultiConnFlag(wire.MultiConnFlag(serverCookie.MultiConnFlag))
+	sess.SetMultiConnFlag(flag)
 
 	if u.DisplayScreenName.IsUIN() {
 		sess.SetUserInfoFlag(wire.OServiceUserFlagICQ)
@@ -165,7 +172,7 @@ func (s AuthService) RetrieveBOSSession(ctx context.Context, serverCookie state.
 		return nil, fmt.Errorf("user not found")
 	}
 
-	return s.sessionRetriever.RetrieveSession(u.IdentScreenName, 0), nil
+	return s.sessionRetriever.RetrieveSession(u.IdentScreenName, serverCookie.SessionNum), nil
 }
 
 // Signout removes this user's session and notifies users who have this user on
