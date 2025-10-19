@@ -80,8 +80,27 @@ func (s *InMemorySessionManager) RelayToOtherSessions(ctx context.Context, sess 
 	}
 }
 
+func (s *InMemorySessionManager) RelayToScreenNameActiveOnly(ctx context.Context, screenName IdentScreenName, msg wire.SNACMessage) {
+	sess := s.RetrieveSession(screenName, 0)
+	if sess == nil {
+		s.logger.WarnContext(ctx, "can't send notification because user is not online", "recipient", screenName, "message", msg)
+		return
+	}
+	s.maybeRelayMessageActiveOnly(ctx, msg, sess)
+}
+
 func (s *InMemorySessionManager) maybeRelayMessage(ctx context.Context, msg wire.SNACMessage, sess *Session) {
 	switch sess.RelayMessage(msg) {
+	case SessSendClosed:
+		s.logger.WarnContext(ctx, "can't send notification because the user's session is closed", "recipient", sess.IdentScreenName(), "message", msg)
+	case SessQueueFull:
+		s.logger.WarnContext(ctx, "can't send notification because queue is full", "recipient", sess.IdentScreenName(), "message", msg)
+		sess.Close()
+	}
+}
+
+func (s *InMemorySessionManager) maybeRelayMessageActiveOnly(ctx context.Context, msg wire.SNACMessage, sess *Session) {
+	switch sess.RelayMessageActiveOnly(msg) {
 	case SessSendClosed:
 		s.logger.WarnContext(ctx, "can't send notification because the user's session is closed", "recipient", sess.IdentScreenName(), "message", msg)
 	case SessQueueFull:

@@ -109,6 +109,7 @@ type sessionRetrieverParams struct {
 // SessionRetriever.RetrieveSession call site
 type retrieveSessionParams []struct {
 	screenName state.IdentScreenName
+	sessionNum uint8
 	result     *state.Session
 }
 
@@ -289,9 +290,10 @@ type sessionRegistryParams struct {
 // addSessionParams is the list of parameters passed at the mock
 // SessionRegistry.AddSession call site
 type addSessionParams []struct {
-	screenName state.DisplayScreenName
-	result     *state.Session
-	err        error
+	screenName  state.DisplayScreenName
+	doMultiSess bool
+	result      *state.Session
+	err         error
 }
 
 // removeSessionParams is the list of parameters passed at the mock
@@ -368,6 +370,7 @@ type messageRelayerParams struct {
 	relayToScreenNamesParams
 	relayToScreenNameParams
 	relayToOtherSessionsParams
+	relayToScreenNameActiveOnlyParams
 }
 
 // relayToScreenNamesParams is the list of parameters passed at the mock
@@ -389,6 +392,13 @@ type relayToScreenNameParams []struct {
 type relayToOtherSessionsParams []struct {
 	sess    *state.Session
 	message wire.SNACMessage
+}
+
+// relayToScreenNameActiveOnlyParams is the list of parameters passed at the mock
+// MessageRelayer.RelayToScreenNameActiveOnly call site
+type relayToScreenNameActiveOnlyParams []struct {
+	screenName state.IdentScreenName
+	message    wire.SNACMessage
 }
 
 // profileManagerParams is a helper struct that contains mock parameters for
@@ -857,6 +867,34 @@ func sessRemoteAddr(remoteAddr netip.AddrPort) func(session *state.Session) {
 	return func(session *state.Session) {
 		session.SetRemoteAddr(&remoteAddr)
 	}
+}
+
+// sessOptAllInactive makes all instances in the session group inactive (away/idle/closed)
+func sessOptAllInactive(session *state.Session) {
+	// Set away message to make instance inactive
+	session.SetAwayMessage("away message")
+	// Also set idle to ensure it's inactive
+	session.SetIdle(time.Hour)
+}
+
+// sessOptSomeActive ensures some instances are active (not all inactive)
+func sessOptSomeActive(session *state.Session) {
+	// Don't set away message or idle - keep instance active
+	// This simulates a multisession scenario where at least one instance is active
+}
+
+// sessOptClosed makes the session instance closed (inactive)
+func sessOptClosed(session *state.Session) {
+	session.Close()
+}
+
+// sessOptMixedStates simulates a multisession scenario with mixed states
+// This would require multiple instances, but for testing purposes we'll just
+// keep the instance active to simulate having some active sessions
+func sessOptMixedStates(session *state.Session) {
+	// Keep instance active to simulate mixed states scenario
+	// In a real multisession scenario, this would have multiple instances
+	// with some active and some inactive
 }
 
 // sessBuddyIcon sets session buddy icon

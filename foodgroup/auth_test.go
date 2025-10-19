@@ -1605,8 +1605,9 @@ func TestAuthService_RegisterBOSSession(t *testing.T) {
 				sessionRegistryParams: sessionRegistryParams{
 					addSessionParams: addSessionParams{
 						{
-							screenName: screenName,
-							result:     newTestSession(screenName),
+							screenName:  screenName,
+							doMultiSess: false,
+							result:      newTestSession(screenName),
 						},
 					},
 				},
@@ -1663,8 +1664,9 @@ func TestAuthService_RegisterBOSSession(t *testing.T) {
 				sessionRegistryParams: sessionRegistryParams{
 					addSessionParams: addSessionParams{
 						{
-							screenName: screenName,
-							result:     newTestSession(screenName),
+							screenName:  screenName,
+							doMultiSess: false,
+							result:      newTestSession(screenName),
 						},
 					},
 				},
@@ -1754,7 +1756,7 @@ func TestAuthService_RegisterBOSSession(t *testing.T) {
 			sessionRegistry := newMockSessionRegistry(t)
 			for _, params := range tc.mockParams.addSessionParams {
 				sessionRegistry.EXPECT().
-					AddSession(mock.Anything, params.screenName).
+					AddSession(mock.Anything, params.screenName, params.doMultiSess).
 					Return(params.result, params.err)
 			}
 			userManager := newMockUserManager(t)

@@ -300,6 +300,29 @@ func (sg *SessionGroup) IsAllIdle() bool {
 	return activeCount > 0 && activeCount == idleCount
 }
 
+// AllInactive returns true if all instances are not active.
+// An instance is considered inactive if it is closed, idle, or has an away message.
+func (sg *SessionGroup) AllInactive() bool {
+	sg.mutex.RLock()
+	defer sg.mutex.RUnlock()
+
+	if len(sg.instances) == 0 {
+		return true // No instances means all are inactive
+	}
+
+	for _, instance := range sg.instances {
+		instance.mutex.RLock()
+		isActive := !instance.closed && !instance.idle && instance.awayMessage == ""
+		instance.mutex.RUnlock()
+
+		if isActive {
+			return false // Found at least one active instance
+		}
+	}
+
+	return true // All instances are inactive
+}
+
 // GetMostRecentIdleTime returns the most recent idle time from all instances.
 func (sg *SessionGroup) GetMostRecentIdleTime() time.Time {
 	sg.mutex.RLock()
@@ -621,6 +644,49 @@ func (sg *SessionGroup) RelayMessageExceptSelf(self *Instance, msg wire.SNACMess
 
 	for _, instance := range sg.instances {
 		if instance == self {
+			continue
+		}
+		instance.mutex.RLock()
+		if !instance.closed {
+			activeInstances++
+			select {
+			case instance.msgCh <- msg:
+				successfulSends++
+			case <-instance.stopCh:
+				// Instance is closed, skip it
+			default:
+				// Queue is full for this instance
+				fullQueues++
+			}
+		}
+		instance.mutex.RUnlock()
+	}
+
+	if activeInstances == 0 {
+		return SessSendClosed
+	}
+
+	if successfulSends > 0 {
+		return SessSendOK
+	}
+
+	if fullQueues == activeInstances {
+		return SessQueueFull
+	}
+
+	return SessSendClosed
+}
+
+func (sg *SessionGroup) RelayMessageActiveOnly(msg wire.SNACMessage) SessSendStatus {
+	sg.mutex.RLock()
+	defer sg.mutex.RUnlock()
+
+	activeInstances := 0
+	successfulSends := 0
+	fullQueues := 0
+
+	for _, instance := range sg.instances {
+		if !instance.Active() {
 			continue
 		}
 		instance.mutex.RLock()
@@ -995,6 +1061,17 @@ func (i *Instance) Closed() <-chan struct{} {
 // InstanceNum returns the unique instance identifier.
 func (i *Instance) InstanceNum() uint8 {
 	return i.instanceNum
+}
+
+// Active returns true if the instance is active. An instance is considered active if:
+// - it is not closed
+// - it is not idle
+// - it has no away message
+func (i *Instance) Active() bool {
+	i.mutex.RLock()
+	defer i.mutex.RUnlock()
+
+	return !i.closed && !i.idle && i.awayMessage == ""
 }
 
 // ============================================================================
