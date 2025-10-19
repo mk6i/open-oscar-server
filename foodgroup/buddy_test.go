@@ -909,7 +909,7 @@ func Test_buddyNotifier_BroadcastVisibility(t *testing.T) {
 			sessionRetriever := newMockSessionRetriever(t)
 			for _, params := range tc.mockParams.retrieveSessionParams {
 				sessionRetriever.EXPECT().
-					RetrieveSession(params.screenName).
+					RetrieveSession(params.screenName, params.sessionNum).
 					Return(params.result)
 			}
 

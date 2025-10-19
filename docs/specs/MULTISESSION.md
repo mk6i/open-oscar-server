@@ -99,7 +99,7 @@ Route incoming instant messages to the right sessions based on their state.
 
 - ✅ Messages go to ALL non-away sessions if any exist
 - ✅ If ALL sessions are away, messages go to ALL sessions (including away ones)
-- Don't send to idle/inactive sessions if active sessions exist
+- ✅ Don't send to idle/inactive sessions if active sessions exist
 
 ### 11. Typing Notifications (ICBM Channel 1) ⚠️
 Handle typing notifications across multiple sessions.

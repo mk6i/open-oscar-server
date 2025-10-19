@@ -156,14 +156,25 @@ func (s ICBMService) ChannelMsgToHost(ctx context.Context, sess *state.Session, 
 		clientIM.Append(wire.NewTLVBE(wire.ICBMTLVWantEvents, []byte{}))
 	}
 
-	s.messageRelayer.RelayToScreenName(ctx, recipSess.IdentScreenName(), wire.SNACMessage{
-		Frame: wire.SNACFrame{
-			FoodGroup: wire.ICBM,
-			SubGroup:  wire.ICBMChannelMsgToClient,
-			RequestID: wire.ReqIDFromServer,
-		},
-		Body: clientIM,
-	})
+	if recipSess.AllInactive() {
+		s.messageRelayer.RelayToScreenName(ctx, recipSess.IdentScreenName(), wire.SNACMessage{
+			Frame: wire.SNACFrame{
+				FoodGroup: wire.ICBM,
+				SubGroup:  wire.ICBMChannelMsgToClient,
+				RequestID: wire.ReqIDFromServer,
+			},
+			Body: clientIM,
+		})
+	} else {
+		s.messageRelayer.RelayToScreenNameActiveOnly(ctx, recipSess.IdentScreenName(), wire.SNACMessage{
+			Frame: wire.SNACFrame{
+				FoodGroup: wire.ICBM,
+				SubGroup:  wire.ICBMChannelMsgToClient,
+				RequestID: wire.ReqIDFromServer,
+			},
+			Body: clientIM,
+		})
+	}
 
 	s.convoTracker.trackConvo(time.Now(), sess.IdentScreenName(), recipSess.IdentScreenName())
 

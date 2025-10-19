@@ -238,7 +238,7 @@ func TestICQService_FindByICQName(t *testing.T) {
 			sessionRetriever := newMockSessionRetriever(t)
 			for _, params := range tt.mockParams.retrieveSessionParams {
 				sessionRetriever.EXPECT().
-					RetrieveSession(params.screenName).
+					RetrieveSession(params.screenName, params.sessionNum).
 					Return(params.result)
 			}
 
@@ -374,7 +374,7 @@ func TestICQService_FindByICQEmail(t *testing.T) {
 			sessionRetriever := newMockSessionRetriever(t)
 			for _, params := range tt.mockParams.retrieveSessionParams {
 				sessionRetriever.EXPECT().
-					RetrieveSession(params.screenName).
+					RetrieveSession(params.screenName, params.sessionNum).
 					Return(params.result)
 			}
 
@@ -516,7 +516,7 @@ func TestICQService_FindByEmail3(t *testing.T) {
 			sessionRetriever := newMockSessionRetriever(t)
 			for _, params := range tt.mockParams.retrieveSessionParams {
 				sessionRetriever.EXPECT().
-					RetrieveSession(params.screenName).
+					RetrieveSession(params.screenName, params.sessionNum).
 					Return(params.result)
 			}
 
@@ -652,7 +652,7 @@ func TestICQService_FindByUIN(t *testing.T) {
 			sessionRetriever := newMockSessionRetriever(t)
 			for _, params := range tt.mockParams.retrieveSessionParams {
 				sessionRetriever.EXPECT().
-					RetrieveSession(params.screenName).
+					RetrieveSession(params.screenName, params.sessionNum).
 					Return(params.result)
 			}
 
@@ -792,7 +792,7 @@ func TestICQService_FindByUIN2(t *testing.T) {
 			sessionRetriever := newMockSessionRetriever(t)
 			for _, params := range tt.mockParams.retrieveSessionParams {
 				sessionRetriever.EXPECT().
-					RetrieveSession(params.screenName).
+					RetrieveSession(params.screenName, params.sessionNum).
 					Return(params.result)
 			}
 
@@ -991,7 +991,7 @@ func TestICQService_FindByWhitePages(t *testing.T) {
 			sessionRetriever := newMockSessionRetriever(t)
 			for _, params := range tt.mockParams.retrieveSessionParams {
 				sessionRetriever.EXPECT().
-					RetrieveSession(params.screenName).
+					RetrieveSession(params.screenName, params.sessionNum).
 					Return(params.result)
 			}
 
@@ -1315,7 +1315,7 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 			sessionRetriever := newMockSessionRetriever(t)
 			for _, params := range tt.mockParams.retrieveSessionParams {
 				sessionRetriever.EXPECT().
-					RetrieveSession(params.screenName).
+					RetrieveSession(params.screenName, params.sessionNum).
 					Return(params.result)
 			}
 
