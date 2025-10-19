@@ -289,6 +289,9 @@ type MessageRelayer interface {
 
 	// RelayToScreenName sends the given SNAC message to a single screen name.
 	RelayToScreenName(ctx context.Context, screenName state.IdentScreenName, msg wire.SNACMessage)
+	
+	// RelayToOtherSessions forwards a SNAC to other concurrent sessions for the same user
+	RelayToOtherSessions(ctx context.Context, sess *state.Session, msg wire.SNACMessage)
 }
 
 // OfflineMessageManager defines operations for managing offline messages.

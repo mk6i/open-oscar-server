@@ -611,6 +611,49 @@ func (sg *SessionGroup) RelayMessage(msg wire.SNACMessage) SessSendStatus {
 	return SessSendClosed
 }
 
+func (sg *SessionGroup) RelayMessageExceptSelf(self *Instance, msg wire.SNACMessage) SessSendStatus {
+	sg.mutex.RLock()
+	defer sg.mutex.RUnlock()
+
+	activeInstances := 0
+	successfulSends := 0
+	fullQueues := 0
+
+	for _, instance := range sg.instances {
+		if instance == self {
+			continue
+		}
+		instance.mutex.RLock()
+		if !instance.closed {
+			activeInstances++
+			select {
+			case instance.msgCh <- msg:
+				successfulSends++
+			case <-instance.stopCh:
+				// Instance is closed, skip it
+			default:
+				// Queue is full for this instance
+				fullQueues++
+			}
+		}
+		instance.mutex.RUnlock()
+	}
+
+	if activeInstances == 0 {
+		return SessSendClosed
+	}
+
+	if successfulSends > 0 {
+		return SessSendOK
+	}
+
+	if fullQueues == activeInstances {
+		return SessQueueFull
+	}
+
+	return SessSendClosed
+}
+
 // TLVUserInfo returns a TLV list containing session information aggregated from all instances.
 func (sg *SessionGroup) TLVUserInfo() wire.TLVUserInfo {
 	sg.mutex.RLock()

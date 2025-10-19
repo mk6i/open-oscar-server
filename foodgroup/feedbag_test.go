@@ -438,6 +438,32 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 						},
 					},
 				},
+				messageRelayerParams: messageRelayerParams{
+					relayToOtherSessionsParams: relayToOtherSessionsParams{
+						{
+							sess: newTestSession("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagInsertItem,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
+									Items: []wire.FeedbagItem{
+										{
+											ClassID: wire.FeedbagClassIDPermit,
+											Name:    "buddy1",
+										},
+										{
+											ClassID: wire.FeedbagClassIDPermit,
+											Name:    "buddy2",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
 			},
 			expectOutput: wire.SNACMessage{
 				Frame: wire.SNACFrame{
@@ -1223,6 +1249,10 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 						RelayToScreenName(matchContext(), params.screenName, params.message)
 				}
 			}
+			for _, params := range tc.mockParams.messageRelayerParams.relayToOtherSessionsParams {
+				messageRelayer.EXPECT().
+					RelayToOtherSessions(mock.Anything, params.sess, params.message)
+			}
 			bartItemManager := newMockBARTItemManager(t)
 			for _, params := range tc.mockParams.bartItemManagerParams.bartItemManagerRetrieveParams {
 				bartItemManager.EXPECT().
@@ -1329,6 +1359,36 @@ func TestFeedbagService_DeleteItem(t *testing.T) {
 						},
 					},
 				},
+				messageRelayerParams: messageRelayerParams{
+					relayToOtherSessionsParams: relayToOtherSessionsParams{
+						{
+							sess: newTestSession("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagDeleteItem,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
+									Items: []wire.FeedbagItem{
+										{
+											ClassID: wire.FeedbagClassIdBuddy,
+											Name:    "buddy1",
+										},
+										{
+											ClassID: wire.FeedbagClassIdBuddy,
+											Name:    "buddy2",
+										},
+										{
+											ClassID: wire.FeedbagClassIdGroup,
+											Name:    "group",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
 			},
 			expectOutput: wire.SNACMessage{
 				Frame: wire.SNACFrame{
@@ -1357,11 +1417,16 @@ func TestFeedbagService_DeleteItem(t *testing.T) {
 					BroadcastVisibility(mock.Anything, matchSession(params.from), params.filter, true).
 					Return(params.err)
 			}
+			messageRelayer := newMockMessageRelayer(t)
+			for _, params := range tc.mockParams.messageRelayerParams.relayToOtherSessionsParams {
+				messageRelayer.EXPECT().
+					RelayToOtherSessions(mock.Anything, params.sess, params.message)
+			}
 
 			svc := FeedbagService{
 				buddyBroadcaster: buddyUpdateBroadcast,
 				feedbagManager:   feedbagManager,
-				messageRelayer:   nil,
+				messageRelayer:   messageRelayer,
 			}
 			output, err := svc.DeleteItem(context.Background(), tc.userSession, tc.inputSNAC.Frame,
 				tc.inputSNAC.Body.(wire.SNAC_0x13_0x0A_FeedbagDeleteItem))
