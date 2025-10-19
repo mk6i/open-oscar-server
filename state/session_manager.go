@@ -70,6 +70,16 @@ func (s *InMemorySessionManager) RelayToScreenNames(ctx context.Context, screenN
 	}
 }
 
+func (s *InMemorySessionManager) RelayToOtherSessions(ctx context.Context, sess *Session, msg wire.SNACMessage) {
+	switch sess.RelayMessageExceptSelf(sess.Instance, msg) {
+	case SessSendClosed:
+		s.logger.WarnContext(ctx, "can't send notification because the user's session is closed", "recipient", sess.IdentScreenName(), "message", msg)
+	case SessQueueFull:
+		s.logger.WarnContext(ctx, "can't send notification because queue is full", "recipient", sess.IdentScreenName(), "message", msg)
+		sess.Close()
+	}
+}
+
 func (s *InMemorySessionManager) maybeRelayMessage(ctx context.Context, msg wire.SNACMessage, sess *Session) {
 	switch sess.RelayMessage(msg) {
 	case SessSendClosed:

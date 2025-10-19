@@ -220,6 +220,17 @@ func (s FeedbagService) UpsertItem(ctx context.Context, sess *state.Session, inF
 		}
 	}
 
+	s.messageRelayer.RelayToOtherSessions(ctx, sess, wire.SNACMessage{
+		Frame: wire.SNACFrame{
+			FoodGroup: inFrame.FoodGroup,
+			SubGroup:  inFrame.SubGroup,
+			RequestID: wire.ReqIDFromServer,
+		},
+		Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
+			Items: items,
+		},
+	})
+
 	snacPayloadOut := wire.SNAC_0x13_0x0E_FeedbagStatus{}
 	for range items {
 		snacPayloadOut.Results = append(snacPayloadOut.Results, 0x0000)
@@ -334,6 +345,15 @@ func (s FeedbagService) DeleteItem(ctx context.Context, sess *state.Session, inF
 	if err := s.buddyBroadcaster.BroadcastVisibility(ctx, sess, filter, true); err != nil {
 		return wire.SNACMessage{}, err
 	}
+
+	s.messageRelayer.RelayToOtherSessions(ctx, sess, wire.SNACMessage{
+		Frame: wire.SNACFrame{
+			FoodGroup: inFrame.FoodGroup,
+			SubGroup:  inFrame.SubGroup,
+			RequestID: wire.ReqIDFromServer,
+		},
+		Body: inBody,
+	})
 
 	snacPayloadOut := wire.SNAC_0x13_0x0E_FeedbagStatus{}
 	for range inBody.Items {
