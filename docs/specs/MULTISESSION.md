@@ -101,11 +101,11 @@ Route incoming instant messages to the right sessions based on their state.
 - ✅ If ALL sessions are away, messages go to ALL sessions (including away ones)
 - ✅ Don't send to idle/inactive sessions if active sessions exist
 
-### 11. Typing Notifications (ICBM Channel 1) ⚠️
+### 11. Typing Notifications ✅
 Handle typing notifications across multiple sessions.
 
-- Typing notifications (`MTN`) are sent FROM the session where user is typing
-- Incoming typing notifications go to ALL active non-away sessions
+- Typing notifications are sent FROM the session where user is typing
+- Outgoing typing notifications go to ALL active sessions
 
 ### 12. Offline Message Delivery ✅
 Offline messages stored while user is completely offline.

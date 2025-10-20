@@ -1751,9 +1751,11 @@ func TestICBMService_ClientEvent(t *testing.T) {
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
+		// expectError indicates whether an error is expected
+		expectError bool
 	}{
 		{
-			name:             "transmit message from sender to recipient",
+			name:             "transmit typing event (event=2) from sender to recipient",
 			senderScreenName: "sender-screen-name",
 			mockParams: mockParams{
 				relationshipFetcherParams: relationshipFetcherParams{
@@ -1785,7 +1787,7 @@ func TestICBMService_ClientEvent(t *testing.T) {
 									Cookie:     12345678,
 									ChannelID:  42,
 									ScreenName: "sender-screen-name",
-									Event:      12,
+									Event:      2, // typing
 								},
 							},
 						},
@@ -1800,12 +1802,116 @@ func TestICBMService_ClientEvent(t *testing.T) {
 					Cookie:     12345678,
 					ChannelID:  42,
 					ScreenName: "recipient-screen-name",
-					Event:      12,
+					Event:      2, // typing
 				},
 			},
 		},
 		{
-			name:             "don't transmit message from sender to recipient because sender has blocked recipient",
+			name:             "transmit text typed event (event=1) from sender to recipient",
+			senderScreenName: "sender-screen-name",
+			mockParams: mockParams{
+				relationshipFetcherParams: relationshipFetcherParams{
+					relationshipParams: relationshipParams{
+						{
+							me:   state.NewIdentScreenName("sender-screen-name"),
+							them: state.NewIdentScreenName("recipient-screen-name"),
+							result: state.Relationship{
+								User:          state.NewIdentScreenName("recipient-screen-name"),
+								BlocksYou:     false,
+								YouBlock:      false,
+								IsOnTheirList: false,
+								IsOnYourList:  false,
+							},
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameActiveOnlyParams: relayToScreenNameActiveOnlyParams{
+						{
+							screenName: state.NewIdentScreenName("recipient-screen-name"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.ICBM,
+									SubGroup:  wire.ICBMClientEvent,
+									RequestID: 5678,
+								},
+								Body: wire.SNAC_0x04_0x14_ICBMClientEvent{
+									Cookie:     87654321,
+									ChannelID:  1,
+									ScreenName: "sender-screen-name",
+									Event:      1, // text typed
+								},
+							},
+						},
+					},
+				},
+			},
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					RequestID: 5678,
+				},
+				Body: wire.SNAC_0x04_0x14_ICBMClientEvent{
+					Cookie:     87654321,
+					ChannelID:  1,
+					ScreenName: "recipient-screen-name",
+					Event:      1, // text typed
+				},
+			},
+		},
+		{
+			name:             "transmit stopped typing event (event=0) from sender to recipient",
+			senderScreenName: "sender-screen-name",
+			mockParams: mockParams{
+				relationshipFetcherParams: relationshipFetcherParams{
+					relationshipParams: relationshipParams{
+						{
+							me:   state.NewIdentScreenName("sender-screen-name"),
+							them: state.NewIdentScreenName("recipient-screen-name"),
+							result: state.Relationship{
+								User:          state.NewIdentScreenName("recipient-screen-name"),
+								BlocksYou:     false,
+								YouBlock:      false,
+								IsOnTheirList: false,
+								IsOnYourList:  false,
+							},
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameActiveOnlyParams: relayToScreenNameActiveOnlyParams{
+						{
+							screenName: state.NewIdentScreenName("recipient-screen-name"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.ICBM,
+									SubGroup:  wire.ICBMClientEvent,
+									RequestID: 9999,
+								},
+								Body: wire.SNAC_0x04_0x14_ICBMClientEvent{
+									Cookie:     98765432,
+									ChannelID:  5,
+									ScreenName: "sender-screen-name",
+									Event:      0, // stopped typing
+								},
+							},
+						},
+					},
+				},
+			},
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					RequestID: 9999,
+				},
+				Body: wire.SNAC_0x04_0x14_ICBMClientEvent{
+					Cookie:     98765432,
+					ChannelID:  5,
+					ScreenName: "recipient-screen-name",
+					Event:      0, // stopped typing
+				},
+			},
+		},
+		{
+			name:             "don't transmit typing event because sender has blocked recipient",
 			senderScreenName: "sender-screen-name",
 			mockParams: mockParams{
 				relationshipFetcherParams: relationshipFetcherParams{
@@ -1832,9 +1938,78 @@ func TestICBMService_ClientEvent(t *testing.T) {
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x04_0x14_ICBMClientEvent{
+					Cookie:     12345678,
+					ChannelID:  42,
 					ScreenName: "recipient-screen-name",
+					Event:      2, // typing
 				},
 			},
+		},
+		{
+			name:             "don't transmit typing event because recipient has blocked sender",
+			senderScreenName: "sender-screen-name",
+			mockParams: mockParams{
+				relationshipFetcherParams: relationshipFetcherParams{
+					relationshipParams: relationshipParams{
+						{
+							me:   state.NewIdentScreenName("sender-screen-name"),
+							them: state.NewIdentScreenName("recipient-screen-name"),
+							result: state.Relationship{
+								User:          state.NewIdentScreenName("recipient-screen-name"),
+								BlocksYou:     true,
+								YouBlock:      false,
+								IsOnTheirList: false,
+								IsOnYourList:  false,
+							},
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameActiveOnlyParams: relayToScreenNameActiveOnlyParams{},
+				},
+			},
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x04_0x14_ICBMClientEvent{
+					Cookie:     12345678,
+					ChannelID:  42,
+					ScreenName: "recipient-screen-name",
+					Event:      2, // typing
+				},
+			},
+		},
+		{
+			name:             "return error when relationship fetcher fails",
+			senderScreenName: "sender-screen-name",
+			mockParams: mockParams{
+				relationshipFetcherParams: relationshipFetcherParams{
+					relationshipParams: relationshipParams{
+						{
+							me:     state.NewIdentScreenName("sender-screen-name"),
+							them:   state.NewIdentScreenName("recipient-screen-name"),
+							result: state.Relationship{},
+							err:    errors.New("database connection failed"),
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameActiveOnlyParams: relayToScreenNameActiveOnlyParams{},
+				},
+			},
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x04_0x14_ICBMClientEvent{
+					Cookie:     12345678,
+					ChannelID:  42,
+					ScreenName: "recipient-screen-name",
+					Event:      2, // typing
+				},
+			},
+			expectError: true,
 		},
 	}
 
@@ -1847,9 +2022,9 @@ func TestICBMService_ClientEvent(t *testing.T) {
 					Return(item.result, item.err)
 			}
 			messageRelayer := newMockMessageRelayer(t)
-			for _, item := range tc.mockParams.relayToScreenNameParams {
+			for _, item := range tc.mockParams.relayToScreenNameActiveOnlyParams {
 				messageRelayer.EXPECT().
-					RelayToScreenName(matchContext(), item.screenName, item.message)
+					RelayToScreenNameActiveOnly(matchContext(), item.screenName, item.message)
 			}
 
 			senderSession := newTestSession(tc.senderScreenName)
@@ -1857,8 +2032,14 @@ func TestICBMService_ClientEvent(t *testing.T) {
 				relationshipFetcher: relationshipFetcher,
 				messageRelayer:      messageRelayer,
 			}
-			assert.NoError(t, svc.ClientEvent(context.Background(), senderSession, tc.inputSNAC.Frame,
-				tc.inputSNAC.Body.(wire.SNAC_0x04_0x14_ICBMClientEvent)))
+			err := svc.ClientEvent(context.Background(), senderSession, tc.inputSNAC.Frame,
+				tc.inputSNAC.Body.(wire.SNAC_0x04_0x14_ICBMClientEvent))
+
+			if tc.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
 		})
 	}
 }
