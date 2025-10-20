@@ -34,6 +34,8 @@ func TestFeedbagService_Query(t *testing.T) {
 			userSession: newTestSession("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagInsertItem,
 					RequestID: 1234,
 				},
 			},
@@ -64,6 +66,8 @@ func TestFeedbagService_Query(t *testing.T) {
 			userSession: newTestSession("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagInsertItem,
 					RequestID: 1234,
 				},
 			},
@@ -155,6 +159,8 @@ func TestFeedbagService_QueryIfModified(t *testing.T) {
 			userSession: newTestSession("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagInsertItem,
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x13_0x05_FeedbagQueryIfModified{
@@ -187,6 +193,8 @@ func TestFeedbagService_QueryIfModified(t *testing.T) {
 			userSession: newTestSession("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagInsertItem,
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x13_0x05_FeedbagQueryIfModified{
@@ -241,6 +249,8 @@ func TestFeedbagService_QueryIfModified(t *testing.T) {
 			userSession: newTestSession("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagInsertItem,
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x13_0x05_FeedbagQueryIfModified{
@@ -394,6 +404,8 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 			userSession: newTestSession("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagInsertItem,
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x13_0x08_FeedbagInsertItem{
@@ -481,6 +493,8 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 			userSession: newTestSession("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagInsertItem,
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x13_0x08_FeedbagInsertItem{
@@ -514,6 +528,32 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 						},
 					},
 				},
+				messageRelayerParams: messageRelayerParams{
+					relayToOtherSessionsParams: relayToOtherSessionsParams{
+						{
+							sess: newTestSession("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagInsertItem,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
+									Items: []wire.FeedbagItem{
+										{
+											ClassID: wire.FeedbagClassIdBuddyPrefs,
+											TLVLBlock: wire.TLVLBlock{
+												TLVList: wire.TLVList{
+													wire.NewTLVBE(wire.FeedbagAttributesBuddyPrefs, uint32(0x8000)),
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
 			},
 			expectOutput: wire.SNACMessage{
 				Frame: wire.SNACFrame{
@@ -532,6 +572,8 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 			userSession: newTestSession("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagInsertItem,
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x13_0x08_FeedbagInsertItem{
@@ -565,6 +607,32 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 						},
 					},
 				},
+				messageRelayerParams: messageRelayerParams{
+					relayToOtherSessionsParams: relayToOtherSessionsParams{
+						{
+							sess: newTestSession("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagInsertItem,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
+									Items: []wire.FeedbagItem{
+										{
+											ClassID: wire.FeedbagClassIdBuddyPrefs,
+											TLVLBlock: wire.TLVLBlock{
+												TLVList: wire.TLVList{
+													wire.NewTLVBE(wire.FeedbagAttributesBuddyPrefs, uint32(wire.FeedbagBuddyPrefsWantsTypingEvents)),
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
 			},
 			expectOutput: wire.SNACMessage{
 				Frame: wire.SNACFrame{
@@ -583,6 +651,8 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 			userSession: newTestSession("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagInsertItem,
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x13_0x08_FeedbagInsertItem{
@@ -623,6 +693,32 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 							filter: []state.IdentScreenName{
 								state.NewIdentScreenName("buddy1"),
 								state.NewIdentScreenName("buddy2"),
+							},
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToOtherSessionsParams: relayToOtherSessionsParams{
+						{
+							sess: newTestSession("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagInsertItem,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
+									Items: []wire.FeedbagItem{
+										{
+											ClassID: wire.FeedbagClassIDDeny,
+											Name:    "buddy1",
+										},
+										{
+											ClassID: wire.FeedbagClassIDDeny,
+											Name:    "buddy2",
+										},
+									},
+								},
 							},
 						},
 					},
@@ -644,6 +740,8 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 			userSession: newTestSession("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagInsertItem,
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x13_0x08_FeedbagInsertItem{
@@ -688,6 +786,32 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 						},
 					},
 				},
+				messageRelayerParams: messageRelayerParams{
+					relayToOtherSessionsParams: relayToOtherSessionsParams{
+						{
+							sess: newTestSession("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagInsertItem,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
+									Items: []wire.FeedbagItem{
+										{
+											ClassID: wire.FeedbagClassIDPermit,
+											Name:    "buddy1",
+										},
+										{
+											ClassID: wire.FeedbagClassIDPermit,
+											Name:    "buddy2",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
 			},
 			expectOutput: wire.SNACMessage{
 				Frame: wire.SNACFrame{
@@ -705,6 +829,8 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 			userSession: newTestSession("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagInsertItem,
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x13_0x08_FeedbagInsertItem{
@@ -736,6 +862,27 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 						},
 					},
 				},
+				messageRelayerParams: messageRelayerParams{
+					relayToOtherSessionsParams: relayToOtherSessionsParams{
+						{
+							sess: newTestSession("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagInsertItem,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
+									Items: []wire.FeedbagItem{
+										{
+											ClassID: wire.FeedbagClassIdPdinfo,
+										},
+									},
+								},
+							},
+						},
+					},
+				},
 			},
 			expectOutput: wire.SNACMessage{
 				Frame: wire.SNACFrame{
@@ -753,6 +900,8 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 			userSession: newTestSession("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagInsertItem,
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x13_0x08_FeedbagInsertItem{
@@ -780,6 +929,8 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 			userSession: newTestSession("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagInsertItem,
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x13_0x08_FeedbagInsertItem{
@@ -849,6 +1000,32 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 								},
 							},
 						},
+					},
+					relayToOtherSessionsParams: relayToOtherSessionsParams{
+						{
+							sess: newTestSession("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagInsertItem,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
+									Items: []wire.FeedbagItem{
+										{
+											ClassID: wire.FeedbagClassIdBart,
+											TLVLBlock: wire.TLVLBlock{
+												TLVList: wire.TLVList{
+													wire.NewTLVBE(wire.FeedbagAttributesBartInfo, wire.BARTInfo{
+														Hash: []byte{'t', 'h', 'e', 'h', 'a', 's', 'h'},
+													}),
+												},
+											},
+										},
+									},
+								},
+							},
+						},
 						{
 							screenName: state.NewIdentScreenName("me"),
 							message: wire.SNACMessage{
@@ -899,6 +1076,8 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 			userSession: newTestSession("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagInsertItem,
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x13_0x08_FeedbagInsertItem{
@@ -971,6 +1150,32 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 								},
 							},
 						},
+					},
+					relayToOtherSessionsParams: relayToOtherSessionsParams{
+						{
+							sess: newTestSession("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagInsertItem,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
+									Items: []wire.FeedbagItem{
+										{
+											ClassID: wire.FeedbagClassIdBart,
+											TLVLBlock: wire.TLVLBlock{
+												TLVList: wire.TLVList{
+													wire.NewTLVBE(wire.FeedbagAttributesBartInfo, wire.BARTInfo{
+														Hash: []byte{'t', 'h', 'e', 'h', 'a', 's', 'h'},
+													}),
+												},
+											},
+										},
+									},
+								},
+							},
+						},
 						{
 							screenName: state.NewIdentScreenName("me"),
 							message: wire.SNACMessage{
@@ -1028,6 +1233,8 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 			userSession: newTestSession("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagInsertItem,
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x13_0x08_FeedbagInsertItem{
@@ -1073,6 +1280,34 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					broadcastBuddyArrivedParams: broadcastBuddyArrivedParams{
 						{
 							screenName: state.DisplayScreenName("me"),
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToOtherSessionsParams: relayToOtherSessionsParams{
+						{
+							sess: newTestSession("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagInsertItem,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
+									Items: []wire.FeedbagItem{
+										{
+											ClassID: wire.FeedbagClassIdBart,
+											TLVLBlock: wire.TLVLBlock{
+												TLVList: wire.TLVList{
+													wire.NewTLVBE(wire.FeedbagAttributesBartInfo, wire.BARTInfo{
+														Hash: wire.GetClearIconHash(),
+													}),
+												},
+											},
+										},
+									},
+								},
+							},
 						},
 					},
 				},
@@ -1251,7 +1486,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 			}
 			for _, params := range tc.mockParams.messageRelayerParams.relayToOtherSessionsParams {
 				messageRelayer.EXPECT().
-					RelayToOtherSessions(mock.Anything, params.sess, params.message)
+					RelayToOtherSessions(mock.Anything, mock.Anything, params.message)
 			}
 			bartItemManager := newMockBARTItemManager(t)
 			for _, params := range tc.mockParams.bartItemManagerParams.bartItemManagerRetrieveParams {
@@ -1307,6 +1542,8 @@ func TestFeedbagService_DeleteItem(t *testing.T) {
 			userSession: newTestSession("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagDeleteItem,
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
@@ -1420,7 +1657,7 @@ func TestFeedbagService_DeleteItem(t *testing.T) {
 			messageRelayer := newMockMessageRelayer(t)
 			for _, params := range tc.mockParams.messageRelayerParams.relayToOtherSessionsParams {
 				messageRelayer.EXPECT().
-					RelayToOtherSessions(mock.Anything, params.sess, params.message)
+					RelayToOtherSessions(mock.Anything, mock.Anything, params.message)
 			}
 
 			svc := FeedbagService{

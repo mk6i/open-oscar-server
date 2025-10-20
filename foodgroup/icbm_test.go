@@ -2111,7 +2111,7 @@ func TestICBMService_EvilRequest(t *testing.T) {
 					},
 				},
 				messageRelayerParams: messageRelayerParams{
-					relayToScreenNameActiveOnlyParams: relayToScreenNameActiveOnlyParams{
+					relayToScreenNameParams: relayToScreenNameParams{
 						{
 							screenName: state.NewIdentScreenName("recipient-screen-name"),
 							message: wire.SNACMessage{
@@ -2178,7 +2178,7 @@ func TestICBMService_EvilRequest(t *testing.T) {
 					},
 				},
 				messageRelayerParams: messageRelayerParams{
-					relayToScreenNameActiveOnlyParams: relayToScreenNameActiveOnlyParams{
+					relayToScreenNameParams: relayToScreenNameParams{
 						{
 							screenName: state.NewIdentScreenName("recipient-screen-name"),
 							message: wire.SNACMessage{

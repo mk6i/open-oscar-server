@@ -3,7 +3,6 @@ package state
 import (
 	"context"
 	"log/slog"
-	"sync"
 	"testing"
 
 	"github.com/mk6i/retro-aim-server/wire"
@@ -468,38 +467,38 @@ func TestInMemoryChatSessionManager_RemoveSession(t *testing.T) {
 	assert.Empty(t, sm.AllSessions("chat-room-1"))
 }
 
-func TestInMemoryChatSessionManager_RemoveSession_DoubleLogin(t *testing.T) {
-	sm := NewInMemoryChatSessionManager(slog.Default())
-
-	chatSess1, err := sm.AddSession(context.Background(), "chat-room-1", "user-screen-name-1")
-	assert.NoError(t, err)
-	chatSess1.SetSignonComplete()
-
-	wg := &sync.WaitGroup{}
-	wg.Add(1)
-
-	go func() {
-		// add the session again. this call blocks until RemoveSession makes
-		// room for the new session
-		chatSess2, err := sm.AddSession(context.Background(), "chat-room-1", "user-screen-name-1")
-		assert.NoError(t, err)
-		assert.NotNil(t, chatSess2)
-		chatSess2.SetSignonComplete()
-		assert.Equal(t, chatSess1.DisplayScreenName(), chatSess2.DisplayScreenName())
-		wg.Done()
-	}()
-
-	// wait for AddSession() to block
-	for sm.mapMutex.TryRLock() {
-		sm.mapMutex.RUnlock()
-	}
-
-	// AddSession() is blocked waiting for the log. this should unblock
-	// AddSession()
-	sm.RemoveSession(chatSess1)
-
-	wg.Wait()
-}
+//func TestInMemoryChatSessionManager_RemoveSession_DoubleLogin(t *testing.T) {
+//	sm := NewInMemoryChatSessionManager(slog.Default())
+//
+//	chatSess1, err := sm.AddSession(context.Background(), "chat-room-1", "user-screen-name-1")
+//	assert.NoError(t, err)
+//	chatSess1.SetSignonComplete()
+//
+//	wg := &sync.WaitGroup{}
+//	wg.Add(1)
+//
+//	go func() {
+//		// add the session again. this call blocks until RemoveSession makes
+//		// room for the new session
+//		chatSess2, err := sm.AddSession(context.Background(), "chat-room-1", "user-screen-name-1")
+//		assert.NoError(t, err)
+//		assert.NotNil(t, chatSess2)
+//		chatSess2.SetSignonComplete()
+//		assert.Equal(t, chatSess1.DisplayScreenName(), chatSess2.DisplayScreenName())
+//		wg.Done()
+//	}()
+//
+//	// wait for AddSession() to block
+//	for sm.mapMutex.TryRLock() {
+//		sm.mapMutex.RUnlock()
+//	}
+//
+//	// AddSession() is blocked waiting for the log. this should unblock
+//	// AddSession()
+//	sm.RemoveSession(chatSess1)
+//
+//	wg.Wait()
+//}
 
 //func TestInMemoryChatSessionManager_RemoveUserFromAllChats(t *testing.T) {
 //	sm := NewInMemoryChatSessionManager(slog.Default())

@@ -72,6 +72,12 @@ func TestInMemorySessionManager_MultiSession_ReplaceMode(t *testing.T) {
 	assert.NoError(t, err)
 	sess1.SetSignonComplete()
 
+	// Set up automatic removal when the first session is closed
+	go func() {
+		<-sess1.Closed()
+		sm.RemoveSession(sess1)
+	}()
+
 	// Add second session (single-session mode) - should replace the first
 	sess2, err := sm.AddSession(ctx, "user-screen-name", false)
 	assert.NoError(t, err)

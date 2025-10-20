@@ -163,7 +163,7 @@ func TestSessionHandlerScreenname_GET(t *testing.T) {
 			sessionRetriever := newMockSessionRetriever(t)
 			for _, params := range tc.mockParams.sessionRetrieverParams.retrieveSessionByNameParams {
 				sessionRetriever.EXPECT().
-					RetrieveSession(params.screenName).
+					RetrieveSession(params.screenName, uint8(0)).
 					Return(params.result)
 			}
 
@@ -236,7 +236,7 @@ func TestSessionHandlerScreenname_DELETE(t *testing.T) {
 			sessionRetriever := newMockSessionRetriever(t)
 			for _, params := range tc.mockParams.sessionRetrieverParams.retrieveSessionByNameParams {
 				sessionRetriever.EXPECT().
-					RetrieveSession(params.screenName).
+					RetrieveSession(params.screenName, uint8(0)).
 					Return(params.result)
 			}
 

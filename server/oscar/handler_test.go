@@ -2738,7 +2738,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqFullInfo - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				sess: state.NewSession(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -2770,7 +2770,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqShortInfo - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				sess: state.NewSession(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -2802,7 +2802,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqFullInfo2 - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				sess: state.NewSession(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -2834,7 +2834,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqXMLReq - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				sess: state.NewSession(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -2866,7 +2866,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSetPermissions - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				sess: state.NewSession(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -2898,7 +2898,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSearchByUIN - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				sess: state.NewSession(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -2930,7 +2930,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSearchByUIN2 - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				sess: state.NewSession(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -2970,7 +2970,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSearchByEmail - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				sess: state.NewSession(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3002,7 +3002,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSearchByEmail3 - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				sess: state.NewSession(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3042,7 +3042,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSearchByDetails - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				sess: state.NewSession(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3074,7 +3074,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSearchWhitePages - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				sess: state.NewSession(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3106,7 +3106,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSearchWhitePages2 - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				sess: state.NewSession(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3146,7 +3146,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSetBasicInfo - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				sess: state.NewSession(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3178,7 +3178,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSetWorkInfo - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				sess: state.NewSession(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3210,7 +3210,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSetMoreInfo - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				sess: state.NewSession(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3242,7 +3242,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSetNotes - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				sess: state.NewSession(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3274,7 +3274,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSetEmails - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				sess: state.NewSession(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3320,7 +3320,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSetInterests - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				sess: state.NewSession(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3366,7 +3366,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSetAffiliations - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				sess: state.NewSession(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3428,7 +3428,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqStat - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				sess: state.NewSession(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3451,7 +3451,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "unknown metadata request subtype",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				sess: state.NewSession(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3475,7 +3475,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "OfflineMsgReq - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				sess: state.NewSession(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3499,7 +3499,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "DeleteMsgReq - happy path",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				sess: state.NewSession(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3523,7 +3523,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "unknown request type",
 			reqParams: reqParams{
-				sess: &state.Session{},
+				sess: state.NewSession(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3670,8 +3670,9 @@ func TestHandler_ICQDBQuery_QIP2005UINSearchBug(t *testing.T) {
 		},
 	}
 
+	sess := state.NewSession()
 	icqService.EXPECT().
-		FindByUIN2(mock.Anything, &state.Session{}, expect, uint16(1)).
+		FindByUIN2(mock.Anything, sess, expect, uint16(1)).
 		Return(nil)
 
 	h := Handler{
@@ -3710,7 +3711,7 @@ func TestHandler_ICQDBQuery_QIP2005UINSearchBug(t *testing.T) {
 	b := buf.Bytes()
 	b[18] = 6 // incorrectly set TLV length to 6 (should be 4)
 
-	err := h.ICQDBQuery(nil, &state.Session{}, wire.SNACFrame{}, buf, nil)
+	err := h.ICQDBQuery(nil, sess, wire.SNACFrame{}, buf, nil)
 	assert.NoError(t, err)
 }
 
