@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"sync"
 	"testing"
-	"testing/synctest"
 
 	"github.com/mk6i/open-oscar-server/wire"
 
