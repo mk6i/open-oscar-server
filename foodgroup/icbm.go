@@ -310,7 +310,7 @@ func (s ICBMService) ClientEvent(ctx context.Context, sess *state.Session, inFra
 		return nil
 	default:
 		recipient := state.NewIdentScreenName(inBody.ScreenName)
-		s.messageRelayer.RelayToScreenName(ctx, recipient, wire.SNACMessage{
+		s.messageRelayer.RelayToScreenNameActiveOnly(ctx, recipient, wire.SNACMessage{
 			Frame: wire.SNACFrame{
 				FoodGroup: wire.ICBM,
 				SubGroup:  wire.ICBMClientEvent,
