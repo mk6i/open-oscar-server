@@ -214,6 +214,13 @@ func (sg *SessionGroup) RemoveInstance(instance *Instance) {
 	}
 }
 
+// InstanceCount returns the number of total instances in the session group.
+func (sg *SessionGroup) InstanceCount() int {
+	sg.mutex.RLock()
+	defer sg.mutex.RUnlock()
+	return len(sg.instances)
+}
+
 // GetInstances returns a copy of all active instances.
 func (sg *SessionGroup) GetInstances() []*Instance {
 	sg.mutex.RLock()

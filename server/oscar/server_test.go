@@ -432,6 +432,115 @@ func TestOscarServer_RouteConnection_BOS(t *testing.T) {
 	wg.Wait()
 }
 
+// Set up a multi-instance session and connect as the second instance.
+//   - Ensure that disconnecting second instance does not sign out the session.
+func TestOscarServer_RouteConnection_BOS_MultiSessionSignoff(t *testing.T) {
+	sess := state.NewSession()
+	sess.AddInstance(state.NewInstance(sess.SessionGroup))
+
+	clientConn, serverConn := net.Pipe()
+	addr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:8080")
+	assert.NoError(t, err)
+
+	clientFake := fakeConn{
+		Conn:   serverConn,
+		local:  addr,
+		remote: addr,
+	}
+
+	go func() {
+		// < receive FLAPSignonFrame
+		flap := wire.FLAPFrame{}
+		assert.NoError(t, wire.UnmarshalBE(&flap, clientConn))
+		flapSignonFrame := wire.FLAPSignonFrame{}
+		assert.NoError(t, wire.UnmarshalBE(&flapSignonFrame, bytes.NewBuffer(flap.Payload)))
+
+		// > send FLAPSignonFrame
+		flapSignonFrame = wire.FLAPSignonFrame{
+			FLAPVersion: 1,
+		}
+		flapSignonFrame.Append(wire.NewTLVBE(wire.OServiceTLVTagsLoginCookie, []byte("the-cookie")))
+		buf := &bytes.Buffer{}
+		assert.NoError(t, wire.MarshalBE(flapSignonFrame, buf))
+		flap = wire.FLAPFrame{
+			StartMarker: 42,
+			FrameType:   wire.FLAPFrameSignon,
+			Payload:     buf.Bytes(),
+		}
+		assert.NoError(t, wire.MarshalBE(flap, clientConn))
+
+		flapc := wire.NewFlapClient(0, clientConn, clientConn)
+
+		// < receive SNAC_0x01_0x03_OServiceHostOnline
+		frame := wire.SNACFrame{}
+		body := wire.SNAC_0x01_0x03_OServiceHostOnline{}
+		assert.NoError(t, flapc.ReceiveSNAC(&frame, &body))
+
+		// send the first request that should get relayed to BOSRouter.Handle
+		frame = wire.SNACFrame{
+			FoodGroup: wire.OService,
+			SubGroup:  wire.OServiceClientOnline,
+		}
+		assert.NoError(t, flapc.SendSNAC(frame, struct{}{}))
+		assert.NoError(t, clientConn.Close())
+	}()
+
+	wg := &sync.WaitGroup{}
+
+	authService := newMockAuthService(t)
+	authService.EXPECT().
+		RegisterBOSSession(mock.Anything, state.ServerCookie{Service: wire.BOS}).
+		Return(sess, nil)
+
+	authService.EXPECT().
+		CrackCookie(mock.Anything).
+		Return(state.ServerCookie{Service: wire.BOS}, nil)
+
+	onlineNotifier := newMockOnlineNotifier(t)
+	onlineNotifier.EXPECT().
+		HostOnline(mock.Anything).
+		Return(wire.SNACMessage{
+			Frame: wire.SNACFrame{
+				FoodGroup: wire.OService,
+				SubGroup:  wire.OServiceHostOnline,
+			},
+			Body: wire.SNAC_0x01_0x03_OServiceHostOnline{},
+		})
+
+	buddyListRegistry := newMockBuddyListRegistry(t)
+	buddyListRegistry.EXPECT().
+		RegisterBuddyList(mock.Anything, mock.Anything).
+		Return(nil)
+
+	departureNotifier := newMockDepartureNotifier(t)
+	chatSessionManager := newMockChatSessionManager(t)
+
+	wg.Add(2)
+	handler := func(ctx context.Context, serverType uint16, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter, listener config.Listener) error {
+		defer wg.Done()
+		return nil
+	}
+
+	rt := oscarServer{
+		AuthService:        authService,
+		SNACHandler:        handler,
+		Logger:             slog.Default(),
+		OnlineNotifier:     onlineNotifier,
+		BuddyListRegistry:  buddyListRegistry,
+		ChatSessionManager: chatSessionManager,
+		DepartureNotifier:  departureNotifier,
+		recalcWarning: func(ctx context.Context, sess *state.Session) error {
+			return nil
+		},
+		lowerWarnLevel: func(ctx context.Context, sess *state.Session) {
+			defer wg.Done()
+		},
+	}
+	assert.NoError(t, rt.routeConnection(context.Background(), clientFake, config.Listener{}))
+
+	wg.Wait()
+}
+
 func TestOscarServer_RouteConnection_Chat(t *testing.T) {
 	sess := state.NewSession()
 

@@ -256,8 +256,12 @@ func (s oscarServer) connectToOSCARService(
 
 		defer func() {
 			sess.Close()
+			if sess.InstanceCount() > 0 {
+				return
+			}
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
+
 			if err := s.DepartureNotifier.BroadcastBuddyDeparted(ctx, sess); err != nil {
 				s.Logger.ErrorContext(ctx, "error sending buddy departure notifications", "err", err.Error())
 			}
