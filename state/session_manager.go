@@ -195,16 +195,8 @@ func (s *InMemorySessionManager) RemoveSession(sess *Session) {
 	s.mapMutex.Lock()
 	defer s.mapMutex.Unlock()
 	if rec, ok := s.store[sess.IdentScreenName()]; ok && rec.sessionGroup == sess.SessionGroup {
-		// Close the instance first
-		sess.Instance.Close()
-
-		// Check if the SessionGroup is now empty
-		activeInstances := rec.sessionGroup.GetActiveInstances()
-		if len(activeInstances) == 0 {
-			// No active instances left, remove the entire SessionGroup
-			delete(s.store, sess.IdentScreenName())
-			close(rec.removed)
-		}
+		delete(s.store, sess.IdentScreenName())
+		close(rec.removed)
 	}
 }
 

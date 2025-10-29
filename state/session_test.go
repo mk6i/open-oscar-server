@@ -1003,6 +1003,82 @@ func TestSessionGroup_AllInactive(t *testing.T) {
 	}
 }
 
+func TestSessionGroup_InstanceCount(t *testing.T) {
+	tests := []struct {
+		name          string
+		setupGroup    func() *SessionGroup
+		expectedCount int
+	}{
+		{
+			name: "empty session group should return 0",
+			setupGroup: func() *SessionGroup {
+				return NewSessionGroup()
+			},
+			expectedCount: 0,
+		},
+		{
+			name: "one instance should return 1",
+			setupGroup: func() *SessionGroup {
+				sg := NewSessionGroup()
+				instance := NewInstance(sg)
+				sg.AddInstance(instance)
+				return sg
+			},
+			expectedCount: 1,
+		},
+		{
+			name: "multiple instances should return correct count",
+			setupGroup: func() *SessionGroup {
+				sg := NewSessionGroup()
+				for i := 0; i < 3; i++ {
+					instance := NewInstance(sg)
+					sg.AddInstance(instance)
+				}
+				return sg
+			},
+			expectedCount: 3,
+		},
+		{
+			name: "instance count decreases after removal",
+			setupGroup: func() *SessionGroup {
+				sg := NewSessionGroup()
+				instance1 := NewInstance(sg)
+				instance2 := NewInstance(sg)
+				instance3 := NewInstance(sg)
+				sg.AddInstance(instance1)
+				sg.AddInstance(instance2)
+				sg.AddInstance(instance3)
+				// Remove one instance
+				sg.RemoveInstance(instance2)
+				return sg
+			},
+			expectedCount: 2,
+		},
+		{
+			name: "instance count is correct after multiple add/remove operations",
+			setupGroup: func() *SessionGroup {
+				sg := NewSessionGroup()
+				instance1 := NewInstance(sg)
+				instance2 := NewInstance(sg)
+				sg.AddInstance(instance1)
+				sg.AddInstance(instance2)
+				sg.RemoveInstance(instance1)
+				instance3 := NewInstance(sg)
+				sg.AddInstance(instance3)
+				return sg
+			},
+			expectedCount: 2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sg := tt.setupGroup()
+			assert.Equal(t, tt.expectedCount, sg.InstanceCount())
+		})
+	}
+}
+
 func TestSession_SetAndGetProfile(t *testing.T) {
 	s := NewSession()
 	profile := s.Profile()

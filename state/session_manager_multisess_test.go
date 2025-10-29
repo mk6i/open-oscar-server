@@ -35,30 +35,37 @@ func TestInMemorySessionManager_MultiSession(t *testing.T) {
 	allSessions := sm.AllSessions()
 	assert.Len(t, allSessions, 2)
 
-	// Remove first session - SessionGroup should still exist
+	// Remove first session - removes entire SessionGroup since they share the same SessionGroup
 	sm.RemoveSession(sess1)
 
-	// SessionGroup should still exist with one active instance
+	// Verify the session was removed from the store
+	_, ok := sm.store[sess1.IdentScreenName()]
+	assert.False(t, ok, "session should be removed from store")
+
+	// SessionGroup should no longer exist in the store (removed when sess1 was removed)
 	retrieved2 := sm.RetrieveSession(NewIdentScreenName("user-screen-name"), 0)
-	assert.NotNil(t, retrieved2)
-	assert.Equal(t, sess2.SessionGroup, retrieved2.SessionGroup)
+	assert.Nil(t, retrieved2, "session should not be retrievable after removal")
 
-	// AllSessions should return one session
-	allSessions = sm.AllSessions()
-	assert.Len(t, allSessions, 1)
-
-	// Remove second session - SessionGroup should be removed
-	sm.RemoveSession(sess2)
-
-	// SessionGroup should no longer exist
-	retrieved3 := sm.RetrieveSession(NewIdentScreenName("user-screen-name"), 0)
-	assert.Nil(t, retrieved3)
-
-	// AllSessions should return no sessions
+	// AllSessions should return no sessions (entire SessionGroup was removed)
 	allSessions = sm.AllSessions()
 	assert.Len(t, allSessions, 0)
 
 	// SessionManager should be empty
+	assert.True(t, sm.Empty())
+
+	// Try to remove second session - should be a no-op since SessionGroup was already removed
+	// (the SessionGroup check in RemoveSession will fail, so nothing happens)
+	sm.RemoveSession(sess2)
+
+	// Verify nothing changed
+	retrieved3 := sm.RetrieveSession(NewIdentScreenName("user-screen-name"), 0)
+	assert.Nil(t, retrieved3)
+
+	// AllSessions should still return no sessions
+	allSessions = sm.AllSessions()
+	assert.Len(t, allSessions, 0)
+
+	// SessionManager should still be empty
 	assert.True(t, sm.Empty())
 }
 

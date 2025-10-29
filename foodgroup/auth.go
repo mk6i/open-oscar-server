@@ -175,9 +175,7 @@ func (s AuthService) RetrieveBOSSession(ctx context.Context, serverCookie state.
 	return s.sessionRetriever.RetrieveSession(u.IdentScreenName, serverCookie.SessionNum), nil
 }
 
-// Signout removes this user's session and notifies users who have this user on
-// their buddy list about this user's departure. It's guaranteed that the
-// session is removed from the session pool.
+// Signout removes this user's session.
 func (s AuthService) Signout(_ context.Context, sess *state.Session) {
 	s.sessionManager.RemoveSession(sess)
 }
