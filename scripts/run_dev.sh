@@ -6,7 +6,18 @@
 set -e
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-ENV_FILE="$SCRIPT_DIR/../config/settings.env"
+DEFAULT_ENV_FILE="$SCRIPT_DIR/../config/ssl/settings.env"
+
+if [ "$#" -gt 1 ]; then
+  echo "Usage: $0 [path/to/settings.env]"
+  exit 1
+fi
+
+if [ "$#" -eq 1 ]; then
+  ENV_FILE="$1"
+else
+  ENV_FILE="$DEFAULT_ENV_FILE"
+fi
 REPO_ROOT="$SCRIPT_DIR/.."
 
 # Run Open OSCAR Server from repo root.
