@@ -428,7 +428,7 @@ type setDirectoryInfoParams []struct {
 // ProfileManager.Profile call site
 type retrieveProfileParams []struct {
 	screenName state.IdentScreenName
-	result     string
+	result     state.UserProfile
 	err        error
 }
 
@@ -436,7 +436,7 @@ type retrieveProfileParams []struct {
 // ProfileManager.SetProfile call site
 type setProfileParams []struct {
 	screenName state.IdentScreenName
-	body       any
+	body       state.UserProfile
 }
 
 // setKeywordsParams is the list of parameters passed at the mock
@@ -798,6 +798,32 @@ func sessOptSetRateClasses(classes wire.RateLimitClasses) func(session *state.Se
 	}
 }
 
+// sessOptMemberSince sets the member since timestamp on the session object.
+func sessOptMemberSince(t time.Time) func(session *state.Session) {
+	return func(session *state.Session) {
+		session.SetMemberSince(t)
+	}
+}
+
+// sessOptSignonTime sets the sign-on time on the session object.
+func sessOptSignonTime(t time.Time) func(session *state.Session) {
+	return func(session *state.Session) {
+		session.SetSignonTime(t)
+	}
+}
+
+// sessOptProfile sets profile
+func sessOptProfile(profile state.UserProfile) func(session *state.Session) {
+	return func(session *state.Session) {
+		session.SetProfile(profile)
+	}
+}
+
+// sessOptKerberosAuth indicates the session signed on
+func sessOptKerberosAuth(session *state.Session) {
+	session.SetKerberosAuth(true)
+}
+
 // sessClientID sets the client ID
 func sessClientID(clientID string) func(session *state.Session) {
 	return func(session *state.Session) {
@@ -844,23 +870,4 @@ func matchContext() interface{} {
 		_, ok := ctx.(context.Context)
 		return ok
 	})
-}
-
-// newMultiSessionInfoUpdate is a hack that returns a user info update SNAC with
-// primary and current instance user info blocks.
-func newMultiSessionInfoUpdate(session *state.Session) wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate {
-	return wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate{
-		UserInfo: []wire.TLVUserInfo{
-			func() wire.TLVUserInfo {
-				info := session.TLVUserInfo()
-				info.Append(wire.NewTLVBE(wire.OServiceUserInfoPrimaryInstance, []byte{0x01}))
-				return info
-			}(),
-			func() wire.TLVUserInfo {
-				info := session.TLVUserInfo()
-				info.Append(wire.NewTLVBE(wire.OServiceUserInfoMyInstanceNum, []byte{0x01}))
-				return info
-			}(),
-		},
-	}
 }

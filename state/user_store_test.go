@@ -255,11 +255,15 @@ func TestProfile(t *testing.T) {
 		t.Fatalf("failed to retrieve profile: %s", err.Error())
 	}
 
-	if profile != "" {
+	if !profile.Empty() {
 		t.Fatalf("expected empty profile for %s", screenName)
 	}
 
-	newProfile := "here is my profile"
+	newProfile := UserProfile{
+		ProfileText: "here is my profile",
+		MIMEType:    "text/plain",
+		UpdateTime:  time.Now().UTC().Truncate(time.Second),
+	}
 	if err := f.SetProfile(context.Background(), screenName, newProfile); err != nil {
 		t.Fatalf("failed to create new profile: %s", err.Error())
 	}
@@ -269,11 +273,21 @@ func TestProfile(t *testing.T) {
 		t.Fatalf("failed to retrieve profile: %s", err.Error())
 	}
 
-	if !reflect.DeepEqual(newProfile, profile) {
-		t.Fatalf("profiles did not match:\n expected: %v\n actual: %v", newProfile, profile)
+	if profile.ProfileText != newProfile.ProfileText {
+		t.Fatalf("profiles did not match:\n expected: %v\n actual: %v", newProfile.ProfileText, profile.ProfileText)
+	}
+	if profile.MIMEType != newProfile.MIMEType {
+		t.Fatalf("mime types did not match:\n expected: %v\n actual: %v", newProfile.MIMEType, profile.MIMEType)
+	}
+	if !profile.UpdateTime.Equal(newProfile.UpdateTime) {
+		t.Fatalf("update times did not match:\n expected: %v\n actual: %v", newProfile.UpdateTime, profile.UpdateTime)
 	}
 
-	updatedProfile := "here is my profile [updated]"
+	updatedProfile := UserProfile{
+		ProfileText: "here is my profile [updated]",
+		MIMEType:    "text/html",
+		UpdateTime:  time.Now().UTC().Truncate(time.Second),
+	}
 	if err := f.SetProfile(context.Background(), screenName, updatedProfile); err != nil {
 		t.Fatalf("failed to create new profile: %s", err.Error())
 	}
@@ -283,8 +297,14 @@ func TestProfile(t *testing.T) {
 		t.Fatalf("failed to retrieve profile: %s", err.Error())
 	}
 
-	if !reflect.DeepEqual(updatedProfile, profile) {
-		t.Fatalf("updated profiles did not match:\n expected: %v\n actual: %v", newProfile, profile)
+	if profile.ProfileText != updatedProfile.ProfileText {
+		t.Fatalf("updated profiles did not match:\n expected: %v\n actual: %v", updatedProfile.ProfileText, profile.ProfileText)
+	}
+	if profile.MIMEType != updatedProfile.MIMEType {
+		t.Fatalf("updated mime types did not match:\n expected: %v\n actual: %v", updatedProfile.MIMEType, profile.MIMEType)
+	}
+	if !profile.UpdateTime.Equal(updatedProfile.UpdateTime) {
+		t.Fatalf("updated update times did not match:\n expected: %v\n actual: %v", updatedProfile.UpdateTime, profile.UpdateTime)
 	}
 }
 
@@ -301,7 +321,72 @@ func TestProfileNonExistent(t *testing.T) {
 
 	prof, err := f.Profile(context.Background(), screenName)
 	assert.NoError(t, err)
-	assert.Empty(t, prof)
+	assert.True(t, prof.Empty())
+	assert.Equal(t, "", prof.MIMEType)
+	assert.True(t, prof.UpdateTime.IsZero())
+}
+
+func TestProfile_MimeTypeAndUpdateTime(t *testing.T) {
+	screenName := NewIdentScreenName("testuser")
+
+	defer func() {
+		assert.NoError(t, os.Remove(testFile))
+	}()
+
+	f, err := NewSQLiteUserStore(testFile)
+	require.NoError(t, err)
+
+	u := User{
+		IdentScreenName: screenName,
+	}
+	require.NoError(t, f.InsertUser(context.Background(), u))
+
+	t.Run("profile with empty mimeType and zero updateTime", func(t *testing.T) {
+		profile := UserProfile{
+			ProfileText: "test profile",
+			MIMEType:    "",
+			UpdateTime:  time.Time{},
+		}
+		require.NoError(t, f.SetProfile(context.Background(), screenName, profile))
+
+		retrieved, err := f.Profile(context.Background(), screenName)
+		require.NoError(t, err)
+		assert.Equal(t, profile.ProfileText, retrieved.ProfileText)
+		assert.Equal(t, "", retrieved.MIMEType)
+		assert.True(t, retrieved.UpdateTime.IsZero())
+	})
+
+	t.Run("profile with mimeType and updateTime", func(t *testing.T) {
+		updateTime := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
+		profile := UserProfile{
+			ProfileText: "test profile with mime",
+			MIMEType:    "text/html",
+			UpdateTime:  updateTime,
+		}
+		require.NoError(t, f.SetProfile(context.Background(), screenName, profile))
+
+		retrieved, err := f.Profile(context.Background(), screenName)
+		require.NoError(t, err)
+		assert.Equal(t, profile.ProfileText, retrieved.ProfileText)
+		assert.Equal(t, "text/html", retrieved.MIMEType)
+		assert.True(t, retrieved.UpdateTime.Equal(updateTime), "expected %v, got %v", updateTime, retrieved.UpdateTime)
+	})
+
+	t.Run("update profile with different mimeType and updateTime", func(t *testing.T) {
+		updateTime := time.Date(2024, 2, 20, 14, 45, 0, 0, time.UTC)
+		profile := UserProfile{
+			ProfileText: "updated profile",
+			MIMEType:    "text/plain",
+			UpdateTime:  updateTime,
+		}
+		require.NoError(t, f.SetProfile(context.Background(), screenName, profile))
+
+		retrieved, err := f.Profile(context.Background(), screenName)
+		require.NoError(t, err)
+		assert.Equal(t, profile.ProfileText, retrieved.ProfileText)
+		assert.Equal(t, "text/plain", retrieved.MIMEType)
+		assert.True(t, retrieved.UpdateTime.Equal(updateTime), "expected %v, got %v", updateTime, retrieved.UpdateTime)
+	})
 }
 
 func TestGetUser(t *testing.T) {

@@ -317,7 +317,7 @@ func TestUserAccountHandler_GET(t *testing.T) {
 					retrieveProfileParams: retrieveProfileParams{
 						{
 							screenName: state.NewIdentScreenName("userA"),
-							result:     "My Profile Text",
+							result:     state.UserProfile{ProfileText: "My Profile Text"},
 						},
 					},
 				},
@@ -368,7 +368,7 @@ func TestUserAccountHandler_GET(t *testing.T) {
 					retrieveProfileParams: retrieveProfileParams{
 						{
 							screenName: state.NewIdentScreenName("userA"),
-							result:     "My Profile Text",
+							result:     state.UserProfile{ProfileText: "My Profile Text"},
 						},
 					},
 				},
@@ -418,7 +418,7 @@ func TestUserAccountHandler_GET(t *testing.T) {
 					retrieveProfileParams: retrieveProfileParams{
 						{
 							screenName: state.NewIdentScreenName("userB"),
-							result:     "My Profile Text",
+							result:     state.UserProfile{ProfileText: "My Profile Text"},
 						},
 					},
 				},

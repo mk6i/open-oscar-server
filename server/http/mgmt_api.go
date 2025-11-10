@@ -717,7 +717,7 @@ func getUserAccountHandler(w http.ResponseWriter, r *http.Request, userManager U
 		EmailAddress:    emailAddress,
 		RegStatus:       regStatus,
 		Confirmed:       confirmStatus,
-		Profile:         profile,
+		Profile:         profile.ProfileText,
 		IsICQ:           user.IsICQ,
 		SuspendedStatus: suspendedStatusText,
 		IsBot:           user.IsBot,

@@ -234,7 +234,7 @@ type profileRetrieverParams struct {
 // ProfileRetriever.Profile call site
 type retrieveProfileParams []struct {
 	screenName state.IdentScreenName
-	result     string
+	result     state.UserProfile
 	err        error
 }
 

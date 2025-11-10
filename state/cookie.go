@@ -24,6 +24,8 @@ type ServerCookie struct {
 	ClientID      string            `oscar:"len_prefix=uint8"`
 	ChatCookie    string            `oscar:"len_prefix=uint8"`
 	MultiConnFlag uint8
+	// KerberosAuth indicates whether the client used Kerberos for authentication.
+	KerberosAuth uint8
 }
 
 func NewHMACCookieBaker() (HMACCookieBaker, error) {

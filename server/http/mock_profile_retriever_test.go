@@ -23,22 +23,22 @@ func (_m *mockProfileRetriever) EXPECT() *mockProfileRetriever_Expecter {
 }
 
 // Profile provides a mock function with given fields: ctx, screenName
-func (_m *mockProfileRetriever) Profile(ctx context.Context, screenName state.IdentScreenName) (string, error) {
+func (_m *mockProfileRetriever) Profile(ctx context.Context, screenName state.IdentScreenName) (state.UserProfile, error) {
 	ret := _m.Called(ctx, screenName)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Profile")
 	}
 
-	var r0 string
+	var r0 state.UserProfile
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, state.IdentScreenName) (string, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, state.IdentScreenName) (state.UserProfile, error)); ok {
 		return rf(ctx, screenName)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, state.IdentScreenName) string); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, state.IdentScreenName) state.UserProfile); ok {
 		r0 = rf(ctx, screenName)
 	} else {
-		r0 = ret.Get(0).(string)
+		r0 = ret.Get(0).(state.UserProfile)
 	}
 
 	if rf, ok := ret.Get(1).(func(context.Context, state.IdentScreenName) error); ok {
@@ -69,12 +69,12 @@ func (_c *mockProfileRetriever_Profile_Call) Run(run func(ctx context.Context, s
 	return _c
 }
 
-func (_c *mockProfileRetriever_Profile_Call) Return(_a0 string, _a1 error) *mockProfileRetriever_Profile_Call {
+func (_c *mockProfileRetriever_Profile_Call) Return(_a0 state.UserProfile, _a1 error) *mockProfileRetriever_Profile_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *mockProfileRetriever_Profile_Call) RunAndReturn(run func(context.Context, state.IdentScreenName) (string, error)) *mockProfileRetriever_Profile_Call {
+func (_c *mockProfileRetriever_Profile_Call) RunAndReturn(run func(context.Context, state.IdentScreenName) (state.UserProfile, error)) *mockProfileRetriever_Profile_Call {
 	_c.Call.Return(run)
 	return _c
 }

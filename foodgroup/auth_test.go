@@ -1138,7 +1138,8 @@ func TestAuthService_KerberosLogin(t *testing.T) {
 						{
 							dataIn: func() []byte {
 								loginCookie := state.ServerCookie{
-									ScreenName: user.DisplayScreenName,
+									ScreenName:   user.DisplayScreenName,
+									KerberosAuth: 1,
 								}
 								buf := &bytes.Buffer{}
 								assert.NoError(t, wire.MarshalBE(loginCookie, buf))
@@ -1263,7 +1264,8 @@ func TestAuthService_KerberosLogin(t *testing.T) {
 						{
 							dataIn: func() []byte {
 								loginCookie := state.ServerCookie{
-									ScreenName: user.DisplayScreenName,
+									ScreenName:   user.DisplayScreenName,
+									KerberosAuth: 1,
 								}
 								buf := &bytes.Buffer{}
 								assert.NoError(t, wire.MarshalBE(loginCookie, buf))

@@ -498,11 +498,7 @@ func TestAdminService_InfoChangeRequest_ScreenName(t *testing.T) {
 									FoodGroup: wire.OService,
 									SubGroup:  wire.OServiceUserInfoUpdate,
 								},
-								Body: wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate{
-									UserInfo: []wire.TLVUserInfo{
-										newTestSession("Chatting Chuck").TLVUserInfo(),
-									},
-								},
+								Body: newOServiceUserInfoUpdate(newTestSession("Chatting Chuck")),
 							},
 						},
 					},
@@ -565,7 +561,7 @@ func TestAdminService_InfoChangeRequest_ScreenName(t *testing.T) {
 									FoodGroup: wire.OService,
 									SubGroup:  wire.OServiceUserInfoUpdate,
 								},
-								Body: newMultiSessionInfoUpdate(newTestSession("Chatting Chuck")),
+								Body: newOServiceUserInfoUpdate(newTestSession("Chatting Chuck", sessOptSetFoodGroupVersion(wire.OService, 4))),
 							},
 						},
 					},

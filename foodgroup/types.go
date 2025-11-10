@@ -323,8 +323,8 @@ type ProfileManager interface {
 	// that users can associate with their profiles.
 	InterestList(ctx context.Context) ([]wire.ODirKeywordListItem, error)
 
-	// Profile returns the free-form profile body for the given screen name.
-	Profile(ctx context.Context, screenName state.IdentScreenName) (string, error)
+	// Profile returns the user's profile information for the given screen name.
+	Profile(ctx context.Context, screenName state.IdentScreenName) (state.UserProfile, error)
 
 	// SetDirectoryInfo updates the user's directory listing with name, city, state, zip, and country info.
 	SetDirectoryInfo(ctx context.Context, screenName state.IdentScreenName, info state.AIMNameAndAddr) error
@@ -332,8 +332,8 @@ type ProfileManager interface {
 	// SetKeywords sets up to five interest keywords for the user's profile.
 	SetKeywords(ctx context.Context, screenName state.IdentScreenName, keywords [5]string) error
 
-	// SetProfile sets the free-form profile body content for the user.
-	SetProfile(ctx context.Context, screenName state.IdentScreenName, body string) error
+	// SetProfile sets the user's profile information.
+	SetProfile(ctx context.Context, screenName state.IdentScreenName, profile state.UserProfile) error
 
 	// User returns the full user record associated with the given screen name.
 	User(ctx context.Context, screenName state.IdentScreenName) (*state.User, error)

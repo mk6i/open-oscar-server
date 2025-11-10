@@ -148,8 +148,8 @@ type BuddyBroadcaster interface {
 
 // ProfileManager manages user profiles
 type ProfileManager interface {
-	SetProfile(ctx context.Context, screenName state.IdentScreenName, profile string) error
-	Profile(ctx context.Context, screenName state.IdentScreenName) (string, error)
+	SetProfile(ctx context.Context, screenName state.IdentScreenName, profile state.UserProfile) error
+	Profile(ctx context.Context, screenName state.IdentScreenName) (state.UserProfile, error)
 }
 
 // UserManager defines methods for user authentication.

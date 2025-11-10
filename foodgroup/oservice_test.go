@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 
 	"github.com/mk6i/retro-aim-server/config"
 	"github.com/mk6i/retro-aim-server/state"
@@ -79,6 +80,7 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 								0x0, // no client ID
 								0x0, // no chat cookie
 								0x0, // multi conn flag
+								0x0, // kerberos flag
 							},
 							cookieOut: []byte("the-cookie"),
 						},
@@ -126,6 +128,7 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 								0x0, // no client ID
 								0x0, // no chat cookie
 								0x0, // multi conn flag
+								0x0, // kerberos flag
 							},
 							cookieOut: []byte("the-cookie"),
 						},
@@ -173,6 +176,7 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 								0x0, // no client ID
 								0x0, // no chat cookie
 								0x0, // multi conn flag
+								0x0, // kerberos flag
 							},
 							cookieOut: []byte("the-cookie"),
 						},
@@ -220,6 +224,7 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 								0x0, // no client ID
 								0x0, // no chat cookie
 								0x0, // multi conn flag
+								0x0, // kerberos flag
 							},
 							cookieOut: []byte("the-cookie"),
 						},
@@ -285,6 +290,7 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 									0x00, // no client ID
 									0x11, '4', '-', '0', '-', 't', 'h', 'e', '-', 'c', 'h', 'a', 't', '-', 'r', 'o', 'o', 'm',
 									0x0, // multi conn flag
+									0x0, // kerberos flag
 								},
 								cookieOut: []byte("the-auth-cookie"),
 							},
@@ -333,6 +339,7 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 								0x0, // no client ID
 								0x0, // no chat cookie
 								0x0, // multi conn flag
+								0x0, // kerberos flag
 							},
 							cookieOut: []byte("the-cookie"),
 						},
@@ -465,6 +472,7 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 								0x0, // no client ID
 								0x0, // no chat cookie
 								0x0, // multi conn flag
+								0x0, // kerberos flag
 							},
 							cookieOut: []byte("the-cookie"),
 						},
@@ -517,6 +525,7 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 								0x0, // no client ID
 								0x0, // no chat cookie
 								0x0, // multi conn flag
+								0x0, // kerberos flag
 							},
 							cookieOut: []byte("the-cookie"),
 						},
@@ -569,6 +578,7 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 								0x0, // no client ID
 								0x0, // no chat cookie
 								0x0, // multi conn flag
+								0x0, // kerberos flag
 							},
 							cookieOut: []byte("the-cookie"),
 						},
@@ -621,6 +631,7 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 								0x0, // no client ID
 								0x0, // no chat cookie
 								0x0, // multi conn flag
+								0x0, // kerberos flag
 							},
 							cookieOut: []byte("the-cookie"),
 						},
@@ -687,6 +698,7 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 									0x00, // no client ID
 									0x11, '4', '-', '0', '-', 't', 'h', 'e', '-', 'c', 'h', 'a', 't', '-', 'r', 'o', 'o', 'm',
 									0x0, // multi conn flag
+									0x0, // kerberos flag
 								},
 								cookieOut: []byte("the-auth-cookie"),
 							},
@@ -740,6 +752,7 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 								0x0, // no client ID
 								0x0, // no chat cookie
 								0x0, // multi conn flag
+								0x0, // kerberos flag
 							},
 							cookieOut: []byte("the-cookie"),
 						},
@@ -801,7 +814,7 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 			//
 			// send input SNAC
 			//
-			svc := NewOServiceService(config.Config{}, nil, slog.Default(), cookieIssuer, chatRoomManager, nil, nil, nil, wire.DefaultSNACRateLimits(), chatMessageRelayer)
+			svc := NewOServiceService(config.Config{}, nil, slog.Default(), cookieIssuer, chatRoomManager, nil, nil, nil, wire.DefaultSNACRateLimits(), chatMessageRelayer, nil)
 
 			outputSNAC, err := svc.ServiceRequest(context.Background(), tc.service, tc.userSession, tc.inputSNAC.Frame,
 				tc.inputSNAC.Body.(wire.SNAC_0x01_0x04_OServiceServiceRequest), tc.listener)
@@ -863,11 +876,7 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 					SubGroup:  wire.OServiceUserInfoUpdate,
 					RequestID: 1234,
 				},
-				Body: wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate{
-					UserInfo: []wire.TLVUserInfo{
-						newTestSession("me").TLVUserInfo(),
-					},
-				},
+				Body: newOServiceUserInfoUpdate(newTestSession("me")),
 			},
 			mockParams: mockParams{
 				buddyBroadcasterParams: buddyBroadcasterParams{
@@ -900,11 +909,7 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 					SubGroup:  wire.OServiceUserInfoUpdate,
 					RequestID: 1234,
 				},
-				Body: wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate{
-					UserInfo: []wire.TLVUserInfo{
-						newTestSession("me", sessOptInvisible).TLVUserInfo(),
-					},
-				},
+				Body: newOServiceUserInfoUpdate(newTestSession("me", sessOptInvisible)),
 			},
 			mockParams: mockParams{
 				buddyBroadcasterParams: buddyBroadcasterParams{
@@ -937,7 +942,7 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 					SubGroup:  wire.OServiceUserInfoUpdate,
 					RequestID: 1234,
 				},
-				Body: newMultiSessionInfoUpdate(newTestSession("me")),
+				Body: newOServiceUserInfoUpdate(newTestSession("me", sessOptSetFoodGroupVersion(wire.OService, 4))),
 			},
 			mockParams: mockParams{
 				buddyBroadcasterParams: buddyBroadcasterParams{
@@ -970,7 +975,7 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 					SubGroup:  wire.OServiceUserInfoUpdate,
 					RequestID: 1234,
 				},
-				Body: newMultiSessionInfoUpdate(newTestSession("me", sessOptInvisible)),
+				Body: newOServiceUserInfoUpdate(newTestSession("me", sessOptSetFoodGroupVersion(wire.OService, 4), sessOptInvisible)),
 			},
 			mockParams: mockParams{
 				buddyBroadcasterParams: buddyBroadcasterParams{
@@ -1698,7 +1703,7 @@ func TestOServiceService_HostOnline(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			svc := NewOServiceService(config.Config{}, nil, slog.Default(), nil, nil, nil, nil, nil, wire.DefaultSNACRateLimits(), nil)
+			svc := NewOServiceService(config.Config{}, nil, slog.Default(), nil, nil, nil, nil, nil, wire.DefaultSNACRateLimits(), nil, nil)
 			have := svc.HostOnline(tc.service)
 			assert.Equal(t, tc.expectOutput, have)
 		})
@@ -1732,6 +1737,94 @@ func TestOServiceService_ClientVersions(t *testing.T) {
 	assert.Equal(t, want, have)
 }
 
+func TestNewOServiceUserInfoUpdate(t *testing.T) {
+	memberSince := time.Unix(1_700_000_000, 0)
+	profileUpdated := time.Unix(1_700_100_000, 0)
+	signonTime := time.Now().Add(-3 * time.Second)
+
+	tests := []struct {
+		name              string
+		session           *state.Session
+		expectSigTime     bool
+		sigTime           time.Time
+		expectSecondBlock bool
+	}{
+		{
+			name: "OService version < 4 without profile",
+			session: newTestSession("me",
+				sessOptMemberSince(memberSince),
+				sessOptSignonTime(signonTime)),
+		},
+		{
+			name: "includes profile update time when set",
+			session: newTestSession("me",
+				sessOptMemberSince(memberSince),
+				sessOptSignonTime(signonTime),
+				sessOptProfile(state.UserProfile{UpdateTime: profileUpdated})),
+			expectSigTime: true,
+			sigTime:       profileUpdated,
+		},
+		{
+			name: "duplicates user info for aim >= 4",
+			session: newTestSession("me",
+				sessOptMemberSince(memberSince),
+				sessOptSignonTime(signonTime),
+				sessOptSetFoodGroupVersion(wire.OService, 4)),
+			expectSecondBlock: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			signon := tt.session.SignonTime()
+			onlineLowerBound := uint32(time.Since(signon).Seconds())
+
+			got := newOServiceUserInfoUpdate(tt.session)
+
+			expectedLen := 1
+			if tt.expectSecondBlock {
+				expectedLen = 2
+			}
+			require.Len(t, got.UserInfo, expectedLen)
+
+			memberVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoMemberSince)
+			require.True(t, ok)
+			require.Equal(t, uint32(memberSince.Unix()), memberVal)
+
+			signonVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoSignonTOD)
+			require.True(t, ok)
+			require.Equal(t, uint32(signon.Unix()), signonVal)
+
+			onlineVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoOnlineTime)
+			require.True(t, ok)
+			require.GreaterOrEqual(t, onlineVal, onlineLowerBound)
+			require.LessOrEqual(t, onlineVal-onlineLowerBound, uint32(2))
+
+			hasSigTime := got.UserInfo[0].HasTag(wire.OServiceUserInfoSigTime)
+			require.Equal(t, tt.expectSigTime, hasSigTime)
+			if tt.expectSigTime {
+				sigVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoSigTime)
+				require.True(t, ok)
+				require.Equal(t, uint32(tt.sigTime.Unix()), sigVal)
+			}
+
+			if tt.expectSecondBlock {
+				primaryBytes, ok := got.UserInfo[0].Bytes(wire.OServiceUserInfoPrimaryInstance)
+				require.True(t, ok)
+				require.Equal(t, []byte{0x01}, primaryBytes)
+
+				instanceBytes, ok := got.UserInfo[1].Bytes(wire.OServiceUserInfoMyInstanceNum)
+				require.True(t, ok)
+				require.Equal(t, []byte{0x01}, instanceBytes)
+
+				require.Equal(t, got.UserInfo[0].ScreenName, got.UserInfo[1].ScreenName)
+			} else {
+				require.False(t, got.UserInfo[0].HasTag(wire.OServiceUserInfoPrimaryInstance))
+			}
+		})
+	}
+}
+
 func TestOServiceService_UserInfoQuery(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -1752,11 +1845,7 @@ func TestOServiceService_UserInfoQuery(t *testing.T) {
 					SubGroup:  wire.OServiceUserInfoUpdate,
 					RequestID: 1234,
 				},
-				Body: wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate{
-					UserInfo: []wire.TLVUserInfo{
-						newTestSession("me").TLVUserInfo(),
-					},
-				},
+				Body: newOServiceUserInfoUpdate(newTestSession("me")),
 			},
 		},
 		{
@@ -1771,7 +1860,7 @@ func TestOServiceService_UserInfoQuery(t *testing.T) {
 					SubGroup:  wire.OServiceUserInfoUpdate,
 					RequestID: 1234,
 				},
-				Body: newMultiSessionInfoUpdate(newTestSession("me")),
+				Body: newOServiceUserInfoUpdate(newTestSession("me", sessOptSetFoodGroupVersion(wire.OService, 4))),
 			},
 		},
 	}
@@ -1876,7 +1965,7 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 		wantSess *state.Session
 	}{
 		{
-			name:    "notify that user is online",
+			name:    "notify that BOS user is online",
 			sess:    newTestSession("me", sessOptCannedSignonTime),
 			bodyIn:  wire.SNAC_0x01_0x02_OServiceClientOnline{},
 			service: wire.BOS,
@@ -1909,6 +1998,114 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 				},
 			},
 			wantSess: newTestSession("me", sessOptCannedSignonTime, sessOptSignonComplete),
+		},
+		{
+			name:    "notify that BOS user is online via Kerberos auth, does not have stored profile",
+			sess:    newTestSession("me", sessOptCannedSignonTime, sessOptKerberosAuth),
+			bodyIn:  wire.SNAC_0x01_0x02_OServiceClientOnline{},
+			service: wire.BOS,
+			mockParams: mockParams{
+				buddyBroadcasterParams: buddyBroadcasterParams{
+					broadcastVisibilityParams: broadcastVisibilityParams{
+						{
+							from:             state.NewIdentScreenName("me"),
+							filter:           nil,
+							doSendDepartures: false,
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Stats,
+									SubGroup:  wire.StatsSetMinReportInterval,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x0B_0x02_StatsSetMinReportInterval{
+									MinReportInterval: 1,
+								},
+							},
+						},
+					},
+				},
+				profileManagerParams: profileManagerParams{
+					retrieveProfileParams: retrieveProfileParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							result:     state.UserProfile{},
+						},
+					},
+				},
+			},
+			wantSess: newTestSession("me", sessOptCannedSignonTime, sessOptSignonComplete),
+		},
+		{
+			name:    "notify that BOS user is online via Kerberos auth, has stored profile",
+			sess:    newTestSession("me", sessOptCannedSignonTime, sessOptKerberosAuth),
+			bodyIn:  wire.SNAC_0x01_0x02_OServiceClientOnline{},
+			service: wire.BOS,
+			mockParams: mockParams{
+				buddyBroadcasterParams: buddyBroadcasterParams{
+					broadcastVisibilityParams: broadcastVisibilityParams{
+						{
+							from:             state.NewIdentScreenName("me"),
+							filter:           nil,
+							doSendDepartures: false,
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Stats,
+									SubGroup:  wire.StatsSetMinReportInterval,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x0B_0x02_StatsSetMinReportInterval{
+									MinReportInterval: 1,
+								},
+							},
+						},
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.OService,
+									SubGroup:  wire.OServiceUserInfoUpdate,
+								},
+								Body: newOServiceUserInfoUpdate(newTestSession("me", sessOptCannedSignonTime)),
+							},
+						},
+					},
+				},
+				profileManagerParams: profileManagerParams{
+					retrieveProfileParams: retrieveProfileParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							result: state.UserProfile{
+								ProfileText: "profile-result",
+								MIMEType:    `text/aolrtf; charset="us-ascii"`,
+							},
+						},
+					},
+				},
+			},
+			wantSess: newTestSession("me",
+				sessOptCannedSignonTime,
+				sessOptSignonComplete,
+				sessOptProfile(
+					state.UserProfile{
+						ProfileText: "profile-result",
+						MIMEType:    `text/aolrtf; charset="us-ascii"`,
+					},
+				),
+			),
 		},
 		{
 			name:    "upon joining, send chat room metadata and participant list to joining user; alert arrival to existing participants",
@@ -2026,12 +2223,19 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 				chatMessageRelayer.EXPECT().
 					RelayToScreenName(mock.Anything, params.cookie, params.screenName, params.message)
 			}
+			profileManager := newMockProfileManager(t)
+			for _, params := range tt.mockParams.profileManagerParams.retrieveProfileParams {
+				profileManager.EXPECT().
+					Profile(mock.Anything, params.screenName).
+					Return(params.result, params.err)
+			}
 
-			svc := NewOServiceService(config.Config{}, messageRelayer, slog.Default(), nil, chatRoomManager, nil, nil, nil, wire.DefaultSNACRateLimits(), chatMessageRelayer)
+			svc := NewOServiceService(config.Config{}, messageRelayer, slog.Default(), nil, chatRoomManager, nil, nil, nil, wire.DefaultSNACRateLimits(), chatMessageRelayer, profileManager)
 			svc.buddyBroadcaster = buddyUpdateBroadcaster
 			haveErr := svc.ClientOnline(context.Background(), tt.service, tt.bodyIn, tt.sess)
 			assert.ErrorIs(t, tt.wantErr, haveErr)
 			assert.Equal(t, tt.wantSess.SignonComplete(), tt.sess.SignonComplete())
+			assert.Equal(t, tt.wantSess.Profile(), tt.sess.Profile())
 		})
 	}
 }

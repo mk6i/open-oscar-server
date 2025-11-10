@@ -208,6 +208,21 @@ type User struct {
 	LastWarnLevel uint16
 }
 
+// UserProfile represents a user's profile information.
+type UserProfile struct {
+	// ProfileText is the free-form profile body content.
+	ProfileText string
+	// MIMEType is the MIME type of the profile content.
+	MIMEType string
+	// UpdateTime is when the profile was last updated.
+	UpdateTime time.Time
+}
+
+// Empty returns true if the profile has not been set (all fields are zero values).
+func (p UserProfile) Empty() bool {
+	return p.ProfileText == "" && p.MIMEType == "" && p.UpdateTime.IsZero()
+}
+
 // AIMNameAndAddr holds name and address AIM directory information.
 type AIMNameAndAddr struct {
 	// FirstName is the user's first name.

@@ -120,10 +120,12 @@ func (s AuthService) RegisterBOSSession(ctx context.Context, serverCookie state.
 		sess.SetUserInfoFlag(wire.OServiceUserFlagBot)
 	}
 
+	sess.SetKerberosAuth(serverCookie.KerberosAuth == 1)
+	sess.SetSignonTime(time.Now())
 	sess.SetRateClasses(time.Now(), s.rateLimitClasses)
-
 	// set string containing OSCAR client name and version
 	sess.SetClientID(serverCookie.ClientID)
+	sess.SetMemberSince(time.Now())
 
 	// indicate whether the client supports/wants multiple concurrent sessions
 	sess.SetMultiConnFlag(wire.MultiConnFlag(serverCookie.MultiConnFlag))
@@ -527,6 +529,9 @@ func (s AuthService) loginSuccessResponse(props loginProperties, advertisedHost 
 		ScreenName:    props.screenName,
 		ClientID:      props.clientID,
 		MultiConnFlag: props.multiConnFlag,
+	}
+	if props.isKerberosPlaintextAuth || props.isKerberosRoastedAuth {
+		loginCookie.KerberosAuth = 1
 	}
 
 	buf := &bytes.Buffer{}

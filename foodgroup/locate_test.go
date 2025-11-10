@@ -103,15 +103,11 @@ func TestLocateService_UserInfoQuery(t *testing.T) {
 							screenName: state.NewIdentScreenName("requested-user"),
 							result: newTestSession("requested-user",
 								sessOptCannedSignonTime,
-								sessOptCannedAwayMessage),
-						},
-					},
-				},
-				profileManagerParams: profileManagerParams{
-					retrieveProfileParams: retrieveProfileParams{
-						{
-							screenName: state.NewIdentScreenName("requested-user"),
-							result:     "this is my profile!",
+								sessOptCannedAwayMessage,
+								sessOptProfile(state.UserProfile{
+									ProfileText: "this is my profile!",
+									MIMEType:    "text/aolrtf; charset=\"us-ascii\"",
+								})),
 						},
 					},
 				},
@@ -136,76 +132,7 @@ func TestLocateService_UserInfoQuery(t *testing.T) {
 				Body: wire.SNAC_0x02_0x06_LocateUserInfoReply{
 					TLVUserInfo: newTestSession("requested-user",
 						sessOptCannedSignonTime,
-						sessOptCannedAwayMessage).
-						TLVUserInfo(),
-					LocateInfo: wire.TLVRestBlock{
-						TLVList: wire.TLVList{
-							wire.NewTLVBE(wire.LocateTLVTagsInfoSigMime, `text/aolrtf; charset="us-ascii"`),
-							wire.NewTLVBE(wire.LocateTLVTagsInfoSigData, "this is my profile!"),
-						},
-					},
-				},
-			},
-		},
-		{
-			name: "request user info + profile, expect user info response + profile",
-			mockParams: mockParams{
-				relationshipFetcherParams: relationshipFetcherParams{
-					relationshipParams: relationshipParams{
-						{
-							me:   state.NewIdentScreenName("user_screen_name"),
-							them: state.NewIdentScreenName("requested-user"),
-							result: state.Relationship{
-								User:          state.NewIdentScreenName("requested-user"),
-								BlocksYou:     false,
-								YouBlock:      false,
-								IsOnYourList:  true,
-								IsOnTheirList: true,
-							},
-						},
-					},
-				},
-				sessionRetrieverParams: sessionRetrieverParams{
-					retrieveSessionParams: retrieveSessionParams{
-						{
-							screenName: state.NewIdentScreenName("requested-user"),
-							result: newTestSession("requested-user",
-								sessOptCannedSignonTime,
-								sessOptCannedAwayMessage),
-						},
-					},
-				},
-				profileManagerParams: profileManagerParams{
-					retrieveProfileParams: retrieveProfileParams{
-						{
-							screenName: state.NewIdentScreenName("requested-user"),
-							result:     "this is my profile!",
-						},
-					},
-				},
-			},
-			userSession: newTestSession("user_screen_name"),
-			inputSNAC: wire.SNACMessage{
-				Frame: wire.SNACFrame{
-					RequestID: 1234,
-				},
-				Body: wire.SNAC_0x02_0x05_LocateUserInfoQuery{
-					// 2048 is a dummy to make sure bitmask check works
-					Type:       uint16(wire.LocateTypeSig) | 2048,
-					ScreenName: "requested-user",
-				},
-			},
-			expectOutput: wire.SNACMessage{
-				Frame: wire.SNACFrame{
-					FoodGroup: wire.Locate,
-					SubGroup:  wire.LocateUserInfoReply,
-					RequestID: 1234,
-				},
-				Body: wire.SNAC_0x02_0x06_LocateUserInfoReply{
-					TLVUserInfo: newTestSession("requested-user",
-						sessOptCannedSignonTime,
-						sessOptCannedAwayMessage).
-						TLVUserInfo(),
+						sessOptCannedAwayMessage).TLVUserInfo(),
 					LocateInfo: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
 							wire.NewTLVBE(wire.LocateTLVTagsInfoSigMime, `text/aolrtf; charset="us-ascii"`),
@@ -377,16 +304,9 @@ func TestLocateService_UserInfoQuery(t *testing.T) {
 					RetrieveSession(val.screenName).
 					Return(val.result)
 			}
-			profileManager := newMockProfileManager(t)
-			for _, val := range tc.mockParams.retrieveProfileParams {
-				profileManager.EXPECT().
-					Profile(matchContext(), val.screenName).
-					Return(val.result, val.err)
-			}
 			svc := LocateService{
 				relationshipFetcher: relationshipFetcher,
 				sessionRetriever:    sessionRetriever,
-				profileManager:      profileManager,
 			}
 			outputSNAC, err := svc.UserInfoQuery(context.Background(), tc.userSession, tc.inputSNAC.Frame,
 				tc.inputSNAC.Body.(wire.SNAC_0x02_0x05_LocateUserInfoQuery))
@@ -564,7 +484,7 @@ func TestLocateService_SetKeywordInfo(t *testing.T) {
 					SetKeywords(matchContext(), params.screenName, params.keywords).
 					Return(params.err)
 			}
-			svc := NewLocateService(nil, nil, profileManager, nil, nil)
+			svc := NewLocateService(nil, nil, profileManager, nil, nil, nil)
 			outputSNAC, err := svc.SetKeywordInfo(context.Background(), tt.userSession, tt.inputSNAC.Frame, tt.inputSNAC.Body.(wire.SNAC_0x02_0x0F_LocateSetKeywordInfo))
 			assert.NoError(t, err)
 			assert.Equal(t, tt.expectOutput, outputSNAC)
@@ -653,7 +573,7 @@ func TestLocateService_SetDirInfo(t *testing.T) {
 					SetDirectoryInfo(matchContext(), params.screenName, params.info).
 					Return(nil)
 			}
-			svc := NewLocateService(nil, nil, profileManager, nil, nil)
+			svc := NewLocateService(nil, nil, profileManager, nil, nil, nil)
 			outputSNAC, err := svc.SetDirInfo(context.Background(), tt.userSession, tt.inputSNAC.Frame, tt.inputSNAC.Body.(wire.SNAC_0x02_0x09_LocateSetDirInfo))
 			assert.NoError(t, err)
 			assert.Equal(t, tt.expectOutput, outputSNAC)
@@ -672,15 +592,35 @@ func TestLocateService_SetInfo(t *testing.T) {
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
-		wantErr    error
+		// wantSessionProfile is the expected profile set on the session
+		wantSessionProfile state.UserProfile
+		// wantErr is the expected error
+		wantErr error
 	}{
 		{
-			name:        "set profile",
+			name:        "set session profile (AIM < 6)",
 			userSession: newTestSession("test-user"),
 			inBody: wire.SNAC_0x02_0x04_LocateSetInfo{
 				TLVRestBlock: wire.TLVRestBlock{
 					TLVList: wire.TLVList{
 						wire.NewTLVBE(wire.LocateTLVTagsInfoSigData, "profile-result"),
+						wire.NewTLVBE(wire.LocateTLVTagsInfoSigMime, `text/aolrtf; charset="us-ascii"`),
+					},
+				},
+			},
+			wantSessionProfile: state.UserProfile{
+				ProfileText: "profile-result",
+				MIMEType:    `text/aolrtf; charset="us-ascii"`,
+			},
+		},
+		{
+			name:        "set stored profile (AIM 6-7)",
+			userSession: newTestSession("test-user", sessOptKerberosAuth),
+			inBody: wire.SNAC_0x02_0x04_LocateSetInfo{
+				TLVRestBlock: wire.TLVRestBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.LocateTLVTagsInfoSigData, "profile-result"),
+						wire.NewTLVBE(wire.LocateTLVTagsInfoSigMime, `text/aolrtf; charset="us-ascii"`),
 					},
 				},
 			},
@@ -689,10 +629,17 @@ func TestLocateService_SetInfo(t *testing.T) {
 					setProfileParams: setProfileParams{
 						{
 							screenName: state.NewIdentScreenName("test-user"),
-							body:       "profile-result",
+							body: state.UserProfile{
+								ProfileText: "profile-result",
+								MIMEType:    `text/aolrtf; charset="us-ascii"`,
+							},
 						},
 					},
 				},
+			},
+			wantSessionProfile: state.UserProfile{
+				ProfileText: "profile-result",
+				MIMEType:    `text/aolrtf; charset="us-ascii"`,
 			},
 		},
 		{
@@ -737,7 +684,11 @@ func TestLocateService_SetInfo(t *testing.T) {
 			profileManager := newMockProfileManager(t)
 			for _, params := range tt.mockParams.setProfileParams {
 				profileManager.EXPECT().
-					SetProfile(matchContext(), params.screenName, params.body).
+					SetProfile(matchContext(), params.screenName, mock.MatchedBy(func(profile state.UserProfile) bool {
+						return profile.ProfileText == params.body.ProfileText &&
+							profile.MIMEType == params.body.MIMEType &&
+							!profile.UpdateTime.IsZero()
+					})).
 					Return(nil)
 			}
 			buddyUpdateBroadcaster := newMockbuddyBroadcaster(t)
@@ -748,15 +699,22 @@ func TestLocateService_SetInfo(t *testing.T) {
 					})).
 					Return(params.err)
 			}
-			svc := NewLocateService(nil, nil, profileManager, nil, nil)
+			svc := NewLocateService(nil, nil, profileManager, nil, nil, nil)
 			svc.buddyBroadcaster = buddyUpdateBroadcaster
 			assert.Equal(t, tt.wantErr, svc.SetInfo(context.Background(), tt.userSession, tt.inBody))
+
+			if tt.wantSessionProfile.Empty() {
+				assert.True(t, tt.userSession.Profile().Empty())
+			} else {
+				assert.Equal(t, tt.wantSessionProfile.ProfileText, tt.userSession.Profile().ProfileText)
+				assert.Equal(t, tt.wantSessionProfile.MIMEType, tt.userSession.Profile().MIMEType)
+			}
 		})
 	}
 }
 
 func TestLocateService_SetInfo_SetCaps(t *testing.T) {
-	svc := NewLocateService(nil, nil, nil, nil, nil)
+	svc := NewLocateService(nil, nil, nil, nil, nil, nil)
 
 	sess := newTestSession("screen-name")
 	inBody := wire.SNAC_0x02_0x04_LocateSetInfo{
@@ -789,7 +747,7 @@ func TestLocateService_SetInfo_SetCaps(t *testing.T) {
 }
 
 func TestLocateService_RightsQuery(t *testing.T) {
-	svc := NewLocateService(nil, nil, nil, nil, nil)
+	svc := NewLocateService(nil, nil, nil, nil, nil, nil)
 
 	outputSNAC := svc.RightsQuery(context.Background(), wire.SNACFrame{RequestID: 1234})
 	expectSNAC := wire.SNACMessage{
@@ -933,7 +891,7 @@ func TestLocateService_DirInfo(t *testing.T) {
 					User(matchContext(), params.screenName).
 					Return(params.result, params.err)
 			}
-			svc := NewLocateService(nil, nil, profileManager, nil, nil)
+			svc := NewLocateService(nil, nil, profileManager, nil, nil, nil)
 			outputSNAC, err := svc.DirInfo(context.Background(), tt.inputSNAC.Frame, tt.inputSNAC.Body.(wire.SNAC_0x02_0x0B_LocateGetDirInfo))
 			assert.NoError(t, err)
 			assert.Equal(t, tt.expectOutput, outputSNAC)

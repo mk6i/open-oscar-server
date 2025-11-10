@@ -110,8 +110,8 @@ type MessageRelayer interface {
 
 // ProfileRetriever defines a method for retrieving a user's free-form profile.
 type ProfileRetriever interface {
-	// Profile returns the free-form profile body for the given screen name.
-	Profile(ctx context.Context, screenName state.IdentScreenName) (string, error)
+	// Profile returns the user's profile information for the given screen name.
+	Profile(ctx context.Context, screenName state.IdentScreenName) (state.UserProfile, error)
 }
 
 // SessionRetriever defines methods for retrieving active sessions,

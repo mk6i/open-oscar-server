@@ -948,28 +948,41 @@ func (f SQLiteUserStore) RemovePermitBuddy(ctx context.Context, me IdentScreenNa
 	return err
 }
 
-func (f SQLiteUserStore) Profile(ctx context.Context, screenName IdentScreenName) (string, error) {
+func (f SQLiteUserStore) Profile(ctx context.Context, screenName IdentScreenName) (UserProfile, error) {
 	q := `
-		SELECT IFNULL(body, '')
+		SELECT IFNULL(body, ''), IFNULL(mimeType, ''), IFNULL(updateTime, 0)
 		FROM profile
 		WHERE screenName = ?
 	`
-	var profile string
-	err := f.db.QueryRowContext(ctx, q, screenName.String()).Scan(&profile)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return "", err
+	var profile UserProfile
+	var updateTimeUnix int64
+	err := f.db.QueryRowContext(ctx, q, screenName.String()).Scan(&profile.ProfileText, &profile.MIMEType, &updateTimeUnix)
+	if errors.Is(err, sql.ErrNoRows) {
+		return UserProfile{}, nil
+	}
+	if err != nil {
+		return UserProfile{}, err
+	}
+	if updateTimeUnix > 0 {
+		profile.UpdateTime = time.Unix(updateTimeUnix, 0).UTC()
 	}
 	return profile, nil
 }
 
-func (f SQLiteUserStore) SetProfile(ctx context.Context, screenName IdentScreenName, body string) error {
+func (f SQLiteUserStore) SetProfile(ctx context.Context, screenName IdentScreenName, profile UserProfile) error {
+	var updateTimeUnix int64
+	if !profile.UpdateTime.IsZero() {
+		updateTimeUnix = profile.UpdateTime.Unix()
+	}
 	q := `
-		INSERT INTO profile (screenName, body)
-		VALUES (?, ?)
+		INSERT INTO profile (screenName, body, mimeType, updateTime)
+		VALUES (?, ?, ?, ?)
 		ON CONFLICT (screenName)
-			DO UPDATE SET body = excluded.body
+			DO UPDATE SET body = excluded.body,
+			              mimeType = excluded.mimeType,
+			              updateTime = excluded.updateTime
 	`
-	_, err := f.db.ExecContext(ctx, q, screenName.String(), body)
+	_, err := f.db.ExecContext(ctx, q, screenName.String(), profile.ProfileText, profile.MIMEType, updateTimeUnix)
 	return err
 }
 

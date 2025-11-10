@@ -80,6 +80,17 @@ func TestSession_SetAndGetClientID(t *testing.T) {
 	assert.Equal(t, clientID, s.ClientID())
 }
 
+func TestSession_SetAndGetKerberosAuth(t *testing.T) {
+	s := NewSession()
+	assert.False(t, s.KerberosAuth())
+
+	s.SetKerberosAuth(true)
+	assert.True(t, s.KerberosAuth())
+
+	s.SetKerberosAuth(false)
+	assert.False(t, s.KerberosAuth())
+}
+
 func TestSession_SetAndGetRemoteAddr(t *testing.T) {
 	s := NewSession()
 	assert.Empty(t, s.RemoteAddr())
@@ -642,6 +653,36 @@ func TestSession_SetAndGetLastWarnLevel(t *testing.T) {
 	level := uint16(500)
 	s.SetWarning(level)
 	assert.Equal(t, level, s.Warning())
+}
+
+func TestSession_SetAndGetProfile(t *testing.T) {
+	s := NewSession()
+	profile := s.Profile()
+	assert.Empty(t, profile.ProfileText)
+	assert.Empty(t, profile.MIMEType)
+	assert.True(t, profile.UpdateTime.IsZero())
+
+	profileTime := time.Unix(1234567890, 0)
+	newProfile := UserProfile{
+		ProfileText: "My profile text",
+		MIMEType:    "text/plain",
+		UpdateTime:  profileTime,
+	}
+	s.SetProfile(newProfile)
+	retrievedProfile := s.Profile()
+	assert.Equal(t, newProfile, retrievedProfile)
+	assert.Equal(t, "My profile text", retrievedProfile.ProfileText)
+	assert.Equal(t, "text/plain", retrievedProfile.MIMEType)
+	assert.Equal(t, profileTime, retrievedProfile.UpdateTime)
+}
+
+func TestSession_SetAndGetMemberSince(t *testing.T) {
+	s := NewSession()
+	assert.True(t, s.MemberSince().IsZero())
+
+	memberTime := time.Unix(1234567890, 0)
+	s.SetMemberSince(memberTime)
+	assert.Equal(t, memberTime, s.MemberSince())
 }
 
 func TestSession_ScaleWarningAndRateLimit(t *testing.T) {

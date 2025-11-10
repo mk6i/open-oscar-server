@@ -274,6 +274,7 @@ func OSCAR(deps Container) *oscar.Server {
 		deps.sqLiteUserStore,
 		deps.sqLiteUserStore,
 		deps.inMemorySessionManager,
+		deps.sqLiteUserStore,
 	)
 	oServiceService := foodgroup.NewOServiceService(
 		deps.cfg,
@@ -286,6 +287,7 @@ func OSCAR(deps Container) *oscar.Server {
 		deps.sqLiteUserStore,
 		deps.snacRateLimits,
 		deps.chatSessionManager,
+		deps.sqLiteUserStore,
 	)
 	userLookupService := foodgroup.NewUserLookupService(deps.sqLiteUserStore)
 	statsService := foodgroup.NewStatsService()
@@ -409,6 +411,7 @@ func TOC(deps Container) *toc.Server {
 				deps.sqLiteUserStore,
 				deps.sqLiteUserStore,
 				deps.inMemorySessionManager,
+				deps.sqLiteUserStore,
 			),
 			Logger: logger,
 			OServiceService: foodgroup.NewOServiceService(
@@ -422,6 +425,7 @@ func TOC(deps Container) *toc.Server {
 				deps.sqLiteUserStore,
 				deps.snacRateLimits,
 				deps.chatSessionManager,
+				deps.sqLiteUserStore,
 			),
 			PermitDenyService: foodgroup.NewPermitDenyService(
 				deps.sqLiteUserStore,
@@ -504,6 +508,7 @@ func WebAPI(deps Container) *webapi.Server {
 			deps.sqLiteUserStore,
 			deps.sqLiteUserStore,
 			deps.inMemorySessionManager,
+			deps.sqLiteUserStore,
 		),
 		Logger: logger,
 		OServiceService: foodgroup.NewOServiceService(
@@ -517,6 +522,7 @@ func WebAPI(deps Container) *webapi.Server {
 			deps.sqLiteUserStore,
 			deps.snacRateLimits,
 			deps.chatSessionManager,
+			deps.sqLiteUserStore,
 		),
 		PermitDenyService: foodgroup.NewPermitDenyService(
 			deps.sqLiteUserStore,

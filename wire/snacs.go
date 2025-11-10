@@ -177,13 +177,16 @@ const (
 	OServiceUserInfoUserFlags       uint16 = 0x01
 	OServiceUserInfoSignonTOD       uint16 = 0x03
 	OServiceUserInfoIdleTime        uint16 = 0x04
+	OServiceUserInfoMemberSince     uint16 = 0x05
 	OServiceUserInfoStatus          uint16 = 0x06
 	OServiceUserInfoICQDC           uint16 = 0x0C
 	OServiceUserInfoOscarCaps       uint16 = 0x0D
+	OServiceUserInfoOnlineTime      uint16 = 0x0F
 	OServiceUserInfoBARTInfo        uint16 = 0x1D
 	OServiceUserInfoMySubscriptions uint16 = 0x1E
 	OServiceUserInfoUserFlags2      uint16 = 0x1F
 	OServiceUserInfoMyInstanceNum   uint16 = 0x14
+	OServiceUserInfoSigTime         uint16 = 0x26
 	OServiceUserInfoPrimaryInstance uint16 = 0x28
 
 	OServiceUserStatusAvailable         uint32 = 0x00000000 // user is available

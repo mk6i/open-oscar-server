@@ -1,0 +1,6 @@
+ALTER TABLE profile
+    ADD COLUMN mimeType TEXT;
+
+ALTER TABLE profile
+    ADD COLUMN updateTime INTEGER NOT NULL DEFAULT 0;
+

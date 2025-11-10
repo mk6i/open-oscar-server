@@ -29,10 +29,10 @@ type BuddyBroadcaster interface {
 	BroadcastBuddyDeparted(ctx context.Context, sess *state.Session) error
 }
 
-// ProfileManager manages user profiles
+// ProfileManager manages user profiles (uses types.ProfileManager)
 type ProfileManager interface {
-	SetProfile(ctx context.Context, screenName state.IdentScreenName, profile string) error
-	Profile(ctx context.Context, screenName state.IdentScreenName) (string, error)
+	SetProfile(ctx context.Context, screenName state.IdentScreenName, profile state.UserProfile) error
+	Profile(ctx context.Context, screenName state.IdentScreenName) (state.UserProfile, error)
 }
 
 // PresenceData contains presence information.
@@ -511,15 +511,19 @@ func (h *PresenceHandler) SetProfile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get the profile content
-	profile := r.URL.Query().Get("profile")
+	profileText := r.URL.Query().Get("profile")
 
 	// Limit profile size (4KB max)
-	if len(profile) > 4096 {
+	if len(profileText) > 4096 {
 		h.sendError(w, http.StatusBadRequest, "profile too large (max 4KB)")
 		return
 	}
 
 	// Save profile using ProfileManager
+	profile := state.UserProfile{
+		ProfileText: profileText,
+		UpdateTime:  time.Now().UTC(),
+	}
 	if err := h.ProfileManager.SetProfile(ctx, session.ScreenName.IdentScreenName(), profile); err != nil {
 		h.Logger.ErrorContext(ctx, "failed to set profile", "err", err.Error())
 		h.sendError(w, http.StatusInternalServerError, "failed to save profile")
@@ -528,7 +532,7 @@ func (h *PresenceHandler) SetProfile(w http.ResponseWriter, r *http.Request) {
 
 	h.Logger.InfoContext(ctx, "profile updated",
 		"screenName", session.ScreenName.String(),
-		"profileSize", len(profile),
+		"profileSize", len(profileText),
 	)
 
 	// Send success response
@@ -572,14 +576,18 @@ func (h *PresenceHandler) GetProfile(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		h.Logger.WarnContext(ctx, "failed to get profile", "err", err.Error())
 		// Return empty profile on error
-		profile = ""
+		profile = state.UserProfile{}
 	}
 
 	// Send response
+	lastUpdated := int64(0)
+	if !profile.UpdateTime.IsZero() {
+		lastUpdated = profile.UpdateTime.Unix()
+	}
 	responseData := map[string]interface{}{
 		"screenName":  targetSN,
-		"profile":     profile,
-		"lastUpdated": time.Now().Unix(),
+		"profile":     profile.ProfileText,
+		"lastUpdated": lastUpdated,
 	}
 
 	response := BaseResponse{}

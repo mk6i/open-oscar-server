@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/mk6i/retro-aim-server/state"
 	"github.com/mk6i/retro-aim-server/wire"
@@ -27,12 +28,14 @@ func NewLocateService(
 	profileManager ProfileManager,
 	relationshipFetcher RelationshipFetcher,
 	sessionRetriever SessionRetriever,
+	userManager UserManager,
 ) LocateService {
 	return LocateService{
 		buddyBroadcaster:    newBuddyNotifier(bartItemManager, relationshipFetcher, messageRelayer, sessionRetriever),
 		relationshipFetcher: relationshipFetcher,
 		profileManager:      profileManager,
 		sessionRetriever:    sessionRetriever,
+		userManager:         userManager,
 	}
 }
 
@@ -44,6 +47,7 @@ type LocateService struct {
 	relationshipFetcher RelationshipFetcher
 	profileManager      ProfileManager
 	sessionRetriever    SessionRetriever
+	userManager         UserManager
 }
 
 // RightsQuery returns SNAC wire.LocateRightsReply, which contains Locate food
@@ -73,10 +77,27 @@ func (s LocateService) RightsQuery(_ context.Context, inFrame wire.SNACFrame) wi
 
 // SetInfo sets the user's profile, away message or capabilities.
 func (s LocateService) SetInfo(ctx context.Context, sess *state.Session, inBody wire.SNAC_0x02_0x04_LocateSetInfo) error {
+
 	// update profile
-	if profile, hasProfile := inBody.String(wire.LocateTLVTagsInfoSigData); hasProfile {
-		if err := s.profileManager.SetProfile(ctx, sess.IdentScreenName(), profile); err != nil {
-			return err
+	if profileText, hasProfile := inBody.String(wire.LocateTLVTagsInfoSigData); hasProfile {
+		mime, _ := inBody.String(wire.LocateTLVTagsInfoSigMime)
+		profile := state.UserProfile{
+			ProfileText: profileText,
+			MIMEType:    mime,
+			UpdateTime:  time.Now(),
+		}
+
+		sess.SetProfile(profile)
+
+		// set the server-side profile
+		if sess.KerberosAuth() || inBody.HasTag(wire.LocateTLVTagsInfoSupportHostSig) {
+			// normally, the SupportHostSig TLV indicates that the profile should
+			// be stored server-side. however, some AIM 6 clients expect server-side
+			// profiles but do not send this TLV. in order to cover all bases, just
+			// save the profile for all kerberos-based clients.
+			if err := s.profileManager.SetProfile(ctx, sess.IdentScreenName(), profile); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -152,13 +173,9 @@ func (s LocateService) UserInfoQuery(ctx context.Context, sess *state.Session, i
 	var list wire.TLVList
 
 	if inBody.RequestProfile() {
-		profile, err := s.profileManager.Profile(ctx, identScreenName)
-		if err != nil {
-			return wire.SNACMessage{}, err
-		}
 		list.AppendList([]wire.TLV{
-			wire.NewTLVBE(wire.LocateTLVTagsInfoSigMime, `text/aolrtf; charset="us-ascii"`),
-			wire.NewTLVBE(wire.LocateTLVTagsInfoSigData, profile),
+			wire.NewTLVBE(wire.LocateTLVTagsInfoSigMime, buddySess.Profile().MIMEType),
+			wire.NewTLVBE(wire.LocateTLVTagsInfoSigData, buddySess.Profile().ProfileText),
 		})
 	}
 

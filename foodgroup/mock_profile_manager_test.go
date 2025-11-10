@@ -258,22 +258,22 @@ func (_c *mockProfileManager_InterestList_Call) RunAndReturn(run func(context.Co
 }
 
 // Profile provides a mock function with given fields: ctx, screenName
-func (_m *mockProfileManager) Profile(ctx context.Context, screenName state.IdentScreenName) (string, error) {
+func (_m *mockProfileManager) Profile(ctx context.Context, screenName state.IdentScreenName) (state.UserProfile, error) {
 	ret := _m.Called(ctx, screenName)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Profile")
 	}
 
-	var r0 string
+	var r0 state.UserProfile
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, state.IdentScreenName) (string, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, state.IdentScreenName) (state.UserProfile, error)); ok {
 		return rf(ctx, screenName)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, state.IdentScreenName) string); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, state.IdentScreenName) state.UserProfile); ok {
 		r0 = rf(ctx, screenName)
 	} else {
-		r0 = ret.Get(0).(string)
+		r0 = ret.Get(0).(state.UserProfile)
 	}
 
 	if rf, ok := ret.Get(1).(func(context.Context, state.IdentScreenName) error); ok {
@@ -304,12 +304,12 @@ func (_c *mockProfileManager_Profile_Call) Run(run func(ctx context.Context, scr
 	return _c
 }
 
-func (_c *mockProfileManager_Profile_Call) Return(_a0 string, _a1 error) *mockProfileManager_Profile_Call {
+func (_c *mockProfileManager_Profile_Call) Return(_a0 state.UserProfile, _a1 error) *mockProfileManager_Profile_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *mockProfileManager_Profile_Call) RunAndReturn(run func(context.Context, state.IdentScreenName) (string, error)) *mockProfileManager_Profile_Call {
+func (_c *mockProfileManager_Profile_Call) RunAndReturn(run func(context.Context, state.IdentScreenName) (state.UserProfile, error)) *mockProfileManager_Profile_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -410,17 +410,17 @@ func (_c *mockProfileManager_SetKeywords_Call) RunAndReturn(run func(context.Con
 	return _c
 }
 
-// SetProfile provides a mock function with given fields: ctx, screenName, body
-func (_m *mockProfileManager) SetProfile(ctx context.Context, screenName state.IdentScreenName, body string) error {
-	ret := _m.Called(ctx, screenName, body)
+// SetProfile provides a mock function with given fields: ctx, screenName, profile
+func (_m *mockProfileManager) SetProfile(ctx context.Context, screenName state.IdentScreenName, profile state.UserProfile) error {
+	ret := _m.Called(ctx, screenName, profile)
 
 	if len(ret) == 0 {
 		panic("no return value specified for SetProfile")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, state.IdentScreenName, string) error); ok {
-		r0 = rf(ctx, screenName, body)
+	if rf, ok := ret.Get(0).(func(context.Context, state.IdentScreenName, state.UserProfile) error); ok {
+		r0 = rf(ctx, screenName, profile)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -436,14 +436,14 @@ type mockProfileManager_SetProfile_Call struct {
 // SetProfile is a helper method to define mock.On call
 //   - ctx context.Context
 //   - screenName state.IdentScreenName
-//   - body string
-func (_e *mockProfileManager_Expecter) SetProfile(ctx interface{}, screenName interface{}, body interface{}) *mockProfileManager_SetProfile_Call {
-	return &mockProfileManager_SetProfile_Call{Call: _e.mock.On("SetProfile", ctx, screenName, body)}
+//   - profile state.UserProfile
+func (_e *mockProfileManager_Expecter) SetProfile(ctx interface{}, screenName interface{}, profile interface{}) *mockProfileManager_SetProfile_Call {
+	return &mockProfileManager_SetProfile_Call{Call: _e.mock.On("SetProfile", ctx, screenName, profile)}
 }
 
-func (_c *mockProfileManager_SetProfile_Call) Run(run func(ctx context.Context, screenName state.IdentScreenName, body string)) *mockProfileManager_SetProfile_Call {
+func (_c *mockProfileManager_SetProfile_Call) Run(run func(ctx context.Context, screenName state.IdentScreenName, profile state.UserProfile)) *mockProfileManager_SetProfile_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(state.IdentScreenName), args[2].(string))
+		run(args[0].(context.Context), args[1].(state.IdentScreenName), args[2].(state.UserProfile))
 	})
 	return _c
 }
@@ -453,7 +453,7 @@ func (_c *mockProfileManager_SetProfile_Call) Return(_a0 error) *mockProfileMana
 	return _c
 }
 
-func (_c *mockProfileManager_SetProfile_Call) RunAndReturn(run func(context.Context, state.IdentScreenName, string) error) *mockProfileManager_SetProfile_Call {
+func (_c *mockProfileManager_SetProfile_Call) RunAndReturn(run func(context.Context, state.IdentScreenName, state.UserProfile) error) *mockProfileManager_SetProfile_Call {
 	_c.Call.Return(run)
 	return _c
 }

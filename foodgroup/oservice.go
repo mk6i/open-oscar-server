@@ -26,6 +26,7 @@ type OServiceService struct {
 	cookieIssuer       CookieBaker
 	messageRelayer     MessageRelayer
 	chatMessageRelayer ChatMessageRelayer
+	profileManager     ProfileManager
 }
 
 // NewOServiceService creates a new instance of NewOServiceService.
@@ -40,6 +41,7 @@ func NewOServiceService(
 	bartItemManager BARTItemManager,
 	snacRateLimits wire.SNACRateLimits,
 	chatMessageRelayer ChatMessageRelayer,
+	profileManager ProfileManager,
 ) *OServiceService {
 	return &OServiceService{
 		cookieIssuer:       cookieIssuer,
@@ -51,6 +53,7 @@ func NewOServiceService(
 		timeNow:            time.Now,
 		chatRoomManager:    chatRoomManager,
 		chatMessageRelayer: chatMessageRelayer,
+		profileManager:     profileManager,
 	}
 }
 
@@ -652,6 +655,32 @@ func (s OServiceService) ClientOnline(ctx context.Context, service uint16, bodyI
 			},
 		}
 		s.messageRelayer.RelayToScreenName(ctx, sess.IdentScreenName(), msg)
+
+		// set stored profile
+		if sess.KerberosAuth() {
+			// normally, the SupportHostSig TLV indicates that the profile should
+			// be stored server-side. however, some AIM 6 clients expect server-side
+			// profiles but do not send this TLV. in order to cover all bases, just
+			// save the profile for all kerberos-based clients.
+			profile, err := s.profileManager.Profile(ctx, sess.IdentScreenName())
+			if err != nil {
+				return fmt.Errorf("unable to reload profile: %w", err)
+			}
+
+			if !profile.Empty() {
+				sess.SetProfile(profile)
+
+				// notify client that the server-side profile is ready for retrieval
+				s.messageRelayer.RelayToScreenName(ctx, sess.IdentScreenName(), wire.SNACMessage{
+					Frame: wire.SNACFrame{
+						FoodGroup: wire.OService,
+						SubGroup:  wire.OServiceUserInfoUpdate,
+					},
+					Body: newOServiceUserInfoUpdate(sess),
+				})
+			}
+		}
+
 	case wire.Chat:
 		room, err := s.chatRoomManager.ChatRoomByCookie(ctx, sess.ChatRoomCookie())
 		if err != nil {
@@ -678,6 +707,19 @@ func newOServiceUserInfoUpdate(sess *state.Session) wire.SNAC_0x01_0x0F_OService
 	info := sess.TLVUserInfo()
 	userInfo := []wire.TLVUserInfo{info}
 
+	// set registration date
+	userInfo[0].Append(wire.NewTLVBE(wire.OServiceUserInfoMemberSince, uint32(sess.MemberSince().Unix())))
+	// set sign-on time
+	userInfo[0].Append(wire.NewTLVBE(wire.OServiceUserInfoSignonTOD, uint32(sess.SignonTime().Unix())))
+	// set current session length (seconds)
+	userInfo[0].Append(wire.NewTLVBE(wire.OServiceUserInfoOnlineTime, uint32(time.Since(sess.SignonTime()).Seconds())))
+
+	profile := sess.Profile()
+	if !profile.UpdateTime.IsZero() {
+		// set profile update time if the profile was set
+		userInfo[0].Append(wire.NewTLVBE(wire.OServiceUserInfoSigTime, uint32(profile.UpdateTime.Unix())))
+	}
+
 	if sess.FoodGroupVersions()[wire.OService] >= 4 {
 		// ideally, the second block should contain only instance-specific TLVs,
 		// but since the exact structure is unclear, we temporarily duplicate the first.
@@ -691,4 +733,5 @@ func newOServiceUserInfoUpdate(sess *state.Session) wire.SNAC_0x01_0x0F_OService
 	return wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate{
 		UserInfo: userInfo,
 	}
+
 }

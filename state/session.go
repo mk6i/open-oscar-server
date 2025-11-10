@@ -62,6 +62,7 @@ type Session struct {
 	lastObservedStates      [5]RateClassState
 	msgCh                   chan wire.SNACMessage
 	multiConnFlag           wire.MultiConnFlag
+	kerberosAuth            bool
 	mutex                   sync.RWMutex
 	nowFn                   func() time.Time
 	rateLimitStates         [5]RateClassState
@@ -77,6 +78,8 @@ type Session struct {
 	warning                 uint16
 	warningCh               chan uint16
 	lastWarnUpdate          time.Time
+	profile                 UserProfile
+	memberSince             time.Time
 }
 
 // NewSession returns a new instance of Session. By default, the user may have
@@ -666,4 +669,46 @@ func (s *Session) MultiConnFlag() wire.MultiConnFlag {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 	return s.multiConnFlag
+}
+
+// SetKerberosAuth sets whether Kerberos authentication was used for this session.
+func (s *Session) SetKerberosAuth(enabled bool) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.kerberosAuth = enabled
+}
+
+// KerberosAuth indicates whether Kerberos authentication was used for this session.
+func (s *Session) KerberosAuth() bool {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.kerberosAuth
+}
+
+// SetProfile sets the user's profile information.
+func (s *Session) SetProfile(profile UserProfile) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.profile = profile
+}
+
+// Profile returns the user's profile information.
+func (s *Session) Profile() UserProfile {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.profile
+}
+
+// SetMemberSince sets the member since timestamp.
+func (s *Session) SetMemberSince(t time.Time) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.memberSince = t
+}
+
+// MemberSince reports when the user became a member.
+func (s *Session) MemberSince() time.Time {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.memberSince
 }
