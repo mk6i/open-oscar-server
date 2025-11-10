@@ -160,10 +160,10 @@ from [The Internet Archive](https://archive.org/details/aol_instant_messenger_sm
    From the root of the Open OSCAR Server repository, run the BART import script to upload the smiley pack:
 
     ```bash
-    ./scripts/import_bart.sh -t emoticon_set -u http://localhost:8080 /path/to/aim_bart_emoticons
+    ./scripts/import_bart.sh -t emoticon_set -u http://localhost:8080 /path/to/aim_bart_emoticons/*
     ```
 
-   Replace `/path/to/aim_bart_emoticons` with the actual path to your extracted directory.
+   Replace `/path/to/aim_bart_emoticons/*` with the actual path to your extracted directory.
 
 3. **Verify Import Success**
 
