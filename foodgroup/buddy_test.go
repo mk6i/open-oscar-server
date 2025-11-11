@@ -4,12 +4,11 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
 	"github.com/mk6i/retro-aim-server/state"
 	"github.com/mk6i/retro-aim-server/wire"
-
-	"github.com/stretchr/testify/assert"
 )
 
 func TestBuddyService_RightsQuery(t *testing.T) {
@@ -234,30 +233,19 @@ func TestBuddyNotifier_BroadcastBuddyArrived(t *testing.T) {
 	cases := []struct {
 		// name is the unit test name
 		name string
-		// sourceSession is the session of the user
-		userSession *state.Session
+		// screenName is the user screen name
+		screenName state.IdentScreenName
+		// userInfo is the user info passed to BroadcastBuddyArrived
+		userInfo wire.TLVUserInfo
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
 	}{
 		{
-			name:        "happy path",
-			userSession: newTestSession("me"),
+			name:       "happy path",
+			screenName: state.NewIdentScreenName("me"),
+			userInfo:   wire.TLVUserInfo{ScreenName: "me"},
 			mockParams: mockParams{
-				bartItemManagerParams: bartItemManagerParams{
-					buddyIconMetadataParams: buddyIconMetadataParams{
-						{
-							screenName: state.NewIdentScreenName("me"),
-							result: &wire.BARTID{
-								Type: wire.BARTTypesBuddyIcon,
-								BARTInfo: wire.BARTInfo{
-									Flags: wire.BARTFlagsKnown,
-									Hash:  []byte{'m', 'y', 'i', 'c', 'o', 'n'},
-								},
-							},
-						},
-					},
-				},
 				relationshipFetcherParams: relationshipFetcherParams{
 					allRelationshipsParams: allRelationshipsParams{
 						{
@@ -310,16 +298,16 @@ func TestBuddyNotifier_BroadcastBuddyArrived(t *testing.T) {
 								state.NewIdentScreenName("friend1-visible"),
 								state.NewIdentScreenName("friend2-visible"),
 							},
-							message: newBuddyArrivedNotif(userInfoWithBARTIcon(
-								newTestSession("me"),
-								wire.BARTID{
-									Type: wire.BARTTypesBuddyIcon,
-									BARTInfo: wire.BARTInfo{
-										Flags: wire.BARTFlagsKnown,
-										Hash:  []byte{'m', 'y', 'i', 'c', 'o', 'n'},
-									},
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Buddy,
+									SubGroup:  wire.BuddyArrived,
+									RequestID: wire.ReqIDFromServer,
 								},
-							)),
+								Body: wire.SNAC_0x03_0x0B_BuddyArrived{
+									TLVUserInfo: wire.TLVUserInfo{ScreenName: "me"},
+								},
+							},
 						},
 					},
 				},
@@ -335,12 +323,6 @@ func TestBuddyNotifier_BroadcastBuddyArrived(t *testing.T) {
 					AllRelationships(matchContext(), params.screenName, params.filter).
 					Return(params.result, params.err)
 			}
-			bartItemManager := newMockBARTItemManager(t)
-			for _, params := range tc.mockParams.buddyIconMetadataParams {
-				bartItemManager.EXPECT().
-					BuddyIconMetadata(matchContext(), params.screenName).
-					Return(params.result, params.err)
-			}
 			messageRelayer := newMockMessageRelayer(t)
 			for _, params := range tc.mockParams.relayToScreenNamesParams {
 				messageRelayer.EXPECT().
@@ -348,12 +330,11 @@ func TestBuddyNotifier_BroadcastBuddyArrived(t *testing.T) {
 			}
 
 			svc := buddyNotifier{
-				bartItemManager:     bartItemManager,
 				relationshipFetcher: relationshipFetcher,
 				messageRelayer:      messageRelayer,
 			}
 
-			err := svc.BroadcastBuddyArrived(context.Background(), tc.userSession.IdentScreenName(), tc.userSession.TLVUserInfo())
+			err := svc.BroadcastBuddyArrived(context.Background(), tc.screenName, tc.userInfo)
 			assert.NoError(t, err)
 		})
 	}
@@ -458,19 +439,11 @@ func TestBuddyService_BroadcastDeparture(t *testing.T) {
 					AllRelationships(matchContext(), params.screenName, params.filter).
 					Return(params.result, params.err)
 			}
-			bartItemManager := newMockBARTItemManager(t)
-			for _, params := range tc.mockParams.buddyIconMetadataParams {
-				bartItemManager.EXPECT().
-					BuddyIconMetadata(matchContext(), params.screenName).
-					Return(params.result, params.err)
-			}
-
 			messageRelayer := newMockMessageRelayer(t)
 			for _, params := range tc.mockParams.relayToScreenNamesParams {
 				messageRelayer.EXPECT().
-					RelayToScreenNames(mock.Anything, params.screenNames, params.message)
+					RelayToScreenNames(matchContext(), params.screenNames, params.message)
 			}
-
 			svc := buddyNotifier{
 				relationshipFetcher: relationshipFetcher,
 				messageRelayer:      messageRelayer,
@@ -500,22 +473,6 @@ func Test_buddyNotifier_BroadcastVisibility(t *testing.T) {
 			name:        "happy path",
 			userSession: newTestSession("me"),
 			mockParams: mockParams{
-				bartItemManagerParams: bartItemManagerParams{
-					buddyIconMetadataParams: buddyIconMetadataParams{
-						{
-							screenName: state.NewIdentScreenName("me"),
-							result:     nil,
-						},
-						{
-							screenName: state.NewIdentScreenName("friend3-visible-on-your-list"),
-							result:     nil,
-						},
-						{
-							screenName: state.NewIdentScreenName("friend4-visible-on-both-lists"),
-							result:     nil,
-						},
-					},
-				},
 				relationshipFetcherParams: relationshipFetcherParams{
 					allRelationshipsParams: allRelationshipsParams{
 						{
@@ -586,35 +543,35 @@ func Test_buddyNotifier_BroadcastVisibility(t *testing.T) {
 					relayToScreenNameParams: relayToScreenNameParams{
 						{
 							screenName: state.NewIdentScreenName("friend2-visible-on-their-list"),
-							message:    newBuddyArrivedNotif(newTestSession("me").TLVUserInfo()),
+							message:    newBuddyArrivedNotif("me"),
 						},
 						{
 							screenName: state.NewIdentScreenName("me"),
-							message:    newBuddyArrivedNotif(newTestSession("friend3-visible-on-your-list").TLVUserInfo()),
+							message:    newBuddyArrivedNotif("friend3-visible-on-your-list"),
 						},
 						{
 							screenName: state.NewIdentScreenName("friend4-visible-on-both-lists"),
-							message:    newBuddyArrivedNotif(newTestSession("me").TLVUserInfo()),
+							message:    newBuddyArrivedNotif("me"),
 						},
 						{
 							screenName: state.NewIdentScreenName("me"),
-							message:    newBuddyArrivedNotif(newTestSession("friend4-visible-on-both-lists").TLVUserInfo()),
+							message:    newBuddyArrivedNotif("friend4-visible-on-both-lists"),
 						},
 						{
 							screenName: state.NewIdentScreenName("friend5-blocked-on-their-list"),
-							message:    newBuddyDepartedNotif(newTestSession("me")),
+							message:    newBuddyDepartedNotif("me"),
 						},
 						{
 							screenName: state.NewIdentScreenName("me"),
-							message:    newBuddyDepartedNotif(newTestSession("friend6-blocked-on-your-list")),
+							message:    newBuddyDepartedNotif("friend6-blocked-on-your-list"),
 						},
 						{
 							screenName: state.NewIdentScreenName("me"),
-							message:    newBuddyDepartedNotif(newTestSession("friend7-blocked-on-both-lists")),
+							message:    newBuddyDepartedNotif("friend7-blocked-on-both-lists"),
 						},
 						{
 							screenName: state.NewIdentScreenName("friend7-blocked-on-both-lists"),
-							message:    newBuddyDepartedNotif(newTestSession("me")),
+							message:    newBuddyDepartedNotif("me"),
 						},
 					},
 				},
@@ -657,22 +614,6 @@ func Test_buddyNotifier_BroadcastVisibility(t *testing.T) {
 			name:        "don't send departure notifications",
 			userSession: newTestSession("me"),
 			mockParams: mockParams{
-				bartItemManagerParams: bartItemManagerParams{
-					buddyIconMetadataParams: buddyIconMetadataParams{
-						{
-							screenName: state.NewIdentScreenName("me"),
-							result:     nil,
-						},
-						{
-							screenName: state.NewIdentScreenName("friend3-visible-on-your-list"),
-							result:     nil,
-						},
-						{
-							screenName: state.NewIdentScreenName("friend4-visible-on-both-lists"),
-							result:     nil,
-						},
-					},
-				},
 				relationshipFetcherParams: relationshipFetcherParams{
 					allRelationshipsParams: allRelationshipsParams{
 						{
@@ -715,19 +656,19 @@ func Test_buddyNotifier_BroadcastVisibility(t *testing.T) {
 					relayToScreenNameParams: relayToScreenNameParams{
 						{
 							screenName: state.NewIdentScreenName("friend2-visible-on-their-list"),
-							message:    newBuddyArrivedNotif(newTestSession("me").TLVUserInfo()),
+							message:    newBuddyArrivedNotif("me"),
 						},
 						{
 							screenName: state.NewIdentScreenName("me"),
-							message:    newBuddyArrivedNotif(newTestSession("friend3-visible-on-your-list").TLVUserInfo()),
+							message:    newBuddyArrivedNotif("friend3-visible-on-your-list"),
 						},
 						{
 							screenName: state.NewIdentScreenName("friend4-visible-on-both-lists"),
-							message:    newBuddyArrivedNotif(newTestSession("me").TLVUserInfo()),
+							message:    newBuddyArrivedNotif("me"),
 						},
 						{
 							screenName: state.NewIdentScreenName("me"),
-							message:    newBuddyArrivedNotif(newTestSession("friend4-visible-on-both-lists").TLVUserInfo()),
+							message:    newBuddyArrivedNotif("friend4-visible-on-both-lists"),
 						},
 					},
 				},
@@ -754,92 +695,6 @@ func Test_buddyNotifier_BroadcastVisibility(t *testing.T) {
 			},
 			doSendDepartures: false,
 		},
-		{
-			name:        "users have buddy icons",
-			userSession: newTestSession("me"),
-			mockParams: mockParams{
-				bartItemManagerParams: bartItemManagerParams{
-					buddyIconMetadataParams: buddyIconMetadataParams{
-						{
-							screenName: state.NewIdentScreenName("me"),
-							result: &wire.BARTID{
-								Type: wire.BARTTypesBuddyIcon,
-								BARTInfo: wire.BARTInfo{
-									Flags: wire.BARTFlagsKnown,
-									Hash:  []byte{'m', 'y', 'i', 'c', 'o', 'n'},
-								},
-							},
-						},
-						{
-							screenName: state.NewIdentScreenName("friend-visible-on-both-lists"),
-							result: &wire.BARTID{
-								Type: wire.BARTTypesBuddyIcon,
-								BARTInfo: wire.BARTInfo{
-									Flags: wire.BARTFlagsKnown,
-									Hash:  []byte{'t', 'h', 'e', 'i', 'r', 'i', 'c', 'o', 'n'},
-								},
-							},
-						},
-					},
-				},
-				relationshipFetcherParams: relationshipFetcherParams{
-					allRelationshipsParams: allRelationshipsParams{
-						{
-							screenName: state.NewIdentScreenName("me"),
-							filter:     nil,
-							result: []state.Relationship{
-								{
-									User:          state.NewIdentScreenName("friend-visible-on-both-lists"),
-									BlocksYou:     false,
-									YouBlock:      false,
-									IsOnYourList:  true,
-									IsOnTheirList: true,
-								},
-							},
-						},
-					},
-				},
-				messageRelayerParams: messageRelayerParams{
-					relayToScreenNameParams: relayToScreenNameParams{
-						{
-							screenName: state.NewIdentScreenName("friend-visible-on-both-lists"),
-							message: newBuddyArrivedNotif(userInfoWithBARTIcon(
-								newTestSession("me"),
-								wire.BARTID{
-									Type: wire.BARTTypesBuddyIcon,
-									BARTInfo: wire.BARTInfo{
-										Flags: wire.BARTFlagsKnown,
-										Hash:  []byte{'m', 'y', 'i', 'c', 'o', 'n'},
-									},
-								},
-							)),
-						},
-						{
-							screenName: state.NewIdentScreenName("me"),
-							message: newBuddyArrivedNotif(userInfoWithBARTIcon(
-								newTestSession("friend-visible-on-both-lists"),
-								wire.BARTID{
-									Type: wire.BARTTypesBuddyIcon,
-									BARTInfo: wire.BARTInfo{
-										Flags: wire.BARTFlagsKnown,
-										Hash:  []byte{'t', 'h', 'e', 'i', 'r', 'i', 'c', 'o', 'n'},
-									},
-								},
-							)),
-						},
-					},
-				},
-				sessionRetrieverParams: sessionRetrieverParams{
-					retrieveSessionParams: retrieveSessionParams{
-						{
-							screenName: state.NewIdentScreenName("friend-visible-on-both-lists"),
-							result:     newTestSession("friend-visible-on-both-lists"),
-						},
-					},
-				},
-			},
-			doSendDepartures: true,
-		},
 	}
 
 	for _, tc := range cases {
@@ -850,16 +705,13 @@ func Test_buddyNotifier_BroadcastVisibility(t *testing.T) {
 					AllRelationships(matchContext(), params.screenName, params.filter).
 					Return(params.result, params.err)
 			}
-			bartItemManager := newMockBARTItemManager(t)
-			for _, params := range tc.mockParams.buddyIconMetadataParams {
-				bartItemManager.EXPECT().
-					BuddyIconMetadata(matchContext(), params.screenName).
-					Return(params.result, params.err)
-			}
 			messageRelayer := newMockMessageRelayer(t)
 			for _, params := range tc.mockParams.relayToScreenNameParams {
 				messageRelayer.EXPECT().
-					RelayToScreenName(mock.Anything, params.screenName, params.message)
+					RelayToScreenName(matchContext(), params.screenName, mock.MatchedBy(func(message wire.SNACMessage) bool {
+						return params.message.Frame == message.Frame &&
+							params.message.Body.(func(any) bool)(message.Body)
+					}))
 			}
 			sessionRetriever := newMockSessionRetriever(t)
 			for _, params := range tc.mockParams.retrieveSessionParams {
@@ -869,7 +721,6 @@ func Test_buddyNotifier_BroadcastVisibility(t *testing.T) {
 			}
 
 			svc := buddyNotifier{
-				bartItemManager:     bartItemManager,
 				relationshipFetcher: relationshipFetcher,
 				messageRelayer:      messageRelayer,
 				sessionRetriever:    sessionRetriever,
@@ -881,33 +732,36 @@ func Test_buddyNotifier_BroadcastVisibility(t *testing.T) {
 	}
 }
 
-func newBuddyDepartedNotif(me *state.Session) wire.SNACMessage {
+func newBuddyDepartedNotif(screenName state.DisplayScreenName) wire.SNACMessage {
 	return wire.SNACMessage{
 		Frame: wire.SNACFrame{
 			FoodGroup: wire.Buddy,
 			SubGroup:  wire.BuddyDeparted,
 			RequestID: wire.ReqIDFromServer,
 		},
-		Body: wire.SNAC_0x03_0x0C_BuddyDeparted{
-			TLVUserInfo: wire.TLVUserInfo{
-				// don't include the TLV block, otherwise the AIM client fails
-				// to process the block event
-				ScreenName:   me.IdentScreenName().String(),
-				WarningLevel: me.Warning(),
-			},
+		Body: func(val any) bool {
+			snac, ok := val.(wire.SNAC_0x03_0x0C_BuddyDeparted)
+			if !ok {
+				return false
+			}
+			return snac.ScreenName == screenName.String()
 		},
 	}
 }
 
-func newBuddyArrivedNotif(userInfo wire.TLVUserInfo) wire.SNACMessage {
+func newBuddyArrivedNotif(screenName state.DisplayScreenName) wire.SNACMessage {
 	return wire.SNACMessage{
 		Frame: wire.SNACFrame{
 			FoodGroup: wire.Buddy,
 			SubGroup:  wire.BuddyArrived,
 			RequestID: wire.ReqIDFromServer,
 		},
-		Body: wire.SNAC_0x03_0x0B_BuddyArrived{
-			TLVUserInfo: userInfo,
+		Body: func(val any) bool {
+			snac, ok := val.(wire.SNAC_0x03_0x0B_BuddyArrived)
+			if !ok {
+				return false
+			}
+			return snac.ScreenName == screenName.String() && len(snac.TLVUserInfo.TLVList) > 0
 		},
 	}
 }

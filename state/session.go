@@ -50,6 +50,7 @@ const (
 // methods may be safely accessed by multiple goroutines.
 type Session struct {
 	awayMessage             string
+	buddyIcon               wire.BARTID
 	caps                    [][16]byte
 	chatRoomCookie          string
 	clientID                string
@@ -456,6 +457,11 @@ func (s *Session) userInfo() wire.TLVList {
 		tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoIdleTime, uint16(s.nowFn().Sub(s.idleTime).Minutes())))
 	}
 
+	// set buddy icon metadata, if user has buddy icon
+	if bartID, hasIcon := s.BuddyIcon(); hasIcon {
+		tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, bartID))
+	}
+
 	// ICQ direct-connect info. The TLV is required for buddy arrival events to
 	// work in ICQ, even if the values are set to default.
 	if s.userInfoBitmask&wire.OServiceUserFlagICQ == wire.OServiceUserFlagICQ {
@@ -697,6 +703,22 @@ func (s *Session) Profile() UserProfile {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 	return s.profile
+}
+
+// SetBuddyIcon stores the session's buddy icon metadata.
+func (s *Session) SetBuddyIcon(icon wire.BARTID) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.buddyIcon = icon
+}
+
+// BuddyIcon returns the session's buddy icon metadata and reports whether it
+// has been set. The icon is considered set if its type is non-zero.
+func (s *Session) BuddyIcon() (wire.BARTID, bool) {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	icon := s.buddyIcon
+	return icon, icon.Type != 0
 }
 
 // SetMemberSince sets the member since timestamp.

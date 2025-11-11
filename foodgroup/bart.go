@@ -1,6 +1,7 @@
 package foodgroup
 
 import (
+	"bytes"
 	"context"
 	"crypto/md5"
 	"errors"
@@ -29,6 +30,7 @@ func NewBARTService(
 	return BARTService{
 		bartItemManager:        bartItemManager,
 		buddyUpdateBroadcaster: newBuddyNotifier(bartItemManager, relationshipFetcher, messageRelayer, sessionRetriever),
+		messageRelayer:         messageRelayer,
 		logger:                 logger,
 	}
 }
@@ -36,6 +38,7 @@ func NewBARTService(
 type BARTService struct {
 	bartItemManager        BARTItemManager
 	buddyUpdateBroadcaster buddyBroadcaster
+	messageRelayer         MessageRelayer
 	logger                 *slog.Logger
 }
 
@@ -48,14 +51,37 @@ func (s BARTService) UpsertItem(ctx context.Context, sess *state.Session, inFram
 
 	if err := s.bartItemManager.InsertBARTItem(ctx, hash, inBody.Data, inBody.Type); err != nil {
 		if !errors.Is(err, state.ErrBARTItemExists) {
-			return wire.SNACMessage{}, err
+			return wire.SNACMessage{}, fmt.Errorf("failed to insert BART item: %w", err)
 		}
 	}
 
 	s.logger.DebugContext(ctx, "successfully uploaded BART item", "hash", fmt.Sprintf("%x", hash))
 
-	if err := s.buddyUpdateBroadcaster.BroadcastBuddyArrived(ctx, sess.IdentScreenName(), sess.TLVUserInfo()); err != nil {
-		return wire.SNACMessage{}, err
+	bartID, hasIcon := sess.BuddyIcon()
+	if hasIcon && bytes.Equal(hash, bartID.Hash) {
+		// unset unknown flag
+		bartID.Flags ^= wire.BARTFlagsUnknown
+		sess.SetBuddyIcon(bartID)
+
+		s.messageRelayer.RelayToScreenName(ctx, sess.IdentScreenName(), wire.SNACMessage{
+			Frame: wire.SNACFrame{
+				FoodGroup: wire.OService,
+				SubGroup:  wire.OServiceUserInfoUpdate,
+			},
+			Body: newOServiceUserInfoUpdate(sess),
+		})
+
+		if err := s.buddyUpdateBroadcaster.BroadcastBuddyArrived(ctx, sess.IdentScreenName(), sess.TLVUserInfo()); err != nil {
+			return wire.SNACMessage{}, err
+		}
+	} else {
+		bartID = wire.BARTID{
+			Type: inBody.Type,
+			BARTInfo: wire.BARTInfo{
+				Flags: wire.BARTFlagsCustom,
+				Hash:  hash,
+			},
+		}
 	}
 
 	return wire.SNACMessage{
@@ -66,13 +92,7 @@ func (s BARTService) UpsertItem(ctx context.Context, sess *state.Session, inFram
 		},
 		Body: wire.SNAC_0x10_0x03_BARTUploadReply{
 			Code: wire.BARTReplyCodesSuccess,
-			ID: wire.BARTID{
-				Type: inBody.Type,
-				BARTInfo: wire.BARTInfo{
-					Flags: wire.BARTFlagsKnown,
-					Hash:  hash,
-				},
-			},
+			ID:   bartID,
 		},
 	}, nil
 }

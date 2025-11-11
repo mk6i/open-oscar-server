@@ -236,6 +236,7 @@ type bartItemManagerUpsertParams []struct {
 	itemHash []byte
 	payload  []byte
 	bartType uint16
+	err      error
 }
 
 // buddyIconMetadataParams is the list of parameters passed at the mock
@@ -677,8 +678,9 @@ type broadcastVisibilityParams []struct {
 // broadcastBuddyArrivedParams is the list of parameters passed at the mock
 // buddyBroadcaster.BroadcastBuddyArrived call site
 type broadcastBuddyArrivedParams []struct {
-	screenName state.DisplayScreenName
-	err        error
+	screenName  state.DisplayScreenName
+	err         error
+	bodyMatcher func(snac wire.TLVUserInfo) bool
 }
 
 // broadcastBuddyDepartedParams is the list of parameters passed at the mock
@@ -835,6 +837,13 @@ func sessClientID(clientID string) func(session *state.Session) {
 func sessRemoteAddr(remoteAddr netip.AddrPort) func(session *state.Session) {
 	return func(session *state.Session) {
 		session.SetRemoteAddr(&remoteAddr)
+	}
+}
+
+// sessBuddyIcon sets session buddy icon
+func sessOptBuddyIcon(icon wire.BARTID) func(session *state.Session) {
+	return func(session *state.Session) {
+		session.SetBuddyIcon(icon)
 	}
 }
 

@@ -233,6 +233,7 @@ func OSCAR(deps Container) *oscar.Server {
 		deps.hmacCookieBaker,
 		deps.chatSessionManager,
 		deps.sqLiteUserStore,
+		deps.sqLiteUserStore,
 		deps.rateLimitClasses,
 	)
 	bartService := foodgroup.NewBARTService(
@@ -335,7 +336,7 @@ func OSCAR(deps Container) *oscar.Server {
 // KerberosAPI creates an HTTP server for the Kerberos server.
 func KerberosAPI(deps Container) *kerberos.Server {
 	logger := deps.logger.With("svc", "Kerberos")
-	authService := foodgroup.NewAuthService(deps.cfg, deps.inMemorySessionManager, deps.inMemorySessionManager, deps.chatSessionManager, deps.sqLiteUserStore, deps.hmacCookieBaker, deps.chatSessionManager, deps.sqLiteUserStore, deps.rateLimitClasses)
+	authService := foodgroup.NewAuthService(deps.cfg, deps.inMemorySessionManager, deps.inMemorySessionManager, deps.chatSessionManager, deps.sqLiteUserStore, deps.hmacCookieBaker, deps.chatSessionManager, deps.sqLiteUserStore, deps.sqLiteUserStore, deps.rateLimitClasses)
 	return kerberos.NewKerberosServer(deps.Listeners, logger, authService)
 }
 
@@ -391,6 +392,7 @@ func TOC(deps Container) *toc.Server {
 				deps.sqLiteUserStore,
 				deps.hmacCookieBaker,
 				deps.chatSessionManager,
+				deps.sqLiteUserStore,
 				deps.sqLiteUserStore,
 				deps.rateLimitClasses,
 			),
@@ -488,6 +490,7 @@ func WebAPI(deps Container) *webapi.Server {
 			deps.sqLiteUserStore,
 			deps.hmacCookieBaker,
 			deps.chatSessionManager,
+			deps.sqLiteUserStore,
 			deps.sqLiteUserStore,
 			deps.rateLimitClasses,
 		),

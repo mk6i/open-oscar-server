@@ -1568,7 +1568,7 @@ func TestAuthService_RegisterChatSession_HappyPath(t *testing.T) {
 	chatCookieBuf := &bytes.Buffer{}
 	assert.NoError(t, wire.MarshalBE(serverCookie, chatCookieBuf))
 
-	svc := NewAuthService(config.Config{}, nil, nil, chatSessionRegistry, nil, nil, nil, nil, wire.DefaultRateLimitClasses())
+	svc := NewAuthService(config.Config{}, nil, nil, chatSessionRegistry, nil, nil, nil, nil, nil, wire.DefaultRateLimitClasses())
 
 	have, err := svc.RegisterChatSession(context.Background(), serverCookie)
 	assert.NoError(t, err)
@@ -1629,9 +1629,31 @@ func TestAuthService_RegisterBOSSession(t *testing.T) {
 						},
 					},
 				},
+				bartItemManagerParams: bartItemManagerParams{
+					buddyIconMetadataParams: buddyIconMetadataParams{
+						{
+							screenName: screenName.IdentScreenName(),
+							result: &wire.BARTID{
+								Type: wire.BARTTypesBuddyIcon,
+								BARTInfo: wire.BARTInfo{
+									Flags: wire.BARTFlagsKnown,
+									Hash:  []byte{'m', 'y', 'i', 'c', 'o', 'n'},
+								},
+							},
+						},
+					},
+				},
 			},
 			wantSess: func(session *state.Session) bool {
-				return true
+				want := wire.BARTID{
+					Type: wire.BARTTypesBuddyIcon,
+					BARTInfo: wire.BARTInfo{
+						Flags: wire.BARTFlagsKnown,
+						Hash:  []byte{'m', 'y', 'i', 'c', 'o', 'n'},
+					},
+				}
+				has, hasIcon := session.BuddyIcon()
+				return assert.True(t, hasIcon) && assert.Equal(t, want, has)
 			},
 		},
 		{
@@ -1663,6 +1685,14 @@ func TestAuthService_RegisterBOSSession(t *testing.T) {
 						{
 							screenName:    screenName.IdentScreenName(),
 							confirmStatus: true,
+						},
+					},
+				},
+				bartItemManagerParams: bartItemManagerParams{
+					buddyIconMetadataParams: buddyIconMetadataParams{
+						{
+							screenName: screenName.IdentScreenName(),
+							result:     nil,
 						},
 					},
 				},
@@ -1702,6 +1732,14 @@ func TestAuthService_RegisterBOSSession(t *testing.T) {
 						},
 					},
 				},
+				bartItemManagerParams: bartItemManagerParams{
+					buddyIconMetadataParams: buddyIconMetadataParams{
+						{
+							screenName: uin.IdentScreenName(),
+							result:     nil,
+						},
+					},
+				},
 			},
 			wantSess: func(sess *state.Session) bool {
 				uinMatches := fmt.Sprintf("%d", sess.UIN()) == uin.String()
@@ -1731,8 +1769,14 @@ func TestAuthService_RegisterBOSSession(t *testing.T) {
 					ConfirmStatus(matchContext(), params.screenName).
 					Return(params.confirmStatus, nil)
 			}
+			bartItemManager := newMockBARTItemManager(t)
+			for _, params := range tc.mockParams.buddyIconMetadataParams {
+				bartItemManager.EXPECT().
+					BuddyIconMetadata(matchContext(), params.screenName).
+					Return(params.result, params.err)
+			}
 
-			svc := NewAuthService(config.Config{}, sessionRegistry, nil, nil, userManager, nil, nil, accountManager, wire.DefaultRateLimitClasses())
+			svc := NewAuthService(config.Config{}, sessionRegistry, nil, nil, userManager, nil, nil, accountManager, bartItemManager, wire.DefaultRateLimitClasses())
 
 			have, err := svc.RegisterBOSSession(context.Background(), tc.cookie)
 			assert.NoError(t, err)
@@ -1762,7 +1806,7 @@ func TestAuthService_RetrieveBOSSession_HappyPath(t *testing.T) {
 		User(matchContext(), sess.IdentScreenName()).
 		Return(&state.User{IdentScreenName: sess.IdentScreenName()}, nil)
 
-	svc := NewAuthService(config.Config{}, nil, sessionRetriever, nil, userManager, nil, nil, nil, wire.DefaultRateLimitClasses())
+	svc := NewAuthService(config.Config{}, nil, sessionRetriever, nil, userManager, nil, nil, nil, nil, wire.DefaultRateLimitClasses())
 
 	have, err := svc.RetrieveBOSSession(context.Background(), aimAuthCookie)
 	assert.NoError(t, err)
@@ -1786,7 +1830,7 @@ func TestAuthService_RetrieveBOSSession_SessionNotFound(t *testing.T) {
 		User(matchContext(), sess.IdentScreenName()).
 		Return(&state.User{IdentScreenName: sess.IdentScreenName()}, nil)
 
-	svc := NewAuthService(config.Config{}, nil, sessionRetriever, nil, userManager, nil, nil, nil, wire.DefaultRateLimitClasses())
+	svc := NewAuthService(config.Config{}, nil, sessionRetriever, nil, userManager, nil, nil, nil, nil, wire.DefaultRateLimitClasses())
 
 	have, err := svc.RetrieveBOSSession(context.Background(), aimAuthCookie)
 	assert.NoError(t, err)
@@ -1879,7 +1923,7 @@ func TestAuthService_SignoutChat(t *testing.T) {
 					RemoveSession(matchSession(params.screenName))
 			}
 
-			svc := NewAuthService(config.Config{}, nil, nil, sessionManager, nil, nil, chatMessageRelayer, nil, wire.DefaultRateLimitClasses())
+			svc := NewAuthService(config.Config{}, nil, nil, sessionManager, nil, nil, chatMessageRelayer, nil, nil, wire.DefaultRateLimitClasses())
 			svc.SignoutChat(context.Background(), tt.userSession)
 		})
 	}
@@ -1924,7 +1968,7 @@ func TestAuthService_Signout(t *testing.T) {
 			for _, params := range tt.mockParams.removeSessionParams {
 				sessionManager.EXPECT().RemoveSession(matchSession(params.screenName))
 			}
-			svc := NewAuthService(config.Config{}, sessionManager, nil, nil, nil, nil, nil, nil, wire.DefaultRateLimitClasses())
+			svc := NewAuthService(config.Config{}, sessionManager, nil, nil, nil, nil, nil, nil, nil, wire.DefaultRateLimitClasses())
 
 			svc.Signout(context.Background(), tt.userSession)
 		})

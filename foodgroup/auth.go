@@ -26,6 +26,7 @@ func NewAuthService(
 	cookieBaker CookieBaker,
 	chatMessageRelayer ChatMessageRelayer,
 	accountManager AccountManager,
+	bartItemManager BARTItemManager,
 	classes wire.RateLimitClasses,
 ) *AuthService {
 	return &AuthService{
@@ -37,6 +38,7 @@ func NewAuthService(
 		userManager:         userManager,
 		chatMessageRelayer:  chatMessageRelayer,
 		accountManager:      accountManager,
+		bartItemManager:     bartItemManager,
 		rateLimitClasses:    classes,
 		timeNow:             time.Now,
 	}
@@ -54,6 +56,7 @@ type AuthService struct {
 	sessionRetriever    SessionRetriever
 	userManager         UserManager
 	accountManager      AccountManager
+	bartItemManager     BARTItemManager
 	rateLimitClasses    wire.RateLimitClasses
 	timeNow             func() time.Time
 }
@@ -126,6 +129,14 @@ func (s AuthService) RegisterBOSSession(ctx context.Context, serverCookie state.
 	// set string containing OSCAR client name and version
 	sess.SetClientID(serverCookie.ClientID)
 	sess.SetMemberSince(time.Now())
+
+	bartID, err := s.bartItemManager.BuddyIconMetadata(ctx, sess.IdentScreenName())
+	if err != nil {
+		return nil, fmt.Errorf("BuddyIconMetadata: %w", err)
+	}
+	if bartID != nil {
+		sess.SetBuddyIcon(*bartID)
+	}
 
 	// indicate whether the client supports/wants multiple concurrent sessions
 	sess.SetMultiConnFlag(wire.MultiConnFlag(serverCookie.MultiConnFlag))

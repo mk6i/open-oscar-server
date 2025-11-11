@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"time"
 
 	"github.com/mk6i/retro-aim-server/state"
@@ -205,7 +206,7 @@ func (s FeedbagService) UpsertItem(ctx context.Context, sess *state.Session, inF
 		case wire.FeedbagClassIdBuddy, wire.FeedbagClassIDPermit, wire.FeedbagClassIDDeny:
 			filter = append(filter, state.NewIdentScreenName(item.Name))
 		case wire.FeedbagClassIdBart:
-			if err := s.broadcastIconUpdate(ctx, sess, item); err != nil {
+			if err := s.setBARTItem(ctx, sess, item); err != nil {
 				return wire.SNACMessage{}, err
 			}
 		case wire.FeedbagClassIdPdinfo:
@@ -234,47 +235,59 @@ func (s FeedbagService) UpsertItem(ctx context.Context, sess *state.Session, inF
 	}, nil
 }
 
-// broadcastIconUpdate informs clients about buddy icon update. If the BART
+// setBARTItem informs clients about buddy icon update. If the BART
 // store doesn't have the icon, then tell the client to upload the buddy icon.
 // If the icon already exists, tell the user's buddies about the icon change.
-func (s FeedbagService) broadcastIconUpdate(ctx context.Context, sess *state.Session, item wire.FeedbagItem) error {
-	btlv := wire.BARTInfo{}
-	if b, hasBuf := item.Bytes(wire.FeedbagAttributesBartInfo); hasBuf {
-		if err := wire.UnmarshalBE(&btlv, bytes.NewBuffer(b)); err != nil {
-			return err
-		}
-	} else {
+func (s FeedbagService) setBARTItem(ctx context.Context, sess *state.Session, item wire.FeedbagItem) error {
+	b, hasBuf := item.Bytes(wire.FeedbagAttributesBartInfo)
+	if !hasBuf {
 		return errors.New("unable to extract icon payload")
 	}
 
-	if bytes.Equal(btlv.Hash, wire.GetClearIconHash()) {
-		s.logger.DebugContext(ctx, "user is clearing icon",
-			"hash", fmt.Sprintf("%x", btlv.Hash))
-		// tell buddies about the icon update
-		return s.buddyBroadcaster.BroadcastBuddyArrived(ctx, sess.IdentScreenName(), sess.TLVUserInfo())
+	itemType, err := strconv.ParseUint(item.Name, 0, 16)
+	if err != nil {
+		return fmt.Errorf("invalid BART item type %q: %w", item.Name, err)
 	}
 
-	bid := wire.BARTID{
-		Type: wire.BARTTypesBuddyIcon,
-		BARTInfo: wire.BARTInfo{
-			Flags: wire.BARTFlagsCustom,
-			Hash:  btlv.Hash,
-		},
+	bartID := wire.BARTID{
+		Type: uint16(itemType),
 	}
-	if b, err := s.bartItemManager.BARTItem(ctx, btlv.Hash); err != nil {
+	if err := wire.UnmarshalBE(&bartID.BARTInfo, bytes.NewBuffer(b)); err != nil {
 		return err
-	} else if len(b) == 0 {
-		// icon doesn't exist, tell the client to upload buddy icon
-		s.logger.DebugContext(ctx, "icon doesn't exist in BART store, client must upload the icon file",
-			"hash", fmt.Sprintf("%x", btlv.Hash))
-		bid.Flags |= wire.BARTFlagsUnknown
+	}
+
+	itemExists := false
+
+	if bytes.Equal(bartID.Hash, wire.GetClearIconHash()) {
+		s.logger.DebugContext(ctx, "user is clearing icon",
+			"hash", fmt.Sprintf("%x", bartID.Hash))
+		itemExists = true
 	} else {
-		s.logger.DebugContext(ctx, "icon already exists in BART store, don't upload the icon file",
-			"hash", fmt.Sprintf("%x", btlv.Hash))
-		// tell buddies about the icon update
-		if err := s.buddyBroadcaster.BroadcastBuddyArrived(ctx, sess.IdentScreenName(), sess.TLVUserInfo()); err != nil {
+		existingItem, err := s.bartItemManager.BARTItem(ctx, bartID.Hash)
+		if err != nil {
 			return err
 		}
+		itemExists = len(existingItem) > 0
+	}
+
+	if itemExists {
+		if bartID.Type == wire.BARTTypesBuddyIconSmall || bartID.Type == wire.BARTTypesBuddyIcon {
+			sess.SetBuddyIcon(bartID)
+			// tell buddies about the icon update
+			if err := s.buddyBroadcaster.BroadcastBuddyArrived(ctx, sess.IdentScreenName(), sess.TLVUserInfo()); err != nil {
+				return err
+			}
+		}
+		s.logger.DebugContext(ctx, "icon already exists in BART store, don't upload the icon file",
+			"hash", fmt.Sprintf("%x", bartID.Hash))
+	} else {
+		// icon doesn't exist, tell the client to upload buddy icon
+		bartID.Flags |= wire.BARTFlagsUnknown
+		if bartID.Type == wire.BARTTypesBuddyIconSmall || bartID.Type == wire.BARTTypesBuddyIcon {
+			sess.SetBuddyIcon(bartID)
+		}
+		s.logger.DebugContext(ctx, "icon doesn't exist in BART store, client must upload the icon file",
+			"hash", fmt.Sprintf("%x", bartID.Hash))
 	}
 
 	s.messageRelayer.RelayToScreenName(ctx, sess.IdentScreenName(), wire.SNACMessage{
@@ -283,9 +296,19 @@ func (s FeedbagService) broadcastIconUpdate(ctx context.Context, sess *state.Ses
 			SubGroup:  wire.OServiceBartReply,
 		},
 		Body: wire.SNAC_0x01_0x21_OServiceBARTReply{
-			BARTID: bid,
+			BARTID: bartID,
 		},
 	})
+
+	if bartID.Type == wire.BARTTypesBuddyIconSmall || bartID.Type == wire.BARTTypesBuddyIcon {
+		s.messageRelayer.RelayToScreenName(ctx, sess.IdentScreenName(), wire.SNACMessage{
+			Frame: wire.SNACFrame{
+				FoodGroup: wire.OService,
+				SubGroup:  wire.OServiceUserInfoUpdate,
+			},
+			Body: newOServiceUserInfoUpdate(sess),
+		})
+	}
 
 	return nil
 }

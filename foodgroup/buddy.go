@@ -150,10 +150,6 @@ func (s buddyNotifier) BroadcastBuddyArrived(ctx context.Context, screenName sta
 		recipients = append(recipients, user.User)
 	}
 
-	if err := s.setBuddyIcon(ctx, screenName, &userInfo); err != nil {
-		return fmt.Errorf("failed to set buddy icon for %s: %w", screenName.String(), err)
-	}
-
 	s.messageRelayer.RelayToScreenNames(ctx, recipients, wire.SNACMessage{
 		Frame: wire.SNACFrame{
 			FoodGroup: wire.Buddy,
@@ -236,7 +232,6 @@ func (s buddyNotifier) BroadcastVisibility(
 		return fmt.Errorf("retrieving relationships: %w", err)
 	}
 
-	buddyIconSet := false
 	yourTLVInfo := you.TLVUserInfo()
 
 	for _, relationship := range relationships {
@@ -251,21 +246,11 @@ func (s buddyNotifier) BroadcastVisibility(
 
 		if !relationship.YouBlock {
 			if relationship.IsOnTheirList {
-				if !buddyIconSet {
-					// lazy load your buddy icon
-					if err := s.setBuddyIcon(ctx, you.IdentScreenName(), &yourTLVInfo); err != nil {
-						return fmt.Errorf("failed to set buddy icon for %s: %w", you.IdentScreenName().String(), err)
-					}
-					buddyIconSet = true
-				}
 				// tell them you're online
 				s.unicastBuddyArrived(ctx, yourTLVInfo, theirSess.IdentScreenName())
 			}
 			if relationship.IsOnYourList {
 				theirInfo := theirSess.TLVUserInfo()
-				if err := s.setBuddyIcon(ctx, theirSess.IdentScreenName(), &theirInfo); err != nil {
-					return fmt.Errorf("failed to set buddy icon for %s: %w", you.IdentScreenName().String(), err)
-				}
 				// tell you they're online
 				s.unicastBuddyArrived(ctx, theirInfo, you.IdentScreenName())
 			}
@@ -281,18 +266,6 @@ func (s buddyNotifier) BroadcastVisibility(
 		}
 	}
 
-	return nil
-}
-
-// setBuddyIcon adds buddy icon metadata to TLV user info
-func (s buddyNotifier) setBuddyIcon(ctx context.Context, you state.IdentScreenName, myInfo *wire.TLVUserInfo) error {
-	icon, err := s.bartItemManager.BuddyIconMetadata(ctx, you)
-	if err != nil {
-		return fmt.Errorf("retrieve buddy icon ref: %v", err)
-	}
-	if icon != nil {
-		myInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, *icon))
-	}
 	return nil
 }
 
