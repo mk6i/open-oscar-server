@@ -1655,7 +1655,12 @@ func (f SQLiteUserStore) SaveMessage(ctx context.Context, offlineMessage Offline
 		buf.Bytes(),
 		offlineMessage.Sent,
 	); err != nil {
-		return 0, fmt.Errorf("insert: %w", err)
+		if sqliteErr, ok := err.(*sqlite.Error); ok && sqliteErr.Code() == lib.SQLITE_CONSTRAINT_FOREIGNKEY {
+			err = ErrNoUser
+		} else {
+			err = fmt.Errorf("insert: %w", err)
+		}
+		return 0, err
 	}
 
 	if err = tx.Commit(); err != nil {
