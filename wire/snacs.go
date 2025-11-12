@@ -78,6 +78,12 @@ const (
 	ErrorCodeInFreeArea           uint16 = 0x1E
 	ErrorCodeRestrictedByPc       uint16 = 0x1F
 	ErrorCodeRemoteRestrictedByPc uint16 = 0x20
+
+	ErrorTLVFailURL        uint16 = 0x0004 // URL with more detail
+	ErrorTLVErrorSubcode   uint16 = 0x0008 // Foodgroup-specific error code
+	ErrorTLVErrorText      uint16 = 0x001B // String error message text
+	ErrorTLVErrorInfoCLSID uint16 = 0x0029 // UUID specifying format of ERROR_INFO_DATA data
+	ErrorTLVErrorInfoData  uint16 = 0x002A // Extra information describing error
 )
 
 //
@@ -681,6 +687,20 @@ const (
 	ICBMRdvTLVTagsSessID              uint16 = 0x0019 // string	Identifier for session
 	ICBMRdvTLVTagsRolloverID          uint16 = 0x001A // string	Identifier of session to rollover
 	ICBMRdvTLVTagsSvcData             uint16 = 0x2711 //	blob	Service specific data
+
+	ICBMSubErrRemoteIMOff            uint16 = 0x0001 // Used with NOT_LOGGED_ON
+	ICBMSubErrRemoteRestrictedByPC   uint16 = 0x0002 // Used with NOT_LOGGED_ON; the remote side denied because of parental controls
+	ICBMSubErrNeedSMSLegalToSend     uint16 = 0x0003 // User tried to send a message to an SMS user and is required to accept the legal text first
+	ICBMSubErrSMSWithoutDisclaimer   uint16 = 0x0004 // Client tried to send a message to an SMS user without the character counter being displayed
+	ICBMSubErrSMSCountryNotAllowed   uint16 = 0x0005 // Client tried to send a message to an SMS user but the SMS matrix said the country code combination not permitted
+	ICBMSubErrSMSUnknownCountry      uint16 = 0x0008 // Client tried to send to an SMS user but the server could not determine the country
+	ICBMSubErrCannotInitiateIM       uint16 = 0x0009 // An IM cannot be initiated by a BOT
+	ICBMSubErrIMNotAllowed           uint16 = 0x000A // An IM is not allowed by a consumer BOT to a user
+	ICBMSubErrCannotIMUsageLimited   uint16 = 0x000B // An IM is not allowed by a consumer BOT due to reaching a generic usage limit
+	ICBMSubErrCannotIMDailyLimited   uint16 = 0x000C // An IM is not allowed by a consumer BOT due to reaching the daily usage limit
+	ICBMSubErrCannotIMMonthlyLimited uint16 = 0x000D // An IM is not allowed by a consumer BOT due to reaching the monthly usage limit
+	ICBMSubErrOfflineIMNotAccepted   uint16 = 0x000E // User does not accept offline IMs
+	ICBMSubErrOfflineIMExceedMax     uint16 = 0x000F // Exceeded max storage limit
 )
 
 // ICBMCh1Fragment represents an ICBM channel 1 (instant message) message

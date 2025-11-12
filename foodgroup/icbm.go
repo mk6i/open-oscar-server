@@ -3,6 +3,7 @@ package foodgroup
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -83,16 +84,20 @@ func (s ICBMService) ParameterQuery(_ context.Context, inFrame wire.SNACFrame) w
 	}
 }
 
-func newICBMErr(requestID uint32, errCode uint16) *wire.SNACMessage {
+func newICBMErr(requestID uint32, errCode uint16, tlvs ...wire.TLV) *wire.SNACMessage {
+	body := wire.SNACError{
+		Code: errCode,
+	}
+	if len(tlvs) > 0 {
+		body.AppendList(tlvs)
+	}
 	return &wire.SNACMessage{
 		Frame: wire.SNACFrame{
 			FoodGroup: wire.ICBM,
 			SubGroup:  wire.ICBMErr,
 			RequestID: requestID,
 		},
-		Body: wire.SNACError{
-			Code: errCode,
-		},
+		Body: body,
 	}
 }
 
@@ -125,7 +130,14 @@ func (s ICBMService) ChannelMsgToHost(ctx context.Context, sess *state.Session, 
 				Sender:    sess.IdentScreenName(),
 				Sent:      s.timeNow().UTC(),
 			}
-			if err := s.offlineMessageSaver.SaveMessage(ctx, offlineMsg); err != nil {
+			if _, err := s.offlineMessageSaver.SaveMessage(ctx, offlineMsg); err != nil {
+				if errors.Is(err, state.ErrOfflineInboxFull) {
+					return newICBMErr(
+						inFrame.RequestID,
+						wire.ErrorCodeNotLoggedOn,
+						wire.NewTLVBE(wire.ErrorTLVErrorSubcode, wire.ICBMSubErrOfflineIMExceedMax),
+					), nil
+				}
 				return nil, fmt.Errorf("save ICBM offline message failed: %w", err)
 			}
 		}

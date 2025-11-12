@@ -794,7 +794,7 @@ func TestICBMService_ChannelMsgToHost(t *testing.T) {
 			for _, params := range tc.mockParams.saveMessageParams {
 				offlineMessageManager.EXPECT().
 					SaveMessage(matchContext(), params.offlineMessageIn).
-					Return(params.err)
+					Return(params.countOut, params.err)
 			}
 
 			svc := ICBMService{
@@ -1375,7 +1375,7 @@ func TestICBMService_EvilRequest(t *testing.T) {
 			for _, params := range tc.mockParams.saveMessageParams {
 				offlineMessageManager.EXPECT().
 					SaveMessage(matchContext(), params.offlineMessageIn).
-					Return(params.err)
+					Return(params.countOut, params.err)
 			}
 
 			svc := ICBMService{

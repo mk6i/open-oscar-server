@@ -2021,9 +2021,11 @@ func TestSQLiteUserStore_RetrieveMessages(t *testing.T) {
 		},
 	}
 
-	for _, msg := range offlineMessages {
-		err = f.SaveMessage(context.Background(), msg)
+	expectedCounts := []int{1, 1, 2}
+	for i, msg := range offlineMessages {
+		count, err := f.SaveMessage(context.Background(), msg)
 		assert.NoError(t, err)
+		assert.Equal(t, expectedCounts[i], count)
 	}
 
 	t.Run("Retrieve Messages", func(t *testing.T) {
@@ -2079,9 +2081,11 @@ func TestSQLiteUserStore_DeleteMessages(t *testing.T) {
 		},
 	}
 
-	for _, msg := range offlineMessages {
-		err = f.SaveMessage(context.Background(), msg)
+	expectedCounts := []int{1, 1, 2}
+	for i, msg := range offlineMessages {
+		count, err := f.SaveMessage(context.Background(), msg)
 		assert.NoError(t, err)
+		assert.Equal(t, expectedCounts[i], count)
 	}
 
 	t.Run("Delete Messages", func(t *testing.T) {
@@ -2105,6 +2109,33 @@ func TestSQLiteUserStore_DeleteMessages(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Len(t, messages, 1)
 	})
+}
+
+func TestSQLiteUserStore_SaveMessageLimit(t *testing.T) {
+	defer func() {
+		assert.NoError(t, os.Remove(testFile))
+	}()
+
+	store, err := NewSQLiteUserStore(testFile)
+	require.NoError(t, err)
+
+	msg := OfflineMessage{
+		Sender:    NewIdentScreenName("Sender"),
+		Recipient: NewIdentScreenName("Recipient"),
+		Message: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
+			Cookie: 42,
+		},
+		Sent: time.Now().UTC(),
+	}
+
+	for i := 1; i <= offlineInboxLimit; i++ {
+		count, err := store.SaveMessage(context.Background(), msg)
+		require.NoError(t, err)
+		require.Equal(t, i, count)
+	}
+
+	_, err = store.SaveMessage(context.Background(), msg)
+	require.ErrorIs(t, err, ErrOfflineInboxFull)
 }
 
 func TestSQLiteUserStore_BuddyIconMetadataExistingRef(t *testing.T) {

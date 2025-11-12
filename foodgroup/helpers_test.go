@@ -86,6 +86,7 @@ type retrieveMessagesParams []struct {
 // OfflineMessageManager.SaveMessage call site
 type saveMessageParams []struct {
 	offlineMessageIn state.OfflineMessage
+	countOut         int
 	err              error
 }
 
