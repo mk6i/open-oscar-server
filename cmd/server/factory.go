@@ -87,6 +87,7 @@ func MakeCommonDeps() (Container, error) {
 		c.sqLiteUserStore,
 		c.inMemorySessionManager,
 		c.sqLiteUserStore,
+		c.sqLiteUserStore,
 		c.snacRateLimits,
 		c.logger,
 	)

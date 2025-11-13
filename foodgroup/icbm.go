@@ -30,6 +30,7 @@ func NewICBMService(
 	relationshipFetcher RelationshipFetcher,
 	sessionRetriever SessionRetriever,
 	userManager UserManager,
+	feedbagManager FeedbagManager,
 	snacRateLimits wire.SNACRateLimits,
 	logger *slog.Logger,
 ) *ICBMService {
@@ -39,6 +40,7 @@ func NewICBMService(
 		messageRelayer:      messageRelayer,
 		offlineMessageSaver: offlineMessageSaver,
 		userManager:         userManager,
+		feedbagManager:      feedbagManager,
 		timeNow:             time.Now,
 		sessionRetriever:    sessionRetriever,
 		snacRateLimits:      snacRateLimits,
@@ -57,6 +59,7 @@ type ICBMService struct {
 	messageRelayer      MessageRelayer
 	offlineMessageSaver OfflineMessageManager
 	userManager         UserManager
+	feedbagManager      FeedbagManager
 	timeNow             func() time.Time
 	sessionRetriever    SessionRetriever
 	snacRateLimits      wire.SNACRateLimits
@@ -122,7 +125,7 @@ func (s ICBMService) ChannelMsgToHost(ctx context.Context, sess *state.Session, 
 
 	recipSess := s.sessionRetriever.RetrieveSession(recip)
 	if recipSess == nil {
-		// todo: verify user exists, otherwise this could save a bunch of garbage records
+		// icq
 		if _, saveOffline := inBody.Bytes(wire.ICBMTLVStore); saveOffline {
 			offlineMsg := state.OfflineMessage{
 				Message:   inBody,
@@ -141,6 +144,57 @@ func (s ICBMService) ChannelMsgToHost(ctx context.Context, sess *state.Session, 
 				return nil, fmt.Errorf("save ICBM offline message failed: %w", err)
 			}
 		}
+
+		bag, err := s.feedbagManager.Feedbag(ctx, recip)
+		if err != nil {
+			return nil, fmt.Errorf("get feedbag failed: %w", err)
+		}
+
+		for _, item := range bag {
+			if item.ClassID == wire.FeedbagClassIdBuddyPrefs {
+				if valid, ok := feedbagBuddyPref(wire.FeedbagBuddyPrefsAcceptOfflineIM, item.TLVList); !valid || ok {
+					offlineMsg := state.OfflineMessage{
+						Message:   inBody,
+						Recipient: recip,
+						Sender:    sess.IdentScreenName(),
+						Sent:      s.timeNow().UTC(),
+					}
+					if _, err := s.offlineMessageSaver.SaveMessage(ctx, offlineMsg); err != nil {
+						if errors.Is(err, state.ErrOfflineInboxFull) {
+							return newICBMErr(
+								inFrame.RequestID,
+								wire.ErrorCodeNotLoggedOn,
+								wire.NewTLVBE(wire.ErrorTLVErrorSubcode, wire.ICBMSubErrOfflineIMExceedMax),
+							), nil
+						}
+						return nil, fmt.Errorf("save ICBM offline message failed: %w", err)
+					}
+					if _, requestedConfirmation := inBody.TLVRestBlock.Bytes(wire.ICBMTLVRequestHostAck); requestedConfirmation {
+						// ack message back to sender
+						return &wire.SNACMessage{
+							Frame: wire.SNACFrame{
+								FoodGroup: wire.ICBM,
+								SubGroup:  wire.ICBMHostAck,
+								RequestID: inFrame.RequestID,
+							},
+							Body: wire.SNAC_0x04_0x0C_ICBMHostAck{
+								Cookie:     inBody.Cookie,
+								ChannelID:  inBody.ChannelID,
+								ScreenName: inBody.ScreenName,
+							},
+						}, nil
+					}
+					return nil, nil
+				} else {
+					return newICBMErr(
+						inFrame.RequestID,
+						wire.ErrorCodeNotLoggedOn,
+						wire.NewTLVBE(wire.ErrorTLVErrorSubcode, wire.ICBMSubErrOfflineIMNotAccepted),
+					), nil
+				}
+			}
+		}
+
 		return &wire.SNACMessage{
 			Frame: wire.SNACFrame{
 				FoodGroup: wire.ICBM,
