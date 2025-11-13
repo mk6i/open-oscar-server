@@ -1566,6 +1566,7 @@ const (
 	FeedbagAttributesPdModeXc                uint16 = 0x016E
 
 	FeedbagBuddyPrefsWantsTypingEvents uint32 = 0x400000 // user wants to send and receive typing events
+	FeedbagBuddyPrefsAcceptOfflineIM   uint16 = 0x34     // user wants to send and receive typing events
 
 	FeedbagRightsMaxClassAttrs       uint16 = 0x02
 	FeedbagRightsMaxItemAttrs        uint16 = 0x03
