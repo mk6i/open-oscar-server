@@ -179,7 +179,7 @@ func (s FeedbagService) UpsertItem(ctx context.Context, sess *state.Session, inF
 	for _, item := range items {
 		// don't let users block themselves, it causes the AIM client to go
 		// into a weird state.
-		if item.ClassID == 3 && state.NewIdentScreenName(item.Name) == sess.IdentScreenName() {
+		if item.ClassID == wire.FeedbagClassIDDeny && state.NewIdentScreenName(item.Name) == sess.IdentScreenName() {
 			return wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.Feedbag,

@@ -444,7 +444,7 @@ func TestICBMService_ChannelMsgToHost(t *testing.T) {
 		},
 		{
 			name:          "send offline message to ICQ recipient",
-			senderSession: newTestSession("11111111"),
+			senderSession: newTestSession("11111111", sessOptUIN(11111111)),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -517,6 +517,305 @@ func TestICBMService_ChannelMsgToHost(t *testing.T) {
 								Recipient: state.NewIdentScreenName("22222222"),
 								Sender:    state.NewIdentScreenName("11111111"),
 								Sent:      time.Date(2020, time.August, 1, 0, 0, 0, 0, time.UTC),
+							},
+						},
+					},
+				},
+				feedbagManagerParams: feedbagManagerParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("22222222"),
+							results:    []wire.FeedbagItem{},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:          "send offline message to recipient with accept offline IM flag set",
+			senderSession: newTestSession("sender-screen-name", sessOptWarning(10)),
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
+					ChannelID:  wire.ICBMChannelIM,
+					ScreenName: "recipient-screen-name",
+					TLVRestBlock: wire.TLVRestBlock{
+						TLVList: wire.TLVList{
+							wire.NewTLVBE(wire.ICBMTLVRequestHostAck, []byte{}),
+							wire.NewTLVBE(wire.ICBMTLVStore, []byte{}),
+							wire.NewTLVBE(wire.ICBMTLVData, []byte{1, 2, 3, 4}),
+						},
+					},
+				},
+			},
+			expectOutput: &wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.ICBM,
+					SubGroup:  wire.ICBMHostAck,
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x04_0x0C_ICBMHostAck{
+					ChannelID:  wire.ICBMChannelIM,
+					ScreenName: "recipient-screen-name",
+				},
+			},
+			timeNow: func() time.Time {
+				return time.Date(2020, time.August, 1, 0, 0, 0, 0, time.UTC)
+			},
+			mockParams: mockParams{
+				relationshipFetcherParams: relationshipFetcherParams{
+					relationshipParams: relationshipParams{
+						{
+							me:   state.NewIdentScreenName("sender-screen-name"),
+							them: state.NewIdentScreenName("recipient-screen-name"),
+							result: state.Relationship{
+								User:          state.NewIdentScreenName("recipient-screen-name"),
+								BlocksYou:     false,
+								YouBlock:      false,
+								IsOnTheirList: false,
+								IsOnYourList:  false,
+							},
+						},
+					},
+				},
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams{
+						{
+							screenName: state.NewIdentScreenName("recipient-screen-name"),
+							result:     nil,
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{},
+				},
+				offlineMessageManagerParams: offlineMessageManagerParams{
+					saveMessageParams: saveMessageParams{
+						{
+							offlineMessageIn: state.OfflineMessage{
+								Message: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
+									ChannelID:  wire.ICBMChannelIM,
+									ScreenName: "recipient-screen-name",
+									TLVRestBlock: wire.TLVRestBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.ICBMTLVRequestHostAck, []byte{}),
+											wire.NewTLVBE(wire.ICBMTLVStore, []byte{}),
+											wire.NewTLVBE(wire.ICBMTLVData, []byte{1, 2, 3, 4}),
+										},
+									},
+								},
+								Recipient: state.NewIdentScreenName("recipient-screen-name"),
+								Sender:    state.NewIdentScreenName("sender-screen-name"),
+								Sent:      time.Date(2020, time.August, 1, 0, 0, 0, 0, time.UTC),
+							},
+							countOut: 1,
+						},
+					},
+				},
+				feedbagManagerParams: feedbagManagerParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("recipient-screen-name"),
+							results: []wire.FeedbagItem{
+								{
+									ClassID: wire.FeedbagClassIdBuddyPrefs,
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											{Tag: wire.FeedbagAttributesBuddyPrefsValid, Value: []byte{0, 0, 24, 64}},
+											{Tag: wire.FeedbagAttributesBuddyPrefs, Value: []byte{0, 0, 24, 64}},
+											{Tag: wire.FeedbagAttributesBuddyPrefs2Valid, Value: []byte{0, 0, 17}},
+											{Tag: wire.FeedbagAttributesBuddyPrefs2, Value: []byte{0, 0, 17}},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:          "reject offline message when recipient has opted out of offline messages",
+			senderSession: newTestSession("sender-screen-name", sessOptWarning(10)),
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
+					ChannelID:  wire.ICBMChannelIM,
+					ScreenName: "recipient-screen-name",
+					TLVRestBlock: wire.TLVRestBlock{
+						TLVList: wire.TLVList{
+							wire.NewTLVBE(wire.ICBMTLVRequestHostAck, []byte{}),
+							wire.NewTLVBE(wire.ICBMTLVStore, []byte{}),
+							wire.NewTLVBE(wire.ICBMTLVData, []byte{1, 2, 3, 4}),
+						},
+					},
+				},
+			},
+			expectOutput: &wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.ICBM,
+					SubGroup:  wire.ICBMErr,
+					RequestID: 1234,
+				},
+				Body: wire.SNACError{
+					Code: wire.ErrorCodeNotLoggedOn,
+				},
+			},
+			mockParams: mockParams{
+				relationshipFetcherParams: relationshipFetcherParams{
+					relationshipParams: relationshipParams{
+						{
+							me:   state.NewIdentScreenName("sender-screen-name"),
+							them: state.NewIdentScreenName("recipient-screen-name"),
+							result: state.Relationship{
+								User:          state.NewIdentScreenName("recipient-screen-name"),
+								BlocksYou:     false,
+								YouBlock:      false,
+								IsOnTheirList: false,
+								IsOnYourList:  false,
+							},
+						},
+					},
+				},
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams{
+						{
+							screenName: state.NewIdentScreenName("recipient-screen-name"),
+							result:     nil,
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{},
+				},
+				offlineMessageManagerParams: offlineMessageManagerParams{
+					saveMessageParams: saveMessageParams{},
+				},
+				feedbagManagerParams: feedbagManagerParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("recipient-screen-name"),
+							results: []wire.FeedbagItem{
+								{
+									ClassID: wire.FeedbagClassIdBuddyPrefs,
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											{Tag: wire.FeedbagAttributesBuddyPrefsValid, Value: []byte{0, 0, 24, 64}},
+											{Tag: wire.FeedbagAttributesBuddyPrefs, Value: []byte{0, 0, 24, 64}},
+											{Tag: wire.FeedbagAttributesBuddyPrefs2Valid, Value: []byte{0, 0, 17}},
+											{Tag: wire.FeedbagAttributesBuddyPrefs2, Value: []byte{0, 0, 1}},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:          "send offline message when offline IM preference is not valid",
+			senderSession: newTestSession("sender-screen-name", sessOptWarning(10)),
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
+					ChannelID:  wire.ICBMChannelIM,
+					ScreenName: "recipient-screen-name",
+					TLVRestBlock: wire.TLVRestBlock{
+						TLVList: wire.TLVList{
+							wire.NewTLVBE(wire.ICBMTLVRequestHostAck, []byte{}),
+							wire.NewTLVBE(wire.ICBMTLVStore, []byte{}),
+							wire.NewTLVBE(wire.ICBMTLVData, []byte{1, 2, 3, 4}),
+						},
+					},
+				},
+			},
+			expectOutput: &wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.ICBM,
+					SubGroup:  wire.ICBMHostAck,
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x04_0x0C_ICBMHostAck{
+					ChannelID:  wire.ICBMChannelIM,
+					ScreenName: "recipient-screen-name",
+				},
+			},
+			timeNow: func() time.Time {
+				return time.Date(2020, time.August, 1, 0, 0, 0, 0, time.UTC)
+			},
+			mockParams: mockParams{
+				relationshipFetcherParams: relationshipFetcherParams{
+					relationshipParams: relationshipParams{
+						{
+							me:   state.NewIdentScreenName("sender-screen-name"),
+							them: state.NewIdentScreenName("recipient-screen-name"),
+							result: state.Relationship{
+								User:          state.NewIdentScreenName("recipient-screen-name"),
+								BlocksYou:     false,
+								YouBlock:      false,
+								IsOnTheirList: false,
+								IsOnYourList:  false,
+							},
+						},
+					},
+				},
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams{
+						{
+							screenName: state.NewIdentScreenName("recipient-screen-name"),
+							result:     nil,
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{},
+				},
+				offlineMessageManagerParams: offlineMessageManagerParams{
+					saveMessageParams: saveMessageParams{
+						{
+							offlineMessageIn: state.OfflineMessage{
+								Message: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
+									ChannelID:  wire.ICBMChannelIM,
+									ScreenName: "recipient-screen-name",
+									TLVRestBlock: wire.TLVRestBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.ICBMTLVRequestHostAck, []byte{}),
+											wire.NewTLVBE(wire.ICBMTLVStore, []byte{}),
+											wire.NewTLVBE(wire.ICBMTLVData, []byte{1, 2, 3, 4}),
+										},
+									},
+								},
+								Recipient: state.NewIdentScreenName("recipient-screen-name"),
+								Sender:    state.NewIdentScreenName("sender-screen-name"),
+								Sent:      time.Date(2020, time.August, 1, 0, 0, 0, 0, time.UTC),
+							},
+							countOut: 1,
+						},
+					},
+				},
+				feedbagManagerParams: feedbagManagerParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("recipient-screen-name"),
+							results: []wire.FeedbagItem{
+								{
+									ClassID: wire.FeedbagClassIdBuddyPrefs,
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											{Tag: wire.FeedbagAttributesBuddyPrefsValid, Value: []byte{0, 0, 24, 64}},
+											{Tag: wire.FeedbagAttributesBuddyPrefs, Value: []byte{0, 0, 24, 64}},
+											{Tag: wire.FeedbagAttributesBuddyPrefs2Valid, Value: []byte{0, 0, 7}},
+											{Tag: wire.FeedbagAttributesBuddyPrefs2, Value: []byte{0, 0, 17}},
+										},
+									},
+								},
 							},
 						},
 					},
@@ -796,6 +1095,12 @@ func TestICBMService_ChannelMsgToHost(t *testing.T) {
 					SaveMessage(matchContext(), params.offlineMessageIn).
 					Return(params.countOut, params.err)
 			}
+			feedbagManager := newMockFeedbagManager(t)
+			for _, params := range tc.mockParams.feedbagParams {
+				feedbagManager.EXPECT().
+					Feedbag(matchContext(), params.screenName).
+					Return(params.results, params.err)
+			}
 
 			svc := ICBMService{
 				relationshipFetcher: relationshipFetcher,
@@ -804,6 +1109,7 @@ func TestICBMService_ChannelMsgToHost(t *testing.T) {
 				sessionRetriever:    sessionRetriever,
 				timeNow:             tc.timeNow,
 				convoTracker:        newConvoTracker(),
+				feedbagManager:      feedbagManager,
 			}
 
 			outputSNAC, err := svc.ChannelMsgToHost(context.Background(), tc.senderSession, tc.inputSNAC.Frame,

@@ -336,6 +336,7 @@ type useParams []struct {
 type feedbagParams []struct {
 	screenName state.IdentScreenName
 	results    []wire.FeedbagItem
+	err        error
 }
 
 // feedbagLastModifiedParams is the list of parameters passed at the mock
