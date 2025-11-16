@@ -35,18 +35,19 @@ func NewICBMService(
 	logger *slog.Logger,
 ) *ICBMService {
 	return &ICBMService{
-		relationshipFetcher: relationshipFetcher,
-		buddyBroadcaster:    newBuddyNotifier(bartItemManager, relationshipFetcher, messageRelayer, sessionRetriever),
-		messageRelayer:      messageRelayer,
-		offlineMessageSaver: offlineMessageSaver,
-		userManager:         userManager,
-		feedbagManager:      feedbagManager,
-		timeNow:             time.Now,
-		sessionRetriever:    sessionRetriever,
-		snacRateLimits:      snacRateLimits,
-		convoTracker:        newConvoTracker(),
-		logger:              logger,
-		interval:            rateDecayInterval,
+		relationshipFetcher:   relationshipFetcher,
+		buddyBroadcaster:      newBuddyNotifier(bartItemManager, relationshipFetcher, messageRelayer, sessionRetriever),
+		messageRelayer:        messageRelayer,
+		offlineMessageSaver:   offlineMessageSaver,
+		offlineMessageManager: offlineMessageSaver,
+		userManager:           userManager,
+		feedbagManager:        feedbagManager,
+		timeNow:               time.Now,
+		sessionRetriever:      sessionRetriever,
+		snacRateLimits:        snacRateLimits,
+		convoTracker:          newConvoTracker(),
+		logger:                logger,
+		interval:              rateDecayInterval,
 	}
 }
 
@@ -54,18 +55,19 @@ func NewICBMService(
 // responsible for sending and receiving instant messages and associated
 // functionality such as warning, typing events, etc.
 type ICBMService struct {
-	relationshipFetcher RelationshipFetcher
-	buddyBroadcaster    buddyBroadcaster
-	messageRelayer      MessageRelayer
-	offlineMessageSaver OfflineMessageManager
-	userManager         UserManager
-	feedbagManager      FeedbagManager
-	timeNow             func() time.Time
-	sessionRetriever    SessionRetriever
-	snacRateLimits      wire.SNACRateLimits
-	convoTracker        *convoTracker
-	logger              *slog.Logger
-	interval            time.Duration
+	relationshipFetcher   RelationshipFetcher
+	buddyBroadcaster      buddyBroadcaster
+	messageRelayer        MessageRelayer
+	offlineMessageSaver   OfflineMessageManager
+	userManager           UserManager
+	feedbagManager        FeedbagManager
+	timeNow               func() time.Time
+	sessionRetriever      SessionRetriever
+	snacRateLimits        wire.SNACRateLimits
+	convoTracker          *convoTracker
+	logger                *slog.Logger
+	interval              time.Duration
+	offlineMessageManager OfflineMessageManager
 }
 
 // ParameterQuery returns ICBM service parameters.
@@ -419,6 +421,47 @@ func (s ICBMService) EvilRequest(ctx context.Context, sess *state.Session, inFra
 			EvilDeltaApplied: increase,
 			UpdatedEvilValue: newLevel,
 		},
+	}, nil
+}
+
+func (s ICBMService) OfflineRetrieve(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame) (wire.SNACMessage, error) {
+	msgList, err := s.offlineMessageManager.RetrieveMessages(ctx, sess.IdentScreenName())
+	if err != nil {
+		return wire.SNACMessage{}, fmt.Errorf("retrieving messages: %w", err)
+	}
+
+	for _, event := range msgList {
+		clientIM := wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
+			Cookie:    event.Message.Cookie,
+			ChannelID: event.Message.ChannelID,
+			TLVUserInfo: wire.TLVUserInfo{
+				ScreenName: event.Sender.String(),
+			},
+			TLVRestBlock: wire.TLVRestBlock{},
+		}
+
+		for _, tlv := range event.Message.TLVRestBlock.TLVList {
+			clientIM.Append(tlv)
+		}
+		clientIM.Append(wire.NewTLVBE(wire.ICBMTLVSendTime, uint32(event.Sent.Unix())))
+
+		s.messageRelayer.RelayToScreenName(ctx, event.Recipient, wire.SNACMessage{
+			Frame: wire.SNACFrame{
+				FoodGroup: wire.ICBM,
+				SubGroup:  wire.ICBMChannelMsgToClient,
+				RequestID: wire.ReqIDFromServer,
+			},
+			Body: clientIM,
+		})
+	}
+
+	return wire.SNACMessage{
+		Frame: wire.SNACFrame{
+			FoodGroup: wire.ICBM,
+			SubGroup:  wire.ICBMOfflineRetrieveReply,
+			RequestID: inFrame.RequestID,
+		},
+		Body: wire.SNAC_0x04_0x17_ICBMOfflineRetrieveReply{},
 	}, nil
 }
 

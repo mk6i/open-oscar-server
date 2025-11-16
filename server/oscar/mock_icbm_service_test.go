@@ -242,6 +242,64 @@ func (_c *mockICBMService_EvilRequest_Call) RunAndReturn(run func(context.Contex
 	return _c
 }
 
+// OfflineRetrieve provides a mock function with given fields: ctx, sess, inFrame
+func (_m *mockICBMService) OfflineRetrieve(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame) (wire.SNACMessage, error) {
+	ret := _m.Called(ctx, sess, inFrame)
+
+	if len(ret) == 0 {
+		panic("no return value specified for OfflineRetrieve")
+	}
+
+	var r0 wire.SNACMessage
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *state.Session, wire.SNACFrame) (wire.SNACMessage, error)); ok {
+		return rf(ctx, sess, inFrame)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *state.Session, wire.SNACFrame) wire.SNACMessage); ok {
+		r0 = rf(ctx, sess, inFrame)
+	} else {
+		r0 = ret.Get(0).(wire.SNACMessage)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *state.Session, wire.SNACFrame) error); ok {
+		r1 = rf(ctx, sess, inFrame)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// mockICBMService_OfflineRetrieve_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'OfflineRetrieve'
+type mockICBMService_OfflineRetrieve_Call struct {
+	*mock.Call
+}
+
+// OfflineRetrieve is a helper method to define mock.On call
+//   - ctx context.Context
+//   - sess *state.Session
+//   - inFrame wire.SNACFrame
+func (_e *mockICBMService_Expecter) OfflineRetrieve(ctx interface{}, sess interface{}, inFrame interface{}) *mockICBMService_OfflineRetrieve_Call {
+	return &mockICBMService_OfflineRetrieve_Call{Call: _e.mock.On("OfflineRetrieve", ctx, sess, inFrame)}
+}
+
+func (_c *mockICBMService_OfflineRetrieve_Call) Run(run func(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame)) *mockICBMService_OfflineRetrieve_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(*state.Session), args[2].(wire.SNACFrame))
+	})
+	return _c
+}
+
+func (_c *mockICBMService_OfflineRetrieve_Call) Return(_a0 wire.SNACMessage, _a1 error) *mockICBMService_OfflineRetrieve_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *mockICBMService_OfflineRetrieve_Call) RunAndReturn(run func(context.Context, *state.Session, wire.SNACFrame) (wire.SNACMessage, error)) *mockICBMService_OfflineRetrieve_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ParameterQuery provides a mock function with given fields: ctx, inFrame
 func (_m *mockICBMService) ParameterQuery(ctx context.Context, inFrame wire.SNACFrame) wire.SNACMessage {
 	ret := _m.Called(ctx, inFrame)

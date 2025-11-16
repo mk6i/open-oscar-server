@@ -2407,6 +2407,76 @@ func TestHandler_ICBMEvilRequest(t *testing.T) {
 	}
 }
 
+func TestHandler_ICBMOfflineRetrieve(t *testing.T) {
+	tests := []struct {
+		name          string
+		serviceError  error
+		responseError error
+		expectedError error
+	}{
+		{
+			name: "success",
+		},
+		{
+			name:          "service error",
+			serviceError:  assert.AnError,
+			expectedError: assert.AnError,
+		},
+		{
+			name:          "response writer error",
+			responseError: assert.AnError,
+			expectedError: assert.AnError,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			input := wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.ICBM,
+					SubGroup:  wire.ICBMOfflineRetrieve,
+				},
+				Body: wire.SNAC_0x04_0x0A_ICBMOfflineRetrieve{},
+			}
+			output := wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.ICBM,
+					SubGroup:  wire.ICBMOfflineRetrieveReply,
+				},
+				Body: wire.SNAC_0x04_0x17_ICBMOfflineRetrieveReply{},
+			}
+
+			svc := newMockICBMService(t)
+			svc.EXPECT().
+				OfflineRetrieve(mock.Anything, mock.Anything, input.Frame).
+				Return(output, tt.serviceError)
+
+			h := Handler{
+				ICBMService: svc,
+				RouteLogger: middleware.RouteLogger{
+					Logger: slog.Default(),
+				},
+			}
+
+			responseWriter := newMockResponseWriter(t)
+			if tt.serviceError == nil {
+				responseWriter.EXPECT().
+					SendSNAC(output.Frame, output.Body).
+					Return(tt.responseError)
+			}
+
+			buf := &bytes.Buffer{}
+
+			err := h.Handle(context.TODO(), wire.BOS, nil, input.Frame, buf, responseWriter, config.Listener{})
+			if tt.expectedError != nil {
+				assert.ErrorIs(t, err, tt.expectedError)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestHandler_ICBMParameterQuery(t *testing.T) {
 	tests := []struct {
 		name          string

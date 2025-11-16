@@ -1778,6 +1778,137 @@ func TestICBMService_ClientErr(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func TestICBMService_OfflineRetrieve(t *testing.T) {
+	cases := []struct {
+		// name is the unit test name
+		name string
+		// senderSession is the session of the user retrieving messages
+		senderSession *state.Session
+		// inputSNAC is the input frame (RequestID checked on reply)
+		inputSNAC wire.SNACMessage
+		// expectOutput is the expected return SNAC value.
+		expectOutput wire.SNACMessage
+		// wantErr is the expected error (nil for success)
+		wantErr error
+		// mockParams is the list of params sent to mocks that satisfy this method's dependencies
+		mockParams mockParams
+	}{
+		{
+			name:          "relays stored messages and replies",
+			senderSession: newTestSession("recipient"),
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{RequestID: 42},
+			},
+			expectOutput: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.ICBM,
+					SubGroup:  wire.ICBMOfflineRetrieveReply,
+					RequestID: 42,
+				},
+				Body: wire.SNAC_0x04_0x17_ICBMOfflineRetrieveReply{},
+			},
+			wantErr: nil,
+			mockParams: mockParams{
+				offlineMessageManagerParams: offlineMessageManagerParams{
+					retrieveMessagesParams: retrieveMessagesParams{
+						{
+							recipIn: state.NewIdentScreenName("recipient"),
+							messagesOut: []state.OfflineMessage{
+								{
+									Message: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
+										Cookie:       1234,
+										ChannelID:    wire.ICBMChannelIM,
+										TLVRestBlock: wire.TLVRestBlock{TLVList: []wire.TLV{wire.NewTLVBE(wire.ICBMTLVData, []byte{1, 2, 3})}},
+									},
+									Recipient: state.NewIdentScreenName("recipient"),
+									Sender:    state.NewIdentScreenName("sender"),
+									Sent:      time.Unix(1700000000, 0).UTC(),
+								},
+							},
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("recipient"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.ICBM,
+									SubGroup:  wire.ICBMChannelMsgToClient,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: func() wire.SNAC_0x04_0x07_ICBMChannelMsgToClient {
+									msg := wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
+										Cookie:    1234,
+										ChannelID: wire.ICBMChannelIM,
+										TLVUserInfo: wire.TLVUserInfo{
+											ScreenName: "sender",
+										},
+										TLVRestBlock: wire.TLVRestBlock{},
+									}
+									msg.Append(wire.NewTLVBE(wire.ICBMTLVData, []byte{1, 2, 3}))
+									msg.Append(wire.NewTLVBE(wire.ICBMTLVSendTime, uint32(time.Unix(1700000000, 0).UTC().Unix())))
+									return msg
+								}(),
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:          "propagates retrieve error",
+			senderSession: newTestSession("recipient"),
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{RequestID: 7},
+			},
+			expectOutput: wire.SNACMessage{},
+			wantErr:      assert.AnError,
+			mockParams: mockParams{
+				offlineMessageManagerParams: offlineMessageManagerParams{
+					retrieveMessagesParams: retrieveMessagesParams{
+						{
+							recipIn:     state.NewIdentScreenName("recipient"),
+							messagesOut: nil,
+							err:         assert.AnError,
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{},
+				},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			offlineMessageManager := newMockOfflineMessageManager(t)
+			for _, params := range tc.mockParams.retrieveMessagesParams {
+				offlineMessageManager.EXPECT().
+					RetrieveMessages(matchContext(), params.recipIn).
+					Return(params.messagesOut, params.err)
+			}
+
+			messageRelayer := newMockMessageRelayer(t)
+			for _, item := range tc.mockParams.relayToScreenNameParams {
+				messageRelayer.EXPECT().
+					RelayToScreenName(mock.Anything, item.screenName, item.message)
+			}
+
+			svc := ICBMService{
+				messageRelayer:        messageRelayer,
+				offlineMessageManager: offlineMessageManager,
+			}
+
+			out, err := svc.OfflineRetrieve(context.Background(), tc.senderSession, tc.inputSNAC.Frame)
+			assert.Equal(t, tc.expectOutput, out)
+			assert.ErrorIs(t, err, tc.wantErr)
+		})
+	}
+}
+
 func TestRingBuffer(t *testing.T) {
 	t.Run("new ringBuffer should have zero values", func(t *testing.T) {
 		rb := &ringBuffer{}

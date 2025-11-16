@@ -1161,7 +1161,7 @@ func TestOServiceService_RateParamsQuery(t *testing.T) {
 				{FoodGroup: wire.ICBM, SubGroup: wire.ICBMSinStored},
 				{FoodGroup: wire.ICBM, SubGroup: wire.ICBMSinListQuery},
 				{FoodGroup: wire.ICBM, SubGroup: wire.ICBMSinListReply},
-				{FoodGroup: wire.ICBM, SubGroup: wire.ICBMSinRetrieve},
+				{FoodGroup: wire.ICBM, SubGroup: wire.ICBMOfflineRetrieve},
 				{FoodGroup: wire.ICBM, SubGroup: wire.ICBMSinDelete},
 				{FoodGroup: wire.ICBM, SubGroup: wire.ICBMNotifyRequest},
 				{FoodGroup: wire.ICBM, SubGroup: wire.ICBMNotifyReply},

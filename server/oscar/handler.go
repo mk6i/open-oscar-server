@@ -394,6 +394,15 @@ func (rt Handler) ICBMClientEvent(ctx context.Context, sess *state.Session, inFr
 	return rt.ICBMService.ClientEvent(ctx, sess, inFrame, inBody)
 }
 
+func (rt Handler) ICBMOfflineRetrieve(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, rw ResponseWriter) error {
+	outSNAC, err := rt.ICBMService.OfflineRetrieve(ctx, sess, inFrame)
+	if err != nil {
+		return err
+	}
+	rt.LogRequestAndResponse(ctx, inFrame, nil, outSNAC.Frame, outSNAC.Body)
+	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
+}
+
 func (rt Handler) ICQDBQuery(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inBody := wire.SNAC_0x15_0x02_BQuery{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
@@ -1024,6 +1033,8 @@ func (rt Handler) Handle(ctx context.Context, server uint16, sess *state.Session
 			return rt.ICBMEvilRequest(ctx, sess, inFrame, r, rw)
 		case wire.ICBMParameterQuery:
 			return rt.ICBMParameterQuery(ctx, sess, inFrame, r, rw)
+		case wire.ICBMOfflineRetrieve:
+			return rt.ICBMOfflineRetrieve(ctx, sess, inFrame, rw)
 		}
 	case wire.Locate:
 		switch inFrame.SubGroup {

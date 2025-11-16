@@ -562,27 +562,27 @@ type SNAC_0x03_0x0C_BuddyDeparted struct {
 //
 
 const (
-	ICBMErr                uint16 = 0x0001
-	ICBMAddParameters      uint16 = 0x0002
-	ICBMDelParameters      uint16 = 0x0003
-	ICBMParameterQuery     uint16 = 0x0004
-	ICBMParameterReply     uint16 = 0x0005
-	ICBMChannelMsgToHost   uint16 = 0x0006
-	ICBMChannelMsgToClient uint16 = 0x0007
-	ICBMEvilRequest        uint16 = 0x0008
-	ICBMEvilReply          uint16 = 0x0009
-	ICBMMissedCalls        uint16 = 0x000A
-	ICBMClientErr          uint16 = 0x000B
-	ICBMHostAck            uint16 = 0x000C
-	ICBMSinStored          uint16 = 0x000D
-	ICBMSinListQuery       uint16 = 0x000E
-	ICBMSinListReply       uint16 = 0x000F
-	ICBMSinRetrieve        uint16 = 0x0010
-	ICBMSinDelete          uint16 = 0x0011
-	ICBMNotifyRequest      uint16 = 0x0012
-	ICBMNotifyReply        uint16 = 0x0013
-	ICBMClientEvent        uint16 = 0x0014
-	ICBMSinReply           uint16 = 0x0017
+	ICBMErr                  uint16 = 0x0001
+	ICBMAddParameters        uint16 = 0x0002
+	ICBMDelParameters        uint16 = 0x0003
+	ICBMParameterQuery       uint16 = 0x0004
+	ICBMParameterReply       uint16 = 0x0005
+	ICBMChannelMsgToHost     uint16 = 0x0006
+	ICBMChannelMsgToClient   uint16 = 0x0007
+	ICBMEvilRequest          uint16 = 0x0008
+	ICBMEvilReply            uint16 = 0x0009
+	ICBMMissedCalls          uint16 = 0x000A
+	ICBMClientErr            uint16 = 0x000B
+	ICBMHostAck              uint16 = 0x000C
+	ICBMSinStored            uint16 = 0x000D
+	ICBMSinListQuery         uint16 = 0x000E
+	ICBMSinListReply         uint16 = 0x000F
+	ICBMOfflineRetrieve      uint16 = 0x0010
+	ICBMSinDelete            uint16 = 0x0011
+	ICBMNotifyRequest        uint16 = 0x0012
+	ICBMNotifyReply          uint16 = 0x0013
+	ICBMClientEvent          uint16 = 0x0014
+	ICBMOfflineRetrieveReply uint16 = 0x0017
 
 	ICBMTLVAOLIMData      uint16 = 0x02
 	ICBMTLVRequestHostAck uint16 = 0x03
@@ -851,6 +851,10 @@ type SNAC_0x04_0x14_ICBMClientEvent struct {
 	ScreenName string `oscar:"len_prefix=uint8"`
 	Event      uint16
 }
+
+type SNAC_0x04_0x0A_ICBMOfflineRetrieve struct{}
+
+type SNAC_0x04_0x17_ICBMOfflineRetrieveReply struct{}
 
 //
 // 0x05: Advert
