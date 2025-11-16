@@ -1827,6 +1827,12 @@ func TestICBMService_OfflineRetrieve(t *testing.T) {
 							},
 						},
 					},
+					deleteMessagesParams: deleteMessagesParams{
+						{
+							recipIn: state.NewIdentScreenName("recipient"),
+							err:     nil,
+						},
+					},
 				},
 				messageRelayerParams: messageRelayerParams{
 					relayToScreenNameParams: relayToScreenNameParams{
@@ -1849,6 +1855,100 @@ func TestICBMService_OfflineRetrieve(t *testing.T) {
 									}
 									msg.Append(wire.NewTLVBE(wire.ICBMTLVData, []byte{1, 2, 3}))
 									msg.Append(wire.NewTLVBE(wire.ICBMTLVSendTime, uint32(time.Unix(1700000000, 0).UTC().Unix())))
+									return msg
+								}(),
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:          "no stored messages returns reply without relays or deletes",
+			senderSession: newTestSession("recipient"),
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{RequestID: 55},
+			},
+			expectOutput: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.ICBM,
+					SubGroup:  wire.ICBMOfflineRetrieveReply,
+					RequestID: 55,
+				},
+				Body: wire.SNAC_0x04_0x17_ICBMOfflineRetrieveReply{},
+			},
+			wantErr: nil,
+			mockParams: mockParams{
+				offlineMessageManagerParams: offlineMessageManagerParams{
+					retrieveMessagesParams: retrieveMessagesParams{
+						{
+							recipIn:     state.NewIdentScreenName("recipient"),
+							messagesOut: []state.OfflineMessage{},
+							err:         nil,
+						},
+					},
+					deleteMessagesParams: deleteMessagesParams{},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{},
+				},
+			},
+		},
+		{
+			name:          "delete messages error after relay",
+			senderSession: newTestSession("recipient"),
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{RequestID: 99},
+			},
+			expectOutput: wire.SNACMessage{},
+			wantErr:      assert.AnError,
+			mockParams: mockParams{
+				offlineMessageManagerParams: offlineMessageManagerParams{
+					retrieveMessagesParams: retrieveMessagesParams{
+						{
+							recipIn: state.NewIdentScreenName("recipient"),
+							messagesOut: []state.OfflineMessage{
+								{
+									Message: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
+										Cookie:       4321,
+										ChannelID:    wire.ICBMChannelIM,
+										TLVRestBlock: wire.TLVRestBlock{TLVList: []wire.TLV{wire.NewTLVBE(wire.ICBMTLVData, []byte{9, 8, 7})}},
+									},
+									Recipient: state.NewIdentScreenName("recipient"),
+									Sender:    state.NewIdentScreenName("sender"),
+									Sent:      time.Unix(1700001234, 0).UTC(),
+								},
+							},
+						},
+					},
+					deleteMessagesParams: deleteMessagesParams{
+						{
+							recipIn: state.NewIdentScreenName("recipient"),
+							err:     assert.AnError,
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("recipient"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.ICBM,
+									SubGroup:  wire.ICBMChannelMsgToClient,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: func() wire.SNAC_0x04_0x07_ICBMChannelMsgToClient {
+									msg := wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
+										Cookie:    4321,
+										ChannelID: wire.ICBMChannelIM,
+										TLVUserInfo: wire.TLVUserInfo{
+											ScreenName: "sender",
+										},
+										TLVRestBlock: wire.TLVRestBlock{},
+									}
+									msg.Append(wire.NewTLVBE(wire.ICBMTLVData, []byte{9, 8, 7}))
+									msg.Append(wire.NewTLVBE(wire.ICBMTLVSendTime, uint32(time.Unix(1700001234, 0).UTC().Unix())))
 									return msg
 								}(),
 							},
@@ -1889,6 +1989,11 @@ func TestICBMService_OfflineRetrieve(t *testing.T) {
 				offlineMessageManager.EXPECT().
 					RetrieveMessages(matchContext(), params.recipIn).
 					Return(params.messagesOut, params.err)
+			}
+			for _, params := range tc.mockParams.deleteMessagesParams {
+				offlineMessageManager.EXPECT().
+					DeleteMessages(matchContext(), params.recipIn).
+					Return(params.err)
 			}
 
 			messageRelayer := newMockMessageRelayer(t)

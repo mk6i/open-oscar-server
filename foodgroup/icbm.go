@@ -455,6 +455,12 @@ func (s ICBMService) OfflineRetrieve(ctx context.Context, sess *state.Session, i
 		})
 	}
 
+	if len(msgList) > 0 {
+		if err := s.offlineMessageManager.DeleteMessages(ctx, sess.IdentScreenName()); err != nil {
+			return wire.SNACMessage{}, fmt.Errorf("offlineMessageManager.DeleteMessages: %w", err)
+		}
+	}
+
 	return wire.SNACMessage{
 		Frame: wire.SNACFrame{
 			FoodGroup: wire.ICBM,
