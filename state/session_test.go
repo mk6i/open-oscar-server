@@ -685,6 +685,19 @@ func TestSession_SetAndGetMemberSince(t *testing.T) {
 	assert.Equal(t, memberTime, s.MemberSince())
 }
 
+func TestSession_SetAndGetOfflineMsgCount(t *testing.T) {
+	s := NewSession()
+	assert.Zero(t, s.OfflineMsgCount())
+
+	count := 5
+	s.SetOfflineMsgCount(count)
+	assert.Equal(t, count, s.OfflineMsgCount())
+
+	count = 10
+	s.SetOfflineMsgCount(count)
+	assert.Equal(t, count, s.OfflineMsgCount())
+}
+
 func TestSession_ScaleWarningAndRateLimit(t *testing.T) {
 	t.Run("scale up", func(t *testing.T) {
 		classParams := [5]wire.RateClass{

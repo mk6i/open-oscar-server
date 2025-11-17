@@ -418,7 +418,8 @@ func (f SQLiteUserStore) queryUsers(ctx context.Context, whereClause string, que
 			aim_address,
 			tocConfig,
 			lastWarnUpdate,
-			lastWarnLevel
+			lastWarnLevel,
+			offlineMsgCount
 		FROM users
 		WHERE %s
 	`
@@ -515,6 +516,7 @@ func (f SQLiteUserStore) queryUsers(ctx context.Context, whereClause string, que
 			&u.TOCConfig,
 			&lastWarnUpdateUnix,
 			&u.LastWarnLevel,
+			&u.OfflineMsgCount,
 		)
 		if err != nil {
 			return nil, err
@@ -1663,11 +1665,26 @@ func (f SQLiteUserStore) SaveMessage(ctx context.Context, offlineMessage Offline
 		return 0, err
 	}
 
+	newCount = currentCount + 1
+	updateQuery := `
+		UPDATE users
+		SET offlineMsgCount = ?
+		WHERE identScreenName = ?
+	`
+	_, err = tx.ExecContext(ctx,
+		updateQuery,
+		newCount,
+		offlineMessage.Recipient.String(),
+	)
+	if err != nil {
+		return 0, fmt.Errorf("update offlineMsgCount: %w", err)
+	}
+
 	if err = tx.Commit(); err != nil {
 		return 0, fmt.Errorf("commit: %w", err)
 	}
 
-	return currentCount + 1, nil
+	return newCount, nil
 }
 
 func (f SQLiteUserStore) RetrieveMessages(ctx context.Context, recip IdentScreenName) ([]OfflineMessage, error) {
@@ -2107,6 +2124,31 @@ func (f SQLiteUserStore) SetWarnLevel(ctx context.Context, user IdentScreenName,
 		lastWarnUpdate.Unix(),
 		lastWarnLevel,
 		user.String(),
+	)
+	if err != nil {
+		return fmt.Errorf("exec: %w", err)
+	}
+	c, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("rows affected: %w", err)
+	}
+	if c == 0 {
+		return ErrNoUser
+	}
+	return nil
+}
+
+// SetOfflineMsgCount updates the offline message count for a user.
+func (f SQLiteUserStore) SetOfflineMsgCount(ctx context.Context, screenName IdentScreenName, count int) error {
+	q := `
+		UPDATE users
+		SET offlineMsgCount = ?
+		WHERE identScreenName = ?
+	`
+	res, err := f.db.ExecContext(ctx,
+		q,
+		count,
+		screenName.String(),
 	)
 	if err != nil {
 		return fmt.Errorf("exec: %w", err)

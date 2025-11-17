@@ -81,6 +81,7 @@ type Session struct {
 	lastWarnUpdate          time.Time
 	profile                 UserProfile
 	memberSince             time.Time
+	offlineMsgCount         int
 }
 
 // NewSession returns a new instance of Session. By default, the user may have
@@ -733,4 +734,18 @@ func (s *Session) MemberSince() time.Time {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 	return s.memberSince
+}
+
+// SetOfflineMsgCount sets the offline message count.
+func (s *Session) SetOfflineMsgCount(count int) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.offlineMsgCount = count
+}
+
+// OfflineMsgCount returns the offline message count.
+func (s *Session) OfflineMsgCount() int {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.offlineMsgCount
 }

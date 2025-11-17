@@ -420,6 +420,34 @@ func TestGetUser(t *testing.T) {
 	}
 }
 
+func TestSQLiteUserStore_User_OfflineMsgCount(t *testing.T) {
+	defer func() {
+		assert.NoError(t, os.Remove(testFile))
+	}()
+
+	f, err := NewSQLiteUserStore(testFile)
+	assert.NoError(t, err)
+
+	screenName := NewIdentScreenName("testuser")
+
+	// Insert user first
+	err = f.InsertUser(context.Background(), User{
+		IdentScreenName:   screenName,
+		DisplayScreenName: DisplayScreenName("testuser"),
+	})
+	assert.NoError(t, err)
+
+	// Set offlineMsgCount using the store method
+	err = f.SetOfflineMsgCount(context.Background(), screenName, 5)
+	assert.NoError(t, err)
+
+	// Retrieve user and verify OfflineMsgCount is loaded
+	user, err := f.User(context.Background(), screenName)
+	assert.NoError(t, err)
+	assert.NotNil(t, user)
+	assert.Equal(t, 5, user.OfflineMsgCount)
+}
+
 func TestGetUserNotFound(t *testing.T) {
 	defer func() {
 		assert.NoError(t, os.Remove(testFile))
@@ -2037,6 +2065,12 @@ func TestSQLiteUserStore_RetrieveMessages(t *testing.T) {
 		count, err := f.SaveMessage(context.Background(), msg)
 		assert.NoError(t, err)
 		assert.Equal(t, expectedCounts[i], count)
+
+		// Verify offlineMsgCount is updated in the database
+		recipient, err := f.User(context.Background(), msg.Recipient)
+		assert.NoError(t, err)
+		assert.NotNil(t, recipient)
+		assert.Equal(t, expectedCounts[i], recipient.OfflineMsgCount)
 	}
 
 	t.Run("Retrieve Messages", func(t *testing.T) {
@@ -2108,6 +2142,12 @@ func TestSQLiteUserStore_DeleteMessages(t *testing.T) {
 		count, err := f.SaveMessage(context.Background(), msg)
 		assert.NoError(t, err)
 		assert.Equal(t, expectedCounts[i], count)
+
+		// Verify offlineMsgCount is updated in the database
+		recipient, err := f.User(context.Background(), msg.Recipient)
+		assert.NoError(t, err)
+		assert.NotNil(t, recipient)
+		assert.Equal(t, expectedCounts[i], recipient.OfflineMsgCount)
 	}
 
 	t.Run("Delete Messages", func(t *testing.T) {
@@ -2164,6 +2204,12 @@ func TestSQLiteUserStore_SaveMessage(t *testing.T) {
 			count, err := store.SaveMessage(context.Background(), msg)
 			require.NoError(t, err)
 			require.Equal(t, i, count)
+
+			// Verify offlineMsgCount is updated in the database
+			recipient, err := store.User(context.Background(), msg.Recipient)
+			require.NoError(t, err)
+			require.NotNil(t, recipient)
+			require.Equal(t, i, recipient.OfflineMsgCount)
 		}
 	})
 

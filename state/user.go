@@ -206,6 +206,8 @@ type User struct {
 	LastWarnUpdate time.Time
 	// LastWarnLevel is the warning level when the user last signed off.
 	LastWarnLevel uint16
+	// OfflineMsgCount is the count of offline messages for the user.
+	OfflineMsgCount int
 }
 
 // UserProfile represents a user's profile information.

@@ -304,6 +304,9 @@ type OfflineMessageManager interface {
 
 	// SaveMessage stores a new offline message for delivery when the recipient comes online and returns the sender's total queued message count for that recipient.
 	SaveMessage(ctx context.Context, offlineMessage state.OfflineMessage) (int, error)
+
+	// SetOfflineMsgCount sets the offline message count for a user.
+	SetOfflineMsgCount(ctx context.Context, screenName state.IdentScreenName, count int) error
 }
 
 // ProfileManager defines methods for managing and querying AIM user profiles,

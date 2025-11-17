@@ -1,0 +1,3 @@
+ALTER TABLE users
+    ADD COLUMN offlineMsgCount INTEGER NOT NULL DEFAULT 0;
+
