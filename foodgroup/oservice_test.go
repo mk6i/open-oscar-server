@@ -814,7 +814,7 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 			//
 			// send input SNAC
 			//
-			svc := NewOServiceService(config.Config{}, nil, slog.Default(), cookieIssuer, chatRoomManager, nil, nil, nil, wire.DefaultSNACRateLimits(), chatMessageRelayer, nil)
+			svc := NewOServiceService(config.Config{}, nil, slog.Default(), cookieIssuer, chatRoomManager, nil, nil, nil, wire.DefaultSNACRateLimits(), chatMessageRelayer, nil, nil)
 
 			outputSNAC, err := svc.ServiceRequest(context.Background(), tc.service, tc.userSession, tc.inputSNAC.Frame,
 				tc.inputSNAC.Body.(wire.SNAC_0x01_0x04_OServiceServiceRequest), tc.listener)
@@ -1161,7 +1161,7 @@ func TestOServiceService_RateParamsQuery(t *testing.T) {
 				{FoodGroup: wire.ICBM, SubGroup: wire.ICBMSinStored},
 				{FoodGroup: wire.ICBM, SubGroup: wire.ICBMSinListQuery},
 				{FoodGroup: wire.ICBM, SubGroup: wire.ICBMSinListReply},
-				{FoodGroup: wire.ICBM, SubGroup: wire.ICBMSinRetrieve},
+				{FoodGroup: wire.ICBM, SubGroup: wire.ICBMOfflineRetrieve},
 				{FoodGroup: wire.ICBM, SubGroup: wire.ICBMSinDelete},
 				{FoodGroup: wire.ICBM, SubGroup: wire.ICBMNotifyRequest},
 				{FoodGroup: wire.ICBM, SubGroup: wire.ICBMNotifyReply},
@@ -1703,7 +1703,7 @@ func TestOServiceService_HostOnline(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			svc := NewOServiceService(config.Config{}, nil, slog.Default(), nil, nil, nil, nil, nil, wire.DefaultSNACRateLimits(), nil, nil)
+			svc := NewOServiceService(config.Config{}, nil, slog.Default(), nil, nil, nil, nil, nil, wire.DefaultSNACRateLimits(), nil, nil, nil)
 			have := svc.HostOnline(tc.service)
 			assert.Equal(t, tc.expectOutput, have)
 		})
@@ -2108,6 +2108,184 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 			),
 		},
 		{
+			name:    "notify that BOS user is online with 0 offline messages, no notification sent",
+			sess:    newTestSession("me", sessOptCannedSignonTime, sessOptOfflineMsgCount(0)),
+			bodyIn:  wire.SNAC_0x01_0x02_OServiceClientOnline{},
+			service: wire.BOS,
+			mockParams: mockParams{
+				buddyBroadcasterParams: buddyBroadcasterParams{
+					broadcastVisibilityParams: broadcastVisibilityParams{
+						{
+							from:             state.NewIdentScreenName("me"),
+							filter:           nil,
+							doSendDepartures: false,
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Stats,
+									SubGroup:  wire.StatsSetMinReportInterval,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x0B_0x02_StatsSetMinReportInterval{
+									MinReportInterval: 1,
+								},
+							},
+						},
+					},
+				},
+			},
+			wantSess: newTestSession("me", sessOptCannedSignonTime, sessOptSignonComplete, sessOptOfflineMsgCount(0)),
+		},
+		{
+			name:    "notify that BOS user is online with offline messages, send notification and reset count",
+			sess:    newTestSession("me", sessOptCannedSignonTime, sessOptOfflineMsgCount(3)),
+			bodyIn:  wire.SNAC_0x01_0x02_OServiceClientOnline{},
+			service: wire.BOS,
+			mockParams: mockParams{
+				buddyBroadcasterParams: buddyBroadcasterParams{
+					broadcastVisibilityParams: broadcastVisibilityParams{
+						{
+							from:             state.NewIdentScreenName("me"),
+							filter:           nil,
+							doSendDepartures: false,
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Stats,
+									SubGroup:  wire.StatsSetMinReportInterval,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x0B_0x02_StatsSetMinReportInterval{
+									MinReportInterval: 1,
+								},
+							},
+						},
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: func() wire.SNACMessage {
+								msg := "You just received 3 IM(s) while you were offline. If you do " +
+									"not wish to receive offline messages, please go to " +
+									"<a href=\"http://settings.aim.com/?loc=en-zz\">IM Settings</a>."
+								frags, _ := wire.ICBMFragmentList(msg)
+								return wire.SNACMessage{
+									Frame: wire.SNACFrame{
+										FoodGroup: wire.ICBM,
+										SubGroup:  wire.ICBMChannelMsgToClient,
+										RequestID: wire.ReqIDFromServer,
+									},
+									Body: wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
+										ChannelID: wire.ICBMChannelIM,
+										TLVUserInfo: wire.TLVUserInfo{
+											ScreenName: "AOL System Msg",
+										},
+										TLVRestBlock: wire.TLVRestBlock{
+											TLVList: []wire.TLV{
+												wire.NewTLVBE(wire.ICBMTLVAOLIMData, frags),
+											},
+										},
+									},
+								}
+							}(),
+						},
+					},
+				},
+				offlineMessageManagerParams: offlineMessageManagerParams{
+					setOfflineMsgCountParams: setOfflineMsgCountParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							count:      0,
+							err:        nil,
+						},
+					},
+				},
+			},
+			wantSess: newTestSession("me", sessOptCannedSignonTime, sessOptSignonComplete, sessOptOfflineMsgCount(0)),
+		},
+		{
+			name:    "notify that BOS user is online with offline messages, SetOfflineMsgCount fails",
+			sess:    newTestSession("me", sessOptCannedSignonTime, sessOptOfflineMsgCount(2)),
+			bodyIn:  wire.SNAC_0x01_0x02_OServiceClientOnline{},
+			service: wire.BOS,
+			wantErr: assert.AnError,
+			mockParams: mockParams{
+				buddyBroadcasterParams: buddyBroadcasterParams{
+					broadcastVisibilityParams: broadcastVisibilityParams{
+						{
+							from:             state.NewIdentScreenName("me"),
+							filter:           nil,
+							doSendDepartures: false,
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Stats,
+									SubGroup:  wire.StatsSetMinReportInterval,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x0B_0x02_StatsSetMinReportInterval{
+									MinReportInterval: 1,
+								},
+							},
+						},
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: func() wire.SNACMessage {
+								msg := "You just received 2 IM(s) while you were offline. If you do " +
+									"not wish to receive offline messages, please go to " +
+									"<a href=\"http://settings.aim.com/?loc=en-zz\">IM Settings</a>."
+								frags, _ := wire.ICBMFragmentList(msg)
+								return wire.SNACMessage{
+									Frame: wire.SNACFrame{
+										FoodGroup: wire.ICBM,
+										SubGroup:  wire.ICBMChannelMsgToClient,
+										RequestID: wire.ReqIDFromServer,
+									},
+									Body: wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
+										ChannelID: wire.ICBMChannelIM,
+										TLVUserInfo: wire.TLVUserInfo{
+											ScreenName: "AOL System Msg",
+										},
+										TLVRestBlock: wire.TLVRestBlock{
+											TLVList: []wire.TLV{
+												wire.NewTLVBE(wire.ICBMTLVAOLIMData, frags),
+											},
+										},
+									},
+								}
+							}(),
+						},
+					},
+				},
+				offlineMessageManagerParams: offlineMessageManagerParams{
+					setOfflineMsgCountParams: setOfflineMsgCountParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							count:      0,
+							err:        assert.AnError,
+						},
+					},
+				},
+			},
+			wantSess: newTestSession("me", sessOptCannedSignonTime, sessOptSignonComplete, sessOptOfflineMsgCount(0)),
+		},
+		{
 			name:    "upon joining, send chat room metadata and participant list to joining user; alert arrival to existing participants",
 			sess:    chatter1,
 			bodyIn:  wire.SNAC_0x01_0x02_OServiceClientOnline{},
@@ -2229,13 +2407,20 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 					Profile(mock.Anything, params.screenName).
 					Return(params.result, params.err)
 			}
+			offlineMessageManager := newMockOfflineMessageManager(t)
+			for _, params := range tt.mockParams.offlineMessageManagerParams.setOfflineMsgCountParams {
+				offlineMessageManager.EXPECT().
+					SetOfflineMsgCount(matchContext(), params.screenName, params.count).
+					Return(params.err)
+			}
 
-			svc := NewOServiceService(config.Config{}, messageRelayer, slog.Default(), nil, chatRoomManager, nil, nil, nil, wire.DefaultSNACRateLimits(), chatMessageRelayer, profileManager)
+			svc := NewOServiceService(config.Config{}, messageRelayer, slog.Default(), nil, chatRoomManager, nil, nil, nil, wire.DefaultSNACRateLimits(), chatMessageRelayer, profileManager, offlineMessageManager)
 			svc.buddyBroadcaster = buddyUpdateBroadcaster
 			haveErr := svc.ClientOnline(context.Background(), tt.service, tt.bodyIn, tt.sess)
-			assert.ErrorIs(t, tt.wantErr, haveErr)
+			assert.ErrorIs(t, haveErr, tt.wantErr)
 			assert.Equal(t, tt.wantSess.SignonComplete(), tt.sess.SignonComplete())
 			assert.Equal(t, tt.wantSess.Profile(), tt.sess.Profile())
+			assert.Equal(t, tt.wantSess.OfflineMsgCount(), tt.sess.OfflineMsgCount())
 		})
 	}
 }

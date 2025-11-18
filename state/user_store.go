@@ -25,6 +25,8 @@ import (
 	"github.com/mk6i/retro-aim-server/wire"
 )
 
+const offlineInboxLimit = 10
+
 var (
 	ErrKeywordCategoryExists   = errors.New("keyword category already exists")
 	ErrKeywordCategoryNotFound = errors.New("keyword category not found")
@@ -33,6 +35,7 @@ var (
 	ErrKeywordExists           = errors.New("keyword already exists")
 	ErrKeywordInUse            = errors.New("can't delete keyword that is associated with a user")
 	ErrKeywordNotFound         = errors.New("keyword not found")
+	ErrOfflineInboxFull        = errors.New("offline inbox full")
 	errTooManyCategories       = errors.New("there are too many keyword categories")
 	errTooManyKeywords         = errors.New("there are too many keywords")
 )
@@ -415,7 +418,8 @@ func (f SQLiteUserStore) queryUsers(ctx context.Context, whereClause string, que
 			aim_address,
 			tocConfig,
 			lastWarnUpdate,
-			lastWarnLevel
+			lastWarnLevel,
+			offlineMsgCount
 		FROM users
 		WHERE %s
 	`
@@ -512,6 +516,7 @@ func (f SQLiteUserStore) queryUsers(ctx context.Context, whereClause string, que
 			&u.TOCConfig,
 			&lastWarnUpdateUnix,
 			&u.LastWarnLevel,
+			&u.OfflineMsgCount,
 		)
 		if err != nil {
 			return nil, err
@@ -1604,24 +1609,82 @@ func (f SQLiteUserStore) SetBasicInfo(ctx context.Context, name IdentScreenName,
 	return nil
 }
 
-func (f SQLiteUserStore) SaveMessage(ctx context.Context, offlineMessage OfflineMessage) error {
+func (f SQLiteUserStore) SaveMessage(ctx context.Context, offlineMessage OfflineMessage) (newCount int, err error) {
 	buf := &bytes.Buffer{}
 	if err := wire.MarshalBE(offlineMessage.Message, buf); err != nil {
-		return fmt.Errorf("marshal: %w", err)
+		return 0, fmt.Errorf("marshal: %w", err)
+	}
+
+	var tx *sql.Tx
+	tx, err = f.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	const countQuery = `
+		SELECT COUNT(1)
+		FROM offlineMessage
+		WHERE sender = ? AND recipient = ?
+	`
+	var currentCount int
+	if err = tx.QueryRowContext(
+		ctx,
+		countQuery,
+		offlineMessage.Sender.String(),
+		offlineMessage.Recipient.String(),
+	).Scan(&currentCount); err != nil {
+		return 0, fmt.Errorf("count: %w", err)
+	}
+
+	if currentCount >= offlineInboxLimit {
+		err = ErrOfflineInboxFull
+		return 0, err
 	}
 
 	q := `
 		INSERT INTO offlineMessage (sender, recipient, message, sent)
 		VALUES (?, ?, ?, ?)
 	`
-	_, err := f.db.ExecContext(ctx,
+	if _, err = tx.ExecContext(ctx,
 		q,
 		offlineMessage.Sender.String(),
 		offlineMessage.Recipient.String(),
 		buf.Bytes(),
 		offlineMessage.Sent,
+	); err != nil {
+		if sqliteErr, ok := err.(*sqlite.Error); ok && sqliteErr.Code() == lib.SQLITE_CONSTRAINT_FOREIGNKEY {
+			err = ErrNoUser
+		} else {
+			err = fmt.Errorf("insert: %w", err)
+		}
+		return 0, err
+	}
+
+	newCount = currentCount + 1
+	updateQuery := `
+		UPDATE users
+		SET offlineMsgCount = ?
+		WHERE identScreenName = ?
+	`
+	_, err = tx.ExecContext(ctx,
+		updateQuery,
+		newCount,
+		offlineMessage.Recipient.String(),
 	)
-	return err
+	if err != nil {
+		return 0, fmt.Errorf("update offlineMsgCount: %w", err)
+	}
+
+	if err = tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit: %w", err)
+	}
+
+	return newCount, nil
 }
 
 func (f SQLiteUserStore) RetrieveMessages(ctx context.Context, recip IdentScreenName) ([]OfflineMessage, error) {
@@ -2061,6 +2124,31 @@ func (f SQLiteUserStore) SetWarnLevel(ctx context.Context, user IdentScreenName,
 		lastWarnUpdate.Unix(),
 		lastWarnLevel,
 		user.String(),
+	)
+	if err != nil {
+		return fmt.Errorf("exec: %w", err)
+	}
+	c, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("rows affected: %w", err)
+	}
+	if c == 0 {
+		return ErrNoUser
+	}
+	return nil
+}
+
+// SetOfflineMsgCount updates the offline message count for a user.
+func (f SQLiteUserStore) SetOfflineMsgCount(ctx context.Context, screenName IdentScreenName, count int) error {
+	q := `
+		UPDATE users
+		SET offlineMsgCount = ?
+		WHERE identScreenName = ?
+	`
+	res, err := f.db.ExecContext(ctx,
+		q,
+		count,
+		screenName.String(),
 	)
 	if err != nil {
 		return fmt.Errorf("exec: %w", err)

@@ -87,6 +87,7 @@ func MakeCommonDeps() (Container, error) {
 		c.sqLiteUserStore,
 		c.inMemorySessionManager,
 		c.sqLiteUserStore,
+		c.sqLiteUserStore,
 		c.snacRateLimits,
 		c.logger,
 	)
@@ -289,6 +290,7 @@ func OSCAR(deps Container) *oscar.Server {
 		deps.snacRateLimits,
 		deps.chatSessionManager,
 		deps.sqLiteUserStore,
+		deps.sqLiteUserStore,
 	)
 	userLookupService := foodgroup.NewUserLookupService(deps.sqLiteUserStore)
 	statsService := foodgroup.NewStatsService()
@@ -428,6 +430,7 @@ func TOC(deps Container) *toc.Server {
 				deps.snacRateLimits,
 				deps.chatSessionManager,
 				deps.sqLiteUserStore,
+				deps.sqLiteUserStore,
 			),
 			PermitDenyService: foodgroup.NewPermitDenyService(
 				deps.sqLiteUserStore,
@@ -525,6 +528,7 @@ func WebAPI(deps Container) *webapi.Server {
 			deps.sqLiteUserStore,
 			deps.snacRateLimits,
 			deps.chatSessionManager,
+			deps.sqLiteUserStore,
 			deps.sqLiteUserStore,
 		),
 		PermitDenyService: foodgroup.NewPermitDenyService(

@@ -135,7 +135,7 @@ type MessageRelayer interface {
 
 // OfflineMessageManager manages offline message storage and retrieval
 type OfflineMessageManager interface {
-	SaveMessage(ctx context.Context, msg state.OfflineMessage) error
+	SaveMessage(ctx context.Context, msg state.OfflineMessage) (int, error)
 	RetrieveMessages(ctx context.Context, recipient state.IdentScreenName) ([]state.OfflineMessage, error)
 	DeleteMessages(ctx context.Context, recipient state.IdentScreenName) error
 }

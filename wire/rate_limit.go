@@ -217,7 +217,7 @@ func DefaultSNACRateLimits() SNACRateLimits {
 				ICBMSinStored:          1,
 				ICBMSinListQuery:       1,
 				ICBMSinListReply:       1,
-				ICBMSinRetrieve:        1,
+				ICBMOfflineRetrieve:    1,
 				ICBMSinDelete:          1,
 				ICBMNotifyRequest:      1,
 				ICBMNotifyReply:        1,

@@ -65,6 +65,7 @@ type offlineMessageManagerParams struct {
 	deleteMessagesParams
 	retrieveMessagesParams
 	saveMessageParams
+	setOfflineMsgCountParams
 }
 
 // deleteMessagesParams is the list of parameters passed at the mock
@@ -86,7 +87,16 @@ type retrieveMessagesParams []struct {
 // OfflineMessageManager.SaveMessage call site
 type saveMessageParams []struct {
 	offlineMessageIn state.OfflineMessage
+	countOut         int
 	err              error
+}
+
+// setOfflineMsgCountParams is the list of parameters passed at the mock
+// OfflineMessageManager.SetOfflineMsgCount call site
+type setOfflineMsgCountParams []struct {
+	screenName state.IdentScreenName
+	count      int
+	err        error
 }
 
 // sessionRetrieverParams is a helper struct that contains mock parameters for
@@ -335,6 +345,7 @@ type useParams []struct {
 type feedbagParams []struct {
 	screenName state.IdentScreenName
 	results    []wire.FeedbagItem
+	err        error
 }
 
 // feedbagLastModifiedParams is the list of parameters passed at the mock
@@ -844,6 +855,13 @@ func sessRemoteAddr(remoteAddr netip.AddrPort) func(session *state.Session) {
 func sessOptBuddyIcon(icon wire.BARTID) func(session *state.Session) {
 	return func(session *state.Session) {
 		session.SetBuddyIcon(icon)
+	}
+}
+
+// sessOptOfflineMsgCount sets the offline message count on the session object.
+func sessOptOfflineMsgCount(count int) func(session *state.Session) {
+	return func(session *state.Session) {
+		session.SetOfflineMsgCount(count)
 	}
 }
 

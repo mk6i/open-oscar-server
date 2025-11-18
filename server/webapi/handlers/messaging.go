@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -23,7 +24,7 @@ type MessageRelayer interface {
 
 // OfflineMessageManager defines methods for managing offline messages
 type OfflineMessageManager interface {
-	SaveMessage(ctx context.Context, msg state.OfflineMessage) error
+	SaveMessage(ctx context.Context, msg state.OfflineMessage) (int, error)
 }
 
 // RelationshipFetcher defines methods for fetching user relationships
@@ -163,7 +164,15 @@ func (h *MessagingHandler) SendIM(w http.ResponseWriter, r *http.Request) {
 				Sent:      time.Now().UTC(),
 			}
 
-			if err := h.OfflineMessageManager.SaveMessage(ctx, offlineMsg); err != nil {
+			count, err := h.OfflineMessageManager.SaveMessage(ctx, offlineMsg)
+			if err != nil {
+				if errors.Is(err, state.ErrOfflineInboxFull) {
+					h.Logger.WarnContext(ctx, "offline inbox full",
+						"from", sess.ScreenName.String(),
+						"to", recipient)
+					h.sendErrorResponse(w, http.StatusConflict, "recipient inbox full")
+					return
+				}
 				h.Logger.ErrorContext(ctx, "failed to save offline message",
 					"from", sess.ScreenName.String(),
 					"to", recipient,
@@ -174,7 +183,8 @@ func (h *MessagingHandler) SendIM(w http.ResponseWriter, r *http.Request) {
 
 			h.Logger.DebugContext(ctx, "saved offline message",
 				"from", sess.ScreenName.String(),
-				"to", recipient)
+				"to", recipient,
+				"count", count)
 		} else {
 			// Recipient is offline and offline delivery is disabled
 			h.sendErrorResponse(w, http.StatusNotFound, "recipient is not online")

@@ -129,6 +129,7 @@ func (s AuthService) RegisterBOSSession(ctx context.Context, serverCookie state.
 	// set string containing OSCAR client name and version
 	sess.SetClientID(serverCookie.ClientID)
 	sess.SetMemberSince(time.Now())
+	sess.SetOfflineMsgCount(u.OfflineMsgCount)
 
 	bartID, err := s.bartItemManager.BuddyIconMetadata(ctx, sess.IdentScreenName())
 	if err != nil {

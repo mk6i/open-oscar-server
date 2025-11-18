@@ -100,10 +100,11 @@ type FeedbagService interface {
 
 type ICBMService interface {
 	ChannelMsgToHost(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) (*wire.SNACMessage, error)
+	ClientErr(ctx context.Context, sess *state.Session, frame wire.SNACFrame, body wire.SNAC_0x04_0x0B_ICBMClientErr) error
 	ClientEvent(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x14_ICBMClientEvent) error
 	EvilRequest(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x08_ICBMEvilRequest) (wire.SNACMessage, error)
+	OfflineRetrieve(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame) (wire.SNACMessage, error)
 	ParameterQuery(ctx context.Context, inFrame wire.SNACFrame) wire.SNACMessage
-	ClientErr(ctx context.Context, sess *state.Session, frame wire.SNACFrame, body wire.SNAC_0x04_0x0B_ICBMClientErr) error
 	RestoreWarningLevel(ctx context.Context, sess *state.Session) error
 	UpdateWarnLevel(ctx context.Context, sess *state.Session)
 }

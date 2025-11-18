@@ -1591,3 +1591,166 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 		})
 	}
 }
+
+func TestFeedbagBuddyPref(t *testing.T) {
+	tests := []struct {
+		name      string
+		itemType  uint16
+		list      wire.TLVList
+		wantValid bool
+		wantValue bool
+	}{
+		{
+			name:     "offline messages disabled",
+			itemType: wire.FeedbagBuddyPrefsAcceptOfflineIM,
+			list: wire.TLVList{
+				{Tag: wire.FeedbagAttributesBuddyPrefsValid, Value: []byte{0, 0, 24, 64}},
+				{Tag: wire.FeedbagAttributesBuddyPrefs, Value: []byte{0, 0, 24, 64}},
+				{Tag: wire.FeedbagAttributesBuddyPrefs2Valid, Value: []byte{0, 0, 17}},
+				{Tag: wire.FeedbagAttributesBuddyPrefs2, Value: []byte{0, 0, 1}},
+			},
+			wantValid: true,
+			wantValue: false,
+		},
+		{
+			name:     "offline messages disabled",
+			itemType: wire.FeedbagBuddyPrefsAcceptOfflineIM,
+			list: wire.TLVList{
+				{Tag: wire.FeedbagAttributesBuddyPrefsValid, Value: []byte{0, 0, 24, 64}},
+				{Tag: wire.FeedbagAttributesBuddyPrefs, Value: []byte{0, 0, 24, 64}},
+				{Tag: wire.FeedbagAttributesBuddyPrefs2Valid, Value: []byte{0, 0, 17}},
+				{Tag: wire.FeedbagAttributesBuddyPrefs2, Value: []byte{0, 0, 1}},
+			},
+			wantValid: true,
+			wantValue: false,
+		},
+		{
+			name:     "offline messages disabled, extra padding",
+			itemType: wire.FeedbagBuddyPrefsAcceptOfflineIM,
+			list: wire.TLVList{
+				{Tag: wire.FeedbagAttributesBuddyPrefsValid, Value: []byte{0, 0, 24, 64}},
+				{Tag: wire.FeedbagAttributesBuddyPrefs, Value: []byte{0, 0, 24, 64}},
+				{Tag: wire.FeedbagAttributesBuddyPrefs2Valid, Value: []byte{0, 0, 17, 0, 0}},
+				{Tag: wire.FeedbagAttributesBuddyPrefs2, Value: []byte{0, 0, 1, 0, 0}},
+			},
+			wantValid: true,
+			wantValue: false,
+		},
+		{
+			name:     "offline messages enabled",
+			itemType: wire.FeedbagBuddyPrefsAcceptOfflineIM,
+			list: wire.TLVList{
+				{Tag: wire.FeedbagAttributesBuddyPrefsValid, Value: []byte{0, 0, 24, 64}},
+				{Tag: wire.FeedbagAttributesBuddyPrefs, Value: []byte{0, 0, 24, 64}},
+				{Tag: wire.FeedbagAttributesBuddyPrefs2Valid, Value: []byte{0, 0, 17}},
+				{Tag: wire.FeedbagAttributesBuddyPrefs2, Value: []byte{0, 0, 17}},
+			},
+			wantValid: true,
+			wantValue: true,
+		},
+		{
+			name:     "offline messages enabled",
+			itemType: wire.FeedbagBuddyPrefsAcceptOfflineIM,
+			list: wire.TLVList{
+				{Tag: wire.FeedbagAttributesBuddyPrefsValid, Value: []byte{0, 0, 24, 64}},
+				{Tag: wire.FeedbagAttributesBuddyPrefs, Value: []byte{0, 0, 24, 64}},
+				{Tag: wire.FeedbagAttributesBuddyPrefs2Valid, Value: []byte{0, 0, 17, 0, 0}},
+				{Tag: wire.FeedbagAttributesBuddyPrefs2, Value: []byte{0, 0, 17, 0, 0}},
+			},
+			wantValid: true,
+			wantValue: true,
+		},
+		{
+			name:     "typing events enabled, with padding",
+			itemType: wire.FeedbagBuddyPrefsAcceptOfflineIM,
+			list: wire.TLVList{
+				{Tag: wire.FeedbagAttributesBuddyPrefsValid, Value: []byte{0, 64, 24, 64}},
+				{Tag: wire.FeedbagAttributesBuddyPrefs, Value: []byte{0, 64, 24, 64}},
+				{Tag: wire.FeedbagAttributesBuddyPrefs2Valid, Value: []byte{0, 0, 17}},
+				{Tag: wire.FeedbagAttributesBuddyPrefs2, Value: []byte{0, 0, 17}},
+			},
+			wantValid: true,
+			wantValue: true,
+		},
+		{
+			name:     "typing events enabled, without padding",
+			itemType: 22,
+			list: wire.TLVList{
+				{Tag: wire.FeedbagAttributesBuddyPrefsValid, Value: []byte{64, 24, 64}},
+				{Tag: wire.FeedbagAttributesBuddyPrefs, Value: []byte{64, 24, 64}},
+				{Tag: wire.FeedbagAttributesBuddyPrefs2Valid, Value: []byte{17}},
+				{Tag: wire.FeedbagAttributesBuddyPrefs2, Value: []byte{17}},
+			},
+			wantValid: true,
+			wantValue: true,
+		},
+		{
+			name:     "typing events disabled, with padding",
+			itemType: 22,
+			list: wire.TLVList{
+				{Tag: wire.FeedbagAttributesBuddyPrefsValid, Value: []byte{0, 64, 24, 64}},
+				{Tag: wire.FeedbagAttributesBuddyPrefs, Value: []byte{0, 0, 24, 64}},
+				{Tag: wire.FeedbagAttributesBuddyPrefs2Valid, Value: []byte{0, 0, 17}},
+				{Tag: wire.FeedbagAttributesBuddyPrefs2, Value: []byte{0, 0, 17}},
+			},
+			wantValid: true,
+			wantValue: false,
+		},
+		{
+			name:     "typing events disabled, without padding",
+			itemType: 22,
+			list: wire.TLVList{
+				{Tag: wire.FeedbagAttributesBuddyPrefsValid, Value: []byte{64, 24, 64}},
+				{Tag: wire.FeedbagAttributesBuddyPrefs, Value: []byte{24, 64}},
+				{Tag: wire.FeedbagAttributesBuddyPrefs2Valid, Value: []byte{17}},
+				{Tag: wire.FeedbagAttributesBuddyPrefs2, Value: []byte{17}},
+			},
+			wantValid: true,
+			wantValue: false,
+		},
+		{
+			name:     "show friendly IMs enabled (dupe of disclose radio)",
+			itemType: 32,
+			list: wire.TLVList{
+				{Tag: wire.FeedbagAttributesBuddyPrefsValid, Value: []byte{0x00, 0x00, 0x00, 0x00}},
+				{Tag: wire.FeedbagAttributesBuddyPrefs, Value: []byte{0x00, 0x00, 0x00, 0x00}},
+				{Tag: wire.FeedbagAttributesBuddyPrefs2Valid, Value: []byte{0x80, 0x00, 0x00, 0x00}},
+				{Tag: wire.FeedbagAttributesBuddyPrefs2, Value: []byte{0x80, 0x00, 0x00, 0x00}},
+			},
+			wantValid: true,
+			wantValue: true,
+		},
+		{
+			name:     "disclose radio enabled (dupe of show friendly IMs)",
+			itemType: 33,
+			list: wire.TLVList{
+				{Tag: wire.FeedbagAttributesBuddyPrefsValid, Value: []byte{0x00, 0x00, 0x00, 0x00}},
+				{Tag: wire.FeedbagAttributesBuddyPrefs, Value: []byte{0x00, 0x00, 0x00, 0x00}},
+				{Tag: wire.FeedbagAttributesBuddyPrefs2Valid, Value: []byte{0x80, 0x00, 0x00, 0x00}},
+				{Tag: wire.FeedbagAttributesBuddyPrefs2, Value: []byte{0x80, 0x00, 0x00, 0x00}},
+			},
+			wantValid: true,
+			wantValue: true,
+		},
+		{
+			name:     "show capabilities enabled",
+			itemType: 34,
+			list: wire.TLVList{
+				{Tag: wire.FeedbagAttributesBuddyPrefsValid, Value: []byte{0x00, 0x00, 0x00, 0x00}},
+				{Tag: wire.FeedbagAttributesBuddyPrefs, Value: []byte{0x00, 0x00, 0x00, 0x00}},
+				{Tag: wire.FeedbagAttributesBuddyPrefs2Valid, Value: []byte{0x40, 0x00, 0x00, 0x00}},
+				{Tag: wire.FeedbagAttributesBuddyPrefs2, Value: []byte{0x40, 0x00, 0x00, 0x00}},
+			},
+			wantValid: true,
+			wantValue: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			valid, value := feedbagBuddyPref(tt.itemType, tt.list)
+			assert.Equal(t, tt.wantValid, valid)
+			assert.Equal(t, tt.wantValue, value)
+		})
+	}
+}

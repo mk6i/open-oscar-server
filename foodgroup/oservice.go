@@ -22,11 +22,12 @@ type OServiceService struct {
 	snacRateLimits   wire.SNACRateLimits
 	timeNow          func() time.Time
 
-	chatRoomManager    ChatRoomRegistry
-	cookieIssuer       CookieBaker
-	messageRelayer     MessageRelayer
-	chatMessageRelayer ChatMessageRelayer
-	profileManager     ProfileManager
+	chatRoomManager       ChatRoomRegistry
+	cookieIssuer          CookieBaker
+	messageRelayer        MessageRelayer
+	chatMessageRelayer    ChatMessageRelayer
+	profileManager        ProfileManager
+	offlineMessageManager OfflineMessageManager
 }
 
 // NewOServiceService creates a new instance of NewOServiceService.
@@ -42,18 +43,20 @@ func NewOServiceService(
 	snacRateLimits wire.SNACRateLimits,
 	chatMessageRelayer ChatMessageRelayer,
 	profileManager ProfileManager,
+	offlineMessageManager OfflineMessageManager,
 ) *OServiceService {
 	return &OServiceService{
-		cookieIssuer:       cookieIssuer,
-		messageRelayer:     messageRelayer,
-		buddyBroadcaster:   newBuddyNotifier(bartItemManager, relationshipFetcher, messageRelayer, sessionRetriever),
-		cfg:                cfg,
-		logger:             logger,
-		snacRateLimits:     snacRateLimits,
-		timeNow:            time.Now,
-		chatRoomManager:    chatRoomManager,
-		chatMessageRelayer: chatMessageRelayer,
-		profileManager:     profileManager,
+		cookieIssuer:          cookieIssuer,
+		messageRelayer:        messageRelayer,
+		buddyBroadcaster:      newBuddyNotifier(bartItemManager, relationshipFetcher, messageRelayer, sessionRetriever),
+		cfg:                   cfg,
+		logger:                logger,
+		snacRateLimits:        snacRateLimits,
+		timeNow:               time.Now,
+		chatRoomManager:       chatRoomManager,
+		chatMessageRelayer:    chatMessageRelayer,
+		profileManager:        profileManager,
+		offlineMessageManager: offlineMessageManager,
 	}
 }
 
@@ -681,6 +684,11 @@ func (s OServiceService) ClientOnline(ctx context.Context, service uint16, bodyI
 			}
 		}
 
+		if sess.OfflineMsgCount() > 0 {
+			if err := s.sendOfflineMessageNotification(ctx, sess); err != nil {
+				return fmt.Errorf("send offline message notification: %w", err)
+			}
+		}
 	case wire.Chat:
 		room, err := s.chatRoomManager.ChatRoomByCookie(ctx, sess.ChatRoomCookie())
 		if err != nil {
@@ -696,6 +704,45 @@ func (s OServiceService) ClientOnline(ctx context.Context, service uint16, bodyI
 	default:
 		s.logger.DebugContext(ctx, "client is online", "group_versions", bodyIn.GroupVersions)
 	}
+	return nil
+}
+
+// sendOfflineMessageNotification sends an IM notifying the user of their
+// offline message count and resets the count to zero.
+func (s OServiceService) sendOfflineMessageNotification(ctx context.Context, sess *state.Session) error {
+	msg := fmt.Sprintf("You just received %d IM(s) while you were offline. If you do "+
+		"not wish to receive offline messages, please go to "+
+		"<a href=\"http://settings.aim.com/?loc=en-zz\">IM Settings</a>.", sess.OfflineMsgCount())
+	frags, err := wire.ICBMFragmentList(msg)
+	if err != nil {
+		return fmt.Errorf("creating ICBM fragments: %w", err)
+	}
+
+	s.messageRelayer.RelayToScreenName(ctx, sess.IdentScreenName(), wire.SNACMessage{
+		Frame: wire.SNACFrame{
+			FoodGroup: wire.ICBM,
+			SubGroup:  wire.ICBMChannelMsgToClient,
+			RequestID: wire.ReqIDFromServer,
+		},
+		Body: wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
+			ChannelID: wire.ICBMChannelIM,
+			TLVUserInfo: wire.TLVUserInfo{
+				ScreenName: "AOL System Msg",
+			},
+			TLVRestBlock: wire.TLVRestBlock{
+				TLVList: []wire.TLV{
+					wire.NewTLVBE(wire.ICBMTLVAOLIMData, frags),
+				},
+			},
+		},
+	})
+
+	//todo: do the following in a doOnce()
+	sess.SetOfflineMsgCount(0)
+	if err := s.offlineMessageManager.SetOfflineMsgCount(ctx, sess.IdentScreenName(), 0); err != nil {
+		return fmt.Errorf("deleting offline messages: %w", err)
+	}
+
 	return nil
 }
 

@@ -420,6 +420,34 @@ func TestGetUser(t *testing.T) {
 	}
 }
 
+func TestSQLiteUserStore_User_OfflineMsgCount(t *testing.T) {
+	defer func() {
+		assert.NoError(t, os.Remove(testFile))
+	}()
+
+	f, err := NewSQLiteUserStore(testFile)
+	assert.NoError(t, err)
+
+	screenName := NewIdentScreenName("testuser")
+
+	// Insert user first
+	err = f.InsertUser(context.Background(), User{
+		IdentScreenName:   screenName,
+		DisplayScreenName: DisplayScreenName("testuser"),
+	})
+	assert.NoError(t, err)
+
+	// Set offlineMsgCount using the store method
+	err = f.SetOfflineMsgCount(context.Background(), screenName, 5)
+	assert.NoError(t, err)
+
+	// Retrieve user and verify OfflineMsgCount is loaded
+	user, err := f.User(context.Background(), screenName)
+	assert.NoError(t, err)
+	assert.NotNil(t, user)
+	assert.Equal(t, 5, user.OfflineMsgCount)
+}
+
 func TestGetUserNotFound(t *testing.T) {
 	defer func() {
 		assert.NoError(t, os.Remove(testFile))
@@ -1992,6 +2020,17 @@ func TestSQLiteUserStore_RetrieveMessages(t *testing.T) {
 	f, err := NewSQLiteUserStore(testFile)
 	assert.NoError(t, err)
 
+	createStubUser := func(t *testing.T, store SQLiteUserStore, screenName DisplayScreenName) {
+		t.Helper()
+		user, err := NewStubUser(screenName)
+		require.NoError(t, err)
+		require.NoError(t, store.InsertUser(context.Background(), user))
+	}
+
+	createStubUser(t, *f, DisplayScreenName("John"))
+	createStubUser(t, *f, DisplayScreenName("Jack"))
+	createStubUser(t, *f, DisplayScreenName("Anne"))
+
 	sendTime := time.Now().UTC()
 
 	offlineMessages := []OfflineMessage{
@@ -2021,9 +2060,17 @@ func TestSQLiteUserStore_RetrieveMessages(t *testing.T) {
 		},
 	}
 
-	for _, msg := range offlineMessages {
-		err = f.SaveMessage(context.Background(), msg)
+	expectedCounts := []int{1, 1, 2}
+	for i, msg := range offlineMessages {
+		count, err := f.SaveMessage(context.Background(), msg)
 		assert.NoError(t, err)
+		assert.Equal(t, expectedCounts[i], count)
+
+		// Verify offlineMsgCount is updated in the database
+		recipient, err := f.User(context.Background(), msg.Recipient)
+		assert.NoError(t, err)
+		assert.NotNil(t, recipient)
+		assert.Equal(t, expectedCounts[i], recipient.OfflineMsgCount)
 	}
 
 	t.Run("Retrieve Messages", func(t *testing.T) {
@@ -2050,6 +2097,17 @@ func TestSQLiteUserStore_DeleteMessages(t *testing.T) {
 	f, err := NewSQLiteUserStore(testFile)
 	assert.NoError(t, err)
 
+	createStubUser := func(t *testing.T, store SQLiteUserStore, screenName DisplayScreenName) {
+		t.Helper()
+		user, err := NewStubUser(screenName)
+		require.NoError(t, err)
+		require.NoError(t, store.InsertUser(context.Background(), user))
+	}
+
+	createStubUser(t, *f, DisplayScreenName("John"))
+	createStubUser(t, *f, DisplayScreenName("Jack"))
+	createStubUser(t, *f, DisplayScreenName("Anne"))
+
 	sendTime := time.Now().UTC()
 
 	offlineMessages := []OfflineMessage{
@@ -2079,9 +2137,17 @@ func TestSQLiteUserStore_DeleteMessages(t *testing.T) {
 		},
 	}
 
-	for _, msg := range offlineMessages {
-		err = f.SaveMessage(context.Background(), msg)
+	expectedCounts := []int{1, 1, 2}
+	for i, msg := range offlineMessages {
+		count, err := f.SaveMessage(context.Background(), msg)
 		assert.NoError(t, err)
+		assert.Equal(t, expectedCounts[i], count)
+
+		// Verify offlineMsgCount is updated in the database
+		recipient, err := f.User(context.Background(), msg.Recipient)
+		assert.NoError(t, err)
+		assert.NotNil(t, recipient)
+		assert.Equal(t, expectedCounts[i], recipient.OfflineMsgCount)
 	}
 
 	t.Run("Delete Messages", func(t *testing.T) {
@@ -2104,6 +2170,74 @@ func TestSQLiteUserStore_DeleteMessages(t *testing.T) {
 		messages, err := f.RetrieveMessages(context.Background(), NewIdentScreenName("Anne"))
 		assert.NoError(t, err)
 		assert.Len(t, messages, 1)
+	})
+}
+
+func TestSQLiteUserStore_SaveMessage(t *testing.T) {
+	defer func() {
+		assert.NoError(t, os.Remove(testFile))
+	}()
+
+	store, err := NewSQLiteUserStore(testFile)
+	require.NoError(t, err)
+
+	createStubUser := func(t *testing.T, store SQLiteUserStore, screenName DisplayScreenName) {
+		t.Helper()
+		user, err := NewStubUser(screenName)
+		require.NoError(t, err)
+		require.NoError(t, store.InsertUser(context.Background(), user))
+	}
+	createStubUser(t, *store, DisplayScreenName("Sender"))
+	createStubUser(t, *store, DisplayScreenName("Recipient"))
+
+	msg := OfflineMessage{
+		Sender:    NewIdentScreenName("Sender"),
+		Recipient: NewIdentScreenName("Recipient"),
+		Message: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
+			Cookie: 42,
+		},
+		Sent: time.Now().UTC(),
+	}
+
+	t.Run("within limit", func(t *testing.T) {
+		for i := 1; i <= offlineInboxLimit; i++ {
+			count, err := store.SaveMessage(context.Background(), msg)
+			require.NoError(t, err)
+			require.Equal(t, i, count)
+
+			// Verify offlineMsgCount is updated in the database
+			recipient, err := store.User(context.Background(), msg.Recipient)
+			require.NoError(t, err)
+			require.NotNil(t, recipient)
+			require.Equal(t, i, recipient.OfflineMsgCount)
+		}
+	})
+
+	t.Run("limit exceeded", func(t *testing.T) {
+		_, err := store.SaveMessage(context.Background(), msg)
+		require.ErrorIs(t, err, ErrOfflineInboxFull)
+	})
+
+	t.Run("missing sender", func(t *testing.T) {
+		missingSenderMsg := OfflineMessage{
+			Sender:    NewIdentScreenName("UnknownSender"),
+			Recipient: NewIdentScreenName("Recipient"),
+			Message:   msg.Message,
+			Sent:      time.Now().UTC(),
+		}
+		_, err := store.SaveMessage(context.Background(), missingSenderMsg)
+		require.ErrorIs(t, err, ErrNoUser)
+	})
+
+	t.Run("missing recipient", func(t *testing.T) {
+		missingRecipientMsg := OfflineMessage{
+			Sender:    NewIdentScreenName("Sender"),
+			Recipient: NewIdentScreenName("UnknownRecipient"),
+			Message:   msg.Message,
+			Sent:      time.Now().UTC(),
+		}
+		_, err := store.SaveMessage(context.Background(), missingRecipientMsg)
+		require.ErrorIs(t, err, ErrNoUser)
 	})
 }
 
@@ -2875,6 +3009,7 @@ func TestSQLiteUserStore_UnregisterBuddyList(t *testing.T) {
 	assert.NoError(t, err)
 
 	relationships, err = f.AllRelationships(context.Background(), users[0], nil)
+	assert.NoError(t, err)
 	expect = []Relationship{
 		{
 			User:          NewIdentScreenName("user2"),

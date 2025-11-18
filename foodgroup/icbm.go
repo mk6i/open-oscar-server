@@ -3,6 +3,7 @@ package foodgroup
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -29,21 +30,24 @@ func NewICBMService(
 	relationshipFetcher RelationshipFetcher,
 	sessionRetriever SessionRetriever,
 	userManager UserManager,
+	feedbagManager FeedbagManager,
 	snacRateLimits wire.SNACRateLimits,
 	logger *slog.Logger,
 ) *ICBMService {
 	return &ICBMService{
-		relationshipFetcher: relationshipFetcher,
-		buddyBroadcaster:    newBuddyNotifier(bartItemManager, relationshipFetcher, messageRelayer, sessionRetriever),
-		messageRelayer:      messageRelayer,
-		offlineMessageSaver: offlineMessageSaver,
-		userManager:         userManager,
-		timeNow:             time.Now,
-		sessionRetriever:    sessionRetriever,
-		snacRateLimits:      snacRateLimits,
-		convoTracker:        newConvoTracker(),
-		logger:              logger,
-		interval:            rateDecayInterval,
+		relationshipFetcher:   relationshipFetcher,
+		buddyBroadcaster:      newBuddyNotifier(bartItemManager, relationshipFetcher, messageRelayer, sessionRetriever),
+		messageRelayer:        messageRelayer,
+		offlineMessageSaver:   offlineMessageSaver,
+		offlineMessageManager: offlineMessageSaver,
+		userManager:           userManager,
+		feedbagManager:        feedbagManager,
+		timeNow:               time.Now,
+		sessionRetriever:      sessionRetriever,
+		snacRateLimits:        snacRateLimits,
+		convoTracker:          newConvoTracker(),
+		logger:                logger,
+		interval:              rateDecayInterval,
 	}
 }
 
@@ -51,17 +55,19 @@ func NewICBMService(
 // responsible for sending and receiving instant messages and associated
 // functionality such as warning, typing events, etc.
 type ICBMService struct {
-	relationshipFetcher RelationshipFetcher
-	buddyBroadcaster    buddyBroadcaster
-	messageRelayer      MessageRelayer
-	offlineMessageSaver OfflineMessageManager
-	userManager         UserManager
-	timeNow             func() time.Time
-	sessionRetriever    SessionRetriever
-	snacRateLimits      wire.SNACRateLimits
-	convoTracker        *convoTracker
-	logger              *slog.Logger
-	interval            time.Duration
+	relationshipFetcher   RelationshipFetcher
+	buddyBroadcaster      buddyBroadcaster
+	messageRelayer        MessageRelayer
+	offlineMessageSaver   OfflineMessageManager
+	userManager           UserManager
+	feedbagManager        FeedbagManager
+	timeNow               func() time.Time
+	sessionRetriever      SessionRetriever
+	snacRateLimits        wire.SNACRateLimits
+	convoTracker          *convoTracker
+	logger                *slog.Logger
+	interval              time.Duration
+	offlineMessageManager OfflineMessageManager
 }
 
 // ParameterQuery returns ICBM service parameters.
@@ -79,19 +85,6 @@ func (s ICBMService) ParameterQuery(_ context.Context, inFrame wire.SNACFrame) w
 			MaxSourceEvil:        999,
 			MaxDestinationEvil:   999,
 			MinInterICBMInterval: 0,
-		},
-	}
-}
-
-func newICBMErr(requestID uint32, errCode uint16) *wire.SNACMessage {
-	return &wire.SNACMessage{
-		Frame: wire.SNACFrame{
-			FoodGroup: wire.ICBM,
-			SubGroup:  wire.ICBMErr,
-			RequestID: requestID,
-		},
-		Body: wire.SNACError{
-			Code: errCode,
 		},
 	}
 }
@@ -117,28 +110,24 @@ func (s ICBMService) ChannelMsgToHost(ctx context.Context, sess *state.Session, 
 
 	recipSess := s.sessionRetriever.RetrieveSession(recip)
 	if recipSess == nil {
-		// todo: verify user exists, otherwise this could save a bunch of garbage records
-		if _, saveOffline := inBody.Bytes(wire.ICBMTLVStore); saveOffline {
-			offlineMsg := state.OfflineMessage{
-				Message:   inBody,
-				Recipient: recip,
-				Sender:    sess.IdentScreenName(),
-				Sent:      s.timeNow().UTC(),
-			}
-			if err := s.offlineMessageSaver.SaveMessage(ctx, offlineMsg); err != nil {
-				return nil, fmt.Errorf("save ICBM offline message failed: %w", err)
-			}
+		// check for TLV that indicates that the message should be saved offline.
+		// For AIM 6/7, this is only set if the sender has the recipient on
+		// their buddy list and they've seen them online at least once.
+		if _, saveOffline := inBody.Bytes(wire.ICBMTLVStore); !saveOffline {
+			return newICBMErr(inFrame.RequestID, wire.ErrorCodeNotLoggedOn), nil
 		}
-		return &wire.SNACMessage{
-			Frame: wire.SNACFrame{
-				FoodGroup: wire.ICBM,
-				SubGroup:  wire.ICBMErr,
-				RequestID: inFrame.RequestID,
-			},
-			Body: wire.SNACError{
-				Code: wire.ErrorCodeNotLoggedOn,
-			},
-		}, nil
+		canSend, err := s.canSendOfflineMessage(ctx, inBody)
+		if err != nil {
+			return nil, err
+		}
+		if !canSend {
+			return newICBMErr(inFrame.RequestID, wire.ErrorCodeNotLoggedOn), nil
+		}
+		msg, err := s.sendOfflineMessage(ctx, sess, inFrame, inBody)
+		if errors.Is(err, state.ErrNoUser) {
+			return newICBMErr(inFrame.RequestID, wire.ErrorCodeNotLoggedOn), nil
+		}
+		return msg, err
 	}
 
 	clientIM := wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
@@ -196,6 +185,70 @@ func (s ICBMService) ChannelMsgToHost(ctx context.Context, sess *state.Session, 
 			ScreenName: inBody.ScreenName,
 		},
 	}, nil
+}
+
+// canSendOfflineMessage returns true if the user can send an offline message.
+//
+//	For ICQ users, always return true. Todo: Check ICQ recipient's preferences.
+//
+//	For AIM users, only return false if the recipient has specifically opted out
+//	of receiving offline messages or they do not have a stored buddy list.
+func (s ICBMService) canSendOfflineMessage(ctx context.Context, inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) (bool, error) {
+	bag, err := s.feedbagManager.Feedbag(ctx, state.NewIdentScreenName(inBody.ScreenName))
+	if err != nil {
+		return false, fmt.Errorf("get feedbag failed: %w", err)
+	}
+
+	for _, item := range bag {
+		if item.ClassID == wire.FeedbagClassIdBuddyPrefs {
+			valid, ok := feedbagBuddyPref(wire.FeedbagBuddyPrefsAcceptOfflineIM, item.TLVList)
+			return !valid || ok, nil
+		}
+	}
+
+	return true, nil
+}
+
+func (s ICBMService) sendOfflineMessage(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) (*wire.SNACMessage, error) {
+	recip := state.NewIdentScreenName(inBody.ScreenName)
+
+	offlineMsg := state.OfflineMessage{
+		Message:   inBody,
+		Recipient: recip,
+		Sender:    sess.IdentScreenName(),
+		Sent:      s.timeNow().UTC(),
+	}
+	if _, err := s.offlineMessageSaver.SaveMessage(ctx, offlineMsg); err != nil {
+		if errors.Is(err, state.ErrOfflineInboxFull) {
+			return newICBMErr(
+				inFrame.RequestID,
+				wire.ErrorCodeNotLoggedOn,
+				wire.NewTLVBE(wire.ErrorTLVErrorSubcode, wire.ICBMSubErrOfflineIMExceedMax),
+			), nil
+		}
+		return nil, fmt.Errorf("save ICBM offline message failed: %w", err)
+	}
+
+	if sess.UIN() > 0 {
+		return newICBMErr(inFrame.RequestID, wire.ErrorCodeNotLoggedOn), nil
+	}
+
+	if _, requestedConfirmation := inBody.TLVRestBlock.Bytes(wire.ICBMTLVRequestHostAck); requestedConfirmation {
+		// ack message back to sender
+		return &wire.SNACMessage{
+			Frame: wire.SNACFrame{
+				FoodGroup: wire.ICBM,
+				SubGroup:  wire.ICBMHostAck,
+				RequestID: inFrame.RequestID,
+			},
+			Body: wire.SNAC_0x04_0x0C_ICBMHostAck{
+				Cookie:     inBody.Cookie,
+				ChannelID:  inBody.ChannelID,
+				ScreenName: inBody.ScreenName,
+			},
+		}, nil
+	}
+	return nil, nil
 }
 
 // addExternalIP appends the client's IP address to the TLV if it's an ICBM
@@ -371,6 +424,53 @@ func (s ICBMService) EvilRequest(ctx context.Context, sess *state.Session, inFra
 	}, nil
 }
 
+func (s ICBMService) OfflineRetrieve(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame) (wire.SNACMessage, error) {
+	msgList, err := s.offlineMessageManager.RetrieveMessages(ctx, sess.IdentScreenName())
+	if err != nil {
+		return wire.SNACMessage{}, fmt.Errorf("retrieving messages: %w", err)
+	}
+
+	for _, event := range msgList {
+		clientIM := wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
+			Cookie:    event.Message.Cookie,
+			ChannelID: event.Message.ChannelID,
+			TLVUserInfo: wire.TLVUserInfo{
+				ScreenName: event.Sender.String(),
+			},
+			TLVRestBlock: wire.TLVRestBlock{},
+		}
+
+		for _, tlv := range event.Message.TLVRestBlock.TLVList {
+			clientIM.Append(tlv)
+		}
+		clientIM.Append(wire.NewTLVBE(wire.ICBMTLVSendTime, uint32(event.Sent.Unix())))
+
+		s.messageRelayer.RelayToScreenName(ctx, event.Recipient, wire.SNACMessage{
+			Frame: wire.SNACFrame{
+				FoodGroup: wire.ICBM,
+				SubGroup:  wire.ICBMChannelMsgToClient,
+				RequestID: wire.ReqIDFromServer,
+			},
+			Body: clientIM,
+		})
+	}
+
+	if len(msgList) > 0 {
+		if err := s.offlineMessageManager.DeleteMessages(ctx, sess.IdentScreenName()); err != nil {
+			return wire.SNACMessage{}, fmt.Errorf("offlineMessageManager.DeleteMessages: %w", err)
+		}
+	}
+
+	return wire.SNACMessage{
+		Frame: wire.SNACFrame{
+			FoodGroup: wire.ICBM,
+			SubGroup:  wire.ICBMOfflineRetrieveReply,
+			RequestID: inFrame.RequestID,
+		},
+		Body: wire.SNAC_0x04_0x17_ICBMOfflineRetrieveReply{},
+	}, nil
+}
+
 // RestoreWarningLevel restores the warning level from the last stored value at login time,
 // accounting for time passed between logins.
 func (s ICBMService) RestoreWarningLevel(ctx context.Context, sess *state.Session) error {
@@ -541,6 +641,23 @@ func (s ICBMService) UpdateWarnLevel(ctx context.Context, sess *state.Session) {
 				stopTicker()
 			}
 		}
+	}
+}
+
+func newICBMErr(requestID uint32, errCode uint16, tlvs ...wire.TLV) *wire.SNACMessage {
+	body := wire.SNACError{
+		Code: errCode,
+	}
+	if len(tlvs) > 0 {
+		body.AppendList(tlvs)
+	}
+	return &wire.SNACMessage{
+		Frame: wire.SNACFrame{
+			FoodGroup: wire.ICBM,
+			SubGroup:  wire.ICBMErr,
+			RequestID: requestID,
+		},
+		Body: body,
 	}
 }
 

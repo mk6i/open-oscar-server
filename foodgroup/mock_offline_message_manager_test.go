@@ -129,21 +129,31 @@ func (_c *mockOfflineMessageManager_RetrieveMessages_Call) RunAndReturn(run func
 }
 
 // SaveMessage provides a mock function with given fields: ctx, offlineMessage
-func (_m *mockOfflineMessageManager) SaveMessage(ctx context.Context, offlineMessage state.OfflineMessage) error {
+func (_m *mockOfflineMessageManager) SaveMessage(ctx context.Context, offlineMessage state.OfflineMessage) (int, error) {
 	ret := _m.Called(ctx, offlineMessage)
 
 	if len(ret) == 0 {
 		panic("no return value specified for SaveMessage")
 	}
 
-	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, state.OfflineMessage) error); ok {
+	var r0 int
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, state.OfflineMessage) (int, error)); ok {
+		return rf(ctx, offlineMessage)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, state.OfflineMessage) int); ok {
 		r0 = rf(ctx, offlineMessage)
 	} else {
-		r0 = ret.Error(0)
+		r0 = ret.Get(0).(int)
 	}
 
-	return r0
+	if rf, ok := ret.Get(1).(func(context.Context, state.OfflineMessage) error); ok {
+		r1 = rf(ctx, offlineMessage)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
 }
 
 // mockOfflineMessageManager_SaveMessage_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SaveMessage'
@@ -165,12 +175,60 @@ func (_c *mockOfflineMessageManager_SaveMessage_Call) Run(run func(ctx context.C
 	return _c
 }
 
-func (_c *mockOfflineMessageManager_SaveMessage_Call) Return(_a0 error) *mockOfflineMessageManager_SaveMessage_Call {
+func (_c *mockOfflineMessageManager_SaveMessage_Call) Return(_a0 int, _a1 error) *mockOfflineMessageManager_SaveMessage_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *mockOfflineMessageManager_SaveMessage_Call) RunAndReturn(run func(context.Context, state.OfflineMessage) (int, error)) *mockOfflineMessageManager_SaveMessage_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// SetOfflineMsgCount provides a mock function with given fields: ctx, screenName, count
+func (_m *mockOfflineMessageManager) SetOfflineMsgCount(ctx context.Context, screenName state.IdentScreenName, count int) error {
+	ret := _m.Called(ctx, screenName, count)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetOfflineMsgCount")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, state.IdentScreenName, int) error); ok {
+		r0 = rf(ctx, screenName, count)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// mockOfflineMessageManager_SetOfflineMsgCount_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetOfflineMsgCount'
+type mockOfflineMessageManager_SetOfflineMsgCount_Call struct {
+	*mock.Call
+}
+
+// SetOfflineMsgCount is a helper method to define mock.On call
+//   - ctx context.Context
+//   - screenName state.IdentScreenName
+//   - count int
+func (_e *mockOfflineMessageManager_Expecter) SetOfflineMsgCount(ctx interface{}, screenName interface{}, count interface{}) *mockOfflineMessageManager_SetOfflineMsgCount_Call {
+	return &mockOfflineMessageManager_SetOfflineMsgCount_Call{Call: _e.mock.On("SetOfflineMsgCount", ctx, screenName, count)}
+}
+
+func (_c *mockOfflineMessageManager_SetOfflineMsgCount_Call) Run(run func(ctx context.Context, screenName state.IdentScreenName, count int)) *mockOfflineMessageManager_SetOfflineMsgCount_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(state.IdentScreenName), args[2].(int))
+	})
+	return _c
+}
+
+func (_c *mockOfflineMessageManager_SetOfflineMsgCount_Call) Return(_a0 error) *mockOfflineMessageManager_SetOfflineMsgCount_Call {
 	_c.Call.Return(_a0)
 	return _c
 }
 
-func (_c *mockOfflineMessageManager_SaveMessage_Call) RunAndReturn(run func(context.Context, state.OfflineMessage) error) *mockOfflineMessageManager_SaveMessage_Call {
+func (_c *mockOfflineMessageManager_SetOfflineMsgCount_Call) RunAndReturn(run func(context.Context, state.IdentScreenName, int) error) *mockOfflineMessageManager_SetOfflineMsgCount_Call {
 	_c.Call.Return(run)
 	return _c
 }
