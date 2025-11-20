@@ -72,6 +72,54 @@ func (_c *mockBuddyService_AddBuddies_Call) RunAndReturn(run func(context.Contex
 	return _c
 }
 
+// AddTempBuddies provides a mock function with given fields: ctx, sess, snac
+func (_m *mockBuddyService) AddTempBuddies(ctx context.Context, sess *state.Session, snac wire.SNAC_0x03_0x0F_BuddyAddTempBuddies) error {
+	ret := _m.Called(ctx, sess, snac)
+
+	if len(ret) == 0 {
+		panic("no return value specified for AddTempBuddies")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, *state.Session, wire.SNAC_0x03_0x0F_BuddyAddTempBuddies) error); ok {
+		r0 = rf(ctx, sess, snac)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// mockBuddyService_AddTempBuddies_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AddTempBuddies'
+type mockBuddyService_AddTempBuddies_Call struct {
+	*mock.Call
+}
+
+// AddTempBuddies is a helper method to define mock.On call
+//   - ctx context.Context
+//   - sess *state.Session
+//   - snac wire.SNAC_0x03_0x0F_BuddyAddTempBuddies
+func (_e *mockBuddyService_Expecter) AddTempBuddies(ctx interface{}, sess interface{}, snac interface{}) *mockBuddyService_AddTempBuddies_Call {
+	return &mockBuddyService_AddTempBuddies_Call{Call: _e.mock.On("AddTempBuddies", ctx, sess, snac)}
+}
+
+func (_c *mockBuddyService_AddTempBuddies_Call) Run(run func(ctx context.Context, sess *state.Session, snac wire.SNAC_0x03_0x0F_BuddyAddTempBuddies)) *mockBuddyService_AddTempBuddies_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(*state.Session), args[2].(wire.SNAC_0x03_0x0F_BuddyAddTempBuddies))
+	})
+	return _c
+}
+
+func (_c *mockBuddyService_AddTempBuddies_Call) Return(_a0 error) *mockBuddyService_AddTempBuddies_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *mockBuddyService_AddTempBuddies_Call) RunAndReturn(run func(context.Context, *state.Session, wire.SNAC_0x03_0x0F_BuddyAddTempBuddies) error) *mockBuddyService_AddTempBuddies_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // DelBuddies provides a mock function with given fields: _a0, sess, inBody
 func (_m *mockBuddyService) DelBuddies(_a0 context.Context, sess *state.Session, inBody wire.SNAC_0x03_0x05_BuddyDelBuddies) error {
 	ret := _m.Called(_a0, sess, inBody)
@@ -116,6 +164,54 @@ func (_c *mockBuddyService_DelBuddies_Call) Return(_a0 error) *mockBuddyService_
 }
 
 func (_c *mockBuddyService_DelBuddies_Call) RunAndReturn(run func(context.Context, *state.Session, wire.SNAC_0x03_0x05_BuddyDelBuddies) error) *mockBuddyService_DelBuddies_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// DelTempBuddies provides a mock function with given fields: ctx, sess, snac
+func (_m *mockBuddyService) DelTempBuddies(ctx context.Context, sess *state.Session, snac wire.SNAC_0x03_0x10_BuddyDelTempBuddies) error {
+	ret := _m.Called(ctx, sess, snac)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DelTempBuddies")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, *state.Session, wire.SNAC_0x03_0x10_BuddyDelTempBuddies) error); ok {
+		r0 = rf(ctx, sess, snac)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// mockBuddyService_DelTempBuddies_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DelTempBuddies'
+type mockBuddyService_DelTempBuddies_Call struct {
+	*mock.Call
+}
+
+// DelTempBuddies is a helper method to define mock.On call
+//   - ctx context.Context
+//   - sess *state.Session
+//   - snac wire.SNAC_0x03_0x10_BuddyDelTempBuddies
+func (_e *mockBuddyService_Expecter) DelTempBuddies(ctx interface{}, sess interface{}, snac interface{}) *mockBuddyService_DelTempBuddies_Call {
+	return &mockBuddyService_DelTempBuddies_Call{Call: _e.mock.On("DelTempBuddies", ctx, sess, snac)}
+}
+
+func (_c *mockBuddyService_DelTempBuddies_Call) Run(run func(ctx context.Context, sess *state.Session, snac wire.SNAC_0x03_0x10_BuddyDelTempBuddies)) *mockBuddyService_DelTempBuddies_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(*state.Session), args[2].(wire.SNAC_0x03_0x10_BuddyDelTempBuddies))
+	})
+	return _c
+}
+
+func (_c *mockBuddyService_DelTempBuddies_Call) Return(_a0 error) *mockBuddyService_DelTempBuddies_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *mockBuddyService_DelTempBuddies_Call) RunAndReturn(run func(context.Context, *state.Session, wire.SNAC_0x03_0x10_BuddyDelTempBuddies) error) *mockBuddyService_DelTempBuddies_Call {
 	_c.Call.Return(run)
 	return _c
 }

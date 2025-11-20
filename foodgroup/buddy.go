@@ -100,6 +100,30 @@ func (s BuddyService) DelBuddies(ctx context.Context, sess *state.Session, inBod
 	return nil
 }
 
+func (s BuddyService) AddTempBuddies(ctx context.Context, sess *state.Session, snac wire.SNAC_0x03_0x0F_BuddyAddTempBuddies) error {
+	var inBody wire.SNAC_0x03_0x04_BuddyAddBuddies
+
+	for _, sn := range snac.ScreenNames {
+		inBody.Buddies = append(inBody.Buddies, struct {
+			ScreenName string `oscar:"len_prefix=uint8"`
+		}{ScreenName: sn})
+	}
+
+	return s.AddBuddies(ctx, sess, inBody)
+}
+
+func (s BuddyService) DelTempBuddies(ctx context.Context, sess *state.Session, snac wire.SNAC_0x03_0x10_BuddyDelTempBuddies) error {
+	var inBody wire.SNAC_0x03_0x05_BuddyDelBuddies
+
+	for _, sn := range snac.ScreenNames {
+		inBody.Buddies = append(inBody.Buddies, struct {
+			ScreenName string `oscar:"len_prefix=uint8"`
+		}{ScreenName: sn})
+	}
+
+	return s.DelBuddies(ctx, sess, inBody)
+}
+
 // BroadcastBuddyArrived broadcasts buddy arrival with custom user info (implements DepartureNotifier)
 func (s BuddyService) BroadcastBuddyArrived(ctx context.Context, screenName state.IdentScreenName, userInfo wire.TLVUserInfo) error {
 	return s.buddyBroadcaster.BroadcastBuddyArrived(ctx, screenName, userInfo)
