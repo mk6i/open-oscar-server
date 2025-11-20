@@ -22,6 +22,7 @@ import (
 const relationshipSQLTpl = `
 WITH myScreenName AS (SELECT ?),
      {{ if .DoFilter }}filter AS (SELECT * FROM (VALUES%s) as t),{{ end }}
+
      theirBuddyLists AS (SELECT feedbag.screenName                                   AS screenName,
                                 MAX(CASE WHEN feedbag.classId = 0 THEN 1 ELSE 0 END) AS isBuddy,
                                 MAX(CASE WHEN feedbag.classId = 2 THEN 1 ELSE 0 END) AS isPermit,
@@ -47,31 +48,31 @@ WITH myScreenName AS (SELECT ?),
                                       FROM buddyListMode
                                       WHERE buddyListMode.screenName = clientSideBuddyList.me
                                         AND useFeedbag IS FALSE)),
-     yourBuddyList AS (SELECT feedbag.name                                         AS screenName,
-                              MAX(CASE WHEN feedbag.classId = 0 THEN 1 ELSE 0 END) AS isBuddy,
-                              MAX(CASE WHEN feedbag.classId = 2 THEN 1 ELSE 0 END) AS isPermit,
-                              MAX(CASE WHEN feedbag.classId = 3 THEN 1 ELSE 0 END) AS isDeny
-                       FROM feedbag
-                       WHERE feedbag.screenName = (SELECT * FROM myScreenName)
-                       {{ if .DoFilter }}AND feedbag.name IN (SELECT * FROM filter){{ end }}
-                         AND feedbag.classId IN (0, 2, 3)
-                         AND EXISTS(SELECT 1
-                                    FROM buddyListMode
-                                    WHERE buddyListMode.screenName = feedbag.screenName
-                                      AND useFeedbag IS TRUE)
-                       GROUP BY feedbag.name
-                       UNION
-                       SELECT them     AS screenName,
-                              isBuddy  AS isBuddy,
-                              isPermit AS isPermit,
-                              isDeny   AS isDeny
-                       FROM clientSideBuddyList
-                       WHERE me = (SELECT * FROM myScreenName)
-                       {{ if .DoFilter }}AND them IN (SELECT * FROM filter){{ end }}
-                         AND EXISTS(SELECT 1
-                                    FROM buddyListMode
-                                    WHERE buddyListMode.screenName = clientSideBuddyList.me
-                                      AND useFeedbag IS FALSE)),
+     yourBuddyList AS (SELECT COALESCE(clientSide.them, feedbag.name) AS screenName,
+                              COALESCE(clientSide.isBuddy, feedbag.isBuddy) AS isBuddy,
+                              COALESCE(clientSide.isPermit, feedbag.isPermit) AS isPermit,
+                              COALESCE(clientSide.isDeny, feedbag.isDeny) AS isDeny
+                       FROM (SELECT feedbag.name                                         AS name,
+                                    MAX(CASE WHEN feedbag.classId = 0 THEN 1 ELSE 0 END) AS isBuddy,
+                                    MAX(CASE WHEN feedbag.classId = 2 THEN 1 ELSE 0 END) AS isPermit,
+                                    MAX(CASE WHEN feedbag.classId = 3 THEN 1 ELSE 0 END) AS isDeny
+                             FROM feedbag
+                             WHERE feedbag.screenName = (SELECT * FROM myScreenName)
+                             {{ if .DoFilter }}AND feedbag.name IN (SELECT * FROM filter){{ end }}
+                               AND feedbag.classId IN (0, 2, 3)
+                               AND EXISTS(SELECT 1
+                                          FROM buddyListMode
+                                          WHERE buddyListMode.screenName = feedbag.screenName
+                                            AND useFeedbag IS TRUE)
+                             GROUP BY feedbag.name) feedbag
+                       FULL OUTER JOIN (SELECT them     AS them,
+                                               isBuddy  AS isBuddy,
+                                               isPermit AS isPermit,
+                                               isDeny   AS isDeny
+                                        FROM clientSideBuddyList
+                                        WHERE me = (SELECT * FROM myScreenName)
+                                        {{ if .DoFilter }}AND them IN (SELECT * FROM filter){{ end }}) clientSide
+                       ON feedbag.name = clientSide.them),
      theirPrivacyPrefs AS (SELECT buddyListMode.screenName,
                                   CASE
                                       WHEN buddyListMode.useFeedbag IS TRUE THEN IFNULL(feedbagPrefs.pdMode, 1)

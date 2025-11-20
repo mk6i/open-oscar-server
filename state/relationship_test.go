@@ -28,6 +28,7 @@ func TestSQLiteUserStore_AllRelationships(t *testing.T) {
 		me              IdentScreenName
 		clientSideLists map[IdentScreenName]buddyList
 		serverSideLists map[IdentScreenName]buddyList
+		tempBuddyList   []IdentScreenName
 		expect          []Relationship
 		filter          []IdentScreenName
 	}{
@@ -2989,6 +2990,52 @@ func TestSQLiteUserStore_AllRelationships(t *testing.T) {
 				},
 			},
 		},
+
+		{
+			name: "add temp buddy",
+			me:   NewIdentScreenName("me"),
+			clientSideLists: map[IdentScreenName]buddyList{
+				NewIdentScreenName("friend1"): {
+					privacyMode: wire.FeedbagPDModePermitAll,
+					buddyList:   []IdentScreenName{NewIdentScreenName("me")},
+					permitList:  []IdentScreenName{},
+					denyList:    []IdentScreenName{},
+				},
+				NewIdentScreenName("friend2"): {
+					privacyMode: wire.FeedbagPDModePermitAll,
+					buddyList:   []IdentScreenName{NewIdentScreenName("me")},
+					permitList:  []IdentScreenName{},
+					denyList:    []IdentScreenName{},
+				},
+			},
+			serverSideLists: map[IdentScreenName]buddyList{
+				NewIdentScreenName("me"): {
+					privacyMode: wire.FeedbagPDModePermitAll,
+					buddyList:   []IdentScreenName{NewIdentScreenName("friend1")},
+					permitList:  []IdentScreenName{},
+					denyList:    []IdentScreenName{},
+				},
+			},
+			tempBuddyList: []IdentScreenName{
+				NewIdentScreenName("friend2"),
+			},
+			expect: []Relationship{
+				{
+					User:          NewIdentScreenName("friend1"),
+					BlocksYou:     false,
+					YouBlock:      false,
+					IsOnTheirList: true,
+					IsOnYourList:  true,
+				},
+				{
+					User:          NewIdentScreenName("friend2"),
+					BlocksYou:     false,
+					YouBlock:      false,
+					IsOnTheirList: true,
+					IsOnYourList:  true,
+				},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -3020,7 +3067,6 @@ func TestSQLiteUserStore_AllRelationships(t *testing.T) {
 				}
 				itemID++
 				for _, buddy := range list.buddyList {
-					assert.NoError(t, feedbagStore.AddBuddy(context.Background(), sn, buddy))
 					items = append(items, newFeedbagItem(wire.FeedbagClassIdBuddy, itemID, buddy.String()))
 					itemID++
 				}
@@ -3033,6 +3079,10 @@ func TestSQLiteUserStore_AllRelationships(t *testing.T) {
 					itemID++
 				}
 				assert.NoError(t, feedbagStore.FeedbagUpsert(context.Background(), sn, items))
+			}
+
+			for _, tempBuddy := range tt.tempBuddyList {
+				assert.NoError(t, feedbagStore.AddBuddy(context.Background(), tt.me, tempBuddy))
 			}
 
 			have, err := feedbagStore.AllRelationships(context.Background(), tt.me, tt.filter)
