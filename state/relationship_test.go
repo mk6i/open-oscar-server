@@ -28,7 +28,7 @@ func TestSQLiteUserStore_AllRelationships(t *testing.T) {
 		me              IdentScreenName
 		clientSideLists map[IdentScreenName]buddyList
 		serverSideLists map[IdentScreenName]buddyList
-		tempBuddyList   []IdentScreenName
+		tempBuddyList   map[IdentScreenName][]IdentScreenName
 		expect          []Relationship
 		filter          []IdentScreenName
 	}{
@@ -2990,18 +2990,11 @@ func TestSQLiteUserStore_AllRelationships(t *testing.T) {
 				},
 			},
 		},
-
 		{
-			name: "add temp buddy",
+			name: "i have a temp buddy, they don't have me",
 			me:   NewIdentScreenName("me"),
 			clientSideLists: map[IdentScreenName]buddyList{
 				NewIdentScreenName("friend1"): {
-					privacyMode: wire.FeedbagPDModePermitAll,
-					buddyList:   []IdentScreenName{NewIdentScreenName("me")},
-					permitList:  []IdentScreenName{},
-					denyList:    []IdentScreenName{},
-				},
-				NewIdentScreenName("friend2"): {
 					privacyMode: wire.FeedbagPDModePermitAll,
 					buddyList:   []IdentScreenName{NewIdentScreenName("me")},
 					permitList:  []IdentScreenName{},
@@ -3015,9 +3008,64 @@ func TestSQLiteUserStore_AllRelationships(t *testing.T) {
 					permitList:  []IdentScreenName{},
 					denyList:    []IdentScreenName{},
 				},
+				NewIdentScreenName("friend2"): {
+					privacyMode: wire.FeedbagPDModePermitAll,
+					buddyList:   []IdentScreenName{},
+					permitList:  []IdentScreenName{},
+					denyList:    []IdentScreenName{},
+				},
 			},
-			tempBuddyList: []IdentScreenName{
-				NewIdentScreenName("friend2"),
+			tempBuddyList: map[IdentScreenName][]IdentScreenName{
+				NewIdentScreenName("me"): {
+					NewIdentScreenName("friend2"),
+				},
+			},
+			expect: []Relationship{
+				{
+					User:          NewIdentScreenName("friend1"),
+					BlocksYou:     false,
+					YouBlock:      false,
+					IsOnTheirList: true,
+					IsOnYourList:  true,
+				},
+				{
+					User:          NewIdentScreenName("friend2"),
+					BlocksYou:     false,
+					YouBlock:      false,
+					IsOnTheirList: false,
+					IsOnYourList:  true,
+				},
+			},
+		},
+		{
+			name: "someone has me as a temp buddy, I don't have them",
+			me:   NewIdentScreenName("me"),
+			clientSideLists: map[IdentScreenName]buddyList{
+				NewIdentScreenName("friend1"): {
+					privacyMode: wire.FeedbagPDModePermitAll,
+					buddyList:   []IdentScreenName{NewIdentScreenName("me")},
+					permitList:  []IdentScreenName{},
+					denyList:    []IdentScreenName{},
+				},
+			},
+			serverSideLists: map[IdentScreenName]buddyList{
+				NewIdentScreenName("me"): {
+					privacyMode: wire.FeedbagPDModePermitAll,
+					buddyList:   []IdentScreenName{NewIdentScreenName("friend1")},
+					permitList:  []IdentScreenName{},
+					denyList:    []IdentScreenName{},
+				},
+				NewIdentScreenName("friend2"): {
+					privacyMode: wire.FeedbagPDModePermitAll,
+					buddyList:   []IdentScreenName{},
+					permitList:  []IdentScreenName{},
+					denyList:    []IdentScreenName{},
+				},
+			},
+			tempBuddyList: map[IdentScreenName][]IdentScreenName{
+				NewIdentScreenName("friend2"): {
+					NewIdentScreenName("me"),
+				},
 			},
 			expect: []Relationship{
 				{
@@ -3032,7 +3080,7 @@ func TestSQLiteUserStore_AllRelationships(t *testing.T) {
 					BlocksYou:     false,
 					YouBlock:      false,
 					IsOnTheirList: true,
-					IsOnYourList:  true,
+					IsOnYourList:  false,
 				},
 			},
 		},
@@ -3081,8 +3129,10 @@ func TestSQLiteUserStore_AllRelationships(t *testing.T) {
 				assert.NoError(t, feedbagStore.FeedbagUpsert(context.Background(), sn, items))
 			}
 
-			for _, tempBuddy := range tt.tempBuddyList {
-				assert.NoError(t, feedbagStore.AddBuddy(context.Background(), tt.me, tempBuddy))
+			for sn, list := range tt.tempBuddyList {
+				for _, buddy := range list {
+					assert.NoError(t, feedbagStore.AddBuddy(context.Background(), sn, buddy))
+				}
 			}
 
 			have, err := feedbagStore.AllRelationships(context.Background(), tt.me, tt.filter)

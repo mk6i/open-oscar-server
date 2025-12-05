@@ -558,11 +558,15 @@ type SNAC_0x03_0x0C_BuddyDeparted struct {
 }
 
 type SNAC_0x03_0x0F_BuddyAddTempBuddies struct {
-	ScreenNames []string `oscar:"len_prefix=uint8"`
+	Buddies []struct {
+		ScreenName string `oscar:"len_prefix=uint8"`
+	}
 }
 
 type SNAC_0x03_0x10_BuddyDelTempBuddies struct {
-	ScreenNames []string `oscar:"len_prefix=uint8"`
+	Buddies []struct {
+		ScreenName string `oscar:"len_prefix=uint8"`
+	}
 }
 
 //

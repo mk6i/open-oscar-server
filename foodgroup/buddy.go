@@ -103,10 +103,10 @@ func (s BuddyService) DelBuddies(ctx context.Context, sess *state.Session, inBod
 func (s BuddyService) AddTempBuddies(ctx context.Context, sess *state.Session, snac wire.SNAC_0x03_0x0F_BuddyAddTempBuddies) error {
 	var inBody wire.SNAC_0x03_0x04_BuddyAddBuddies
 
-	for _, sn := range snac.ScreenNames {
+	for _, buddy := range snac.Buddies {
 		inBody.Buddies = append(inBody.Buddies, struct {
 			ScreenName string `oscar:"len_prefix=uint8"`
-		}{ScreenName: sn})
+		}{ScreenName: buddy.ScreenName})
 	}
 
 	return s.AddBuddies(ctx, sess, inBody)
@@ -115,10 +115,10 @@ func (s BuddyService) AddTempBuddies(ctx context.Context, sess *state.Session, s
 func (s BuddyService) DelTempBuddies(ctx context.Context, sess *state.Session, snac wire.SNAC_0x03_0x10_BuddyDelTempBuddies) error {
 	var inBody wire.SNAC_0x03_0x05_BuddyDelBuddies
 
-	for _, sn := range snac.ScreenNames {
+	for _, buddy := range snac.Buddies {
 		inBody.Buddies = append(inBody.Buddies, struct {
 			ScreenName string `oscar:"len_prefix=uint8"`
-		}{ScreenName: sn})
+		}{ScreenName: buddy.ScreenName})
 	}
 
 	return s.DelBuddies(ctx, sess, inBody)
