@@ -100,6 +100,33 @@ func (s BuddyService) DelBuddies(ctx context.Context, sess *state.Session, inBod
 	return nil
 }
 
+// AddTempBuddies adds temporary buddies to the user's buddy list that persist
+// for the duration of the user's session.
+func (s BuddyService) AddTempBuddies(ctx context.Context, sess *state.Session, snac wire.SNAC_0x03_0x0F_BuddyAddTempBuddies) error {
+	var inBody wire.SNAC_0x03_0x04_BuddyAddBuddies
+
+	for _, buddy := range snac.Buddies {
+		inBody.Buddies = append(inBody.Buddies, struct {
+			ScreenName string `oscar:"len_prefix=uint8"`
+		}{ScreenName: buddy.ScreenName})
+	}
+
+	return s.AddBuddies(ctx, sess, inBody)
+}
+
+// DelTempBuddies deletes temporary buddies from the user's buddy list.
+func (s BuddyService) DelTempBuddies(ctx context.Context, sess *state.Session, snac wire.SNAC_0x03_0x10_BuddyDelTempBuddies) error {
+	var inBody wire.SNAC_0x03_0x05_BuddyDelBuddies
+
+	for _, buddy := range snac.Buddies {
+		inBody.Buddies = append(inBody.Buddies, struct {
+			ScreenName string `oscar:"len_prefix=uint8"`
+		}{ScreenName: buddy.ScreenName})
+	}
+
+	return s.DelBuddies(ctx, sess, inBody)
+}
+
 // BroadcastBuddyArrived broadcasts buddy arrival with custom user info (implements DepartureNotifier)
 func (s BuddyService) BroadcastBuddyArrived(ctx context.Context, screenName state.IdentScreenName, userInfo wire.TLVUserInfo) error {
 	return s.buddyBroadcaster.BroadcastBuddyArrived(ctx, screenName, userInfo)

@@ -166,6 +166,24 @@ func (rt Handler) BuddyDelBuddies(ctx context.Context, sess *state.Session, inFr
 	return rt.BuddyService.DelBuddies(ctx, sess, inSNAC)
 }
 
+func (rt Handler) BuddyAddTempBuddies(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+	inSNAC := wire.SNAC_0x03_0x0F_BuddyAddTempBuddies{}
+	if err := wire.UnmarshalBE(&inSNAC, r); err != nil {
+		return err
+	}
+	rt.LogRequest(ctx, inFrame, inSNAC)
+	return rt.BuddyService.AddTempBuddies(ctx, sess, inSNAC)
+}
+
+func (rt Handler) BuddyDelTempBuddies(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+	inSNAC := wire.SNAC_0x03_0x10_BuddyDelTempBuddies{}
+	if err := wire.UnmarshalBE(&inSNAC, r); err != nil {
+		return err
+	}
+	rt.LogRequest(ctx, inFrame, inSNAC)
+	return rt.BuddyService.DelTempBuddies(ctx, sess, inSNAC)
+}
+
 func (rt Handler) ChatChannelMsgToHost(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inBody := wire.SNAC_0x0E_0x05_ChatChannelMsgToHost{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
@@ -974,6 +992,10 @@ func (rt Handler) Handle(ctx context.Context, server uint16, sess *state.Session
 			return rt.BuddyDelBuddies(ctx, sess, inFrame, r, rw)
 		case wire.BuddyRightsQuery:
 			return rt.BuddyRightsQuery(ctx, sess, inFrame, r, rw)
+		case wire.BuddyAddTempBuddies:
+			return rt.BuddyAddTempBuddies(ctx, sess, inFrame, r, rw)
+		case wire.BuddyDelTempBuddies:
+			return rt.BuddyDelTempBuddies(ctx, sess, inFrame, r, rw)
 		}
 	case wire.Chat:
 		switch inFrame.SubGroup {

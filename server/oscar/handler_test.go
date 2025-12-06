@@ -852,6 +852,150 @@ func TestHandler_BuddyDelBuddies(t *testing.T) {
 	}
 }
 
+func TestHandler_BuddyAddTempBuddies(t *testing.T) {
+	tests := []struct {
+		name          string
+		inputBody     wire.SNAC_0x03_0x0F_BuddyAddTempBuddies
+		serviceError  error
+		expectedError error
+	}{
+		{
+			name: "success",
+			inputBody: wire.SNAC_0x03_0x0F_BuddyAddTempBuddies{
+				Buddies: []struct {
+					ScreenName string `oscar:"len_prefix=uint8"`
+				}{
+					{
+						ScreenName: "user1",
+					},
+				},
+			},
+		},
+		{
+			name: "service error",
+			inputBody: wire.SNAC_0x03_0x0F_BuddyAddTempBuddies{
+				Buddies: []struct {
+					ScreenName string `oscar:"len_prefix=uint8"`
+				}{
+					{
+						ScreenName: "user1",
+					},
+				},
+			},
+			serviceError:  assert.AnError,
+			expectedError: assert.AnError,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			input := wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.Buddy,
+					SubGroup:  wire.BuddyAddTempBuddies,
+				},
+				Body: tt.inputBody,
+			}
+
+			svc := newMockBuddyService(t)
+			svc.EXPECT().
+				AddTempBuddies(mock.Anything, mock.Anything, input.Body).
+				Return(tt.serviceError)
+
+			h := Handler{
+				BuddyService: svc,
+				RouteLogger: middleware.RouteLogger{
+					Logger: slog.Default(),
+				},
+			}
+
+			responseWriter := newMockResponseWriter(t)
+
+			buf := &bytes.Buffer{}
+			assert.NoError(t, wire.MarshalBE(input.Body, buf))
+
+			err := h.Handle(context.TODO(), wire.BOS, nil, input.Frame, buf, responseWriter, config.Listener{})
+			if tt.expectedError != nil {
+				assert.ErrorIs(t, err, tt.expectedError)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestHandler_BuddyDelTempBuddies(t *testing.T) {
+	tests := []struct {
+		name          string
+		inputBody     wire.SNAC_0x03_0x10_BuddyDelTempBuddies
+		serviceError  error
+		expectedError error
+	}{
+		{
+			name: "success",
+			inputBody: wire.SNAC_0x03_0x10_BuddyDelTempBuddies{
+				Buddies: []struct {
+					ScreenName string `oscar:"len_prefix=uint8"`
+				}{
+					{
+						ScreenName: "user1",
+					},
+				},
+			},
+		},
+		{
+			name: "service error",
+			inputBody: wire.SNAC_0x03_0x10_BuddyDelTempBuddies{
+				Buddies: []struct {
+					ScreenName string `oscar:"len_prefix=uint8"`
+				}{
+					{
+						ScreenName: "user1",
+					},
+				},
+			},
+			serviceError:  assert.AnError,
+			expectedError: assert.AnError,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			input := wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.Buddy,
+					SubGroup:  wire.BuddyDelTempBuddies,
+				},
+				Body: tt.inputBody,
+			}
+
+			svc := newMockBuddyService(t)
+			svc.EXPECT().
+				DelTempBuddies(mock.Anything, mock.Anything, input.Body).
+				Return(tt.serviceError)
+
+			h := Handler{
+				BuddyService: svc,
+				RouteLogger: middleware.RouteLogger{
+					Logger: slog.Default(),
+				},
+			}
+
+			responseWriter := newMockResponseWriter(t)
+
+			buf := &bytes.Buffer{}
+			assert.NoError(t, wire.MarshalBE(input.Body, buf))
+
+			err := h.Handle(context.TODO(), wire.BOS, nil, input.Frame, buf, responseWriter, config.Listener{})
+			if tt.expectedError != nil {
+				assert.ErrorIs(t, err, tt.expectedError)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestHandler_ChatNavCreateRoom(t *testing.T) {
 	tests := []struct {
 		name          string

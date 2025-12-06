@@ -133,7 +133,7 @@ func TestBuddyService_AddBuddies(t *testing.T) {
 			mockBuddyBroadcaster := newMockbuddyBroadcaster(t)
 			for _, params := range tt.mockParams.broadcastVisibilityParams {
 				mockBuddyBroadcaster.EXPECT().
-					BroadcastVisibility(mock.Anything, matchSession(params.from), params.filter, true).
+					BroadcastVisibility(matchContext(), matchSession(params.from), params.filter, true).
 					Return(params.err)
 			}
 
@@ -209,7 +209,7 @@ func TestBuddyService_DelBuddies(t *testing.T) {
 			mockBuddyBroadcaster := newMockbuddyBroadcaster(t)
 			for _, params := range tt.mockParams.broadcastVisibilityParams {
 				mockBuddyBroadcaster.EXPECT().
-					BroadcastVisibility(mock.Anything, matchSession(params.from), params.filter, true).
+					BroadcastVisibility(matchContext(), matchSession(params.from), params.filter, true).
 					Return(params.err)
 			}
 			clientSideBuddyListManager := newMockClientSideBuddyListManager(t)
@@ -225,6 +225,199 @@ func TestBuddyService_DelBuddies(t *testing.T) {
 			}
 
 			assert.ErrorIs(t, tt.wantErr, svc.DelBuddies(context.Background(), tt.sess, tt.bodyIn))
+		})
+	}
+}
+
+func TestBuddyService_AddTempBuddies(t *testing.T) {
+	tests := []struct {
+		// name is the name of the test
+		name string
+		// sess is the client session
+		sess *state.Session
+		// bodyIn is the input SNAC
+		bodyIn wire.SNAC_0x03_0x0F_BuddyAddTempBuddies
+		// mockParams is the list of params sent to mocks that satisfy this
+		// method's dependencies
+		mockParams mockParams
+		// wantErr is the expected error
+		wantErr error
+	}{
+		{
+			name: "add 2 buddies, sign-on complete",
+			sess: newTestSession("user_screen_name", sessOptSignonComplete),
+			bodyIn: wire.SNAC_0x03_0x0F_BuddyAddTempBuddies{
+				Buddies: []struct {
+					ScreenName string `oscar:"len_prefix=uint8"`
+				}{
+					{
+						ScreenName: "buddy_1_online",
+					},
+					{
+						ScreenName: "buddy_2_offline",
+					},
+				},
+			},
+			mockParams: mockParams{
+				clientSideBuddyListManagerParams: clientSideBuddyListManagerParams{
+					addBuddyParams: addBuddyParams{
+						{
+							me:   state.NewIdentScreenName("user_screen_name"),
+							them: state.NewIdentScreenName("buddy_1_online"),
+						},
+						{
+							me:   state.NewIdentScreenName("user_screen_name"),
+							them: state.NewIdentScreenName("buddy_2_offline"),
+						},
+					},
+				},
+				buddyBroadcasterParams: buddyBroadcasterParams{
+					broadcastVisibilityParams: broadcastVisibilityParams{
+						{
+							from: state.NewIdentScreenName("user_screen_name"),
+							filter: []state.IdentScreenName{
+								state.NewIdentScreenName("buddy_1_online"),
+								state.NewIdentScreenName("buddy_2_offline"),
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "add 2 buddies, sign-on not complete",
+			sess: newTestSession("user_screen_name"),
+			bodyIn: wire.SNAC_0x03_0x0F_BuddyAddTempBuddies{
+				Buddies: []struct {
+					ScreenName string `oscar:"len_prefix=uint8"`
+				}{
+					{
+						ScreenName: "buddy_1_online",
+					},
+					{
+						ScreenName: "buddy_2_offline",
+					},
+				},
+			},
+			mockParams: mockParams{
+				clientSideBuddyListManagerParams: clientSideBuddyListManagerParams{
+					addBuddyParams: addBuddyParams{
+						{
+							me:   state.NewIdentScreenName("user_screen_name"),
+							them: state.NewIdentScreenName("buddy_1_online"),
+						},
+						{
+							me:   state.NewIdentScreenName("user_screen_name"),
+							them: state.NewIdentScreenName("buddy_2_offline"),
+						},
+					},
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clientSideBuddyListManager := newMockClientSideBuddyListManager(t)
+			for _, params := range tt.mockParams.addBuddyParams {
+				clientSideBuddyListManager.EXPECT().
+					AddBuddy(matchContext(), params.me, params.them).
+					Return(params.err)
+			}
+			mockBuddyBroadcaster := newMockbuddyBroadcaster(t)
+			for _, params := range tt.mockParams.broadcastVisibilityParams {
+				mockBuddyBroadcaster.EXPECT().
+					BroadcastVisibility(matchContext(), matchSession(params.from), params.filter, true).
+					Return(params.err)
+			}
+
+			svc := BuddyService{
+				clientSideBuddyListManager: clientSideBuddyListManager,
+				buddyBroadcaster:           mockBuddyBroadcaster,
+			}
+
+			haveErr := svc.AddTempBuddies(context.Background(), tt.sess, tt.bodyIn)
+			assert.ErrorIs(t, tt.wantErr, haveErr)
+		})
+	}
+}
+
+func TestBuddyService_DelTempBuddies(t *testing.T) {
+	tests := []struct {
+		// name is the name of the test
+		name string
+		// sess is the client session
+		sess *state.Session
+		// bodyIn is the input SNAC
+		bodyIn wire.SNAC_0x03_0x10_BuddyDelTempBuddies
+		// mockParams is the list of params sent to mocks that satisfy this
+		// method's dependencies
+		mockParams mockParams
+		// wantErr is the expected error
+		wantErr error
+	}{
+		{
+			name: "delete 2 buddies",
+			sess: newTestSession("user_screen_name", sessOptSignonComplete),
+			bodyIn: wire.SNAC_0x03_0x10_BuddyDelTempBuddies{
+				Buddies: []struct {
+					ScreenName string `oscar:"len_prefix=uint8"`
+				}{
+					{
+						ScreenName: "buddy_1_online",
+					},
+					{
+						ScreenName: "buddy_2_offline",
+					},
+				},
+			},
+			mockParams: mockParams{
+				buddyBroadcasterParams: buddyBroadcasterParams{
+					broadcastVisibilityParams: broadcastVisibilityParams{
+						{
+							from: state.NewIdentScreenName("user_screen_name"),
+							filter: []state.IdentScreenName{
+								state.NewIdentScreenName("buddy_1_online"),
+								state.NewIdentScreenName("buddy_2_offline"),
+							},
+						},
+					},
+				},
+				clientSideBuddyListManagerParams: clientSideBuddyListManagerParams{
+					deleteBuddyParams: deleteBuddyParams{
+						{
+							me:   state.NewIdentScreenName("user_screen_name"),
+							them: state.NewIdentScreenName("buddy_1_online"),
+						},
+						{
+							me:   state.NewIdentScreenName("user_screen_name"),
+							them: state.NewIdentScreenName("buddy_2_offline"),
+						},
+					},
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockBuddyBroadcaster := newMockbuddyBroadcaster(t)
+			for _, params := range tt.mockParams.broadcastVisibilityParams {
+				mockBuddyBroadcaster.EXPECT().
+					BroadcastVisibility(matchContext(), matchSession(params.from), params.filter, true).
+					Return(params.err)
+			}
+			clientSideBuddyListManager := newMockClientSideBuddyListManager(t)
+			for _, params := range tt.mockParams.deleteBuddyParams {
+				clientSideBuddyListManager.EXPECT().
+					RemoveBuddy(matchContext(), params.me, params.them).
+					Return(params.err)
+			}
+
+			svc := BuddyService{
+				buddyBroadcaster:           mockBuddyBroadcaster,
+				clientSideBuddyListManager: clientSideBuddyListManager,
+			}
+
+			assert.ErrorIs(t, tt.wantErr, svc.DelTempBuddies(context.Background(), tt.sess, tt.bodyIn))
 		})
 	}
 }
