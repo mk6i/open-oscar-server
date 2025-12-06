@@ -25,9 +25,9 @@ WITH myScreenName AS (SELECT ?),
 
      -- get all users who have ~you~ on their buddy list
      theirBuddyLists AS (SELECT COALESCE(clientSide._screenName, feedbag._screenName) AS _screenName,
-                              COALESCE(clientSide.isBuddy, feedbag.isBuddy) AS isBuddy,
-                              COALESCE(clientSide.isPermit, feedbag.isPermit) AS isPermit,
-                              COALESCE(clientSide.isDeny, feedbag.isDeny) AS isDeny
+                              COALESCE(clientSide.isBuddy OR feedbag.isBuddy, FALSE) AS isBuddy,
+                              COALESCE(clientSide.isPermit OR feedbag.isPermit, FALSE) AS isPermit,
+                              COALESCE(clientSide.isDeny OR feedbag.isDeny, FALSE) AS isDeny
                        FROM (SELECT feedbag.screenName                                   AS _screenName,
                                     MAX(CASE WHEN feedbag.classId = 0 THEN 1 ELSE 0 END) AS isBuddy,
                                     MAX(CASE WHEN feedbag.classId = 2 THEN 1 ELSE 0 END) AS isPermit,
@@ -52,9 +52,9 @@ WITH myScreenName AS (SELECT ?),
 
      -- get all users on ~your~ buddy list
      yourBuddyList AS (SELECT COALESCE(clientSide._screenName, feedbag._screenName) AS _screenName,
-                              COALESCE(clientSide.isBuddy, feedbag.isBuddy) AS isBuddy,
-                              COALESCE(clientSide.isPermit, feedbag.isPermit) AS isPermit,
-                              COALESCE(clientSide.isDeny, feedbag.isDeny) AS isDeny
+                              COALESCE(clientSide.isBuddy OR feedbag.isBuddy, FALSE) AS isBuddy,
+                              COALESCE(clientSide.isPermit OR feedbag.isPermit, FALSE) AS isPermit,
+                              COALESCE(clientSide.isDeny OR feedbag.isDeny, FALSE) AS isDeny
                        FROM (SELECT feedbag.name                                         AS _screenName,
                                     MAX(CASE WHEN feedbag.classId = 0 THEN 1 ELSE 0 END) AS isBuddy,
                                     MAX(CASE WHEN feedbag.classId = 2 THEN 1 ELSE 0 END) AS isPermit,
