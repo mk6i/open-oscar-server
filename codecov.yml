@@ -8,3 +8,7 @@ coverage:
     patch:
       default:
         informational: true
+ignore:
+  - server/webapi
+  - state/webapi*
+  - state/web_api*
