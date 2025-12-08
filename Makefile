@@ -2,7 +2,7 @@
 # Build & release helpers
 ################################################################################
 
-DOCKER_IMAGE_TAG_GO_RELEASER := goreleaser/goreleaser:v2.9.0
+DOCKER_IMAGE_TAG_GO_RELEASER := goreleaser/goreleaser:v2.13.1
 DOCKER_RUN_GO_RELEASER := @docker run \
 	--env CGO_ENABLED=0 \
 	--env GITHUB_TOKEN=$(GITHUB_TOKEN) \

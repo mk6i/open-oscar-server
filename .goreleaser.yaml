@@ -39,9 +39,10 @@ builds:
 
 archives:
   - id: linux
-    builds:
+    ids:
       - linux
-    format: tar.gz
+    formats:
+      - tar.gz
     wrap_in_directory: true
     files:
       - LICENSE
@@ -53,9 +54,10 @@ archives:
       {{ .Binary }}.{{ .Version }}.{{ .Os }}.
       {{- if eq .Arch "amd64" }}x86_64{{ else }}arm64_arm7_raspberry_pi{{ end }}
   - id: macos
-    builds:
+    ids:
       - macos
-    format: zip
+    formats:
+      - zip
     wrap_in_directory: true
     files:
       - LICENSE
@@ -65,9 +67,10 @@ archives:
       {{ .Binary }}.{{ .Version }}.macos.
       {{- if eq .Arch "amd64" }}intel_x86_64{{ else }}apple_silicon{{ end }}
   - id: windows
-    builds:
+    ids:
       - windows
-    format: zip
+    formats:
+      - zip
     wrap_in_directory: true
     files:
       - LICENSE
