@@ -1,22 +1,17 @@
-with-expecter: true
-dir: "{{.InterfaceDir}}"
-mockname: "mock{{.InterfaceName}}"
-inpackage: true
+dir: '{{.InterfaceDir}}'
+structname: mock{{.InterfaceName}}
+template: testify
+template-data:
+  unroll-variadic: true
 packages:
   github.com/mk6i/retro-aim-server/server/oscar:
     interfaces:
       AuthService:
         config:
           filename: "mock_auth_test.go"
-      Handler:
-        config:
-          filename: "mock_handler_test.go"
       OnlineNotifier:
         config:
           filename: "mock_online_notifier_test.go"
-      UserManager:
-        config:
-          filename: "mock_user_manager_test.go"
       RateLimitUpdater:
         config:
           filename: "mock_rate_limit_updater_test.go"
@@ -79,9 +74,6 @@ packages:
       AccountManager:
         config:
           filename: "mock_account_manager_test.go"
-      AccountRetriever:
-        config:
-          filename: "mock_account_retriever_test.go"
       BARTAssetManager:
         config:
           filename: "mock_bart_asset_manager_test.go"
@@ -147,9 +139,6 @@ packages:
       ICQUserUpdater:
         config:
           filename: "mock_icq_user_updater_test.go"
-      LegacyBuddyListManager:
-        config:
-          filename: "mock_legacy_buddy_list_manager_test.go"
       ClientSideBuddyListManager:
         config:
           filename: "mock_client_side_buddy_list_manager_test.go"
