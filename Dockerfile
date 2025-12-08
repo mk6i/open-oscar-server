@@ -1,4 +1,4 @@
-FROM golang:alpine AS builder
+FROM golang:1.25.5-alpine AS builder
 
 WORKDIR /app
 
@@ -7,14 +7,14 @@ RUN go mod download
 
 COPY . .
 
-RUN go build -o retro_aim_server ./cmd/server
+RUN go build -o open_oscar_server ./cmd/server
 
 FROM alpine:latest
 
 WORKDIR /app
 
-COPY --from=builder /app/retro_aim_server /app/
+COPY --from=builder /app/open_oscar_server /app/
 
-EXPOSE 8080 5190 5191 5192 5193 5194 5195 5196 5197
+EXPOSE 5190 8080 9898
 
-CMD ["/app/retro_aim_server"]
+CMD ["/app/open_oscar_server"]

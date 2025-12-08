@@ -2,7 +2,7 @@
 
 <div align="center">
 
-<a href="">[![codecov](https://codecov.io/gh/mk6i/retro-aim-server/graph/badge.svg?token=MATKPP77JT)](https://codecov.io/gh/mk6i/retro-aim-server)</a>
+<a href="">[![codecov](https://codecov.io/gh/mk6i/open-oscar-server/graph/badge.svg?token=MATKPP77JT)](https://codecov.io/gh/mk6i/open-oscar-server)</a>
 <a href="">[![Discord](https://img.shields.io/discord/1238648671348719626?logo=discord&logoColor=white)](https://discord.gg/2Xy4nF3Uh9)</a>
 
 </div>
