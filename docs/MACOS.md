@@ -25,7 +25,7 @@ This guide explains how to download, configure and run Open OSCAR Server on macO
    Open a terminal and navigate to the extracted directory. This terminal will be used for the remaining steps.
 
    ```shell
-   cd ~/Downloads/retro_aim_server.0.11.0.macos.intel_x86_64/
+   cd ~/Downloads/open_oscar_server.0.21.0.macos.intel_x86_64/
    ```
 
 3. **Remove Quarantine**
@@ -34,7 +34,7 @@ This guide explains how to download, configure and run Open OSCAR Server on macO
    flag from the binary, run following command in the same terminal,
 
    ```shell
-   sudo xattr -d com.apple.quarantine ./retro_aim_server
+   sudo xattr -d com.apple.quarantine ./open_oscar_server
    ```
 
    > While the binaries are 100% safe, you can avoid the security concern by [building the application yourself](./BUILD.md).
@@ -63,7 +63,7 @@ This guide explains how to download, configure and run Open OSCAR Server on macO
    Run the following command to launch Open OSCAR Server:
 
    ```shell
-   ./retro_aim_server
+   ./open_oscar_server
    ```
 
    Open OSCAR Server will run in the terminal, ready to accept AIM client connections.

@@ -14,7 +14,7 @@ Environment="TOC_LISTENERS=0.0.0.0:9898"
 Environment="DB_PATH=/var/lib/ras/oscar.sqlite"
 Environment="DISABLE_AUTH=true"
 Environment="LOG_LEVEL=info"
-ExecStart=/opt/ras/retro_aim_server
+ExecStart=/opt/ras/open_oscar_server
 Restart=on-failure
 
 [Install]

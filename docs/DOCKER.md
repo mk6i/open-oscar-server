@@ -14,7 +14,7 @@ This guide explains how to set up an SSL-enabled instance of Open OSCAR Server u
 
 ```bash
 git clone https://github.com/mk6i/open-oscar-server.git
-cd retro-aim-server
+cd open-oscar-server
 ```
 
 ### 2. Build Docker Images

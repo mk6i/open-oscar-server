@@ -6,7 +6,7 @@ before:
 
 builds:
   - id: linux
-    binary: retro_aim_server
+    binary: open_oscar_server
     goos:
       - linux
     goarch:
@@ -18,7 +18,7 @@ builds:
     env:
       - CGO_ENABLED=0
   - id: macos
-    binary: retro_aim_server
+    binary: open_oscar_server
     goos:
       - darwin
     goarch:
@@ -28,7 +28,7 @@ builds:
     env:
       - CGO_ENABLED=0
   - id: windows
-    binary: retro_aim_server
+    binary: open_oscar_server
     goos:
       - windows
     goarch:

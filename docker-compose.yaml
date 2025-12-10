@@ -34,6 +34,7 @@ services:
       - "5190:5190"
       - "8080:8080"
       - "9898:9898"
+      - "1088:1088"
     env_file:
       - ./config/ssl/settings.env
     volumes:

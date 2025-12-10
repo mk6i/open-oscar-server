@@ -43,13 +43,13 @@ scripts/run_dev.sh
 To build the server binary:
 
 ```shell
-go build -o retro_aim_server ./cmd/server
+go build -o open_oscar_server ./cmd/server
 ```
 
 To run the binary with the settings file:
 
 ```shell
-./retro_aim_server -config config/settings.env
+./open_oscar_server -config config/settings.env
 ```
 
 ## Testing

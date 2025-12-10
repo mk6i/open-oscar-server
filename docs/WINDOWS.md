@@ -23,7 +23,7 @@ This guide explains how to download, configure and run Open OSCAR Server on Wind
 
 3. **Start the Application**
 
-   Launch `retro-aim-server.exe` to start Open OSCAR Server.
+   Launch `open_oscar_server.exe` to start Open OSCAR Server.
 
    Because Open OSCAR Server has not built up enough reputation with Microsoft, Windows will flag the application as a
    security risk the first time you run it. You'll be presented with a `Microsoft Defender SmartScreen` warning prompt

@@ -26,7 +26,7 @@ This guide explains how to download, configure and run Open OSCAR Server on Linu
    Run the following command to launch Open OSCAR Server:
 
    ```shell
-   ./retro_aim_server
+   ./open_oscar_server
    ```
 
    Open OSCAR Server will run in the terminal, ready to accept AIM client connections.

@@ -18,7 +18,7 @@ a production service.
 
 3. **Extract the archive**
 
-   Extract the archive using the usual `tar` invocation, and move `retro_aim_server` into `/opt/ras`
+   Extract the archive using the usual `tar` invocation, and move `open_oscar_server` into `/opt/ras`
 
 4. **Set Ownership and Permissions**
 
