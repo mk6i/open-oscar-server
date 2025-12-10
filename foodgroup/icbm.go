@@ -202,7 +202,15 @@ func (s ICBMService) canSendOfflineMessage(ctx context.Context, inBody wire.SNAC
 	for _, item := range bag {
 		if item.ClassID == wire.FeedbagClassIdBuddyPrefs {
 			valid, ok := feedbagBuddyPref(wire.FeedbagBuddyPrefsAcceptOfflineIM, item.TLVList)
-			return !valid || ok, nil
+			if !valid {
+				// user doesn't have an opt-out, so assume they can accept offline
+				// messages, because AIM 6.0+ clients accept offline messages
+				// by default. this preference did not exist prior to AIM 6, so
+				// retroactively assume it's OK for users who have never used
+				// capable clients to have offline messages stored for them.
+				return true, nil
+			}
+			return ok, nil // return the explicit preference
 		}
 	}
 
