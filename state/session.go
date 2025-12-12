@@ -56,36 +56,18 @@ type SessionGroup struct {
 	displayScreenName DisplayScreenName
 	identScreenName   IdentScreenName
 	uin               uint32
+	memberSince       time.Time
 
 	// User-level settings and profile (shared)
 	userInfoBitmask   uint16
 	userStatusBitmask uint32
 	warning           uint16
 	warningCh         chan uint16
-	memberSince             time.Time
-	offlineMsgCount         int
+	profile           UserProfile
+	buddyIcon         wire.BARTID
+	offlineMsgCount   int
 
 	// Rate limiting (shared across all sessions per user)
-// Session represents a user's current session. Unless stated otherwise, all
-// methods may be safely accessed by multiple goroutines.
-type Session struct {
-	awayMessage             string
-	buddyIcon               wire.BARTID
-	caps                    [][16]byte
-	chatRoomCookie          string
-	clientID                string
-	closed                  bool
-	displayScreenName       DisplayScreenName
-	foodGroupVersions       [wire.MDir + 1]uint16
-	identScreenName         IdentScreenName
-	idle                    bool
-	idleTime                time.Time
-	lastObservedStates      [5]RateClassState
-	msgCh                   chan wire.SNACMessage
-	multiConnFlag           wire.MultiConnFlag
-	kerberosAuth            bool
-	mutex                   sync.RWMutex
-	nowFn                   func() time.Time
 	rateLimitStates         [5]RateClassState
 	rateLimitStatesOriginal [5]RateClassState
 	lastObservedStates      [5]RateClassState
@@ -113,7 +95,7 @@ type Instance struct {
 	closed         bool
 	stopCh         chan struct{}
 	msgCh          chan wire.SNACMessage
-	kerberosAuth            bool
+	kerberosAuth   bool
 
 	// Per-session client information
 	clientID            string
@@ -128,20 +110,6 @@ type Instance struct {
 	awayMessage    string
 	chatRoomCookie string
 	nowFn          func() time.Time
-	remoteAddr              *netip.AddrPort
-	signonComplete          bool
-	signonTime              time.Time
-	stopCh                  chan struct{}
-	typingEventsEnabled     bool
-	uin                     uint32
-	userInfoBitmask         uint16
-	userStatusBitmask       uint32
-	warning                 uint16
-	warningCh               chan uint16
-	lastWarnUpdate          time.Time
-	profile                 UserProfile
-	memberSince             time.Time
-	offlineMsgCount         int
 }
 
 // Session represents a user's current session. This is the main interface that
@@ -782,14 +750,12 @@ func (sg *SessionGroup) userInfo() wire.TLVList {
 	}
 
 	// set buddy icon metadata, if user has buddy icon
-	if bartID, hasIcon := s.BuddyIcon(); hasIcon {
+	if bartID, hasIcon := sg.BuddyIcon(); hasIcon {
 		tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, bartID))
 	}
 
 	// ICQ direct-connect info. The TLV is required for buddy arrival events to
 	// work in ICQ, even if the values are set to default.
-	if s.userInfoBitmask&wire.OServiceUserFlagICQ == wire.OServiceUserFlagICQ {
-	// ICQ direct-connect info - user-level (shared)
 	if sg.userInfoBitmask&wire.OServiceUserFlagICQ == wire.OServiceUserFlagICQ {
 		tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoICQDC, wire.ICQDCInfo{}))
 	}
@@ -1149,73 +1115,73 @@ func defaultFoodGroupVersions() [wire.MDir + 1]uint16 {
 }
 
 // SetKerberosAuth sets whether Kerberos authentication was used for this session.
-func (s *Session) SetKerberosAuth(enabled bool) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	s.kerberosAuth = enabled
+func (i *Instance) SetKerberosAuth(enabled bool) {
+	i.mutex.Lock()
+	defer i.mutex.Unlock()
+	i.kerberosAuth = enabled
 }
 
 // KerberosAuth indicates whether Kerberos authentication was used for this session.
-func (s *Session) KerberosAuth() bool {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-	return s.kerberosAuth
+func (i *Instance) KerberosAuth() bool {
+	i.mutex.RLock()
+	defer i.mutex.RUnlock()
+	return i.kerberosAuth
 }
 
 // SetProfile sets the user's profile information.
-func (s *Session) SetProfile(profile UserProfile) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	s.profile = profile
+func (sg *SessionGroup) SetProfile(profile UserProfile) {
+	sg.mutex.Lock()
+	defer sg.mutex.Unlock()
+	sg.profile = profile
 }
 
 // Profile returns the user's profile information.
-func (s *Session) Profile() UserProfile {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-	return s.profile
+func (sg *SessionGroup) Profile() UserProfile {
+	sg.mutex.RLock()
+	defer sg.mutex.RUnlock()
+	return sg.profile
 }
 
 // SetBuddyIcon stores the session's buddy icon metadata.
-func (s *Session) SetBuddyIcon(icon wire.BARTID) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	s.buddyIcon = icon
+func (sg *SessionGroup) SetBuddyIcon(icon wire.BARTID) {
+	sg.mutex.Lock()
+	defer sg.mutex.Unlock()
+	sg.buddyIcon = icon
 }
 
 // BuddyIcon returns the session's buddy icon metadata and reports whether it
 // has been set. The icon is considered set if its type is non-zero.
-func (s *Session) BuddyIcon() (wire.BARTID, bool) {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-	icon := s.buddyIcon
+func (sg *SessionGroup) BuddyIcon() (wire.BARTID, bool) {
+	sg.mutex.RLock()
+	defer sg.mutex.RUnlock()
+	icon := sg.buddyIcon
 	return icon, icon.Type != 0
 }
 
 // SetMemberSince sets the member since timestamp.
-func (s *Session) SetMemberSince(t time.Time) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	s.memberSince = t
+func (sg *SessionGroup) SetMemberSince(t time.Time) {
+	sg.mutex.Lock()
+	defer sg.mutex.Unlock()
+	sg.memberSince = t
 }
 
 // MemberSince reports when the user became a member.
-func (s *Session) MemberSince() time.Time {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-	return s.memberSince
+func (sg *SessionGroup) MemberSince() time.Time {
+	sg.mutex.RLock()
+	defer sg.mutex.RUnlock()
+	return sg.memberSince
 }
 
 // SetOfflineMsgCount sets the offline message count.
-func (s *Session) SetOfflineMsgCount(count int) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	s.offlineMsgCount = count
+func (sg *SessionGroup) SetOfflineMsgCount(count int) {
+	sg.mutex.Lock()
+	defer sg.mutex.Unlock()
+	sg.offlineMsgCount = count
 }
 
 // OfflineMsgCount returns the offline message count.
-func (s *Session) OfflineMsgCount() int {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-	return s.offlineMsgCount
+func (sg *SessionGroup) OfflineMsgCount() int {
+	sg.mutex.RLock()
+	defer sg.mutex.RUnlock()
+	return sg.offlineMsgCount
 }
