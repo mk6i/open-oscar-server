@@ -70,6 +70,14 @@ func (s *InMemorySessionManager) RelayToScreenNames(ctx context.Context, screenN
 	}
 }
 
+func (s *InMemorySessionManager) RelayToSelf(ctx context.Context, sess *Session, msg wire.SNACMessage) {
+	select {
+	case sess.Instance.msgCh <- msg:
+	case <-sess.Instance.stopCh:
+	case <-ctx.Done():
+	}
+}
+
 func (s *InMemorySessionManager) RelayToOtherSessions(ctx context.Context, sess *Session, msg wire.SNACMessage) {
 	switch sess.RelayMessageExceptSelf(sess.Instance, msg) {
 	case SessSendClosed:

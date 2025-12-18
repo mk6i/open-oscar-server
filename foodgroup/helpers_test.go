@@ -371,6 +371,14 @@ type messageRelayerParams struct {
 	relayToScreenNameParams
 	relayToOtherSessionsParams
 	relayToScreenNameActiveOnlyParams
+	relayToSelfParams
+}
+
+// relayToSelfParams is the list of parameters passed at the mock
+// MessageRelayer.RelayToSelf call site
+type relayToSelfParams []struct {
+	sess    *state.Session
+	message wire.SNACMessage
 }
 
 // relayToScreenNamesParams is the list of parameters passed at the mock

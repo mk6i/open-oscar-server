@@ -1470,11 +1470,12 @@ func TestHandler_ChatChannelMsgToHost(t *testing.T) {
 
 func TestHandler_FeedbagDeleteItem(t *testing.T) {
 	tests := []struct {
-		name          string
-		inputBody     wire.SNAC_0x13_0x0A_FeedbagDeleteItem
-		serviceError  error
-		responseError error
-		expectedError error
+		name           string
+		inputBody      wire.SNAC_0x13_0x0A_FeedbagDeleteItem
+		expectedOutput *wire.SNACMessage
+		serviceError   error
+		responseError  error
+		expectedError  error
 	}{
 		{
 			name: "success",
@@ -1485,6 +1486,26 @@ func TestHandler_FeedbagDeleteItem(t *testing.T) {
 					},
 				},
 			},
+			expectedOutput: &wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagStatus,
+				},
+				Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
+					Results: []uint16{1234},
+				},
+			},
+		},
+		{
+			name: "success (nil output)",
+			inputBody: wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
+				Items: []wire.FeedbagItem{
+					{
+						Name: "my-item",
+					},
+				},
+			},
+			expectedOutput: nil,
 		},
 		{
 			name: "service error",
@@ -1493,6 +1514,15 @@ func TestHandler_FeedbagDeleteItem(t *testing.T) {
 					{
 						Name: "my-item",
 					},
+				},
+			},
+			expectedOutput: &wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagStatus,
+				},
+				Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
+					Results: []uint16{1234},
 				},
 			},
 			serviceError:  assert.AnError,
@@ -1505,6 +1535,15 @@ func TestHandler_FeedbagDeleteItem(t *testing.T) {
 					{
 						Name: "my-item",
 					},
+				},
+			},
+			expectedOutput: &wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagStatus,
+				},
+				Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
+					Results: []uint16{1234},
 				},
 			},
 			responseError: assert.AnError,
@@ -1521,20 +1560,11 @@ func TestHandler_FeedbagDeleteItem(t *testing.T) {
 				},
 				Body: tt.inputBody,
 			}
-			output := wire.SNACMessage{
-				Frame: wire.SNACFrame{
-					FoodGroup: wire.Feedbag,
-					SubGroup:  wire.FeedbagStatus,
-				},
-				Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
-					Results: []uint16{1234},
-				},
-			}
 
 			svc := newMockFeedbagService(t)
 			svc.EXPECT().
 				DeleteItem(mock.Anything, mock.Anything, input.Frame, input.Body).
-				Return(output, tt.serviceError)
+				Return(tt.expectedOutput, tt.serviceError)
 
 			h := Handler{
 				FeedbagService: svc,
@@ -1544,9 +1574,9 @@ func TestHandler_FeedbagDeleteItem(t *testing.T) {
 			}
 
 			responseWriter := newMockResponseWriter(t)
-			if tt.serviceError == nil {
+			if tt.serviceError == nil && tt.expectedOutput != nil {
 				responseWriter.EXPECT().
-					SendSNAC(output.Frame, output.Body).
+					SendSNAC(tt.expectedOutput.Frame, tt.expectedOutput.Body).
 					Return(tt.responseError)
 			}
 
@@ -1609,11 +1639,12 @@ func TestHandler_FeedbagEndCluster(t *testing.T) {
 
 func TestHandler_FeedbagInsertItem(t *testing.T) {
 	tests := []struct {
-		name          string
-		inputBody     wire.SNAC_0x13_0x08_FeedbagInsertItem
-		serviceError  error
-		responseError error
-		expectedError error
+		name           string
+		inputBody      wire.SNAC_0x13_0x08_FeedbagInsertItem
+		expectedOutput *wire.SNACMessage
+		serviceError   error
+		responseError  error
+		expectedError  error
 	}{
 		{
 			name: "success",
@@ -1622,6 +1653,26 @@ func TestHandler_FeedbagInsertItem(t *testing.T) {
 					{
 						Name: "my-item",
 					},
+				},
+			},
+			expectedOutput: nil,
+		},
+		{
+			name: "success (non-nil output)",
+			inputBody: wire.SNAC_0x13_0x08_FeedbagInsertItem{
+				Items: []wire.FeedbagItem{
+					{
+						Name: "my-item",
+					},
+				},
+			},
+			expectedOutput: &wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagStatus,
+				},
+				Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
+					Results: []uint16{1234},
 				},
 			},
 		},
@@ -1634,6 +1685,15 @@ func TestHandler_FeedbagInsertItem(t *testing.T) {
 					},
 				},
 			},
+			expectedOutput: &wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagStatus,
+				},
+				Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
+					Results: []uint16{1234},
+				},
+			},
 			serviceError:  assert.AnError,
 			expectedError: assert.AnError,
 		},
@@ -1644,6 +1704,15 @@ func TestHandler_FeedbagInsertItem(t *testing.T) {
 					{
 						Name: "my-item",
 					},
+				},
+			},
+			expectedOutput: &wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagStatus,
+				},
+				Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
+					Results: []uint16{1234},
 				},
 			},
 			responseError: assert.AnError,
@@ -1660,20 +1729,11 @@ func TestHandler_FeedbagInsertItem(t *testing.T) {
 				},
 				Body: tt.inputBody,
 			}
-			output := wire.SNACMessage{
-				Frame: wire.SNACFrame{
-					FoodGroup: wire.Feedbag,
-					SubGroup:  wire.FeedbagStatus,
-				},
-				Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
-					Results: []uint16{1234},
-				},
-			}
 
 			svc := newMockFeedbagService(t)
 			svc.EXPECT().
 				UpsertItem(mock.Anything, mock.Anything, input.Frame, tt.inputBody.Items).
-				Return(output, tt.serviceError)
+				Return(tt.expectedOutput, tt.serviceError)
 
 			h := Handler{
 				FeedbagService: svc,
@@ -1683,9 +1743,9 @@ func TestHandler_FeedbagInsertItem(t *testing.T) {
 			}
 
 			responseWriter := newMockResponseWriter(t)
-			if tt.serviceError == nil {
+			if tt.serviceError == nil && tt.expectedOutput != nil {
 				responseWriter.EXPECT().
-					SendSNAC(output.Frame, output.Body).
+					SendSNAC(tt.expectedOutput.Frame, tt.expectedOutput.Body).
 					Return(tt.responseError)
 			}
 
@@ -2041,11 +2101,12 @@ func TestHandler_FeedbagStartCluster(t *testing.T) {
 
 func TestHandler_FeedbagUpdateItem(t *testing.T) {
 	tests := []struct {
-		name          string
-		inputBody     wire.SNAC_0x13_0x09_FeedbagUpdateItem
-		serviceError  error
-		responseError error
-		expectedError error
+		name           string
+		inputBody      wire.SNAC_0x13_0x09_FeedbagUpdateItem
+		expectedOutput *wire.SNACMessage
+		serviceError   error
+		responseError  error
+		expectedError  error
 	}{
 		{
 			name: "success",
@@ -2054,6 +2115,26 @@ func TestHandler_FeedbagUpdateItem(t *testing.T) {
 					{
 						Name: "my-item",
 					},
+				},
+			},
+			expectedOutput: nil,
+		},
+		{
+			name: "success (non-nil output)",
+			inputBody: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
+				Items: []wire.FeedbagItem{
+					{
+						Name: "my-item",
+					},
+				},
+			},
+			expectedOutput: &wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagStatus,
+				},
+				Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
+					Results: []uint16{1234},
 				},
 			},
 		},
@@ -2066,6 +2147,15 @@ func TestHandler_FeedbagUpdateItem(t *testing.T) {
 					},
 				},
 			},
+			expectedOutput: &wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagStatus,
+				},
+				Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
+					Results: []uint16{1234},
+				},
+			},
 			serviceError:  assert.AnError,
 			expectedError: assert.AnError,
 		},
@@ -2076,6 +2166,15 @@ func TestHandler_FeedbagUpdateItem(t *testing.T) {
 					{
 						Name: "my-item",
 					},
+				},
+			},
+			expectedOutput: &wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagStatus,
+				},
+				Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
+					Results: []uint16{1234},
 				},
 			},
 			responseError: assert.AnError,
@@ -2092,20 +2191,11 @@ func TestHandler_FeedbagUpdateItem(t *testing.T) {
 				},
 				Body: tt.inputBody,
 			}
-			output := wire.SNACMessage{
-				Frame: wire.SNACFrame{
-					FoodGroup: wire.Feedbag,
-					SubGroup:  wire.FeedbagStatus,
-				},
-				Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
-					Results: []uint16{1234},
-				},
-			}
 
 			svc := newMockFeedbagService(t)
 			svc.EXPECT().
 				UpsertItem(mock.Anything, mock.Anything, input.Frame, tt.inputBody.Items).
-				Return(output, tt.serviceError)
+				Return(tt.expectedOutput, tt.serviceError)
 
 			h := Handler{
 				FeedbagService: svc,
@@ -2115,9 +2205,9 @@ func TestHandler_FeedbagUpdateItem(t *testing.T) {
 			}
 
 			responseWriter := newMockResponseWriter(t)
-			if tt.serviceError == nil {
+			if tt.serviceError == nil && tt.expectedOutput != nil {
 				responseWriter.EXPECT().
-					SendSNAC(output.Frame, output.Body).
+					SendSNAC(tt.expectedOutput.Frame, tt.expectedOutput.Body).
 					Return(tt.responseError)
 			}
 

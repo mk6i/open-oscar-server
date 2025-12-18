@@ -294,6 +294,10 @@ func (rt Handler) FeedbagInsertItem(ctx context.Context, sess *state.Session, in
 	if err != nil {
 		return err
 	}
+	if outSNAC == nil {
+		rt.LogRequest(ctx, inFrame, inBody)
+		return nil
+	}
 	rt.LogRequestAndResponse(ctx, inFrame, inBody, outSNAC.Frame, outSNAC.Body)
 	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
 }
@@ -307,6 +311,10 @@ func (rt Handler) FeedbagUpdateItem(ctx context.Context, sess *state.Session, in
 	if err != nil {
 		return err
 	}
+	if outSNAC == nil {
+		rt.LogRequest(ctx, inFrame, inBody)
+		return nil
+	}
 	rt.LogRequestAndResponse(ctx, inFrame, inBody, outSNAC.Frame, outSNAC.Body)
 	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
 }
@@ -319,6 +327,10 @@ func (rt Handler) FeedbagDeleteItem(ctx context.Context, sess *state.Session, in
 	outSNAC, err := rt.FeedbagService.DeleteItem(ctx, sess, inFrame, inBody)
 	if err != nil {
 		return err
+	}
+	if outSNAC == nil {
+		rt.LogRequest(ctx, inFrame, inBody)
+		return nil
 	}
 	rt.LogRequestAndResponse(ctx, inFrame, inBody, outSNAC.Frame, outSNAC.Body)
 	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
