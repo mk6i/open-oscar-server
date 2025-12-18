@@ -3,8 +3,11 @@ package state
 import (
 	"context"
 	"log/slog"
+	"math/rand"
 	"sync"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	"github.com/mk6i/open-oscar-server/wire"
 
@@ -48,27 +51,6 @@ func TestInMemorySessionManager_AddSession_Timeout(t *testing.T) {
 	sess2, err := sm.AddSession(ctx, "user-screen-name", false)
 	assert.Nil(t, sess2)
 	assert.ErrorIs(t, err, context.Canceled)
-}
-
-func TestInMemorySessionManager_AddSession_SessionConflict(t *testing.T) {
-	sm := NewInMemorySessionManager(slog.Default())
-
-	ctx := context.Background()
-	sess1, err := sm.AddSession(ctx, "user-screen-name", false)
-	assert.NoError(t, err)
-	sess1.SetSignonComplete()
-
-	go func() {
-		<-sess1.Closed()
-		rec, ok := sm.store[NewIdentScreenName("user-screen-name")]
-		if assert.True(t, ok) {
-			close(rec.removed)
-		}
-	}()
-
-	sess2, err := sm.AddSession(ctx, "user-screen-name", false)
-	assert.Nil(t, sess2)
-	assert.ErrorIs(t, err, errSessConflict)
 }
 
 func TestInMemorySessionManager_Remove_Existing(t *testing.T) {
@@ -408,6 +390,61 @@ loop:
 	}
 
 	assert.Equal(t, wantCount, haveCount)
+}
+
+func TestInMemorySessionManager_RemoveSession_DoubleLogin_NoMultiSess(t *testing.T) {
+	for i := 0; i < 50; i++ { // shake out race conditions
+
+		synctest.Test(t, func(t *testing.T) {
+			sm := NewInMemorySessionManager(slog.Default())
+
+			sess1, err := sm.AddSession(context.Background(), "user-screen-name-1", false)
+			assert.NoError(t, err)
+			sess1.SetSignonComplete()
+
+			wg := &sync.WaitGroup{}
+			wg.Add(1)
+
+			go func() {
+				// add the session again. this call blocks until RemoveSession makes
+				// room for the new session
+				sess2, err := sm.AddSession(context.Background(), "user-screen-name-1", false)
+				assert.NoError(t, err)
+				assert.NotNil(t, sess2)
+				sess2.SetSignonComplete()
+				assert.Equal(t, sess1.DisplayScreenName(), sess2.DisplayScreenName())
+				wg.Done()
+			}()
+
+			// wait for second call to AddSession() to block
+			synctest.Wait()
+
+			// AddSession() is blocked waiting for the lock, now unblock it
+			sm.RemoveSession(sess1)
+
+			wg.Wait()
+		})
+	}
+}
+
+func TestInMemorySessionManager_RemoveSession_DoubleLogin_NoMultiSess_Chaos(t *testing.T) {
+	wg := &sync.WaitGroup{}
+	sm := NewInMemorySessionManager(slog.Default())
+
+	for i := 0; i < 1000; i++ { // shake out race conditions
+		wg.Add(1)
+
+		time.Sleep(time.Duration(rand.Intn(1000)) * time.Microsecond)
+		go func() {
+			defer wg.Done()
+			sess1, err := sm.AddSession(context.Background(), "user-screen-name-1", false)
+			assert.NoError(t, err)
+			time.Sleep(time.Duration(rand.Intn(1000)) * time.Microsecond)
+			sm.RemoveSession(sess1)
+		}()
+	}
+
+	wg.Wait()
 }
 
 func TestInMemoryChatSessionManager_RelayToAllExcept_HappyPath(t *testing.T) {

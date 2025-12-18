@@ -2,7 +2,6 @@ package state
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -16,22 +15,60 @@ type sessionSlot struct {
 	removed      chan bool
 }
 
-var errSessConflict = errors.New("session conflict: another session was created concurrently for this user")
+type userLock struct {
+	sync.Mutex
+	refCount int
+}
 
 // InMemorySessionManager handles the lifecycle of a user session and provides
 // synchronized message relay between sessions in the session pool. An
 // InMemorySessionManager is safe for concurrent use by multiple goroutines.
 type InMemorySessionManager struct {
-	store    map[IdentScreenName]*sessionSlot
-	mapMutex sync.RWMutex
-	logger   *slog.Logger
+	store          map[IdentScreenName]*sessionSlot
+	mapMutex       sync.RWMutex
+	userLocks      map[IdentScreenName]*userLock
+	userLocksMutex sync.Mutex
+	logger         *slog.Logger
 }
 
 // NewInMemorySessionManager creates a new instance of InMemorySessionManager.
 func NewInMemorySessionManager(logger *slog.Logger) *InMemorySessionManager {
 	return &InMemorySessionManager{
-		logger: logger,
-		store:  make(map[IdentScreenName]*sessionSlot),
+		logger:    logger,
+		store:     make(map[IdentScreenName]*sessionSlot),
+		userLocks: make(map[IdentScreenName]*userLock),
+	}
+}
+
+func (s *InMemorySessionManager) lockUser(sn IdentScreenName) {
+	s.userLocksMutex.Lock()
+
+	lock, ok := s.userLocks[sn]
+	if !ok {
+		lock = &userLock{}
+		s.userLocks[sn] = lock
+	}
+
+	lock.refCount++
+	s.userLocksMutex.Unlock()
+
+	lock.Lock()
+}
+
+func (s *InMemorySessionManager) unlockUser(sn IdentScreenName) {
+	s.userLocksMutex.Lock()
+	defer s.userLocksMutex.Unlock()
+
+	lock, ok := s.userLocks[sn]
+	if !ok {
+		return
+	}
+
+	lock.Unlock()
+	lock.refCount--
+
+	if lock.refCount == 0 {
+		delete(s.userLocks, sn)
 	}
 }
 
@@ -118,13 +155,18 @@ func (s *InMemorySessionManager) maybeRelayMessageActiveOnly(ctx context.Context
 }
 
 func (s *InMemorySessionManager) AddSession(ctx context.Context, screenName DisplayScreenName, doMultiSess bool) (*Session, error) {
-	s.mapMutex.Lock()
+	s.lockUser(screenName.IdentScreenName())
+	defer s.unlockUser(screenName.IdentScreenName())
 
+	s.mapMutex.Lock()
 	active := s.findRec(screenName.IdentScreenName())
+	s.mapMutex.Unlock()
+
 	if active != nil {
 		if doMultiSess {
+			// todo: kick all single session instances out of the session group
+
 			// Multi-session mode: add a new instance to the existing session group
-			s.mapMutex.Unlock()
 
 			// Create a new instance within the existing session group
 			instance := NewInstance(active.sessionGroup)
@@ -138,11 +180,6 @@ func (s *InMemorySessionManager) AddSession(ctx context.Context, screenName Disp
 
 			return sess, nil
 		} else {
-			// Single-session mode: replace the existing session group
-			// there's an active session that needs to be removed. don't hold the
-			// lock while we wait.
-			s.mapMutex.Unlock()
-
 			// signal to callers that this session group has to go
 			// Close all instances in the session group
 			for _, instance := range active.sessionGroup.GetInstances() {
@@ -154,17 +191,7 @@ func (s *InMemorySessionManager) AddSession(ctx context.Context, screenName Disp
 			case <-ctx.Done():
 				return nil, fmt.Errorf("waiting for previous session to terminate: %w", ctx.Err())
 			}
-
-			// the session has been removed, let's try to replace it
-			s.mapMutex.Lock()
 		}
-	}
-
-	defer s.mapMutex.Unlock()
-
-	// make sure a concurrent call didn't already add a session
-	if active != nil && s.findRec(screenName.IdentScreenName()) != nil {
-		return nil, errSessConflict
 	}
 
 	sessionGroup := NewSessionGroup()
@@ -181,10 +208,12 @@ func (s *InMemorySessionManager) AddSession(ctx context.Context, screenName Disp
 		Instance:     instance,
 	}
 
+	s.mapMutex.Lock()
 	s.store[sess.IdentScreenName()] = &sessionSlot{
 		sessionGroup: sessionGroup,
 		removed:      make(chan bool),
 	}
+	s.mapMutex.Unlock()
 
 	return sess, nil
 }
