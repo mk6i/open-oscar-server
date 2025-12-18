@@ -26,7 +26,7 @@ type PresenceHandler struct {
 // BuddyBroadcaster broadcasts buddy presence updates
 type BuddyBroadcaster interface {
 	BroadcastBuddyArrived(ctx context.Context, screenName state.IdentScreenName, userInfo wire.TLVUserInfo) error
-	BroadcastBuddyDeparted(ctx context.Context, sess *state.Session) error
+	BroadcastBuddyDeparted(ctx context.Context, sess *state.SessionInstance) error
 }
 
 // ProfileManager manages user profiles (uses types.ProfileManager)

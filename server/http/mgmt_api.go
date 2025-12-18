@@ -244,7 +244,7 @@ func putUserPasswordHandler(w http.ResponseWriter, r *http.Request, userManager 
 func getSessionHandler(w http.ResponseWriter, r *http.Request, sessionRetriever SessionRetriever, funcTimeSince func(t time.Time) time.Duration) {
 	w.Header().Set("Content-Type", "application/json")
 
-	var allUsers []*state.Session
+	var allUsers []*state.SessionInstance
 
 	if screenName := r.PathValue("screenname"); screenName != "" {
 		session := sessionRetriever.RetrieveSession(state.NewIdentScreenName(screenName), 0)

@@ -29,13 +29,13 @@ func NewServer(
 	departureNotifier DepartureNotifier,
 	logger *slog.Logger,
 	onlineNotifier OnlineNotifier,
-	SNACHandler func(ctx context.Context, serverType uint16, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter, listener config.Listener) error,
+	SNACHandler func(ctx context.Context, serverType uint16, sess *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter, listener config.Listener) error,
 	rateLimitUpdater RateLimitUpdater,
 	limits wire.SNACRateLimits,
 	limiter *IPRateLimiter,
 	listenerCfg []config.Listener,
-	recalcWarning func(ctx context.Context, sess *state.Session) error,
-	lowerWarnLevel func(ctx context.Context, sess *state.Session),
+	recalcWarning func(ctx context.Context, sess *state.SessionInstance) error,
+	lowerWarnLevel func(ctx context.Context, sess *state.SessionInstance),
 ) *Server {
 	oscarSvc := oscarServer{
 		AuthService:        authService,
@@ -188,12 +188,12 @@ type oscarServer struct {
 	DepartureNotifier
 	Logger *slog.Logger
 	OnlineNotifier
-	SNACHandler func(ctx context.Context, serverType uint16, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter, listener config.Listener) error
+	SNACHandler func(ctx context.Context, serverType uint16, sess *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter, listener config.Listener) error
 	RateLimitUpdater
 	wire.SNACRateLimits
 	*IPRateLimiter
-	recalcWarning  func(ctx context.Context, sess *state.Session) error
-	lowerWarnLevel func(ctx context.Context, sess *state.Session)
+	recalcWarning  func(ctx context.Context, sess *state.SessionInstance) error
+	lowerWarnLevel func(ctx context.Context, sess *state.SessionInstance)
 }
 
 func (s oscarServer) routeConnection(ctx context.Context, conn net.Conn, listener config.Listener) error {
@@ -239,7 +239,7 @@ func (s oscarServer) connectToOSCARService(
 
 	s.Logger.Debug("connecting to service", "service", wire.FoodGroupName(cookie.Service))
 
-	var sess *state.Session
+	var sess *state.SessionInstance
 	switch cookie.Service {
 	case wire.BOS:
 		sess, err = s.AuthService.RegisterBOSSession(ctx, cookie)
@@ -272,7 +272,7 @@ func (s oscarServer) connectToOSCARService(
 				s.Logger.ErrorContext(ctx, "error removing buddy list entry", "err", err.Error())
 			}
 			s.ChatSessionManager.RemoveUserFromAllChats(sess.IdentScreenName())
-			s.Signout(ctx, sess)
+			s.AuthService.Signout(ctx, sess)
 		}()
 		remoteAddr, ok := ctx.Value("ip").(string)
 		if ok {
@@ -325,7 +325,7 @@ func (s oscarServer) connectToOSCARService(
 	return s.dispatchIncomingMessages(ctx, cookie.Service, sess, flapc, conn, listener)
 }
 
-func (s oscarServer) receiveSessMessages(ctx context.Context, sess *state.Session, flapc *wire.FlapClient) {
+func (s oscarServer) receiveSessMessages(ctx context.Context, sess *state.SessionInstance, flapc *wire.FlapClient) {
 	for {
 		select {
 		case <-sess.Closed():
@@ -497,7 +497,7 @@ func sendInvalidSNACErr(frameIn wire.SNACFrame, rw ResponseWriter) error {
 func (s oscarServer) dispatchIncomingMessages(
 	ctx context.Context,
 	fg uint16,
-	sess *state.Session,
+	sess *state.SessionInstance,
 	flapc *wire.FlapClient,
 	r io.ReadCloser,
 	listener config.Listener,

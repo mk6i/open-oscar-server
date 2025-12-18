@@ -17,7 +17,7 @@ func TestChatService_ChannelMsgToHost(t *testing.T) {
 		// name is the unit test name
 		name string
 		// userSession is the session of the user sending the chat message
-		userSession *state.Session
+		userSession *state.SessionInstance
 		// inputSNAC is the SNAC sent by the sender client
 		inputSNAC wire.SNACMessage
 		// mockParams is the list of params sent to mocks that satisfy this

@@ -62,7 +62,7 @@ func TestInMemorySessionManager_Remove_Existing(t *testing.T) {
 	// Verify the old session is in the store
 	rec, ok := sm.store[user1Old.IdentScreenName()]
 	assert.True(t, ok)
-	assert.Equal(t, user1Old.SessionGroup, rec.sessionGroup)
+	assert.Equal(t, user1Old.Session, rec.sessionGroup)
 
 	// Remove the session
 	sm.RemoveSession(user1Old)
@@ -108,35 +108,35 @@ func TestInMemorySessionManager_Remove_MissingSameScreenName(t *testing.T) {
 	// Verify the old session is in the store
 	recOld, ok := sm.store[user1Old.IdentScreenName()]
 	assert.True(t, ok)
-	assert.Equal(t, user1Old.SessionGroup, recOld.sessionGroup)
+	assert.Equal(t, user1Old.Session, recOld.sessionGroup)
 
 	// Remove the old session
 	sm.RemoveSession(user1Old)
 	_, ok = sm.store[user1Old.IdentScreenName()]
 	assert.False(t, ok)
 
-	// Create a new session with the same screen name but different SessionGroup
+	// Create a new session with the same screen name but different Session
 	user1New, err := sm.AddSession(context.Background(), "user-screen-name-1", false)
 	assert.NoError(t, err)
 	user1New.SetSignonComplete()
 
-	// Verify the new session is in the store with a different SessionGroup
+	// Verify the new session is in the store with a different Session
 	recNew, ok := sm.store[user1New.IdentScreenName()]
 	assert.True(t, ok)
-	assert.Equal(t, user1New.SessionGroup, recNew.sessionGroup)
-	assert.NotEqual(t, user1Old.SessionGroup, user1New.SessionGroup)
+	assert.Equal(t, user1New.Session, recNew.sessionGroup)
+	assert.NotEqual(t, user1Old.Session, user1New.Session)
 
 	user2, err := sm.AddSession(context.Background(), "user-screen-name-2", false)
 	assert.NoError(t, err)
 	user2.SetSignonComplete()
 
-	// Try to remove the old session again - should do nothing because SessionGroup doesn't match
+	// Try to remove the old session again - should do nothing because Session doesn't match
 	sm.RemoveSession(user1Old)
 
 	// Verify the new session is still in the store (not removed)
 	recNewAfter, ok := sm.store[user1New.IdentScreenName()]
 	assert.True(t, ok, "new session should still be in store")
-	assert.Equal(t, user1New.SessionGroup, recNewAfter.sessionGroup)
+	assert.Equal(t, user1New.Session, recNewAfter.sessionGroup)
 
 	if assert.Len(t, sm.AllSessions(), 2) {
 		assert.NotContains(t, sm.AllSessions(), user1Old)
@@ -425,7 +425,7 @@ func TestInMemorySessionManager_SessionReplacement_NoMultiSess_NoMultiSess(t *te
 
 		// make sure we got a brand new session
 		got := sm.RetrieveSession(NewIdentScreenName("user-screen-name-1"), 0)
-		assert.NotEqual(t, sess1.Instance, got.Instance)
+		assert.NotEqual(t, sess1, got)
 		assert.Equal(t, 1, got.InstanceCount())
 	})
 }
@@ -434,7 +434,7 @@ func TestInMemorySessionManager_SessionReplacement_MultiSess_NoMultiSess(t *test
 	synctest.Test(t, func(t *testing.T) {
 		sm := NewInMemorySessionManager(slog.Default())
 
-		var sessList []*Session
+		var sessList []*SessionInstance
 		for i := 0; i < 10; i++ {
 			sess, err := sm.AddSession(context.Background(), "user-screen-name-1", true)
 			assert.NoError(t, err)
@@ -472,7 +472,7 @@ func TestInMemorySessionManager_SessionReplacement_MultiSess_NoMultiSess(t *test
 		got := sm.RetrieveSession(NewIdentScreenName("user-screen-name-1"), 0)
 
 		for _, sess := range sessList {
-			assert.NotSame(t, sess.Instance, got.Instance)
+			assert.NotSame(t, sess, got)
 		}
 		assert.Equal(t, 1, got.InstanceCount())
 	})
@@ -511,7 +511,7 @@ func TestInMemorySessionManager_SessionReplacement_NoMultiSess_MultiSess(t *test
 		got := sm.RetrieveSession(NewIdentScreenName("user-screen-name-1"), 0)
 
 		if assert.NotNil(t, got) {
-			assert.NotSame(t, sess1.Instance, got.Instance)
+			assert.NotSame(t, sess1, got)
 			assert.Equal(t, 1, got.InstanceCount())
 		}
 	})
@@ -585,7 +585,7 @@ func TestInMemoryChatSessionManager_RelayToAllExcept_HappyPath(t *testing.T) {
 //	sessions := sm.AllSessions("the-cookie")
 //	assert.Len(t, sessions, 2)
 //
-//	lookup := make(map[*Session]bool)
+//	lookup := make(map[*SessionInstance]bool)
 //	for _, session := range sessions {
 //		lookup[session] = true
 //	}
@@ -689,7 +689,7 @@ func TestInMemoryChatSessionManager_RemoveSession_DoubleLogin(t *testing.T) {
 //
 //	sm.RemoveUserFromAllChats(user1)
 //
-//	lookup := make(map[*Session]bool)
+//	lookup := make(map[*SessionInstance]bool)
 //	for _, session := range sm.AllSessions("chat-room-1") {
 //		lookup[session] = true
 //	}
@@ -813,19 +813,19 @@ func TestInMemorySessionManager_AllSessions_SkipIncompleteSignon(t *testing.T) {
 	sessions := sm.AllSessions()
 	assert.Len(t, sessions, 2, "should only return sessions with complete signon")
 
-	// Check that we have sessions for user1 and user3 (by checking SessionGroup identity)
+	// Check that we have sessions for user1 and user3 (by checking Session identity)
 	user1Found := false
 	user3Found := false
 	user2Found := false
 
 	for _, session := range sessions {
-		if session.SessionGroup == user1.SessionGroup {
+		if session.Session == user1.Session {
 			user1Found = true
 		}
-		if session.SessionGroup == user2.SessionGroup {
+		if session.Session == user2.Session {
 			user2Found = true
 		}
-		if session.SessionGroup == user3.SessionGroup {
+		if session.Session == user3.Session {
 			user3Found = true
 		}
 	}

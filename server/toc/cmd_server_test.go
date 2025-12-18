@@ -19,7 +19,7 @@ func TestOSCARProxy_RecvBOS_ChatIn(t *testing.T) {
 		// name is the unit test name
 		name string
 		// me is the TOC user session
-		me *state.Session
+		me *state.SessionInstance
 		// chatID is the chat ID
 		chatID int
 		// givenMsg is the incoming SNAC
@@ -85,7 +85,7 @@ func TestOSCARProxy_RecvBOS_ChatUpdateBuddyArrived(t *testing.T) {
 		// name is the unit test name
 		name string
 		// me is the TOC user session
-		me *state.Session
+		me *state.SessionInstance
 		// chatID is the chat ID
 		chatID int
 		// givenMsg is the incoming SNAC
@@ -142,7 +142,7 @@ func TestOSCARProxy_RecvBOS_ChatUpdateBuddyLeft(t *testing.T) {
 		// name is the unit test name
 		name string
 		// me is the TOC user session
-		me *state.Session
+		me *state.SessionInstance
 		// chatID is the chat ID
 		chatID int
 		// givenMsg is the incoming SNAC
@@ -199,7 +199,7 @@ func TestOSCARProxy_RecvBOS_Eviled(t *testing.T) {
 		// name is the unit test name
 		name string
 		// me is the TOC user session
-		me *state.Session
+		me *state.SessionInstance
 		// givenMsg is the incoming SNAC
 		givenMsg wire.SNACMessage
 		// chatRegistry is the chat registry for the current session
@@ -269,7 +269,7 @@ func TestOSCARProxy_RecvBOS_IMIn(t *testing.T) {
 		// name is the unit test name
 		name string
 		// me is the TOC user session
-		me *state.Session
+		me *state.SessionInstance
 		// givenMsg is the incoming SNAC
 		givenMsg wire.SNACMessage
 		// wantCmd is the expected TOC response
@@ -438,7 +438,7 @@ func TestOSCARProxy_RecvBOS_UpdateBuddyArrival(t *testing.T) {
 		// name is the unit test name
 		name string
 		// me is the TOC user session
-		me *state.Session
+		me *state.SessionInstance
 		// givenMsg is the incoming SNAC
 		givenMsg wire.SNACMessage
 		// wantCmd is the expected TOC response
@@ -537,7 +537,7 @@ func TestOSCARProxy_RecvBOS_UpdateBuddyDeparted(t *testing.T) {
 		// name is the unit test name
 		name string
 		// me is the TOC user session
-		me *state.Session
+		me *state.SessionInstance
 		// givenMsg is the incoming SNAC
 		givenMsg wire.SNACMessage
 		// wantCmd is the expected TOC response

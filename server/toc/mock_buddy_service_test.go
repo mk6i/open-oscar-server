@@ -40,7 +40,7 @@ func (_m *mockBuddyService) EXPECT() *mockBuddyService_Expecter {
 }
 
 // AddBuddies provides a mock function for the type mockBuddyService
-func (_mock *mockBuddyService) AddBuddies(ctx context.Context, sess *state.Session, inBody wire.SNAC_0x03_0x04_BuddyAddBuddies) error {
+func (_mock *mockBuddyService) AddBuddies(ctx context.Context, sess *state.SessionInstance, inBody wire.SNAC_0x03_0x04_BuddyAddBuddies) error {
 	ret := _mock.Called(ctx, sess, inBody)
 
 	if len(ret) == 0 {
@@ -48,7 +48,7 @@ func (_mock *mockBuddyService) AddBuddies(ctx context.Context, sess *state.Sessi
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.Session, wire.SNAC_0x03_0x04_BuddyAddBuddies) error); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNAC_0x03_0x04_BuddyAddBuddies) error); ok {
 		r0 = returnFunc(ctx, sess, inBody)
 	} else {
 		r0 = ret.Error(0)
@@ -63,21 +63,21 @@ type mockBuddyService_AddBuddies_Call struct {
 
 // AddBuddies is a helper method to define mock.On call
 //   - ctx context.Context
-//   - sess *state.Session
+//   - sess *state.SessionInstance
 //   - inBody wire.SNAC_0x03_0x04_BuddyAddBuddies
 func (_e *mockBuddyService_Expecter) AddBuddies(ctx interface{}, sess interface{}, inBody interface{}) *mockBuddyService_AddBuddies_Call {
 	return &mockBuddyService_AddBuddies_Call{Call: _e.mock.On("AddBuddies", ctx, sess, inBody)}
 }
 
-func (_c *mockBuddyService_AddBuddies_Call) Run(run func(ctx context.Context, sess *state.Session, inBody wire.SNAC_0x03_0x04_BuddyAddBuddies)) *mockBuddyService_AddBuddies_Call {
+func (_c *mockBuddyService_AddBuddies_Call) Run(run func(ctx context.Context, sess *state.SessionInstance, inBody wire.SNAC_0x03_0x04_BuddyAddBuddies)) *mockBuddyService_AddBuddies_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *state.Session
+		var arg1 *state.SessionInstance
 		if args[1] != nil {
-			arg1 = args[1].(*state.Session)
+			arg1 = args[1].(*state.SessionInstance)
 		}
 		var arg2 wire.SNAC_0x03_0x04_BuddyAddBuddies
 		if args[2] != nil {
@@ -97,13 +97,13 @@ func (_c *mockBuddyService_AddBuddies_Call) Return(err error) *mockBuddyService_
 	return _c
 }
 
-func (_c *mockBuddyService_AddBuddies_Call) RunAndReturn(run func(ctx context.Context, sess *state.Session, inBody wire.SNAC_0x03_0x04_BuddyAddBuddies) error) *mockBuddyService_AddBuddies_Call {
+func (_c *mockBuddyService_AddBuddies_Call) RunAndReturn(run func(ctx context.Context, sess *state.SessionInstance, inBody wire.SNAC_0x03_0x04_BuddyAddBuddies) error) *mockBuddyService_AddBuddies_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // BroadcastBuddyDeparted provides a mock function for the type mockBuddyService
-func (_mock *mockBuddyService) BroadcastBuddyDeparted(ctx context.Context, sess *state.Session) error {
+func (_mock *mockBuddyService) BroadcastBuddyDeparted(ctx context.Context, sess *state.SessionInstance) error {
 	ret := _mock.Called(ctx, sess)
 
 	if len(ret) == 0 {
@@ -111,7 +111,7 @@ func (_mock *mockBuddyService) BroadcastBuddyDeparted(ctx context.Context, sess 
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.Session) error); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance) error); ok {
 		r0 = returnFunc(ctx, sess)
 	} else {
 		r0 = ret.Error(0)
@@ -126,20 +126,20 @@ type mockBuddyService_BroadcastBuddyDeparted_Call struct {
 
 // BroadcastBuddyDeparted is a helper method to define mock.On call
 //   - ctx context.Context
-//   - sess *state.Session
+//   - sess *state.SessionInstance
 func (_e *mockBuddyService_Expecter) BroadcastBuddyDeparted(ctx interface{}, sess interface{}) *mockBuddyService_BroadcastBuddyDeparted_Call {
 	return &mockBuddyService_BroadcastBuddyDeparted_Call{Call: _e.mock.On("BroadcastBuddyDeparted", ctx, sess)}
 }
 
-func (_c *mockBuddyService_BroadcastBuddyDeparted_Call) Run(run func(ctx context.Context, sess *state.Session)) *mockBuddyService_BroadcastBuddyDeparted_Call {
+func (_c *mockBuddyService_BroadcastBuddyDeparted_Call) Run(run func(ctx context.Context, sess *state.SessionInstance)) *mockBuddyService_BroadcastBuddyDeparted_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *state.Session
+		var arg1 *state.SessionInstance
 		if args[1] != nil {
-			arg1 = args[1].(*state.Session)
+			arg1 = args[1].(*state.SessionInstance)
 		}
 		run(
 			arg0,
@@ -154,13 +154,13 @@ func (_c *mockBuddyService_BroadcastBuddyDeparted_Call) Return(err error) *mockB
 	return _c
 }
 
-func (_c *mockBuddyService_BroadcastBuddyDeparted_Call) RunAndReturn(run func(ctx context.Context, sess *state.Session) error) *mockBuddyService_BroadcastBuddyDeparted_Call {
+func (_c *mockBuddyService_BroadcastBuddyDeparted_Call) RunAndReturn(run func(ctx context.Context, sess *state.SessionInstance) error) *mockBuddyService_BroadcastBuddyDeparted_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // DelBuddies provides a mock function for the type mockBuddyService
-func (_mock *mockBuddyService) DelBuddies(ctx context.Context, sess *state.Session, inBody wire.SNAC_0x03_0x05_BuddyDelBuddies) error {
+func (_mock *mockBuddyService) DelBuddies(ctx context.Context, sess *state.SessionInstance, inBody wire.SNAC_0x03_0x05_BuddyDelBuddies) error {
 	ret := _mock.Called(ctx, sess, inBody)
 
 	if len(ret) == 0 {
@@ -168,7 +168,7 @@ func (_mock *mockBuddyService) DelBuddies(ctx context.Context, sess *state.Sessi
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.Session, wire.SNAC_0x03_0x05_BuddyDelBuddies) error); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNAC_0x03_0x05_BuddyDelBuddies) error); ok {
 		r0 = returnFunc(ctx, sess, inBody)
 	} else {
 		r0 = ret.Error(0)
@@ -183,21 +183,21 @@ type mockBuddyService_DelBuddies_Call struct {
 
 // DelBuddies is a helper method to define mock.On call
 //   - ctx context.Context
-//   - sess *state.Session
+//   - sess *state.SessionInstance
 //   - inBody wire.SNAC_0x03_0x05_BuddyDelBuddies
 func (_e *mockBuddyService_Expecter) DelBuddies(ctx interface{}, sess interface{}, inBody interface{}) *mockBuddyService_DelBuddies_Call {
 	return &mockBuddyService_DelBuddies_Call{Call: _e.mock.On("DelBuddies", ctx, sess, inBody)}
 }
 
-func (_c *mockBuddyService_DelBuddies_Call) Run(run func(ctx context.Context, sess *state.Session, inBody wire.SNAC_0x03_0x05_BuddyDelBuddies)) *mockBuddyService_DelBuddies_Call {
+func (_c *mockBuddyService_DelBuddies_Call) Run(run func(ctx context.Context, sess *state.SessionInstance, inBody wire.SNAC_0x03_0x05_BuddyDelBuddies)) *mockBuddyService_DelBuddies_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *state.Session
+		var arg1 *state.SessionInstance
 		if args[1] != nil {
-			arg1 = args[1].(*state.Session)
+			arg1 = args[1].(*state.SessionInstance)
 		}
 		var arg2 wire.SNAC_0x03_0x05_BuddyDelBuddies
 		if args[2] != nil {
@@ -217,7 +217,7 @@ func (_c *mockBuddyService_DelBuddies_Call) Return(err error) *mockBuddyService_
 	return _c
 }
 
-func (_c *mockBuddyService_DelBuddies_Call) RunAndReturn(run func(ctx context.Context, sess *state.Session, inBody wire.SNAC_0x03_0x05_BuddyDelBuddies) error) *mockBuddyService_DelBuddies_Call {
+func (_c *mockBuddyService_DelBuddies_Call) RunAndReturn(run func(ctx context.Context, sess *state.SessionInstance, inBody wire.SNAC_0x03_0x05_BuddyDelBuddies) error) *mockBuddyService_DelBuddies_Call {
 	_c.Call.Return(run)
 	return _c
 }

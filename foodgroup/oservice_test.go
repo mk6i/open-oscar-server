@@ -28,7 +28,7 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 		listener config.Listener
 		// userSession is the session of the user requesting the chat service
 		// info
-		userSession *state.Session
+		userSession *state.SessionInstance
 		// inputSNAC is the SNAC sent by the sender client
 		inputSNAC wire.SNACMessage
 		// expectSNACFrame is the SNAC frame sent from the server to the recipient
@@ -847,7 +847,7 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 		// name is the unit test name
 		name string
 		// userSession is the session of the user whose info is being set
-		userSession *state.Session
+		userSession *state.SessionInstance
 		// inputSNAC is the SNAC sent from the client to the server
 		inputSNAC wire.SNACMessage
 		// expectOutput is the SNAC reply sent from the server back to the
@@ -1354,7 +1354,7 @@ func TestOServiceService_RateParamsQuery(t *testing.T) {
 		name string
 		// userSession is the session of the user requesting the chat service
 		// info
-		userSession *state.Session
+		userSession *state.SessionInstance
 		// inputSNAC is the SNAC sent by the sender client
 		inputSNAC wire.SNACMessage
 		// expectSNACFrame is the SNAC frame sent from the server to the recipient
@@ -1756,7 +1756,7 @@ func TestNewOServiceUserInfoUpdate(t *testing.T) {
 
 	tests := []struct {
 		name              string
-		session           *state.Session
+		session           *state.SessionInstance
 		expectSigTime     bool
 		sigTime           time.Time
 		expectSecondBlock bool
@@ -1840,7 +1840,7 @@ func TestNewOServiceUserInfoUpdate(t *testing.T) {
 func TestOServiceService_UserInfoQuery(t *testing.T) {
 	tests := []struct {
 		name    string
-		sess    *state.Session
+		sess    *state.SessionInstance
 		given   wire.SNACMessage
 		want    wire.SNACMessage
 		wantErr error
@@ -1892,7 +1892,7 @@ func TestOServiceService_UserInfoQuery(t *testing.T) {
 func TestOServiceService_IdleNotification(t *testing.T) {
 	tests := []struct {
 		name   string
-		sess   *state.Session
+		sess   *state.SessionInstance
 		bodyIn wire.SNAC_0x01_0x11_OServiceIdleNotification
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
@@ -1962,7 +1962,7 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 		// name is the name of the test
 		name string
 		// joiningChatter is the session of the arriving user
-		sess *state.Session
+		sess *state.SessionInstance
 		// bodyIn is the SNAC body sent from the arriving user's client to the
 		// server
 		bodyIn wire.SNAC_0x01_0x02_OServiceClientOnline
@@ -1974,7 +1974,7 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 		// method's dependencies
 		mockParams mockParams
 		// wantSess is the expected session state after the method is called
-		wantSess *state.Session
+		wantSess *state.SessionInstance
 	}{
 		{
 			name:    "notify that BOS user is online",
@@ -2324,7 +2324,7 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 					chatAllSessionsParams: chatAllSessionsParams{
 						{
 							cookie: chatRoom.Cookie(),
-							sessions: []*state.Session{
+							sessions: []*state.SessionInstance{
 								chatter1,
 								chatter2,
 							},

@@ -329,23 +329,23 @@ func (_c *mockAuthService_FLAPLogin_Call) RunAndReturn(run func(ctx context.Cont
 }
 
 // RegisterBOSSession provides a mock function for the type mockAuthService
-func (_mock *mockAuthService) RegisterBOSSession(ctx context.Context, authCookie state.ServerCookie) (*state.Session, error) {
+func (_mock *mockAuthService) RegisterBOSSession(ctx context.Context, authCookie state.ServerCookie) (*state.SessionInstance, error) {
 	ret := _mock.Called(ctx, authCookie)
 
 	if len(ret) == 0 {
 		panic("no return value specified for RegisterBOSSession")
 	}
 
-	var r0 *state.Session
+	var r0 *state.SessionInstance
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, state.ServerCookie) (*state.Session, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, state.ServerCookie) (*state.SessionInstance, error)); ok {
 		return returnFunc(ctx, authCookie)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, state.ServerCookie) *state.Session); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, state.ServerCookie) *state.SessionInstance); ok {
 		r0 = returnFunc(ctx, authCookie)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*state.Session)
+			r0 = ret.Get(0).(*state.SessionInstance)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, state.ServerCookie) error); ok {
@@ -386,34 +386,34 @@ func (_c *mockAuthService_RegisterBOSSession_Call) Run(run func(ctx context.Cont
 	return _c
 }
 
-func (_c *mockAuthService_RegisterBOSSession_Call) Return(session *state.Session, err error) *mockAuthService_RegisterBOSSession_Call {
-	_c.Call.Return(session, err)
+func (_c *mockAuthService_RegisterBOSSession_Call) Return(sessionInstance *state.SessionInstance, err error) *mockAuthService_RegisterBOSSession_Call {
+	_c.Call.Return(sessionInstance, err)
 	return _c
 }
 
-func (_c *mockAuthService_RegisterBOSSession_Call) RunAndReturn(run func(ctx context.Context, authCookie state.ServerCookie) (*state.Session, error)) *mockAuthService_RegisterBOSSession_Call {
+func (_c *mockAuthService_RegisterBOSSession_Call) RunAndReturn(run func(ctx context.Context, authCookie state.ServerCookie) (*state.SessionInstance, error)) *mockAuthService_RegisterBOSSession_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // RegisterChatSession provides a mock function for the type mockAuthService
-func (_mock *mockAuthService) RegisterChatSession(ctx context.Context, authCookie state.ServerCookie) (*state.Session, error) {
+func (_mock *mockAuthService) RegisterChatSession(ctx context.Context, authCookie state.ServerCookie) (*state.SessionInstance, error) {
 	ret := _mock.Called(ctx, authCookie)
 
 	if len(ret) == 0 {
 		panic("no return value specified for RegisterChatSession")
 	}
 
-	var r0 *state.Session
+	var r0 *state.SessionInstance
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, state.ServerCookie) (*state.Session, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, state.ServerCookie) (*state.SessionInstance, error)); ok {
 		return returnFunc(ctx, authCookie)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, state.ServerCookie) *state.Session); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, state.ServerCookie) *state.SessionInstance); ok {
 		r0 = returnFunc(ctx, authCookie)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*state.Session)
+			r0 = ret.Get(0).(*state.SessionInstance)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, state.ServerCookie) error); ok {
@@ -454,34 +454,34 @@ func (_c *mockAuthService_RegisterChatSession_Call) Run(run func(ctx context.Con
 	return _c
 }
 
-func (_c *mockAuthService_RegisterChatSession_Call) Return(session *state.Session, err error) *mockAuthService_RegisterChatSession_Call {
-	_c.Call.Return(session, err)
+func (_c *mockAuthService_RegisterChatSession_Call) Return(sessionInstance *state.SessionInstance, err error) *mockAuthService_RegisterChatSession_Call {
+	_c.Call.Return(sessionInstance, err)
 	return _c
 }
 
-func (_c *mockAuthService_RegisterChatSession_Call) RunAndReturn(run func(ctx context.Context, authCookie state.ServerCookie) (*state.Session, error)) *mockAuthService_RegisterChatSession_Call {
+func (_c *mockAuthService_RegisterChatSession_Call) RunAndReturn(run func(ctx context.Context, authCookie state.ServerCookie) (*state.SessionInstance, error)) *mockAuthService_RegisterChatSession_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // RetrieveBOSSession provides a mock function for the type mockAuthService
-func (_mock *mockAuthService) RetrieveBOSSession(ctx context.Context, authCookie state.ServerCookie) (*state.Session, error) {
+func (_mock *mockAuthService) RetrieveBOSSession(ctx context.Context, authCookie state.ServerCookie) (*state.SessionInstance, error) {
 	ret := _mock.Called(ctx, authCookie)
 
 	if len(ret) == 0 {
 		panic("no return value specified for RetrieveBOSSession")
 	}
 
-	var r0 *state.Session
+	var r0 *state.SessionInstance
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, state.ServerCookie) (*state.Session, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, state.ServerCookie) (*state.SessionInstance, error)); ok {
 		return returnFunc(ctx, authCookie)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, state.ServerCookie) *state.Session); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, state.ServerCookie) *state.SessionInstance); ok {
 		r0 = returnFunc(ctx, authCookie)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*state.Session)
+			r0 = ret.Get(0).(*state.SessionInstance)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, state.ServerCookie) error); ok {
@@ -522,18 +522,18 @@ func (_c *mockAuthService_RetrieveBOSSession_Call) Run(run func(ctx context.Cont
 	return _c
 }
 
-func (_c *mockAuthService_RetrieveBOSSession_Call) Return(session *state.Session, err error) *mockAuthService_RetrieveBOSSession_Call {
-	_c.Call.Return(session, err)
+func (_c *mockAuthService_RetrieveBOSSession_Call) Return(sessionInstance *state.SessionInstance, err error) *mockAuthService_RetrieveBOSSession_Call {
+	_c.Call.Return(sessionInstance, err)
 	return _c
 }
 
-func (_c *mockAuthService_RetrieveBOSSession_Call) RunAndReturn(run func(ctx context.Context, authCookie state.ServerCookie) (*state.Session, error)) *mockAuthService_RetrieveBOSSession_Call {
+func (_c *mockAuthService_RetrieveBOSSession_Call) RunAndReturn(run func(ctx context.Context, authCookie state.ServerCookie) (*state.SessionInstance, error)) *mockAuthService_RetrieveBOSSession_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // Signout provides a mock function for the type mockAuthService
-func (_mock *mockAuthService) Signout(ctx context.Context, sess *state.Session) {
+func (_mock *mockAuthService) Signout(ctx context.Context, sess *state.SessionInstance) {
 	_mock.Called(ctx, sess)
 	return
 }
@@ -545,20 +545,20 @@ type mockAuthService_Signout_Call struct {
 
 // Signout is a helper method to define mock.On call
 //   - ctx context.Context
-//   - sess *state.Session
+//   - sess *state.SessionInstance
 func (_e *mockAuthService_Expecter) Signout(ctx interface{}, sess interface{}) *mockAuthService_Signout_Call {
 	return &mockAuthService_Signout_Call{Call: _e.mock.On("Signout", ctx, sess)}
 }
 
-func (_c *mockAuthService_Signout_Call) Run(run func(ctx context.Context, sess *state.Session)) *mockAuthService_Signout_Call {
+func (_c *mockAuthService_Signout_Call) Run(run func(ctx context.Context, sess *state.SessionInstance)) *mockAuthService_Signout_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *state.Session
+		var arg1 *state.SessionInstance
 		if args[1] != nil {
-			arg1 = args[1].(*state.Session)
+			arg1 = args[1].(*state.SessionInstance)
 		}
 		run(
 			arg0,
@@ -573,13 +573,13 @@ func (_c *mockAuthService_Signout_Call) Return() *mockAuthService_Signout_Call {
 	return _c
 }
 
-func (_c *mockAuthService_Signout_Call) RunAndReturn(run func(ctx context.Context, sess *state.Session)) *mockAuthService_Signout_Call {
+func (_c *mockAuthService_Signout_Call) RunAndReturn(run func(ctx context.Context, sess *state.SessionInstance)) *mockAuthService_Signout_Call {
 	_c.Run(run)
 	return _c
 }
 
 // SignoutChat provides a mock function for the type mockAuthService
-func (_mock *mockAuthService) SignoutChat(ctx context.Context, sess *state.Session) {
+func (_mock *mockAuthService) SignoutChat(ctx context.Context, sess *state.SessionInstance) {
 	_mock.Called(ctx, sess)
 	return
 }
@@ -591,20 +591,20 @@ type mockAuthService_SignoutChat_Call struct {
 
 // SignoutChat is a helper method to define mock.On call
 //   - ctx context.Context
-//   - sess *state.Session
+//   - sess *state.SessionInstance
 func (_e *mockAuthService_Expecter) SignoutChat(ctx interface{}, sess interface{}) *mockAuthService_SignoutChat_Call {
 	return &mockAuthService_SignoutChat_Call{Call: _e.mock.On("SignoutChat", ctx, sess)}
 }
 
-func (_c *mockAuthService_SignoutChat_Call) Run(run func(ctx context.Context, sess *state.Session)) *mockAuthService_SignoutChat_Call {
+func (_c *mockAuthService_SignoutChat_Call) Run(run func(ctx context.Context, sess *state.SessionInstance)) *mockAuthService_SignoutChat_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *state.Session
+		var arg1 *state.SessionInstance
 		if args[1] != nil {
-			arg1 = args[1].(*state.Session)
+			arg1 = args[1].(*state.SessionInstance)
 		}
 		run(
 			arg0,
@@ -619,7 +619,7 @@ func (_c *mockAuthService_SignoutChat_Call) Return() *mockAuthService_SignoutCha
 	return _c
 }
 
-func (_c *mockAuthService_SignoutChat_Call) RunAndReturn(run func(ctx context.Context, sess *state.Session)) *mockAuthService_SignoutChat_Call {
+func (_c *mockAuthService_SignoutChat_Call) RunAndReturn(run func(ctx context.Context, sess *state.SessionInstance)) *mockAuthService_SignoutChat_Call {
 	_c.Run(run)
 	return _c
 }

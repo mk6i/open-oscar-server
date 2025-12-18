@@ -127,13 +127,13 @@ type flapLoginParams []struct {
 
 type registerBOSSessionParams []struct {
 	authCookie state.ServerCookie
-	sess       *state.Session
+	sess       *state.SessionInstance
 	err        error
 }
 
 type registerChatSessionParams []struct {
 	authCookie state.ServerCookie
-	sess       *state.Session
+	sess       *state.SessionInstance
 	err        error
 }
 
@@ -282,14 +282,14 @@ type cookieBakerParams struct {
 
 // matchSession matches a mock call based session ident screen name.
 func matchSession(mustMatch state.IdentScreenName) interface{} {
-	return mock.MatchedBy(func(s *state.Session) bool {
+	return mock.MatchedBy(func(s *state.SessionInstance) bool {
 		return mustMatch == s.IdentScreenName()
 	})
 }
 
 // newTestSession creates a session object with 0 or more functional options
 // applied
-func newTestSession(screenName state.DisplayScreenName, options ...func(session *state.Session)) *state.Session {
+func newTestSession(screenName state.DisplayScreenName, options ...func(session *state.SessionInstance)) *state.SessionInstance {
 	s := state.NewSession()
 	s.SetIdentScreenName(screenName.IdentScreenName())
 	s.SetDisplayScreenName(screenName)

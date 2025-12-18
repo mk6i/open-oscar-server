@@ -102,12 +102,12 @@ func TestSession_SetAndGetRemoteAddr(t *testing.T) {
 func TestSession_TLVUserInfo(t *testing.T) {
 	tests := []struct {
 		name           string
-		givenSessionFn func() *Session
+		givenSessionFn func() *SessionInstance
 		want           wire.TLVUserInfo
 	}{
 		{
 			name: "user is active and visible",
-			givenSessionFn: func() *Session {
+			givenSessionFn: func() *SessionInstance {
 				s := NewSession()
 				s.SetSignonTime(time.Unix(1, 0))
 				s.SetIdentScreenName(NewIdentScreenName("xXAIMUSERXx"))
@@ -131,7 +131,7 @@ func TestSession_TLVUserInfo(t *testing.T) {
 		},
 		{
 			name: "user is on ICQ",
-			givenSessionFn: func() *Session {
+			givenSessionFn: func() *SessionInstance {
 				s := NewSession()
 				s.SetSignonTime(time.Unix(1, 0))
 				s.SetIdentScreenName(NewIdentScreenName("1000003"))
@@ -155,7 +155,7 @@ func TestSession_TLVUserInfo(t *testing.T) {
 		},
 		{
 			name: "user has away message set",
-			givenSessionFn: func() *Session {
+			givenSessionFn: func() *SessionInstance {
 				s := NewSession()
 				s.SetSignonTime(time.Unix(1, 0))
 				s.SetAwayMessage("here's my away message")
@@ -174,7 +174,7 @@ func TestSession_TLVUserInfo(t *testing.T) {
 		},
 		{
 			name: "user is invisible",
-			givenSessionFn: func() *Session {
+			givenSessionFn: func() *SessionInstance {
 				s := NewSession()
 				s.SetSignonTime(time.Unix(1, 0))
 				s.SetUserStatusBitmask(wire.OServiceUserStatusInvisible)
@@ -193,7 +193,7 @@ func TestSession_TLVUserInfo(t *testing.T) {
 		},
 		{
 			name: "user is idle",
-			givenSessionFn: func() *Session {
+			givenSessionFn: func() *SessionInstance {
 				s := NewSession()
 				// sign on at t=0m
 				timeBegin := time.Unix(0, 0)
@@ -221,7 +221,7 @@ func TestSession_TLVUserInfo(t *testing.T) {
 		},
 		{
 			name: "user goes idle then returns",
-			givenSessionFn: func() *Session {
+			givenSessionFn: func() *SessionInstance {
 				s := NewSession()
 				s.SetSignonTime(time.Unix(1, 0))
 				s.SetIdle(1 * time.Second)
@@ -241,7 +241,7 @@ func TestSession_TLVUserInfo(t *testing.T) {
 		},
 		{
 			name: "user has capabilities",
-			givenSessionFn: func() *Session {
+			givenSessionFn: func() *SessionInstance {
 				s := NewSession()
 				s.SetSignonTime(time.Unix(1, 0))
 				s.SetCaps([][16]byte{
@@ -279,7 +279,7 @@ func TestSession_TLVUserInfo(t *testing.T) {
 		},
 		{
 			name: "user has buddy icon",
-			givenSessionFn: func() *Session {
+			givenSessionFn: func() *SessionInstance {
 				s := NewSession()
 				s.SetSignonTime(time.Unix(1, 0))
 				return s
@@ -651,18 +651,18 @@ func TestSession_SetAndGetLastWarnLevel(t *testing.T) {
 func TestInstance_Active(t *testing.T) {
 	tests := []struct {
 		name           string
-		setupInstance  func() *Instance
+		setupInstance  func() *SessionInstance
 		expectedActive bool
 	}{
 		{
 			name: "active instance - not closed, not idle, no away message",
-			setupInstance: func() *Instance {
+			setupInstance: func() *SessionInstance {
 				sg := NewSessionGroup()
-				instance := &Instance{
-					SessionGroup: sg,
-					closed:       false,
-					idle:         false,
-					awayMessage:  "",
+				instance := &SessionInstance{
+					Session:     sg,
+					closed:      false,
+					idle:        false,
+					awayMessage: "",
 				}
 				return instance
 			},
@@ -670,13 +670,13 @@ func TestInstance_Active(t *testing.T) {
 		},
 		{
 			name: "inactive instance - closed",
-			setupInstance: func() *Instance {
+			setupInstance: func() *SessionInstance {
 				sg := NewSessionGroup()
-				instance := &Instance{
-					SessionGroup: sg,
-					closed:       true,
-					idle:         false,
-					awayMessage:  "",
+				instance := &SessionInstance{
+					Session:     sg,
+					closed:      true,
+					idle:        false,
+					awayMessage: "",
 				}
 				return instance
 			},
@@ -684,13 +684,13 @@ func TestInstance_Active(t *testing.T) {
 		},
 		{
 			name: "inactive instance - idle",
-			setupInstance: func() *Instance {
+			setupInstance: func() *SessionInstance {
 				sg := NewSessionGroup()
-				instance := &Instance{
-					SessionGroup: sg,
-					closed:       false,
-					idle:         true,
-					awayMessage:  "",
+				instance := &SessionInstance{
+					Session:     sg,
+					closed:      false,
+					idle:        true,
+					awayMessage: "",
 				}
 				return instance
 			},
@@ -698,13 +698,13 @@ func TestInstance_Active(t *testing.T) {
 		},
 		{
 			name: "inactive instance - has away message",
-			setupInstance: func() *Instance {
+			setupInstance: func() *SessionInstance {
 				sg := NewSessionGroup()
-				instance := &Instance{
-					SessionGroup: sg,
-					closed:       false,
-					idle:         false,
-					awayMessage:  "I'm away",
+				instance := &SessionInstance{
+					Session:     sg,
+					closed:      false,
+					idle:        false,
+					awayMessage: "I'm away",
 				}
 				return instance
 			},
@@ -712,13 +712,13 @@ func TestInstance_Active(t *testing.T) {
 		},
 		{
 			name: "inactive instance - closed and idle",
-			setupInstance: func() *Instance {
+			setupInstance: func() *SessionInstance {
 				sg := NewSessionGroup()
-				instance := &Instance{
-					SessionGroup: sg,
-					closed:       true,
-					idle:         true,
-					awayMessage:  "",
+				instance := &SessionInstance{
+					Session:     sg,
+					closed:      true,
+					idle:        true,
+					awayMessage: "",
 				}
 				return instance
 			},
@@ -726,13 +726,13 @@ func TestInstance_Active(t *testing.T) {
 		},
 		{
 			name: "inactive instance - closed and has away message",
-			setupInstance: func() *Instance {
+			setupInstance: func() *SessionInstance {
 				sg := NewSessionGroup()
-				instance := &Instance{
-					SessionGroup: sg,
-					closed:       true,
-					idle:         false,
-					awayMessage:  "I'm away",
+				instance := &SessionInstance{
+					Session:     sg,
+					closed:      true,
+					idle:        false,
+					awayMessage: "I'm away",
 				}
 				return instance
 			},
@@ -740,13 +740,13 @@ func TestInstance_Active(t *testing.T) {
 		},
 		{
 			name: "inactive instance - idle and has away message",
-			setupInstance: func() *Instance {
+			setupInstance: func() *SessionInstance {
 				sg := NewSessionGroup()
-				instance := &Instance{
-					SessionGroup: sg,
-					closed:       false,
-					idle:         true,
-					awayMessage:  "I'm away",
+				instance := &SessionInstance{
+					Session:     sg,
+					closed:      false,
+					idle:        true,
+					awayMessage: "I'm away",
 				}
 				return instance
 			},
@@ -754,13 +754,13 @@ func TestInstance_Active(t *testing.T) {
 		},
 		{
 			name: "inactive instance - closed, idle, and has away message",
-			setupInstance: func() *Instance {
+			setupInstance: func() *SessionInstance {
 				sg := NewSessionGroup()
-				instance := &Instance{
-					SessionGroup: sg,
-					closed:       true,
-					idle:         true,
-					awayMessage:  "I'm away",
+				instance := &SessionInstance{
+					Session:     sg,
+					closed:      true,
+					idle:        true,
+					awayMessage: "I'm away",
 				}
 				return instance
 			},
@@ -779,25 +779,25 @@ func TestInstance_Active(t *testing.T) {
 func TestSessionGroup_AllInactive(t *testing.T) {
 	tests := []struct {
 		name              string
-		setupSessionGroup func() *SessionGroup
+		setupSessionGroup func() *Session
 		expectedResult    bool
 	}{
 		{
 			name: "no instances - should return true",
-			setupSessionGroup: func() *SessionGroup {
+			setupSessionGroup: func() *Session {
 				return NewSessionGroup()
 			},
 			expectedResult: true,
 		},
 		{
 			name: "one active instance - should return false",
-			setupSessionGroup: func() *SessionGroup {
+			setupSessionGroup: func() *Session {
 				sg := NewSessionGroup()
-				instance := &Instance{
-					SessionGroup: sg,
-					closed:       false,
-					idle:         false,
-					awayMessage:  "",
+				instance := &SessionInstance{
+					Session:     sg,
+					closed:      false,
+					idle:        false,
+					awayMessage: "",
 				}
 				sg.AddInstance(instance)
 				return sg
@@ -806,13 +806,13 @@ func TestSessionGroup_AllInactive(t *testing.T) {
 		},
 		{
 			name: "one closed instance - should return true",
-			setupSessionGroup: func() *SessionGroup {
+			setupSessionGroup: func() *Session {
 				sg := NewSessionGroup()
-				instance := &Instance{
-					SessionGroup: sg,
-					closed:       true,
-					idle:         false,
-					awayMessage:  "",
+				instance := &SessionInstance{
+					Session:     sg,
+					closed:      true,
+					idle:        false,
+					awayMessage: "",
 				}
 				sg.AddInstance(instance)
 				return sg
@@ -821,13 +821,13 @@ func TestSessionGroup_AllInactive(t *testing.T) {
 		},
 		{
 			name: "one idle instance - should return true",
-			setupSessionGroup: func() *SessionGroup {
+			setupSessionGroup: func() *Session {
 				sg := NewSessionGroup()
-				instance := &Instance{
-					SessionGroup: sg,
-					closed:       false,
-					idle:         true,
-					awayMessage:  "",
+				instance := &SessionInstance{
+					Session:     sg,
+					closed:      false,
+					idle:        true,
+					awayMessage: "",
 				}
 				sg.AddInstance(instance)
 				return sg
@@ -836,13 +836,13 @@ func TestSessionGroup_AllInactive(t *testing.T) {
 		},
 		{
 			name: "one instance with away message - should return true",
-			setupSessionGroup: func() *SessionGroup {
+			setupSessionGroup: func() *Session {
 				sg := NewSessionGroup()
-				instance := &Instance{
-					SessionGroup: sg,
-					closed:       false,
-					idle:         false,
-					awayMessage:  "I'm away",
+				instance := &SessionInstance{
+					Session:     sg,
+					closed:      false,
+					idle:        false,
+					awayMessage: "I'm away",
 				}
 				sg.AddInstance(instance)
 				return sg
@@ -851,33 +851,33 @@ func TestSessionGroup_AllInactive(t *testing.T) {
 		},
 		{
 			name: "multiple instances - all inactive - should return true",
-			setupSessionGroup: func() *SessionGroup {
+			setupSessionGroup: func() *Session {
 				sg := NewSessionGroup()
 
 				// Add closed instance
-				instance1 := &Instance{
-					SessionGroup: sg,
-					closed:       true,
-					idle:         false,
-					awayMessage:  "",
+				instance1 := &SessionInstance{
+					Session:     sg,
+					closed:      true,
+					idle:        false,
+					awayMessage: "",
 				}
 				sg.AddInstance(instance1)
 
 				// Add idle instance
-				instance2 := &Instance{
-					SessionGroup: sg,
-					closed:       false,
-					idle:         true,
-					awayMessage:  "",
+				instance2 := &SessionInstance{
+					Session:     sg,
+					closed:      false,
+					idle:        true,
+					awayMessage: "",
 				}
 				sg.AddInstance(instance2)
 
 				// Add instance with away message
-				instance3 := &Instance{
-					SessionGroup: sg,
-					closed:       false,
-					idle:         false,
-					awayMessage:  "I'm away",
+				instance3 := &SessionInstance{
+					Session:     sg,
+					closed:      false,
+					idle:        false,
+					awayMessage: "I'm away",
 				}
 				sg.AddInstance(instance3)
 
@@ -887,33 +887,33 @@ func TestSessionGroup_AllInactive(t *testing.T) {
 		},
 		{
 			name: "multiple instances - one active - should return false",
-			setupSessionGroup: func() *SessionGroup {
+			setupSessionGroup: func() *Session {
 				sg := NewSessionGroup()
 
 				// Add closed instance
-				instance1 := &Instance{
-					SessionGroup: sg,
-					closed:       true,
-					idle:         false,
-					awayMessage:  "",
+				instance1 := &SessionInstance{
+					Session:     sg,
+					closed:      true,
+					idle:        false,
+					awayMessage: "",
 				}
 				sg.AddInstance(instance1)
 
 				// Add active instance
-				instance2 := &Instance{
-					SessionGroup: sg,
-					closed:       false,
-					idle:         false,
-					awayMessage:  "",
+				instance2 := &SessionInstance{
+					Session:     sg,
+					closed:      false,
+					idle:        false,
+					awayMessage: "",
 				}
 				sg.AddInstance(instance2)
 
 				// Add idle instance
-				instance3 := &Instance{
-					SessionGroup: sg,
-					closed:       false,
-					idle:         true,
-					awayMessage:  "",
+				instance3 := &SessionInstance{
+					Session:     sg,
+					closed:      false,
+					idle:        true,
+					awayMessage: "",
 				}
 				sg.AddInstance(instance3)
 
@@ -923,24 +923,24 @@ func TestSessionGroup_AllInactive(t *testing.T) {
 		},
 		{
 			name: "multiple instances - all active - should return false",
-			setupSessionGroup: func() *SessionGroup {
+			setupSessionGroup: func() *Session {
 				sg := NewSessionGroup()
 
 				// Add first active instance
-				instance1 := &Instance{
-					SessionGroup: sg,
-					closed:       false,
-					idle:         false,
-					awayMessage:  "",
+				instance1 := &SessionInstance{
+					Session:     sg,
+					closed:      false,
+					idle:        false,
+					awayMessage: "",
 				}
 				sg.AddInstance(instance1)
 
 				// Add second active instance
-				instance2 := &Instance{
-					SessionGroup: sg,
-					closed:       false,
-					idle:         false,
-					awayMessage:  "",
+				instance2 := &SessionInstance{
+					Session:     sg,
+					closed:      false,
+					idle:        false,
+					awayMessage: "",
 				}
 				sg.AddInstance(instance2)
 
@@ -950,42 +950,42 @@ func TestSessionGroup_AllInactive(t *testing.T) {
 		},
 		{
 			name: "mixed scenarios - some closed, some idle, some away, one active - should return false",
-			setupSessionGroup: func() *SessionGroup {
+			setupSessionGroup: func() *Session {
 				sg := NewSessionGroup()
 
 				// Add closed instance
-				instance1 := &Instance{
-					SessionGroup: sg,
-					closed:       true,
-					idle:         false,
-					awayMessage:  "",
+				instance1 := &SessionInstance{
+					Session:     sg,
+					closed:      true,
+					idle:        false,
+					awayMessage: "",
 				}
 				sg.AddInstance(instance1)
 
 				// Add idle instance
-				instance2 := &Instance{
-					SessionGroup: sg,
-					closed:       false,
-					idle:         true,
-					awayMessage:  "",
+				instance2 := &SessionInstance{
+					Session:     sg,
+					closed:      false,
+					idle:        true,
+					awayMessage: "",
 				}
 				sg.AddInstance(instance2)
 
 				// Add instance with away message
-				instance3 := &Instance{
-					SessionGroup: sg,
-					closed:       false,
-					idle:         false,
-					awayMessage:  "I'm away",
+				instance3 := &SessionInstance{
+					Session:     sg,
+					closed:      false,
+					idle:        false,
+					awayMessage: "I'm away",
 				}
 				sg.AddInstance(instance3)
 
 				// Add active instance
-				instance4 := &Instance{
-					SessionGroup: sg,
-					closed:       false,
-					idle:         false,
-					awayMessage:  "",
+				instance4 := &SessionInstance{
+					Session:     sg,
+					closed:      false,
+					idle:        false,
+					awayMessage: "",
 				}
 				sg.AddInstance(instance4)
 
@@ -1006,19 +1006,19 @@ func TestSessionGroup_AllInactive(t *testing.T) {
 func TestSessionGroup_InstanceCount(t *testing.T) {
 	tests := []struct {
 		name          string
-		setupGroup    func() *SessionGroup
+		setupGroup    func() *Session
 		expectedCount int
 	}{
 		{
 			name: "empty session group should return 0",
-			setupGroup: func() *SessionGroup {
+			setupGroup: func() *Session {
 				return NewSessionGroup()
 			},
 			expectedCount: 0,
 		},
 		{
 			name: "one instance should return 1",
-			setupGroup: func() *SessionGroup {
+			setupGroup: func() *Session {
 				sg := NewSessionGroup()
 				instance := NewInstance(sg)
 				sg.AddInstance(instance)
@@ -1028,7 +1028,7 @@ func TestSessionGroup_InstanceCount(t *testing.T) {
 		},
 		{
 			name: "multiple instances should return correct count",
-			setupGroup: func() *SessionGroup {
+			setupGroup: func() *Session {
 				sg := NewSessionGroup()
 				for i := 0; i < 3; i++ {
 					instance := NewInstance(sg)
@@ -1040,7 +1040,7 @@ func TestSessionGroup_InstanceCount(t *testing.T) {
 		},
 		{
 			name: "instance count decreases after removal",
-			setupGroup: func() *SessionGroup {
+			setupGroup: func() *Session {
 				sg := NewSessionGroup()
 				instance1 := NewInstance(sg)
 				instance2 := NewInstance(sg)
@@ -1056,7 +1056,7 @@ func TestSessionGroup_InstanceCount(t *testing.T) {
 		},
 		{
 			name: "instance count is correct after multiple add/remove operations",
-			setupGroup: func() *SessionGroup {
+			setupGroup: func() *Session {
 				sg := NewSessionGroup()
 				instance1 := NewInstance(sg)
 				instance2 := NewInstance(sg)

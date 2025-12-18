@@ -112,7 +112,7 @@ func (_c *mockLocateService_DirInfo_Call) RunAndReturn(run func(ctx context.Cont
 }
 
 // SetDirInfo provides a mock function for the type mockLocateService
-func (_mock *mockLocateService) SetDirInfo(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x02_0x09_LocateSetDirInfo) (wire.SNACMessage, error) {
+func (_mock *mockLocateService) SetDirInfo(ctx context.Context, sess *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x02_0x09_LocateSetDirInfo) (wire.SNACMessage, error) {
 	ret := _mock.Called(ctx, sess, inFrame, inBody)
 
 	if len(ret) == 0 {
@@ -121,15 +121,15 @@ func (_mock *mockLocateService) SetDirInfo(ctx context.Context, sess *state.Sess
 
 	var r0 wire.SNACMessage
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.Session, wire.SNACFrame, wire.SNAC_0x02_0x09_LocateSetDirInfo) (wire.SNACMessage, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x02_0x09_LocateSetDirInfo) (wire.SNACMessage, error)); ok {
 		return returnFunc(ctx, sess, inFrame, inBody)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.Session, wire.SNACFrame, wire.SNAC_0x02_0x09_LocateSetDirInfo) wire.SNACMessage); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x02_0x09_LocateSetDirInfo) wire.SNACMessage); ok {
 		r0 = returnFunc(ctx, sess, inFrame, inBody)
 	} else {
 		r0 = ret.Get(0).(wire.SNACMessage)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, *state.Session, wire.SNACFrame, wire.SNAC_0x02_0x09_LocateSetDirInfo) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x02_0x09_LocateSetDirInfo) error); ok {
 		r1 = returnFunc(ctx, sess, inFrame, inBody)
 	} else {
 		r1 = ret.Error(1)
@@ -144,22 +144,22 @@ type mockLocateService_SetDirInfo_Call struct {
 
 // SetDirInfo is a helper method to define mock.On call
 //   - ctx context.Context
-//   - sess *state.Session
+//   - sess *state.SessionInstance
 //   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x02_0x09_LocateSetDirInfo
 func (_e *mockLocateService_Expecter) SetDirInfo(ctx interface{}, sess interface{}, inFrame interface{}, inBody interface{}) *mockLocateService_SetDirInfo_Call {
 	return &mockLocateService_SetDirInfo_Call{Call: _e.mock.On("SetDirInfo", ctx, sess, inFrame, inBody)}
 }
 
-func (_c *mockLocateService_SetDirInfo_Call) Run(run func(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x02_0x09_LocateSetDirInfo)) *mockLocateService_SetDirInfo_Call {
+func (_c *mockLocateService_SetDirInfo_Call) Run(run func(ctx context.Context, sess *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x02_0x09_LocateSetDirInfo)) *mockLocateService_SetDirInfo_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *state.Session
+		var arg1 *state.SessionInstance
 		if args[1] != nil {
-			arg1 = args[1].(*state.Session)
+			arg1 = args[1].(*state.SessionInstance)
 		}
 		var arg2 wire.SNACFrame
 		if args[2] != nil {
@@ -184,13 +184,13 @@ func (_c *mockLocateService_SetDirInfo_Call) Return(sNACMessage wire.SNACMessage
 	return _c
 }
 
-func (_c *mockLocateService_SetDirInfo_Call) RunAndReturn(run func(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x02_0x09_LocateSetDirInfo) (wire.SNACMessage, error)) *mockLocateService_SetDirInfo_Call {
+func (_c *mockLocateService_SetDirInfo_Call) RunAndReturn(run func(ctx context.Context, sess *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x02_0x09_LocateSetDirInfo) (wire.SNACMessage, error)) *mockLocateService_SetDirInfo_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // SetInfo provides a mock function for the type mockLocateService
-func (_mock *mockLocateService) SetInfo(ctx context.Context, sess *state.Session, inBody wire.SNAC_0x02_0x04_LocateSetInfo) error {
+func (_mock *mockLocateService) SetInfo(ctx context.Context, sess *state.SessionInstance, inBody wire.SNAC_0x02_0x04_LocateSetInfo) error {
 	ret := _mock.Called(ctx, sess, inBody)
 
 	if len(ret) == 0 {
@@ -198,7 +198,7 @@ func (_mock *mockLocateService) SetInfo(ctx context.Context, sess *state.Session
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.Session, wire.SNAC_0x02_0x04_LocateSetInfo) error); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNAC_0x02_0x04_LocateSetInfo) error); ok {
 		r0 = returnFunc(ctx, sess, inBody)
 	} else {
 		r0 = ret.Error(0)
@@ -213,21 +213,21 @@ type mockLocateService_SetInfo_Call struct {
 
 // SetInfo is a helper method to define mock.On call
 //   - ctx context.Context
-//   - sess *state.Session
+//   - sess *state.SessionInstance
 //   - inBody wire.SNAC_0x02_0x04_LocateSetInfo
 func (_e *mockLocateService_Expecter) SetInfo(ctx interface{}, sess interface{}, inBody interface{}) *mockLocateService_SetInfo_Call {
 	return &mockLocateService_SetInfo_Call{Call: _e.mock.On("SetInfo", ctx, sess, inBody)}
 }
 
-func (_c *mockLocateService_SetInfo_Call) Run(run func(ctx context.Context, sess *state.Session, inBody wire.SNAC_0x02_0x04_LocateSetInfo)) *mockLocateService_SetInfo_Call {
+func (_c *mockLocateService_SetInfo_Call) Run(run func(ctx context.Context, sess *state.SessionInstance, inBody wire.SNAC_0x02_0x04_LocateSetInfo)) *mockLocateService_SetInfo_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *state.Session
+		var arg1 *state.SessionInstance
 		if args[1] != nil {
-			arg1 = args[1].(*state.Session)
+			arg1 = args[1].(*state.SessionInstance)
 		}
 		var arg2 wire.SNAC_0x02_0x04_LocateSetInfo
 		if args[2] != nil {
@@ -247,13 +247,13 @@ func (_c *mockLocateService_SetInfo_Call) Return(err error) *mockLocateService_S
 	return _c
 }
 
-func (_c *mockLocateService_SetInfo_Call) RunAndReturn(run func(ctx context.Context, sess *state.Session, inBody wire.SNAC_0x02_0x04_LocateSetInfo) error) *mockLocateService_SetInfo_Call {
+func (_c *mockLocateService_SetInfo_Call) RunAndReturn(run func(ctx context.Context, sess *state.SessionInstance, inBody wire.SNAC_0x02_0x04_LocateSetInfo) error) *mockLocateService_SetInfo_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // UserInfoQuery provides a mock function for the type mockLocateService
-func (_mock *mockLocateService) UserInfoQuery(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x02_0x05_LocateUserInfoQuery) (wire.SNACMessage, error) {
+func (_mock *mockLocateService) UserInfoQuery(ctx context.Context, sess *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x02_0x05_LocateUserInfoQuery) (wire.SNACMessage, error) {
 	ret := _mock.Called(ctx, sess, inFrame, inBody)
 
 	if len(ret) == 0 {
@@ -262,15 +262,15 @@ func (_mock *mockLocateService) UserInfoQuery(ctx context.Context, sess *state.S
 
 	var r0 wire.SNACMessage
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.Session, wire.SNACFrame, wire.SNAC_0x02_0x05_LocateUserInfoQuery) (wire.SNACMessage, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x02_0x05_LocateUserInfoQuery) (wire.SNACMessage, error)); ok {
 		return returnFunc(ctx, sess, inFrame, inBody)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.Session, wire.SNACFrame, wire.SNAC_0x02_0x05_LocateUserInfoQuery) wire.SNACMessage); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x02_0x05_LocateUserInfoQuery) wire.SNACMessage); ok {
 		r0 = returnFunc(ctx, sess, inFrame, inBody)
 	} else {
 		r0 = ret.Get(0).(wire.SNACMessage)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, *state.Session, wire.SNACFrame, wire.SNAC_0x02_0x05_LocateUserInfoQuery) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x02_0x05_LocateUserInfoQuery) error); ok {
 		r1 = returnFunc(ctx, sess, inFrame, inBody)
 	} else {
 		r1 = ret.Error(1)
@@ -285,22 +285,22 @@ type mockLocateService_UserInfoQuery_Call struct {
 
 // UserInfoQuery is a helper method to define mock.On call
 //   - ctx context.Context
-//   - sess *state.Session
+//   - sess *state.SessionInstance
 //   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x02_0x05_LocateUserInfoQuery
 func (_e *mockLocateService_Expecter) UserInfoQuery(ctx interface{}, sess interface{}, inFrame interface{}, inBody interface{}) *mockLocateService_UserInfoQuery_Call {
 	return &mockLocateService_UserInfoQuery_Call{Call: _e.mock.On("UserInfoQuery", ctx, sess, inFrame, inBody)}
 }
 
-func (_c *mockLocateService_UserInfoQuery_Call) Run(run func(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x02_0x05_LocateUserInfoQuery)) *mockLocateService_UserInfoQuery_Call {
+func (_c *mockLocateService_UserInfoQuery_Call) Run(run func(ctx context.Context, sess *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x02_0x05_LocateUserInfoQuery)) *mockLocateService_UserInfoQuery_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *state.Session
+		var arg1 *state.SessionInstance
 		if args[1] != nil {
-			arg1 = args[1].(*state.Session)
+			arg1 = args[1].(*state.SessionInstance)
 		}
 		var arg2 wire.SNACFrame
 		if args[2] != nil {
@@ -325,7 +325,7 @@ func (_c *mockLocateService_UserInfoQuery_Call) Return(sNACMessage wire.SNACMess
 	return _c
 }
 
-func (_c *mockLocateService_UserInfoQuery_Call) RunAndReturn(run func(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x02_0x05_LocateUserInfoQuery) (wire.SNACMessage, error)) *mockLocateService_UserInfoQuery_Call {
+func (_c *mockLocateService_UserInfoQuery_Call) RunAndReturn(run func(ctx context.Context, sess *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x02_0x05_LocateUserInfoQuery) (wire.SNACMessage, error)) *mockLocateService_UserInfoQuery_Call {
 	_c.Call.Return(run)
 	return _c
 }

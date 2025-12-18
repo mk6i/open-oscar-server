@@ -76,7 +76,7 @@ func (s LocateService) RightsQuery(_ context.Context, inFrame wire.SNACFrame) wi
 }
 
 // SetInfo sets the user's profile, away message or capabilities.
-func (s LocateService) SetInfo(ctx context.Context, sess *state.Session, inBody wire.SNAC_0x02_0x04_LocateSetInfo) error {
+func (s LocateService) SetInfo(ctx context.Context, sess *state.SessionInstance, inBody wire.SNAC_0x02_0x04_LocateSetInfo) error {
 
 	// update profile
 	if profileText, hasProfile := inBody.String(wire.LocateTLVTagsInfoSigData); hasProfile {
@@ -152,7 +152,7 @@ func newLocateErr(requestID uint32, errCode uint16) wire.SNACMessage {
 // UserInfoQuery fetches display information about an arbitrary user (not the
 // current user). It returns wire.LocateUserInfoReply, which contains the
 // profile, if requested, and/or the away message, if requested.
-func (s LocateService) UserInfoQuery(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x02_0x05_LocateUserInfoQuery) (wire.SNACMessage, error) {
+func (s LocateService) UserInfoQuery(ctx context.Context, sess *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x02_0x05_LocateUserInfoQuery) (wire.SNACMessage, error) {
 	identScreenName := state.NewIdentScreenName(inBody.ScreenName)
 
 	rel, err := s.relationshipFetcher.Relationship(ctx, sess.IdentScreenName(), identScreenName)
@@ -203,7 +203,7 @@ func (s LocateService) UserInfoQuery(ctx context.Context, sess *state.Session, i
 
 // SetDirInfo sets directory information for current user (first name, last
 // name, etc).
-func (s LocateService) SetDirInfo(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x02_0x09_LocateSetDirInfo) (wire.SNACMessage, error) {
+func (s LocateService) SetDirInfo(ctx context.Context, sess *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x02_0x09_LocateSetDirInfo) (wire.SNACMessage, error) {
 	info := newAIMNameAndAddrFromTLVList(inBody.TLVList)
 
 	if err := s.profileManager.SetDirectoryInfo(ctx, sess.IdentScreenName(), info); err != nil {
@@ -225,7 +225,7 @@ func (s LocateService) SetDirInfo(ctx context.Context, sess *state.Session, inFr
 // SetKeywordInfo sets profile keywords and interests. This method does nothing
 // and exists to placate the AIM client. It returns wire.LocateSetKeywordReply
 // with a canned success message.
-func (s LocateService) SetKeywordInfo(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, body wire.SNAC_0x02_0x0F_LocateSetKeywordInfo) (wire.SNACMessage, error) {
+func (s LocateService) SetKeywordInfo(ctx context.Context, sess *state.SessionInstance, inFrame wire.SNACFrame, body wire.SNAC_0x02_0x0F_LocateSetKeywordInfo) (wire.SNACMessage, error) {
 	var keywords [5]string
 
 	i := 0

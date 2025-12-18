@@ -152,7 +152,7 @@ type chatSessionRetrieverParams struct {
 // ChatSessionRetriever.AllSessions call site
 type chatSessionRetrieverAllSessionsParams []struct {
 	cookie string
-	result []*state.Session
+	result []*state.SessionInstance
 }
 
 type directoryManagerParams struct {
@@ -248,14 +248,14 @@ type sessionRetrieverParams struct {
 // sessionRetrieverAllSessionsParams is the list of parameters passed at the mock
 // SessionRetriever.AllSessions call site
 type sessionRetrieverAllSessionsParams []struct {
-	result []*state.Session
+	result []*state.SessionInstance
 }
 
 // retrieveSessionParams is the list of parameters passed at the mock
 // SessionRetriever.RetrieveSessionByName call site
 type retrieveSessionByNameParams []struct {
 	screenName state.IdentScreenName
-	result     *state.Session
+	result     *state.SessionInstance
 }
 
 // userManagerParams is a helper struct that contains mock parameters for

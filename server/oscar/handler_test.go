@@ -2787,7 +2787,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 	}
 	type reqParams struct {
 		ctx     context.Context
-		sess    *state.Session
+		sess    *state.SessionInstance
 		inFrame wire.SNACFrame
 		inBody  wire.SNAC_0x15_0x02_BQuery
 		rw      ResponseWriter

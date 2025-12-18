@@ -41,7 +41,7 @@ func (_m *mockOServiceService) EXPECT() *mockOServiceService_Expecter {
 }
 
 // ClientOnline provides a mock function for the type mockOServiceService
-func (_mock *mockOServiceService) ClientOnline(ctx context.Context, service uint16, bodyIn wire.SNAC_0x01_0x02_OServiceClientOnline, sess *state.Session) error {
+func (_mock *mockOServiceService) ClientOnline(ctx context.Context, service uint16, bodyIn wire.SNAC_0x01_0x02_OServiceClientOnline, sess *state.SessionInstance) error {
 	ret := _mock.Called(ctx, service, bodyIn, sess)
 
 	if len(ret) == 0 {
@@ -49,7 +49,7 @@ func (_mock *mockOServiceService) ClientOnline(ctx context.Context, service uint
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uint16, wire.SNAC_0x01_0x02_OServiceClientOnline, *state.Session) error); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint16, wire.SNAC_0x01_0x02_OServiceClientOnline, *state.SessionInstance) error); ok {
 		r0 = returnFunc(ctx, service, bodyIn, sess)
 	} else {
 		r0 = ret.Error(0)
@@ -66,12 +66,12 @@ type mockOServiceService_ClientOnline_Call struct {
 //   - ctx context.Context
 //   - service uint16
 //   - bodyIn wire.SNAC_0x01_0x02_OServiceClientOnline
-//   - sess *state.Session
+//   - sess *state.SessionInstance
 func (_e *mockOServiceService_Expecter) ClientOnline(ctx interface{}, service interface{}, bodyIn interface{}, sess interface{}) *mockOServiceService_ClientOnline_Call {
 	return &mockOServiceService_ClientOnline_Call{Call: _e.mock.On("ClientOnline", ctx, service, bodyIn, sess)}
 }
 
-func (_c *mockOServiceService_ClientOnline_Call) Run(run func(ctx context.Context, service uint16, bodyIn wire.SNAC_0x01_0x02_OServiceClientOnline, sess *state.Session)) *mockOServiceService_ClientOnline_Call {
+func (_c *mockOServiceService_ClientOnline_Call) Run(run func(ctx context.Context, service uint16, bodyIn wire.SNAC_0x01_0x02_OServiceClientOnline, sess *state.SessionInstance)) *mockOServiceService_ClientOnline_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -85,9 +85,9 @@ func (_c *mockOServiceService_ClientOnline_Call) Run(run func(ctx context.Contex
 		if args[2] != nil {
 			arg2 = args[2].(wire.SNAC_0x01_0x02_OServiceClientOnline)
 		}
-		var arg3 *state.Session
+		var arg3 *state.SessionInstance
 		if args[3] != nil {
-			arg3 = args[3].(*state.Session)
+			arg3 = args[3].(*state.SessionInstance)
 		}
 		run(
 			arg0,
@@ -104,13 +104,13 @@ func (_c *mockOServiceService_ClientOnline_Call) Return(err error) *mockOService
 	return _c
 }
 
-func (_c *mockOServiceService_ClientOnline_Call) RunAndReturn(run func(ctx context.Context, service uint16, bodyIn wire.SNAC_0x01_0x02_OServiceClientOnline, sess *state.Session) error) *mockOServiceService_ClientOnline_Call {
+func (_c *mockOServiceService_ClientOnline_Call) RunAndReturn(run func(ctx context.Context, service uint16, bodyIn wire.SNAC_0x01_0x02_OServiceClientOnline, sess *state.SessionInstance) error) *mockOServiceService_ClientOnline_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // ClientVersions provides a mock function for the type mockOServiceService
-func (_mock *mockOServiceService) ClientVersions(ctx context.Context, sess *state.Session, frame wire.SNACFrame, bodyIn wire.SNAC_0x01_0x17_OServiceClientVersions) wire.SNACMessage {
+func (_mock *mockOServiceService) ClientVersions(ctx context.Context, sess *state.SessionInstance, frame wire.SNACFrame, bodyIn wire.SNAC_0x01_0x17_OServiceClientVersions) wire.SNACMessage {
 	ret := _mock.Called(ctx, sess, frame, bodyIn)
 
 	if len(ret) == 0 {
@@ -118,7 +118,7 @@ func (_mock *mockOServiceService) ClientVersions(ctx context.Context, sess *stat
 	}
 
 	var r0 wire.SNACMessage
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.Session, wire.SNACFrame, wire.SNAC_0x01_0x17_OServiceClientVersions) wire.SNACMessage); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x01_0x17_OServiceClientVersions) wire.SNACMessage); ok {
 		r0 = returnFunc(ctx, sess, frame, bodyIn)
 	} else {
 		r0 = ret.Get(0).(wire.SNACMessage)
@@ -133,22 +133,22 @@ type mockOServiceService_ClientVersions_Call struct {
 
 // ClientVersions is a helper method to define mock.On call
 //   - ctx context.Context
-//   - sess *state.Session
+//   - sess *state.SessionInstance
 //   - frame wire.SNACFrame
 //   - bodyIn wire.SNAC_0x01_0x17_OServiceClientVersions
 func (_e *mockOServiceService_Expecter) ClientVersions(ctx interface{}, sess interface{}, frame interface{}, bodyIn interface{}) *mockOServiceService_ClientVersions_Call {
 	return &mockOServiceService_ClientVersions_Call{Call: _e.mock.On("ClientVersions", ctx, sess, frame, bodyIn)}
 }
 
-func (_c *mockOServiceService_ClientVersions_Call) Run(run func(ctx context.Context, sess *state.Session, frame wire.SNACFrame, bodyIn wire.SNAC_0x01_0x17_OServiceClientVersions)) *mockOServiceService_ClientVersions_Call {
+func (_c *mockOServiceService_ClientVersions_Call) Run(run func(ctx context.Context, sess *state.SessionInstance, frame wire.SNACFrame, bodyIn wire.SNAC_0x01_0x17_OServiceClientVersions)) *mockOServiceService_ClientVersions_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *state.Session
+		var arg1 *state.SessionInstance
 		if args[1] != nil {
-			arg1 = args[1].(*state.Session)
+			arg1 = args[1].(*state.SessionInstance)
 		}
 		var arg2 wire.SNACFrame
 		if args[2] != nil {
@@ -173,7 +173,7 @@ func (_c *mockOServiceService_ClientVersions_Call) Return(sNACMessage wire.SNACM
 	return _c
 }
 
-func (_c *mockOServiceService_ClientVersions_Call) RunAndReturn(run func(ctx context.Context, sess *state.Session, frame wire.SNACFrame, bodyIn wire.SNAC_0x01_0x17_OServiceClientVersions) wire.SNACMessage) *mockOServiceService_ClientVersions_Call {
+func (_c *mockOServiceService_ClientVersions_Call) RunAndReturn(run func(ctx context.Context, sess *state.SessionInstance, frame wire.SNACFrame, bodyIn wire.SNAC_0x01_0x17_OServiceClientVersions) wire.SNACMessage) *mockOServiceService_ClientVersions_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -230,7 +230,7 @@ func (_c *mockOServiceService_HostOnline_Call) RunAndReturn(run func(service uin
 }
 
 // IdleNotification provides a mock function for the type mockOServiceService
-func (_mock *mockOServiceService) IdleNotification(ctx context.Context, sess *state.Session, bodyIn wire.SNAC_0x01_0x11_OServiceIdleNotification) error {
+func (_mock *mockOServiceService) IdleNotification(ctx context.Context, sess *state.SessionInstance, bodyIn wire.SNAC_0x01_0x11_OServiceIdleNotification) error {
 	ret := _mock.Called(ctx, sess, bodyIn)
 
 	if len(ret) == 0 {
@@ -238,7 +238,7 @@ func (_mock *mockOServiceService) IdleNotification(ctx context.Context, sess *st
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.Session, wire.SNAC_0x01_0x11_OServiceIdleNotification) error); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNAC_0x01_0x11_OServiceIdleNotification) error); ok {
 		r0 = returnFunc(ctx, sess, bodyIn)
 	} else {
 		r0 = ret.Error(0)
@@ -253,21 +253,21 @@ type mockOServiceService_IdleNotification_Call struct {
 
 // IdleNotification is a helper method to define mock.On call
 //   - ctx context.Context
-//   - sess *state.Session
+//   - sess *state.SessionInstance
 //   - bodyIn wire.SNAC_0x01_0x11_OServiceIdleNotification
 func (_e *mockOServiceService_Expecter) IdleNotification(ctx interface{}, sess interface{}, bodyIn interface{}) *mockOServiceService_IdleNotification_Call {
 	return &mockOServiceService_IdleNotification_Call{Call: _e.mock.On("IdleNotification", ctx, sess, bodyIn)}
 }
 
-func (_c *mockOServiceService_IdleNotification_Call) Run(run func(ctx context.Context, sess *state.Session, bodyIn wire.SNAC_0x01_0x11_OServiceIdleNotification)) *mockOServiceService_IdleNotification_Call {
+func (_c *mockOServiceService_IdleNotification_Call) Run(run func(ctx context.Context, sess *state.SessionInstance, bodyIn wire.SNAC_0x01_0x11_OServiceIdleNotification)) *mockOServiceService_IdleNotification_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *state.Session
+		var arg1 *state.SessionInstance
 		if args[1] != nil {
-			arg1 = args[1].(*state.Session)
+			arg1 = args[1].(*state.SessionInstance)
 		}
 		var arg2 wire.SNAC_0x01_0x11_OServiceIdleNotification
 		if args[2] != nil {
@@ -287,13 +287,13 @@ func (_c *mockOServiceService_IdleNotification_Call) Return(err error) *mockOSer
 	return _c
 }
 
-func (_c *mockOServiceService_IdleNotification_Call) RunAndReturn(run func(ctx context.Context, sess *state.Session, bodyIn wire.SNAC_0x01_0x11_OServiceIdleNotification) error) *mockOServiceService_IdleNotification_Call {
+func (_c *mockOServiceService_IdleNotification_Call) RunAndReturn(run func(ctx context.Context, sess *state.SessionInstance, bodyIn wire.SNAC_0x01_0x11_OServiceIdleNotification) error) *mockOServiceService_IdleNotification_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // RateParamsQuery provides a mock function for the type mockOServiceService
-func (_mock *mockOServiceService) RateParamsQuery(ctx context.Context, sess *state.Session, frame wire.SNACFrame) wire.SNACMessage {
+func (_mock *mockOServiceService) RateParamsQuery(ctx context.Context, sess *state.SessionInstance, frame wire.SNACFrame) wire.SNACMessage {
 	ret := _mock.Called(ctx, sess, frame)
 
 	if len(ret) == 0 {
@@ -301,7 +301,7 @@ func (_mock *mockOServiceService) RateParamsQuery(ctx context.Context, sess *sta
 	}
 
 	var r0 wire.SNACMessage
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.Session, wire.SNACFrame) wire.SNACMessage); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame) wire.SNACMessage); ok {
 		r0 = returnFunc(ctx, sess, frame)
 	} else {
 		r0 = ret.Get(0).(wire.SNACMessage)
@@ -316,21 +316,21 @@ type mockOServiceService_RateParamsQuery_Call struct {
 
 // RateParamsQuery is a helper method to define mock.On call
 //   - ctx context.Context
-//   - sess *state.Session
+//   - sess *state.SessionInstance
 //   - frame wire.SNACFrame
 func (_e *mockOServiceService_Expecter) RateParamsQuery(ctx interface{}, sess interface{}, frame interface{}) *mockOServiceService_RateParamsQuery_Call {
 	return &mockOServiceService_RateParamsQuery_Call{Call: _e.mock.On("RateParamsQuery", ctx, sess, frame)}
 }
 
-func (_c *mockOServiceService_RateParamsQuery_Call) Run(run func(ctx context.Context, sess *state.Session, frame wire.SNACFrame)) *mockOServiceService_RateParamsQuery_Call {
+func (_c *mockOServiceService_RateParamsQuery_Call) Run(run func(ctx context.Context, sess *state.SessionInstance, frame wire.SNACFrame)) *mockOServiceService_RateParamsQuery_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *state.Session
+		var arg1 *state.SessionInstance
 		if args[1] != nil {
-			arg1 = args[1].(*state.Session)
+			arg1 = args[1].(*state.SessionInstance)
 		}
 		var arg2 wire.SNACFrame
 		if args[2] != nil {
@@ -350,14 +350,14 @@ func (_c *mockOServiceService_RateParamsQuery_Call) Return(sNACMessage wire.SNAC
 	return _c
 }
 
-func (_c *mockOServiceService_RateParamsQuery_Call) RunAndReturn(run func(ctx context.Context, sess *state.Session, frame wire.SNACFrame) wire.SNACMessage) *mockOServiceService_RateParamsQuery_Call {
+func (_c *mockOServiceService_RateParamsQuery_Call) RunAndReturn(run func(ctx context.Context, sess *state.SessionInstance, frame wire.SNACFrame) wire.SNACMessage) *mockOServiceService_RateParamsQuery_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // RateParamsSubAdd provides a mock function for the type mockOServiceService
-func (_mock *mockOServiceService) RateParamsSubAdd(context1 context.Context, session *state.Session, sNAC_0x01_0x08_OServiceRateParamsSubAdd wire.SNAC_0x01_0x08_OServiceRateParamsSubAdd) {
-	_mock.Called(context1, session, sNAC_0x01_0x08_OServiceRateParamsSubAdd)
+func (_mock *mockOServiceService) RateParamsSubAdd(context1 context.Context, sessionInstance *state.SessionInstance, sNAC_0x01_0x08_OServiceRateParamsSubAdd wire.SNAC_0x01_0x08_OServiceRateParamsSubAdd) {
+	_mock.Called(context1, sessionInstance, sNAC_0x01_0x08_OServiceRateParamsSubAdd)
 	return
 }
 
@@ -368,21 +368,21 @@ type mockOServiceService_RateParamsSubAdd_Call struct {
 
 // RateParamsSubAdd is a helper method to define mock.On call
 //   - context1 context.Context
-//   - session *state.Session
+//   - sessionInstance *state.SessionInstance
 //   - sNAC_0x01_0x08_OServiceRateParamsSubAdd wire.SNAC_0x01_0x08_OServiceRateParamsSubAdd
-func (_e *mockOServiceService_Expecter) RateParamsSubAdd(context1 interface{}, session interface{}, sNAC_0x01_0x08_OServiceRateParamsSubAdd interface{}) *mockOServiceService_RateParamsSubAdd_Call {
-	return &mockOServiceService_RateParamsSubAdd_Call{Call: _e.mock.On("RateParamsSubAdd", context1, session, sNAC_0x01_0x08_OServiceRateParamsSubAdd)}
+func (_e *mockOServiceService_Expecter) RateParamsSubAdd(context1 interface{}, sessionInstance interface{}, sNAC_0x01_0x08_OServiceRateParamsSubAdd interface{}) *mockOServiceService_RateParamsSubAdd_Call {
+	return &mockOServiceService_RateParamsSubAdd_Call{Call: _e.mock.On("RateParamsSubAdd", context1, sessionInstance, sNAC_0x01_0x08_OServiceRateParamsSubAdd)}
 }
 
-func (_c *mockOServiceService_RateParamsSubAdd_Call) Run(run func(context1 context.Context, session *state.Session, sNAC_0x01_0x08_OServiceRateParamsSubAdd wire.SNAC_0x01_0x08_OServiceRateParamsSubAdd)) *mockOServiceService_RateParamsSubAdd_Call {
+func (_c *mockOServiceService_RateParamsSubAdd_Call) Run(run func(context1 context.Context, sessionInstance *state.SessionInstance, sNAC_0x01_0x08_OServiceRateParamsSubAdd wire.SNAC_0x01_0x08_OServiceRateParamsSubAdd)) *mockOServiceService_RateParamsSubAdd_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *state.Session
+		var arg1 *state.SessionInstance
 		if args[1] != nil {
-			arg1 = args[1].(*state.Session)
+			arg1 = args[1].(*state.SessionInstance)
 		}
 		var arg2 wire.SNAC_0x01_0x08_OServiceRateParamsSubAdd
 		if args[2] != nil {
@@ -402,13 +402,13 @@ func (_c *mockOServiceService_RateParamsSubAdd_Call) Return() *mockOServiceServi
 	return _c
 }
 
-func (_c *mockOServiceService_RateParamsSubAdd_Call) RunAndReturn(run func(context1 context.Context, session *state.Session, sNAC_0x01_0x08_OServiceRateParamsSubAdd wire.SNAC_0x01_0x08_OServiceRateParamsSubAdd)) *mockOServiceService_RateParamsSubAdd_Call {
+func (_c *mockOServiceService_RateParamsSubAdd_Call) RunAndReturn(run func(context1 context.Context, sessionInstance *state.SessionInstance, sNAC_0x01_0x08_OServiceRateParamsSubAdd wire.SNAC_0x01_0x08_OServiceRateParamsSubAdd)) *mockOServiceService_RateParamsSubAdd_Call {
 	_c.Run(run)
 	return _c
 }
 
 // ServiceRequest provides a mock function for the type mockOServiceService
-func (_mock *mockOServiceService) ServiceRequest(ctx context.Context, service uint16, sess *state.Session, frame wire.SNACFrame, bodyIn wire.SNAC_0x01_0x04_OServiceServiceRequest, advertisedHost config.Listener) (wire.SNACMessage, error) {
+func (_mock *mockOServiceService) ServiceRequest(ctx context.Context, service uint16, sess *state.SessionInstance, frame wire.SNACFrame, bodyIn wire.SNAC_0x01_0x04_OServiceServiceRequest, advertisedHost config.Listener) (wire.SNACMessage, error) {
 	ret := _mock.Called(ctx, service, sess, frame, bodyIn, advertisedHost)
 
 	if len(ret) == 0 {
@@ -417,15 +417,15 @@ func (_mock *mockOServiceService) ServiceRequest(ctx context.Context, service ui
 
 	var r0 wire.SNACMessage
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uint16, *state.Session, wire.SNACFrame, wire.SNAC_0x01_0x04_OServiceServiceRequest, config.Listener) (wire.SNACMessage, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint16, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x01_0x04_OServiceServiceRequest, config.Listener) (wire.SNACMessage, error)); ok {
 		return returnFunc(ctx, service, sess, frame, bodyIn, advertisedHost)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uint16, *state.Session, wire.SNACFrame, wire.SNAC_0x01_0x04_OServiceServiceRequest, config.Listener) wire.SNACMessage); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint16, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x01_0x04_OServiceServiceRequest, config.Listener) wire.SNACMessage); ok {
 		r0 = returnFunc(ctx, service, sess, frame, bodyIn, advertisedHost)
 	} else {
 		r0 = ret.Get(0).(wire.SNACMessage)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, uint16, *state.Session, wire.SNACFrame, wire.SNAC_0x01_0x04_OServiceServiceRequest, config.Listener) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, uint16, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x01_0x04_OServiceServiceRequest, config.Listener) error); ok {
 		r1 = returnFunc(ctx, service, sess, frame, bodyIn, advertisedHost)
 	} else {
 		r1 = ret.Error(1)
@@ -441,7 +441,7 @@ type mockOServiceService_ServiceRequest_Call struct {
 // ServiceRequest is a helper method to define mock.On call
 //   - ctx context.Context
 //   - service uint16
-//   - sess *state.Session
+//   - sess *state.SessionInstance
 //   - frame wire.SNACFrame
 //   - bodyIn wire.SNAC_0x01_0x04_OServiceServiceRequest
 //   - advertisedHost config.Listener
@@ -449,7 +449,7 @@ func (_e *mockOServiceService_Expecter) ServiceRequest(ctx interface{}, service 
 	return &mockOServiceService_ServiceRequest_Call{Call: _e.mock.On("ServiceRequest", ctx, service, sess, frame, bodyIn, advertisedHost)}
 }
 
-func (_c *mockOServiceService_ServiceRequest_Call) Run(run func(ctx context.Context, service uint16, sess *state.Session, frame wire.SNACFrame, bodyIn wire.SNAC_0x01_0x04_OServiceServiceRequest, advertisedHost config.Listener)) *mockOServiceService_ServiceRequest_Call {
+func (_c *mockOServiceService_ServiceRequest_Call) Run(run func(ctx context.Context, service uint16, sess *state.SessionInstance, frame wire.SNACFrame, bodyIn wire.SNAC_0x01_0x04_OServiceServiceRequest, advertisedHost config.Listener)) *mockOServiceService_ServiceRequest_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -459,9 +459,9 @@ func (_c *mockOServiceService_ServiceRequest_Call) Run(run func(ctx context.Cont
 		if args[1] != nil {
 			arg1 = args[1].(uint16)
 		}
-		var arg2 *state.Session
+		var arg2 *state.SessionInstance
 		if args[2] != nil {
-			arg2 = args[2].(*state.Session)
+			arg2 = args[2].(*state.SessionInstance)
 		}
 		var arg3 wire.SNACFrame
 		if args[3] != nil {
@@ -492,7 +492,7 @@ func (_c *mockOServiceService_ServiceRequest_Call) Return(sNACMessage wire.SNACM
 	return _c
 }
 
-func (_c *mockOServiceService_ServiceRequest_Call) RunAndReturn(run func(ctx context.Context, service uint16, sess *state.Session, frame wire.SNACFrame, bodyIn wire.SNAC_0x01_0x04_OServiceServiceRequest, advertisedHost config.Listener) (wire.SNACMessage, error)) *mockOServiceService_ServiceRequest_Call {
+func (_c *mockOServiceService_ServiceRequest_Call) RunAndReturn(run func(ctx context.Context, service uint16, sess *state.SessionInstance, frame wire.SNACFrame, bodyIn wire.SNAC_0x01_0x04_OServiceServiceRequest, advertisedHost config.Listener) (wire.SNACMessage, error)) *mockOServiceService_ServiceRequest_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -544,7 +544,7 @@ func (_c *mockOServiceService_SetPrivacyFlags_Call) RunAndReturn(run func(ctx co
 }
 
 // SetUserInfoFields provides a mock function for the type mockOServiceService
-func (_mock *mockOServiceService) SetUserInfoFields(ctx context.Context, sess *state.Session, frame wire.SNACFrame, bodyIn wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields) (wire.SNACMessage, error) {
+func (_mock *mockOServiceService) SetUserInfoFields(ctx context.Context, sess *state.SessionInstance, frame wire.SNACFrame, bodyIn wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields) (wire.SNACMessage, error) {
 	ret := _mock.Called(ctx, sess, frame, bodyIn)
 
 	if len(ret) == 0 {
@@ -553,15 +553,15 @@ func (_mock *mockOServiceService) SetUserInfoFields(ctx context.Context, sess *s
 
 	var r0 wire.SNACMessage
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.Session, wire.SNACFrame, wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields) (wire.SNACMessage, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields) (wire.SNACMessage, error)); ok {
 		return returnFunc(ctx, sess, frame, bodyIn)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.Session, wire.SNACFrame, wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields) wire.SNACMessage); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields) wire.SNACMessage); ok {
 		r0 = returnFunc(ctx, sess, frame, bodyIn)
 	} else {
 		r0 = ret.Get(0).(wire.SNACMessage)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, *state.Session, wire.SNACFrame, wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields) error); ok {
 		r1 = returnFunc(ctx, sess, frame, bodyIn)
 	} else {
 		r1 = ret.Error(1)
@@ -576,22 +576,22 @@ type mockOServiceService_SetUserInfoFields_Call struct {
 
 // SetUserInfoFields is a helper method to define mock.On call
 //   - ctx context.Context
-//   - sess *state.Session
+//   - sess *state.SessionInstance
 //   - frame wire.SNACFrame
 //   - bodyIn wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields
 func (_e *mockOServiceService_Expecter) SetUserInfoFields(ctx interface{}, sess interface{}, frame interface{}, bodyIn interface{}) *mockOServiceService_SetUserInfoFields_Call {
 	return &mockOServiceService_SetUserInfoFields_Call{Call: _e.mock.On("SetUserInfoFields", ctx, sess, frame, bodyIn)}
 }
 
-func (_c *mockOServiceService_SetUserInfoFields_Call) Run(run func(ctx context.Context, sess *state.Session, frame wire.SNACFrame, bodyIn wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields)) *mockOServiceService_SetUserInfoFields_Call {
+func (_c *mockOServiceService_SetUserInfoFields_Call) Run(run func(ctx context.Context, sess *state.SessionInstance, frame wire.SNACFrame, bodyIn wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields)) *mockOServiceService_SetUserInfoFields_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *state.Session
+		var arg1 *state.SessionInstance
 		if args[1] != nil {
-			arg1 = args[1].(*state.Session)
+			arg1 = args[1].(*state.SessionInstance)
 		}
 		var arg2 wire.SNACFrame
 		if args[2] != nil {
@@ -616,13 +616,13 @@ func (_c *mockOServiceService_SetUserInfoFields_Call) Return(sNACMessage wire.SN
 	return _c
 }
 
-func (_c *mockOServiceService_SetUserInfoFields_Call) RunAndReturn(run func(ctx context.Context, sess *state.Session, frame wire.SNACFrame, bodyIn wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields) (wire.SNACMessage, error)) *mockOServiceService_SetUserInfoFields_Call {
+func (_c *mockOServiceService_SetUserInfoFields_Call) RunAndReturn(run func(ctx context.Context, sess *state.SessionInstance, frame wire.SNACFrame, bodyIn wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields) (wire.SNACMessage, error)) *mockOServiceService_SetUserInfoFields_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // UserInfoQuery provides a mock function for the type mockOServiceService
-func (_mock *mockOServiceService) UserInfoQuery(ctx context.Context, sess *state.Session, frame wire.SNACFrame) wire.SNACMessage {
+func (_mock *mockOServiceService) UserInfoQuery(ctx context.Context, sess *state.SessionInstance, frame wire.SNACFrame) wire.SNACMessage {
 	ret := _mock.Called(ctx, sess, frame)
 
 	if len(ret) == 0 {
@@ -630,7 +630,7 @@ func (_mock *mockOServiceService) UserInfoQuery(ctx context.Context, sess *state
 	}
 
 	var r0 wire.SNACMessage
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.Session, wire.SNACFrame) wire.SNACMessage); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame) wire.SNACMessage); ok {
 		r0 = returnFunc(ctx, sess, frame)
 	} else {
 		r0 = ret.Get(0).(wire.SNACMessage)
@@ -645,21 +645,21 @@ type mockOServiceService_UserInfoQuery_Call struct {
 
 // UserInfoQuery is a helper method to define mock.On call
 //   - ctx context.Context
-//   - sess *state.Session
+//   - sess *state.SessionInstance
 //   - frame wire.SNACFrame
 func (_e *mockOServiceService_Expecter) UserInfoQuery(ctx interface{}, sess interface{}, frame interface{}) *mockOServiceService_UserInfoQuery_Call {
 	return &mockOServiceService_UserInfoQuery_Call{Call: _e.mock.On("UserInfoQuery", ctx, sess, frame)}
 }
 
-func (_c *mockOServiceService_UserInfoQuery_Call) Run(run func(ctx context.Context, sess *state.Session, frame wire.SNACFrame)) *mockOServiceService_UserInfoQuery_Call {
+func (_c *mockOServiceService_UserInfoQuery_Call) Run(run func(ctx context.Context, sess *state.SessionInstance, frame wire.SNACFrame)) *mockOServiceService_UserInfoQuery_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *state.Session
+		var arg1 *state.SessionInstance
 		if args[1] != nil {
-			arg1 = args[1].(*state.Session)
+			arg1 = args[1].(*state.SessionInstance)
 		}
 		var arg2 wire.SNACFrame
 		if args[2] != nil {
@@ -679,7 +679,7 @@ func (_c *mockOServiceService_UserInfoQuery_Call) Return(sNACMessage wire.SNACMe
 	return _c
 }
 
-func (_c *mockOServiceService_UserInfoQuery_Call) RunAndReturn(run func(ctx context.Context, sess *state.Session, frame wire.SNACFrame) wire.SNACMessage) *mockOServiceService_UserInfoQuery_Call {
+func (_c *mockOServiceService_UserInfoQuery_Call) RunAndReturn(run func(ctx context.Context, sess *state.SessionInstance, frame wire.SNACFrame) wire.SNACMessage) *mockOServiceService_UserInfoQuery_Call {
 	_c.Call.Return(run)
 	return _c
 }

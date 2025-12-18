@@ -37,19 +37,19 @@ func (_m *mockChatSessionRetriever) EXPECT() *mockChatSessionRetriever_Expecter 
 }
 
 // AllSessions provides a mock function for the type mockChatSessionRetriever
-func (_mock *mockChatSessionRetriever) AllSessions(cookie string) []*state.Session {
+func (_mock *mockChatSessionRetriever) AllSessions(cookie string) []*state.SessionInstance {
 	ret := _mock.Called(cookie)
 
 	if len(ret) == 0 {
 		panic("no return value specified for AllSessions")
 	}
 
-	var r0 []*state.Session
-	if returnFunc, ok := ret.Get(0).(func(string) []*state.Session); ok {
+	var r0 []*state.SessionInstance
+	if returnFunc, ok := ret.Get(0).(func(string) []*state.SessionInstance); ok {
 		r0 = returnFunc(cookie)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]*state.Session)
+			r0 = ret.Get(0).([]*state.SessionInstance)
 		}
 	}
 	return r0
@@ -79,12 +79,12 @@ func (_c *mockChatSessionRetriever_AllSessions_Call) Run(run func(cookie string)
 	return _c
 }
 
-func (_c *mockChatSessionRetriever_AllSessions_Call) Return(sessions []*state.Session) *mockChatSessionRetriever_AllSessions_Call {
-	_c.Call.Return(sessions)
+func (_c *mockChatSessionRetriever_AllSessions_Call) Return(sessionInstances []*state.SessionInstance) *mockChatSessionRetriever_AllSessions_Call {
+	_c.Call.Return(sessionInstances)
 	return _c
 }
 
-func (_c *mockChatSessionRetriever_AllSessions_Call) RunAndReturn(run func(cookie string) []*state.Session) *mockChatSessionRetriever_AllSessions_Call {
+func (_c *mockChatSessionRetriever_AllSessions_Call) RunAndReturn(run func(cookie string) []*state.SessionInstance) *mockChatSessionRetriever_AllSessions_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -38,7 +38,7 @@ type AdminService struct {
 }
 
 // ConfirmRequest will mark the user account as confirmed if the user has an email address set
-func (s AdminService) ConfirmRequest(ctx context.Context, sess *state.Session, frame wire.SNACFrame) (wire.SNACMessage, error) {
+func (s AdminService) ConfirmRequest(ctx context.Context, sess *state.SessionInstance, frame wire.SNACFrame) (wire.SNACMessage, error) {
 	// getAdminInfoReply returns an AdminAcctConfirmReply SNAC
 	var getAdminConfirmReply = func(status uint16) wire.SNACMessage {
 		return wire.SNACMessage{
@@ -78,7 +78,7 @@ func (s AdminService) ConfirmRequest(ctx context.Context, sess *state.Session, f
 }
 
 // InfoQuery returns the requested information about the account
-func (s AdminService) InfoQuery(ctx context.Context, sess *state.Session, frame wire.SNACFrame, body wire.SNAC_0x07_0x02_AdminInfoQuery) (wire.SNACMessage, error) {
+func (s AdminService) InfoQuery(ctx context.Context, sess *state.SessionInstance, frame wire.SNACFrame, body wire.SNAC_0x07_0x02_AdminInfoQuery) (wire.SNACMessage, error) {
 	// getAdminInfoReply returns an AdminInfoReply SNAC
 	var getAdminInfoReply = func(tlvList wire.TLVList) wire.SNACMessage {
 		return wire.SNACMessage{
@@ -137,7 +137,7 @@ func (s AdminService) InfoQuery(ctx context.Context, sess *state.Session, frame 
 }
 
 // InfoChangeRequest handles the user changing account information
-func (s AdminService) InfoChangeRequest(ctx context.Context, sess *state.Session, frame wire.SNACFrame, body wire.SNAC_0x07_0x04_AdminInfoChangeRequest) (wire.SNACMessage, error) {
+func (s AdminService) InfoChangeRequest(ctx context.Context, sess *state.SessionInstance, frame wire.SNACFrame, body wire.SNAC_0x07_0x04_AdminInfoChangeRequest) (wire.SNACMessage, error) {
 	// replyMessage builds and returns an AdminChangeReply SNAC
 	var getAdminChangeReply = func(tlvList wire.TLVList) wire.SNACMessage {
 		return wire.SNACMessage{

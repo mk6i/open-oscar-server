@@ -20,7 +20,7 @@ func TestFeedbagService_Query(t *testing.T) {
 		// name is the unit test name
 		name string
 		// userSession is the session of the user adding to feedbag
-		userSession *state.Session
+		userSession *state.SessionInstance
 		// inputSNAC is the SNAC sent from the client to the server
 		inputSNAC wire.SNACMessage
 		// mockParams is the list of params sent to mocks that satisfy this
@@ -145,7 +145,7 @@ func TestFeedbagService_QueryIfModified(t *testing.T) {
 		// name is the unit test name
 		name string
 		// userSession is the session of the user adding to feedbag
-		userSession *state.Session
+		userSession *state.SessionInstance
 		// inputSNAC is the SNAC sent from the client to the server
 		inputSNAC wire.SNACMessage
 		// mockParams is the list of params sent to mocks that satisfy this
@@ -386,7 +386,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 		// name is the unit test name
 		name string
 		// userSession is the session of the user adding to feedbag
-		userSession *state.Session
+		userSession *state.SessionInstance
 		// inputSNAC is the SNAC sent from the client to the server
 		inputSNAC wire.SNACMessage
 		// mockParams is the list of params sent to mocks that satisfy this
@@ -397,7 +397,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 		// wantTypingEventsEnabled indicates that the session should have typing events enabled
 		wantTypingEventsEnabled bool
 		// sessionMatch verifies the session state after completion
-		sessionMatch func(session *state.Session)
+		sessionMatch func(session *state.SessionInstance)
 	}{
 		{
 			name:        "add buddies",
@@ -1102,7 +1102,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 				},
 			},
 			expectOutput: nil,
-			sessionMatch: func(session *state.Session) {
+			sessionMatch: func(session *state.SessionInstance) {
 				have, hasIcon := session.BuddyIcon()
 				assert.True(t, hasIcon)
 				want := wire.BARTID{
@@ -1267,7 +1267,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 				},
 			},
 			expectOutput: nil,
-			sessionMatch: func(session *state.Session) {
+			sessionMatch: func(session *state.SessionInstance) {
 				have, hasIcon := session.BuddyIcon()
 				assert.True(t, hasIcon)
 				want := wire.BARTID{
@@ -1420,7 +1420,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 				},
 			},
 			expectOutput: nil,
-			sessionMatch: func(session *state.Session) {
+			sessionMatch: func(session *state.SessionInstance) {
 				bartInfo, hasIcon := session.BuddyIcon()
 				assert.True(t, hasIcon)
 				assert.Equal(t, wire.GetClearIconHash(), bartInfo.Hash)
@@ -1549,7 +1549,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 				},
 			},
 			expectOutput: nil,
-			sessionMatch: func(session *state.Session) {
+			sessionMatch: func(session *state.SessionInstance) {
 				_, hasIcon := session.BuddyIcon()
 				assert.False(t, hasIcon)
 			},
@@ -1625,7 +1625,7 @@ func TestFeedbagService_DeleteItem(t *testing.T) {
 		// name is the unit test name
 		name string
 		// userSession is the session of the user adding to feedbag
-		userSession *state.Session
+		userSession *state.SessionInstance
 		// inputSNAC is the SNAC sent from the client to the server
 		inputSNAC wire.SNACMessage
 		// mockParams is the list of params sent to mocks that satisfy this
@@ -1785,7 +1785,7 @@ func TestFeedbagService_Use(t *testing.T) {
 		// name is the name of the test
 		name string
 		// sess is the user's session
-		sess *state.Session
+		sess *state.SessionInstance
 		// bodyIn is the SNAC body sent from the arriving user's client to the
 		// server
 		bodyIn wire.SNAC_0x01_0x02_OServiceClientOnline
@@ -1906,7 +1906,7 @@ func TestFeedbagService_Use(t *testing.T) {
 func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 	tests := []struct {
 		name       string
-		sess       *state.Session
+		sess       *state.SessionInstance
 		bodyIn     wire.SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost
 		mockParams mockParams
 		wantErr    error

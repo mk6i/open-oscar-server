@@ -52,7 +52,7 @@ func (s BuddyService) RightsQuery(_ context.Context, frameIn wire.SNACFrame) wir
 // AddBuddies adds buddies to my client-side buddy list.
 func (s BuddyService) AddBuddies(
 	ctx context.Context,
-	sess *state.Session,
+	sess *state.SessionInstance,
 	inBody wire.SNAC_0x03_0x04_BuddyAddBuddies,
 ) error {
 
@@ -81,7 +81,7 @@ func (s BuddyService) AddBuddies(
 }
 
 // DelBuddies deletes buddies from my client-side buddy list.
-func (s BuddyService) DelBuddies(ctx context.Context, sess *state.Session, inBody wire.SNAC_0x03_0x05_BuddyDelBuddies) error {
+func (s BuddyService) DelBuddies(ctx context.Context, sess *state.SessionInstance, inBody wire.SNAC_0x03_0x05_BuddyDelBuddies) error {
 
 	var toNotify []state.IdentScreenName
 
@@ -102,7 +102,7 @@ func (s BuddyService) DelBuddies(ctx context.Context, sess *state.Session, inBod
 
 // AddTempBuddies adds temporary buddies to the user's buddy list that persist
 // for the duration of the user's session.
-func (s BuddyService) AddTempBuddies(ctx context.Context, sess *state.Session, snac wire.SNAC_0x03_0x0F_BuddyAddTempBuddies) error {
+func (s BuddyService) AddTempBuddies(ctx context.Context, sess *state.SessionInstance, snac wire.SNAC_0x03_0x0F_BuddyAddTempBuddies) error {
 	var inBody wire.SNAC_0x03_0x04_BuddyAddBuddies
 
 	for _, buddy := range snac.Buddies {
@@ -115,7 +115,7 @@ func (s BuddyService) AddTempBuddies(ctx context.Context, sess *state.Session, s
 }
 
 // DelTempBuddies deletes temporary buddies from the user's buddy list.
-func (s BuddyService) DelTempBuddies(ctx context.Context, sess *state.Session, snac wire.SNAC_0x03_0x10_BuddyDelTempBuddies) error {
+func (s BuddyService) DelTempBuddies(ctx context.Context, sess *state.SessionInstance, snac wire.SNAC_0x03_0x10_BuddyDelTempBuddies) error {
 	var inBody wire.SNAC_0x03_0x05_BuddyDelBuddies
 
 	for _, buddy := range snac.Buddies {
@@ -132,7 +132,7 @@ func (s BuddyService) BroadcastBuddyArrived(ctx context.Context, screenName stat
 	return s.buddyBroadcaster.BroadcastBuddyArrived(ctx, screenName, userInfo)
 }
 
-func (s BuddyService) BroadcastBuddyDeparted(ctx context.Context, sess *state.Session) error {
+func (s BuddyService) BroadcastBuddyDeparted(ctx context.Context, sess *state.SessionInstance) error {
 	return s.buddyBroadcaster.BroadcastBuddyDeparted(ctx, sess)
 }
 
@@ -191,7 +191,7 @@ func (s buddyNotifier) BroadcastBuddyArrived(ctx context.Context, screenName sta
 	return nil
 }
 
-func (s buddyNotifier) BroadcastBuddyDeparted(ctx context.Context, sess *state.Session) error {
+func (s buddyNotifier) BroadcastBuddyDeparted(ctx context.Context, sess *state.SessionInstance) error {
 	users, err := s.relationshipFetcher.AllRelationships(ctx, sess.IdentScreenName(), nil)
 	if err != nil {
 		return err
@@ -249,7 +249,7 @@ func (s buddyNotifier) BroadcastBuddyDeparted(ctx context.Context, sess *state.S
 // all relevant users are notified of your arrival or departure status.
 func (s buddyNotifier) BroadcastVisibility(
 	ctx context.Context,
-	you *state.Session,
+	you *state.SessionInstance,
 	filter []state.IdentScreenName,
 	doSendDepartures bool,
 ) error {
@@ -296,7 +296,7 @@ func (s buddyNotifier) BroadcastVisibility(
 	return nil
 }
 
-func (s buddyNotifier) unicastBuddyDeparted(ctx context.Context, from *state.Session, to state.IdentScreenName) {
+func (s buddyNotifier) unicastBuddyDeparted(ctx context.Context, from *state.SessionInstance, to state.IdentScreenName) {
 	s.messageRelayer.RelayToScreenName(ctx, to, wire.SNACMessage{
 		Frame: wire.SNACFrame{
 			FoodGroup: wire.Buddy,

@@ -23,7 +23,7 @@ import (
 )
 
 func TestSessionHandler_GET(t *testing.T) {
-	fnNewSess := func(screenName string, uin uint32) *state.Session {
+	fnNewSess := func(screenName string, uin uint32) *state.SessionInstance {
 		sess := state.NewSession()
 		sess.SetIdentScreenName(state.NewIdentScreenName(screenName))
 		sess.SetDisplayScreenName(state.DisplayScreenName(screenName))
@@ -47,7 +47,7 @@ func TestSessionHandler_GET(t *testing.T) {
 				sessionRetrieverParams: sessionRetrieverParams{
 					sessionRetrieverAllSessionsParams: sessionRetrieverAllSessionsParams{
 						{
-							result: []*state.Session{},
+							result: []*state.SessionInstance{},
 						},
 					},
 				},
@@ -62,7 +62,7 @@ func TestSessionHandler_GET(t *testing.T) {
 				sessionRetrieverParams: sessionRetrieverParams{
 					sessionRetrieverAllSessionsParams: sessionRetrieverAllSessionsParams{
 						{
-							result: []*state.Session{
+							result: []*state.SessionInstance{
 								fnNewSess("userA", 0),
 								fnNewSess("userB", 0),
 								fnNewSess("100003", 100003),
@@ -100,7 +100,7 @@ func TestSessionHandler_GET(t *testing.T) {
 }
 
 func TestSessionHandlerScreenname_GET(t *testing.T) {
-	fnNewSess := func(screenName string, uin uint32) *state.Session {
+	fnNewSess := func(screenName string, uin uint32) *state.SessionInstance {
 		sess := state.NewSession()
 		sess.SetIdentScreenName(state.NewIdentScreenName(screenName))
 		sess.SetDisplayScreenName(state.DisplayScreenName(screenName))
@@ -111,7 +111,7 @@ func TestSessionHandlerScreenname_GET(t *testing.T) {
 	}
 	tt := []struct {
 		name              string
-		sessions          []*state.Session
+		sessions          []*state.SessionInstance
 		requestScreenName state.IdentScreenName
 		want              string
 		statusCode        int
@@ -120,7 +120,7 @@ func TestSessionHandlerScreenname_GET(t *testing.T) {
 	}{
 		{
 			name:              "no session for screenname",
-			sessions:          []*state.Session{},
+			sessions:          []*state.SessionInstance{},
 			requestScreenName: state.NewIdentScreenName("userA"),
 			want:              `session not found`,
 			statusCode:        http.StatusNotFound,
@@ -181,7 +181,7 @@ func TestSessionHandlerScreenname_GET(t *testing.T) {
 }
 
 func TestSessionHandlerScreenname_DELETE(t *testing.T) {
-	fnNewSess := func(screenName string) *state.Session {
+	fnNewSess := func(screenName string) *state.SessionInstance {
 		sess := state.NewSession()
 		sess.SetIdentScreenName(state.NewIdentScreenName(screenName))
 		sess.SetDisplayScreenName(state.DisplayScreenName(screenName))
@@ -191,7 +191,7 @@ func TestSessionHandlerScreenname_DELETE(t *testing.T) {
 	}
 	tt := []struct {
 		name              string
-		session           *state.Session
+		session           *state.SessionInstance
 		requestScreenName state.IdentScreenName
 		statusCode        int
 		mockParams        mockParams
@@ -1437,7 +1437,7 @@ func TestUserPasswordHandler_PUT(t *testing.T) {
 }
 
 func TestPublicChatHandler_GET(t *testing.T) {
-	fnNewSess := func(screenName string) *state.Session {
+	fnNewSess := func(screenName string) *state.SessionInstance {
 		sess := state.NewSession()
 		sess.SetIdentScreenName(state.NewIdentScreenName(screenName))
 		sess.SetDisplayScreenName(state.DisplayScreenName(screenName))
@@ -1473,14 +1473,14 @@ func TestPublicChatHandler_GET(t *testing.T) {
 					chatSessionRetrieverAllSessionsParams: chatSessionRetrieverAllSessionsParams{
 						{
 							cookie: chatRoom1.Cookie(),
-							result: []*state.Session{
+							result: []*state.SessionInstance{
 								fnNewSess("userA"),
 								fnNewSess("userB"),
 							},
 						},
 						{
 							cookie: chatRoom2.Cookie(),
-							result: []*state.Session{
+							result: []*state.SessionInstance{
 								fnNewSess("userC"),
 								fnNewSess("userD"),
 							},
@@ -1508,7 +1508,7 @@ func TestPublicChatHandler_GET(t *testing.T) {
 					chatSessionRetrieverAllSessionsParams: chatSessionRetrieverAllSessionsParams{
 						{
 							cookie: chatRoom1.Cookie(),
-							result: []*state.Session{},
+							result: []*state.SessionInstance{},
 						},
 					},
 				},
@@ -1660,7 +1660,7 @@ func TestDeletePublicChatHandler(t *testing.T) {
 }
 
 func TestPrivateChatHandler_GET(t *testing.T) {
-	fnNewSess := func(screenName string) *state.Session {
+	fnNewSess := func(screenName string) *state.SessionInstance {
 		sess := state.NewSession()
 		sess.SetIdentScreenName(state.NewIdentScreenName(screenName))
 		sess.SetDisplayScreenName(state.DisplayScreenName(screenName))
@@ -1696,14 +1696,14 @@ func TestPrivateChatHandler_GET(t *testing.T) {
 					chatSessionRetrieverAllSessionsParams: chatSessionRetrieverAllSessionsParams{
 						{
 							cookie: chatRoom1.Cookie(),
-							result: []*state.Session{
+							result: []*state.SessionInstance{
 								fnNewSess("userA"),
 								fnNewSess("userB"),
 							},
 						},
 						{
 							cookie: chatRoom2.Cookie(),
-							result: []*state.Session{
+							result: []*state.SessionInstance{
 								fnNewSess("userC"),
 								fnNewSess("userD"),
 							},
@@ -1731,7 +1731,7 @@ func TestPrivateChatHandler_GET(t *testing.T) {
 					chatSessionRetrieverAllSessionsParams: chatSessionRetrieverAllSessionsParams{
 						{
 							cookie: chatRoom1.Cookie(),
-							result: []*state.Session{},
+							result: []*state.SessionInstance{},
 						},
 					},
 				},

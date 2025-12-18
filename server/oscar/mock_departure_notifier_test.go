@@ -103,7 +103,7 @@ func (_c *mockDepartureNotifier_BroadcastBuddyArrived_Call) RunAndReturn(run fun
 }
 
 // BroadcastBuddyDeparted provides a mock function for the type mockDepartureNotifier
-func (_mock *mockDepartureNotifier) BroadcastBuddyDeparted(ctx context.Context, sess *state.Session) error {
+func (_mock *mockDepartureNotifier) BroadcastBuddyDeparted(ctx context.Context, sess *state.SessionInstance) error {
 	ret := _mock.Called(ctx, sess)
 
 	if len(ret) == 0 {
@@ -111,7 +111,7 @@ func (_mock *mockDepartureNotifier) BroadcastBuddyDeparted(ctx context.Context, 
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.Session) error); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance) error); ok {
 		r0 = returnFunc(ctx, sess)
 	} else {
 		r0 = ret.Error(0)
@@ -126,20 +126,20 @@ type mockDepartureNotifier_BroadcastBuddyDeparted_Call struct {
 
 // BroadcastBuddyDeparted is a helper method to define mock.On call
 //   - ctx context.Context
-//   - sess *state.Session
+//   - sess *state.SessionInstance
 func (_e *mockDepartureNotifier_Expecter) BroadcastBuddyDeparted(ctx interface{}, sess interface{}) *mockDepartureNotifier_BroadcastBuddyDeparted_Call {
 	return &mockDepartureNotifier_BroadcastBuddyDeparted_Call{Call: _e.mock.On("BroadcastBuddyDeparted", ctx, sess)}
 }
 
-func (_c *mockDepartureNotifier_BroadcastBuddyDeparted_Call) Run(run func(ctx context.Context, sess *state.Session)) *mockDepartureNotifier_BroadcastBuddyDeparted_Call {
+func (_c *mockDepartureNotifier_BroadcastBuddyDeparted_Call) Run(run func(ctx context.Context, sess *state.SessionInstance)) *mockDepartureNotifier_BroadcastBuddyDeparted_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *state.Session
+		var arg1 *state.SessionInstance
 		if args[1] != nil {
-			arg1 = args[1].(*state.Session)
+			arg1 = args[1].(*state.SessionInstance)
 		}
 		run(
 			arg0,
@@ -154,7 +154,7 @@ func (_c *mockDepartureNotifier_BroadcastBuddyDeparted_Call) Return(err error) *
 	return _c
 }
 
-func (_c *mockDepartureNotifier_BroadcastBuddyDeparted_Call) RunAndReturn(run func(ctx context.Context, sess *state.Session) error) *mockDepartureNotifier_BroadcastBuddyDeparted_Call {
+func (_c *mockDepartureNotifier_BroadcastBuddyDeparted_Call) RunAndReturn(run func(ctx context.Context, sess *state.SessionInstance) error) *mockDepartureNotifier_BroadcastBuddyDeparted_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -40,7 +40,7 @@ func (_m *mockPermitDenyService) EXPECT() *mockPermitDenyService_Expecter {
 }
 
 // AddDenyListEntries provides a mock function for the type mockPermitDenyService
-func (_mock *mockPermitDenyService) AddDenyListEntries(ctx context.Context, sess *state.Session, body wire.SNAC_0x09_0x07_PermitDenyAddDenyListEntries) error {
+func (_mock *mockPermitDenyService) AddDenyListEntries(ctx context.Context, sess *state.SessionInstance, body wire.SNAC_0x09_0x07_PermitDenyAddDenyListEntries) error {
 	ret := _mock.Called(ctx, sess, body)
 
 	if len(ret) == 0 {
@@ -48,7 +48,7 @@ func (_mock *mockPermitDenyService) AddDenyListEntries(ctx context.Context, sess
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.Session, wire.SNAC_0x09_0x07_PermitDenyAddDenyListEntries) error); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNAC_0x09_0x07_PermitDenyAddDenyListEntries) error); ok {
 		r0 = returnFunc(ctx, sess, body)
 	} else {
 		r0 = ret.Error(0)
@@ -63,21 +63,21 @@ type mockPermitDenyService_AddDenyListEntries_Call struct {
 
 // AddDenyListEntries is a helper method to define mock.On call
 //   - ctx context.Context
-//   - sess *state.Session
+//   - sess *state.SessionInstance
 //   - body wire.SNAC_0x09_0x07_PermitDenyAddDenyListEntries
 func (_e *mockPermitDenyService_Expecter) AddDenyListEntries(ctx interface{}, sess interface{}, body interface{}) *mockPermitDenyService_AddDenyListEntries_Call {
 	return &mockPermitDenyService_AddDenyListEntries_Call{Call: _e.mock.On("AddDenyListEntries", ctx, sess, body)}
 }
 
-func (_c *mockPermitDenyService_AddDenyListEntries_Call) Run(run func(ctx context.Context, sess *state.Session, body wire.SNAC_0x09_0x07_PermitDenyAddDenyListEntries)) *mockPermitDenyService_AddDenyListEntries_Call {
+func (_c *mockPermitDenyService_AddDenyListEntries_Call) Run(run func(ctx context.Context, sess *state.SessionInstance, body wire.SNAC_0x09_0x07_PermitDenyAddDenyListEntries)) *mockPermitDenyService_AddDenyListEntries_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *state.Session
+		var arg1 *state.SessionInstance
 		if args[1] != nil {
-			arg1 = args[1].(*state.Session)
+			arg1 = args[1].(*state.SessionInstance)
 		}
 		var arg2 wire.SNAC_0x09_0x07_PermitDenyAddDenyListEntries
 		if args[2] != nil {
@@ -97,13 +97,13 @@ func (_c *mockPermitDenyService_AddDenyListEntries_Call) Return(err error) *mock
 	return _c
 }
 
-func (_c *mockPermitDenyService_AddDenyListEntries_Call) RunAndReturn(run func(ctx context.Context, sess *state.Session, body wire.SNAC_0x09_0x07_PermitDenyAddDenyListEntries) error) *mockPermitDenyService_AddDenyListEntries_Call {
+func (_c *mockPermitDenyService_AddDenyListEntries_Call) RunAndReturn(run func(ctx context.Context, sess *state.SessionInstance, body wire.SNAC_0x09_0x07_PermitDenyAddDenyListEntries) error) *mockPermitDenyService_AddDenyListEntries_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // AddPermListEntries provides a mock function for the type mockPermitDenyService
-func (_mock *mockPermitDenyService) AddPermListEntries(ctx context.Context, sess *state.Session, body wire.SNAC_0x09_0x05_PermitDenyAddPermListEntries) error {
+func (_mock *mockPermitDenyService) AddPermListEntries(ctx context.Context, sess *state.SessionInstance, body wire.SNAC_0x09_0x05_PermitDenyAddPermListEntries) error {
 	ret := _mock.Called(ctx, sess, body)
 
 	if len(ret) == 0 {
@@ -111,7 +111,7 @@ func (_mock *mockPermitDenyService) AddPermListEntries(ctx context.Context, sess
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.Session, wire.SNAC_0x09_0x05_PermitDenyAddPermListEntries) error); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNAC_0x09_0x05_PermitDenyAddPermListEntries) error); ok {
 		r0 = returnFunc(ctx, sess, body)
 	} else {
 		r0 = ret.Error(0)
@@ -126,21 +126,21 @@ type mockPermitDenyService_AddPermListEntries_Call struct {
 
 // AddPermListEntries is a helper method to define mock.On call
 //   - ctx context.Context
-//   - sess *state.Session
+//   - sess *state.SessionInstance
 //   - body wire.SNAC_0x09_0x05_PermitDenyAddPermListEntries
 func (_e *mockPermitDenyService_Expecter) AddPermListEntries(ctx interface{}, sess interface{}, body interface{}) *mockPermitDenyService_AddPermListEntries_Call {
 	return &mockPermitDenyService_AddPermListEntries_Call{Call: _e.mock.On("AddPermListEntries", ctx, sess, body)}
 }
 
-func (_c *mockPermitDenyService_AddPermListEntries_Call) Run(run func(ctx context.Context, sess *state.Session, body wire.SNAC_0x09_0x05_PermitDenyAddPermListEntries)) *mockPermitDenyService_AddPermListEntries_Call {
+func (_c *mockPermitDenyService_AddPermListEntries_Call) Run(run func(ctx context.Context, sess *state.SessionInstance, body wire.SNAC_0x09_0x05_PermitDenyAddPermListEntries)) *mockPermitDenyService_AddPermListEntries_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *state.Session
+		var arg1 *state.SessionInstance
 		if args[1] != nil {
-			arg1 = args[1].(*state.Session)
+			arg1 = args[1].(*state.SessionInstance)
 		}
 		var arg2 wire.SNAC_0x09_0x05_PermitDenyAddPermListEntries
 		if args[2] != nil {
@@ -160,13 +160,13 @@ func (_c *mockPermitDenyService_AddPermListEntries_Call) Return(err error) *mock
 	return _c
 }
 
-func (_c *mockPermitDenyService_AddPermListEntries_Call) RunAndReturn(run func(ctx context.Context, sess *state.Session, body wire.SNAC_0x09_0x05_PermitDenyAddPermListEntries) error) *mockPermitDenyService_AddPermListEntries_Call {
+func (_c *mockPermitDenyService_AddPermListEntries_Call) RunAndReturn(run func(ctx context.Context, sess *state.SessionInstance, body wire.SNAC_0x09_0x05_PermitDenyAddPermListEntries) error) *mockPermitDenyService_AddPermListEntries_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // DelDenyListEntries provides a mock function for the type mockPermitDenyService
-func (_mock *mockPermitDenyService) DelDenyListEntries(ctx context.Context, sess *state.Session, body wire.SNAC_0x09_0x08_PermitDenyDelDenyListEntries) error {
+func (_mock *mockPermitDenyService) DelDenyListEntries(ctx context.Context, sess *state.SessionInstance, body wire.SNAC_0x09_0x08_PermitDenyDelDenyListEntries) error {
 	ret := _mock.Called(ctx, sess, body)
 
 	if len(ret) == 0 {
@@ -174,7 +174,7 @@ func (_mock *mockPermitDenyService) DelDenyListEntries(ctx context.Context, sess
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.Session, wire.SNAC_0x09_0x08_PermitDenyDelDenyListEntries) error); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNAC_0x09_0x08_PermitDenyDelDenyListEntries) error); ok {
 		r0 = returnFunc(ctx, sess, body)
 	} else {
 		r0 = ret.Error(0)
@@ -189,21 +189,21 @@ type mockPermitDenyService_DelDenyListEntries_Call struct {
 
 // DelDenyListEntries is a helper method to define mock.On call
 //   - ctx context.Context
-//   - sess *state.Session
+//   - sess *state.SessionInstance
 //   - body wire.SNAC_0x09_0x08_PermitDenyDelDenyListEntries
 func (_e *mockPermitDenyService_Expecter) DelDenyListEntries(ctx interface{}, sess interface{}, body interface{}) *mockPermitDenyService_DelDenyListEntries_Call {
 	return &mockPermitDenyService_DelDenyListEntries_Call{Call: _e.mock.On("DelDenyListEntries", ctx, sess, body)}
 }
 
-func (_c *mockPermitDenyService_DelDenyListEntries_Call) Run(run func(ctx context.Context, sess *state.Session, body wire.SNAC_0x09_0x08_PermitDenyDelDenyListEntries)) *mockPermitDenyService_DelDenyListEntries_Call {
+func (_c *mockPermitDenyService_DelDenyListEntries_Call) Run(run func(ctx context.Context, sess *state.SessionInstance, body wire.SNAC_0x09_0x08_PermitDenyDelDenyListEntries)) *mockPermitDenyService_DelDenyListEntries_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *state.Session
+		var arg1 *state.SessionInstance
 		if args[1] != nil {
-			arg1 = args[1].(*state.Session)
+			arg1 = args[1].(*state.SessionInstance)
 		}
 		var arg2 wire.SNAC_0x09_0x08_PermitDenyDelDenyListEntries
 		if args[2] != nil {
@@ -223,13 +223,13 @@ func (_c *mockPermitDenyService_DelDenyListEntries_Call) Return(err error) *mock
 	return _c
 }
 
-func (_c *mockPermitDenyService_DelDenyListEntries_Call) RunAndReturn(run func(ctx context.Context, sess *state.Session, body wire.SNAC_0x09_0x08_PermitDenyDelDenyListEntries) error) *mockPermitDenyService_DelDenyListEntries_Call {
+func (_c *mockPermitDenyService_DelDenyListEntries_Call) RunAndReturn(run func(ctx context.Context, sess *state.SessionInstance, body wire.SNAC_0x09_0x08_PermitDenyDelDenyListEntries) error) *mockPermitDenyService_DelDenyListEntries_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // DelPermListEntries provides a mock function for the type mockPermitDenyService
-func (_mock *mockPermitDenyService) DelPermListEntries(ctx context.Context, sess *state.Session, body wire.SNAC_0x09_0x06_PermitDenyDelPermListEntries) error {
+func (_mock *mockPermitDenyService) DelPermListEntries(ctx context.Context, sess *state.SessionInstance, body wire.SNAC_0x09_0x06_PermitDenyDelPermListEntries) error {
 	ret := _mock.Called(ctx, sess, body)
 
 	if len(ret) == 0 {
@@ -237,7 +237,7 @@ func (_mock *mockPermitDenyService) DelPermListEntries(ctx context.Context, sess
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.Session, wire.SNAC_0x09_0x06_PermitDenyDelPermListEntries) error); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNAC_0x09_0x06_PermitDenyDelPermListEntries) error); ok {
 		r0 = returnFunc(ctx, sess, body)
 	} else {
 		r0 = ret.Error(0)
@@ -252,21 +252,21 @@ type mockPermitDenyService_DelPermListEntries_Call struct {
 
 // DelPermListEntries is a helper method to define mock.On call
 //   - ctx context.Context
-//   - sess *state.Session
+//   - sess *state.SessionInstance
 //   - body wire.SNAC_0x09_0x06_PermitDenyDelPermListEntries
 func (_e *mockPermitDenyService_Expecter) DelPermListEntries(ctx interface{}, sess interface{}, body interface{}) *mockPermitDenyService_DelPermListEntries_Call {
 	return &mockPermitDenyService_DelPermListEntries_Call{Call: _e.mock.On("DelPermListEntries", ctx, sess, body)}
 }
 
-func (_c *mockPermitDenyService_DelPermListEntries_Call) Run(run func(ctx context.Context, sess *state.Session, body wire.SNAC_0x09_0x06_PermitDenyDelPermListEntries)) *mockPermitDenyService_DelPermListEntries_Call {
+func (_c *mockPermitDenyService_DelPermListEntries_Call) Run(run func(ctx context.Context, sess *state.SessionInstance, body wire.SNAC_0x09_0x06_PermitDenyDelPermListEntries)) *mockPermitDenyService_DelPermListEntries_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *state.Session
+		var arg1 *state.SessionInstance
 		if args[1] != nil {
-			arg1 = args[1].(*state.Session)
+			arg1 = args[1].(*state.SessionInstance)
 		}
 		var arg2 wire.SNAC_0x09_0x06_PermitDenyDelPermListEntries
 		if args[2] != nil {
@@ -286,7 +286,7 @@ func (_c *mockPermitDenyService_DelPermListEntries_Call) Return(err error) *mock
 	return _c
 }
 
-func (_c *mockPermitDenyService_DelPermListEntries_Call) RunAndReturn(run func(ctx context.Context, sess *state.Session, body wire.SNAC_0x09_0x06_PermitDenyDelPermListEntries) error) *mockPermitDenyService_DelPermListEntries_Call {
+func (_c *mockPermitDenyService_DelPermListEntries_Call) RunAndReturn(run func(ctx context.Context, sess *state.SessionInstance, body wire.SNAC_0x09_0x06_PermitDenyDelPermListEntries) error) *mockPermitDenyService_DelPermListEntries_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -39,7 +39,7 @@ func TestPermitDenyService_AddDenyListEntries(t *testing.T) {
 		// name is the name of the test
 		name string
 		// sess is the client session
-		sess *state.Session
+		sess *state.SessionInstance
 		// bodyIn is the input SNAC
 		bodyIn wire.SNAC_0x09_0x07_PermitDenyAddDenyListEntries
 		// expectOutput is the expected return SNAC value
@@ -243,7 +243,7 @@ func TestPermitDenyService_AddPermListEntries(t *testing.T) {
 		// name is the name of the test
 		name string
 		// sess is the client session
-		sess *state.Session
+		sess *state.SessionInstance
 		// bodyIn is the input SNAC
 		bodyIn wire.SNAC_0x09_0x05_PermitDenyAddPermListEntries
 		// expectOutput is the expected return SNAC value
@@ -447,7 +447,7 @@ func TestPermitDenyService_DelDenyListEntries(t *testing.T) {
 		// name is the name of the test
 		name string
 		// sess is the client session
-		sess *state.Session
+		sess *state.SessionInstance
 		// bodyIn is the input SNAC
 		bodyIn wire.SNAC_0x09_0x08_PermitDenyDelDenyListEntries
 		// expectOutput is the expected return SNAC value
@@ -559,7 +559,7 @@ func TestPermitDenyService_DelPermListEntries(t *testing.T) {
 		// name is the name of the test
 		name string
 		// sess is the client session
-		sess *state.Session
+		sess *state.SessionInstance
 		// bodyIn is the input SNAC
 		bodyIn wire.SNAC_0x09_0x06_PermitDenyDelPermListEntries
 		// expectOutput is the expected return SNAC value

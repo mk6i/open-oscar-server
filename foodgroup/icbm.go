@@ -93,7 +93,7 @@ func (s ICBMService) ParameterQuery(_ context.Context, inFrame wire.SNACFrame) w
 // from the sender to the intended recipient. It returns wire.ICBMHostAck if
 // the wire.ICBMChannelMsgToHost message contains a request acknowledgement
 // flag.
-func (s ICBMService) ChannelMsgToHost(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) (*wire.SNACMessage, error) {
+func (s ICBMService) ChannelMsgToHost(ctx context.Context, sess *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) (*wire.SNACMessage, error) {
 	recip := state.NewIdentScreenName(inBody.ScreenName)
 
 	rel, err := s.relationshipFetcher.Relationship(ctx, sess.IdentScreenName(), recip)
@@ -228,7 +228,7 @@ func (s ICBMService) canSendOfflineMessage(ctx context.Context, inBody wire.SNAC
 	return true, nil
 }
 
-func (s ICBMService) sendOfflineMessage(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) (*wire.SNACMessage, error) {
+func (s ICBMService) sendOfflineMessage(ctx context.Context, sess *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) (*wire.SNACMessage, error) {
 	recip := state.NewIdentScreenName(inBody.ScreenName)
 
 	offlineMsg := state.OfflineMessage{
@@ -272,7 +272,7 @@ func (s ICBMService) sendOfflineMessage(ctx context.Context, sess *state.Session
 
 // addExternalIP appends the client's IP address to the TLV if it's an ICBM
 // rendezvous proposal/accept message.
-func addExternalIP(sess *state.Session, tlv wire.TLV) (wire.TLV, error) {
+func addExternalIP(sess *state.SessionInstance, tlv wire.TLV) (wire.TLV, error) {
 	frag := wire.ICBMCh2Fragment{}
 	if err := wire.UnmarshalBE(&frag, bytes.NewReader(tlv.Value)); err != nil {
 		return tlv, fmt.Errorf("wire.UnmarshalBE: %w", err)
@@ -300,7 +300,7 @@ func addExternalIP(sess *state.Session, tlv wire.TLV) (wire.TLV, error) {
 
 // ClientEvent relays SNAC wire.ICBMClientEvent typing events from the
 // sender to the recipient.
-func (s ICBMService) ClientEvent(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x14_ICBMClientEvent) error {
+func (s ICBMService) ClientEvent(ctx context.Context, sess *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x14_ICBMClientEvent) error {
 	blocked, err := s.relationshipFetcher.Relationship(ctx, sess.IdentScreenName(), state.NewIdentScreenName(inBody.ScreenName))
 
 	switch {
@@ -328,7 +328,7 @@ func (s ICBMService) ClientEvent(ctx context.Context, sess *state.Session, inFra
 	}
 }
 
-func (s ICBMService) ClientErr(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x0B_ICBMClientErr) error {
+func (s ICBMService) ClientErr(ctx context.Context, sess *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x0B_ICBMClientErr) error {
 	s.messageRelayer.RelayToScreenName(ctx, state.NewIdentScreenName(inBody.ScreenName), wire.SNACMessage{
 		Frame: wire.SNACFrame{
 			FoodGroup: wire.ICBM,
@@ -353,7 +353,7 @@ func (s ICBMService) ClientErr(ctx context.Context, sess *state.Session, inFrame
 // non-anonymously. It returns SNAC wire.ICBMEvilReply to confirm that the
 // warning was sent. Users may not warn themselves or warn users they have
 // blocked or are blocked by.
-func (s ICBMService) EvilRequest(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x08_ICBMEvilRequest) (wire.SNACMessage, error) {
+func (s ICBMService) EvilRequest(ctx context.Context, sess *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x08_ICBMEvilRequest) (wire.SNACMessage, error) {
 	identScreenName := state.NewIdentScreenName(inBody.ScreenName)
 
 	// don't let users warn themselves, it causes the AIM client to go into a
@@ -443,7 +443,7 @@ func (s ICBMService) EvilRequest(ctx context.Context, sess *state.Session, inFra
 	}, nil
 }
 
-func (s ICBMService) OfflineRetrieve(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame) (wire.SNACMessage, error) {
+func (s ICBMService) OfflineRetrieve(ctx context.Context, sess *state.SessionInstance, inFrame wire.SNACFrame) (wire.SNACMessage, error) {
 	msgList, err := s.offlineMessageManager.RetrieveMessages(ctx, sess.IdentScreenName())
 	if err != nil {
 		return wire.SNACMessage{}, fmt.Errorf("retrieving messages: %w", err)
@@ -492,7 +492,7 @@ func (s ICBMService) OfflineRetrieve(ctx context.Context, sess *state.Session, i
 
 // RestoreWarningLevel restores the warning level from the last stored value at login time,
 // accounting for time passed between logins.
-func (s ICBMService) RestoreWarningLevel(ctx context.Context, sess *state.Session) error {
+func (s ICBMService) RestoreWarningLevel(ctx context.Context, sess *state.SessionInstance) error {
 	u, err := s.userManager.User(ctx, sess.IdentScreenName())
 	if err != nil {
 		return fmt.Errorf("failed to get user: %w", err)
@@ -539,7 +539,7 @@ func (s ICBMService) RestoreWarningLevel(ctx context.Context, sess *state.Sessio
 
 // UpdateWarnLevel periodically updates the warning level relative to time
 // elapsed between warnings.
-func (s ICBMService) UpdateWarnLevel(ctx context.Context, sess *state.Session) {
+func (s ICBMService) UpdateWarnLevel(ctx context.Context, sess *state.SessionInstance) {
 	var inProgress bool
 	var ticker *time.Ticker
 	var tickC <-chan time.Time // nil when idle, enables/disables the select case

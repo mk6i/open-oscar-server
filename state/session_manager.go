@@ -11,7 +11,7 @@ import (
 )
 
 type sessionSlot struct {
-	sessionGroup *SessionGroup
+	sessionGroup *Session
 	removed      chan bool
 	multiSession bool
 }
@@ -83,10 +83,7 @@ func (s *InMemorySessionManager) RelayToAll(ctx context.Context, msg wire.SNACMe
 			if !instance.SignonComplete() {
 				continue
 			}
-			s.maybeRelayMessage(ctx, msg, &Session{
-				SessionGroup: rec.sessionGroup,
-				Instance:     instance,
-			})
+			s.maybeRelayMessage(ctx, msg, instance)
 		}
 	}
 }
@@ -108,16 +105,16 @@ func (s *InMemorySessionManager) RelayToScreenNames(ctx context.Context, screenN
 	}
 }
 
-func (s *InMemorySessionManager) RelayToSelf(ctx context.Context, sess *Session, msg wire.SNACMessage) {
+func (s *InMemorySessionManager) RelayToSelf(ctx context.Context, sess *SessionInstance, msg wire.SNACMessage) {
 	select {
-	case sess.Instance.msgCh <- msg:
-	case <-sess.Instance.stopCh:
+	case sess.msgCh <- msg:
+	case <-sess.stopCh:
 	case <-ctx.Done():
 	}
 }
 
-func (s *InMemorySessionManager) RelayToOtherSessions(ctx context.Context, sess *Session, msg wire.SNACMessage) {
-	switch sess.RelayMessageExceptSelf(sess.Instance, msg) {
+func (s *InMemorySessionManager) RelayToOtherSessions(ctx context.Context, sess *SessionInstance, msg wire.SNACMessage) {
+	switch sess.RelayMessageExceptSelf(sess, msg) {
 	case SessSendClosed:
 		s.logger.WarnContext(ctx, "can't send notification because the user's session is closed", "recipient", sess.IdentScreenName(), "message", msg)
 	case SessQueueFull:
@@ -135,7 +132,7 @@ func (s *InMemorySessionManager) RelayToScreenNameActiveOnly(ctx context.Context
 	s.maybeRelayMessageActiveOnly(ctx, msg, sess)
 }
 
-func (s *InMemorySessionManager) maybeRelayMessage(ctx context.Context, msg wire.SNACMessage, sess *Session) {
+func (s *InMemorySessionManager) maybeRelayMessage(ctx context.Context, msg wire.SNACMessage, sess *SessionInstance) {
 	switch sess.RelayMessage(msg) {
 	case SessSendClosed:
 		s.logger.WarnContext(ctx, "can't send notification because the user's session is closed", "recipient", sess.IdentScreenName(), "message", msg)
@@ -145,7 +142,7 @@ func (s *InMemorySessionManager) maybeRelayMessage(ctx context.Context, msg wire
 	}
 }
 
-func (s *InMemorySessionManager) maybeRelayMessageActiveOnly(ctx context.Context, msg wire.SNACMessage, sess *Session) {
+func (s *InMemorySessionManager) maybeRelayMessageActiveOnly(ctx context.Context, msg wire.SNACMessage, sess *SessionInstance) {
 	switch sess.RelayMessageActiveOnly(msg) {
 	case SessSendClosed:
 		s.logger.WarnContext(ctx, "can't send notification because the user's session is closed", "recipient", sess.IdentScreenName(), "message", msg)
@@ -155,7 +152,7 @@ func (s *InMemorySessionManager) maybeRelayMessageActiveOnly(ctx context.Context
 	}
 }
 
-func (s *InMemorySessionManager) AddSession(ctx context.Context, screenName DisplayScreenName, doMultiSess bool) (*Session, error) {
+func (s *InMemorySessionManager) AddSession(ctx context.Context, screenName DisplayScreenName, doMultiSess bool) (*SessionInstance, error) {
 	s.lockUser(screenName.IdentScreenName())
 	defer s.unlockUser(screenName.IdentScreenName())
 
@@ -175,14 +172,10 @@ func (s *InMemorySessionManager) AddSession(ctx context.Context, screenName Disp
 			// Create a new instance within the existing session group
 			instance := NewInstance(active.sessionGroup)
 			active.sessionGroup.AddInstance(instance)
+			instance.Session = active.sessionGroup
 
-			// Create a Session wrapper for backward compatibility
-			sess := &Session{
-				SessionGroup: active.sessionGroup,
-				Instance:     instance,
-			}
-
-			return sess, nil
+			// Create a SessionInstance wrapper for backward compatibility
+			return instance, nil
 		} else {
 			// signal to callers that this session group has to go
 			// Close all instances in the session group
@@ -201,7 +194,7 @@ func (s *InMemorySessionManager) AddSession(ctx context.Context, screenName Disp
 	return s.newSessionGroup(screenName, doMultiSess)
 }
 
-func (s *InMemorySessionManager) newSessionGroup(screenName DisplayScreenName, doMultiSess bool) (*Session, error) {
+func (s *InMemorySessionManager) newSessionGroup(screenName DisplayScreenName, doMultiSess bool) (*SessionInstance, error) {
 	sessionGroup := NewSessionGroup()
 	sessionGroup.SetIdentScreenName(screenName.IdentScreenName())
 	sessionGroup.SetDisplayScreenName(screenName)
@@ -209,22 +202,17 @@ func (s *InMemorySessionManager) newSessionGroup(screenName DisplayScreenName, d
 	// Create a new instance within the session group
 	instance := NewInstance(sessionGroup)
 	sessionGroup.AddInstance(instance)
-
-	// Create a Session wrapper for backward compatibility
-	sess := &Session{
-		SessionGroup: sessionGroup,
-		Instance:     instance,
-	}
+	instance.Session = sessionGroup
 
 	s.mapMutex.Lock()
-	s.store[sess.IdentScreenName()] = &sessionSlot{
+	s.store[instance.IdentScreenName()] = &sessionSlot{
 		sessionGroup: sessionGroup,
 		removed:      make(chan bool),
 		multiSession: doMultiSess,
 	}
 	s.mapMutex.Unlock()
 
-	return sess, nil
+	return instance, nil
 }
 
 func (s *InMemorySessionManager) findRec(identScreenName IdentScreenName) *sessionSlot {
@@ -237,10 +225,10 @@ func (s *InMemorySessionManager) findRec(identScreenName IdentScreenName) *sessi
 }
 
 // RemoveSession takes a session out of the session pool.
-func (s *InMemorySessionManager) RemoveSession(sess *Session) {
+func (s *InMemorySessionManager) RemoveSession(sess *SessionInstance) {
 	s.mapMutex.Lock()
 	defer s.mapMutex.Unlock()
-	if rec, ok := s.store[sess.IdentScreenName()]; ok && rec.sessionGroup == sess.SessionGroup {
+	if rec, ok := s.store[sess.IdentScreenName()]; ok && rec.sessionGroup == sess.Session {
 		delete(s.store, sess.IdentScreenName())
 		close(rec.removed)
 	}
@@ -250,13 +238,13 @@ func (s *InMemorySessionManager) RemoveSession(sess *Session) {
 // session is not found. If sessionNum is provided (non-zero), returns the
 // specific instance with that session number, otherwise returns the first
 // active instance.
-func (s *InMemorySessionManager) RetrieveSession(screenName IdentScreenName, sessionNum uint8) *Session {
+func (s *InMemorySessionManager) RetrieveSession(screenName IdentScreenName, sessionNum uint8) *SessionInstance {
 	s.mapMutex.RLock()
 	defer s.mapMutex.RUnlock()
 	if rec, ok := s.store[screenName]; ok {
 		activeInstances := rec.sessionGroup.GetActiveInstances()
 		if len(activeInstances) > 0 {
-			var targetInstance *Instance
+			var targetInstance *SessionInstance
 
 			if sessionNum != 0 {
 				// Find specific instance by session number
@@ -272,32 +260,26 @@ func (s *InMemorySessionManager) RetrieveSession(screenName IdentScreenName, ses
 			}
 
 			if targetInstance != nil && targetInstance.SignonComplete() { // should we check for signon complete?
-				return &Session{
-					SessionGroup: rec.sessionGroup,
-					Instance:     targetInstance,
-				}
+				return targetInstance
 			}
 		}
 	}
 	return nil
 }
 
-func (s *InMemorySessionManager) retrieveByScreenNames(screenNames []IdentScreenName) []*Session {
+func (s *InMemorySessionManager) retrieveByScreenNames(screenNames []IdentScreenName) []*SessionInstance {
 	s.mapMutex.RLock()
 	defer s.mapMutex.RUnlock()
-	var ret []*Session
+	var ret []*SessionInstance
 	for _, sn := range screenNames {
 		for _, rec := range s.store {
 			if sn == rec.sessionGroup.IdentScreenName() {
-				// Return the first active instance as a Session for backward compatibility
+				// Return the first active instance as a SessionInstance for backward compatibility
 				activeInstances := rec.sessionGroup.GetActiveInstances()
 				if len(activeInstances) > 0 {
 					instance := activeInstances[0]
 					if instance.SignonComplete() {
-						ret = append(ret, &Session{
-							SessionGroup: rec.sessionGroup,
-							Instance:     instance,
-						})
+						ret = append(ret, instance)
 					}
 				}
 				break
@@ -315,18 +297,15 @@ func (s *InMemorySessionManager) Empty() bool {
 }
 
 // AllSessions returns all sessions in the session pool.
-func (s *InMemorySessionManager) AllSessions() []*Session {
+func (s *InMemorySessionManager) AllSessions() []*SessionInstance {
 	s.mapMutex.RLock()
 	defer s.mapMutex.RUnlock()
-	var sessions []*Session
+	var sessions []*SessionInstance
 	for _, rec := range s.store {
 		// Return all active instances as Sessions for backward compatibility
 		for _, instance := range rec.sessionGroup.GetActiveInstances() {
 			if instance.SignonComplete() {
-				sessions = append(sessions, &Session{
-					SessionGroup: rec.sessionGroup,
-					Instance:     instance,
-				})
+				sessions = append(sessions, instance)
 			}
 		}
 	}
@@ -353,7 +332,7 @@ type InMemoryChatSessionManager struct {
 
 // AddSession adds a user to a chat room. If screenName already exists, the old
 // session is replaced by a new one.
-func (s *InMemoryChatSessionManager) AddSession(ctx context.Context, chatCookie string, screenName DisplayScreenName) (*Session, error) {
+func (s *InMemoryChatSessionManager) AddSession(ctx context.Context, chatCookie string, screenName DisplayScreenName) (*SessionInstance, error) {
 	s.mapMutex.Lock()
 	if _, ok := s.store[chatCookie]; !ok {
 		s.store[chatCookie] = NewInMemorySessionManager(s.logger)
@@ -393,7 +372,7 @@ func (s *InMemoryChatSessionManager) AddSession(ctx context.Context, chatCookie 
 
 // RemoveSession removes a user session from a chat room. It panics if you
 // attempt to remove the session twice.
-func (s *InMemoryChatSessionManager) RemoveSession(sess *Session) {
+func (s *InMemoryChatSessionManager) RemoveSession(sess *SessionInstance) {
 	s.mapMutex.Lock()
 	defer s.mapMutex.Unlock()
 
@@ -424,7 +403,7 @@ func (s *InMemoryChatSessionManager) RemoveUserFromAllChats(user IdentScreenName
 
 // AllSessions returns all chat room participants. Returns
 // ErrChatRoomNotFound if the room does not exist.
-func (s *InMemoryChatSessionManager) AllSessions(cookie string) []*Session {
+func (s *InMemoryChatSessionManager) AllSessions(cookie string) []*SessionInstance {
 	s.mapMutex.RLock()
 	defer s.mapMutex.RUnlock()
 

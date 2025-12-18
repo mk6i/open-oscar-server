@@ -69,7 +69,7 @@ func NewOServiceService(
 // It returns SNAC wire.OServiceHostVersions containing the server's supported
 // food group versions.
 // todo this documentation
-func (s OServiceService) ClientVersions(ctx context.Context, sess *state.Session, frame wire.SNACFrame, bodyIn wire.SNAC_0x01_0x17_OServiceClientVersions) wire.SNACMessage {
+func (s OServiceService) ClientVersions(ctx context.Context, sess *state.SessionInstance, frame wire.SNACFrame, bodyIn wire.SNAC_0x01_0x17_OServiceClientVersions) wire.SNACMessage {
 	var versions [wire.MDir + 1]uint16
 
 	if len(bodyIn.Versions)%2 != 0 {
@@ -121,7 +121,7 @@ func (s OServiceService) ClientVersions(ctx context.Context, sess *state.Session
 // AIM clients silently fail when they expect a rate limit rule that does not
 // exist in this response. When support for a new food group is added to the
 // server, update this function accordingly.
-func (s OServiceService) RateParamsQuery(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame) wire.SNACMessage {
+func (s OServiceService) RateParamsQuery(ctx context.Context, sess *state.SessionInstance, inFrame wire.SNACFrame) wire.SNACMessage {
 	// not contain LastTime and CurrentStatus fields.
 	var limits = wire.SNAC_0x01_0x07_OServiceRateParamsReply{
 		RateClasses: []wire.RateParamsSNAC{},
@@ -213,7 +213,7 @@ func (s OServiceService) RateParamsQuery(ctx context.Context, sess *state.Sessio
 
 // UserInfoQuery returns SNAC wire.OServiceUserInfoUpdate containing
 // the user's info.
-func (s OServiceService) UserInfoQuery(_ context.Context, sess *state.Session, inFrame wire.SNACFrame) wire.SNACMessage {
+func (s OServiceService) UserInfoQuery(_ context.Context, sess *state.SessionInstance, inFrame wire.SNACFrame) wire.SNACMessage {
 	return wire.SNACMessage{
 		Frame: wire.SNACFrame{
 			FoodGroup: wire.OService,
@@ -229,7 +229,7 @@ func (s OServiceService) UserInfoQuery(_ context.Context, sess *state.Session, i
 // wire.OServiceUserInfoStatus. If the value is 0x0000, set invisible. If set
 // to 0x0100, set invisible. Else, return an error for any other value.
 // It returns SNAC wire.OServiceUserInfoUpdate containing the user's info.
-func (s OServiceService) SetUserInfoFields(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields) (wire.SNACMessage, error) {
+func (s OServiceService) SetUserInfoFields(ctx context.Context, sess *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields) (wire.SNACMessage, error) {
 	if status, hasStatus := inBody.Uint32BE(wire.OServiceUserInfoStatus); hasStatus {
 		sess.SetUserStatusBitmask(status)
 		if sess.Invisible() {
@@ -256,7 +256,7 @@ func (s OServiceService) SetUserInfoFields(ctx context.Context, sess *state.Sess
 // IdleNotification sets the user idle time.
 // Set session idle time to the value of bodyIn.IdleTime. Return a user arrival
 // message to all users who have this user on their buddy list.
-func (s OServiceService) IdleNotification(ctx context.Context, sess *state.Session, bodyIn wire.SNAC_0x01_0x11_OServiceIdleNotification) error {
+func (s OServiceService) IdleNotification(ctx context.Context, sess *state.SessionInstance, bodyIn wire.SNAC_0x01_0x11_OServiceIdleNotification) error {
 	if bodyIn.IdleTime == 0 {
 		sess.UnsetIdle()
 	} else {
@@ -285,7 +285,7 @@ func (s OServiceService) SetPrivacyFlags(ctx context.Context, bodyIn wire.SNAC_0
 // that notifications will be queued after calling this method. I don't see the
 // point of doing that since all clients appear to call RateParamsQuery at
 // sign-on for all rate classes.
-func (s OServiceService) RateParamsSubAdd(ctx context.Context, sess *state.Session, snac wire.SNAC_0x01_0x08_OServiceRateParamsSubAdd) {
+func (s OServiceService) RateParamsSubAdd(ctx context.Context, sess *state.SessionInstance, snac wire.SNAC_0x01_0x08_OServiceRateParamsSubAdd) {
 	ids := make([]wire.RateLimitClassID, 0, len(snac.ClassIDs))
 
 	for _, id := range snac.ClassIDs {
@@ -431,7 +431,7 @@ func (s OServiceService) HostOnline(service uint16) wire.SNACMessage {
 // rate limit class params or rate limit states for the current session.
 // Changes are reported relative to the previous invocation for this session.
 // Only newly observed transitions or updated rate parameters will be included.
-func (s OServiceService) RateLimitUpdates(ctx context.Context, sess *state.Session, now time.Time) []wire.SNACMessage {
+func (s OServiceService) RateLimitUpdates(ctx context.Context, sess *state.SessionInstance, now time.Time) []wire.SNACMessage {
 	msgs := make([]wire.SNACMessage, 0, 5)
 	classDelta, stateDelta := sess.ObserveRateChanges(now)
 
@@ -470,7 +470,7 @@ func (s OServiceService) RateLimitUpdates(ctx context.Context, sess *state.Sessi
 // If OService version 2 or higher is supported, additional metadata such as
 // time since last status change and whether SNACs are currently being dropped
 // will be included.
-func buildRateLimitUpdate(code uint16, curRate state.RateClassState, sess *state.Session, now time.Time) wire.SNACMessage {
+func buildRateLimitUpdate(code uint16, curRate state.RateClassState, sess *state.SessionInstance, now time.Time) wire.SNACMessage {
 	var droppingSNACs uint8
 	if curRate.CurrentStatus == wire.RateLimitStatusLimited {
 		droppingSNACs = 1
@@ -512,7 +512,7 @@ func buildRateLimitUpdate(code uint16, curRate state.RateClassState, sess *state
 
 // ServiceRequest handles service discovery, providing a host name and metadata
 // for connecting to the food group service specified in inFrame.
-func (s OServiceService) ServiceRequest(ctx context.Context, service uint16, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x01_0x04_OServiceServiceRequest, listener config.Listener) (wire.SNACMessage, error) {
+func (s OServiceService) ServiceRequest(ctx context.Context, service uint16, sess *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x01_0x04_OServiceServiceRequest, listener config.Listener) (wire.SNACMessage, error) {
 	if service != wire.BOS {
 		return wire.SNACMessage{
 			Frame: wire.SNACFrame{
@@ -636,7 +636,7 @@ func (s OServiceService) ServiceRequest(ctx context.Context, service uint16, ses
 //   - Send current user the chat room metadata
 //   - Announce current user's arrival to other chat room participants
 //   - Send current user the chat room participant list
-func (s OServiceService) ClientOnline(ctx context.Context, service uint16, bodyIn wire.SNAC_0x01_0x02_OServiceClientOnline, sess *state.Session) error {
+func (s OServiceService) ClientOnline(ctx context.Context, service uint16, bodyIn wire.SNAC_0x01_0x02_OServiceClientOnline, sess *state.SessionInstance) error {
 	sess.SetSignonComplete()
 
 	switch service {
@@ -708,7 +708,7 @@ func (s OServiceService) ClientOnline(ctx context.Context, service uint16, bodyI
 
 // sendOfflineMessageNotification sends an IM notifying the user of their
 // offline message count and resets the count to zero.
-func (s OServiceService) sendOfflineMessageNotification(ctx context.Context, sess *state.Session) error {
+func (s OServiceService) sendOfflineMessageNotification(ctx context.Context, sess *state.SessionInstance) error {
 	msg := fmt.Sprintf("You just received %d IM(s) while you were offline. If you do "+
 		"not wish to receive offline messages, please go to "+
 		"<a href=\"http://settings.aim.com/?loc=en-zz\">IM Settings</a>.", sess.OfflineMsgCount())
@@ -749,7 +749,7 @@ func (s OServiceService) sendOfflineMessageNotification(ctx context.Context, ses
 // For OService version 4 and above, it appends a duplicate TLVUserInfo block.
 // AIM 6+ expects at least two user info blocks to support multi-session:
 // the first represents overall state; subsequent ones represent client instances.
-func newOServiceUserInfoUpdate(sess *state.Session) wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate {
+func newOServiceUserInfoUpdate(sess *state.SessionInstance) wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate {
 	info := sess.TLVUserInfo()
 	userInfo := []wire.TLVUserInfo{info}
 

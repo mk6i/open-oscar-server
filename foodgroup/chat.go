@@ -21,7 +21,7 @@ import (
 var (
 	// sessOnlineHost represents the OnlineHost user that announcements die
 	// roll results.
-	sessOnlineHost = func() *state.Session {
+	sessOnlineHost = func() *state.SessionInstance {
 		sn := state.DisplayScreenName("OnlineHost")
 		sess := state.NewSession()
 		sess.SetDisplayScreenName(sn)
@@ -57,7 +57,7 @@ type ChatService struct {
 // to just that user and omit the remaining participants. If TLV
 // wire.ChatTLVEnableReflectionFlag is set, return the message ("reflect") back
 // to the caller.
-func (s ChatService) ChannelMsgToHost(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x0E_0x05_ChatChannelMsgToHost) (*wire.SNACMessage, error) {
+func (s ChatService) ChannelMsgToHost(ctx context.Context, sess *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x0E_0x05_ChatChannelMsgToHost) (*wire.SNACMessage, error) {
 	frameOut := wire.SNACFrame{
 		FoodGroup: wire.Chat,
 		SubGroup:  wire.ChatChannelMsgToClient,
@@ -111,7 +111,7 @@ func (s ChatService) ChannelMsgToHost(ctx context.Context, sess *state.Session, 
 //   - Else return the unmodified incoming message.
 //
 // In the future, this function will validate the incoming message for correct form.
-func (s ChatService) transformChatMessage(inBody wire.SNAC_0x0E_0x05_ChatChannelMsgToHost, sender *state.Session) (wire.TLVRestBlock, error) {
+func (s ChatService) transformChatMessage(inBody wire.SNAC_0x0E_0x05_ChatChannelMsgToHost, sender *state.SessionInstance) (wire.TLVRestBlock, error) {
 	messageBlob, hasMessage := inBody.Bytes(wire.ChatTLVMessageInfo)
 	if !hasMessage {
 		return wire.TLVRestBlock{}, errors.New("SNAC(0x0E,0x05) does not contain a message TLV")
@@ -152,7 +152,7 @@ func (s ChatService) transformChatMessage(inBody wire.SNAC_0x0E_0x05_ChatChannel
 	return newChatTLVBlock(inBody, sender, newRestBlock), nil
 }
 
-func newChatTLVBlock(body wire.SNAC_0x0E_0x05_ChatChannelMsgToHost, sess *state.Session, msg any) wire.TLVRestBlock {
+func newChatTLVBlock(body wire.SNAC_0x0E_0x05_ChatChannelMsgToHost, sess *state.SessionInstance, msg any) wire.TLVRestBlock {
 	block := wire.TLVRestBlock{}
 	// the order of these TLVs matters for AIM 2.x. if out of order, screen
 	// names do not appear with each chat message.
@@ -166,7 +166,7 @@ func newChatTLVBlock(body wire.SNAC_0x0E_0x05_ChatChannelMsgToHost, sess *state.
 }
 
 // rollDice generates a chat response for the results of a die roll.
-func (s ChatService) rollDice(sess *state.Session, dice int, sides int) wire.TLVRestBlock {
+func (s ChatService) rollDice(sess *state.SessionInstance, dice int, sides int) wire.TLVRestBlock {
 	sb := strings.Builder{}
 	sb.WriteString("<HTML><BODY BGCOLOR=\"#ffffff\"><FONT LANG=\"0\">")
 	sb.WriteString(fmt.Sprintf("%s rolled %d %d-sided dice:", sess.DisplayScreenName().String(), dice, sides))
@@ -255,7 +255,7 @@ func parseDiceCommand(in []byte) (valid bool, dice int, sides int) {
 	return true, dice, sides
 }
 
-func setOnlineChatUsers(ctx context.Context, sess *state.Session, chatMessageRelayer ChatMessageRelayer) {
+func setOnlineChatUsers(ctx context.Context, sess *state.SessionInstance, chatMessageRelayer ChatMessageRelayer) {
 	snacPayloadOut := wire.SNAC_0x0E_0x03_ChatUsersJoined{}
 	sessions := chatMessageRelayer.AllSessions(sess.ChatRoomCookie())
 
@@ -272,7 +272,7 @@ func setOnlineChatUsers(ctx context.Context, sess *state.Session, chatMessageRel
 	})
 }
 
-func alertUserJoined(ctx context.Context, sess *state.Session, chatMessageRelayer ChatMessageRelayer) {
+func alertUserJoined(ctx context.Context, sess *state.SessionInstance, chatMessageRelayer ChatMessageRelayer) {
 	chatMessageRelayer.RelayToAllExcept(ctx, sess.ChatRoomCookie(), sess.IdentScreenName(), wire.SNACMessage{
 		Frame: wire.SNACFrame{
 			FoodGroup: wire.Chat,
@@ -286,7 +286,7 @@ func alertUserJoined(ctx context.Context, sess *state.Session, chatMessageRelaye
 	})
 }
 
-func alertUserLeft(ctx context.Context, sess *state.Session, chatMessageRelayer ChatMessageRelayer) {
+func alertUserLeft(ctx context.Context, sess *state.SessionInstance, chatMessageRelayer ChatMessageRelayer) {
 	chatMessageRelayer.RelayToAllExcept(ctx, sess.ChatRoomCookie(), sess.IdentScreenName(), wire.SNACMessage{
 		Frame: wire.SNACFrame{
 			FoodGroup: wire.Chat,
@@ -300,7 +300,7 @@ func alertUserLeft(ctx context.Context, sess *state.Session, chatMessageRelayer 
 	})
 }
 
-func sendChatRoomInfoUpdate(ctx context.Context, sess *state.Session, chatMessageRelayer ChatMessageRelayer, room state.ChatRoom) {
+func sendChatRoomInfoUpdate(ctx context.Context, sess *state.SessionInstance, chatMessageRelayer ChatMessageRelayer, room state.ChatRoom) {
 	chatMessageRelayer.RelayToScreenName(ctx, sess.ChatRoomCookie(), sess.IdentScreenName(), wire.SNACMessage{
 		Frame: wire.SNACFrame{
 			FoodGroup: wire.Chat,

@@ -22,7 +22,7 @@ func TestOSCARProxy_RecvClientCmd_AddBuddy(t *testing.T) {
 		// name is the unit test name
 		name string
 		// me is the TOC user session
-		me *state.Session
+		me *state.SessionInstance
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
@@ -121,7 +121,7 @@ func TestOSCARProxy_RecvClientCmd_AddPermit(t *testing.T) {
 		// name is the unit test name
 		name string
 		// me is the TOC user session
-		me *state.Session
+		me *state.SessionInstance
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
@@ -220,7 +220,7 @@ func TestOSCARProxy_RecvClientCmd_AddDeny(t *testing.T) {
 		// name is the unit test name
 		name string
 		// me is the TOC user session
-		me *state.Session
+		me *state.SessionInstance
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
@@ -319,7 +319,7 @@ func TestOSCARProxy_RecvClientCmd_FormatNickname(t *testing.T) {
 		// name is the unit test name
 		name string
 		// me is the TOC user session
-		me *state.Session
+		me *state.SessionInstance
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
@@ -578,7 +578,7 @@ func TestOSCARProxy_RecvClientCmd_ChatAccept(t *testing.T) {
 		// name is the unit test name
 		name string
 		// me is the TOC user session
-		me *state.Session
+		me *state.SessionInstance
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// givenChatRegistry is the chat registry passed to the function
@@ -910,7 +910,7 @@ func TestOSCARProxy_RecvClientCmd_ChatInvite(t *testing.T) {
 		// name is the unit test name
 		name string
 		// me is the TOC user session
-		me *state.Session
+		me *state.SessionInstance
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// givenChatRegistry is the chat registry passed to the function
@@ -1106,7 +1106,7 @@ func TestOSCARProxy_RecvClientCmd_ChatJoin(t *testing.T) {
 		// name is the unit test name
 		name string
 		// me is the TOC user session
-		me *state.Session
+		me *state.SessionInstance
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// givenChatRegistry is the chat registry passed to the function
@@ -1383,7 +1383,7 @@ func TestOSCARProxy_RecvClientCmd_ChatLeave(t *testing.T) {
 		// name is the unit test name
 		name string
 		// me is the TOC user session
-		me *state.Session
+		me *state.SessionInstance
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// givenChatRegistry is the chat registry passed to the function
@@ -1458,7 +1458,7 @@ func TestOSCARProxy_RecvClientCmd_ChatSend(t *testing.T) {
 		// name is the unit test name
 		name string
 		// me is the TOC user session
-		me *state.Session
+		me *state.SessionInstance
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// givenChatRegistry is the chat registry passed to the function
@@ -1677,7 +1677,7 @@ func TestOSCARProxy_RecvClientCmd_ChatWhisper(t *testing.T) {
 		// name is the unit test name
 		name string
 		// me is the TOC user session
-		me *state.Session
+		me *state.SessionInstance
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// givenChatRegistry is the chat registry passed to the function
@@ -1804,7 +1804,7 @@ func TestOSCARProxy_RecvClientCmd_Evil(t *testing.T) {
 		// name is the unit test name
 		name string
 		// me is the TOC user session
-		me *state.Session
+		me *state.SessionInstance
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
@@ -1959,7 +1959,7 @@ func TestOSCARProxy_RecvClientCmd_ChangePassword(t *testing.T) {
 		// name is the unit test name
 		name string
 		// me is the TOC user session
-		me *state.Session
+		me *state.SessionInstance
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
@@ -2188,7 +2188,7 @@ func TestOSCARProxy_RecvClientCmd_GetDirSearchURL(t *testing.T) {
 		// name is the unit test name
 		name string
 		// me is the TOC user session
-		me *state.Session
+		me *state.SessionInstance
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
@@ -2287,7 +2287,7 @@ func TestOSCARProxy_RecvClientCmd_GetDirURL(t *testing.T) {
 		// name is the unit test name
 		name string
 		// me is the TOC user session
-		me *state.Session
+		me *state.SessionInstance
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
@@ -2363,7 +2363,7 @@ func TestOSCARProxy_RecvClientCmd_GetInfoURL(t *testing.T) {
 		// name is the unit test name
 		name string
 		// me is the TOC user session
-		me *state.Session
+		me *state.SessionInstance
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
@@ -2439,7 +2439,7 @@ func TestOSCARProxy_RecvClientCmd_GetStatus(t *testing.T) {
 		// name is the unit test name
 		name string
 		// me is the TOC user session
-		me *state.Session
+		me *state.SessionInstance
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
@@ -2601,7 +2601,7 @@ func TestOSCARProxy_RecvClientCmd_InitDone(t *testing.T) {
 		// name is the unit test name
 		name string
 		// me is the TOC user session
-		me *state.Session
+		me *state.SessionInstance
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
@@ -2671,7 +2671,7 @@ func TestOSCARProxy_RecvClientCmd_RemoveBuddy(t *testing.T) {
 		// name is the unit test name
 		name string
 		// me is the TOC user session
-		me *state.Session
+		me *state.SessionInstance
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
@@ -2770,7 +2770,7 @@ func TestOSCARProxy_RecvClientCmd_RvousAccept(t *testing.T) {
 		// name is the unit test name
 		name string
 		// me is the TOC user session
-		me *state.Session
+		me *state.SessionInstance
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
@@ -2870,7 +2870,7 @@ func TestOSCARProxy_RecvClientCmd_RvousCancel(t *testing.T) {
 		// name is the unit test name
 		name string
 		// me is the TOC user session
-		me *state.Session
+		me *state.SessionInstance
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
@@ -2980,7 +2980,7 @@ func TestOSCARProxy_RecvClientCmd_SendIM(t *testing.T) {
 		// name is the unit test name
 		name string
 		// me is the TOC user session
-		me *state.Session
+		me *state.SessionInstance
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
@@ -3141,7 +3141,7 @@ func TestOSCARProxy_RecvClientCmd_SetAway(t *testing.T) {
 		// name is the unit test name
 		name string
 		// me is the TOC user session
-		me *state.Session
+		me *state.SessionInstance
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
@@ -3244,7 +3244,7 @@ func TestOSCARProxy_RecvClientCmd_SetCaps(t *testing.T) {
 		// name is the unit test name
 		name string
 		// me is the TOC user session
-		me *state.Session
+		me *state.SessionInstance
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
@@ -3362,7 +3362,7 @@ func TestOSCARProxy_RecvClientCmd_SetConfig(t *testing.T) {
 		// name is the unit test name
 		name string
 		// me is the TOC user session
-		me *state.Session
+		me *state.SessionInstance
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
@@ -3502,7 +3502,7 @@ func TestOSCARProxy_RecvClientCmd_SetDir(t *testing.T) {
 		// name is the unit test name
 		name string
 		// me is the TOC user session
-		me *state.Session
+		me *state.SessionInstance
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
@@ -3662,7 +3662,7 @@ func TestOSCARProxy_RecvClientCmd_SetIdle(t *testing.T) {
 		// name is the unit test name
 		name string
 		// me is the TOC user session
-		me *state.Session
+		me *state.SessionInstance
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
@@ -3747,7 +3747,7 @@ func TestOSCARProxy_RecvClientCmd_SetInfo(t *testing.T) {
 		// name is the unit test name
 		name string
 		// me is the TOC user session
-		me *state.Session
+		me *state.SessionInstance
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
@@ -3837,7 +3837,7 @@ func TestOSCARProxy_Signon(t *testing.T) {
 		// name is the unit test name
 		name string
 		// me is the TOC user session
-		me *state.Session
+		me *state.SessionInstance
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
@@ -3848,7 +3848,7 @@ func TestOSCARProxy_Signon(t *testing.T) {
 	}{
 		{
 			name: "successfully login",
-			me: newTestSession("me", func(session *state.Session) {
+			me: newTestSession("me", func(session *state.SessionInstance) {
 				session.SetCaps([][16]byte{wire.CapChat})
 			}),
 			givenCmd: []byte(`"" "" me "xx` + hex.EncodeToString(roastedPass) + `"`),
@@ -4213,7 +4213,7 @@ func TestOSCARProxy_Signout(t *testing.T) {
 		// name is the unit test name
 		name string
 		// me is the TOC user session
-		me *state.Session
+		me *state.SessionInstance
 		// givenChatRegistry is the chat registry passed to the function
 		chatRegistry *ChatRegistry
 		// mockParams is the list of params sent to mocks that satisfy this

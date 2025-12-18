@@ -36,7 +36,7 @@ type PermitDenyService struct {
 // current mode.
 func (s PermitDenyService) AddDenyListEntries(
 	ctx context.Context,
-	sess *state.Session,
+	sess *state.SessionInstance,
 	body wire.SNAC_0x09_0x07_PermitDenyAddDenyListEntries,
 ) error {
 	if len(body.Users) == 1 {
@@ -72,7 +72,7 @@ func (s PermitDenyService) AddDenyListEntries(
 // current mode.
 func (s PermitDenyService) AddPermListEntries(
 	ctx context.Context,
-	sess *state.Session,
+	sess *state.SessionInstance,
 	body wire.SNAC_0x09_0x05_PermitDenyAddPermListEntries,
 ) error {
 	if len(body.Users) == 1 {
@@ -105,7 +105,7 @@ func (s PermitDenyService) AddPermListEntries(
 // your relations' buddy lists are updated to reflect the list update.
 func (s PermitDenyService) DelDenyListEntries(
 	ctx context.Context,
-	sess *state.Session,
+	sess *state.SessionInstance,
 	body wire.SNAC_0x09_0x08_PermitDenyDelDenyListEntries,
 ) error {
 	if len(body.Users) == 0 {
@@ -126,7 +126,7 @@ func (s PermitDenyService) DelDenyListEntries(
 // your relations' buddy lists are updated to reflect the list update.
 func (s PermitDenyService) DelPermListEntries(
 	ctx context.Context,
-	sess *state.Session,
+	sess *state.SessionInstance,
 	body wire.SNAC_0x09_0x06_PermitDenyDelPermListEntries,
 ) error {
 	if len(body.Users) == 0 {
@@ -146,7 +146,7 @@ func (s PermitDenyService) DelPermListEntries(
 // maybeBroadcastVisibility broadcasts visibility changes to a list users only
 // if the client has finished signing in, which prevents duplicate arrival
 // notifications, which are ultimately sent at the end of the sign on flow.
-func (s PermitDenyService) maybeBroadcastVisibility(ctx context.Context, sess *state.Session, body []struct {
+func (s PermitDenyService) maybeBroadcastVisibility(ctx context.Context, sess *state.SessionInstance, body []struct {
 	ScreenName string `oscar:"len_prefix=uint8"`
 }) error {
 	if !sess.SignonComplete() {

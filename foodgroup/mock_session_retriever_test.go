@@ -37,19 +37,19 @@ func (_m *mockSessionRetriever) EXPECT() *mockSessionRetriever_Expecter {
 }
 
 // RetrieveSession provides a mock function for the type mockSessionRetriever
-func (_mock *mockSessionRetriever) RetrieveSession(screenName state.IdentScreenName, sessionNum uint8) *state.Session {
+func (_mock *mockSessionRetriever) RetrieveSession(screenName state.IdentScreenName, sessionNum uint8) *state.SessionInstance {
 	ret := _mock.Called(screenName, sessionNum)
 
 	if len(ret) == 0 {
 		panic("no return value specified for RetrieveSession")
 	}
 
-	var r0 *state.Session
-	if returnFunc, ok := ret.Get(0).(func(state.IdentScreenName, uint8) *state.Session); ok {
+	var r0 *state.SessionInstance
+	if returnFunc, ok := ret.Get(0).(func(state.IdentScreenName, uint8) *state.SessionInstance); ok {
 		r0 = returnFunc(screenName, sessionNum)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*state.Session)
+			r0 = ret.Get(0).(*state.SessionInstance)
 		}
 	}
 	return r0
@@ -85,12 +85,12 @@ func (_c *mockSessionRetriever_RetrieveSession_Call) Run(run func(screenName sta
 	return _c
 }
 
-func (_c *mockSessionRetriever_RetrieveSession_Call) Return(session *state.Session) *mockSessionRetriever_RetrieveSession_Call {
-	_c.Call.Return(session)
+func (_c *mockSessionRetriever_RetrieveSession_Call) Return(sessionInstance *state.SessionInstance) *mockSessionRetriever_RetrieveSession_Call {
+	_c.Call.Return(sessionInstance)
 	return _c
 }
 
-func (_c *mockSessionRetriever_RetrieveSession_Call) RunAndReturn(run func(screenName state.IdentScreenName, sessionNum uint8) *state.Session) *mockSessionRetriever_RetrieveSession_Call {
+func (_c *mockSessionRetriever_RetrieveSession_Call) RunAndReturn(run func(screenName state.IdentScreenName, sessionNum uint8) *state.SessionInstance) *mockSessionRetriever_RetrieveSession_Call {
 	_c.Call.Return(run)
 	return _c
 }

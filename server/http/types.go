@@ -70,7 +70,7 @@ type ChatRoomDeleter interface {
 // associated with a specific chat room.
 type ChatSessionRetriever interface {
 	// AllSessions returns all active sessions in the chat room identified by cookie.
-	AllSessions(cookie string) []*state.Session
+	AllSessions(cookie string) []*state.SessionInstance
 }
 
 // DirectoryManager defines methods for managing interest categories and keywords
@@ -118,13 +118,13 @@ type ProfileRetriever interface {
 // either all of them or by screen name.
 type SessionRetriever interface {
 	// AllSessions returns all active user sessions.
-	AllSessions() []*state.Session
+	AllSessions() []*state.SessionInstance
 
 	// RetrieveSession returns the session associated with the given screen name,
 	// or nil if no active session exists. If sessionNum is provided (non-zero),
 	// returns the specific instance with that session number, otherwise returns
 	// the first active instance.
-	RetrieveSession(screenName state.IdentScreenName, sessionNum uint8) *state.Session
+	RetrieveSession(screenName state.IdentScreenName, sessionNum uint8) *state.SessionInstance
 }
 
 // UserManager defines methods for accessing and inserting AIM user records.

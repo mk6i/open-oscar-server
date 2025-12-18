@@ -40,19 +40,19 @@ func (_m *mockChatMessageRelayer) EXPECT() *mockChatMessageRelayer_Expecter {
 }
 
 // AllSessions provides a mock function for the type mockChatMessageRelayer
-func (_mock *mockChatMessageRelayer) AllSessions(chatCookie string) []*state.Session {
+func (_mock *mockChatMessageRelayer) AllSessions(chatCookie string) []*state.SessionInstance {
 	ret := _mock.Called(chatCookie)
 
 	if len(ret) == 0 {
 		panic("no return value specified for AllSessions")
 	}
 
-	var r0 []*state.Session
-	if returnFunc, ok := ret.Get(0).(func(string) []*state.Session); ok {
+	var r0 []*state.SessionInstance
+	if returnFunc, ok := ret.Get(0).(func(string) []*state.SessionInstance); ok {
 		r0 = returnFunc(chatCookie)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]*state.Session)
+			r0 = ret.Get(0).([]*state.SessionInstance)
 		}
 	}
 	return r0
@@ -82,12 +82,12 @@ func (_c *mockChatMessageRelayer_AllSessions_Call) Run(run func(chatCookie strin
 	return _c
 }
 
-func (_c *mockChatMessageRelayer_AllSessions_Call) Return(sessions []*state.Session) *mockChatMessageRelayer_AllSessions_Call {
-	_c.Call.Return(sessions)
+func (_c *mockChatMessageRelayer_AllSessions_Call) Return(sessionInstances []*state.SessionInstance) *mockChatMessageRelayer_AllSessions_Call {
+	_c.Call.Return(sessionInstances)
 	return _c
 }
 
-func (_c *mockChatMessageRelayer_AllSessions_Call) RunAndReturn(run func(chatCookie string) []*state.Session) *mockChatMessageRelayer_AllSessions_Call {
+func (_c *mockChatMessageRelayer_AllSessions_Call) RunAndReturn(run func(chatCookie string) []*state.SessionInstance) *mockChatMessageRelayer_AllSessions_Call {
 	_c.Call.Return(run)
 	return _c
 }

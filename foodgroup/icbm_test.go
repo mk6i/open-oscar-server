@@ -22,7 +22,7 @@ func TestICBMService_ChannelMsgToHost(t *testing.T) {
 		// name is the unit test name
 		name string
 		// senderSession is the session of the user sending the message
-		senderSession *state.Session
+		senderSession *state.SessionInstance
 		// inputSNAC is the SNAC frame sent from the server to the recipient
 		// client
 		inputSNAC wire.SNACMessage
@@ -2049,7 +2049,7 @@ func TestICBMService_EvilRequest(t *testing.T) {
 		// name is the unit test name
 		name string
 		// senderScreenName is the session of the user sending the EvilRequest
-		senderSession *state.Session
+		senderSession *state.SessionInstance
 		// msgsReceived is the # of messages received from the warned user
 		msgsReceived int
 		// inputSNAC is the SNAC sent by the sender client
@@ -2590,7 +2590,7 @@ func TestICBMService_OfflineRetrieve(t *testing.T) {
 		// name is the unit test name
 		name string
 		// senderSession is the session of the user retrieving messages
-		senderSession *state.Session
+		senderSession *state.SessionInstance
 		// inputSNAC is the input frame (RequestID checked on reply)
 		inputSNAC wire.SNACMessage
 		// expectOutput is the expected return SNAC value.

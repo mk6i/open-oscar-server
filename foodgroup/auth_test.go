@@ -1594,7 +1594,7 @@ func TestAuthService_RegisterBOSSession(t *testing.T) {
 		// method's dependencies
 		mockParams mockParams
 		// wantSess asserts the values of one or more session properties
-		wantSess func(*state.Session) bool
+		wantSess func(*state.SessionInstance) bool
 		// wantErr is the error we expect from the method
 		wantErr error
 	}{
@@ -1645,7 +1645,7 @@ func TestAuthService_RegisterBOSSession(t *testing.T) {
 					},
 				},
 			},
-			wantSess: func(session *state.Session) bool {
+			wantSess: func(session *state.SessionInstance) bool {
 				want := wire.BARTID{
 					Type: wire.BARTTypesBuddyIcon,
 					BARTInfo: wire.BARTInfo{
@@ -1699,7 +1699,7 @@ func TestAuthService_RegisterBOSSession(t *testing.T) {
 					},
 				},
 			},
-			wantSess: func(session *state.Session) bool {
+			wantSess: func(session *state.SessionInstance) bool {
 				return session.UserInfoBitmask()&wire.OServiceUserFlagBot == wire.OServiceUserFlagBot
 			},
 		},
@@ -1743,7 +1743,7 @@ func TestAuthService_RegisterBOSSession(t *testing.T) {
 					},
 				},
 			},
-			wantSess: func(sess *state.Session) bool {
+			wantSess: func(sess *state.SessionInstance) bool {
 				uinMatches := fmt.Sprintf("%d", sess.UIN()) == uin.String()
 				flagsMatch := sess.UserInfoBitmask()&wire.OServiceUserFlagICQ == wire.OServiceUserFlagICQ
 				return uinMatches && flagsMatch
@@ -1846,7 +1846,7 @@ func TestAuthService_SignoutChat(t *testing.T) {
 		// name is the unit test name
 		name string
 		// userSession is the session of the user signing out
-		userSession *state.Session
+		userSession *state.SessionInstance
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
@@ -1938,7 +1938,7 @@ func TestAuthService_Signout(t *testing.T) {
 		// name is the unit test name
 		name string
 		// userSession is the session of the user signing out
-		userSession *state.Session
+		userSession *state.SessionInstance
 		// wantErr is the error we expect from the method
 		wantErr error
 		// mockParams is the list of params sent to mocks that satisfy this

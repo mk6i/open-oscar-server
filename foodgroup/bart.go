@@ -42,7 +42,7 @@ type BARTService struct {
 	logger                 *slog.Logger
 }
 
-func (s BARTService) UpsertItem(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x10_0x02_BARTUploadQuery) (wire.SNACMessage, error) {
+func (s BARTService) UpsertItem(ctx context.Context, sess *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x10_0x02_BARTUploadQuery) (wire.SNACMessage, error) {
 	h := md5.New()
 	if _, err := h.Write(inBody.Data); err != nil {
 		return wire.SNACMessage{}, err

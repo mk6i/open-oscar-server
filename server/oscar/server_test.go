@@ -55,8 +55,8 @@ func TestServer_ListenAndServeAndShutdown(t *testing.T) {
 		wire.DefaultSNACRateLimits(),
 		nil,
 		cfg,
-		func(ctx context.Context, sess *state.Session) error { return nil },
-		func(ctx context.Context, sess *state.Session) {},
+		func(ctx context.Context, sess *state.SessionInstance) error { return nil },
+		func(ctx context.Context, sess *state.SessionInstance) {},
 	)
 
 	server.handler = func(ctx context.Context, conn net.Conn, listener config.Listener) error {
@@ -370,7 +370,7 @@ func TestOscarServer_RouteConnection_BOS(t *testing.T) {
 	wg.Add(1)
 	authService.EXPECT().
 		Signout(mock.Anything, sess).
-		Run(func(ctx context.Context, s *state.Session) {
+		Run(func(ctx context.Context, s *state.SessionInstance) {
 			defer wg.Done()
 		})
 
@@ -407,7 +407,7 @@ func TestOscarServer_RouteConnection_BOS(t *testing.T) {
 		RemoveUserFromAllChats(mock.Anything)
 
 	wg.Add(2)
-	handler := func(ctx context.Context, serverType uint16, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter, listener config.Listener) error {
+	handler := func(ctx context.Context, serverType uint16, sess *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter, listener config.Listener) error {
 		defer wg.Done()
 		return nil
 	}
@@ -420,10 +420,10 @@ func TestOscarServer_RouteConnection_BOS(t *testing.T) {
 		BuddyListRegistry:  buddyListRegistry,
 		ChatSessionManager: chatSessionManager,
 		DepartureNotifier:  departureNotifier,
-		recalcWarning: func(ctx context.Context, sess *state.Session) error {
+		recalcWarning: func(ctx context.Context, sess *state.SessionInstance) error {
 			return nil
 		},
-		lowerWarnLevel: func(ctx context.Context, sess *state.Session) {
+		lowerWarnLevel: func(ctx context.Context, sess *state.SessionInstance) {
 			defer wg.Done()
 		},
 	}
@@ -436,7 +436,7 @@ func TestOscarServer_RouteConnection_BOS(t *testing.T) {
 //   - Ensure that disconnecting second instance does not sign out the session.
 func TestOscarServer_RouteConnection_BOS_MultiSessionSignoff(t *testing.T) {
 	sess := state.NewSession()
-	sess.AddInstance(state.NewInstance(sess.SessionGroup))
+	sess.AddInstance(state.NewInstance(sess.Session))
 
 	clientConn, serverConn := net.Pipe()
 	addr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:8080")
@@ -516,7 +516,7 @@ func TestOscarServer_RouteConnection_BOS_MultiSessionSignoff(t *testing.T) {
 	chatSessionManager := newMockChatSessionManager(t)
 
 	wg.Add(2)
-	handler := func(ctx context.Context, serverType uint16, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter, listener config.Listener) error {
+	handler := func(ctx context.Context, serverType uint16, sess *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter, listener config.Listener) error {
 		defer wg.Done()
 		return nil
 	}
@@ -529,10 +529,10 @@ func TestOscarServer_RouteConnection_BOS_MultiSessionSignoff(t *testing.T) {
 		BuddyListRegistry:  buddyListRegistry,
 		ChatSessionManager: chatSessionManager,
 		DepartureNotifier:  departureNotifier,
-		recalcWarning: func(ctx context.Context, sess *state.Session) error {
+		recalcWarning: func(ctx context.Context, sess *state.SessionInstance) error {
 			return nil
 		},
-		lowerWarnLevel: func(ctx context.Context, sess *state.Session) {
+		lowerWarnLevel: func(ctx context.Context, sess *state.SessionInstance) {
 			defer wg.Done()
 		},
 	}
@@ -600,7 +600,7 @@ func TestOscarServer_RouteConnection_Chat(t *testing.T) {
 	wg.Add(1)
 	authService.EXPECT().
 		SignoutChat(mock.Anything, sess).
-		Run(func(ctx context.Context, s *state.Session) {
+		Run(func(ctx context.Context, s *state.SessionInstance) {
 			defer wg.Done()
 		})
 
@@ -624,7 +624,7 @@ func TestOscarServer_RouteConnection_Chat(t *testing.T) {
 	chatSessionManager := newMockChatSessionManager(t)
 
 	wg.Add(1)
-	handler := func(ctx context.Context, serverType uint16, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter, listener config.Listener) error {
+	handler := func(ctx context.Context, serverType uint16, sess *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter, listener config.Listener) error {
 		defer wg.Done()
 		return nil
 	}
@@ -719,7 +719,7 @@ func TestOscarServer_RouteConnection_Admin(t *testing.T) {
 	chatSessionManager := newMockChatSessionManager(t)
 
 	wg.Add(1)
-	handler := func(ctx context.Context, serverType uint16, sess *state.Session, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter, listener config.Listener) error {
+	handler := func(ctx context.Context, serverType uint16, sess *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter, listener config.Listener) error {
 		defer wg.Done()
 		return nil
 	}
@@ -846,7 +846,7 @@ func Test_oscarServer_receiveSessMessages_BOS_integration(t *testing.T) {
 	signoutWG.Add(1)
 	authService.EXPECT().
 		Signout(mock.Anything, sess).
-		Run(func(ctx context.Context, s *state.Session) { signoutWG.Done() })
+		Run(func(ctx context.Context, s *state.SessionInstance) { signoutWG.Done() })
 
 	onlineNotifier := newMockOnlineNotifier(t)
 	onlineNotifier.EXPECT().
@@ -873,8 +873,8 @@ func Test_oscarServer_receiveSessMessages_BOS_integration(t *testing.T) {
 		DepartureNotifier:  departureNotifier,
 		OnlineNotifier:     onlineNotifier,
 		Logger:             slog.New(slog.NewTextHandler(io.Discard, nil)),
-		recalcWarning:      func(ctx context.Context, sess *state.Session) error { return nil },
-		lowerWarnLevel:     func(ctx context.Context, sess *state.Session) {},
+		recalcWarning:      func(ctx context.Context, sess *state.SessionInstance) error { return nil },
+		lowerWarnLevel:     func(ctx context.Context, sess *state.SessionInstance) {},
 	}
 
 	// Fake client connection with address
@@ -991,7 +991,7 @@ func Test_oscarServer_receiveSessMessages_Chat_integration(t *testing.T) {
 	signoutWG.Add(1)
 	authService.EXPECT().
 		SignoutChat(mock.Anything, sess).
-		Run(func(ctx context.Context, s *state.Session) { signoutWG.Done() })
+		Run(func(ctx context.Context, s *state.SessionInstance) { signoutWG.Done() })
 
 	onlineNotifier := newMockOnlineNotifier(t)
 	onlineNotifier.EXPECT().

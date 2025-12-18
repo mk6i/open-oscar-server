@@ -19,7 +19,7 @@ func TestLocateService_UserInfoQuery(t *testing.T) {
 		// method's dependencies
 		mockParams mockParams
 		// userSession is the session of the user requesting user info
-		userSession *state.Session
+		userSession *state.SessionInstance
 		// inputSNAC is the SNAC sent from client to server
 		inputSNAC wire.SNACMessage
 		// expectOutput is the SNAC sent from the server to client
@@ -321,7 +321,7 @@ func TestLocateService_SetKeywordInfo(t *testing.T) {
 		// name is the unit test name
 		name string
 		// userSession is the session of the user setting info
-		userSession *state.Session
+		userSession *state.SessionInstance
 		// inputSNAC is the SNAC sent from client to server
 		inputSNAC wire.SNACMessage
 		// expectOutput is the SNAC sent from the server to client
@@ -497,7 +497,7 @@ func TestLocateService_SetDirInfo(t *testing.T) {
 		// name is the unit test name
 		name string
 		// userSession is the session of the user setting info
-		userSession *state.Session
+		userSession *state.SessionInstance
 		// inputSNAC is the SNAC sent from client to server
 		inputSNAC wire.SNACMessage
 		// expectOutput is the SNAC sent from the server to client
@@ -586,7 +586,7 @@ func TestLocateService_SetInfo(t *testing.T) {
 		// name is the unit test name
 		name string
 		// userSession is the session of the user setting info
-		userSession *state.Session
+		userSession *state.SessionInstance
 		// inBody is the message sent from client to server
 		inBody wire.SNAC_0x02_0x04_LocateSetInfo
 		// mockParams is the list of params sent to mocks that satisfy this
@@ -777,7 +777,7 @@ func TestLocateService_DirInfo(t *testing.T) {
 		// name is the unit test name
 		name string
 		// userSession is the session of the user setting info
-		userSession *state.Session
+		userSession *state.SessionInstance
 		// inputSNAC is the SNAC sent from client to server
 		inputSNAC wire.SNACMessage
 		// expectOutput is the SNAC sent from the server to client

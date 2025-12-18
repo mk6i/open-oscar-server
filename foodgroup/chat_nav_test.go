@@ -19,7 +19,7 @@ func TestChatNavService_CreateRoom(t *testing.T) {
 	tests := []struct {
 		name          string
 		chatRoom      *state.ChatRoom
-		sess          *state.Session
+		sess          *state.SessionInstance
 		inputSNAC     wire.SNACMessage
 		want          wire.SNACMessage
 		mockParams    mockParams

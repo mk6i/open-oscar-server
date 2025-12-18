@@ -18,7 +18,7 @@ func TestICQService_DeleteMsgReq(t *testing.T) {
 	tests := []struct {
 		name       string
 		seq        uint16
-		sess       *state.Session
+		sess       *state.SessionInstance
 		mockParams mockParams
 		wantErr    error
 	}{
@@ -58,7 +58,7 @@ func TestICQService_FindByICQName(t *testing.T) {
 		name       string
 		timeNow    func() time.Time
 		seq        uint16
-		sess       *state.Session
+		sess       *state.SessionInstance
 		req        wire.ICQ_0x07D0_0x0515_DBQueryMetaReqSearchByDetails
 		mockParams mockParams
 		wantErr    error
@@ -214,7 +214,7 @@ func TestICQService_FindByICQName(t *testing.T) {
 						},
 						{
 							screenName: state.NewIdentScreenName("123456789"),
-							result:     &state.Session{},
+							result:     &state.SessionInstance{},
 						},
 					},
 				},
@@ -259,7 +259,7 @@ func TestICQService_FindByICQEmail(t *testing.T) {
 		name       string
 		timeNow    func() time.Time
 		seq        uint16
-		sess       *state.Session
+		sess       *state.SessionInstance
 		req        wire.ICQ_0x07D0_0x0529_DBQueryMetaReqSearchByEmail
 		mockParams mockParams
 		wantErr    error
@@ -350,7 +350,7 @@ func TestICQService_FindByICQEmail(t *testing.T) {
 					retrieveSessionParams{
 						{
 							screenName: state.NewIdentScreenName("123456789"),
-							result:     &state.Session{},
+							result:     &state.SessionInstance{},
 						},
 					},
 				},
@@ -395,7 +395,7 @@ func TestICQService_FindByEmail3(t *testing.T) {
 		name       string
 		timeNow    func() time.Time
 		seq        uint16
-		sess       *state.Session
+		sess       *state.SessionInstance
 		req        wire.ICQ_0x07D0_0x0573_DBQueryMetaReqSearchByEmail3
 		mockParams mockParams
 		wantErr    error
@@ -492,7 +492,7 @@ func TestICQService_FindByEmail3(t *testing.T) {
 					retrieveSessionParams{
 						{
 							screenName: state.NewIdentScreenName("123456789"),
-							result:     &state.Session{},
+							result:     &state.SessionInstance{},
 						},
 					},
 				},
@@ -537,7 +537,7 @@ func TestICQService_FindByUIN(t *testing.T) {
 		name       string
 		timeNow    func() time.Time
 		seq        uint16
-		sess       *state.Session
+		sess       *state.SessionInstance
 		req        wire.ICQ_0x07D0_0x051F_DBQueryMetaReqSearchByUIN
 		mockParams mockParams
 		wantErr    error
@@ -628,7 +628,7 @@ func TestICQService_FindByUIN(t *testing.T) {
 					retrieveSessionParams{
 						{
 							screenName: state.NewIdentScreenName("123456789"),
-							result:     &state.Session{},
+							result:     &state.SessionInstance{},
 						},
 					},
 				},
@@ -673,7 +673,7 @@ func TestICQService_FindByUIN2(t *testing.T) {
 		name       string
 		timeNow    func() time.Time
 		seq        uint16
-		sess       *state.Session
+		sess       *state.SessionInstance
 		req        wire.ICQ_0x07D0_0x0569_DBQueryMetaReqSearchByUIN2
 		mockParams mockParams
 		wantErr    error
@@ -768,7 +768,7 @@ func TestICQService_FindByUIN2(t *testing.T) {
 					retrieveSessionParams{
 						{
 							screenName: state.NewIdentScreenName("123456789"),
-							result:     &state.Session{},
+							result:     &state.SessionInstance{},
 						},
 					},
 				},
@@ -813,7 +813,7 @@ func TestICQService_FindByWhitePages(t *testing.T) {
 		name       string
 		timeNow    func() time.Time
 		seq        uint16
-		sess       *state.Session
+		sess       *state.SessionInstance
 		req        wire.ICQ_0x07D0_0x0533_DBQueryMetaReqSearchWhitePages
 		mockParams mockParams
 		wantErr    error
@@ -967,7 +967,7 @@ func TestICQService_FindByWhitePages(t *testing.T) {
 						},
 						{
 							screenName: state.NewIdentScreenName("123456789"),
-							result:     &state.Session{},
+							result:     &state.SessionInstance{},
 						},
 					},
 				},
@@ -1012,7 +1012,7 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 		name       string
 		timeNow    func() time.Time
 		seq        uint16
-		sess       *state.Session
+		sess       *state.SessionInstance
 		req        wire.ICQ_0x07D0_0x055F_DBQueryMetaReqSearchWhitePages2
 		mockParams mockParams
 		wantErr    error
@@ -1172,7 +1172,7 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 						},
 						{
 							screenName: state.NewIdentScreenName("123456789"),
-							result:     &state.Session{},
+							result:     &state.SessionInstance{},
 						},
 					},
 				},
@@ -1336,7 +1336,7 @@ func TestICQService_FullUserInfo(t *testing.T) {
 		name       string
 		timeNow    func() time.Time
 		seq        uint16
-		sess       *state.Session
+		sess       *state.SessionInstance
 		req        wire.ICQ_0x07D0_0x051F_DBQueryMetaReqSearchByUIN
 		mockParams mockParams
 		wantErr    error
@@ -1755,7 +1755,7 @@ func TestICQService_FullUserInfo(t *testing.T) {
 					retrieveSessionParams{
 						{
 							screenName: state.NewIdentScreenName("123456789"),
-							result:     &state.Session{},
+							result:     &state.SessionInstance{},
 						},
 					},
 				},
@@ -1791,7 +1791,7 @@ func TestICQService_OfflineMsgReq(t *testing.T) {
 	tests := []struct {
 		name       string
 		seq        uint16
-		sess       *state.Session
+		sess       *state.SessionInstance
 		mockParams mockParams
 		wantErr    error
 	}{
@@ -1969,7 +1969,7 @@ func TestICQService_SetAffiliations(t *testing.T) {
 	tests := []struct {
 		name       string
 		seq        uint16
-		sess       *state.Session
+		sess       *state.SessionInstance
 		req        wire.ICQ_0x07D0_0x041A_DBQueryMetaReqSetAffiliations
 		mockParams mockParams
 		wantErr    error
@@ -2123,7 +2123,7 @@ func TestICQService_SetEmails(t *testing.T) {
 	tests := []struct {
 		name       string
 		seq        uint16
-		sess       *state.Session
+		sess       *state.SessionInstance
 		req        wire.ICQ_0x07D0_0x040B_DBQueryMetaReqSetEmails
 		mockParams mockParams
 		wantErr    error
@@ -2198,7 +2198,7 @@ func TestICQService_SetBasicInfo(t *testing.T) {
 	tests := []struct {
 		name       string
 		seq        uint16
-		sess       *state.Session
+		sess       *state.SessionInstance
 		req        wire.ICQ_0x07D0_0x03EA_DBQueryMetaReqSetBasicInfo
 		mockParams mockParams
 		wantErr    error
@@ -2308,7 +2308,7 @@ func TestICQService_SetInterests(t *testing.T) {
 	tests := []struct {
 		name       string
 		seq        uint16
-		sess       *state.Session
+		sess       *state.SessionInstance
 		req        wire.ICQ_0x07D0_0x0410_DBQueryMetaReqSetInterests
 		mockParams mockParams
 		wantErr    error
@@ -2440,7 +2440,7 @@ func TestICQService_SetMoreInfo(t *testing.T) {
 	tests := []struct {
 		name       string
 		seq        uint16
-		sess       *state.Session
+		sess       *state.SessionInstance
 		req        wire.ICQ_0x07D0_0x03FD_DBQueryMetaReqSetMoreInfo
 		mockParams mockParams
 		wantErr    error
@@ -2539,7 +2539,7 @@ func TestICQService_SetPermissions(t *testing.T) {
 	tests := []struct {
 		name       string
 		seq        uint16
-		sess       *state.Session
+		sess       *state.SessionInstance
 		req        wire.ICQ_0x07D0_0x0424_DBQueryMetaReqSetPermissions
 		mockParams mockParams
 		wantErr    error
@@ -2604,7 +2604,7 @@ func TestICQService_SetUserNotes(t *testing.T) {
 	tests := []struct {
 		name       string
 		seq        uint16
-		sess       *state.Session
+		sess       *state.SessionInstance
 		req        wire.ICQ_0x07D0_0x0406_DBQueryMetaReqSetNotes
 		mockParams mockParams
 		wantErr    error
@@ -2688,7 +2688,7 @@ func TestICQService_SetWorkInfo(t *testing.T) {
 	tests := []struct {
 		name       string
 		seq        uint16
-		sess       *state.Session
+		sess       *state.SessionInstance
 		req        wire.ICQ_0x07D0_0x03F3_DBQueryMetaReqSetWorkInfo
 		mockParams mockParams
 		wantErr    error
@@ -2795,7 +2795,7 @@ func TestICQService_ShortUserInfo(t *testing.T) {
 		name       string
 		timeNow    func() time.Time
 		seq        uint16
-		sess       *state.Session
+		sess       *state.SessionInstance
 		req        wire.ICQ_0x07D0_0x04BA_DBQueryMetaReqShortInfo
 		mockParams mockParams
 		wantErr    error
@@ -2873,7 +2873,7 @@ func TestICQService_ShortUserInfo(t *testing.T) {
 					retrieveSessionParams{
 						{
 							screenName: state.NewIdentScreenName("123456789"),
-							result:     &state.Session{},
+							result:     &state.SessionInstance{},
 						},
 					},
 				},
@@ -2910,7 +2910,7 @@ func TestICQService_XMLReqData(t *testing.T) {
 		name       string
 		timeNow    func() time.Time
 		seq        uint16
-		sess       *state.Session
+		sess       *state.SessionInstance
 		req        wire.ICQ_0x07D0_0x0898_DBQueryMetaReqXMLReq
 		mockParams mockParams
 		wantErr    error

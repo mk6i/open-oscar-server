@@ -22,7 +22,7 @@ func TestBARTService_UpsertItem(t *testing.T) {
 		// name is the unit test name
 		name string
 		// userSession is the session of the user adding to feedbag
-		userSession *state.Session
+		userSession *state.SessionInstance
 		// inputSNAC is the SNAC sent from the client to the server
 		inputSNAC wire.SNACMessage
 		// mockParams is the list of params sent to mocks that satisfy this
@@ -33,7 +33,7 @@ func TestBARTService_UpsertItem(t *testing.T) {
 		// wantErr is the expected error
 		wantErr error
 		// sessionMatch verifies the session state after completion
-		sessionMatch func(session *state.Session)
+		sessionMatch func(session *state.SessionInstance)
 	}{
 		{
 			name: "insert new buddy icon for current session",
@@ -117,7 +117,7 @@ func TestBARTService_UpsertItem(t *testing.T) {
 					},
 				},
 			},
-			sessionMatch: func(session *state.Session) {
+			sessionMatch: func(session *state.SessionInstance) {
 				have, hasIcon := session.BuddyIcon()
 				assert.True(t, hasIcon)
 				want := wire.BARTID{
@@ -213,7 +213,7 @@ func TestBARTService_UpsertItem(t *testing.T) {
 					},
 				},
 			},
-			sessionMatch: func(session *state.Session) {
+			sessionMatch: func(session *state.SessionInstance) {
 				have, hasIcon := session.BuddyIcon()
 				assert.True(t, hasIcon)
 				want := wire.BARTID{
@@ -300,7 +300,7 @@ func TestBARTService_UpsertItem(t *testing.T) {
 					},
 				},
 			},
-			sessionMatch: func(session *state.Session) {
+			sessionMatch: func(session *state.SessionInstance) {
 				// assert session icon didn't change
 				have, hasIcon := session.BuddyIcon()
 				assert.True(t, hasIcon)
@@ -361,7 +361,7 @@ func TestBARTService_RetrieveItem(t *testing.T) {
 		// name is the unit test name
 		name string
 		// userSession is the session of the user adding to feedbag
-		userSession *state.Session
+		userSession *state.SessionInstance
 		// inputSNAC is the SNAC sent from the client to the server
 		inputSNAC wire.SNACMessage
 		// mockParams is the list of params sent to mocks that satisfy this
@@ -517,7 +517,7 @@ func TestBARTService_RetrieveItemV2(t *testing.T) {
 		// name is the unit test name
 		name string
 		// userSession is the session of the user adding to feedbag
-		userSession *state.Session
+		userSession *state.SessionInstance
 		// inputSNAC is the SNAC sent from the client to the server
 		inputSNAC wire.SNACMessage
 		// mockParams is the list of params sent to mocks that satisfy this

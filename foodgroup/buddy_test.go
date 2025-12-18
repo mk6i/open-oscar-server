@@ -41,7 +41,7 @@ func TestBuddyService_AddBuddies(t *testing.T) {
 		// name is the name of the test
 		name string
 		// sess is the client session
-		sess *state.Session
+		sess *state.SessionInstance
 		// bodyIn is the input SNAC
 		bodyIn wire.SNAC_0x03_0x04_BuddyAddBuddies
 		// mockParams is the list of params sent to mocks that satisfy this
@@ -153,7 +153,7 @@ func TestBuddyService_DelBuddies(t *testing.T) {
 		// name is the name of the test
 		name string
 		// sess is the client session
-		sess *state.Session
+		sess *state.SessionInstance
 		// bodyIn is the input SNAC
 		bodyIn wire.SNAC_0x03_0x05_BuddyDelBuddies
 		// mockParams is the list of params sent to mocks that satisfy this
@@ -234,7 +234,7 @@ func TestBuddyService_AddTempBuddies(t *testing.T) {
 		// name is the name of the test
 		name string
 		// sess is the client session
-		sess *state.Session
+		sess *state.SessionInstance
 		// bodyIn is the input SNAC
 		bodyIn wire.SNAC_0x03_0x0F_BuddyAddTempBuddies
 		// mockParams is the list of params sent to mocks that satisfy this
@@ -346,7 +346,7 @@ func TestBuddyService_DelTempBuddies(t *testing.T) {
 		// name is the name of the test
 		name string
 		// sess is the client session
-		sess *state.Session
+		sess *state.SessionInstance
 		// bodyIn is the input SNAC
 		bodyIn wire.SNAC_0x03_0x10_BuddyDelTempBuddies
 		// mockParams is the list of params sent to mocks that satisfy this
@@ -538,7 +538,7 @@ func TestBuddyService_BroadcastDeparture(t *testing.T) {
 		// name is the unit test name
 		name string
 		// sourceSession is the session of the user
-		userSession *state.Session
+		userSession *state.SessionInstance
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
@@ -653,7 +653,7 @@ func Test_buddyNotifier_BroadcastVisibility(t *testing.T) {
 		// name is the unit test name
 		name string
 		// sourceSession is the session of the user
-		userSession *state.Session
+		userSession *state.SessionInstance
 		// filter limits specific users that can be notified
 		filter []state.IdentScreenName
 		// doSendDepartures indicates whether departure messages should be sent

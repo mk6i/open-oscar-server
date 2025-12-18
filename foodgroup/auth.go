@@ -68,7 +68,7 @@ type AuthService struct {
 // This method does not verify that the user and chat room exist because it
 // implicitly trusts the contents of the token signed by
 // {{OServiceService.ServiceRequest}}.
-func (s AuthService) RegisterChatSession(ctx context.Context, serverCookie state.ServerCookie) (*state.Session, error) {
+func (s AuthService) RegisterChatSession(ctx context.Context, serverCookie state.ServerCookie) (*state.SessionInstance, error) {
 	sess, err := s.chatSessionRegistry.AddSession(ctx, serverCookie.ChatCookie, serverCookie.ScreenName)
 	if err != nil {
 		return nil, fmt.Errorf("AddSession: %w", err)
@@ -95,7 +95,7 @@ func (s AuthService) CrackCookie(authCookie []byte) (state.ServerCookie, error) 
 }
 
 // RegisterBOSSession adds a new session to the session registry.
-func (s AuthService) RegisterBOSSession(ctx context.Context, serverCookie state.ServerCookie) (*state.Session, error) {
+func (s AuthService) RegisterBOSSession(ctx context.Context, serverCookie state.ServerCookie) (*state.SessionInstance, error) {
 	u, err := s.userManager.User(ctx, serverCookie.ScreenName.IdentScreenName())
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve user: %w", err)
@@ -138,12 +138,14 @@ func (s AuthService) RegisterBOSSession(ctx context.Context, serverCookie state.
 	sess.SetMemberSince(time.Now())
 	sess.SetOfflineMsgCount(u.OfflineMsgCount)
 
-	bartID, err := s.bartItemManager.BuddyIconMetadata(ctx, sess.IdentScreenName())
-	if err != nil {
-		return nil, fmt.Errorf("BuddyIconMetadata: %w", err)
-	}
-	if bartID != nil {
-		sess.SetBuddyIcon(*bartID)
+	if _, alreadySet := sess.BuddyIcon(); !alreadySet {
+		bartID, err := s.bartItemManager.BuddyIconMetadata(ctx, sess.IdentScreenName())
+		if err != nil {
+			return nil, fmt.Errorf("BuddyIconMetadata: %w", err)
+		}
+		if bartID != nil {
+			sess.SetBuddyIcon(*bartID)
+		}
 	}
 
 	// indicate whether the client supports/wants multiple concurrent sessions
@@ -163,7 +165,7 @@ func (s AuthService) RegisterBOSSession(ctx context.Context, serverCookie state.
 }
 
 // RetrieveBOSSession returns a user's existing session
-func (s AuthService) RetrieveBOSSession(ctx context.Context, serverCookie state.ServerCookie) (*state.Session, error) {
+func (s AuthService) RetrieveBOSSession(ctx context.Context, serverCookie state.ServerCookie) (*state.SessionInstance, error) {
 	u, err := s.userManager.User(ctx, serverCookie.ScreenName.IdentScreenName())
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve user: %w", err)
@@ -176,13 +178,13 @@ func (s AuthService) RetrieveBOSSession(ctx context.Context, serverCookie state.
 }
 
 // Signout removes this user's session.
-func (s AuthService) Signout(_ context.Context, sess *state.Session) {
+func (s AuthService) Signout(_ context.Context, sess *state.SessionInstance) {
 	s.sessionManager.RemoveSession(sess)
 }
 
 // SignoutChat removes user from chat room and notifies remaining participants
 // of their departure.
-func (s AuthService) SignoutChat(ctx context.Context, sess *state.Session) {
+func (s AuthService) SignoutChat(ctx context.Context, sess *state.SessionInstance) {
 	alertUserLeft(ctx, sess, s.chatMessageRelayer)
 	s.chatSessionRegistry.RemoveSession(sess)
 }

@@ -92,7 +92,7 @@ func (s FeedbagService) RightsQuery(_ context.Context, inFrame wire.SNACFrame) w
 
 // Query fetches the user's feedbag (aka buddy list). It returns
 // wire.FeedbagReply, which contains feedbag entries.
-func (s FeedbagService) Query(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame) (wire.SNACMessage, error) {
+func (s FeedbagService) Query(ctx context.Context, sess *state.SessionInstance, inFrame wire.SNACFrame) (wire.SNACMessage, error) {
 	fb, err := s.feedbagManager.Feedbag(ctx, sess.IdentScreenName())
 	if err != nil {
 		return wire.SNACMessage{}, err
@@ -125,7 +125,7 @@ func (s FeedbagService) Query(ctx context.Context, sess *state.Session, inFrame 
 // wire.FeedbagReplyNotModified if the feedbag was last modified before
 // inBody.LastUpdate, else return wire.FeedbagReply, which contains feedbag
 // entries.
-func (s FeedbagService) QueryIfModified(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x05_FeedbagQueryIfModified) (wire.SNACMessage, error) {
+func (s FeedbagService) QueryIfModified(ctx context.Context, sess *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x05_FeedbagQueryIfModified) (wire.SNACMessage, error) {
 	fb, err := s.feedbagManager.Feedbag(ctx, sess.IdentScreenName())
 	if err != nil {
 		return wire.SNACMessage{}, err
@@ -175,7 +175,7 @@ func (s FeedbagService) QueryIfModified(ctx context.Context, sess *state.Session
 // UpdateItem updates items in the user's feedbag (aka buddy list). Sends user
 // buddy arrival notifications for each online & visible buddy added to the
 // feedbag. It returns wire.FeedbagStatus, which contains update confirmation.
-func (s FeedbagService) UpsertItem(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, items []wire.FeedbagItem) (*wire.SNACMessage, error) {
+func (s FeedbagService) UpsertItem(ctx context.Context, sess *state.SessionInstance, inFrame wire.SNACFrame, items []wire.FeedbagItem) (*wire.SNACMessage, error) {
 	for _, item := range items {
 		// don't let users block themselves, it causes the AIM client to go
 		// into a weird state.
@@ -251,7 +251,7 @@ func (s FeedbagService) UpsertItem(ctx context.Context, sess *state.Session, inF
 // setBARTItem informs clients about buddy icon update. If the BART
 // store doesn't have the icon, then tell the client to upload the buddy icon.
 // If the icon already exists, tell the user's buddies about the icon change.
-func (s FeedbagService) setBARTItem(ctx context.Context, sess *state.Session, item wire.FeedbagItem) error {
+func (s FeedbagService) setBARTItem(ctx context.Context, sess *state.SessionInstance, item wire.FeedbagItem) error {
 	b, hasBuf := item.Bytes(wire.FeedbagAttributesBartInfo)
 	if !hasBuf {
 		return errors.New("unable to extract icon payload")
@@ -330,7 +330,7 @@ func (s FeedbagService) setBARTItem(ctx context.Context, sess *state.Session, it
 // arrival notifications for each online & visible buddy added to the feedbag.
 // Sends buddy arrival notifications to each unblocked buddy if current user is
 // visible. It returns wire.FeedbagStatus, which contains update confirmation.
-func (s FeedbagService) DeleteItem(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x0A_FeedbagDeleteItem) (*wire.SNACMessage, error) {
+func (s FeedbagService) DeleteItem(ctx context.Context, sess *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x0A_FeedbagDeleteItem) (*wire.SNACMessage, error) {
 	if err := s.feedbagManager.FeedbagDelete(ctx, sess.IdentScreenName(), inBody.Items); err != nil {
 		return nil, err
 	}
@@ -382,7 +382,7 @@ func (s FeedbagService) StartCluster(context.Context, wire.SNACFrame, wire.SNAC_
 // Use sends a user the contents of their buddy list. It's invoked at sign-on
 // by AIM clients that use the feedbag food group for buddy list management (as
 // opposed to client-side management).
-func (s FeedbagService) Use(ctx context.Context, sess *state.Session) error {
+func (s FeedbagService) Use(ctx context.Context, sess *state.SessionInstance) error {
 	if err := s.feedbagManager.UseFeedbag(ctx, sess.IdentScreenName()); err != nil {
 		return fmt.Errorf("could not use feedbag: %w", err)
 	}
@@ -400,7 +400,7 @@ func (s FeedbagService) Use(ctx context.Context, sess *state.Session) error {
 // Right now we send an ICBM request so that responses can work for both ICQ
 // 2000b and ICQ 2001a. This function should eventually only send an ICBM
 // message to non-feedbag clients and SNAC(0x0013,0x001B) to feedbag clients.
-func (s FeedbagService) RespondAuthorizeToHost(ctx context.Context, sess *state.Session, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost) error {
+func (s FeedbagService) RespondAuthorizeToHost(ctx context.Context, sess *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost) error {
 	response := wire.ICBMCh4Message{
 		UIN:     sess.UIN(),
 		Message: inBody.Reason,
@@ -436,7 +436,7 @@ func (s FeedbagService) RespondAuthorizeToHost(ctx context.Context, sess *state.
 }
 
 // setSessionBuddyPrefs sets session preferences based on the feedbag buddy prefs item, if present.
-func setSessionBuddyPrefs(items []wire.FeedbagItem, sess *state.Session) {
+func setSessionBuddyPrefs(items []wire.FeedbagItem, sess *state.SessionInstance) {
 	for _, item := range items {
 		if item.ClassID == wire.FeedbagClassIdBuddyPrefs && item.HasTag(wire.FeedbagAttributesBuddyPrefs) {
 			buddyPrefs, _ := item.Uint32BE(wire.FeedbagAttributesBuddyPrefs)

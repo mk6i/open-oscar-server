@@ -40,7 +40,7 @@ func (_m *mockMessageRelayer) EXPECT() *mockMessageRelayer_Expecter {
 }
 
 // RelayToOtherSessions provides a mock function for the type mockMessageRelayer
-func (_mock *mockMessageRelayer) RelayToOtherSessions(ctx context.Context, sess *state.Session, msg wire.SNACMessage) {
+func (_mock *mockMessageRelayer) RelayToOtherSessions(ctx context.Context, sess *state.SessionInstance, msg wire.SNACMessage) {
 	_mock.Called(ctx, sess, msg)
 	return
 }
@@ -52,21 +52,21 @@ type mockMessageRelayer_RelayToOtherSessions_Call struct {
 
 // RelayToOtherSessions is a helper method to define mock.On call
 //   - ctx context.Context
-//   - sess *state.Session
+//   - sess *state.SessionInstance
 //   - msg wire.SNACMessage
 func (_e *mockMessageRelayer_Expecter) RelayToOtherSessions(ctx interface{}, sess interface{}, msg interface{}) *mockMessageRelayer_RelayToOtherSessions_Call {
 	return &mockMessageRelayer_RelayToOtherSessions_Call{Call: _e.mock.On("RelayToOtherSessions", ctx, sess, msg)}
 }
 
-func (_c *mockMessageRelayer_RelayToOtherSessions_Call) Run(run func(ctx context.Context, sess *state.Session, msg wire.SNACMessage)) *mockMessageRelayer_RelayToOtherSessions_Call {
+func (_c *mockMessageRelayer_RelayToOtherSessions_Call) Run(run func(ctx context.Context, sess *state.SessionInstance, msg wire.SNACMessage)) *mockMessageRelayer_RelayToOtherSessions_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *state.Session
+		var arg1 *state.SessionInstance
 		if args[1] != nil {
-			arg1 = args[1].(*state.Session)
+			arg1 = args[1].(*state.SessionInstance)
 		}
 		var arg2 wire.SNACMessage
 		if args[2] != nil {
@@ -86,7 +86,7 @@ func (_c *mockMessageRelayer_RelayToOtherSessions_Call) Return() *mockMessageRel
 	return _c
 }
 
-func (_c *mockMessageRelayer_RelayToOtherSessions_Call) RunAndReturn(run func(ctx context.Context, sess *state.Session, msg wire.SNACMessage)) *mockMessageRelayer_RelayToOtherSessions_Call {
+func (_c *mockMessageRelayer_RelayToOtherSessions_Call) RunAndReturn(run func(ctx context.Context, sess *state.SessionInstance, msg wire.SNACMessage)) *mockMessageRelayer_RelayToOtherSessions_Call {
 	_c.Run(run)
 	return _c
 }
@@ -248,7 +248,7 @@ func (_c *mockMessageRelayer_RelayToScreenNames_Call) RunAndReturn(run func(ctx 
 }
 
 // RelayToSelf provides a mock function for the type mockMessageRelayer
-func (_mock *mockMessageRelayer) RelayToSelf(ctx context.Context, sess *state.Session, msg wire.SNACMessage) {
+func (_mock *mockMessageRelayer) RelayToSelf(ctx context.Context, sess *state.SessionInstance, msg wire.SNACMessage) {
 	_mock.Called(ctx, sess, msg)
 	return
 }
@@ -260,21 +260,21 @@ type mockMessageRelayer_RelayToSelf_Call struct {
 
 // RelayToSelf is a helper method to define mock.On call
 //   - ctx context.Context
-//   - sess *state.Session
+//   - sess *state.SessionInstance
 //   - msg wire.SNACMessage
 func (_e *mockMessageRelayer_Expecter) RelayToSelf(ctx interface{}, sess interface{}, msg interface{}) *mockMessageRelayer_RelayToSelf_Call {
 	return &mockMessageRelayer_RelayToSelf_Call{Call: _e.mock.On("RelayToSelf", ctx, sess, msg)}
 }
 
-func (_c *mockMessageRelayer_RelayToSelf_Call) Run(run func(ctx context.Context, sess *state.Session, msg wire.SNACMessage)) *mockMessageRelayer_RelayToSelf_Call {
+func (_c *mockMessageRelayer_RelayToSelf_Call) Run(run func(ctx context.Context, sess *state.SessionInstance, msg wire.SNACMessage)) *mockMessageRelayer_RelayToSelf_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *state.Session
+		var arg1 *state.SessionInstance
 		if args[1] != nil {
-			arg1 = args[1].(*state.Session)
+			arg1 = args[1].(*state.SessionInstance)
 		}
 		var arg2 wire.SNACMessage
 		if args[2] != nil {
@@ -294,7 +294,7 @@ func (_c *mockMessageRelayer_RelayToSelf_Call) Return() *mockMessageRelayer_Rela
 	return _c
 }
 
-func (_c *mockMessageRelayer_RelayToSelf_Call) RunAndReturn(run func(ctx context.Context, sess *state.Session, msg wire.SNACMessage)) *mockMessageRelayer_RelayToSelf_Call {
+func (_c *mockMessageRelayer_RelayToSelf_Call) RunAndReturn(run func(ctx context.Context, sess *state.SessionInstance, msg wire.SNACMessage)) *mockMessageRelayer_RelayToSelf_Call {
 	_c.Run(run)
 	return _c
 }

@@ -185,7 +185,7 @@ func (m *BuddyListManager) getBuddyInfo(buddyName string) WebAPIBuddyInfo {
 			}
 		}
 
-		// Status messages not currently supported in Session
+		// Status messages not currently supported in SessionInstance
 
 		// Set capabilities
 		// Capabilities parsing not implemented

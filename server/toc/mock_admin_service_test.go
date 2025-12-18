@@ -40,7 +40,7 @@ func (_m *mockAdminService) EXPECT() *mockAdminService_Expecter {
 }
 
 // InfoChangeRequest provides a mock function for the type mockAdminService
-func (_mock *mockAdminService) InfoChangeRequest(ctx context.Context, sess *state.Session, frame wire.SNACFrame, body wire.SNAC_0x07_0x04_AdminInfoChangeRequest) (wire.SNACMessage, error) {
+func (_mock *mockAdminService) InfoChangeRequest(ctx context.Context, sess *state.SessionInstance, frame wire.SNACFrame, body wire.SNAC_0x07_0x04_AdminInfoChangeRequest) (wire.SNACMessage, error) {
 	ret := _mock.Called(ctx, sess, frame, body)
 
 	if len(ret) == 0 {
@@ -49,15 +49,15 @@ func (_mock *mockAdminService) InfoChangeRequest(ctx context.Context, sess *stat
 
 	var r0 wire.SNACMessage
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.Session, wire.SNACFrame, wire.SNAC_0x07_0x04_AdminInfoChangeRequest) (wire.SNACMessage, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x07_0x04_AdminInfoChangeRequest) (wire.SNACMessage, error)); ok {
 		return returnFunc(ctx, sess, frame, body)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.Session, wire.SNACFrame, wire.SNAC_0x07_0x04_AdminInfoChangeRequest) wire.SNACMessage); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x07_0x04_AdminInfoChangeRequest) wire.SNACMessage); ok {
 		r0 = returnFunc(ctx, sess, frame, body)
 	} else {
 		r0 = ret.Get(0).(wire.SNACMessage)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, *state.Session, wire.SNACFrame, wire.SNAC_0x07_0x04_AdminInfoChangeRequest) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x07_0x04_AdminInfoChangeRequest) error); ok {
 		r1 = returnFunc(ctx, sess, frame, body)
 	} else {
 		r1 = ret.Error(1)
@@ -72,22 +72,22 @@ type mockAdminService_InfoChangeRequest_Call struct {
 
 // InfoChangeRequest is a helper method to define mock.On call
 //   - ctx context.Context
-//   - sess *state.Session
+//   - sess *state.SessionInstance
 //   - frame wire.SNACFrame
 //   - body wire.SNAC_0x07_0x04_AdminInfoChangeRequest
 func (_e *mockAdminService_Expecter) InfoChangeRequest(ctx interface{}, sess interface{}, frame interface{}, body interface{}) *mockAdminService_InfoChangeRequest_Call {
 	return &mockAdminService_InfoChangeRequest_Call{Call: _e.mock.On("InfoChangeRequest", ctx, sess, frame, body)}
 }
 
-func (_c *mockAdminService_InfoChangeRequest_Call) Run(run func(ctx context.Context, sess *state.Session, frame wire.SNACFrame, body wire.SNAC_0x07_0x04_AdminInfoChangeRequest)) *mockAdminService_InfoChangeRequest_Call {
+func (_c *mockAdminService_InfoChangeRequest_Call) Run(run func(ctx context.Context, sess *state.SessionInstance, frame wire.SNACFrame, body wire.SNAC_0x07_0x04_AdminInfoChangeRequest)) *mockAdminService_InfoChangeRequest_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *state.Session
+		var arg1 *state.SessionInstance
 		if args[1] != nil {
-			arg1 = args[1].(*state.Session)
+			arg1 = args[1].(*state.SessionInstance)
 		}
 		var arg2 wire.SNACFrame
 		if args[2] != nil {
@@ -112,7 +112,7 @@ func (_c *mockAdminService_InfoChangeRequest_Call) Return(sNACMessage wire.SNACM
 	return _c
 }
 
-func (_c *mockAdminService_InfoChangeRequest_Call) RunAndReturn(run func(ctx context.Context, sess *state.Session, frame wire.SNACFrame, body wire.SNAC_0x07_0x04_AdminInfoChangeRequest) (wire.SNACMessage, error)) *mockAdminService_InfoChangeRequest_Call {
+func (_c *mockAdminService_InfoChangeRequest_Call) RunAndReturn(run func(ctx context.Context, sess *state.SessionInstance, frame wire.SNACFrame, body wire.SNAC_0x07_0x04_AdminInfoChangeRequest) (wire.SNACMessage, error)) *mockAdminService_InfoChangeRequest_Call {
 	_c.Call.Return(run)
 	return _c
 }

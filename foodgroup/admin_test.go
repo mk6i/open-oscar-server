@@ -27,7 +27,7 @@ func TestAdminService_ConfirmRequest(t *testing.T) {
 		// method's dependencies
 		mockParams mockParams
 		// userSession is the session of the user
-		userSession *state.Session
+		userSession *state.SessionInstance
 		// expectOutput is the SNAC sent from the server to client
 		expectOutput wire.SNACMessage
 		// expectErr is the expected error returned
@@ -222,7 +222,7 @@ func TestAdminService_InfoQuery(t *testing.T) {
 		// method's dependencies
 		mockParams mockParams
 		// userSession is the session of the user
-		userSession *state.Session
+		userSession *state.SessionInstance
 		// expectOutput is the SNAC sent from the server to client
 		expectOutput wire.SNACMessage
 		// expectErr is the expected error returned
@@ -465,7 +465,7 @@ func TestAdminService_InfoChangeRequest_ScreenName(t *testing.T) {
 		// method's dependencies
 		mockParams mockParams
 		// userSession is the session of the user
-		userSession *state.Session
+		userSession *state.SessionInstance
 		// expectOutput is the SNAC sent from the server to client
 		expectOutput wire.SNACMessage
 		// expectErr is the expected error returned
@@ -757,7 +757,7 @@ func TestAdminService_InfoChangeRequest_EmailAddress(t *testing.T) {
 		// method's dependencies
 		mockParams mockParams
 		// userSession is the session of the user
-		userSession *state.Session
+		userSession *state.SessionInstance
 		// expectOutput is the SNAC sent from the server to client
 		expectOutput wire.SNACMessage
 		// expectErr is the expected error returned
@@ -917,7 +917,7 @@ func TestAdminService_InfoChangeRequest_RegStatus(t *testing.T) {
 		// method's dependencies
 		mockParams mockParams
 		// userSession is the session of the user
-		userSession *state.Session
+		userSession *state.SessionInstance
 		// expectOutput is the SNAC sent from the server to client
 		expectOutput wire.SNACMessage
 		// expectErr is the expected error returned
@@ -1041,7 +1041,7 @@ func TestAdminService_InfoChangeRequest_Password(t *testing.T) {
 		// method's dependencies
 		mockParams mockParams
 		// userSession is the session of the user
-		userSession *state.Session
+		userSession *state.SessionInstance
 		// expectOutput is the SNAC sent from the server to client
 		expectOutput wire.SNACMessage
 		// expectErr is the expected error returned
