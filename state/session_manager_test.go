@@ -392,39 +392,129 @@ loop:
 	assert.Equal(t, wantCount, haveCount)
 }
 
-func TestInMemorySessionManager_RemoveSession_DoubleLogin_NoMultiSess(t *testing.T) {
-	for i := 0; i < 50; i++ { // shake out race conditions
+func TestInMemorySessionManager_SessionReplacement_NoMultiSess_NoMultiSess(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		sm := NewInMemorySessionManager(slog.Default())
 
-		synctest.Test(t, func(t *testing.T) {
-			sm := NewInMemorySessionManager(slog.Default())
+		sess1, err := sm.AddSession(context.Background(), "user-screen-name-1", false)
+		assert.NoError(t, err)
+		sess1.SetSignonComplete()
 
-			sess1, err := sm.AddSession(context.Background(), "user-screen-name-1", false)
+		wg := &sync.WaitGroup{}
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+			// add the session again. this call blocks until RemoveSession makes
+			// room for the new session
+			sess2, err := sm.AddSession(context.Background(), "user-screen-name-1", false)
 			assert.NoError(t, err)
-			sess1.SetSignonComplete()
-
-			wg := &sync.WaitGroup{}
-			wg.Add(1)
-
-			go func() {
-				// add the session again. this call blocks until RemoveSession makes
-				// room for the new session
-				sess2, err := sm.AddSession(context.Background(), "user-screen-name-1", false)
-				assert.NoError(t, err)
-				assert.NotNil(t, sess2)
+			if assert.NotNil(t, sess2) {
 				sess2.SetSignonComplete()
 				assert.Equal(t, sess1.DisplayScreenName(), sess2.DisplayScreenName())
-				wg.Done()
-			}()
+			}
+		}()
 
-			// wait for second call to AddSession() to block
-			synctest.Wait()
+		// wait for second call to AddSession() to block
+		synctest.Wait()
 
-			// AddSession() is blocked waiting for the lock, now unblock it
-			sm.RemoveSession(sess1)
+		// AddSession() is blocked waiting for the lock, now unblock it
+		sm.RemoveSession(sess1)
 
-			wg.Wait()
-		})
-	}
+		wg.Wait()
+
+		// make sure we got a brand new session
+		got := sm.RetrieveSession(NewIdentScreenName("user-screen-name-1"), 0)
+		assert.NotEqual(t, sess1.Instance, got.Instance)
+		assert.Equal(t, 1, got.InstanceCount())
+	})
+}
+
+func TestInMemorySessionManager_SessionReplacement_MultiSess_NoMultiSess(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		sm := NewInMemorySessionManager(slog.Default())
+
+		var sessList []*Session
+		for i := 0; i < 10; i++ {
+			sess, err := sm.AddSession(context.Background(), "user-screen-name-1", true)
+			assert.NoError(t, err)
+			sess.SetSignonComplete()
+			sessList = append(sessList, sess)
+		}
+
+		assert.Equal(t, len(sessList), sessList[0].InstanceCount())
+
+		wg := &sync.WaitGroup{}
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+			// add the session again. this call blocks until RemoveSession makes
+			// room for the new session
+			sess, err := sm.AddSession(context.Background(), "user-screen-name-1", false)
+			assert.NoError(t, err)
+			assert.NotNil(t, sess)
+			sess.SetSignonComplete()
+			assert.Equal(t, "user-screen-name-1", sess.DisplayScreenName().String())
+			assert.Equal(t, 1, sess.InstanceCount())
+		}()
+
+		// wait for the last call to AddSession() to block
+		synctest.Wait()
+
+		// AddSession() is blocked waiting for the lock, now unblock it
+		for _, sess := range sessList {
+			sm.RemoveSession(sess)
+		}
+
+		wg.Wait()
+
+		got := sm.RetrieveSession(NewIdentScreenName("user-screen-name-1"), 0)
+
+		for _, sess := range sessList {
+			assert.NotSame(t, sess.Instance, got.Instance)
+		}
+		assert.Equal(t, 1, got.InstanceCount())
+	})
+}
+
+func TestInMemorySessionManager_SessionReplacement_NoMultiSess_MultiSess(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		sm := NewInMemorySessionManager(slog.Default())
+
+		sess1, err := sm.AddSession(context.Background(), "user-screen-name-1", false)
+		assert.NoError(t, err)
+		sess1.SetSignonComplete()
+
+		wg := &sync.WaitGroup{}
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+			// add the session again. this call blocks until RemoveSession makes
+			// room for the new session
+			sess2, err := sm.AddSession(context.Background(), "user-screen-name-1", true)
+			assert.NoError(t, err)
+			assert.NotNil(t, sess2)
+			assert.Equal(t, sess1.DisplayScreenName(), sess2.DisplayScreenName())
+			sess2.SetSignonComplete()
+		}()
+
+		// wait for second call to AddSession() to block
+		synctest.Wait()
+
+		// AddSession() is blocked waiting for the lock, now unblock it
+		sm.RemoveSession(sess1)
+
+		wg.Wait()
+
+		got := sm.RetrieveSession(NewIdentScreenName("user-screen-name-1"), 0)
+
+		if assert.NotNil(t, got) {
+			assert.NotSame(t, sess1.Instance, got.Instance)
+			assert.Equal(t, 1, got.InstanceCount())
+		}
+	})
 }
 
 func TestInMemorySessionManager_RemoveSession_DoubleLogin_NoMultiSess_Chaos(t *testing.T) {

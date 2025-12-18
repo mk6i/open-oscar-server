@@ -195,7 +195,7 @@ func (sg *SessionGroup) GetInstances() []*Instance {
 	defer sg.mutex.RUnlock()
 
 	instances := make([]*Instance, len(sg.instances))
-	copy(instances, sg.instances)
+	copy(instances, sg.instances) // todo what? do we copy here?
 	return instances
 }
 

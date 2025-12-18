@@ -13,6 +13,7 @@ import (
 type sessionSlot struct {
 	sessionGroup *SessionGroup
 	removed      chan bool
+	multiSession bool
 }
 
 type userLock struct {
@@ -164,9 +165,12 @@ func (s *InMemorySessionManager) AddSession(ctx context.Context, screenName Disp
 
 	if active != nil {
 		if doMultiSess {
-			// todo: kick all single session instances out of the session group
-
-			// Multi-session mode: add a new instance to the existing session group
+			if !active.multiSession {
+				for _, instance := range active.sessionGroup.GetInstances() {
+					instance.Close()
+				}
+				return s.newSessionGroup(screenName, doMultiSess)
+			}
 
 			// Create a new instance within the existing session group
 			instance := NewInstance(active.sessionGroup)
@@ -194,6 +198,10 @@ func (s *InMemorySessionManager) AddSession(ctx context.Context, screenName Disp
 		}
 	}
 
+	return s.newSessionGroup(screenName, doMultiSess)
+}
+
+func (s *InMemorySessionManager) newSessionGroup(screenName DisplayScreenName, doMultiSess bool) (*Session, error) {
 	sessionGroup := NewSessionGroup()
 	sessionGroup.SetIdentScreenName(screenName.IdentScreenName())
 	sessionGroup.SetDisplayScreenName(screenName)
@@ -212,6 +220,7 @@ func (s *InMemorySessionManager) AddSession(ctx context.Context, screenName Disp
 	s.store[sess.IdentScreenName()] = &sessionSlot{
 		sessionGroup: sessionGroup,
 		removed:      make(chan bool),
+		multiSession: doMultiSess,
 	}
 	s.mapMutex.Unlock()
 
@@ -262,7 +271,7 @@ func (s *InMemorySessionManager) RetrieveSession(screenName IdentScreenName, ses
 				targetInstance = activeInstances[0]
 			}
 
-			if targetInstance != nil && targetInstance.SignonComplete() {
+			if targetInstance != nil && targetInstance.SignonComplete() { // should we check for signon complete?
 				return &Session{
 					SessionGroup: rec.sessionGroup,
 					Instance:     targetInstance,
