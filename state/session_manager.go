@@ -79,18 +79,13 @@ func (s *InMemorySessionManager) RelayToAll(ctx context.Context, msg wire.SNACMe
 	defer s.mapMutex.RUnlock()
 	for _, rec := range s.store {
 		// Relay to all active instances in the session group
-		for _, instance := range rec.session.GetActiveInstances() {
-			if !instance.SignonComplete() {
-				continue
-			}
-			s.maybeRelayMessage(ctx, msg, instance)
-		}
+		s.maybeRelayMessage(ctx, msg, rec.session)
 	}
 }
 
 // RelayToScreenName relays a message to a session with a matching screen name.
 func (s *InMemorySessionManager) RelayToScreenName(ctx context.Context, screenName IdentScreenName, msg wire.SNACMessage) {
-	sess := s.RetrieveSession(screenName, 0)
+	sess := s.RetrieveSession(screenName)
 	if sess == nil {
 		s.logger.WarnContext(ctx, "can't send notification because user is not online", "recipient", screenName, "message", msg)
 		return
@@ -124,7 +119,7 @@ func (s *InMemorySessionManager) RelayToOtherSessions(ctx context.Context, sess 
 }
 
 func (s *InMemorySessionManager) RelayToScreenNameActiveOnly(ctx context.Context, screenName IdentScreenName, msg wire.SNACMessage) {
-	sess := s.RetrieveSession(screenName, 0)
+	sess := s.RetrieveSession(screenName)
 	if sess == nil {
 		s.logger.WarnContext(ctx, "can't send notification because user is not online", "recipient", screenName, "message", msg)
 		return
@@ -132,23 +127,29 @@ func (s *InMemorySessionManager) RelayToScreenNameActiveOnly(ctx context.Context
 	s.maybeRelayMessageActiveOnly(ctx, msg, sess)
 }
 
-func (s *InMemorySessionManager) maybeRelayMessage(ctx context.Context, msg wire.SNACMessage, sess *SessionInstance) {
-	switch sess.RelayMessage(msg) {
-	case SessSendClosed:
-		s.logger.WarnContext(ctx, "can't send notification because the user's session is closed", "recipient", sess.IdentScreenName(), "message", msg)
-	case SessQueueFull:
-		s.logger.WarnContext(ctx, "can't send notification because queue is full", "recipient", sess.IdentScreenName(), "message", msg)
-		sess.Close()
+func (s *InMemorySessionManager) maybeRelayMessage(ctx context.Context, msg wire.SNACMessage, sess *Session) {
+	instances := sess.GetActiveInstances()
+	for _, instance := range instances {
+		switch instance.RelayMessage(msg) {
+		case SessSendClosed:
+			continue
+		case SessQueueFull:
+			s.logger.WarnContext(ctx, "can't send notification because queue is full", "recipient", sess.IdentScreenName(), "message", msg)
+			instance.Close()
+		}
 	}
 }
 
-func (s *InMemorySessionManager) maybeRelayMessageActiveOnly(ctx context.Context, msg wire.SNACMessage, sess *SessionInstance) {
-	switch sess.RelayMessageActiveOnly(msg) {
-	case SessSendClosed:
-		s.logger.WarnContext(ctx, "can't send notification because the user's session is closed", "recipient", sess.IdentScreenName(), "message", msg)
-	case SessQueueFull:
-		s.logger.WarnContext(ctx, "can't send notification because queue is full", "recipient", sess.IdentScreenName(), "message", msg)
-		sess.Close()
+func (s *InMemorySessionManager) maybeRelayMessageActiveOnly(ctx context.Context, msg wire.SNACMessage, sess *Session) {
+	instances := sess.GetActiveInstances()
+	for _, instance := range instances {
+		switch instance.RelayMessageActiveOnly(msg) {
+		case SessSendClosed:
+			continue
+		case SessQueueFull:
+			s.logger.WarnContext(ctx, "can't send notification because queue is full", "recipient", sess.IdentScreenName(), "message", msg)
+			instance.Close()
+		}
 	}
 }
 
@@ -171,12 +172,11 @@ func (s *InMemorySessionManager) AddSession(ctx context.Context, screenName Disp
 
 			// Create a new instance within the existing session group
 			instance := NewInstance(active.session)
-			active.session.AddInstance(instance)
-			instance.Session = active.session
 
 			// Create a SessionInstance wrapper for backward compatibility
 			return instance, nil
 		} else {
+			active.session.Close()
 			// signal to callers that this session group has to go
 			// Close all instances in the session group
 			for _, instance := range active.session.GetInstances() {
@@ -201,8 +201,6 @@ func (s *InMemorySessionManager) newSessionGroup(screenName DisplayScreenName, d
 
 	// Create a new instance within the session group
 	instance := NewInstance(sessionGroup)
-	sessionGroup.AddInstance(instance)
-	instance.Session = sessionGroup
 
 	s.mapMutex.Lock()
 	s.store[instance.IdentScreenName()] = &sessionSlot{
@@ -234,54 +232,28 @@ func (s *InMemorySessionManager) RemoveSession(sess *SessionInstance) {
 	}
 }
 
-// RetrieveSession finds a session with a matching sessionID. Returns nil if
-// session is not found. If sessionNum is provided (non-zero), returns the
-// specific instance with that session number, otherwise returns the first
-// active instance.
-func (s *InMemorySessionManager) RetrieveSession(screenName IdentScreenName, sessionNum uint8) *SessionInstance {
+// RetrieveSession finds a session with a matching screen name. Returns nil if
+// session is not found or if there are no active instances with complete signon.
+func (s *InMemorySessionManager) RetrieveSession(screenName IdentScreenName) *Session {
 	s.mapMutex.RLock()
 	defer s.mapMutex.RUnlock()
 	if rec, ok := s.store[screenName]; ok {
 		activeInstances := rec.session.GetActiveInstances()
 		if len(activeInstances) > 0 {
-			var targetInstance *SessionInstance
-
-			if sessionNum != 0 {
-				// Find specific instance by session number
-				for _, instance := range activeInstances {
-					if instance.InstanceNum() == sessionNum {
-						targetInstance = instance
-						break
-					}
-				}
-			} else {
-				// Return the first active instance for backward compatibility
-				targetInstance = activeInstances[0]
-			}
-
-			if targetInstance != nil && targetInstance.SignonComplete() { // should we check for signon complete?
-				return targetInstance
-			}
+			return rec.session
 		}
 	}
 	return nil
 }
 
-func (s *InMemorySessionManager) retrieveByScreenNames(screenNames []IdentScreenName) []*SessionInstance {
+func (s *InMemorySessionManager) retrieveByScreenNames(screenNames []IdentScreenName) []*Session {
 	s.mapMutex.RLock()
 	defer s.mapMutex.RUnlock()
-	var ret []*SessionInstance
+	var ret []*Session
 	for _, sn := range screenNames {
 		for _, rec := range s.store {
 			if sn == rec.session.IdentScreenName() {
-				// Return the first active instance as a SessionInstance for backward compatibility
-				activeInstances := rec.session.GetActiveInstances()
-				if len(activeInstances) > 0 {
-					instance := activeInstances[0]
-					if instance.SignonComplete() {
-						ret = append(ret, instance)
-					}
-				}
+				ret = append(ret, rec.session)
 				break
 			}
 		}
@@ -303,11 +275,7 @@ func (s *InMemorySessionManager) AllSessions() []*SessionInstance {
 	var sessions []*SessionInstance
 	for _, rec := range s.store {
 		// Return all active instances as Sessions for backward compatibility
-		for _, instance := range rec.session.GetActiveInstances() {
-			if instance.SignonComplete() {
-				sessions = append(sessions, instance)
-			}
-		}
+		sessions = append(sessions, rec.session.GetActiveInstances()...)
 	}
 	return sessions
 }
@@ -393,10 +361,13 @@ func (s *InMemoryChatSessionManager) RemoveUserFromAllChats(user IdentScreenName
 	defer s.mapMutex.Unlock()
 
 	for _, sessionManager := range s.store {
-		userSess := sessionManager.RetrieveSession(user, 0)
+		userSess := sessionManager.RetrieveSession(user)
 		if userSess != nil {
-			userSess.Close()
-			sessionManager.RemoveSession(userSess)
+			instances := userSess.GetActiveInstances()
+			for _, instance := range instances {
+				instance.Close()
+				sessionManager.RemoveSession(instance)
+			}
 		}
 	}
 }
@@ -428,11 +399,11 @@ func (s *InMemoryChatSessionManager) RelayToAllExcept(ctx context.Context, cooki
 		return
 	}
 
-	for _, sess := range sessionManager.AllSessions() {
-		if sess.IdentScreenName() == except {
+	for _, sessInstance := range sessionManager.AllSessions() {
+		if sessInstance.IdentScreenName() == except {
 			continue
 		}
-		sessionManager.maybeRelayMessage(ctx, msg, sess)
+		sessionManager.maybeRelayMessage(ctx, msg, sessInstance.Session)
 	}
 }
 

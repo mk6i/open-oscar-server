@@ -1792,7 +1792,7 @@ func TestAuthService_RegisterBOSSession(t *testing.T) {
 }
 
 func TestAuthService_RetrieveBOSSession_HappyPath(t *testing.T) {
-	sess := newTestSession("screenName")
+	sess := newTestSession("screenName", sessOptSignonComplete)
 
 	aimAuthCookie := state.ServerCookie{
 		ScreenName: sess.DisplayScreenName(),
@@ -1801,8 +1801,8 @@ func TestAuthService_RetrieveBOSSession_HappyPath(t *testing.T) {
 
 	sessionRetriever := newMockSessionRetriever(t)
 	sessionRetriever.EXPECT().
-		RetrieveSession(sess.IdentScreenName(), sess.InstanceNum()).
-		Return(sess)
+		RetrieveSession(sess.IdentScreenName()).
+		Return(sess.Session)
 
 	userManager := newMockUserManager(t)
 	userManager.EXPECT().
@@ -1826,7 +1826,7 @@ func TestAuthService_RetrieveBOSSession_SessionNotFound(t *testing.T) {
 
 	sessionRetriever := newMockSessionRetriever(t)
 	sessionRetriever.EXPECT().
-		RetrieveSession(sess.IdentScreenName(), sess.InstanceNum()).
+		RetrieveSession(sess.IdentScreenName()).
 		Return(nil)
 
 	userManager := newMockUserManager(t)

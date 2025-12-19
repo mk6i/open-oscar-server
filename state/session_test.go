@@ -14,7 +14,7 @@ import (
 )
 
 func TestSession_SetAndGetAwayMessage(t *testing.T) {
-	s := NewSessionInstance()
+	s := NewInstance(NewSession())
 	assert.Empty(t, s.AwayMessage())
 
 	msg := "here's my message"
@@ -23,7 +23,7 @@ func TestSession_SetAndGetAwayMessage(t *testing.T) {
 }
 
 func TestSession_IncrementAndGetWarning(t *testing.T) {
-	s := NewSessionInstance()
+	s := NewInstance(NewSession())
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -42,14 +42,14 @@ func TestSession_IncrementAndGetWarning(t *testing.T) {
 }
 
 func TestSession_SetAndGetInvisible(t *testing.T) {
-	s := NewSessionInstance()
+	s := NewInstance(NewSession())
 	assert.False(t, s.Invisible())
 	s.SetUserStatusBitmask(wire.OServiceUserStatusInvisible)
 	assert.True(t, s.Invisible())
 }
 
 func TestSession_SetAndGetScreenName(t *testing.T) {
-	s := NewSessionInstance()
+	s := NewInstance(NewSession())
 	assert.Empty(t, s.IdentScreenName())
 	sn := NewIdentScreenName("user-screen-name")
 	s.SetIdentScreenName(sn)
@@ -57,7 +57,7 @@ func TestSession_SetAndGetScreenName(t *testing.T) {
 }
 
 func TestSession_SetAndGetChatRoomCookie(t *testing.T) {
-	s := NewSessionInstance()
+	s := NewInstance(NewSession())
 	assert.Empty(t, s.ChatRoomCookie())
 	sn := "the-chat-cookie"
 	s.SetChatRoomCookie(sn)
@@ -65,7 +65,7 @@ func TestSession_SetAndGetChatRoomCookie(t *testing.T) {
 }
 
 func TestSession_SetAndGetUIN(t *testing.T) {
-	s := NewSessionInstance()
+	s := NewInstance(NewSession())
 	assert.Empty(t, s.UIN())
 	uin := uint32(100003)
 	s.SetUIN(uin)
@@ -73,7 +73,7 @@ func TestSession_SetAndGetUIN(t *testing.T) {
 }
 
 func TestSession_SetAndGetClientID(t *testing.T) {
-	s := NewSessionInstance()
+	s := NewInstance(NewSession())
 	assert.Empty(t, s.ClientID())
 	clientID := "AIM Client ID"
 	s.SetClientID(clientID)
@@ -81,7 +81,7 @@ func TestSession_SetAndGetClientID(t *testing.T) {
 }
 
 func TestSession_SetAndGetKerberosAuth(t *testing.T) {
-	s := NewSessionInstance()
+	s := NewInstance(NewSession())
 	assert.False(t, s.KerberosAuth())
 
 	s.SetKerberosAuth(true)
@@ -92,7 +92,7 @@ func TestSession_SetAndGetKerberosAuth(t *testing.T) {
 }
 
 func TestSession_SetAndGetRemoteAddr(t *testing.T) {
-	s := NewSessionInstance()
+	s := NewInstance(NewSession())
 	assert.Empty(t, s.RemoteAddr())
 	remoteAddr, _ := netip.ParseAddrPort("1.2.3.4:1234")
 	s.SetRemoteAddr(&remoteAddr)
@@ -108,7 +108,7 @@ func TestSession_TLVUserInfo(t *testing.T) {
 		{
 			name: "user is active and visible",
 			givenSessionFn: func() *SessionInstance {
-				s := NewSessionInstance()
+				s := NewInstance(NewSession())
 				s.SetSignonTime(time.Unix(1, 0))
 				s.SetIdentScreenName(NewIdentScreenName("xXAIMUSERXx"))
 				s.SetDisplayScreenName("xXAIMUSERXx")
@@ -132,7 +132,7 @@ func TestSession_TLVUserInfo(t *testing.T) {
 		{
 			name: "user is on ICQ",
 			givenSessionFn: func() *SessionInstance {
-				s := NewSessionInstance()
+				s := NewInstance(NewSession())
 				s.SetSignonTime(time.Unix(1, 0))
 				s.SetIdentScreenName(NewIdentScreenName("1000003"))
 				s.SetDisplayScreenName("1000003")
@@ -156,7 +156,7 @@ func TestSession_TLVUserInfo(t *testing.T) {
 		{
 			name: "user has away message set",
 			givenSessionFn: func() *SessionInstance {
-				s := NewSessionInstance()
+				s := NewInstance(NewSession())
 				s.SetSignonTime(time.Unix(1, 0))
 				s.SetAwayMessage("here's my away message")
 				return s
@@ -175,7 +175,7 @@ func TestSession_TLVUserInfo(t *testing.T) {
 		{
 			name: "user is invisible",
 			givenSessionFn: func() *SessionInstance {
-				s := NewSessionInstance()
+				s := NewInstance(NewSession())
 				s.SetSignonTime(time.Unix(1, 0))
 				s.SetUserStatusBitmask(wire.OServiceUserStatusInvisible)
 				return s
@@ -194,7 +194,7 @@ func TestSession_TLVUserInfo(t *testing.T) {
 		{
 			name: "user is idle",
 			givenSessionFn: func() *SessionInstance {
-				s := NewSessionInstance()
+				s := NewInstance(NewSession())
 				// sign on at t=0m
 				timeBegin := time.Unix(0, 0)
 				s.SetSignonTime(timeBegin)
@@ -222,7 +222,7 @@ func TestSession_TLVUserInfo(t *testing.T) {
 		{
 			name: "user goes idle then returns",
 			givenSessionFn: func() *SessionInstance {
-				s := NewSessionInstance()
+				s := NewInstance(NewSession())
 				s.SetSignonTime(time.Unix(1, 0))
 				s.SetIdle(1 * time.Second)
 				s.UnsetIdle()
@@ -242,7 +242,7 @@ func TestSession_TLVUserInfo(t *testing.T) {
 		{
 			name: "user has capabilities",
 			givenSessionFn: func() *SessionInstance {
-				s := NewSessionInstance()
+				s := NewInstance(NewSession())
 				s.SetSignonTime(time.Unix(1, 0))
 				s.SetCaps([][16]byte{
 					{
@@ -280,7 +280,7 @@ func TestSession_TLVUserInfo(t *testing.T) {
 		{
 			name: "user has buddy icon",
 			givenSessionFn: func() *SessionInstance {
-				s := NewSessionInstance()
+				s := NewInstance(NewSession())
 				s.SetSignonTime(time.Unix(1, 0))
 				return s
 			},
@@ -306,7 +306,7 @@ func TestSession_TLVUserInfo(t *testing.T) {
 }
 
 func TestSession_SendAndRecvMessage_ExpectSessSendOK(t *testing.T) {
-	s := NewSessionInstance()
+	s := NewInstance(NewSession())
 
 	msg := wire.SNACMessage{
 		Frame: wire.SNACFrame{
@@ -337,7 +337,7 @@ loop:
 }
 
 func TestSession_SendMessage_SessSendClosed(t *testing.T) {
-	s := NewSessionInstance()
+	s := NewInstance(NewSession())
 	s.Close()
 	if res := s.RelayMessage(wire.SNACMessage{}); res != SessSendClosed {
 		t.Fatalf("expected SessSendClosed, got %+v", res)
@@ -345,7 +345,7 @@ func TestSession_SendMessage_SessSendClosed(t *testing.T) {
 }
 
 func TestSession_SendMessage_SessQueueFull(t *testing.T) {
-	s := NewSessionInstance()
+	s := NewInstance(NewSession())
 	// Fill up the message channel (default buffer size is 1000)
 	for i := 0; i < 1000; i++ {
 		assert.Equal(t, SessSendOK, s.RelayMessage(wire.SNACMessage{}))
@@ -354,7 +354,7 @@ func TestSession_SendMessage_SessQueueFull(t *testing.T) {
 }
 
 func TestSession_Close_Twice(t *testing.T) {
-	s := NewSessionInstance()
+	s := NewInstance(NewSession())
 	s.Close()
 	s.Close() // make sure close is idempotent
 	// Check that the session is closed by trying to relay a message
@@ -369,7 +369,7 @@ func TestSession_Close_Twice(t *testing.T) {
 }
 
 func TestSession_Close(t *testing.T) {
-	s := NewSessionInstance()
+	s := NewInstance(NewSession())
 	select {
 	case <-s.Closed():
 		assert.Fail(t, "channel is closed")
@@ -433,7 +433,7 @@ func TestSession_EvaluateRateLimit_ObserveRateChanges(t *testing.T) {
 	t.Run("we can action every 5 seconds indefinitely without getting rate limited", func(t *testing.T) {
 		now := time.Now()
 
-		sess := NewSessionInstance()
+		sess := NewInstance(NewSession())
 		sess.SetRateClasses(now, rateClasses)
 
 		rateClass := rateClasses.Get(3)
@@ -449,7 +449,7 @@ func TestSession_EvaluateRateLimit_ObserveRateChanges(t *testing.T) {
 	t.Run("reach disconnect threshold", func(t *testing.T) {
 		now := time.Now()
 
-		sess := NewSessionInstance()
+		sess := NewInstance(NewSession())
 		sess.SetRateClasses(now, rateClasses)
 
 		rateClass := rateClasses.Get(3)
@@ -492,7 +492,7 @@ func TestSession_EvaluateRateLimit_ObserveRateChanges(t *testing.T) {
 	t.Run("reach rate limit threshold, wait for clear threshold", func(t *testing.T) {
 		now := time.Now()
 
-		sess := NewSessionInstance()
+		sess := NewInstance(NewSession())
 		sess.SetRateClasses(now, rateClasses)
 
 		rateClass := rateClasses.Get(3)
@@ -565,7 +565,7 @@ func TestSession_EvaluateRateLimit_ObserveRateChanges(t *testing.T) {
 	t.Run("observe a rate class change", func(t *testing.T) {
 		now := time.Now()
 
-		sess := NewSessionInstance()
+		sess := NewInstance(NewSession())
 		sess.SetRateClasses(now, rateClasses)
 
 		rateClass := rateClasses.Get(3)
@@ -593,7 +593,7 @@ func TestSession_EvaluateRateLimit_ObserveRateChanges(t *testing.T) {
 	t.Run("as a bot, I can action every second indefinitely without getting rate limited", func(t *testing.T) {
 		now := time.Now()
 
-		sess := NewSessionInstance()
+		sess := NewInstance(NewSession())
 		sess.SetUserInfoFlag(wire.OServiceUserFlagBot)
 		sess.SetRateClasses(now, rateClasses)
 
@@ -610,14 +610,14 @@ func TestSession_SetAndGetFoodGroupVersions(t *testing.T) {
 	versions[wire.Feedbag] = 1
 	versions[wire.OService] = 2
 
-	s := NewSessionInstance()
+	s := NewInstance(NewSession())
 	s.SetFoodGroupVersions(versions)
 
 	assert.Equal(t, versions, s.FoodGroupVersions())
 }
 
 func TestSession_SetAndGetTypingEventsEnabled(t *testing.T) {
-	s := NewSessionInstance()
+	s := NewInstance(NewSession())
 	assert.False(t, s.TypingEventsEnabled())
 	s.SetTypingEventsEnabled(true)
 	assert.True(t, s.TypingEventsEnabled())
@@ -626,7 +626,7 @@ func TestSession_SetAndGetTypingEventsEnabled(t *testing.T) {
 }
 
 func TestSession_SetAndGetMultiConnFlag(t *testing.T) {
-	s := NewSessionInstance()
+	s := NewInstance(NewSession())
 	assert.Zero(t, s.MultiConnFlag())
 
 	s.SetMultiConnFlag(wire.MultiConnFlagsOldClient)
@@ -640,7 +640,7 @@ func TestSession_SetAndGetMultiConnFlag(t *testing.T) {
 }
 
 func TestSession_SetAndGetLastWarnLevel(t *testing.T) {
-	s := NewSessionInstance()
+	s := NewInstance(NewSession())
 	assert.Zero(t, s.Warning())
 
 	level := uint16(500)
@@ -1020,8 +1020,7 @@ func TestSessionGroup_InstanceCount(t *testing.T) {
 			name: "one instance should return 1",
 			setupGroup: func() *Session {
 				sg := NewSession()
-				instance := NewInstance(sg)
-				sg.AddInstance(instance)
+				NewInstance(sg)
 				return sg
 			},
 			expectedCount: 1,
@@ -1031,8 +1030,7 @@ func TestSessionGroup_InstanceCount(t *testing.T) {
 			setupGroup: func() *Session {
 				sg := NewSession()
 				for i := 0; i < 3; i++ {
-					instance := NewInstance(sg)
-					sg.AddInstance(instance)
+					NewInstance(sg)
 				}
 				return sg
 			},
@@ -1042,12 +1040,9 @@ func TestSessionGroup_InstanceCount(t *testing.T) {
 			name: "instance count decreases after removal",
 			setupGroup: func() *Session {
 				sg := NewSession()
-				instance1 := NewInstance(sg)
+				NewInstance(sg)
 				instance2 := NewInstance(sg)
-				instance3 := NewInstance(sg)
-				sg.AddInstance(instance1)
-				sg.AddInstance(instance2)
-				sg.AddInstance(instance3)
+				NewInstance(sg)
 				// Remove one instance
 				sg.RemoveInstance(instance2)
 				return sg
@@ -1059,12 +1054,9 @@ func TestSessionGroup_InstanceCount(t *testing.T) {
 			setupGroup: func() *Session {
 				sg := NewSession()
 				instance1 := NewInstance(sg)
-				instance2 := NewInstance(sg)
-				sg.AddInstance(instance1)
-				sg.AddInstance(instance2)
+				NewInstance(sg)
 				sg.RemoveInstance(instance1)
-				instance3 := NewInstance(sg)
-				sg.AddInstance(instance3)
+				NewInstance(sg)
 				return sg
 			},
 			expectedCount: 2,
@@ -1080,7 +1072,7 @@ func TestSessionGroup_InstanceCount(t *testing.T) {
 }
 
 func TestSession_SetAndGetProfile(t *testing.T) {
-	s := NewSessionInstance()
+	s := NewInstance(NewSession())
 	profile := s.Profile()
 	assert.Empty(t, profile.ProfileText)
 	assert.Empty(t, profile.MIMEType)
@@ -1101,7 +1093,7 @@ func TestSession_SetAndGetProfile(t *testing.T) {
 }
 
 func TestSession_SetAndGetMemberSince(t *testing.T) {
-	s := NewSessionInstance()
+	s := NewInstance(NewSession())
 	assert.True(t, s.MemberSince().IsZero())
 
 	memberTime := time.Unix(1234567890, 0)
@@ -1110,7 +1102,7 @@ func TestSession_SetAndGetMemberSince(t *testing.T) {
 }
 
 func TestSession_SetAndGetOfflineMsgCount(t *testing.T) {
-	s := NewSessionInstance()
+	s := NewInstance(NewSession())
 	assert.Zero(t, s.OfflineMsgCount())
 
 	count := 5
@@ -1143,7 +1135,7 @@ func TestSession_ScaleWarningAndRateLimit(t *testing.T) {
 
 		now := time.Now()
 
-		sess := NewSessionInstance()
+		sess := NewInstance(NewSession())
 		sess.SetRateClasses(now, rateClasses)
 
 		var wg sync.WaitGroup
@@ -1244,7 +1236,7 @@ func TestSession_ScaleWarningAndRateLimit(t *testing.T) {
 
 		now := time.Now()
 
-		sess := NewSessionInstance()
+		sess := NewInstance(NewSession())
 		sess.SetRateClasses(now, rateClasses)
 
 		var wg sync.WaitGroup
@@ -1349,7 +1341,7 @@ func TestSession_ScaleWarningAndRateLimit(t *testing.T) {
 
 		now := time.Now()
 
-		sess := NewSessionInstance()
+		sess := NewInstance(NewSession())
 		sess.SetRateClasses(now, rateClasses)
 
 		var wg sync.WaitGroup

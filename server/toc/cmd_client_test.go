@@ -4226,11 +4226,11 @@ func TestOSCARProxy_Signout(t *testing.T) {
 			chatRegistry: func() *ChatRegistry {
 				cr := NewChatRegistry()
 
-				s1 := state.NewSessionInstance()
+				s1 := state.NewInstance(state.NewSession())
 				s1.SetIdentScreenName(state.NewIdentScreenName("me1"))
 				cr.RegisterSess(0, s1)
 
-				s2 := state.NewSessionInstance()
+				s2 := state.NewInstance(state.NewSession())
 				s2.SetIdentScreenName(state.NewIdentScreenName("me2"))
 				cr.RegisterSess(1, s2)
 

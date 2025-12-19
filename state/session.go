@@ -75,15 +75,6 @@ type Session struct {
 	instanceCounter uint8
 }
 
-// NewSessionInstance returns a new instance of SessionInstance with embedded Session and SessionInstance.
-func NewSessionInstance() *SessionInstance {
-	sessionGroup := NewSession()
-	instance := NewInstance(sessionGroup)
-	sessionGroup.AddInstance(instance)
-	instance.Session = sessionGroup
-	return instance
-}
-
 // NewSession creates a new Session for a user.
 func NewSession() *Session {
 	return &Session{
@@ -94,22 +85,21 @@ func NewSession() *Session {
 }
 
 // NewInstance creates a new SessionInstance within a Session.
-func NewInstance(sessionGroup *Session) *SessionInstance {
-	now := time.Now()
-	instanceNum := sessionGroup.generateInstanceNum()
-
-	return &SessionInstance{
-		Session:           sessionGroup,
-		instanceNum:       instanceNum,
+func NewInstance(session *Session) *SessionInstance {
+	instance := &SessionInstance{
+		Session:           session,
+		instanceNum:       session.generateInstanceNum(),
 		msgCh:             make(chan wire.SNACMessage, 1000),
 		nowFn:             time.Now,
 		stopCh:            make(chan struct{}),
-		signonTime:        now,
+		signonTime:        time.Now(),
 		caps:              make([][16]byte, 0),
 		foodGroupVersions: defaultFoodGroupVersions(),
 		userInfoBitmask:   wire.OServiceUserFlagOSCARFree,
 		userStatusBitmask: wire.OServiceUserStatusAvailable,
 	}
+	session.AddInstance(instance)
+	return instance
 }
 
 // ============================================================================
@@ -152,7 +142,7 @@ func (s *Session) GetInstances() []*SessionInstance {
 	return instances
 }
 
-// GetActiveInstances returns only non-closed instances.
+// GetActiveInstances returns only non-closed instances with completed signon.
 func (s *Session) GetActiveInstances() []*SessionInstance {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
@@ -160,7 +150,7 @@ func (s *Session) GetActiveInstances() []*SessionInstance {
 	var active []*SessionInstance
 	for _, instance := range s.instances {
 		instance.mutex.RLock()
-		if !instance.closed {
+		if !instance.closed && instance.signonComplete {
 			active = append(active, instance)
 		}
 		instance.mutex.RUnlock()
@@ -786,6 +776,46 @@ func (s *Session) AwayMessage() string {
 	return ""
 }
 
+// Profile returns the first non-empty profile from all instances.
+func (s *Session) Profile() UserProfile {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	for _, instance := range s.instances {
+		if !instance.closed {
+			instance.mutex.RLock()
+			if !instance.profile.Empty() {
+				profile := instance.profile
+				instance.mutex.RUnlock()
+				return profile
+			}
+			instance.mutex.RUnlock()
+		}
+	}
+	return UserProfile{}
+}
+
+// SignonTime returns the signon time from the earliest instance.
+func (s *Session) SignonTime() time.Time {
+	earliestInstance := s.getEarliestInstance()
+	if earliestInstance != nil {
+		return earliestInstance.SignonTime()
+	}
+	return time.Time{}
+}
+
+// Close closes all instances in the session.
+func (s *Session) Close() {
+	s.mutex.RLock()
+	instances := make([]*SessionInstance, len(s.instances))
+	copy(instances, s.instances)
+	s.mutex.RUnlock()
+
+	for _, instance := range instances {
+		instance.Close()
+	}
+}
+
 // Idle returns true if all active instances are idle.
 func (s *Session) Idle() bool {
 	return s.allIdle()
@@ -894,6 +924,18 @@ func (s *Session) UserStatusBitmask() uint32 {
 		}
 	}
 	return 0
+}
+
+func (s *Session) Instance(num uint8) *SessionInstance {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	for _, instance := range s.instances {
+		if instance.instanceNum == num {
+			return instance
+		}
+	}
+	return nil
 }
 
 // SessionInstance represents a single session instance with per-session data.

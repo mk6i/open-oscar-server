@@ -163,7 +163,7 @@ func (m *BuddyListManager) getBuddyInfo(buddyName string) WebAPIBuddyInfo {
 
 	// Check if buddy is online
 	buddyScreenName := state.NewIdentScreenName(buddyName)
-	session := m.sessionRetriever.RetrieveSession(buddyScreenName, 0)
+	session := m.sessionRetriever.RetrieveSession(buddyScreenName)
 
 	if session != nil {
 		// Buddy is online

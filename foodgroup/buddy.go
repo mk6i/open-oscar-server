@@ -266,7 +266,7 @@ func (s buddyNotifier) BroadcastVisibility(
 			continue // they block you, don't send them notifications
 		}
 
-		theirSess := s.sessionRetriever.RetrieveSession(relationship.User, 0)
+		theirSess := s.sessionRetriever.RetrieveSession(relationship.User)
 		if theirSess == nil {
 			continue // they are offline
 		}
@@ -284,7 +284,7 @@ func (s buddyNotifier) BroadcastVisibility(
 		} else if relationship.YouBlock && doSendDepartures {
 			if relationship.IsOnTheirList {
 				// tell them you're offline
-				s.unicastBuddyDeparted(ctx, you, theirSess.IdentScreenName())
+				s.unicastBuddyDeparted(ctx, you.Session, theirSess.IdentScreenName())
 			}
 			if relationship.IsOnYourList {
 				// tell you they're offline
@@ -296,7 +296,7 @@ func (s buddyNotifier) BroadcastVisibility(
 	return nil
 }
 
-func (s buddyNotifier) unicastBuddyDeparted(ctx context.Context, from *state.SessionInstance, to state.IdentScreenName) {
+func (s buddyNotifier) unicastBuddyDeparted(ctx context.Context, from *state.Session, to state.IdentScreenName) {
 	s.messageRelayer.RelayToScreenName(ctx, to, wire.SNACMessage{
 		Frame: wire.SNACFrame{
 			FoodGroup: wire.Buddy,

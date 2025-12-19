@@ -24,7 +24,7 @@ import (
 
 func TestSessionHandler_GET(t *testing.T) {
 	fnNewSess := func(screenName string, uin uint32) *state.SessionInstance {
-		sess := state.NewSessionInstance()
+		sess := state.NewInstance(state.NewSession())
 		sess.SetIdentScreenName(state.NewIdentScreenName(screenName))
 		sess.SetDisplayScreenName(state.DisplayScreenName(screenName))
 		sess.SetUIN(uin)
@@ -100,13 +100,15 @@ func TestSessionHandler_GET(t *testing.T) {
 }
 
 func TestSessionHandlerScreenname_GET(t *testing.T) {
-	fnNewSess := func(screenName string, uin uint32) *state.SessionInstance {
-		sess := state.NewSessionInstance()
+	fnNewSess := func(screenName string, uin uint32) *state.Session {
+		sess := state.NewSession()
 		sess.SetIdentScreenName(state.NewIdentScreenName(screenName))
 		sess.SetDisplayScreenName(state.DisplayScreenName(screenName))
 		sess.SetUIN(uin)
+		instance := state.NewInstance(sess)
+		instance.SetSignonComplete()
 		ip, _ := netip.ParseAddrPort("1.2.3.4:1234")
-		sess.SetRemoteAddr(&ip)
+		instance.SetRemoteAddr(&ip)
 		return sess
 	}
 	tt := []struct {
@@ -163,7 +165,7 @@ func TestSessionHandlerScreenname_GET(t *testing.T) {
 			sessionRetriever := newMockSessionRetriever(t)
 			for _, params := range tc.mockParams.sessionRetrieverParams.retrieveSessionByNameParams {
 				sessionRetriever.EXPECT().
-					RetrieveSession(params.screenName, uint8(0)).
+					RetrieveSession(params.screenName).
 					Return(params.result)
 			}
 
@@ -182,7 +184,7 @@ func TestSessionHandlerScreenname_GET(t *testing.T) {
 
 func TestSessionHandlerScreenname_DELETE(t *testing.T) {
 	fnNewSess := func(screenName string) *state.SessionInstance {
-		sess := state.NewSessionInstance()
+		sess := state.NewInstance(state.NewSession())
 		sess.SetIdentScreenName(state.NewIdentScreenName(screenName))
 		sess.SetDisplayScreenName(state.DisplayScreenName(screenName))
 		ip, _ := netip.ParseAddrPort("1.2.3.4:1234")
@@ -205,7 +207,7 @@ func TestSessionHandlerScreenname_DELETE(t *testing.T) {
 					retrieveSessionByNameParams: retrieveSessionByNameParams{
 						{
 							screenName: state.NewIdentScreenName("userA"),
-							result:     fnNewSess("userA"),
+							result:     fnNewSess("userA").Session,
 						},
 					},
 				},
@@ -236,7 +238,7 @@ func TestSessionHandlerScreenname_DELETE(t *testing.T) {
 			sessionRetriever := newMockSessionRetriever(t)
 			for _, params := range tc.mockParams.sessionRetrieverParams.retrieveSessionByNameParams {
 				sessionRetriever.EXPECT().
-					RetrieveSession(params.screenName, uint8(0)).
+					RetrieveSession(params.screenName).
 					Return(params.result)
 			}
 
@@ -1438,7 +1440,7 @@ func TestUserPasswordHandler_PUT(t *testing.T) {
 
 func TestPublicChatHandler_GET(t *testing.T) {
 	fnNewSess := func(screenName string) *state.SessionInstance {
-		sess := state.NewSessionInstance()
+		sess := state.NewInstance(state.NewSession())
 		sess.SetIdentScreenName(state.NewIdentScreenName(screenName))
 		sess.SetDisplayScreenName(state.DisplayScreenName(screenName))
 		return sess
@@ -1661,7 +1663,7 @@ func TestDeletePublicChatHandler(t *testing.T) {
 
 func TestPrivateChatHandler_GET(t *testing.T) {
 	fnNewSess := func(screenName string) *state.SessionInstance {
-		sess := state.NewSessionInstance()
+		sess := state.NewInstance(state.NewSession())
 		sess.SetIdentScreenName(state.NewIdentScreenName(screenName))
 		sess.SetDisplayScreenName(state.DisplayScreenName(screenName))
 		return sess

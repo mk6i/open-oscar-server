@@ -772,27 +772,27 @@ func Test_buddyNotifier_BroadcastVisibility(t *testing.T) {
 					retrieveSessionParams: retrieveSessionParams{
 						{
 							screenName: state.NewIdentScreenName("friend2-visible-on-their-list"),
-							result:     newTestSession("friend2-visible-on-their-list"),
+							result:     newTestSession("friend2-visible-on-their-list").Session,
 						},
 						{
 							screenName: state.NewIdentScreenName("friend3-visible-on-your-list"),
-							result:     newTestSession("friend3-visible-on-your-list"),
+							result:     newTestSession("friend3-visible-on-your-list").Session,
 						},
 						{
 							screenName: state.NewIdentScreenName("friend4-visible-on-both-lists"),
-							result:     newTestSession("friend4-visible-on-both-lists"),
+							result:     newTestSession("friend4-visible-on-both-lists").Session,
 						},
 						{
 							screenName: state.NewIdentScreenName("friend5-blocked-on-their-list"),
-							result:     newTestSession("friend5-blocked-on-their-list"),
+							result:     newTestSession("friend5-blocked-on-their-list").Session,
 						},
 						{
 							screenName: state.NewIdentScreenName("friend6-blocked-on-your-list"),
-							result:     newTestSession("friend6-blocked-on-your-list"),
+							result:     newTestSession("friend6-blocked-on-your-list").Session,
 						},
 						{
 							screenName: state.NewIdentScreenName("friend7-blocked-on-both-lists"),
-							result:     newTestSession("friend7-blocked-on-both-lists"),
+							result:     newTestSession("friend7-blocked-on-both-lists").Session,
 						},
 						{
 							screenName: state.NewIdentScreenName("friend7-visible-offline"),
@@ -869,15 +869,15 @@ func Test_buddyNotifier_BroadcastVisibility(t *testing.T) {
 					retrieveSessionParams: retrieveSessionParams{
 						{
 							screenName: state.NewIdentScreenName("friend2-visible-on-their-list"),
-							result:     newTestSession("friend2-visible-on-their-list"),
+							result:     newTestSession("friend2-visible-on-their-list").Session,
 						},
 						{
 							screenName: state.NewIdentScreenName("friend3-visible-on-your-list"),
-							result:     newTestSession("friend3-visible-on-your-list"),
+							result:     newTestSession("friend3-visible-on-your-list").Session,
 						},
 						{
 							screenName: state.NewIdentScreenName("friend4-visible-on-both-lists"),
-							result:     newTestSession("friend4-visible-on-both-lists"),
+							result:     newTestSession("friend4-visible-on-both-lists").Session,
 						},
 						{
 							screenName: state.NewIdentScreenName("friend7-visible-offline"),
@@ -909,7 +909,7 @@ func Test_buddyNotifier_BroadcastVisibility(t *testing.T) {
 			sessionRetriever := newMockSessionRetriever(t)
 			for _, params := range tc.mockParams.retrieveSessionParams {
 				sessionRetriever.EXPECT().
-					RetrieveSession(params.screenName, params.sessionNum).
+					RetrieveSession(params.screenName).
 					Return(params.result)
 			}
 

@@ -108,7 +108,7 @@ func (s ICBMService) ChannelMsgToHost(ctx context.Context, sess *state.SessionIn
 		return newICBMErr(inFrame.RequestID, wire.ErrorCodeInLocalPermitDeny), nil
 	}
 
-	recipSess := s.sessionRetriever.RetrieveSession(recip, 0)
+	recipSess := s.sessionRetriever.RetrieveSession(recip)
 	if recipSess == nil {
 		// check for TLV that indicates that the message should be saved offline.
 		// For AIM 6/7, this is only set if the sender has the recipient on
@@ -371,7 +371,7 @@ func (s ICBMService) EvilRequest(ctx context.Context, sess *state.SessionInstanc
 		return *newICBMErr(inFrame.RequestID, wire.ErrorCodeNotLoggedOn), nil
 	}
 
-	recipSess := s.sessionRetriever.RetrieveSession(identScreenName, 0)
+	recipSess := s.sessionRetriever.RetrieveSession(identScreenName)
 	if recipSess == nil {
 		// target user is offline
 		return *newICBMErr(inFrame.RequestID, wire.ErrorCodeNotLoggedOn), nil

@@ -23,10 +23,10 @@ var (
 	// roll results.
 	sessOnlineHost = func() *state.SessionInstance {
 		sn := state.DisplayScreenName("OnlineHost")
-		sess := state.NewSessionInstance()
+		sess := state.NewSession()
 		sess.SetDisplayScreenName(sn)
 		sess.SetIdentScreenName(sn.IdentScreenName())
-		return sess
+		return state.NewInstance(sess)
 	}()
 
 	// rollDiceRgxp matches a roll dice chat command.

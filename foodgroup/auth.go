@@ -164,7 +164,7 @@ func (s AuthService) RegisterBOSSession(ctx context.Context, serverCookie state.
 	return sess, nil
 }
 
-// RetrieveBOSSession returns a user's existing session
+// RetrieveBOSSession returns a user's existing session instance
 func (s AuthService) RetrieveBOSSession(ctx context.Context, serverCookie state.ServerCookie) (*state.SessionInstance, error) {
 	u, err := s.userManager.User(ctx, serverCookie.ScreenName.IdentScreenName())
 	if err != nil {
@@ -174,7 +174,12 @@ func (s AuthService) RetrieveBOSSession(ctx context.Context, serverCookie state.
 		return nil, fmt.Errorf("user not found")
 	}
 
-	return s.sessionRetriever.RetrieveSession(u.IdentScreenName, serverCookie.SessionNum), nil
+	sess := s.sessionRetriever.RetrieveSession(u.IdentScreenName)
+	if sess == nil {
+		return nil, nil
+	}
+
+	return sess.Instance(serverCookie.SessionNum), nil
 }
 
 // Signout removes this user's session.

@@ -251,11 +251,11 @@ type sessionRetrieverAllSessionsParams []struct {
 	result []*state.SessionInstance
 }
 
-// retrieveSessionParams is the list of parameters passed at the mock
-// SessionRetriever.RetrieveSessionByName call site
+// retrieveSessionByNameParams is the list of parameters passed at the mock
+// SessionRetriever.RetrieveSession call site
 type retrieveSessionByNameParams []struct {
 	screenName state.IdentScreenName
-	result     *state.SessionInstance
+	result     *state.Session
 }
 
 // userManagerParams is a helper struct that contains mock parameters for

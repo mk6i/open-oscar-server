@@ -109,7 +109,7 @@ func (h *MessagingHandler) SendIM(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if recipient is online
-	recipientSession := h.SessionRetriever.RetrieveSession(recipientIdent, 0)
+	recipientSession := h.SessionRetriever.RetrieveSession(recipientIdent)
 
 	// Generate message cookie
 	var cookie [8]byte
@@ -357,7 +357,7 @@ func (h *MessagingHandler) SetTyping(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if recipient is online
-	recipientSession := h.SessionRetriever.RetrieveSession(recipientIdent, 0)
+	recipientSession := h.SessionRetriever.RetrieveSession(recipientIdent)
 	if recipientSession == nil {
 		// Silently succeed even if recipient is offline
 		h.sendSuccessResponse(w, r, nil)

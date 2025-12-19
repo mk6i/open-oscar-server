@@ -49,7 +49,7 @@ func TestLocateService_UserInfoQuery(t *testing.T) {
 							screenName: state.NewIdentScreenName("requested-user"),
 							result: newTestSession("requested-user",
 								sessOptCannedSignonTime,
-								sessOptCannedAwayMessage),
+								sessOptCannedAwayMessage).Session,
 						},
 					},
 				},
@@ -107,7 +107,7 @@ func TestLocateService_UserInfoQuery(t *testing.T) {
 								sessOptProfile(state.UserProfile{
 									ProfileText: "this is my profile!",
 									MIMEType:    "text/aolrtf; charset=\"us-ascii\"",
-								})),
+								})).Session,
 						},
 					},
 				},
@@ -166,7 +166,7 @@ func TestLocateService_UserInfoQuery(t *testing.T) {
 							screenName: state.NewIdentScreenName("requested-user"),
 							result: newTestSession("requested-user",
 								sessOptCannedSignonTime,
-								sessOptCannedAwayMessage),
+								sessOptCannedAwayMessage).Session,
 						},
 					},
 				},
@@ -301,7 +301,7 @@ func TestLocateService_UserInfoQuery(t *testing.T) {
 			sessionRetriever := newMockSessionRetriever(t)
 			for _, val := range tc.mockParams.retrieveSessionParams {
 				sessionRetriever.EXPECT().
-					RetrieveSession(val.screenName, val.sessionNum).
+					RetrieveSession(val.screenName).
 					Return(val.result)
 			}
 			svc := LocateService{

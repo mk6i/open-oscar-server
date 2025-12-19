@@ -213,7 +213,7 @@ func TestInMemorySessionManager_Retrieve(t *testing.T) {
 				sess.SetSignonComplete()
 			}
 
-			have := sm.RetrieveSession(tt.lookupScreenName, 0)
+			have := sm.RetrieveSession(tt.lookupScreenName)
 			if have == nil {
 				assert.Empty(t, tt.wantScreenName)
 			} else {
@@ -424,7 +424,7 @@ func TestInMemorySessionManager_SessionReplacement_NoMultiSess_NoMultiSess(t *te
 		wg.Wait()
 
 		// make sure we got a brand new session
-		got := sm.RetrieveSession(NewIdentScreenName("user-screen-name-1"), 0)
+		got := sm.RetrieveSession(NewIdentScreenName("user-screen-name-1"))
 		assert.NotEqual(t, sess1, got)
 		assert.Equal(t, 1, got.InstanceCount())
 	})
@@ -469,7 +469,7 @@ func TestInMemorySessionManager_SessionReplacement_MultiSess_NoMultiSess(t *test
 
 		wg.Wait()
 
-		got := sm.RetrieveSession(NewIdentScreenName("user-screen-name-1"), 0)
+		got := sm.RetrieveSession(NewIdentScreenName("user-screen-name-1"))
 
 		for _, sess := range sessList {
 			assert.NotSame(t, sess, got)
@@ -508,7 +508,7 @@ func TestInMemorySessionManager_SessionReplacement_NoMultiSess_MultiSess(t *test
 
 		wg.Wait()
 
-		got := sm.RetrieveSession(NewIdentScreenName("user-screen-name-1"), 0)
+		got := sm.RetrieveSession(NewIdentScreenName("user-screen-name-1"))
 
 		if assert.NotNil(t, got) {
 			assert.NotSame(t, sess1, got)
@@ -733,13 +733,13 @@ func TestInMemorySessionManager_RetrieveSession_IncompleteSignon(t *testing.T) {
 	assert.NoError(t, err)
 	// user1 has not completed signon
 
-	sess := sm.RetrieveSession(NewIdentScreenName("user-screen-name-1"), 0)
+	sess := sm.RetrieveSession(NewIdentScreenName("user-screen-name-1"))
 	assert.Nil(t, sess, "should return nil for session with incomplete signon")
 
 	user1.SetSignonComplete()
-	sess = sm.RetrieveSession(NewIdentScreenName("user-screen-name-1"), 0)
+	sess = sm.RetrieveSession(NewIdentScreenName("user-screen-name-1"))
 	assert.NotNil(t, sess, "should return session after signon is complete")
-	assert.Equal(t, user1, sess)
+	assert.Equal(t, user1.Session, sess)
 }
 
 func TestInMemorySessionManager_RetrieveSession_CompleteSignon(t *testing.T) {
@@ -749,9 +749,9 @@ func TestInMemorySessionManager_RetrieveSession_CompleteSignon(t *testing.T) {
 	assert.NoError(t, err)
 	user1.SetSignonComplete()
 
-	sess := sm.RetrieveSession(NewIdentScreenName("user-screen-name-1"), 0)
+	sess := sm.RetrieveSession(NewIdentScreenName("user-screen-name-1"))
 	assert.NotNil(t, sess)
-	assert.Equal(t, user1, sess)
+	assert.Equal(t, user1.Session, sess)
 }
 
 func TestInMemorySessionManager_RelayToScreenNames_SkipIncompleteSignon(t *testing.T) {

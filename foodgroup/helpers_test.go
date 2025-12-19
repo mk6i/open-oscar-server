@@ -109,8 +109,7 @@ type sessionRetrieverParams struct {
 // SessionRetriever.RetrieveSession call site
 type retrieveSessionParams []struct {
 	screenName state.IdentScreenName
-	sessionNum uint8
-	result     *state.SessionInstance
+	result     *state.Session
 }
 
 // icqUserFinderParams is a helper struct that contains mock parameters for
@@ -922,7 +921,7 @@ func sessOptOfflineMsgCount(count int) func(session *state.SessionInstance) {
 // newTestSession creates a session object with 0 or more functional options
 // applied
 func newTestSession(screenName state.DisplayScreenName, options ...func(session *state.SessionInstance)) *state.SessionInstance {
-	s := state.NewSessionInstance()
+	s := state.NewInstance(state.NewSession())
 	s.SetIdentScreenName(screenName.IdentScreenName())
 	s.SetDisplayScreenName(screenName)
 	s.SetRateClasses(time.Now(), wire.DefaultRateLimitClasses())

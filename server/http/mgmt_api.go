@@ -247,13 +247,15 @@ func getSessionHandler(w http.ResponseWriter, r *http.Request, sessionRetriever 
 	var allUsers []*state.SessionInstance
 
 	if screenName := r.PathValue("screenname"); screenName != "" {
-		session := sessionRetriever.RetrieveSession(state.NewIdentScreenName(screenName), 0)
+		session := sessionRetriever.RetrieveSession(state.NewIdentScreenName(screenName))
 		if session == nil {
 			http.Error(w, "session not found", http.StatusNotFound)
 			return
 		}
-		allUsers = append(allUsers, session)
+		// Flatten all instances from the session
+		allUsers = append(allUsers, session.GetActiveInstances()...)
 	} else {
+		// AllSessions already returns all instances flattened
 		allUsers = sessionRetriever.AllSessions()
 	}
 
@@ -297,7 +299,7 @@ func deleteSessionHandler(w http.ResponseWriter, r *http.Request, sessionRetriev
 	w.Header().Set("Content-Type", "application/json")
 
 	if screenName := r.PathValue("screenname"); screenName != "" {
-		session := sessionRetriever.RetrieveSession(state.NewIdentScreenName(screenName), 0)
+		session := sessionRetriever.RetrieveSession(state.NewIdentScreenName(screenName))
 		if session == nil {
 			errorMsg(w, "session not found", http.StatusNotFound)
 			return

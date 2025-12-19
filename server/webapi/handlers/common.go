@@ -18,7 +18,7 @@ import (
 // SessionRetriever provides methods to retrieve OSCAR sessions.
 type SessionRetriever interface {
 	AllSessions() []*state.SessionInstance
-	RetrieveSession(screenName state.IdentScreenName, sessionNum uint8) *state.SessionInstance
+	RetrieveSession(screenName state.IdentScreenName) *state.Session
 }
 
 // FeedbagRetriever provides methods to retrieve feedbag data.

@@ -283,7 +283,7 @@ func (h *PresenceHandler) getUserPresence(screenName state.IdentScreenName) Budd
 	}
 
 	// Check if user is online by looking for their OSCAR session
-	if session := h.SessionRetriever.RetrieveSession(screenName, 0); session != nil {
+	if session := h.SessionRetriever.RetrieveSession(screenName); session != nil {
 		presence.State = "online"
 
 		// Check user status
@@ -631,7 +631,7 @@ func (h *PresenceHandler) Icon(w http.ResponseWriter, r *http.Request) {
 
 	// Check if user is online and get their state
 	screenName := state.NewIdentScreenName(name)
-	if session := h.SessionRetriever.RetrieveSession(screenName, 0); session != nil {
+	if session := h.SessionRetriever.RetrieveSession(screenName); session != nil {
 		statusBitmask := session.UserStatusBitmask()
 		if statusBitmask&wire.OServiceUserStatusAway != 0 {
 			iconURL = "/static/icons/away_" + iconType + "_" + size + ".png"
