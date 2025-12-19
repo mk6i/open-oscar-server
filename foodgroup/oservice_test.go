@@ -2324,9 +2324,9 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 					chatAllSessionsParams: chatAllSessionsParams{
 						{
 							cookie: chatRoom.Cookie(),
-							sessions: []*state.SessionInstance{
-								chatter1,
-								chatter2,
+							sessions: []*state.Session{
+								chatter1.Session,
+								chatter2.Session,
 							},
 						},
 					},

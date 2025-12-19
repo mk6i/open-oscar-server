@@ -32,7 +32,7 @@ func TestInMemorySessionManager_AddSession(t *testing.T) {
 	sess2.SetSignonComplete()
 
 	assert.NotSame(t, sess1, sess2)
-	assert.Contains(t, sm.AllSessions(), sess2)
+	assert.Contains(t, sm.AllSessions(), sess2.Session)
 }
 
 func TestInMemorySessionManager_AddSession_Timeout(t *testing.T) {
@@ -93,9 +93,9 @@ func TestInMemorySessionManager_Remove_Existing(t *testing.T) {
 	assert.False(t, ok)
 
 	if assert.Len(t, sm.AllSessions(), 1) {
-		assert.NotContains(t, sm.AllSessions(), user1Old)
-		assert.NotContains(t, sm.AllSessions(), user1New)
-		assert.Contains(t, sm.AllSessions(), user2)
+		assert.NotContains(t, sm.AllSessions(), user1Old.Session)
+		assert.NotContains(t, sm.AllSessions(), user1New.Session)
+		assert.Contains(t, sm.AllSessions(), user2.Session)
 	}
 }
 
@@ -139,9 +139,9 @@ func TestInMemorySessionManager_Remove_MissingSameScreenName(t *testing.T) {
 	assert.Equal(t, user1New.Session, recNewAfter.session)
 
 	if assert.Len(t, sm.AllSessions(), 2) {
-		assert.NotContains(t, sm.AllSessions(), user1Old)
-		assert.Contains(t, sm.AllSessions(), user1New)
-		assert.Contains(t, sm.AllSessions(), user2)
+		assert.NotContains(t, sm.AllSessions(), user1Old.Session)
+		assert.Contains(t, sm.AllSessions(), user1New.Session)
+		assert.Contains(t, sm.AllSessions(), user2.Session)
 	}
 }
 
@@ -819,13 +819,13 @@ func TestInMemorySessionManager_AllSessions_SkipIncompleteSignon(t *testing.T) {
 	user2Found := false
 
 	for _, session := range sessions {
-		if session.Session == user1.Session {
+		if session == user1.Session {
 			user1Found = true
 		}
-		if session.Session == user2.Session {
+		if session == user2.Session {
 			user2Found = true
 		}
-		if session.Session == user3.Session {
+		if session == user3.Session {
 			user3Found = true
 		}
 	}

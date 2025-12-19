@@ -255,8 +255,12 @@ func getSessionHandler(w http.ResponseWriter, r *http.Request, sessionRetriever 
 		// Flatten all instances from the session
 		allUsers = append(allUsers, session.GetActiveInstances()...)
 	} else {
-		// AllSessions already returns all instances flattened
-		allUsers = sessionRetriever.AllSessions()
+		// AllSessions returns all sessions
+		sessions := sessionRetriever.AllSessions()
+		// Flatten all instances from all sessions
+		for _, session := range sessions {
+			allUsers = append(allUsers, session.GetActiveInstances()...)
+		}
 	}
 
 	ou := onlineUsers{

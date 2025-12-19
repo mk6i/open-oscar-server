@@ -132,7 +132,7 @@ type RelationshipFetcher interface {
 type ChatMessageRelayer interface {
 	// AllSessions returns all chat room participants. Returns
 	// ErrChatRoomNotFound if the room does not exist.
-	AllSessions(chatCookie string) []*state.SessionInstance
+	AllSessions(chatCookie string) []*state.Session
 
 	// RelayToAllExcept sends a message to all chat room participants except
 	// for the participant with a particular screen name. Returns

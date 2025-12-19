@@ -496,7 +496,7 @@ type chatMessageRelayerParams struct {
 // ChatMessageRelayer.AllSessions call site
 type chatAllSessionsParams []struct {
 	cookie   string
-	sessions []*state.SessionInstance
+	sessions []*state.Session
 	err      error
 }
 

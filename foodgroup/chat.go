@@ -259,8 +259,8 @@ func setOnlineChatUsers(ctx context.Context, sess *state.SessionInstance, chatMe
 	snacPayloadOut := wire.SNAC_0x0E_0x03_ChatUsersJoined{}
 	sessions := chatMessageRelayer.AllSessions(sess.ChatRoomCookie())
 
-	for _, uSess := range sessions {
-		snacPayloadOut.Users = append(snacPayloadOut.Users, uSess.TLVUserInfo())
+	for _, session := range sessions {
+		snacPayloadOut.Users = append(snacPayloadOut.Users, session.TLVUserInfo())
 	}
 
 	chatMessageRelayer.RelayToScreenName(ctx, sess.ChatRoomCookie(), sess.IdentScreenName(), wire.SNACMessage{

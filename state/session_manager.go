@@ -269,13 +269,15 @@ func (s *InMemorySessionManager) Empty() bool {
 }
 
 // AllSessions returns all sessions in the session pool.
-func (s *InMemorySessionManager) AllSessions() []*SessionInstance {
+func (s *InMemorySessionManager) AllSessions() []*Session {
 	s.mapMutex.RLock()
 	defer s.mapMutex.RUnlock()
-	var sessions []*SessionInstance
+	var sessions []*Session
 	for _, rec := range s.store {
-		// Return all active instances as Sessions for backward compatibility
-		sessions = append(sessions, rec.session.GetActiveInstances()...)
+		// Only include sessions that have active instances
+		if len(rec.session.GetActiveInstances()) > 0 {
+			sessions = append(sessions, rec.session)
+		}
 	}
 	return sessions
 }
@@ -374,7 +376,7 @@ func (s *InMemoryChatSessionManager) RemoveUserFromAllChats(user IdentScreenName
 
 // AllSessions returns all chat room participants. Returns
 // ErrChatRoomNotFound if the room does not exist.
-func (s *InMemoryChatSessionManager) AllSessions(cookie string) []*SessionInstance {
+func (s *InMemoryChatSessionManager) AllSessions(cookie string) []*Session {
 	s.mapMutex.RLock()
 	defer s.mapMutex.RUnlock()
 
@@ -399,11 +401,11 @@ func (s *InMemoryChatSessionManager) RelayToAllExcept(ctx context.Context, cooki
 		return
 	}
 
-	for _, sessInstance := range sessionManager.AllSessions() {
-		if sessInstance.IdentScreenName() == except {
+	for _, sess := range sessionManager.AllSessions() {
+		if sess.IdentScreenName() == except {
 			continue
 		}
-		sessionManager.maybeRelayMessage(ctx, msg, sessInstance.Session)
+		sessionManager.maybeRelayMessage(ctx, msg, sess)
 	}
 }
 
