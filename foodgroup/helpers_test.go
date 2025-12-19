@@ -922,7 +922,7 @@ func sessOptOfflineMsgCount(count int) func(session *state.SessionInstance) {
 // newTestSession creates a session object with 0 or more functional options
 // applied
 func newTestSession(screenName state.DisplayScreenName, options ...func(session *state.SessionInstance)) *state.SessionInstance {
-	s := state.NewSession()
+	s := state.NewSessionInstance()
 	s.SetIdentScreenName(screenName.IdentScreenName())
 	s.SetDisplayScreenName(screenName)
 	s.SetRateClasses(time.Now(), wire.DefaultRateLimitClasses())

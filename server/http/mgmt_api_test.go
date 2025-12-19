@@ -24,7 +24,7 @@ import (
 
 func TestSessionHandler_GET(t *testing.T) {
 	fnNewSess := func(screenName string, uin uint32) *state.SessionInstance {
-		sess := state.NewSession()
+		sess := state.NewSessionInstance()
 		sess.SetIdentScreenName(state.NewIdentScreenName(screenName))
 		sess.SetDisplayScreenName(state.DisplayScreenName(screenName))
 		sess.SetUIN(uin)
@@ -101,7 +101,7 @@ func TestSessionHandler_GET(t *testing.T) {
 
 func TestSessionHandlerScreenname_GET(t *testing.T) {
 	fnNewSess := func(screenName string, uin uint32) *state.SessionInstance {
-		sess := state.NewSession()
+		sess := state.NewSessionInstance()
 		sess.SetIdentScreenName(state.NewIdentScreenName(screenName))
 		sess.SetDisplayScreenName(state.DisplayScreenName(screenName))
 		sess.SetUIN(uin)
@@ -182,7 +182,7 @@ func TestSessionHandlerScreenname_GET(t *testing.T) {
 
 func TestSessionHandlerScreenname_DELETE(t *testing.T) {
 	fnNewSess := func(screenName string) *state.SessionInstance {
-		sess := state.NewSession()
+		sess := state.NewSessionInstance()
 		sess.SetIdentScreenName(state.NewIdentScreenName(screenName))
 		sess.SetDisplayScreenName(state.DisplayScreenName(screenName))
 		ip, _ := netip.ParseAddrPort("1.2.3.4:1234")
@@ -1438,7 +1438,7 @@ func TestUserPasswordHandler_PUT(t *testing.T) {
 
 func TestPublicChatHandler_GET(t *testing.T) {
 	fnNewSess := func(screenName string) *state.SessionInstance {
-		sess := state.NewSession()
+		sess := state.NewSessionInstance()
 		sess.SetIdentScreenName(state.NewIdentScreenName(screenName))
 		sess.SetDisplayScreenName(state.DisplayScreenName(screenName))
 		return sess
@@ -1661,7 +1661,7 @@ func TestDeletePublicChatHandler(t *testing.T) {
 
 func TestPrivateChatHandler_GET(t *testing.T) {
 	fnNewSess := func(screenName string) *state.SessionInstance {
-		sess := state.NewSession()
+		sess := state.NewSessionInstance()
 		sess.SetIdentScreenName(state.NewIdentScreenName(screenName))
 		sess.SetDisplayScreenName(state.DisplayScreenName(screenName))
 		return sess

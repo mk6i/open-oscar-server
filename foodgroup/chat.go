@@ -23,7 +23,7 @@ var (
 	// roll results.
 	sessOnlineHost = func() *state.SessionInstance {
 		sn := state.DisplayScreenName("OnlineHost")
-		sess := state.NewSession()
+		sess := state.NewSessionInstance()
 		sess.SetDisplayScreenName(sn)
 		sess.SetIdentScreenName(sn.IdentScreenName())
 		return sess

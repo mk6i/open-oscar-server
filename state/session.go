@@ -59,13 +59,10 @@ type Session struct {
 	memberSince       time.Time
 
 	// User-level settings and profile (shared)
-	userInfoBitmask   uint16
-	userStatusBitmask uint32
-	warning           uint16
-	warningCh         chan uint16
-	profile           UserProfile
-	buddyIcon         wire.BARTID
-	offlineMsgCount   int
+	warning         uint16
+	warningCh       chan uint16
+	offlineMsgCount int
+	chatRoomCookie  string
 
 	// Rate limiting (shared across all sessions per user)
 	rateLimitStates         [5]RateClassState
@@ -78,57 +75,21 @@ type Session struct {
 	instanceCounter uint8
 }
 
-// SessionInstance represents a single session instance with per-session data.
-// Each SessionInstance embeds a reference to its parent Session.
-type SessionInstance struct {
-	*Session
-
-	mutex sync.RWMutex
-
-	// Unique instance identifier
-	instanceNum uint8
-
-	// Per-session connection state
-	remoteAddr     *netip.AddrPort
-	signonTime     time.Time
-	signonComplete bool
-	closed         bool
-	stopCh         chan struct{}
-	msgCh          chan wire.SNACMessage
-	kerberosAuth   bool
-
-	// Per-session client information
-	clientID            string
-	caps                [][16]byte
-	foodGroupVersions   [wire.MDir + 1]uint16
-	multiConnFlag       wire.MultiConnFlag
-	typingEventsEnabled bool
-
-	// Per-session state
-	idle           bool
-	idleTime       time.Time
-	awayMessage    string
-	chatRoomCookie string
-	nowFn          func() time.Time
-}
-
-// NewSession returns a new instance of SessionInstance with embedded Session and SessionInstance.
-func NewSession() *SessionInstance {
-	sessionGroup := NewSessionGroup()
+// NewSessionInstance returns a new instance of SessionInstance with embedded Session and SessionInstance.
+func NewSessionInstance() *SessionInstance {
+	sessionGroup := NewSession()
 	instance := NewInstance(sessionGroup)
 	sessionGroup.AddInstance(instance)
 	instance.Session = sessionGroup
 	return instance
 }
 
-// NewSessionGroup creates a new Session for a user.
-func NewSessionGroup() *Session {
+// NewSession creates a new Session for a user.
+func NewSession() *Session {
 	return &Session{
-		userInfoBitmask:   wire.OServiceUserFlagOSCARFree,
-		userStatusBitmask: wire.OServiceUserStatusAvailable,
-		warningCh:         make(chan uint16, 1),
-		instances:         make([]*SessionInstance, 0),
-		instanceCounter:   0,
+		warningCh:       make(chan uint16, 1),
+		instances:       make([]*SessionInstance, 0),
+		instanceCounter: 0,
 	}
 }
 
@@ -146,6 +107,8 @@ func NewInstance(sessionGroup *Session) *SessionInstance {
 		signonTime:        now,
 		caps:              make([][16]byte, 0),
 		foodGroupVersions: defaultFoodGroupVersions(),
+		userInfoBitmask:   wire.OServiceUserFlagOSCARFree,
+		userStatusBitmask: wire.OServiceUserStatusAvailable,
 	}
 }
 
@@ -154,48 +117,48 @@ func NewInstance(sessionGroup *Session) *SessionInstance {
 // ============================================================================
 
 // AddInstance adds an instance to the session group.
-func (sg *Session) AddInstance(instance *SessionInstance) {
-	sg.mutex.Lock()
-	defer sg.mutex.Unlock()
-	sg.instances = append(sg.instances, instance)
+func (s *Session) AddInstance(instance *SessionInstance) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.instances = append(s.instances, instance)
 }
 
 // RemoveInstance removes an instance from the session group.
-func (sg *Session) RemoveInstance(instance *SessionInstance) {
-	sg.mutex.Lock()
-	defer sg.mutex.Unlock()
-	for i, inst := range sg.instances {
+func (s *Session) RemoveInstance(instance *SessionInstance) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	for i, inst := range s.instances {
 		if inst.instanceNum == instance.instanceNum {
-			sg.instances = append(sg.instances[:i], sg.instances[i+1:]...)
+			s.instances = append(s.instances[:i], s.instances[i+1:]...)
 			break
 		}
 	}
 }
 
 // InstanceCount returns the number of total instances in the session group.
-func (sg *Session) InstanceCount() int {
-	sg.mutex.RLock()
-	defer sg.mutex.RUnlock()
-	return len(sg.instances)
+func (s *Session) InstanceCount() int {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return len(s.instances)
 }
 
 // GetInstances returns a copy of all active instances.
-func (sg *Session) GetInstances() []*SessionInstance {
-	sg.mutex.RLock()
-	defer sg.mutex.RUnlock()
+func (s *Session) GetInstances() []*SessionInstance {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
 
-	instances := make([]*SessionInstance, len(sg.instances))
-	copy(instances, sg.instances)
+	instances := make([]*SessionInstance, len(s.instances))
+	copy(instances, s.instances)
 	return instances
 }
 
 // GetActiveInstances returns only non-closed instances.
-func (sg *Session) GetActiveInstances() []*SessionInstance {
-	sg.mutex.RLock()
-	defer sg.mutex.RUnlock()
+func (s *Session) GetActiveInstances() []*SessionInstance {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
 
 	var active []*SessionInstance
-	for _, instance := range sg.instances {
+	for _, instance := range s.instances {
 		instance.mutex.RLock()
 		if !instance.closed {
 			active = append(active, instance)
@@ -205,31 +168,15 @@ func (sg *Session) GetActiveInstances() []*SessionInstance {
 	return active
 }
 
-// GetNonAwayInstances returns instances that are not away.
-func (sg *Session) GetNonAwayInstances() []*SessionInstance {
-	sg.mutex.RLock()
-	defer sg.mutex.RUnlock()
-
-	var nonAway []*SessionInstance
-	for _, instance := range sg.instances {
-		instance.mutex.RLock()
-		if !instance.closed && instance.awayMessage == "" {
-			nonAway = append(nonAway, instance)
-		}
-		instance.mutex.RUnlock()
-	}
-	return nonAway
-}
-
-// IsAllAway returns true if all active instances are away.
-func (sg *Session) IsAllAway() bool {
-	sg.mutex.RLock()
-	defer sg.mutex.RUnlock()
+// allAway returns true if all active instances are away.
+func (s *Session) allAway() bool {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
 
 	activeCount := 0
 	awayCount := 0
 
-	for _, instance := range sg.instances {
+	for _, instance := range s.instances {
 		instance.mutex.RLock()
 		if !instance.closed {
 			activeCount++
@@ -243,15 +190,15 @@ func (sg *Session) IsAllAway() bool {
 	return activeCount > 0 && activeCount == awayCount
 }
 
-// IsAllIdle returns true if all active instances are idle.
-func (sg *Session) IsAllIdle() bool {
-	sg.mutex.RLock()
-	defer sg.mutex.RUnlock()
+// allIdle returns true if all active instances are idle.
+func (s *Session) allIdle() bool {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
 
 	activeCount := 0
 	idleCount := 0
 
-	for _, instance := range sg.instances {
+	for _, instance := range s.instances {
 		instance.mutex.RLock()
 		if !instance.closed {
 			activeCount++
@@ -267,15 +214,15 @@ func (sg *Session) IsAllIdle() bool {
 
 // AllInactive returns true if all instances are not active.
 // An instance is considered inactive if it is closed, idle, or has an away message.
-func (sg *Session) AllInactive() bool {
-	sg.mutex.RLock()
-	defer sg.mutex.RUnlock()
+func (s *Session) AllInactive() bool {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
 
-	if len(sg.instances) == 0 {
+	if len(s.instances) == 0 {
 		return true // No instances means all are inactive
 	}
 
-	for _, instance := range sg.instances {
+	for _, instance := range s.instances {
 		instance.mutex.RLock()
 		isActive := !instance.closed && !instance.idle && instance.awayMessage == ""
 		instance.mutex.RUnlock()
@@ -288,13 +235,13 @@ func (sg *Session) AllInactive() bool {
 	return true // All instances are inactive
 }
 
-// GetMostRecentIdleTime returns the most recent idle time from all instances.
-func (sg *Session) GetMostRecentIdleTime() time.Time {
-	sg.mutex.RLock()
-	defer sg.mutex.RUnlock()
+// mostRecentIdleTime returns the most recent idle time from all instances.
+func (s *Session) mostRecentIdleTime() time.Time {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
 
 	var mostRecent time.Time
-	for _, instance := range sg.instances {
+	for _, instance := range s.instances {
 		instance.mutex.RLock()
 		if !instance.closed && instance.idle && instance.idleTime.After(mostRecent) {
 			mostRecent = instance.idleTime
@@ -306,114 +253,77 @@ func (sg *Session) GetMostRecentIdleTime() time.Time {
 }
 
 // SetDisplayScreenName sets the user's display screen name (shared across all sessions).
-func (sg *Session) SetDisplayScreenName(displayScreenName DisplayScreenName) {
-	sg.mutex.Lock()
-	defer sg.mutex.Unlock()
-	sg.displayScreenName = displayScreenName
+func (s *Session) SetDisplayScreenName(displayScreenName DisplayScreenName) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.displayScreenName = displayScreenName
 }
 
 // DisplayScreenName returns the user's display screen name.
-func (sg *Session) DisplayScreenName() DisplayScreenName {
-	sg.mutex.RLock()
-	defer sg.mutex.RUnlock()
-	return sg.displayScreenName
+func (s *Session) DisplayScreenName() DisplayScreenName {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.displayScreenName
 }
 
 // SetIdentScreenName sets the user's identity screen name (shared across all sessions).
-func (sg *Session) SetIdentScreenName(screenName IdentScreenName) {
-	sg.mutex.Lock()
-	defer sg.mutex.Unlock()
-	sg.identScreenName = screenName
+func (s *Session) SetIdentScreenName(screenName IdentScreenName) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.identScreenName = screenName
 }
 
 // IdentScreenName returns the user's identity screen name.
-func (sg *Session) IdentScreenName() IdentScreenName {
-	sg.mutex.RLock()
-	defer sg.mutex.RUnlock()
-	return sg.identScreenName
+func (s *Session) IdentScreenName() IdentScreenName {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.identScreenName
 }
 
 // SetUIN sets the user's ICQ number (shared across all sessions).
-func (sg *Session) SetUIN(uin uint32) {
-	sg.mutex.Lock()
-	defer sg.mutex.Unlock()
-	sg.uin = uin
+func (s *Session) SetUIN(uin uint32) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.uin = uin
 }
 
 // UIN returns the user's ICQ number.
-func (sg *Session) UIN() uint32 {
-	sg.mutex.RLock()
-	defer sg.mutex.RUnlock()
-	return sg.uin
-}
-
-// SetUserInfoFlag sets a flag in the user info bitmask (shared across all sessions).
-func (sg *Session) SetUserInfoFlag(flag uint16) (flags uint16) {
-	sg.mutex.Lock()
-	defer sg.mutex.Unlock()
-	sg.userInfoBitmask |= flag
-	return sg.userInfoBitmask
-}
-
-// ClearUserInfoFlag clears a flag from the user info bitmask (shared across all sessions).
-func (sg *Session) ClearUserInfoFlag(flag uint16) (flags uint16) {
-	sg.mutex.Lock()
-	defer sg.mutex.Unlock()
-	sg.userInfoBitmask &^= flag
-	return sg.userInfoBitmask
-}
-
-// UserInfoBitmask returns the user info bitmask.
-func (sg *Session) UserInfoBitmask() (flags uint16) {
-	sg.mutex.RLock()
-	defer sg.mutex.RUnlock()
-	return sg.userInfoBitmask
-}
-
-// SetUserStatusBitmask sets the user status bitmask (shared across all sessions).
-func (sg *Session) SetUserStatusBitmask(bitmask uint32) {
-	sg.mutex.Lock()
-	defer sg.mutex.Unlock()
-	sg.userStatusBitmask = bitmask
-}
-
-// UserStatusBitmask returns the user status bitmask.
-func (sg *Session) UserStatusBitmask() uint32 {
-	sg.mutex.RLock()
-	defer sg.mutex.RUnlock()
-	return sg.userStatusBitmask
+func (s *Session) UIN() uint32 {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.uin
 }
 
 // SetWarning sets the user's warning level (shared across all sessions).
-func (sg *Session) SetWarning(warning uint16) {
-	sg.mutex.Lock()
-	defer sg.mutex.Unlock()
-	sg.warning = warning
+func (s *Session) SetWarning(warning uint16) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.warning = warning
 }
 
 // Warning returns the user's current warning level.
-func (sg *Session) Warning() uint16 {
-	sg.mutex.RLock()
-	defer sg.mutex.RUnlock()
-	return sg.warning
+func (s *Session) Warning() uint16 {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.warning
 }
 
 // WarningCh returns the warning notification channel.
-func (sg *Session) WarningCh() chan uint16 {
-	return sg.warningCh
+func (s *Session) WarningCh() chan uint16 {
+	return s.warningCh
 }
 
 // RateLimitStates returns the current rate limit states (shared across all sessions).
-func (sg *Session) RateLimitStates() [5]RateClassState {
-	sg.mutex.RLock()
-	defer sg.mutex.RUnlock()
-	return sg.rateLimitStates
+func (s *Session) RateLimitStates() [5]RateClassState {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.rateLimitStates
 }
 
 // SetRateClasses sets the rate limit classes (shared across all sessions).
-func (sg *Session) SetRateClasses(now time.Time, classes wire.RateLimitClasses) {
-	sg.mutex.Lock()
-	defer sg.mutex.Unlock()
+func (s *Session) SetRateClasses(now time.Time, classes wire.RateLimitClasses) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 
 	var newStates [5]RateClassState
 	for i, class := range classes.All() {
@@ -422,41 +332,41 @@ func (sg *Session) SetRateClasses(now time.Time, classes wire.RateLimitClasses) 
 			CurrentStatus: wire.RateLimitStatusClear,
 			LastTime:      now,
 			RateClass:     class,
-			Subscribed:    sg.lastObservedStates[i].Subscribed,
+			Subscribed:    s.lastObservedStates[i].Subscribed,
 		}
 	}
 
-	if sg.lastObservedStates[0].ID == 0 {
-		sg.lastObservedStates = newStates
+	if s.lastObservedStates[0].ID == 0 {
+		s.lastObservedStates = newStates
 	} else {
-		sg.lastObservedStates = sg.rateLimitStates
+		s.lastObservedStates = s.rateLimitStates
 	}
 
-	sg.rateLimitStates = newStates
-	sg.rateLimitStatesOriginal = newStates
+	s.rateLimitStates = newStates
+	s.rateLimitStatesOriginal = newStates
 }
 
 // ScaleWarningAndRateLimit increments the user's warning level and scales rate limits.
-func (sg *Session) ScaleWarningAndRateLimit(incr int16, classID wire.RateLimitClassID) (bool, uint16) {
-	sg.mutex.Lock()
-	defer sg.mutex.Unlock()
+func (s *Session) ScaleWarningAndRateLimit(incr int16, classID wire.RateLimitClassID) (bool, uint16) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 
 	// Handle warning level increment
-	newWarning := int32(sg.warning) + int32(incr)
+	newWarning := int32(s.warning) + int32(incr)
 	if newWarning > 1000 {
 		return false, 0
 	}
 	if newWarning < 0 {
-		sg.warning = 0 // clamp min at 0
+		s.warning = 0 // clamp min at 0
 	} else {
-		sg.warning = uint16(newWarning)
+		s.warning = uint16(newWarning)
 	}
 
 	pct := float32(incr) / 1000.0
 
 	// create reference variables for better readability
-	rateClass := &sg.rateLimitStates[classID-1]
-	originalRateClass := &sg.rateLimitStatesOriginal[classID-1]
+	rateClass := &s.rateLimitStates[classID-1]
+	originalRateClass := &s.rateLimitStatesOriginal[classID-1]
 
 	// clamp function to constrain values between min and max
 	clamp := func(value, min, max int32) int32 {
@@ -484,67 +394,82 @@ func (sg *Session) ScaleWarningAndRateLimit(incr int16, classID wire.RateLimitCl
 	newLimitLevel = rateClass.AlertLevel + int32(float32(maxLevel-originalRateClass.AlertLevel)*pct)
 	rateClass.AlertLevel = clamp(newLimitLevel, originalRateClass.AlertLevel, originalRateClass.MaxLevel)
 
-	sg.warningCh <- sg.warning
+	s.warningCh <- s.warning
 
-	return true, sg.warning
+	return true, s.warning
 }
 
 // SubscribeRateLimits subscribes to rate limit updates.
-func (sg *Session) SubscribeRateLimits(classes []wire.RateLimitClassID) {
-	sg.mutex.Lock()
-	defer sg.mutex.Unlock()
+func (s *Session) SubscribeRateLimits(classes []wire.RateLimitClassID) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 
 	for _, classID := range classes {
-		sg.rateLimitStates[classID-1].Subscribed = true
+		s.rateLimitStates[classID-1].Subscribed = true
 	}
 }
 
 // ObserveRateChanges updates rate limit states and returns changes.
-func (sg *Session) ObserveRateChanges(now time.Time) (classDelta []RateClassState, stateDelta []RateClassState) {
-	sg.mutex.Lock()
-	defer sg.mutex.Unlock()
+func (s *Session) ObserveRateChanges(now time.Time) (classDelta []RateClassState, stateDelta []RateClassState) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 
-	for i, params := range sg.rateLimitStates {
+	for i, params := range s.rateLimitStates {
 		if !params.Subscribed {
 			continue
 		}
 
 		state, level := wire.CheckRateLimit(params.LastTime, now, params.RateClass, params.CurrentLevel, params.LimitedNow)
-		sg.rateLimitStates[i].CurrentStatus = state
+		s.rateLimitStates[i].CurrentStatus = state
 
 		// clear limited now flag if passing from limited state to clear state
-		if sg.rateLimitStates[i].LimitedNow && state == wire.RateLimitStatusClear {
-			sg.rateLimitStates[i].LimitedNow = false
-			sg.rateLimitStates[i].CurrentLevel = level
+		if s.rateLimitStates[i].LimitedNow && state == wire.RateLimitStatusClear {
+			s.rateLimitStates[i].LimitedNow = false
+			s.rateLimitStates[i].CurrentLevel = level
 		}
 
 		// did rate class change?
-		if params.RateClass != sg.lastObservedStates[i].RateClass {
-			classDelta = append(classDelta, sg.rateLimitStates[i])
+		if params.RateClass != s.lastObservedStates[i].RateClass {
+			classDelta = append(classDelta, s.rateLimitStates[i])
 		}
 
 		// did rate limit status change?
-		if sg.lastObservedStates[i].CurrentStatus != sg.rateLimitStates[i].CurrentStatus {
-			stateDelta = append(stateDelta, sg.rateLimitStates[i])
+		if s.lastObservedStates[i].CurrentStatus != s.rateLimitStates[i].CurrentStatus {
+			stateDelta = append(stateDelta, s.rateLimitStates[i])
 		}
 
 		// save it for next time
-		sg.lastObservedStates[i] = sg.rateLimitStates[i]
+		s.lastObservedStates[i] = s.rateLimitStates[i]
 	}
 
 	return classDelta, stateDelta
 }
 
 // EvaluateRateLimit checks and updates the rate limit state.
-func (sg *Session) EvaluateRateLimit(now time.Time, rateClassID wire.RateLimitClassID) wire.RateLimitStatus {
-	sg.mutex.Lock()
-	defer sg.mutex.Unlock()
+func (s *Session) EvaluateRateLimit(now time.Time, rateClassID wire.RateLimitClassID) wire.RateLimitStatus {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 
-	if sg.userInfoBitmask&wire.OServiceUserFlagBot == wire.OServiceUserFlagBot {
+	// Check if all active instances are bots - don't rate limit bots
+	allBots := true
+	hasActiveInstances := false
+	for _, instance := range s.instances {
+		if !instance.closed {
+			hasActiveInstances = true
+			instance.mutex.RLock()
+			isBot := instance.userInfoBitmask&wire.OServiceUserFlagBot == wire.OServiceUserFlagBot
+			instance.mutex.RUnlock()
+			if !isBot {
+				allBots = false
+				break
+			}
+		}
+	}
+	if hasActiveInstances && allBots {
 		return wire.RateLimitStatusClear // don't rate limit bots
 	}
 
-	rateClass := &sg.rateLimitStates[rateClassID-1]
+	rateClass := &s.rateLimitStates[rateClassID-1]
 
 	status, newLevel := wire.CheckRateLimit(rateClass.LastTime, now, rateClass.RateClass, rateClass.CurrentLevel, rateClass.LimitedNow)
 	rateClass.CurrentLevel = newLevel
@@ -559,15 +484,15 @@ func (sg *Session) EvaluateRateLimit(now time.Time, rateClassID wire.RateLimitCl
 // Returns SessSendOK if at least one instance successfully received the message,
 // SessSendClosed if no active instances exist, or SessQueueFull if all instances
 // have full message queues.
-func (sg *Session) RelayMessage(msg wire.SNACMessage) SessSendStatus {
-	sg.mutex.RLock()
-	defer sg.mutex.RUnlock()
+func (s *Session) RelayMessage(msg wire.SNACMessage) SessSendStatus {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
 
 	activeInstances := 0
 	successfulSends := 0
 	fullQueues := 0
 
-	for _, instance := range sg.instances {
+	for _, instance := range s.instances {
 		instance.mutex.RLock()
 		if !instance.closed {
 			activeInstances++
@@ -599,15 +524,15 @@ func (sg *Session) RelayMessage(msg wire.SNACMessage) SessSendStatus {
 	return SessSendClosed
 }
 
-func (sg *Session) RelayMessageExceptSelf(self *SessionInstance, msg wire.SNACMessage) SessSendStatus {
-	sg.mutex.RLock()
-	defer sg.mutex.RUnlock()
+func (s *Session) RelayMessageExceptSelf(self *SessionInstance, msg wire.SNACMessage) SessSendStatus {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
 
 	activeInstances := 0
 	successfulSends := 0
 	fullQueues := 0
 
-	for _, instance := range sg.instances {
+	for _, instance := range s.instances {
 		if instance == self {
 			continue
 		}
@@ -642,15 +567,15 @@ func (sg *Session) RelayMessageExceptSelf(self *SessionInstance, msg wire.SNACMe
 	return SessSendClosed
 }
 
-func (sg *Session) RelayMessageActiveOnly(msg wire.SNACMessage) SessSendStatus {
-	sg.mutex.RLock()
-	defer sg.mutex.RUnlock()
+func (s *Session) RelayMessageActiveOnly(msg wire.SNACMessage) SessSendStatus {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
 
 	activeInstances := 0
 	successfulSends := 0
 	fullQueues := 0
 
-	for _, instance := range sg.instances {
+	for _, instance := range s.instances {
 		if !instance.Active() {
 			continue
 		}
@@ -686,25 +611,25 @@ func (sg *Session) RelayMessageActiveOnly(msg wire.SNACMessage) SessSendStatus {
 }
 
 // TLVUserInfo returns a TLV list containing session information aggregated from all instances.
-func (sg *Session) TLVUserInfo() wire.TLVUserInfo {
-	sg.mutex.RLock()
-	defer sg.mutex.RUnlock()
+func (s *Session) TLVUserInfo() wire.TLVUserInfo {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
 
 	return wire.TLVUserInfo{
-		ScreenName:   string(sg.displayScreenName),
-		WarningLevel: uint16(sg.warning),
+		ScreenName:   string(s.displayScreenName),
+		WarningLevel: uint16(s.warning),
 		TLVBlock: wire.TLVBlock{
-			TLVList: sg.userInfo(),
+			TLVList: s.userInfo(),
 		},
 	}
 }
 
-func (sg *Session) userInfo() wire.TLVList {
+func (s *Session) userInfo() wire.TLVList {
 	tlvs := wire.TLVList{}
 
 	// Get the best instance for each TLV value
-	earliestInstance := sg.getEarliestInstance()
-	mostCapableCaps := sg.getMostCapableCaps()
+	earliestInstance := s.getEarliestInstance()
+	mostCapableCaps := s.getMostCapableCaps()
 
 	// sign-in timestamp - use earliest instance
 	if earliestInstance != nil {
@@ -712,22 +637,39 @@ func (sg *Session) userInfo() wire.TLVList {
 	}
 
 	// user info flags - user-level with aggregated away status
-	uFlags := sg.userInfoBitmask
-	if sg.IsAllAway() {
+	var uFlags uint16
+	for _, instance := range s.instances {
+		if !instance.closed {
+			instance.mutex.RLock()
+			uFlags = instance.userInfoBitmask
+			instance.mutex.RUnlock()
+			break
+		}
+	}
+	if s.allAway() {
 		uFlags |= wire.OServiceUserFlagUnavailable
 	}
 	tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoUserFlags, uFlags))
 
 	// user status flags - user-level (shared)
-	tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoStatus, sg.userStatusBitmask))
+	var statusBitmask uint32
+	for _, instance := range s.instances {
+		if !instance.closed {
+			instance.mutex.RLock()
+			statusBitmask = instance.userStatusBitmask
+			instance.mutex.RUnlock()
+			break
+		}
+	}
+	tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoStatus, statusBitmask))
 
 	// idle status - use most recent idle time if all instances are idle
-	if sg.IsAllIdle() {
-		mostRecentIdleTime := sg.GetMostRecentIdleTime()
+	if s.allIdle() {
+		mostRecentIdleTime := s.mostRecentIdleTime()
 		if !mostRecentIdleTime.IsZero() {
 			// Find an instance with the most recent idle time to get the nowFn
 			var nowFn func() time.Time
-			for _, instance := range sg.instances {
+			for _, instance := range s.instances {
 				if !instance.closed && instance.idle && instance.idleTime.Equal(mostRecentIdleTime) {
 					nowFn = instance.nowFn
 					break
@@ -739,14 +681,14 @@ func (sg *Session) userInfo() wire.TLVList {
 		}
 	}
 
-	// set buddy icon metadata, if user has buddy icon
-	if bartID, hasIcon := sg.BuddyIcon(); hasIcon {
+	// set buddy icon metadata, if user has buddy icon (from any instance)
+	if bartID, hasIcon := s.BuddyIcon(); hasIcon {
 		tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, bartID))
 	}
 
 	// ICQ direct-connect info. The TLV is required for buddy arrival events to
 	// work in ICQ, even if the values are set to default.
-	if sg.userInfoBitmask&wire.OServiceUserFlagICQ == wire.OServiceUserFlagICQ {
+	if uFlags&wire.OServiceUserFlagICQ == wire.OServiceUserFlagICQ {
 		tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoICQDC, wire.ICQDCInfo{}))
 	}
 
@@ -761,9 +703,9 @@ func (sg *Session) userInfo() wire.TLVList {
 }
 
 // getEarliestInstance returns the instance with the earliest signon time
-func (sg *Session) getEarliestInstance() *SessionInstance {
+func (s *Session) getEarliestInstance() *SessionInstance {
 	var earliest *SessionInstance
-	for _, instance := range sg.instances {
+	for _, instance := range s.instances {
 		if !instance.closed {
 			if earliest == nil || instance.signonTime.Before(earliest.signonTime) {
 				earliest = instance
@@ -774,10 +716,10 @@ func (sg *Session) getEarliestInstance() *SessionInstance {
 }
 
 // getMostCapableCaps returns the union of all capabilities from all instances
-func (sg *Session) getMostCapableCaps() [][16]byte {
+func (s *Session) getMostCapableCaps() [][16]byte {
 	capMap := make(map[[16]byte]bool)
 
-	for _, instance := range sg.instances {
+	for _, instance := range s.instances {
 		if !instance.closed {
 			for _, cap := range instance.caps {
 				capMap[cap] = true
@@ -803,196 +745,368 @@ func (sg *Session) getMostCapableCaps() [][16]byte {
 	return caps
 }
 
-// ============================================================================
-// SessionInstance methods (SessionInstance-specific data)
-// ============================================================================
+// BuddyIcon returns the buddy icon from the first instance that has one set.
+func (s *Session) BuddyIcon() (wire.BARTID, bool) {
+	for _, instance := range s.instances {
+		if !instance.closed {
+			instance.mutex.RLock()
+			if instance.buddyIcon.Type != 0 {
+				icon := instance.buddyIcon
+				instance.mutex.RUnlock()
+				return icon, true
+			}
+			instance.mutex.RUnlock()
+		}
+	}
+	return wire.BARTID{}, false
+}
+
+// AwayMessage returns the away message if all instances are away. It returns
+// the away message from the first instance that has one set. If not all
+// instances are away, it returns an empty string.
+func (s *Session) AwayMessage() string {
+	if !s.allAway() {
+		return ""
+	}
+
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	for _, instance := range s.instances {
+		if !instance.closed {
+			instance.mutex.RLock()
+			if instance.awayMessage != "" {
+				msg := instance.awayMessage
+				instance.mutex.RUnlock()
+				return msg
+			}
+			instance.mutex.RUnlock()
+		}
+	}
+	return ""
+}
+
+// Idle returns true if all active instances are idle.
+func (s *Session) Idle() bool {
+	return s.allIdle()
+}
+
+// IdleTime returns the latest idle time if all instances are idle. If not all
+// instances are idle, it returns a zero time.
+func (s *Session) IdleTime() time.Time {
+	if !s.allIdle() {
+		return time.Time{}
+	}
+	return s.mostRecentIdleTime()
+}
+
+// generateInstanceNum generates the next instance number for this session group.
+func (s *Session) generateInstanceNum() uint8 {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	s.instanceCounter++
+	if s.instanceCounter == 0 {
+		s.instanceCounter = 1 // Start from 1, skip 0
+	}
+	return s.instanceCounter
+}
+
+// SetMemberSince sets the member since timestamp.
+func (s *Session) SetMemberSince(t time.Time) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.memberSince = t
+}
+
+// MemberSince reports when the user became a member.
+func (s *Session) MemberSince() time.Time {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.memberSince
+}
+
+// SetOfflineMsgCount sets the offline message count.
+func (s *Session) SetOfflineMsgCount(count int) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.offlineMsgCount = count
+}
+
+// OfflineMsgCount returns the offline message count.
+func (s *Session) OfflineMsgCount() int {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.offlineMsgCount
+}
+
+// SetChatRoomCookie sets the chat room cookie.
+func (s *Session) SetChatRoomCookie(cookie string) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.chatRoomCookie = cookie
+}
+
+// ChatRoomCookie gets the chat room cookie.
+func (s *Session) ChatRoomCookie() string {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.chatRoomCookie
+}
+
+// UserInfoBitmask returns the user info bitmask from the first instance.
+func (s *Session) UserInfoBitmask() uint16 {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	if len(s.instances) == 0 {
+		return 0
+	}
+
+	// Get from first instance
+	for _, instance := range s.instances {
+		if !instance.closed {
+			instance.mutex.RLock()
+			bitmask := instance.userInfoBitmask
+			instance.mutex.RUnlock()
+			return bitmask
+		}
+	}
+	return 0
+}
+
+// UserStatusBitmask returns the user status bitmask from the first instance.
+func (s *Session) UserStatusBitmask() uint32 {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	if len(s.instances) == 0 {
+		return 0
+	}
+
+	// Get from first instance
+	for _, instance := range s.instances {
+		if !instance.closed {
+			instance.mutex.RLock()
+			bitmask := instance.userStatusBitmask
+			instance.mutex.RUnlock()
+			return bitmask
+		}
+	}
+	return 0
+}
+
+// SessionInstance represents a single session instance with per-session data.
+// Each SessionInstance embeds a reference to its parent Session.
+type SessionInstance struct {
+	*Session
+
+	mutex sync.RWMutex
+
+	// Unique instance identifier
+	instanceNum uint8
+
+	// Per-session connection state
+	remoteAddr     *netip.AddrPort
+	signonTime     time.Time
+	signonComplete bool
+	closed         bool
+	stopCh         chan struct{}
+	msgCh          chan wire.SNACMessage
+	kerberosAuth   bool
+
+	// Per-session client information
+	clientID            string
+	caps                [][16]byte
+	foodGroupVersions   [wire.MDir + 1]uint16
+	multiConnFlag       wire.MultiConnFlag
+	typingEventsEnabled bool
+
+	// Per-session state
+	idle              bool
+	idleTime          time.Time
+	awayMessage       string
+	nowFn             func() time.Time
+	userInfoBitmask   uint16
+	userStatusBitmask uint32
+
+	// Per-session profile and buddy icon
+	profile   UserProfile
+	buddyIcon wire.BARTID
+}
 
 // SetRemoteAddr sets the instance's remote IP address.
-func (i *SessionInstance) SetRemoteAddr(remoteAddr *netip.AddrPort) {
-	i.mutex.Lock()
-	defer i.mutex.Unlock()
-	i.remoteAddr = remoteAddr
+func (s *SessionInstance) SetRemoteAddr(remoteAddr *netip.AddrPort) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.remoteAddr = remoteAddr
 }
 
 // RemoteAddr returns the instance's remote IP address.
-func (i *SessionInstance) RemoteAddr() (remoteAddr *netip.AddrPort) {
-	i.mutex.RLock()
-	defer i.mutex.RUnlock()
-	return i.remoteAddr
+func (s *SessionInstance) RemoteAddr() (remoteAddr *netip.AddrPort) {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.remoteAddr
 }
 
 // SetSignonTime sets the instance's sign-on time.
-func (i *SessionInstance) SetSignonTime(t time.Time) {
-	i.mutex.Lock()
-	defer i.mutex.Unlock()
-	i.signonTime = t
+func (s *SessionInstance) SetSignonTime(t time.Time) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.signonTime = t
 }
 
 // SignonTime reports when the instance signed on.
-func (i *SessionInstance) SignonTime() time.Time {
-	i.mutex.RLock()
-	defer i.mutex.RUnlock()
-	return i.signonTime
+func (s *SessionInstance) SignonTime() time.Time {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.signonTime
 }
 
 // SignonComplete indicates whether the instance has completed the sign-on sequence.
-func (i *SessionInstance) SignonComplete() bool {
-	i.mutex.RLock()
-	defer i.mutex.RUnlock()
-	return i.signonComplete
+func (s *SessionInstance) SignonComplete() bool {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.signonComplete
 }
 
 // SetSignonComplete indicates that the instance has completed the sign-on sequence.
-func (i *SessionInstance) SetSignonComplete() {
-	i.mutex.Lock()
-	defer i.mutex.Unlock()
-	i.signonComplete = true
+func (s *SessionInstance) SetSignonComplete() {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.signonComplete = true
 }
 
 // Idle reports the instance's idle state.
-func (i *SessionInstance) Idle() bool {
-	i.mutex.RLock()
-	defer i.mutex.RUnlock()
-	return i.idle
+func (s *SessionInstance) Idle() bool {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.idle
 }
 
 // IdleTime reports when the instance went idle.
-func (i *SessionInstance) IdleTime() time.Time {
-	i.mutex.RLock()
-	defer i.mutex.RUnlock()
-	return i.idleTime
+func (s *SessionInstance) IdleTime() time.Time {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.idleTime
 }
 
 // SetIdle sets the instance's idle state.
-func (i *SessionInstance) SetIdle(dur time.Duration) {
-	i.mutex.Lock()
-	defer i.mutex.Unlock()
-	i.idle = true
+func (s *SessionInstance) SetIdle(dur time.Duration) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.idle = true
 	// set the time the instance became idle
-	i.idleTime = i.nowFn().Add(-dur)
+	s.idleTime = s.nowFn().Add(-dur)
 }
 
 // UnsetIdle removes the instance's idle state.
-func (i *SessionInstance) UnsetIdle() {
-	i.mutex.Lock()
-	defer i.mutex.Unlock()
-	i.idle = false
+func (s *SessionInstance) UnsetIdle() {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.idle = false
 }
 
 // SetAwayMessage sets the instance's away message.
-func (i *SessionInstance) SetAwayMessage(awayMessage string) {
-	i.mutex.Lock()
-	defer i.mutex.Unlock()
-	i.awayMessage = awayMessage
+func (s *SessionInstance) SetAwayMessage(awayMessage string) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.awayMessage = awayMessage
 }
 
 // AwayMessage returns the instance's away message.
-func (i *SessionInstance) AwayMessage() string {
-	i.mutex.RLock()
-	defer i.mutex.RUnlock()
-	return i.awayMessage
-}
-
-// SetChatRoomCookie sets the chat room cookie for the instance.
-func (i *SessionInstance) SetChatRoomCookie(cookie string) {
-	i.mutex.Lock()
-	defer i.mutex.Unlock()
-	i.chatRoomCookie = cookie
-}
-
-// ChatRoomCookie gets the chat room cookie for the instance.
-func (i *SessionInstance) ChatRoomCookie() string {
-	i.mutex.RLock()
-	defer i.mutex.RUnlock()
-	return i.chatRoomCookie
+func (s *SessionInstance) AwayMessage() string {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.awayMessage
 }
 
 // SetClientID sets the instance's client ID.
-func (i *SessionInstance) SetClientID(clientID string) {
-	i.mutex.Lock()
-	defer i.mutex.Unlock()
-	i.clientID = clientID
+func (s *SessionInstance) SetClientID(clientID string) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.clientID = clientID
 }
 
 // ClientID retrieves the instance's client ID.
-func (i *SessionInstance) ClientID() string {
-	i.mutex.RLock()
-	defer i.mutex.RUnlock()
-	return i.clientID
+func (s *SessionInstance) ClientID() string {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.clientID
 }
 
 // SetCaps sets capability UUIDs for the instance.
-func (i *SessionInstance) SetCaps(caps [][16]byte) {
-	i.mutex.Lock()
-	defer i.mutex.Unlock()
-	i.caps = caps
+func (s *SessionInstance) SetCaps(caps [][16]byte) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.caps = caps
 }
 
 // Caps retrieves instance capabilities.
-func (i *SessionInstance) Caps() [][16]byte {
-	i.mutex.RLock()
-	defer i.mutex.RUnlock()
-	return i.caps
+func (s *SessionInstance) Caps() [][16]byte {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.caps
 }
 
 // SetFoodGroupVersions sets the instance's supported food group versions.
-func (i *SessionInstance) SetFoodGroupVersions(versions [wire.MDir + 1]uint16) {
-	i.mutex.Lock()
-	defer i.mutex.Unlock()
-	i.foodGroupVersions = versions
+func (s *SessionInstance) SetFoodGroupVersions(versions [wire.MDir + 1]uint16) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.foodGroupVersions = versions
 }
 
 // FoodGroupVersions retrieves the instance's supported food group versions.
-func (i *SessionInstance) FoodGroupVersions() [wire.MDir + 1]uint16 {
-	i.mutex.RLock()
-	defer i.mutex.RUnlock()
-	return i.foodGroupVersions
+func (s *SessionInstance) FoodGroupVersions() [wire.MDir + 1]uint16 {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.foodGroupVersions
 }
 
 // SetTypingEventsEnabled sets whether the instance wants to send and receive typing events.
-func (i *SessionInstance) SetTypingEventsEnabled(enabled bool) {
-	i.mutex.Lock()
-	defer i.mutex.Unlock()
-	i.typingEventsEnabled = enabled
+func (s *SessionInstance) SetTypingEventsEnabled(enabled bool) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.typingEventsEnabled = enabled
 }
 
 // TypingEventsEnabled indicates whether the instance wants to send and receive typing events.
-func (i *SessionInstance) TypingEventsEnabled() bool {
-	i.mutex.RLock()
-	defer i.mutex.RUnlock()
-	return i.typingEventsEnabled
+func (s *SessionInstance) TypingEventsEnabled() bool {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.typingEventsEnabled
 }
 
 // SetMultiConnFlag sets the multi-connection flag for this instance.
-func (i *SessionInstance) SetMultiConnFlag(flag wire.MultiConnFlag) {
-	i.mutex.Lock()
-	defer i.mutex.Unlock()
-	i.multiConnFlag = flag
+func (s *SessionInstance) SetMultiConnFlag(flag wire.MultiConnFlag) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.multiConnFlag = flag
 }
 
 // MultiConnFlag retrieves the multi-connection flag for this instance.
-func (i *SessionInstance) MultiConnFlag() wire.MultiConnFlag {
-	i.mutex.RLock()
-	defer i.mutex.RUnlock()
-	return i.multiConnFlag
+func (s *SessionInstance) MultiConnFlag() wire.MultiConnFlag {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.multiConnFlag
 }
 
 // ReceiveMessage returns a channel of messages relayed via this instance.
-func (i *SessionInstance) ReceiveMessage() chan wire.SNACMessage {
-	return i.msgCh
+func (s *SessionInstance) ReceiveMessage() chan wire.SNACMessage {
+	return s.msgCh
 }
 
 // RelayMessageToInstance receives a SNAC message and passes it to the instance's message channel.
-func (i *SessionInstance) RelayMessageToInstance(msg wire.SNACMessage) SessSendStatus {
-	i.mutex.RLock()
-	defer i.mutex.RUnlock()
-	if i.closed {
+func (s *SessionInstance) RelayMessageToInstance(msg wire.SNACMessage) SessSendStatus {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	if s.closed {
 		return SessSendClosed
 	}
 	select {
-	case i.msgCh <- msg:
+	case s.msgCh <- msg:
 		return SessSendOK
-	case <-i.stopCh:
+	case <-s.stopCh:
 		return SessSendClosed
 	default:
 		return SessQueueFull
@@ -1000,41 +1114,41 @@ func (i *SessionInstance) RelayMessageToInstance(msg wire.SNACMessage) SessSendS
 }
 
 // Close shuts down the instance's ability to relay messages.
-func (i *SessionInstance) Close() {
-	i.mutex.Lock()
-	defer i.mutex.Unlock()
-	i.close()
+func (s *SessionInstance) Close() {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.close()
 }
 
-func (i *SessionInstance) close() {
-	if i.closed {
+func (s *SessionInstance) close() {
+	if s.closed {
 		return
 	}
-	close(i.stopCh)
-	i.closed = true
+	close(s.stopCh)
+	s.closed = true
 	// Remove this instance from its session group
-	i.Session.RemoveInstance(i)
+	s.Session.RemoveInstance(s)
 }
 
 // Closed blocks until the instance is closed.
-func (i *SessionInstance) Closed() <-chan struct{} {
-	return i.stopCh
+func (s *SessionInstance) Closed() <-chan struct{} {
+	return s.stopCh
 }
 
 // InstanceNum returns the unique instance identifier.
-func (i *SessionInstance) InstanceNum() uint8 {
-	return i.instanceNum
+func (s *SessionInstance) InstanceNum() uint8 {
+	return s.instanceNum
 }
 
 // Active returns true if the instance is active. An instance is considered active if:
 // - it is not closed
 // - it is not idle
 // - it has no away message
-func (i *SessionInstance) Active() bool {
-	i.mutex.RLock()
-	defer i.mutex.RUnlock()
+func (s *SessionInstance) Active() bool {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
 
-	return !i.closed && !i.idle && i.awayMessage == ""
+	return !s.closed && !s.idle && s.awayMessage == ""
 }
 
 // ============================================================================
@@ -1043,9 +1157,9 @@ func (i *SessionInstance) Active() bool {
 
 // Invisible returns true if the user is invisible.
 func (s *SessionInstance) Invisible() bool {
-	s.Session.mutex.RLock()
-	defer s.Session.mutex.RUnlock()
-	return s.Session.userStatusBitmask&wire.OServiceUserStatusInvisible == wire.OServiceUserStatusInvisible
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.userStatusBitmask&wire.OServiceUserStatusInvisible == wire.OServiceUserStatusInvisible
 }
 
 // EvaluateRateLimit checks and updates the session's rate limit state
@@ -1063,18 +1177,6 @@ func (s *SessionInstance) EvaluateRateLimit(now time.Time, rateClassID wire.Rate
 }
 
 // Helper functions
-
-// generateInstanceNum generates the next instance number for this session group.
-func (sg *Session) generateInstanceNum() uint8 {
-	sg.mutex.Lock()
-	defer sg.mutex.Unlock()
-
-	sg.instanceCounter++
-	if sg.instanceCounter == 0 {
-		sg.instanceCounter = 1 // Start from 1, skip 0
-	}
-	return sg.instanceCounter
-}
 
 func defaultFoodGroupVersions() [wire.MDir + 1]uint16 {
 	vals := [wire.MDir + 1]uint16{}
@@ -1105,73 +1207,82 @@ func defaultFoodGroupVersions() [wire.MDir + 1]uint16 {
 }
 
 // SetKerberosAuth sets whether Kerberos authentication was used for this session.
-func (i *SessionInstance) SetKerberosAuth(enabled bool) {
-	i.mutex.Lock()
-	defer i.mutex.Unlock()
-	i.kerberosAuth = enabled
+func (s *SessionInstance) SetKerberosAuth(enabled bool) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.kerberosAuth = enabled
 }
 
 // KerberosAuth indicates whether Kerberos authentication was used for this session.
-func (i *SessionInstance) KerberosAuth() bool {
-	i.mutex.RLock()
-	defer i.mutex.RUnlock()
-	return i.kerberosAuth
+func (s *SessionInstance) KerberosAuth() bool {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.kerberosAuth
 }
 
 // SetProfile sets the user's profile information.
-func (sg *Session) SetProfile(profile UserProfile) {
-	sg.mutex.Lock()
-	defer sg.mutex.Unlock()
-	sg.profile = profile
+func (s *SessionInstance) SetProfile(profile UserProfile) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.profile = profile
 }
 
 // Profile returns the user's profile information.
-func (sg *Session) Profile() UserProfile {
-	sg.mutex.RLock()
-	defer sg.mutex.RUnlock()
-	return sg.profile
+func (s *SessionInstance) Profile() UserProfile {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.profile
 }
 
 // SetBuddyIcon stores the session's buddy icon metadata.
-func (sg *Session) SetBuddyIcon(icon wire.BARTID) {
-	sg.mutex.Lock()
-	defer sg.mutex.Unlock()
-	sg.buddyIcon = icon
+func (s *SessionInstance) SetBuddyIcon(icon wire.BARTID) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.buddyIcon = icon
 }
 
 // BuddyIcon returns the session's buddy icon metadata and reports whether it
 // has been set. The icon is considered set if its type is non-zero.
-func (sg *Session) BuddyIcon() (wire.BARTID, bool) {
-	sg.mutex.RLock()
-	defer sg.mutex.RUnlock()
-	icon := sg.buddyIcon
+func (s *SessionInstance) BuddyIcon() (wire.BARTID, bool) {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	icon := s.buddyIcon
 	return icon, icon.Type != 0
 }
 
-// SetMemberSince sets the member since timestamp.
-func (sg *Session) SetMemberSince(t time.Time) {
-	sg.mutex.Lock()
-	defer sg.mutex.Unlock()
-	sg.memberSince = t
+// SetUserInfoFlag sets a flag in the user info bitmask.
+func (s *SessionInstance) SetUserInfoFlag(flag uint16) (flags uint16) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.userInfoBitmask |= flag
+	return s.userInfoBitmask
 }
 
-// MemberSince reports when the user became a member.
-func (sg *Session) MemberSince() time.Time {
-	sg.mutex.RLock()
-	defer sg.mutex.RUnlock()
-	return sg.memberSince
+// ClearUserInfoFlag clears a flag from the user info bitmask.
+func (s *SessionInstance) ClearUserInfoFlag(flag uint16) (flags uint16) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.userInfoBitmask &^= flag
+	return s.userInfoBitmask
 }
 
-// SetOfflineMsgCount sets the offline message count.
-func (sg *Session) SetOfflineMsgCount(count int) {
-	sg.mutex.Lock()
-	defer sg.mutex.Unlock()
-	sg.offlineMsgCount = count
+// UserInfoBitmask returns the user info bitmask.
+func (s *SessionInstance) UserInfoBitmask() uint16 {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.userInfoBitmask
 }
 
-// OfflineMsgCount returns the offline message count.
-func (sg *Session) OfflineMsgCount() int {
-	sg.mutex.RLock()
-	defer sg.mutex.RUnlock()
-	return sg.offlineMsgCount
+// SetUserStatusBitmask sets the user status bitmask.
+func (s *SessionInstance) SetUserStatusBitmask(bitmask uint32) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.userStatusBitmask = bitmask
+}
+
+// UserStatusBitmask returns the user status bitmask.
+func (s *SessionInstance) UserStatusBitmask() uint32 {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.userStatusBitmask
 }

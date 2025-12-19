@@ -11,7 +11,7 @@ import (
 )
 
 type sessionSlot struct {
-	sessionGroup *Session
+	session      *Session
 	removed      chan bool
 	multiSession bool
 }
@@ -79,7 +79,7 @@ func (s *InMemorySessionManager) RelayToAll(ctx context.Context, msg wire.SNACMe
 	defer s.mapMutex.RUnlock()
 	for _, rec := range s.store {
 		// Relay to all active instances in the session group
-		for _, instance := range rec.sessionGroup.GetActiveInstances() {
+		for _, instance := range rec.session.GetActiveInstances() {
 			if !instance.SignonComplete() {
 				continue
 			}
@@ -163,23 +163,23 @@ func (s *InMemorySessionManager) AddSession(ctx context.Context, screenName Disp
 	if active != nil {
 		if doMultiSess {
 			if !active.multiSession {
-				for _, instance := range active.sessionGroup.GetInstances() {
+				for _, instance := range active.session.GetInstances() {
 					instance.Close()
 				}
 				return s.newSessionGroup(screenName, doMultiSess)
 			}
 
 			// Create a new instance within the existing session group
-			instance := NewInstance(active.sessionGroup)
-			active.sessionGroup.AddInstance(instance)
-			instance.Session = active.sessionGroup
+			instance := NewInstance(active.session)
+			active.session.AddInstance(instance)
+			instance.Session = active.session
 
 			// Create a SessionInstance wrapper for backward compatibility
 			return instance, nil
 		} else {
 			// signal to callers that this session group has to go
 			// Close all instances in the session group
-			for _, instance := range active.sessionGroup.GetInstances() {
+			for _, instance := range active.session.GetInstances() {
 				instance.Close()
 			}
 
@@ -195,7 +195,7 @@ func (s *InMemorySessionManager) AddSession(ctx context.Context, screenName Disp
 }
 
 func (s *InMemorySessionManager) newSessionGroup(screenName DisplayScreenName, doMultiSess bool) (*SessionInstance, error) {
-	sessionGroup := NewSessionGroup()
+	sessionGroup := NewSession()
 	sessionGroup.SetIdentScreenName(screenName.IdentScreenName())
 	sessionGroup.SetDisplayScreenName(screenName)
 
@@ -206,7 +206,7 @@ func (s *InMemorySessionManager) newSessionGroup(screenName DisplayScreenName, d
 
 	s.mapMutex.Lock()
 	s.store[instance.IdentScreenName()] = &sessionSlot{
-		sessionGroup: sessionGroup,
+		session:      sessionGroup,
 		removed:      make(chan bool),
 		multiSession: doMultiSess,
 	}
@@ -217,7 +217,7 @@ func (s *InMemorySessionManager) newSessionGroup(screenName DisplayScreenName, d
 
 func (s *InMemorySessionManager) findRec(identScreenName IdentScreenName) *sessionSlot {
 	for _, rec := range s.store {
-		if identScreenName == rec.sessionGroup.IdentScreenName() {
+		if identScreenName == rec.session.IdentScreenName() {
 			return rec
 		}
 	}
@@ -228,7 +228,7 @@ func (s *InMemorySessionManager) findRec(identScreenName IdentScreenName) *sessi
 func (s *InMemorySessionManager) RemoveSession(sess *SessionInstance) {
 	s.mapMutex.Lock()
 	defer s.mapMutex.Unlock()
-	if rec, ok := s.store[sess.IdentScreenName()]; ok && rec.sessionGroup == sess.Session {
+	if rec, ok := s.store[sess.IdentScreenName()]; ok && rec.session == sess.Session {
 		delete(s.store, sess.IdentScreenName())
 		close(rec.removed)
 	}
@@ -242,7 +242,7 @@ func (s *InMemorySessionManager) RetrieveSession(screenName IdentScreenName, ses
 	s.mapMutex.RLock()
 	defer s.mapMutex.RUnlock()
 	if rec, ok := s.store[screenName]; ok {
-		activeInstances := rec.sessionGroup.GetActiveInstances()
+		activeInstances := rec.session.GetActiveInstances()
 		if len(activeInstances) > 0 {
 			var targetInstance *SessionInstance
 
@@ -273,9 +273,9 @@ func (s *InMemorySessionManager) retrieveByScreenNames(screenNames []IdentScreen
 	var ret []*SessionInstance
 	for _, sn := range screenNames {
 		for _, rec := range s.store {
-			if sn == rec.sessionGroup.IdentScreenName() {
+			if sn == rec.session.IdentScreenName() {
 				// Return the first active instance as a SessionInstance for backward compatibility
-				activeInstances := rec.sessionGroup.GetActiveInstances()
+				activeInstances := rec.session.GetActiveInstances()
 				if len(activeInstances) > 0 {
 					instance := activeInstances[0]
 					if instance.SignonComplete() {
@@ -303,7 +303,7 @@ func (s *InMemorySessionManager) AllSessions() []*SessionInstance {
 	var sessions []*SessionInstance
 	for _, rec := range s.store {
 		// Return all active instances as Sessions for backward compatibility
-		for _, instance := range rec.sessionGroup.GetActiveInstances() {
+		for _, instance := range rec.session.GetActiveInstances() {
 			if instance.SignonComplete() {
 				sessions = append(sessions, instance)
 			}

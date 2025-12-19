@@ -62,7 +62,7 @@ func TestInMemorySessionManager_Remove_Existing(t *testing.T) {
 	// Verify the old session is in the store
 	rec, ok := sm.store[user1Old.IdentScreenName()]
 	assert.True(t, ok)
-	assert.Equal(t, user1Old.Session, rec.sessionGroup)
+	assert.Equal(t, user1Old.Session, rec.session)
 
 	// Remove the session
 	sm.RemoveSession(user1Old)
@@ -108,7 +108,7 @@ func TestInMemorySessionManager_Remove_MissingSameScreenName(t *testing.T) {
 	// Verify the old session is in the store
 	recOld, ok := sm.store[user1Old.IdentScreenName()]
 	assert.True(t, ok)
-	assert.Equal(t, user1Old.Session, recOld.sessionGroup)
+	assert.Equal(t, user1Old.Session, recOld.session)
 
 	// Remove the old session
 	sm.RemoveSession(user1Old)
@@ -123,7 +123,7 @@ func TestInMemorySessionManager_Remove_MissingSameScreenName(t *testing.T) {
 	// Verify the new session is in the store with a different Session
 	recNew, ok := sm.store[user1New.IdentScreenName()]
 	assert.True(t, ok)
-	assert.Equal(t, user1New.Session, recNew.sessionGroup)
+	assert.Equal(t, user1New.Session, recNew.session)
 	assert.NotEqual(t, user1Old.Session, user1New.Session)
 
 	user2, err := sm.AddSession(context.Background(), "user-screen-name-2", false)
@@ -136,7 +136,7 @@ func TestInMemorySessionManager_Remove_MissingSameScreenName(t *testing.T) {
 	// Verify the new session is still in the store (not removed)
 	recNewAfter, ok := sm.store[user1New.IdentScreenName()]
 	assert.True(t, ok, "new session should still be in store")
-	assert.Equal(t, user1New.Session, recNewAfter.sessionGroup)
+	assert.Equal(t, user1New.Session, recNewAfter.session)
 
 	if assert.Len(t, sm.AllSessions(), 2) {
 		assert.NotContains(t, sm.AllSessions(), user1Old)
