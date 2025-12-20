@@ -228,7 +228,7 @@ func (s FeedbagService) UpsertItem(ctx context.Context, sess *state.SessionInsta
 		Body: snacPayloadOut,
 	})
 
-	s.messageRelayer.RelayToOtherSessions(ctx, sess, wire.SNACMessage{
+	s.messageRelayer.RelayToOtherInstances(ctx, sess, wire.SNACMessage{
 		Frame: wire.SNACFrame{
 			FoodGroup: inFrame.FoodGroup,
 			SubGroup:  inFrame.SubGroup,
@@ -349,7 +349,7 @@ func (s FeedbagService) DeleteItem(ctx context.Context, sess *state.SessionInsta
 		Body: snacPayloadOut,
 	})
 
-	s.messageRelayer.RelayToOtherSessions(ctx, sess, wire.SNACMessage{
+	s.messageRelayer.RelayToOtherInstances(ctx, sess, wire.SNACMessage{
 		Frame: wire.SNACFrame{
 			FoodGroup: inFrame.FoodGroup,
 			SubGroup:  inFrame.SubGroup,

@@ -451,7 +451,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					},
 				},
 				messageRelayerParams: messageRelayerParams{
-					relayToOtherSessionsParams: relayToOtherSessionsParams{
+					relayToOtherInstancesParams: relayToOtherInstancesParams{
 						{
 							sess: newTestSession("me"),
 							message: wire.SNACMessage{
@@ -535,7 +535,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					},
 				},
 				messageRelayerParams: messageRelayerParams{
-					relayToOtherSessionsParams: relayToOtherSessionsParams{
+					relayToOtherInstancesParams: relayToOtherInstancesParams{
 						{
 							sess: newTestSession("me"),
 							message: wire.SNACMessage{
@@ -620,7 +620,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					},
 				},
 				messageRelayerParams: messageRelayerParams{
-					relayToOtherSessionsParams: relayToOtherSessionsParams{
+					relayToOtherInstancesParams: relayToOtherInstancesParams{
 						{
 							sess: newTestSession("me"),
 							message: wire.SNACMessage{
@@ -716,7 +716,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					},
 				},
 				messageRelayerParams: messageRelayerParams{
-					relayToOtherSessionsParams: relayToOtherSessionsParams{
+					relayToOtherInstancesParams: relayToOtherInstancesParams{
 						{
 							sess: newTestSession("me"),
 							message: wire.SNACMessage{
@@ -811,7 +811,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					},
 				},
 				messageRelayerParams: messageRelayerParams{
-					relayToOtherSessionsParams: relayToOtherSessionsParams{
+					relayToOtherInstancesParams: relayToOtherInstancesParams{
 						{
 							sess: newTestSession("me"),
 							message: wire.SNACMessage{
@@ -893,7 +893,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					},
 				},
 				messageRelayerParams: messageRelayerParams{
-					relayToOtherSessionsParams: relayToOtherSessionsParams{
+					relayToOtherInstancesParams: relayToOtherInstancesParams{
 						{
 							sess: newTestSession("me"),
 							message: wire.SNACMessage{
@@ -1056,7 +1056,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 							},
 						},
 					},
-					relayToOtherSessionsParams: relayToOtherSessionsParams{
+					relayToOtherInstancesParams: relayToOtherInstancesParams{
 						{
 							sess: newTestSession("me"),
 							message: wire.SNACMessage{
@@ -1214,7 +1214,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 							},
 						},
 					},
-					relayToOtherSessionsParams: relayToOtherSessionsParams{
+					relayToOtherInstancesParams: relayToOtherInstancesParams{
 						{
 							sess: newTestSession("me"),
 							message: wire.SNACMessage{
@@ -1336,7 +1336,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					},
 				},
 				messageRelayerParams: messageRelayerParams{
-					relayToOtherSessionsParams: relayToOtherSessionsParams{
+					relayToOtherInstancesParams: relayToOtherInstancesParams{
 						{
 							sess: newTestSession("me"),
 							message: wire.SNACMessage{
@@ -1503,7 +1503,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 							},
 						},
 					},
-					relayToOtherSessionsParams: relayToOtherSessionsParams{
+					relayToOtherInstancesParams: relayToOtherInstancesParams{
 						{
 							sess: newTestSession("me"),
 							message: wire.SNACMessage{
@@ -1577,9 +1577,9 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 						RelayToScreenName(matchContext(), params.screenName, params.message)
 				}
 			}
-			for _, params := range tc.mockParams.messageRelayerParams.relayToOtherSessionsParams {
+			for _, params := range tc.mockParams.messageRelayerParams.relayToOtherInstancesParams {
 				messageRelayer.EXPECT().
-					RelayToOtherSessions(mock.Anything, mock.Anything, params.message)
+					RelayToOtherInstances(mock.Anything, mock.Anything, params.message)
 			}
 			for _, params := range tc.mockParams.messageRelayerParams.relayToSelfParams {
 				messageRelayer.EXPECT().
@@ -1694,7 +1694,7 @@ func TestFeedbagService_DeleteItem(t *testing.T) {
 					},
 				},
 				messageRelayerParams: messageRelayerParams{
-					relayToOtherSessionsParams: relayToOtherSessionsParams{
+					relayToOtherInstancesParams: relayToOtherInstancesParams{
 						{
 							sess: newTestSession("me"),
 							message: wire.SNACMessage{
@@ -1758,9 +1758,9 @@ func TestFeedbagService_DeleteItem(t *testing.T) {
 					Return(params.err)
 			}
 			messageRelayer := newMockMessageRelayer(t)
-			for _, params := range tc.mockParams.messageRelayerParams.relayToOtherSessionsParams {
+			for _, params := range tc.mockParams.messageRelayerParams.relayToOtherInstancesParams {
 				messageRelayer.EXPECT().
-					RelayToOtherSessions(mock.Anything, mock.Anything, params.message)
+					RelayToOtherInstances(mock.Anything, mock.Anything, params.message)
 			}
 			for _, params := range tc.mockParams.messageRelayerParams.relayToSelfParams {
 				messageRelayer.EXPECT().

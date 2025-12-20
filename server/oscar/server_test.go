@@ -833,6 +833,7 @@ func Test_oscarServer_receiveSessMessages_BOS_integration(t *testing.T) {
 
 	// Prepare session and mocks so we can exercise through routeConnection
 	sess := state.NewInstance(state.NewSession())
+	sess.SetSignonComplete()
 
 	authService := newMockAuthService(t)
 	authService.EXPECT().
@@ -978,6 +979,7 @@ func Test_oscarServer_receiveSessMessages_Chat_integration(t *testing.T) {
 
 	// Prepare session and mocks so we can exercise through routeConnection
 	sess := state.NewInstance(state.NewSession())
+	sess.SetSignonComplete()
 
 	authService := newMockAuthService(t)
 	authService.EXPECT().

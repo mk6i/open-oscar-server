@@ -100,21 +100,28 @@ func (s *InMemorySessionManager) RelayToScreenNames(ctx context.Context, screenN
 	}
 }
 
-func (s *InMemorySessionManager) RelayToSelf(ctx context.Context, sess *SessionInstance, msg wire.SNACMessage) {
-	select {
-	case sess.msgCh <- msg:
-	case <-sess.stopCh:
-	case <-ctx.Done():
+func (s *InMemorySessionManager) RelayToSelf(ctx context.Context, instance *SessionInstance, msg wire.SNACMessage) {
+	switch instance.RelayMessage(msg) {
+	case SessSendClosed:
+		s.logger.WarnContext(ctx, "can't send notification because the user's session is closed", "recipient", instance.IdentScreenName(), "message", msg)
+	case SessQueueFull:
+		s.logger.WarnContext(ctx, "can't send notification because queue is full", "recipient", instance.IdentScreenName(), "message", msg)
+		instance.Close()
 	}
 }
 
-func (s *InMemorySessionManager) RelayToOtherSessions(ctx context.Context, sess *SessionInstance, msg wire.SNACMessage) {
-	switch sess.RelayMessageExceptSelf(sess, msg) {
-	case SessSendClosed:
-		s.logger.WarnContext(ctx, "can't send notification because the user's session is closed", "recipient", sess.IdentScreenName(), "message", msg)
-	case SessQueueFull:
-		s.logger.WarnContext(ctx, "can't send notification because queue is full", "recipient", sess.IdentScreenName(), "message", msg)
-		sess.Close()
+func (s *InMemorySessionManager) RelayToOtherInstances(ctx context.Context, instance *SessionInstance, msg wire.SNACMessage) {
+	for _, inst := range instance.Instances() {
+		if instance == inst {
+			continue
+		}
+		switch instance.RelayMessage(msg) {
+		case SessSendClosed:
+			s.logger.WarnContext(ctx, "can't send notification because the user's session is closed", "recipient", instance.IdentScreenName(), "message", msg)
+		case SessQueueFull:
+			s.logger.WarnContext(ctx, "can't send notification because queue is full", "recipient", instance.IdentScreenName(), "message", msg)
+			instance.Close()
+		}
 	}
 }
 
@@ -128,11 +135,10 @@ func (s *InMemorySessionManager) RelayToScreenNameActiveOnly(ctx context.Context
 }
 
 func (s *InMemorySessionManager) maybeRelayMessage(ctx context.Context, msg wire.SNACMessage, sess *Session) {
-	instances := sess.GetActiveInstances()
-	for _, instance := range instances {
+	for _, instance := range sess.Instances() {
 		switch instance.RelayMessage(msg) {
 		case SessSendClosed:
-			continue
+			s.logger.WarnContext(ctx, "can't send notification because the user's session is closed", "recipient", sess.IdentScreenName(), "message", msg)
 		case SessQueueFull:
 			s.logger.WarnContext(ctx, "can't send notification because queue is full", "recipient", sess.IdentScreenName(), "message", msg)
 			instance.Close()
@@ -141,11 +147,13 @@ func (s *InMemorySessionManager) maybeRelayMessage(ctx context.Context, msg wire
 }
 
 func (s *InMemorySessionManager) maybeRelayMessageActiveOnly(ctx context.Context, msg wire.SNACMessage, sess *Session) {
-	instances := sess.GetActiveInstances()
-	for _, instance := range instances {
-		switch instance.RelayMessageActiveOnly(msg) {
-		case SessSendClosed:
+	for _, instance := range sess.Instances() {
+		if !instance.Active() {
 			continue
+		}
+		switch instance.RelayMessage(msg) {
+		case SessSendClosed:
+			s.logger.WarnContext(ctx, "can't send notification because the user's session is closed", "recipient", sess.IdentScreenName(), "message", msg)
 		case SessQueueFull:
 			s.logger.WarnContext(ctx, "can't send notification because queue is full", "recipient", sess.IdentScreenName(), "message", msg)
 			instance.Close()
@@ -164,24 +172,16 @@ func (s *InMemorySessionManager) AddSession(ctx context.Context, screenName Disp
 	if active != nil {
 		if doMultiSess {
 			if !active.multiSession {
-				for _, instance := range active.session.GetInstances() {
-					instance.Close()
-				}
+				active.session.Close()
 				return s.newSessionGroup(screenName, doMultiSess)
 			}
 
-			// Create a new instance within the existing session group
 			instance := NewInstance(active.session)
 
-			// Create a SessionInstance wrapper for backward compatibility
 			return instance, nil
 		} else {
-			active.session.Close()
 			// signal to callers that this session group has to go
-			// Close all instances in the session group
-			for _, instance := range active.session.GetInstances() {
-				instance.Close()
-			}
+			active.session.Close()
 
 			select {
 			case <-active.removed: // wait for RemoveSession to be called
@@ -238,8 +238,7 @@ func (s *InMemorySessionManager) RetrieveSession(screenName IdentScreenName) *Se
 	s.mapMutex.RLock()
 	defer s.mapMutex.RUnlock()
 	if rec, ok := s.store[screenName]; ok {
-		activeInstances := rec.session.GetActiveInstances()
-		if len(activeInstances) > 0 {
+		if rec.session.Live() {
 			return rec.session
 		}
 	}
@@ -274,8 +273,7 @@ func (s *InMemorySessionManager) AllSessions() []*Session {
 	defer s.mapMutex.RUnlock()
 	var sessions []*Session
 	for _, rec := range s.store {
-		// Only include sessions that have active instances
-		if len(rec.session.GetActiveInstances()) > 0 {
+		if rec.session.Live() {
 			sessions = append(sessions, rec.session)
 		}
 	}
@@ -365,11 +363,7 @@ func (s *InMemoryChatSessionManager) RemoveUserFromAllChats(user IdentScreenName
 	for _, sessionManager := range s.store {
 		userSess := sessionManager.RetrieveSession(user)
 		if userSess != nil {
-			instances := userSess.GetActiveInstances()
-			for _, instance := range instances {
-				instance.Close()
-				sessionManager.RemoveSession(instance)
-			}
+			userSess.Close()
 		}
 	}
 }

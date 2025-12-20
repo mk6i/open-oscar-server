@@ -132,18 +132,8 @@ func (s *Session) InstanceCount() int {
 	return len(s.instances)
 }
 
-// GetInstances returns a copy of all active instances.
-func (s *Session) GetInstances() []*SessionInstance {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-
-	instances := make([]*SessionInstance, len(s.instances))
-	copy(instances, s.instances)
-	return instances
-}
-
-// GetActiveInstances returns only non-closed instances with completed signon.
-func (s *Session) GetActiveInstances() []*SessionInstance {
+// Instances returns all live instances.
+func (s *Session) Instances() []*SessionInstance {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 
@@ -156,6 +146,19 @@ func (s *Session) GetActiveInstances() []*SessionInstance {
 		instance.mutex.RUnlock()
 	}
 	return active
+}
+
+// Live returns whether the session is ready to receive messages.
+func (s *Session) Live() bool {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	for _, instance := range s.instances {
+		if !instance.IsClosed() && instance.SignonComplete() {
+			return true
+		}
+	}
+	return false
 }
 
 // allAway returns true if all active instances are away.
@@ -468,136 +471,6 @@ func (s *Session) EvaluateRateLimit(now time.Time, rateClassID wire.RateLimitCla
 	rateClass.LimitedNow = status == wire.RateLimitStatusLimited
 
 	return status
-}
-
-// RelayMessage receives a SNAC message and passes it to all active instances.
-// Returns SessSendOK if at least one instance successfully received the message,
-// SessSendClosed if no active instances exist, or SessQueueFull if all instances
-// have full message queues.
-func (s *Session) RelayMessage(msg wire.SNACMessage) SessSendStatus {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-
-	activeInstances := 0
-	successfulSends := 0
-	fullQueues := 0
-
-	for _, instance := range s.instances {
-		instance.mutex.RLock()
-		if !instance.closed {
-			activeInstances++
-			select {
-			case instance.msgCh <- msg:
-				successfulSends++
-			case <-instance.stopCh:
-				// SessionInstance is closed, skip it
-			default:
-				// Queue is full for this instance
-				fullQueues++
-			}
-		}
-		instance.mutex.RUnlock()
-	}
-
-	if activeInstances == 0 {
-		return SessSendClosed
-	}
-
-	if successfulSends > 0 {
-		return SessSendOK
-	}
-
-	if fullQueues == activeInstances {
-		return SessQueueFull
-	}
-
-	return SessSendClosed
-}
-
-func (s *Session) RelayMessageExceptSelf(self *SessionInstance, msg wire.SNACMessage) SessSendStatus {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-
-	activeInstances := 0
-	successfulSends := 0
-	fullQueues := 0
-
-	for _, instance := range s.instances {
-		if instance == self {
-			continue
-		}
-		instance.mutex.RLock()
-		if !instance.closed {
-			activeInstances++
-			select {
-			case instance.msgCh <- msg:
-				successfulSends++
-			case <-instance.stopCh:
-				// SessionInstance is closed, skip it
-			default:
-				// Queue is full for this instance
-				fullQueues++
-			}
-		}
-		instance.mutex.RUnlock()
-	}
-
-	if activeInstances == 0 {
-		return SessSendClosed
-	}
-
-	if successfulSends > 0 {
-		return SessSendOK
-	}
-
-	if fullQueues == activeInstances {
-		return SessQueueFull
-	}
-
-	return SessSendClosed
-}
-
-func (s *Session) RelayMessageActiveOnly(msg wire.SNACMessage) SessSendStatus {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-
-	activeInstances := 0
-	successfulSends := 0
-	fullQueues := 0
-
-	for _, instance := range s.instances {
-		if !instance.Active() {
-			continue
-		}
-		instance.mutex.RLock()
-		if !instance.closed {
-			activeInstances++
-			select {
-			case instance.msgCh <- msg:
-				successfulSends++
-			case <-instance.stopCh:
-				// SessionInstance is closed, skip it
-			default:
-				// Queue is full for this instance
-				fullQueues++
-			}
-		}
-		instance.mutex.RUnlock()
-	}
-
-	if activeInstances == 0 {
-		return SessSendClosed
-	}
-
-	if successfulSends > 0 {
-		return SessSendOK
-	}
-
-	if fullQueues == activeInstances {
-		return SessQueueFull
-	}
-
-	return SessSendClosed
 }
 
 // TLVUserInfo returns a TLV list containing session information aggregated from all instances.
@@ -1177,6 +1050,12 @@ func (s *SessionInstance) Closed() <-chan struct{} {
 	return s.stopCh
 }
 
+func (s *SessionInstance) IsClosed() bool {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	return s.closed
+}
+
 // InstanceNum returns the unique instance identifier.
 func (s *SessionInstance) InstanceNum() uint8 {
 	return s.instanceNum
@@ -1327,4 +1206,24 @@ func (s *SessionInstance) UserStatusBitmask() uint32 {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 	return s.userStatusBitmask
+}
+
+// RelayMessage receives a SNAC message from a user and passes it on
+// asynchronously to the consumer of this session's messages. It returns
+// SessSendStatus to indicate whether the message was successfully sent or
+// not. This method is non-blocking.
+func (s *SessionInstance) RelayMessage(msg wire.SNACMessage) SessSendStatus {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	if s.closed {
+		return SessSendClosed
+	}
+	select {
+	case s.msgCh <- msg:
+		return SessSendOK
+	case <-s.stopCh:
+		return SessSendClosed
+	default:
+		return SessQueueFull
+	}
 }

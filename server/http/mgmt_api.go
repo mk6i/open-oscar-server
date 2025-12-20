@@ -253,13 +253,13 @@ func getSessionHandler(w http.ResponseWriter, r *http.Request, sessionRetriever 
 			return
 		}
 		// Flatten all instances from the session
-		allUsers = append(allUsers, session.GetActiveInstances()...)
+		allUsers = append(allUsers, session.Instances()...)
 	} else {
 		// AllSessions returns all sessions
 		sessions := sessionRetriever.AllSessions()
 		// Flatten all instances from all sessions
 		for _, session := range sessions {
-			allUsers = append(allUsers, session.GetActiveInstances()...)
+			allUsers = append(allUsers, session.Instances()...)
 		}
 	}
 

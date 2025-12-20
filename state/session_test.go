@@ -307,6 +307,7 @@ func TestSession_TLVUserInfo(t *testing.T) {
 
 func TestSession_SendAndRecvMessage_ExpectSessSendOK(t *testing.T) {
 	s := NewInstance(NewSession())
+	s.SetSignonComplete()
 
 	msg := wire.SNACMessage{
 		Frame: wire.SNACFrame{
@@ -346,6 +347,7 @@ func TestSession_SendMessage_SessSendClosed(t *testing.T) {
 
 func TestSession_SendMessage_SessQueueFull(t *testing.T) {
 	s := NewInstance(NewSession())
+	s.SetSignonComplete()
 	// Fill up the message channel (default buffer size is 1000)
 	for i := 0; i < 1000; i++ {
 		assert.Equal(t, SessSendOK, s.RelayMessage(wire.SNACMessage{}))

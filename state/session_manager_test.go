@@ -674,30 +674,30 @@ func TestInMemoryChatSessionManager_RemoveSession_DoubleLogin(t *testing.T) {
 	}
 }
 
-//func TestInMemoryChatSessionManager_RemoveUserFromAllChats(t *testing.T) {
-//	sm := NewInMemoryChatSessionManager(slog.Default())
-//
-//	user1 := NewIdentScreenName("user-screen-name-1")
-//	user1sess, err := sm.AddSession(context.Background(), "chat-room-1", "user-screen-name-1")
-//	assert.NoError(t, err)
-//	user1sess.SetSignonComplete()
-//	user2sess, err := sm.AddSession(context.Background(), "chat-room-1", "user-screen-name-2")
-//	assert.NoError(t, err)
-//	user2sess.SetSignonComplete()
-//
-//	assert.Len(t, sm.AllSessions("chat-room-1"), 2)
-//
-//	sm.RemoveUserFromAllChats(user1)
-//
-//	lookup := make(map[*SessionInstance]bool)
-//	for _, session := range sm.AllSessions("chat-room-1") {
-//		lookup[session] = true
-//	}
-//
-//	assert.False(t, lookup[user1sess])
-//	assert.True(t, lookup[user2sess])
-//
-//}
+func TestInMemoryChatSessionManager_RemoveUserFromAllChats(t *testing.T) {
+	sm := NewInMemoryChatSessionManager(slog.Default())
+
+	user1 := NewIdentScreenName("user-screen-name-1")
+	user1sess, err := sm.AddSession(context.Background(), "chat-room-1", "user-screen-name-1")
+	assert.NoError(t, err)
+	user1sess.SetSignonComplete()
+	user2sess, err := sm.AddSession(context.Background(), "chat-room-1", "user-screen-name-2")
+	assert.NoError(t, err)
+	user2sess.SetSignonComplete()
+
+	assert.Len(t, sm.AllSessions("chat-room-1"), 2)
+
+	sm.RemoveUserFromAllChats(user1)
+
+	lookup := make(map[*Session]bool)
+	for _, session := range sm.AllSessions("chat-room-1") {
+		lookup[session] = true
+	}
+
+	assert.False(t, lookup[user1sess.Session])
+	assert.True(t, lookup[user2sess.Session])
+
+}
 
 func TestInMemorySessionManager_RelayToAll_SkipIncompleteSignon(t *testing.T) {
 	sm := NewInMemorySessionManager(slog.Default())

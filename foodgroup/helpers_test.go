@@ -368,7 +368,7 @@ type feedbagDeleteParams []struct {
 type messageRelayerParams struct {
 	relayToScreenNamesParams
 	relayToScreenNameParams
-	relayToOtherSessionsParams
+	relayToOtherInstancesParams
 	relayToScreenNameActiveOnlyParams
 	relayToSelfParams
 }
@@ -394,9 +394,9 @@ type relayToScreenNameParams []struct {
 	message    wire.SNACMessage
 }
 
-// relayToOtherSessionsParams is the list of parameters passed at the mock
-// MessageRelayer.RelayToOtherSessions call site
-type relayToOtherSessionsParams []struct {
+// relayToOtherInstancesParams is the list of parameters passed at the mock
+// MessageRelayer.RelayToOtherInstances call site
+type relayToOtherInstancesParams []struct {
 	sess    *state.SessionInstance
 	message wire.SNACMessage
 }

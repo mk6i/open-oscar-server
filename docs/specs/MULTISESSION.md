@@ -120,7 +120,7 @@ Sync buddy list changes across all sessions for the same user.
 
 - ✅ Feedbag sync works for INSERT, UPDATE, and DELETE operations
 - ✅ Feedbag INSERT, UPDATE, DELETE requests sent by the client are forwarded to other concurrent sessions (but not self)
-- ✅ Uses messageRelayer.RelayToOtherSessions() to broadcast feedbag changes across all concurrent sessions
+- ✅ Uses messageRelayer.RelayToOtherInstances() to broadcast feedbag changes across all concurrent sessions
 
 ### 14. User Profile & Directory Information ✅
 User profile updates are user-level and should be consistent.
