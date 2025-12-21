@@ -16,6 +16,10 @@ import (
 	"github.com/google/uuid"
 )
 
+// MaxConcurrentLoginsPerUser is the maximum number of concurrent logins allowed
+// for a single user.
+const MaxConcurrentLoginsPerUser = 5
+
 // NewAuthService creates a new instance of AuthService.
 func NewAuthService(
 	cfg config.Config,
@@ -30,17 +34,18 @@ func NewAuthService(
 	classes wire.RateLimitClasses,
 ) *AuthService {
 	return &AuthService{
-		chatSessionRegistry: chatSessionRegistry,
-		config:              cfg,
-		cookieBaker:         cookieBaker,
-		sessionManager:      sessionManager,
-		sessionRetriever:    sessionRetriever,
-		userManager:         userManager,
-		chatMessageRelayer:  chatMessageRelayer,
-		accountManager:      accountManager,
-		bartItemManager:     bartItemManager,
-		rateLimitClasses:    classes,
-		timeNow:             time.Now,
+		chatSessionRegistry:        chatSessionRegistry,
+		config:                     cfg,
+		cookieBaker:                cookieBaker,
+		sessionManager:             sessionManager,
+		sessionRetriever:           sessionRetriever,
+		userManager:                userManager,
+		chatMessageRelayer:         chatMessageRelayer,
+		accountManager:             accountManager,
+		bartItemManager:            bartItemManager,
+		rateLimitClasses:           classes,
+		timeNow:                    time.Now,
+		maxConcurrentLoginsPerUser: MaxConcurrentLoginsPerUser,
 	}
 }
 
@@ -48,17 +53,18 @@ func NewAuthService(
 // supports both FLAP (AIM v1.0-v3.0) and BUCP (AIM v3.5-v5.9) authentication
 // modes.
 type AuthService struct {
-	chatMessageRelayer  ChatMessageRelayer
-	chatSessionRegistry ChatSessionRegistry
-	config              config.Config
-	cookieBaker         CookieBaker
-	sessionManager      SessionRegistry
-	sessionRetriever    SessionRetriever
-	userManager         UserManager
-	accountManager      AccountManager
-	bartItemManager     BARTItemManager
-	rateLimitClasses    wire.RateLimitClasses
-	timeNow             func() time.Time
+	chatMessageRelayer         ChatMessageRelayer
+	chatSessionRegistry        ChatSessionRegistry
+	config                     config.Config
+	cookieBaker                CookieBaker
+	sessionManager             SessionRegistry
+	sessionRetriever           SessionRetriever
+	userManager                UserManager
+	accountManager             AccountManager
+	bartItemManager            BARTItemManager
+	rateLimitClasses           wire.RateLimitClasses
+	timeNow                    func() time.Time
+	maxConcurrentLoginsPerUser int
 }
 
 // RegisterChatSession adds a user to a chat room. The authCookie param is an
@@ -509,6 +515,14 @@ func (s AuthService) login(ctx context.Context, tlv wire.TLVList, newUserFn func
 
 	if !loginOK {
 		return loginFailureResponse(props, wire.LoginErrInvalidPassword), nil
+	}
+
+	// limit concurrent logins per user
+	if props.multiConnFlag == uint8(wire.MultiConnFlagsRecentClient) {
+		sess := s.sessionRetriever.RetrieveSession(props.screenName.IdentScreenName())
+		if sess != nil && sess.InstanceCount() >= s.maxConcurrentLoginsPerUser {
+			return loginFailureResponse(props, wire.LoginErrRateLimitExceeded), nil
+		}
 	}
 
 	return s.loginSuccessResponse(props, advertisedHost)

@@ -43,9 +43,11 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 		expectOutput wire.SNACMessage
 		// wantErr is the error we expect from the method
 		wantErr error
+		// maxConcurrentLoginsPerUser is the maximum concurrent logins per user (only set for MultiConnFlagsRecentClient tests)
+		maxConcurrentLoginsPerUser int
 	}{
 		{
-			name:           "AIM account exists, correct password, login OK",
+			name:           "AIM account exists, correct password, login OK, no concurrent logins",
 			advertisedHost: "127.0.0.1:5190",
 			inputSNAC: wire.SNAC_0x17_0x02_BUCPLoginRequest{
 				TLVRestBlock: wire.TLVRestBlock{
@@ -81,6 +83,14 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 						},
 					},
 				},
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams: retrieveSessionParams{
+						{
+							screenName: user.IdentScreenName,
+							result:     nil,
+						},
+					},
+				},
 			},
 			expectOutput: wire.SNACMessage{
 				Frame: wire.SNACFrame{
@@ -97,6 +107,133 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 					},
 				},
 			},
+			maxConcurrentLoginsPerUser: 2,
+		},
+		{
+			name:           "AIM account exists, correct password, login OK, concurrent logins under limit",
+			advertisedHost: "127.0.0.1:5190",
+			inputSNAC: wire.SNAC_0x17_0x02_BUCPLoginRequest{
+				TLVRestBlock: wire.TLVRestBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.LoginTLVTagsScreenName, user.DisplayScreenName),
+						wire.NewTLVBE(wire.LoginTLVTagsPasswordHash, user.StrongMD5Pass),
+						wire.NewTLVBE(wire.LoginTLVTagsMultiConnFlags, wire.MultiConnFlagsRecentClient),
+					},
+				},
+			},
+			mockParams: mockParams{
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{
+							screenName: user.IdentScreenName,
+							result:     &user,
+						},
+					},
+				},
+				cookieBakerParams: cookieBakerParams{
+					cookieIssueParams: cookieIssueParams{
+						{
+							dataIn: func() []byte {
+								loginCookie := state.ServerCookie{
+									ScreenName:    user.DisplayScreenName,
+									MultiConnFlag: uint8(wire.MultiConnFlagsRecentClient),
+								}
+								buf := &bytes.Buffer{}
+								assert.NoError(t, wire.MarshalBE(loginCookie, buf))
+								return buf.Bytes()
+							}(),
+							cookieOut: []byte("the-cookie"),
+						},
+					},
+				},
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams: retrieveSessionParams{
+						{
+							screenName: user.IdentScreenName,
+							result: func() *state.Session {
+								// Create a session with 1 instance, under the limit
+								sess := state.NewSession()
+								sess.SetIdentScreenName(user.IdentScreenName)
+								sess.SetDisplayScreenName(user.DisplayScreenName)
+								state.NewInstance(sess)
+								return sess
+							}(),
+						},
+					},
+				},
+			},
+			expectOutput: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.BUCP,
+					SubGroup:  wire.BUCPLoginResponse,
+				},
+				Body: wire.SNAC_0x17_0x03_BUCPLoginResponse{
+					TLVRestBlock: wire.TLVRestBlock{
+						TLVList: wire.TLVList{
+							wire.NewTLVBE(wire.LoginTLVTagsScreenName, user.DisplayScreenName),
+							wire.NewTLVBE(wire.LoginTLVTagsReconnectHere, "127.0.0.1:5190"),
+							wire.NewTLVBE(wire.LoginTLVTagsAuthorizationCookie, []byte("the-cookie")),
+						},
+					},
+				},
+			},
+			maxConcurrentLoginsPerUser: 2,
+		},
+
+		{
+			name:           "login fails when concurrent login limit is reached",
+			advertisedHost: "127.0.0.1:5190",
+			inputSNAC: wire.SNAC_0x17_0x02_BUCPLoginRequest{
+				TLVRestBlock: wire.TLVRestBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.LoginTLVTagsScreenName, user.DisplayScreenName),
+						wire.NewTLVBE(wire.LoginTLVTagsPasswordHash, user.StrongMD5Pass),
+						wire.NewTLVBE(wire.LoginTLVTagsMultiConnFlags, wire.MultiConnFlagsRecentClient),
+					},
+				},
+			},
+			mockParams: mockParams{
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{
+							screenName: user.IdentScreenName,
+							result:     &user,
+						},
+					},
+				},
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams: retrieveSessionParams{
+						{
+							screenName: user.IdentScreenName,
+							result: func() *state.Session {
+								// Create a session with 2 instances (the max allowed)
+								// This will cause InstanceCount() to return 2, which equals the limit of 2
+								sess := state.NewSession()
+								sess.SetIdentScreenName(user.IdentScreenName)
+								sess.SetDisplayScreenName(user.DisplayScreenName)
+								state.NewInstance(sess)
+								state.NewInstance(sess)
+								return sess
+							}(),
+						},
+					},
+				},
+			},
+			expectOutput: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.BUCP,
+					SubGroup:  wire.BUCPLoginResponse,
+				},
+				Body: wire.SNAC_0x17_0x03_BUCPLoginResponse{
+					TLVRestBlock: wire.TLVRestBlock{
+						TLVList: []wire.TLV{
+							wire.NewTLVBE(wire.LoginTLVTagsScreenName, user.DisplayScreenName),
+							wire.NewTLVBE(wire.LoginTLVTagsErrorSubcode, wire.LoginErrRateLimitExceeded),
+						},
+					},
+				},
+			},
+			maxConcurrentLoginsPerUser: 2,
 		},
 		{
 			name:           "ICQ account exists, correct password, login OK",
@@ -629,10 +766,19 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 					Return(params.cookieOut, params.err)
 			}
 
+			sessionRetriever := newMockSessionRetriever(t)
+			for _, params := range tc.mockParams.sessionRetrieverParams.retrieveSessionParams {
+				sessionRetriever.EXPECT().
+					RetrieveSession(params.screenName).
+					Return(params.result)
+			}
+
 			svc := AuthService{
-				config:      tc.cfg,
-				cookieBaker: cookieBaker,
-				userManager: userManager,
+				config:                     tc.cfg,
+				cookieBaker:                cookieBaker,
+				userManager:                userManager,
+				sessionRetriever:           sessionRetriever,
+				maxConcurrentLoginsPerUser: tc.maxConcurrentLoginsPerUser,
 			}
 			outputSNAC, err := svc.BUCPLogin(context.Background(), tc.inputSNAC, tc.newUserFn, tc.advertisedHost)
 			assert.ErrorIs(t, err, tc.wantErr)
