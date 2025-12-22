@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mk6i/retro-aim-server/config"
+	"github.com/mk6i/open-oscar-server/config"
 )
 
 // OSCARConfigAdapter adapts the main server configuration to provide

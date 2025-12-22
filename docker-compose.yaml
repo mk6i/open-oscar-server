@@ -28,7 +28,7 @@ services:
          && certutil -N -d nss --empty-password
          && certutil -A -n \"RAS\" -t \"CT,,C\" -i server.pem -d nss"
 
-  retro-aim-server:
+  open-oscar-server:
     image: ras:latest
     ports:
       - "5190:5190"

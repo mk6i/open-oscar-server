@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mk6i/retro-aim-server/wire"
+	"github.com/mk6i/open-oscar-server/wire"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

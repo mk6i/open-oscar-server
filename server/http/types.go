@@ -5,8 +5,8 @@ import (
 	"net/mail"
 	"time"
 
-	"github.com/mk6i/retro-aim-server/state"
-	"github.com/mk6i/retro-aim-server/wire"
+	"github.com/mk6i/open-oscar-server/state"
+	"github.com/mk6i/open-oscar-server/wire"
 )
 
 // AccountManager defines methods for managing user account attributes

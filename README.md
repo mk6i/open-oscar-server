@@ -7,7 +7,7 @@
 
 </div>
 
-**Open OSCAR Server** (formerly known as Retro AIM Server) is an open-source instant messaging server compatible with classic AIM and ICQ clients.
+**Open OSCAR Server** is an open-source instant messaging server compatible with classic AIM and ICQ clients.
 
 | Disclaimer                                                                                                                                                                                                                           |
 |--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -59,11 +59,6 @@ Don't have AIM installed yet? Check out the [AIM Client Setup Guide](./docs/CLIE
 This project is under active development. Contributions are welcome!
 
 Follow [this guide](./docs/BUILD.md) to learn how to compile and run Open OSCAR Server.
-
-## 🌍 Community
-
-Check out the Open OSCAR Server [Discord server](https://discord.gg/2Xy4nF3Uh9) to get help or find out how to get
-involved.
 
 ## 👤 Management API
 
@@ -183,13 +178,6 @@ curl -d'{"name":"Office Hijinks"}' http://localhost:8080/chat/room/public
 ```shell
 curl http://localhost:8080/chat/room/public
 ```
-
-## 🔗 Acknowledgements
-
-- [aim-oscar-server](https://github.com/ox/aim-oscar-server) is another cool open source AIM server project.
-- [NINA Wiki](https://web.archive.org/web/20250910233011/https://wiki.nina.chat/wiki/Main_Page) is an indispensable source for figuring out the OSCAR API.
-- [libpurple](https://developer.pidgin.im/wiki/WhatIsLibpurple) is also an invaluable OSCAR reference (especially
-  version [2.10.6-1](https://github.com/Tasssadar/libpurple)).
 
 ## 📄 License
 

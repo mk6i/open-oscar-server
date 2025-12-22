@@ -7,8 +7,8 @@ DOCKER_RUN_GO_RELEASER := @docker run \
 	--env CGO_ENABLED=0 \
 	--env GITHUB_TOKEN=$(GITHUB_TOKEN) \
 	--rm \
-	--volume `pwd`:/go/src/retro-aim-server \
-	--workdir /go/src/retro-aim-server \
+	--volume `pwd`:/go/src/open-oscar-server \
+	--workdir /go/src/open-oscar-server \
 	$(DOCKER_IMAGE_TAG_GO_RELEASER)
 OSCAR_HOST ?= ras.dev
 
@@ -46,11 +46,11 @@ docker-images: docker-image-ras docker-image-stunnel docker-image-certgen
 
 .PHONY: docker-run
 docker-run:
-	OSCAR_HOST=$(OSCAR_HOST) docker compose up retro-aim-server stunnel
+	OSCAR_HOST=$(OSCAR_HOST) docker compose up open-oscar-server stunnel
 
 .PHONY: docker-run-bg
 docker-run-bg: ## Run Open OSCAR Server in background with docker-compose
-	OSCAR_HOST=$(OSCAR_HOST) docker compose up -d retro-aim-server stunnel
+	OSCAR_HOST=$(OSCAR_HOST) docker compose up -d open-oscar-server stunnel
 
 .PHONY: docker-run-stop
 docker-run-stop: ## Stop Open OSCAR Server docker-compose services

@@ -7,7 +7,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/mk6i/retro-aim-server/wire"
+	"github.com/mk6i/open-oscar-server/wire"
 )
 
 // WebPreferenceManager handles Web API user preferences.

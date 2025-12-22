@@ -22,7 +22,7 @@ feature. If you only need to **receive** a file, no additional setup is required
 ### Caveats
 
 - **Same LAN Scenario**  
-  If both Retro AIM server and your AIM client are on the same local network (LAN), you do **not** need these steps.
+  If both Open OSCAR Server and your AIM client are on the same local network (LAN), you do **not** need these steps.
 
 - **Mixed LAN and Internet**  
   If the sending client and the server are on the same LAN while the receiver is on the Internet, this guide may not

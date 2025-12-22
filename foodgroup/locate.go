@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/mk6i/retro-aim-server/state"
-	"github.com/mk6i/retro-aim-server/wire"
+	"github.com/mk6i/open-oscar-server/state"
+	"github.com/mk6i/open-oscar-server/wire"
 )
 
 // omitCaps is the map of to filter out of the client's capability list

@@ -12,7 +12,7 @@ import (
 	"github.com/joho/godotenv"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/mk6i/retro-aim-server/server/webapi"
+	"github.com/mk6i/open-oscar-server/server/webapi"
 )
 
 var (

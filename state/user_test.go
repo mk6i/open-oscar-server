@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mk6i/retro-aim-server/wire"
+	"github.com/mk6i/open-oscar-server/wire"
 )
 
 func TestUser_HashPassword(t *testing.T) {

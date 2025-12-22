@@ -4,7 +4,7 @@ template: testify
 template-data:
   unroll-variadic: true
 packages:
-  github.com/mk6i/retro-aim-server/server/oscar:
+  github.com/mk6i/open-oscar-server/server/oscar:
     interfaces:
       AuthService:
         config:
@@ -69,7 +69,7 @@ packages:
       UserLookupService:
         config:
           filename: "mock_user_lookup_service_test.go"
-  github.com/mk6i/retro-aim-server/server/http:
+  github.com/mk6i/open-oscar-server/server/http:
     interfaces:
       AccountManager:
         config:
@@ -104,7 +104,7 @@ packages:
       UserManager:
         config:
           filename: "mock_user_manager_test.go"
-  github.com/mk6i/retro-aim-server/foodgroup:
+  github.com/mk6i/open-oscar-server/foodgroup:
     interfaces:
       AccountManager:
         config:
@@ -160,7 +160,7 @@ packages:
       UserManager:
         config:
           filename: "mock_user_manager_manager_test.go"
-  github.com/mk6i/retro-aim-server/server/toc:
+  github.com/mk6i/open-oscar-server/server/toc:
     interfaces:
       AdminService:
         config:
@@ -201,7 +201,7 @@ packages:
       CookieBaker:
         config:
           filename: "mock_cookie_baker_test.go"
-  github.com/mk6i/retro-aim-server/server/kerberos:
+  github.com/mk6i/open-oscar-server/server/kerberos:
     interfaces:
       AuthService:
         config:

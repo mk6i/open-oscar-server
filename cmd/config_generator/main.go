@@ -11,7 +11,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/mk6i/retro-aim-server/config"
+	"github.com/mk6i/open-oscar-server/config"
 
 	"github.com/mitchellh/go-wordwrap"
 )

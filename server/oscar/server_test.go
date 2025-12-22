@@ -16,9 +16,9 @@ import (
 	"github.com/stretchr/testify/mock"
 	"golang.org/x/time/rate"
 
-	"github.com/mk6i/retro-aim-server/config"
-	"github.com/mk6i/retro-aim-server/state"
-	"github.com/mk6i/retro-aim-server/wire"
+	"github.com/mk6i/open-oscar-server/config"
+	"github.com/mk6i/open-oscar-server/state"
+	"github.com/mk6i/open-oscar-server/wire"
 )
 
 func TestServer_ListenAndServeAndShutdown(t *testing.T) {

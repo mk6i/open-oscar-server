@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mk6i/retro-aim-server/state"
+	"github.com/mk6i/open-oscar-server/state"
 )
 
 // BuddyFeedHandler handles Web AIM API buddy feed endpoints.

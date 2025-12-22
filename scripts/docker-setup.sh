@@ -83,7 +83,7 @@ resolve_repo_root() {
     if git -C "$SCRIPT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
         REPO_ROOT=$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)
     else
-        TMP_DIR="retro-aim-server"
+        TMP_DIR="open-oscar-server"
         if [ -d "$TMP_DIR/.git" ]; then
             warn "Directory '$TMP_DIR' is already a git repo. Using existing directory."
         else

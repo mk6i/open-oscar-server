@@ -3,7 +3,7 @@ package foodgroup
 import (
 	"context"
 
-	"github.com/mk6i/retro-aim-server/wire"
+	"github.com/mk6i/open-oscar-server/wire"
 )
 
 func NewStatsService() StatsService {

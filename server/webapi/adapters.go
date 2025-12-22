@@ -7,9 +7,9 @@ import (
 	"encoding/binary"
 	"time"
 
-	"github.com/mk6i/retro-aim-server/server/webapi/types"
-	"github.com/mk6i/retro-aim-server/state"
-	"github.com/mk6i/retro-aim-server/wire"
+	"github.com/mk6i/open-oscar-server/server/webapi/types"
+	"github.com/mk6i/open-oscar-server/state"
+	"github.com/mk6i/open-oscar-server/wire"
 )
 
 // FeedbagAdapter wraps SQLiteUserStore to implement FeedbagRetriever and FeedbagManager interfaces

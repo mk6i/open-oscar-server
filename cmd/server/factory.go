@@ -12,17 +12,17 @@ import (
 	"github.com/kelseyhightower/envconfig"
 	"golang.org/x/time/rate"
 
-	"github.com/mk6i/retro-aim-server/config"
-	"github.com/mk6i/retro-aim-server/foodgroup"
-	"github.com/mk6i/retro-aim-server/server/http"
-	"github.com/mk6i/retro-aim-server/server/kerberos"
-	"github.com/mk6i/retro-aim-server/server/oscar"
-	oscarmiddleware "github.com/mk6i/retro-aim-server/server/oscar/middleware"
-	"github.com/mk6i/retro-aim-server/server/toc"
-	"github.com/mk6i/retro-aim-server/server/webapi"
-	"github.com/mk6i/retro-aim-server/server/webapi/handlers"
-	"github.com/mk6i/retro-aim-server/state"
-	"github.com/mk6i/retro-aim-server/wire"
+	"github.com/mk6i/open-oscar-server/config"
+	"github.com/mk6i/open-oscar-server/foodgroup"
+	"github.com/mk6i/open-oscar-server/server/http"
+	"github.com/mk6i/open-oscar-server/server/kerberos"
+	"github.com/mk6i/open-oscar-server/server/oscar"
+	oscarmiddleware "github.com/mk6i/open-oscar-server/server/oscar/middleware"
+	"github.com/mk6i/open-oscar-server/server/toc"
+	"github.com/mk6i/open-oscar-server/server/webapi"
+	"github.com/mk6i/open-oscar-server/server/webapi/handlers"
+	"github.com/mk6i/open-oscar-server/state"
+	"github.com/mk6i/open-oscar-server/wire"
 )
 
 // Container groups together common dependencies.

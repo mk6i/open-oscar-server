@@ -10,7 +10,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/mk6i/retro-aim-server/wire"
+	"github.com/mk6i/open-oscar-server/wire"
 )
 
 // authCookieLen is the fixed auth cookie length.

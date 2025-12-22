@@ -116,7 +116,7 @@ using [WineskinServer](https://github.com/Gcenx/WineskinServer), a wrapper for W
 
 ## Post-install Configuration
 
-In this step, we'll replace ICQ's default server hostname with your Retro AIM
+In this step, we'll replace ICQ's default server hostname with your Open OSCAR
 Server's hostname in the Windows Registry.
 
 > Do not attempt to set the ICQ hostname via the registration Window. If you do

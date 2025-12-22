@@ -4,10 +4,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/mk6i/retro-aim-server/state"
+	"github.com/mk6i/open-oscar-server/state"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/mk6i/retro-aim-server/wire"
+	"github.com/mk6i/open-oscar-server/wire"
 )
 
 func TestPermitDenyService_RightsQuery(t *testing.T) {

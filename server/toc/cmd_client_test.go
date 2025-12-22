@@ -12,9 +12,9 @@ import (
 	"github.com/stretchr/testify/mock"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/mk6i/retro-aim-server/config"
-	"github.com/mk6i/retro-aim-server/state"
-	"github.com/mk6i/retro-aim-server/wire"
+	"github.com/mk6i/open-oscar-server/config"
+	"github.com/mk6i/open-oscar-server/state"
+	"github.com/mk6i/open-oscar-server/wire"
 )
 
 func TestOSCARProxy_RecvClientCmd_AddBuddy(t *testing.T) {

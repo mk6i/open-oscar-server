@@ -1,4 +1,4 @@
-module github.com/mk6i/retro-aim-server
+module github.com/mk6i/open-oscar-server
 
 go 1.24.2
 

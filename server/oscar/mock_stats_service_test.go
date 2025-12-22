@@ -7,7 +7,7 @@ package oscar
 import (
 	"context"
 
-	"github.com/mk6i/retro-aim-server/wire"
+	"github.com/mk6i/open-oscar-server/wire"
 	mock "github.com/stretchr/testify/mock"
 )
 

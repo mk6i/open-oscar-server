@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mk6i/retro-aim-server/config"
-	"github.com/mk6i/retro-aim-server/state"
-	"github.com/mk6i/retro-aim-server/wire"
+	"github.com/mk6i/open-oscar-server/config"
+	"github.com/mk6i/open-oscar-server/state"
+	"github.com/mk6i/open-oscar-server/wire"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"

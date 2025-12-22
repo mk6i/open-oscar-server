@@ -10,9 +10,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/mk6i/retro-aim-server/server/webapi/middleware"
-	"github.com/mk6i/retro-aim-server/state"
-	"github.com/mk6i/retro-aim-server/wire"
+	"github.com/mk6i/open-oscar-server/server/webapi/middleware"
+	"github.com/mk6i/open-oscar-server/state"
+	"github.com/mk6i/open-oscar-server/wire"
 )
 
 // OSCARBridgeHandler handles Web API to OSCAR protocol bridging endpoints.

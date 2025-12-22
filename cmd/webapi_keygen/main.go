@@ -17,7 +17,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 
-	"github.com/mk6i/retro-aim-server/state"
+	"github.com/mk6i/open-oscar-server/state"
 )
 
 const (

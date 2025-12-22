@@ -5,7 +5,7 @@
 package http
 
 import (
-	"github.com/mk6i/retro-aim-server/state"
+	"github.com/mk6i/open-oscar-server/state"
 	mock "github.com/stretchr/testify/mock"
 )
 

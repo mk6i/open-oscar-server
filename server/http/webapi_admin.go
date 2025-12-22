@@ -12,7 +12,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/mk6i/retro-aim-server/state"
+	"github.com/mk6i/open-oscar-server/state"
 )
 
 // WebAPIKeyManager defines methods for managing Web API authentication keys.

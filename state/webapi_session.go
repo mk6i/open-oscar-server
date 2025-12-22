@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mk6i/retro-aim-server/server/webapi/types"
-	"github.com/mk6i/retro-aim-server/wire"
+	"github.com/mk6i/open-oscar-server/server/webapi/types"
+	"github.com/mk6i/open-oscar-server/wire"
 )
 
 var (

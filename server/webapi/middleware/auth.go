@@ -13,7 +13,7 @@ import (
 	"github.com/patrickmn/go-cache"
 	"golang.org/x/time/rate"
 
-	"github.com/mk6i/retro-aim-server/state"
+	"github.com/mk6i/open-oscar-server/state"
 )
 
 // contextKey is a custom type for context keys to avoid collisions.

@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mk6i/retro-aim-server/server/webapi/types"
-	"github.com/mk6i/retro-aim-server/state"
+	"github.com/mk6i/open-oscar-server/server/webapi/types"
+	"github.com/mk6i/open-oscar-server/state"
 )
 
 // EventsHandler handles Web AIM API event fetching endpoints.

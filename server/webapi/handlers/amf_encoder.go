@@ -9,7 +9,7 @@ import (
 	"time"
 
 	goAMF3 "github.com/breign/goAMF3"
-	"github.com/mk6i/retro-aim-server/server/webapi/types"
+	"github.com/mk6i/open-oscar-server/server/webapi/types"
 )
 
 // AMFVersion represents the AMF encoding version

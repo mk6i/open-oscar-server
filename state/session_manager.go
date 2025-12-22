@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mk6i/retro-aim-server/wire"
+	"github.com/mk6i/open-oscar-server/wire"
 )
 
 type sessionSlot struct {

@@ -1,6 +1,6 @@
 package handlers
 
-import "github.com/mk6i/retro-aim-server/server/webapi/types"
+import "github.com/mk6i/open-oscar-server/server/webapi/types"
 
 // ConvertEventForAMF3 converts a WebAPIEvent to a map suitable for AMF3 encoding,
 // ensuring all timestamps are float64 to avoid uint29 overflow issues.

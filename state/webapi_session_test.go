@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/mk6i/retro-aim-server/server/webapi/types"
+	"github.com/mk6i/open-oscar-server/server/webapi/types"
 )
 
 func TestWebAPISession_TempBuddies(t *testing.T) {

@@ -424,7 +424,7 @@ func BenchmarkAMFEncoding(b *testing.B) {
 					map[string]interface{}{"name": "user3", "online": true},
 				},
 				"timestamp": time.Now().Unix(),
-				"server":    "retro-aim-server",
+				"server":    "open-oscar-server",
 			},
 		},
 	}

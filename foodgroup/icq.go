@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mk6i/retro-aim-server/state"
-	"github.com/mk6i/retro-aim-server/wire"
+	"github.com/mk6i/open-oscar-server/state"
+	"github.com/mk6i/open-oscar-server/wire"
 )
 
 var errICQBadRequest = errors.New("bad ICQ request")

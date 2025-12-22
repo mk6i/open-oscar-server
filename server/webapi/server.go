@@ -9,9 +9,9 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/mk6i/retro-aim-server/server/webapi/handlers"
-	"github.com/mk6i/retro-aim-server/server/webapi/middleware"
-	"github.com/mk6i/retro-aim-server/state"
+	"github.com/mk6i/open-oscar-server/server/webapi/handlers"
+	"github.com/mk6i/open-oscar-server/server/webapi/middleware"
+	"github.com/mk6i/open-oscar-server/state"
 )
 
 func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyValidator middleware.APIKeyValidator, sessionManager *state.WebAPISessionManager) *Server {

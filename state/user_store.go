@@ -22,7 +22,7 @@ import (
 	"modernc.org/sqlite"
 	lib "modernc.org/sqlite/lib"
 
-	"github.com/mk6i/retro-aim-server/wire"
+	"github.com/mk6i/open-oscar-server/wire"
 )
 
 const offlineInboxLimit = 10

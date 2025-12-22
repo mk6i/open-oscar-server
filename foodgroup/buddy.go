@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/mk6i/retro-aim-server/state"
-	"github.com/mk6i/retro-aim-server/wire"
+	"github.com/mk6i/open-oscar-server/state"
+	"github.com/mk6i/open-oscar-server/wire"
 )
 
 // NewBuddyService creates a new instance of BuddyService.

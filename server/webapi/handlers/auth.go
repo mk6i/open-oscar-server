@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/mk6i/retro-aim-server/state"
+	"github.com/mk6i/open-oscar-server/state"
 )
 
 // AuthHandler handles Web AIM API authentication endpoints.
