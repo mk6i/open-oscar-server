@@ -398,8 +398,8 @@ func userFromBody(r *http.Request) (userWithPassword, error) {
 	return user, nil
 }
 
-// getUserLoginHandler is a temporary endpoint for validating user credentials for
-// chivanet. do not rely on this endpoint, as it will be eventually removed.
+// getUserLoginHandler is a temporary endpoint for validating user credentials.
+// do not rely on this endpoint, as it will be eventually removed.
 func getUserLoginHandler(w http.ResponseWriter, r *http.Request, userManager UserManager, logger *slog.Logger) {
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {

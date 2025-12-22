@@ -26,7 +26,7 @@ Get started with the [AIM for macOS project](https://github.com/mk6i/aim-for-mac
 
 ### Windows 10/11
 
-1. Download AIM 5.9.6089 (available on [NINA wiki](https://web.archive.org/web/20250910233232/https://wiki.nina.chat/wiki/Clients/AOL_Instant_Messenger#Windows)).
+1. Download AIM 5.9.6089 (available on [oldversion.com](http://www.oldversion.com/windows/aol-instant-messenger/)).
 2. Install AIM and exit out of the application post-installation.
 3. Open **Task Manager** and kill the **AOL Instant Messenger (32 bit)** process to make sure the application is
    actually terminated.

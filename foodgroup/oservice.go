@@ -118,9 +118,6 @@ func (s OServiceService) ClientVersions(ctx context.Context, sess *state.Session
 // Instead, the provided values inform the client about the recommended
 // client-side rate limits.
 //
-// The rate limit values were taken from the example SNAC dump documented here:
-// https://web.archive.org/web/20221207225518/https://wiki.nina.chat/wiki/Protocols/OSCAR/SNAC/OSERVICE_RATE_PARAMS_REPLY
-//
 // AIM clients silently fail when they expect a rate limit rule that does not
 // exist in this response. When support for a new food group is added to the
 // server, update this function accordingly.

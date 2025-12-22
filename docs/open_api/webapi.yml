@@ -1895,7 +1895,6 @@ paths:
                           room:
                             $ref: '#/components/schemas/ChatRoom'
                 additionalProperties: true
-      description: This is a NINA addition to the original sp
   /chat/sendMessage:
     get:
       operationId: sendMessage
@@ -1964,7 +1963,6 @@ paths:
                         type: object
                         additionalProperties: true
                 additionalProperties: true
-      description: This is a NINA addition to the original spec.
   /chat/setTyping:
     get:
       operationId: setTyping
@@ -2027,7 +2025,6 @@ paths:
                         type: object
                         additionalProperties: true
                 additionalProperties: true
-      description: This is a NINA addition to the original spec.
   /chat/leaveChat:
     get:
       operationId: leaveChat
@@ -2084,7 +2081,6 @@ paths:
                         type: object
                         additionalProperties: true
                 additionalProperties: true
-      description: This is a NINA addition to the original spec.
 components:
   schemas:
     Format:
