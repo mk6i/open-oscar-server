@@ -1374,3 +1374,101 @@ func TestSession_ScaleWarningAndRateLimit(t *testing.T) {
 		wg.Wait()
 	})
 }
+
+func TestSession_RunOnce(t *testing.T) {
+	t.Run("runs function on first call", func(t *testing.T) {
+		s := NewSession()
+		callCount := 0
+
+		err := s.RunOnce(func() error {
+			callCount++
+			return nil
+		})
+
+		assert.NoError(t, err)
+		assert.Equal(t, 1, callCount)
+	})
+
+	t.Run("does not run function on subsequent calls", func(t *testing.T) {
+		s := NewSession()
+		callCount := 0
+
+		// First call
+		err1 := s.RunOnce(func() error {
+			callCount++
+			return nil
+		})
+
+		// Second call
+		err2 := s.RunOnce(func() error {
+			callCount++
+			return nil
+		})
+
+		// Third call
+		err3 := s.RunOnce(func() error {
+			callCount++
+			return nil
+		})
+
+		assert.NoError(t, err1)
+		assert.NoError(t, err2)
+		assert.NoError(t, err3)
+		assert.Equal(t, 1, callCount, "function should only be called once")
+	})
+
+	t.Run("returns error from function", func(t *testing.T) {
+		s := NewSession()
+		expectedErr := assert.AnError
+
+		err := s.RunOnce(func() error {
+			return expectedErr
+		})
+
+		assert.Error(t, err)
+		assert.Equal(t, expectedErr, err)
+	})
+}
+
+func TestSession_OnClose(t *testing.T) {
+	t.Run("calls function when last instance closes", func(t *testing.T) {
+		s := NewSession()
+		called := false
+
+		s.OnClose(func() {
+			called = true
+		})
+
+		// Create and close one instance
+		instance := NewInstance(s)
+		instance.Close()
+
+		// Function should be called when the last instance closes
+		assert.True(t, called, "shutdown function should be called when last instance closes")
+	})
+
+	t.Run("does not call function when instances remain", func(t *testing.T) {
+		s := NewSession()
+		called := false
+
+		s.OnClose(func() {
+			called = true
+		})
+
+		// Create two instances
+		instance1 := NewInstance(s)
+		instance2 := NewInstance(s)
+
+		// Close one instance
+		instance1.Close()
+
+		// Function should NOT be called because one instance remains
+		assert.False(t, called, "shutdown function should not be called when instances remain")
+
+		// Close the last instance
+		instance2.Close()
+
+		// Now function should be called
+		assert.True(t, called, "shutdown function should be called when last instance closes")
+	})
+}

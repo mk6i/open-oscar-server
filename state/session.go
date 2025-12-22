@@ -73,6 +73,9 @@ type Session struct {
 	instances []*SessionInstance
 	// SessionInstance counter for this session group
 	instanceCounter uint8
+
+	initOnce sync.Once
+	shutdown func()
 }
 
 // NewSession creates a new Session for a user.
@@ -81,6 +84,7 @@ func NewSession() *Session {
 		warningCh:       make(chan uint16, 1),
 		instances:       make([]*SessionInstance, 0),
 		instanceCounter: 0,
+		shutdown:        func() {},
 	}
 }
 
@@ -159,6 +163,24 @@ func (s *Session) Live() bool {
 		}
 	}
 	return false
+}
+
+// RunOnce executes the given function once across all invocations. Used to
+// run arbitrary code that must only run once when the first session instance
+// connects. The function must not block.
+func (s *Session) RunOnce(fn func() error) error {
+	var err error
+	s.initOnce.Do(func() {
+		err = fn()
+	})
+	return err
+}
+
+// OnClose registers a function to be called once all instances have closed.
+func (s *Session) OnClose(fn func()) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.shutdown = fn
 }
 
 // allAway returns true if all active instances are away.
@@ -1043,6 +1065,9 @@ func (s *SessionInstance) close() {
 	s.closed = true
 	// Remove this instance from its session group
 	s.Session.RemoveInstance(s)
+	if s.InstanceCount() == 0 {
+		s.shutdown()
+	}
 }
 
 // Closed blocks until the instance is closed.

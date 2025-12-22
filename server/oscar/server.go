@@ -249,16 +249,27 @@ func (s oscarServer) connectToOSCARService(
 		if sess == nil {
 			return errors.New("session not found")
 		}
-
-		if err := s.BuddyListRegistry.RegisterBuddyList(ctx, sess.IdentScreenName()); err != nil {
-			return fmt.Errorf("unable to init buddy list: %w", err)
-		}
-
 		defer func() {
 			sess.Close()
-			if sess.InstanceCount() > 0 {
-				return
+		}()
+
+		if err = sess.RunOnce(func() error {
+			// make buddy list visible to other users
+			if err := s.BuddyListRegistry.RegisterBuddyList(ctx, sess.IdentScreenName()); err != nil {
+				return fmt.Errorf("unable to init buddy list: %w", err)
 			}
+			// restore warning level from last session
+			if err := s.recalcWarning(ctx, sess); err != nil {
+				return fmt.Errorf("failed to recalculate warning level: %w", err)
+			}
+			// periodically decay warning level
+			go s.lowerWarnLevel(ctx, sess)
+			return nil
+		}); err != nil {
+			return err
+		}
+
+		sess.OnClose(func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
 
@@ -273,9 +284,9 @@ func (s oscarServer) connectToOSCARService(
 			}
 			s.ChatSessionManager.RemoveUserFromAllChats(sess.IdentScreenName())
 			s.AuthService.Signout(ctx, sess)
-		}()
-		remoteAddr, ok := ctx.Value("ip").(string)
-		if ok {
+		})
+
+		if remoteAddr, ok := ctx.Value("ip").(string); ok {
 			ip, err := netip.ParseAddrPort(remoteAddr)
 			if err != nil {
 				return errors.New("unable to parse ip addr")
@@ -283,12 +294,7 @@ func (s oscarServer) connectToOSCARService(
 			sess.SetRemoteAddr(&ip)
 		}
 
-		if err := s.recalcWarning(ctx, sess); err != nil {
-			return fmt.Errorf("failed to recalculate warning level: %w", err)
-		}
-		go s.lowerWarnLevel(ctx, sess)
 		go s.receiveSessMessages(ctx, sess, flapc)
-
 	case wire.Chat:
 		sess, err = s.AuthService.RegisterChatSession(ctx, cookie)
 		if err != nil {
@@ -297,12 +303,15 @@ func (s oscarServer) connectToOSCARService(
 		if sess == nil {
 			return errors.New("session not found")
 		}
-
 		defer func() {
+			sess.Close()
+		}()
+
+		sess.OnClose(func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
 			s.SignoutChat(ctx, sess)
-		}()
+		})
 
 		go s.receiveSessMessages(ctx, sess, flapc)
 	default:

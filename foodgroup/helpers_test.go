@@ -921,14 +921,15 @@ func sessOptOfflineMsgCount(count int) func(session *state.SessionInstance) {
 // newTestSession creates a session object with 0 or more functional options
 // applied
 func newTestSession(screenName state.DisplayScreenName, options ...func(session *state.SessionInstance)) *state.SessionInstance {
-	s := state.NewInstance(state.NewSession())
-	s.SetIdentScreenName(screenName.IdentScreenName())
-	s.SetDisplayScreenName(screenName)
-	s.SetRateClasses(time.Now(), wire.DefaultRateLimitClasses())
+	session := state.NewSession()
+	session.SetIdentScreenName(screenName.IdentScreenName())
+	session.SetDisplayScreenName(screenName)
+	session.SetRateClasses(time.Now(), wire.DefaultRateLimitClasses())
+	instance := state.NewInstance(session)
 	for _, op := range options {
-		op(s)
+		op(instance)
 	}
-	return s
+	return instance
 }
 
 func userInfoWithBARTIcon(sess *state.SessionInstance, bid wire.BARTID) wire.TLVUserInfo {
