@@ -778,7 +778,7 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 				cookieBaker:                cookieBaker,
 				userManager:                userManager,
 				sessionRetriever:           sessionRetriever,
-				maxConcurrentLoginsPerUser: tc.maxConcurrentLoginsPerUser,
+				maxConcurrentLoginsPerUser: 2,
 			}
 			outputSNAC, err := svc.BUCPLogin(context.Background(), tc.inputSNAC, tc.newUserFn, tc.advertisedHost)
 			assert.ErrorIs(t, err, tc.wantErr)
@@ -1284,14 +1284,25 @@ func TestAuthService_KerberosLogin(t *testing.T) {
 						{
 							dataIn: func() []byte {
 								loginCookie := state.ServerCookie{
-									ScreenName:   user.DisplayScreenName,
-									KerberosAuth: 1,
+									Service:       wire.BOS,
+									ScreenName:    user.DisplayScreenName,
+									ClientID:      "",
+									MultiConnFlag: uint8(wire.MultiConnFlagsRecentClient),
+									KerberosAuth:  1,
 								}
 								buf := &bytes.Buffer{}
 								assert.NoError(t, wire.MarshalBE(loginCookie, buf))
 								return buf.Bytes()
 							}(),
 							cookieOut: []byte("the-cookie"),
+						},
+					},
+				},
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams: retrieveSessionParams{
+						{
+							screenName: user.IdentScreenName,
+							result:     nil,
 						},
 					},
 				},
@@ -1410,14 +1421,25 @@ func TestAuthService_KerberosLogin(t *testing.T) {
 						{
 							dataIn: func() []byte {
 								loginCookie := state.ServerCookie{
-									ScreenName:   user.DisplayScreenName,
-									KerberosAuth: 1,
+									Service:       wire.BOS,
+									ScreenName:    user.DisplayScreenName,
+									ClientID:      "",
+									MultiConnFlag: uint8(wire.MultiConnFlagsRecentClient),
+									KerberosAuth:  1,
 								}
 								buf := &bytes.Buffer{}
 								assert.NoError(t, wire.MarshalBE(loginCookie, buf))
 								return buf.Bytes()
 							}(),
 							cookieOut: []byte("the-cookie"),
+						},
+					},
+				},
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams: retrieveSessionParams{
+						{
+							screenName: user.IdentScreenName,
+							result:     nil,
 						},
 					},
 				},
@@ -1521,11 +1543,19 @@ func TestAuthService_KerberosLogin(t *testing.T) {
 					Issue(params.dataIn).
 					Return(params.cookieOut, params.err)
 			}
+			sessionRetriever := newMockSessionRetriever(t)
+			for _, params := range tc.mockParams.sessionRetrieverParams.retrieveSessionParams {
+				sessionRetriever.EXPECT().
+					RetrieveSession(params.screenName).
+					Return(params.result)
+			}
 			svc := AuthService{
-				config:      tc.cfg,
-				cookieBaker: cookieBaker,
-				userManager: userManager,
-				timeNow:     tc.timeNow,
+				config:                     tc.cfg,
+				cookieBaker:                cookieBaker,
+				userManager:                userManager,
+				sessionRetriever:           sessionRetriever,
+				timeNow:                    tc.timeNow,
+				maxConcurrentLoginsPerUser: 2,
 			}
 			outputSNAC, err := svc.KerberosLogin(context.Background(), tc.inputSNAC, tc.newUserFn, tc.advertisedHost)
 			assert.ErrorIs(t, err, tc.wantErr)

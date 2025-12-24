@@ -318,6 +318,7 @@ func (s AuthService) KerberosLogin(ctx context.Context, inBody wire.SNAC_0x050C_
 
 	list := wire.TLVList{
 		wire.NewTLVBE(wire.LoginTLVTagsScreenName, inBody.ClientPrincipal),
+		wire.NewTLVBE(wire.LoginTLVTagsMultiConnFlags, wire.MultiConnFlagsRecentClient),
 	}
 
 	if info.Version >= 4 {
