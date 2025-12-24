@@ -869,7 +869,7 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 	}{
 		{
 			name:        "set user status to visible aim < 6",
-			userSession: newTestSession("me"),
+			userSession: newTestSession("me", sessOptSignonComplete),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -888,7 +888,7 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 					SubGroup:  wire.OServiceUserInfoUpdate,
 					RequestID: 1234,
 				},
-				Body: newOServiceUserInfoUpdate(newTestSession("me")),
+				Body: newOServiceUserInfoUpdate(newTestSession("me", sessOptSignonComplete)),
 			},
 			mockParams: mockParams{
 				buddyBroadcasterParams: buddyBroadcasterParams{
@@ -902,7 +902,7 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 		},
 		{
 			name:        "set user status to invisible aim < 6",
-			userSession: newTestSession("me"),
+			userSession: newTestSession("me", sessOptSignonComplete),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -921,7 +921,7 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 					SubGroup:  wire.OServiceUserInfoUpdate,
 					RequestID: 1234,
 				},
-				Body: newOServiceUserInfoUpdate(newTestSession("me", sessOptInvisible)),
+				Body: newOServiceUserInfoUpdate(newTestSession("me", sessOptSignonComplete, sessOptInvisible)),
 			},
 			mockParams: mockParams{
 				buddyBroadcasterParams: buddyBroadcasterParams{
@@ -935,7 +935,7 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 		},
 		{
 			name:        "set user status to visible aim >= 6",
-			userSession: newTestSession("me", sessOptSetFoodGroupVersion(wire.OService, 4)),
+			userSession: newTestSession("me", sessOptSignonComplete, sessOptSetFoodGroupVersion(wire.OService, 4)),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -954,7 +954,7 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 					SubGroup:  wire.OServiceUserInfoUpdate,
 					RequestID: 1234,
 				},
-				Body: newOServiceUserInfoUpdate(newTestSession("me", sessOptSetFoodGroupVersion(wire.OService, 4))),
+				Body: newOServiceUserInfoUpdate(newTestSession("me", sessOptSignonComplete, sessOptSetFoodGroupVersion(wire.OService, 4))),
 			},
 			mockParams: mockParams{
 				buddyBroadcasterParams: buddyBroadcasterParams{
@@ -968,7 +968,7 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 		},
 		{
 			name:        "set user status to invisible aim >= 6",
-			userSession: newTestSession("me", sessOptSetFoodGroupVersion(wire.OService, 4)),
+			userSession: newTestSession("me", sessOptSignonComplete, sessOptSetFoodGroupVersion(wire.OService, 4)),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -987,7 +987,7 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 					SubGroup:  wire.OServiceUserInfoUpdate,
 					RequestID: 1234,
 				},
-				Body: newOServiceUserInfoUpdate(newTestSession("me", sessOptSetFoodGroupVersion(wire.OService, 4), sessOptInvisible)),
+				Body: newOServiceUserInfoUpdate(newTestSession("me", sessOptSignonComplete, sessOptSetFoodGroupVersion(wire.OService, 4), sessOptInvisible)),
 			},
 			mockParams: mockParams{
 				buddyBroadcasterParams: buddyBroadcasterParams{
@@ -1779,6 +1779,7 @@ func TestNewOServiceUserInfoUpdate(t *testing.T) {
 		{
 			name: "duplicates user info for aim >= 4",
 			session: newTestSession("me",
+				sessOptSignonComplete,
 				sessOptMemberSince(memberSince),
 				sessOptSignonTime(signonTime),
 				sessOptSetFoodGroupVersion(wire.OService, 4)),
@@ -1857,12 +1858,12 @@ func TestOServiceService_UserInfoQuery(t *testing.T) {
 					SubGroup:  wire.OServiceUserInfoUpdate,
 					RequestID: 1234,
 				},
-				Body: newOServiceUserInfoUpdate(newTestSession("me")),
+				Body: newOServiceUserInfoUpdate(newTestSession("me", sessOptSignonComplete)),
 			},
 		},
 		{
 			name: "happy path windows aim >= 6",
-			sess: newTestSession("me", sessOptSetFoodGroupVersion(wire.OService, 4)),
+			sess: newTestSession("me", sessOptSignonComplete, sessOptSetFoodGroupVersion(wire.OService, 4)),
 			given: wire.SNACMessage{
 				Frame: wire.SNACFrame{RequestID: 1234},
 			},
@@ -1872,7 +1873,7 @@ func TestOServiceService_UserInfoQuery(t *testing.T) {
 					SubGroup:  wire.OServiceUserInfoUpdate,
 					RequestID: 1234,
 				},
-				Body: newOServiceUserInfoUpdate(newTestSession("me", sessOptSetFoodGroupVersion(wire.OService, 4))),
+				Body: newOServiceUserInfoUpdate(newTestSession("me", sessOptSignonComplete, sessOptSetFoodGroupVersion(wire.OService, 4))),
 			},
 		},
 	}
