@@ -140,25 +140,16 @@ func (s *Session) InstanceCount() int {
 func (s *Session) Instances() []*SessionInstance {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
-
-	var active []*SessionInstance
-	for _, instance := range s.instances {
-		instance.mutex.RLock()
-		if !instance.closed && instance.signonComplete {
-			active = append(active, instance)
-		}
-		instance.mutex.RUnlock()
-	}
-	return active
+	return s.instances
 }
 
-// Live returns whether the session is ready to receive messages.
-func (s *Session) Live() bool {
+// HasLiveInstances returns true if the session has at least one live instance.
+func (s *Session) HasLiveInstances() bool {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 
 	for _, instance := range s.instances {
-		if !instance.IsClosed() && instance.SignonComplete() {
+		if instance.Live() {
 			return true
 		}
 	}
@@ -1086,15 +1077,23 @@ func (s *SessionInstance) InstanceNum() uint8 {
 	return s.instanceNum
 }
 
+// Live returns whether the instance is ready to receive messages.
+func (s *SessionInstance) Live() bool {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return !s.closed && s.signonComplete
+}
+
 // Active returns true if the instance is active. An instance is considered active if:
 // - it is not closed
+// - it has completed the sign-on sequence
 // - it is not idle
 // - it has no away message
 func (s *SessionInstance) Active() bool {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 
-	return !s.closed && !s.idle && s.awayMessage == ""
+	return !s.closed && s.signonComplete && !s.idle && s.awayMessage == ""
 }
 
 // ============================================================================

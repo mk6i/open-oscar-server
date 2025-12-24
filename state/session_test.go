@@ -661,10 +661,11 @@ func TestInstance_Active(t *testing.T) {
 			setupInstance: func() *SessionInstance {
 				sg := NewSession()
 				instance := &SessionInstance{
-					Session:     sg,
-					closed:      false,
-					idle:        false,
-					awayMessage: "",
+					Session:        sg,
+					closed:         false,
+					idle:           false,
+					awayMessage:    "",
+					signonComplete: true,
 				}
 				return instance
 			},
@@ -763,6 +764,36 @@ func TestInstance_Active(t *testing.T) {
 					closed:      true,
 					idle:        true,
 					awayMessage: "I'm away",
+				}
+				return instance
+			},
+			expectedActive: false,
+		},
+		{
+			name: "inactive instance - signon not complete",
+			setupInstance: func() *SessionInstance {
+				sg := NewSession()
+				instance := &SessionInstance{
+					Session:        sg,
+					closed:         false,
+					idle:           false,
+					awayMessage:    "",
+					signonComplete: false,
+				}
+				return instance
+			},
+			expectedActive: false,
+		},
+		{
+			name: "inactive instance - signon not complete and idle",
+			setupInstance: func() *SessionInstance {
+				sg := NewSession()
+				instance := &SessionInstance{
+					Session:        sg,
+					closed:         false,
+					idle:           true,
+					awayMessage:    "",
+					signonComplete: false,
 				}
 				return instance
 			},
@@ -1069,6 +1100,66 @@ func TestSessionGroup_InstanceCount(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			sg := tt.setupGroup()
 			assert.Equal(t, tt.expectedCount, sg.InstanceCount())
+		})
+	}
+}
+
+func TestSessionGroup_Instances(t *testing.T) {
+	tests := []struct {
+		name          string
+		setupGroup    func() *Session
+		expectedCount int
+		expectedAll   bool // whether all instances should be returned (including non-signed-in)
+	}{
+		{
+			name: "empty session group should return empty slice",
+			setupGroup: func() *Session {
+				return NewSession()
+			},
+			expectedCount: 0,
+			expectedAll:   true,
+		},
+		{
+			name: "returns all instances including non-signed-in",
+			setupGroup: func() *Session {
+				sg := NewSession()
+				instance1 := NewInstance(sg)
+				instance1.SetSignonComplete()
+				_ = NewInstance(sg)
+				// instance2 has not completed signon
+				return sg
+			},
+			expectedCount: 2,
+			expectedAll:   true,
+		},
+		{
+			name: "returns all instances with mixed signon states",
+			setupGroup: func() *Session {
+				sg := NewSession()
+				instance1 := NewInstance(sg)
+				instance1.SetSignonComplete()
+				_ = NewInstance(sg)
+				// instance2 has not completed signon
+				instance3 := NewInstance(sg)
+				instance3.SetSignonComplete()
+				return sg
+			},
+			expectedCount: 3,
+			expectedAll:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sg := tt.setupGroup()
+			instances := sg.Instances()
+			assert.Equal(t, tt.expectedCount, len(instances), "should return all instances")
+
+			if tt.expectedAll {
+				// Verify that instances() returns all instances regardless of their state
+				// This is the key change: it should return all instances, not just live ones
+				assert.Equal(t, sg.InstanceCount(), len(instances), "Instances() should return all instances")
+			}
 		})
 	}
 }

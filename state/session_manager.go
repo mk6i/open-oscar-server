@@ -78,7 +78,6 @@ func (s *InMemorySessionManager) RelayToAll(ctx context.Context, msg wire.SNACMe
 	s.mapMutex.RLock()
 	defer s.mapMutex.RUnlock()
 	for _, rec := range s.store {
-		// Relay to all active instances in the session group
 		s.maybeRelayMessage(ctx, msg, rec.session)
 	}
 }
@@ -112,15 +111,15 @@ func (s *InMemorySessionManager) RelayToSelf(ctx context.Context, instance *Sess
 
 func (s *InMemorySessionManager) RelayToOtherInstances(ctx context.Context, instance *SessionInstance, msg wire.SNACMessage) {
 	for _, inst := range instance.Instances() {
-		if instance == inst {
+		if instance == inst || !inst.Live() {
 			continue
 		}
-		switch instance.RelayMessage(msg) {
+		switch inst.RelayMessage(msg) {
 		case SessSendClosed:
 			s.logger.WarnContext(ctx, "can't send notification because the user's session is closed", "recipient", instance.IdentScreenName(), "message", msg)
 		case SessQueueFull:
 			s.logger.WarnContext(ctx, "can't send notification because queue is full", "recipient", instance.IdentScreenName(), "message", msg)
-			instance.Close()
+			inst.Close()
 		}
 	}
 }
@@ -136,6 +135,9 @@ func (s *InMemorySessionManager) RelayToScreenNameActiveOnly(ctx context.Context
 
 func (s *InMemorySessionManager) maybeRelayMessage(ctx context.Context, msg wire.SNACMessage, sess *Session) {
 	for _, instance := range sess.Instances() {
+		if !instance.Live() {
+			continue
+		}
 		switch instance.RelayMessage(msg) {
 		case SessSendClosed:
 			s.logger.WarnContext(ctx, "can't send notification because the user's session is closed", "recipient", sess.IdentScreenName(), "message", msg)
@@ -238,7 +240,7 @@ func (s *InMemorySessionManager) RetrieveSession(screenName IdentScreenName) *Se
 	s.mapMutex.RLock()
 	defer s.mapMutex.RUnlock()
 	if rec, ok := s.store[screenName]; ok {
-		if rec.session.Live() {
+		if rec.session.HasLiveInstances() {
 			return rec.session
 		}
 	}
@@ -273,9 +275,10 @@ func (s *InMemorySessionManager) AllSessions() []*Session {
 	defer s.mapMutex.RUnlock()
 	var sessions []*Session
 	for _, rec := range s.store {
-		if rec.session.Live() {
-			sessions = append(sessions, rec.session)
+		if !rec.session.HasLiveInstances() {
+			continue
 		}
+		sessions = append(sessions, rec.session)
 	}
 	return sessions
 }

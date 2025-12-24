@@ -853,3 +853,106 @@ func TestInMemorySessionManager_RelayToScreenName_IncompleteSignon(t *testing.T)
 	default:
 	}
 }
+
+func TestInMemorySessionManager_RelayToOtherInstances_SkipsNonLiveInstances(t *testing.T) {
+	sm := NewInMemorySessionManager(slog.Default())
+
+	// Create a session with multiple instances
+	user1, err := sm.AddSession(context.Background(), "user-screen-name-1", true)
+	assert.NoError(t, err)
+	user1.SetSignonComplete()
+
+	// Add a second instance that hasn't completed signon
+	user1Instance2, err := sm.AddSession(context.Background(), "user-screen-name-1", true)
+	assert.NoError(t, err)
+	// user1Instance2 has not completed signon, so this instance is not live
+
+	// Add a third instance that has completed signon
+	user1Instance3, err := sm.AddSession(context.Background(), "user-screen-name-1", true)
+	assert.NoError(t, err)
+	user1Instance3.SetSignonComplete()
+
+	// Verify instance-level Live() behavior
+	assert.True(t, user1.Live(), "user1 should be live (not closed and signon complete)")
+	assert.False(t, user1Instance2.Live(), "user1Instance2 should not be live (signon not complete)")
+	assert.True(t, user1Instance3.Live(), "user1Instance3 should be live (not closed and signon complete)")
+
+	want := wire.SNACMessage{Frame: wire.SNACFrame{FoodGroup: wire.ICBM}}
+
+	// Relay to other instances from user1
+	sm.RelayToOtherInstances(context.Background(), user1, want)
+
+	// user1 should not receive the message (it's the sender)
+	select {
+	case <-user1.ReceiveMessage():
+		assert.Fail(t, "user1 should not receive a message relayed from itself")
+	default:
+	}
+
+	// user1Instance2 should not receive the message (not live - signon incomplete)
+	select {
+	case <-user1Instance2.ReceiveMessage():
+		assert.Fail(t, "user1Instance2 should not receive a message because it's not live")
+	default:
+	}
+
+	// user1Instance3 should receive the message (is live)
+	select {
+	case have := <-user1Instance3.ReceiveMessage():
+		assert.Equal(t, want, have)
+	default:
+		assert.Fail(t, "user1Instance3 should receive the message")
+	}
+}
+
+func TestInMemorySessionManager_MaybeRelayMessage_SkipsNonLiveInstances(t *testing.T) {
+	sm := NewInMemorySessionManager(slog.Default())
+
+	// Create a session with multiple instances
+	user1, err := sm.AddSession(context.Background(), "user-screen-name-1", true)
+	assert.NoError(t, err)
+	user1.SetSignonComplete()
+
+	// Add a third instance that has completed signon
+	user1Instance3, err := sm.AddSession(context.Background(), "user-screen-name-1", true)
+	assert.NoError(t, err)
+	user1Instance3.SetSignonComplete()
+
+	// Create a separate session with incomplete signon to test that non-live instances are skipped
+	user2, err := sm.AddSession(context.Background(), "user-screen-name-2", false)
+	assert.NoError(t, err)
+	// user2 has not completed signon, so this instance is not live
+	assert.False(t, user2.Live(), "instance should not be live when signon is incomplete")
+
+	want := wire.SNACMessage{Frame: wire.SNACFrame{FoodGroup: wire.ICBM}}
+
+	// Use maybeRelayMessage (called internally by RelayToScreenName)
+	// This should relay to all live instances in the session
+	sm.RelayToScreenName(context.Background(), user1.IdentScreenName(), want)
+
+	// user1 should receive the message
+	select {
+	case have := <-user1.ReceiveMessage():
+		assert.Equal(t, want, have)
+	default:
+		assert.Fail(t, "user1 should receive the message")
+	}
+
+	// user1Instance3 should receive the message (session is live)
+	select {
+	case have := <-user1Instance3.ReceiveMessage():
+		assert.Equal(t, want, have)
+	default:
+		assert.Fail(t, "user1Instance3 should receive the message")
+	}
+
+	// Test that non-live instances are skipped in RelayToAll (which calls maybeRelayMessage)
+	sm.RelayToAll(context.Background(), want)
+
+	// user2 should not receive the message (instance is not live, so maybeRelayMessage skips it)
+	select {
+	case <-user2.ReceiveMessage():
+		assert.Fail(t, "user2 should not receive a message because the instance is not live")
+	default:
+	}
+}
