@@ -5,10 +5,10 @@ FROM debian:12.11-slim AS build
 
 ARG OPENSSL_VERSION=1.0.2u
 ARG OPENSSL_TAG=OpenSSL_1_0_2u
-ARG STUNNEL_VERSION=5.75
+ARG STUNNEL_VERSION=5.76
 
 ARG OPENSSL_URL=https://github.com/openssl/openssl/releases/download/${OPENSSL_TAG}/openssl-${OPENSSL_VERSION}.tar.gz
-ARG STUNNEL_URL=https://www.stunnel.org/downloads/stunnel-${STUNNEL_VERSION}.tar.gz
+ARG STUNNEL_URL=https://www.stunnel.org/archive/5.x/stunnel-${STUNNEL_VERSION}.tar.gz
 
 # Build prerequisites
 RUN apt-get update && \
