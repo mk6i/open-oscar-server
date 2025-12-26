@@ -473,7 +473,7 @@ func TestAdminService_InfoChangeRequest_ScreenName(t *testing.T) {
 	}{
 		{
 			name:        "user changes screen name format successfully aim < 6",
-			userSession: newTestSession("chattingchuck", sessOptSignonComplete),
+			userSession: newTestSession("chattingchuck"),
 			mockParams: mockParams{
 				accountManagerParams: accountManagerParams{
 					accountManagerUpdateDisplayScreenNameParams: accountManagerUpdateDisplayScreenNameParams{
@@ -498,7 +498,7 @@ func TestAdminService_InfoChangeRequest_ScreenName(t *testing.T) {
 									FoodGroup: wire.OService,
 									SubGroup:  wire.OServiceUserInfoUpdate,
 								},
-								Body: newOServiceUserInfoUpdate(newTestSession("Chatting Chuck", sessOptSignonComplete)),
+								Body: newOServiceUserInfoUpdate(newTestSession("Chatting Chuck")),
 							},
 						},
 					},
@@ -536,7 +536,7 @@ func TestAdminService_InfoChangeRequest_ScreenName(t *testing.T) {
 		},
 		{
 			name:        "user changes screen name format successfully aim >= 6",
-			userSession: newTestSession("chattingchuck", sessOptSignonComplete, sessOptSetFoodGroupVersion(wire.OService, 4)),
+			userSession: newTestSession("chattingchuck", sessOptSetFoodGroupVersion(wire.OService, 4)),
 			mockParams: mockParams{
 				accountManagerParams: accountManagerParams{
 					accountManagerUpdateDisplayScreenNameParams: accountManagerUpdateDisplayScreenNameParams{
@@ -561,7 +561,7 @@ func TestAdminService_InfoChangeRequest_ScreenName(t *testing.T) {
 									FoodGroup: wire.OService,
 									SubGroup:  wire.OServiceUserInfoUpdate,
 								},
-								Body: newOServiceUserInfoUpdate(newTestSession("Chatting Chuck", sessOptSignonComplete, sessOptSetFoodGroupVersion(wire.OService, 4))),
+								Body: newOServiceUserInfoUpdate(newTestSession("Chatting Chuck", sessOptSetFoodGroupVersion(wire.OService, 4))),
 							},
 						},
 					},

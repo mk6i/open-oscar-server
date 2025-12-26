@@ -767,19 +767,13 @@ func newOServiceUserInfoUpdate(sess *state.SessionInstance) wire.SNAC_0x01_0x0F_
 	}
 
 	if sess.FoodGroupVersions()[wire.OService] >= 4 {
-		instances := sess.Instances()
-
+		// ideally, the second block should contain only instance-specific TLVs,
+		// but since the exact structure is unclear, we temporarily duplicate the first.
+		userInfo = append(userInfo, info)
 		// identify the primary session
-		userInfo[0].Append(wire.NewTLVBE(wire.OServiceUserInfoPrimaryInstance, []byte{instances[0].InstanceNum()}))
-
-		for _, instance := range instances {
-			instanceInfo := instance.TLVUserInfo()
-			// identify the first session (currently only 1x concurrent session supported)
-			instanceInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoMyInstanceNum, []byte{instance.InstanceNum()}))
-			// ideally, the second block should contain only instance-specific TLVs,
-			// but since the exact structure is unclear, we temporarily duplicate the first.
-			userInfo = append(userInfo, instanceInfo)
-		}
+		userInfo[0].Append(wire.NewTLVBE(wire.OServiceUserInfoPrimaryInstance, []byte{0x01}))
+		// identify the first session (currently only 1x concurrent session supported)
+		userInfo[1].Append(wire.NewTLVBE(wire.OServiceUserInfoMyInstanceNum, []byte{0x01}))
 	}
 
 	return wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate{
