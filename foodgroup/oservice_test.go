@@ -1754,87 +1754,155 @@ func TestNewOServiceUserInfoUpdate(t *testing.T) {
 	profileUpdated := time.Unix(1_700_100_000, 0)
 	signonTime := time.Now().Add(-3 * time.Second)
 
-	tests := []struct {
-		name              string
-		session           *state.SessionInstance
-		expectSigTime     bool
-		sigTime           time.Time
-		expectSecondBlock bool
-	}{
-		{
-			name: "OService version < 4 without profile",
-			session: newTestSession("me",
-				sessOptMemberSince(memberSince),
-				sessOptSignonTime(signonTime)),
-		},
-		{
-			name: "includes profile update time when set",
-			session: newTestSession("me",
-				sessOptMemberSince(memberSince),
-				sessOptSignonTime(signonTime),
-				sessOptProfile(state.UserProfile{UpdateTime: profileUpdated})),
-			expectSigTime: true,
-			sigTime:       profileUpdated,
-		},
-		{
-			name: "duplicates user info for aim >= 4",
-			session: newTestSession("me",
-				sessOptMemberSince(memberSince),
-				sessOptSignonTime(signonTime),
-				sessOptSetFoodGroupVersion(wire.OService, 4)),
-			expectSecondBlock: true,
-		},
-	}
+	t.Run("OService version < 4 without profile", func(t *testing.T) {
+		session := newTestSession("me",
+			sessOptMemberSince(memberSince),
+			sessOptSignonTime(signonTime))
+		signon := session.SignonTime()
+		onlineLowerBound := uint32(time.Since(signon).Seconds())
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			signon := tt.session.SignonTime()
-			onlineLowerBound := uint32(time.Since(signon).Seconds())
+		got := newOServiceUserInfoUpdate(session)
 
-			got := newOServiceUserInfoUpdate(tt.session)
+		require.Len(t, got.UserInfo, 1)
 
-			expectedLen := 1
-			if tt.expectSecondBlock {
-				expectedLen = 2
-			}
-			require.Len(t, got.UserInfo, expectedLen)
+		memberVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoMemberSince)
+		require.True(t, ok)
+		require.Equal(t, uint32(memberSince.Unix()), memberVal)
 
-			memberVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoMemberSince)
-			require.True(t, ok)
-			require.Equal(t, uint32(memberSince.Unix()), memberVal)
+		signonVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoSignonTOD)
+		require.True(t, ok)
+		require.Equal(t, uint32(signon.Unix()), signonVal)
 
-			signonVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoSignonTOD)
-			require.True(t, ok)
-			require.Equal(t, uint32(signon.Unix()), signonVal)
+		onlineVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoOnlineTime)
+		require.True(t, ok)
+		require.GreaterOrEqual(t, onlineVal, onlineLowerBound)
+		require.LessOrEqual(t, onlineVal-onlineLowerBound, uint32(2))
 
-			onlineVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoOnlineTime)
-			require.True(t, ok)
-			require.GreaterOrEqual(t, onlineVal, onlineLowerBound)
-			require.LessOrEqual(t, onlineVal-onlineLowerBound, uint32(2))
+		hasSigTime := got.UserInfo[0].HasTag(wire.OServiceUserInfoSigTime)
+		require.False(t, hasSigTime)
 
-			hasSigTime := got.UserInfo[0].HasTag(wire.OServiceUserInfoSigTime)
-			require.Equal(t, tt.expectSigTime, hasSigTime)
-			if tt.expectSigTime {
-				sigVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoSigTime)
-				require.True(t, ok)
-				require.Equal(t, uint32(tt.sigTime.Unix()), sigVal)
-			}
+		require.False(t, got.UserInfo[0].HasTag(wire.OServiceUserInfoPrimaryInstance))
+	})
 
-			if tt.expectSecondBlock {
-				primaryBytes, ok := got.UserInfo[0].Bytes(wire.OServiceUserInfoPrimaryInstance)
-				require.True(t, ok)
-				require.Equal(t, []byte{0x01}, primaryBytes)
+	t.Run("includes profile update time when set", func(t *testing.T) {
+		session := newTestSession("me",
+			sessOptMemberSince(memberSince),
+			sessOptSignonTime(signonTime),
+			sessOptProfile(state.UserProfile{UpdateTime: profileUpdated}))
+		signon := session.SignonTime()
+		onlineLowerBound := uint32(time.Since(signon).Seconds())
 
-				instanceBytes, ok := got.UserInfo[1].Bytes(wire.OServiceUserInfoMyInstanceNum)
-				require.True(t, ok)
-				require.Equal(t, []byte{0x01}, instanceBytes)
+		got := newOServiceUserInfoUpdate(session)
 
-				require.Equal(t, got.UserInfo[0].ScreenName, got.UserInfo[1].ScreenName)
-			} else {
-				require.False(t, got.UserInfo[0].HasTag(wire.OServiceUserInfoPrimaryInstance))
-			}
-		})
-	}
+		require.Len(t, got.UserInfo, 1)
+
+		memberVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoMemberSince)
+		require.True(t, ok)
+		require.Equal(t, uint32(memberSince.Unix()), memberVal)
+
+		signonVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoSignonTOD)
+		require.True(t, ok)
+		require.Equal(t, uint32(signon.Unix()), signonVal)
+
+		onlineVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoOnlineTime)
+		require.True(t, ok)
+		require.GreaterOrEqual(t, onlineVal, onlineLowerBound)
+		require.LessOrEqual(t, onlineVal-onlineLowerBound, uint32(2))
+
+		hasSigTime := got.UserInfo[0].HasTag(wire.OServiceUserInfoSigTime)
+		require.True(t, hasSigTime)
+		sigVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoSigTime)
+		require.True(t, ok)
+		require.Equal(t, uint32(profileUpdated.Unix()), sigVal)
+
+		require.False(t, got.UserInfo[0].HasTag(wire.OServiceUserInfoPrimaryInstance))
+	})
+
+	t.Run("appends additional instance info when food group version >= 4", func(t *testing.T) {
+		session := newTestSession("me",
+			sessOptMemberSince(memberSince),
+			sessOptSignonTime(signonTime),
+			sessOptSetFoodGroupVersion(wire.OService, 4))
+		signon := session.SignonTime()
+		onlineLowerBound := uint32(time.Since(signon).Seconds())
+
+		got := newOServiceUserInfoUpdate(session)
+
+		require.Len(t, got.UserInfo, 2)
+
+		memberVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoMemberSince)
+		require.True(t, ok)
+		require.Equal(t, uint32(memberSince.Unix()), memberVal)
+
+		signonVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoSignonTOD)
+		require.True(t, ok)
+		require.Equal(t, uint32(signon.Unix()), signonVal)
+
+		onlineVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoOnlineTime)
+		require.True(t, ok)
+		require.GreaterOrEqual(t, onlineVal, onlineLowerBound)
+		require.LessOrEqual(t, onlineVal-onlineLowerBound, uint32(2))
+
+		hasSigTime := got.UserInfo[0].HasTag(wire.OServiceUserInfoSigTime)
+		require.False(t, hasSigTime)
+
+		primaryBytes, ok := got.UserInfo[0].Bytes(wire.OServiceUserInfoPrimaryInstance)
+		require.True(t, ok)
+		require.Equal(t, []byte{0x01}, primaryBytes)
+
+		instanceBytes, ok := got.UserInfo[1].Bytes(wire.OServiceUserInfoMyInstanceNum)
+		require.True(t, ok)
+		require.Equal(t, []byte{0x01}, instanceBytes)
+
+		require.Equal(t, got.UserInfo[0].ScreenName, got.UserInfo[1].ScreenName)
+	})
+
+	t.Run("includes info for all instances when session has 2 instances", func(t *testing.T) {
+		session := newTestSession("me",
+			sessOptMemberSince(memberSince),
+			sessOptSignonTime(signonTime),
+			sessOptSetFoodGroupVersion(wire.OService, 4))
+		// Add a second instance to the session
+		state.NewInstance(session.Session)
+		signon := session.SignonTime()
+		onlineLowerBound := uint32(time.Since(signon).Seconds())
+
+		got := newOServiceUserInfoUpdate(session)
+
+		require.Len(t, got.UserInfo, 3)
+
+		memberVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoMemberSince)
+		require.True(t, ok)
+		require.Equal(t, uint32(memberSince.Unix()), memberVal)
+
+		signonVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoSignonTOD)
+		require.True(t, ok)
+		require.Equal(t, uint32(signon.Unix()), signonVal)
+
+		onlineVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoOnlineTime)
+		require.True(t, ok)
+		require.GreaterOrEqual(t, onlineVal, onlineLowerBound)
+		require.LessOrEqual(t, onlineVal-onlineLowerBound, uint32(2))
+
+		hasSigTime := got.UserInfo[0].HasTag(wire.OServiceUserInfoSigTime)
+		require.False(t, hasSigTime)
+
+		primaryBytes, ok := got.UserInfo[0].Bytes(wire.OServiceUserInfoPrimaryInstance)
+		require.True(t, ok)
+		require.Equal(t, []byte{0x01}, primaryBytes)
+
+		// First instance block
+		instance1Bytes, ok := got.UserInfo[1].Bytes(wire.OServiceUserInfoMyInstanceNum)
+		require.True(t, ok)
+		require.Equal(t, []byte{0x01}, instance1Bytes)
+		require.Equal(t, got.UserInfo[0].ScreenName, got.UserInfo[1].ScreenName)
+
+		// Second instance block
+		instance2Bytes, ok := got.UserInfo[2].Bytes(wire.OServiceUserInfoMyInstanceNum)
+		require.True(t, ok)
+		require.Equal(t, []byte{0x02}, instance2Bytes)
+		require.Equal(t, got.UserInfo[0].ScreenName, got.UserInfo[2].ScreenName)
+	})
 }
 
 func TestOServiceService_UserInfoQuery(t *testing.T) {
