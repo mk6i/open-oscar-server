@@ -2159,7 +2159,13 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 									FoodGroup: wire.OService,
 									SubGroup:  wire.OServiceUserInfoUpdate,
 								},
-								Body: newOServiceUserInfoUpdate(newTestSession("me", sessOptCannedSignonTime)),
+								Body: newOServiceUserInfoUpdate(newTestSession("me", sessOptCannedSignonTime, sessOptProfile(
+									state.UserProfile{
+										ProfileText: "profile-result",
+										MIMEType:    `text/aolrtf; charset="us-ascii"`,
+										UpdateTime:  time.Unix(100000, 0),
+									},
+								))),
 							},
 						},
 					},
@@ -2171,6 +2177,7 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 							result: state.UserProfile{
 								ProfileText: "profile-result",
 								MIMEType:    `text/aolrtf; charset="us-ascii"`,
+								UpdateTime:  time.Unix(100000, 0),
 							},
 						},
 					},
@@ -2183,6 +2190,7 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 					state.UserProfile{
 						ProfileText: "profile-result",
 						MIMEType:    `text/aolrtf; charset="us-ascii"`,
+						UpdateTime:  time.Unix(100000, 0),
 					},
 				),
 			),

@@ -669,11 +669,11 @@ func (s OServiceService) ClientOnline(ctx context.Context, service uint16, bodyI
 				return fmt.Errorf("unable to reload profile: %w", err)
 			}
 
-			if !profile.Empty() {
+			if !profile.IsZero() {
 				sess.SetProfile(profile)
 
 				// notify client that the server-side profile is ready for retrieval
-				s.messageRelayer.RelayToScreenName(ctx, sess.IdentScreenName(), wire.SNACMessage{
+				s.messageRelayer.RelayToSelf(ctx, sess, wire.SNACMessage{
 					Frame: wire.SNACFrame{
 						FoodGroup: wire.OService,
 						SubGroup:  wire.OServiceUserInfoUpdate,

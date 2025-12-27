@@ -1185,6 +1185,172 @@ func TestSession_SetAndGetProfile(t *testing.T) {
 	assert.Equal(t, profileTime, retrievedProfile.UpdateTime)
 }
 
+func TestSession_Profile(t *testing.T) {
+	tests := []struct {
+		name            string
+		setupSession    func() *Session
+		expectedProfile UserProfile
+	}{
+		{
+			name: "no instances - returns empty profile",
+			setupSession: func() *Session {
+				return NewSession()
+			},
+			expectedProfile: UserProfile{},
+		},
+		{
+			name: "one instance with empty profile - returns empty profile",
+			setupSession: func() *Session {
+				s := NewSession()
+				NewInstance(s)
+				return s
+			},
+			expectedProfile: UserProfile{},
+		},
+		{
+			name: "one instance with non-empty profile - returns that profile",
+			setupSession: func() *Session {
+				s := NewSession()
+				instance := NewInstance(s)
+				profileTime := time.Unix(1234567890, 0)
+				instance.SetProfile(UserProfile{
+					ProfileText: "My profile",
+					MIMEType:    "text/plain",
+					UpdateTime:  profileTime,
+				})
+				return s
+			},
+			expectedProfile: UserProfile{
+				ProfileText: "My profile",
+				MIMEType:    "text/plain",
+				UpdateTime:  time.Unix(1234567890, 0),
+			},
+		},
+		{
+			name: "multiple instances, all empty - returns empty profile",
+			setupSession: func() *Session {
+				s := NewSession()
+				NewInstance(s)
+				NewInstance(s)
+				NewInstance(s)
+				return s
+			},
+			expectedProfile: UserProfile{},
+		},
+		{
+			name: "multiple instances, one non-empty - returns that one",
+			setupSession: func() *Session {
+				s := NewSession()
+				NewInstance(s) // empty instance
+				instance2 := NewInstance(s)
+				instance2.SetProfile(UserProfile{
+					ProfileText: "Profile 2",
+					MIMEType:    "text/plain",
+					UpdateTime:  time.Unix(1234567890, 0),
+				})
+				NewInstance(s) // empty instance
+				return s
+			},
+			expectedProfile: UserProfile{
+				ProfileText: "Profile 2",
+				MIMEType:    "text/plain",
+				UpdateTime:  time.Unix(1234567890, 0),
+			},
+		},
+		{
+			name: "multiple instances, multiple non-empty - returns most recent UpdateTime",
+			setupSession: func() *Session {
+				s := NewSession()
+				instance1 := NewInstance(s)
+				instance1.SetProfile(UserProfile{
+					ProfileText: "Profile 1",
+					MIMEType:    "text/plain",
+					UpdateTime:  time.Unix(1234567900, 0), // later time - should be returned
+				})
+				instance2 := NewInstance(s)
+				instance2.SetProfile(UserProfile{
+					ProfileText: "Profile 2",
+					MIMEType:    "text/plain",
+					UpdateTime:  time.Unix(1234567890, 0), // earlier time
+				})
+				instance3 := NewInstance(s)
+				instance3.SetProfile(UserProfile{
+					ProfileText: "Profile 3",
+					MIMEType:    "text/plain",
+					UpdateTime:  time.Unix(1234567895, 0), // middle time
+				})
+				return s
+			},
+			expectedProfile: UserProfile{
+				ProfileText: "Profile 1",
+				MIMEType:    "text/plain",
+				UpdateTime:  time.Unix(1234567900, 0),
+			},
+		},
+		{
+			name: "first instance empty, later instances have profiles - returns most recent non-empty",
+			setupSession: func() *Session {
+				s := NewSession()
+				NewInstance(s) // empty instance
+				instance2 := NewInstance(s)
+				instance2.SetProfile(UserProfile{
+					ProfileText: "Profile 2",
+					MIMEType:    "text/plain",
+					UpdateTime:  time.Unix(1234567890, 0), // earlier
+				})
+				instance3 := NewInstance(s)
+				instance3.SetProfile(UserProfile{
+					ProfileText: "Profile 3",
+					MIMEType:    "text/plain",
+					UpdateTime:  time.Unix(1234567900, 0), // later time - should be returned
+				})
+				return s
+			},
+			expectedProfile: UserProfile{
+				ProfileText: "Profile 3",
+				MIMEType:    "text/plain",
+				UpdateTime:  time.Unix(1234567900, 0),
+			},
+		},
+		{
+			name: "profile with empty ProfileText is considered empty",
+			setupSession: func() *Session {
+				s := NewSession()
+				instance := NewInstance(s)
+				instance.SetProfile(UserProfile{
+					ProfileText: "",
+					MIMEType:    "text/plain",
+					UpdateTime:  time.Unix(1234567890, 0),
+				})
+				return s
+			},
+			expectedProfile: UserProfile{},
+		},
+		{
+			name: "profile with null byte ProfileText is considered empty",
+			setupSession: func() *Session {
+				s := NewSession()
+				instance := NewInstance(s)
+				instance.SetProfile(UserProfile{
+					ProfileText: "\x00",
+					MIMEType:    "text/plain",
+					UpdateTime:  time.Unix(1234567890, 0),
+				})
+				return s
+			},
+			expectedProfile: UserProfile{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := tt.setupSession()
+			profile := s.Profile()
+			assert.Equal(t, tt.expectedProfile, profile)
+		})
+	}
+}
+
 func TestSession_SetAndGetMemberSince(t *testing.T) {
 	s := NewInstance(NewSession())
 	assert.True(t, s.MemberSince().IsZero())

@@ -3,6 +3,7 @@ package foodgroup
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -107,6 +108,7 @@ func TestLocateService_UserInfoQuery(t *testing.T) {
 								sessOptProfile(state.UserProfile{
 									ProfileText: "this is my profile!",
 									MIMEType:    "text/aolrtf; charset=\"us-ascii\"",
+									UpdateTime:  time.Now(),
 								})).Session,
 						},
 					},
@@ -611,6 +613,7 @@ func TestLocateService_SetInfo(t *testing.T) {
 			wantSessionProfile: state.UserProfile{
 				ProfileText: "profile-result",
 				MIMEType:    `text/aolrtf; charset="us-ascii"`,
+				UpdateTime:  time.Now(),
 			},
 		},
 		{
@@ -632,6 +635,7 @@ func TestLocateService_SetInfo(t *testing.T) {
 							body: state.UserProfile{
 								ProfileText: "profile-result",
 								MIMEType:    `text/aolrtf; charset="us-ascii"`,
+								UpdateTime:  time.Now(),
 							},
 						},
 					},
@@ -640,6 +644,7 @@ func TestLocateService_SetInfo(t *testing.T) {
 			wantSessionProfile: state.UserProfile{
 				ProfileText: "profile-result",
 				MIMEType:    `text/aolrtf; charset="us-ascii"`,
+				UpdateTime:  time.Now(),
 			},
 		},
 		{
@@ -703,11 +708,12 @@ func TestLocateService_SetInfo(t *testing.T) {
 			svc.buddyBroadcaster = buddyUpdateBroadcaster
 			assert.Equal(t, tt.wantErr, svc.SetInfo(context.Background(), tt.userSession, tt.inBody))
 
-			if tt.wantSessionProfile.Empty() {
-				assert.True(t, tt.userSession.Profile().Empty())
+			if tt.wantSessionProfile.IsZero() {
+				assert.True(t, tt.userSession.Profile().IsZero())
 			} else {
 				assert.Equal(t, tt.wantSessionProfile.ProfileText, tt.userSession.Profile().ProfileText)
 				assert.Equal(t, tt.wantSessionProfile.MIMEType, tt.userSession.Profile().MIMEType)
+				assert.False(t, tt.userSession.Profile().UpdateTime.IsZero())
 			}
 		})
 	}

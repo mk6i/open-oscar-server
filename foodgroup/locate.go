@@ -99,6 +99,8 @@ func (s LocateService) SetInfo(ctx context.Context, sess *state.SessionInstance,
 				return err
 			}
 		}
+
+		// send update to other sessions?
 	}
 
 	// broadcast away message change to buddies
@@ -152,37 +154,48 @@ func newLocateErr(requestID uint32, errCode uint16) wire.SNACMessage {
 // UserInfoQuery fetches display information about an arbitrary user (not the
 // current user). It returns wire.LocateUserInfoReply, which contains the
 // profile, if requested, and/or the away message, if requested.
-func (s LocateService) UserInfoQuery(ctx context.Context, sess *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x02_0x05_LocateUserInfoQuery) (wire.SNACMessage, error) {
-	identScreenName := state.NewIdentScreenName(inBody.ScreenName)
+func (s LocateService) UserInfoQuery(ctx context.Context, sessInstance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x02_0x05_LocateUserInfoQuery) (wire.SNACMessage, error) {
+	lookupSN := state.NewIdentScreenName(inBody.ScreenName)
 
-	rel, err := s.relationshipFetcher.Relationship(ctx, sess.IdentScreenName(), identScreenName)
-	if err != nil {
-		return wire.SNACMessage{}, err
-	}
+	var lookupSess *state.Session
+	if lookupSN == sessInstance.IdentScreenName() {
+		// looking up own profile
+		lookupSess = sessInstance.Session
+	} else {
+		rel, err := s.relationshipFetcher.Relationship(ctx, sessInstance.IdentScreenName(), lookupSN)
+		if err != nil {
+			return wire.SNACMessage{}, err
+		}
 
-	if rel.YouBlock || rel.BlocksYou {
-		return newLocateErr(inFrame.RequestID, wire.ErrorCodeNotLoggedOn), nil
-	}
+		if rel.YouBlock || rel.BlocksYou {
+			return newLocateErr(inFrame.RequestID, wire.ErrorCodeNotLoggedOn), nil
+		}
 
-	buddySess := s.sessionRetriever.RetrieveSession(identScreenName)
-	if buddySess == nil {
-		// user is offline
-		return newLocateErr(inFrame.RequestID, wire.ErrorCodeNotLoggedOn), nil
+		lookupSess = s.sessionRetriever.RetrieveSession(lookupSN)
+		if lookupSess == nil {
+			// user is offline
+			return newLocateErr(inFrame.RequestID, wire.ErrorCodeNotLoggedOn), nil
+		}
 	}
 
 	var list wire.TLVList
 
 	if inBody.RequestProfile() {
+		prof := lookupSess.Profile()
+		// if looking up own profile, return this instance's profile for consistency
+		if sessInstance.IdentScreenName() == lookupSN {
+			prof = sessInstance.Profile()
+		}
 		list.AppendList([]wire.TLV{
-			wire.NewTLVBE(wire.LocateTLVTagsInfoSigMime, buddySess.Profile().MIMEType),
-			wire.NewTLVBE(wire.LocateTLVTagsInfoSigData, buddySess.Profile().ProfileText),
+			wire.NewTLVBE(wire.LocateTLVTagsInfoSigMime, prof.MIMEType),
+			wire.NewTLVBE(wire.LocateTLVTagsInfoSigData, prof.ProfileText),
 		})
 	}
 
 	if inBody.RequestAwayMessage() {
 		list.AppendList([]wire.TLV{
 			wire.NewTLVBE(wire.LocateTLVTagsInfoUnavailableMime, `text/aolrtf; charset="us-ascii"`),
-			wire.NewTLVBE(wire.LocateTLVTagsInfoUnavailableData, buddySess.AwayMessage()),
+			wire.NewTLVBE(wire.LocateTLVTagsInfoUnavailableData, lookupSess.AwayMessage()),
 		})
 	}
 
@@ -193,7 +206,7 @@ func (s LocateService) UserInfoQuery(ctx context.Context, sess *state.SessionIns
 			RequestID: inFrame.RequestID,
 		},
 		Body: wire.SNAC_0x02_0x06_LocateUserInfoReply{
-			TLVUserInfo: buddySess.TLVUserInfo(),
+			TLVUserInfo: lookupSess.TLVUserInfo(),
 			LocateInfo: wire.TLVRestBlock{
 				TLVList: list,
 			},

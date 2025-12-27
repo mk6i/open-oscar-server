@@ -662,23 +662,22 @@ func (s *Session) AwayMessage() string {
 	return ""
 }
 
-// Profile returns the first non-empty profile from all instances.
+// Profile returns the most recently updated non-empty profile from all instances.
 func (s *Session) Profile() UserProfile {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
+	var latest UserProfile
 
-	for _, instance := range s.instances {
-		if !instance.closed {
-			instance.mutex.RLock()
-			if !instance.profile.Empty() {
-				profile := instance.profile
-				instance.mutex.RUnlock()
-				return profile
-			}
-			instance.mutex.RUnlock()
+	for _, instance := range s.Instances() {
+		profile := instance.Profile()
+		if profile.IsEmpty() {
+			continue
+		}
+
+		if latest.IsEmpty() || profile.UpdateTime.After(latest.UpdateTime) {
+			latest = profile
 		}
 	}
-	return UserProfile{}
+
+	return latest
 }
 
 // SignonTime returns the signon time from the earliest instance.
