@@ -453,7 +453,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 				messageRelayerParams: messageRelayerParams{
 					relayToOtherInstancesParams: relayToOtherInstancesParams{
 						{
-							sess: newTestSession("me"),
+							screenName: state.NewIdentScreenName("me"),
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
@@ -477,7 +477,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					},
 					relayToSelfParams: relayToSelfParams{
 						{
-							sess: newTestSession("me"),
+							screenName: state.NewIdentScreenName("me"),
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
@@ -537,7 +537,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 				messageRelayerParams: messageRelayerParams{
 					relayToOtherInstancesParams: relayToOtherInstancesParams{
 						{
-							sess: newTestSession("me"),
+							screenName: state.NewIdentScreenName("me"),
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
@@ -561,7 +561,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					},
 					relayToSelfParams: relayToSelfParams{
 						{
-							sess: newTestSession("me"),
+							screenName: state.NewIdentScreenName("me"),
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
@@ -622,7 +622,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 				messageRelayerParams: messageRelayerParams{
 					relayToOtherInstancesParams: relayToOtherInstancesParams{
 						{
-							sess: newTestSession("me"),
+							screenName: state.NewIdentScreenName("me"),
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
@@ -646,7 +646,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					},
 					relayToSelfParams: relayToSelfParams{
 						{
-							sess: newTestSession("me"),
+							screenName: state.NewIdentScreenName("me"),
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
@@ -718,7 +718,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 				messageRelayerParams: messageRelayerParams{
 					relayToOtherInstancesParams: relayToOtherInstancesParams{
 						{
-							sess: newTestSession("me"),
+							screenName: state.NewIdentScreenName("me"),
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
@@ -742,7 +742,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					},
 					relayToSelfParams: relayToSelfParams{
 						{
-							sess: newTestSession("me"),
+							screenName: state.NewIdentScreenName("me"),
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
@@ -813,7 +813,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 				messageRelayerParams: messageRelayerParams{
 					relayToOtherInstancesParams: relayToOtherInstancesParams{
 						{
-							sess: newTestSession("me"),
+							screenName: state.NewIdentScreenName("me"),
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
@@ -837,7 +837,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					},
 					relayToSelfParams: relayToSelfParams{
 						{
-							sess: newTestSession("me"),
+							screenName: state.NewIdentScreenName("me"),
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
@@ -895,7 +895,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 				messageRelayerParams: messageRelayerParams{
 					relayToOtherInstancesParams: relayToOtherInstancesParams{
 						{
-							sess: newTestSession("me"),
+							screenName: state.NewIdentScreenName("me"),
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
@@ -914,7 +914,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					},
 					relayToSelfParams: relayToSelfParams{
 						{
-							sess: newTestSession("me"),
+							screenName: state.NewIdentScreenName("me"),
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
@@ -1058,7 +1058,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					},
 					relayToOtherInstancesParams: relayToOtherInstancesParams{
 						{
-							sess: newTestSession("me"),
+							screenName: state.NewIdentScreenName("me"),
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
@@ -1086,7 +1086,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					},
 					relayToSelfParams: relayToSelfParams{
 						{
-							sess: newTestSession("me"),
+							screenName: state.NewIdentScreenName("me"),
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
@@ -1216,7 +1216,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					},
 					relayToOtherInstancesParams: relayToOtherInstancesParams{
 						{
-							sess: newTestSession("me"),
+							screenName: state.NewIdentScreenName("me"),
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
@@ -1244,7 +1244,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					},
 					relayToSelfParams: relayToSelfParams{
 						{
-							sess: newTestSession("me"),
+							screenName: state.NewIdentScreenName("me"),
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
@@ -1338,7 +1338,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 				messageRelayerParams: messageRelayerParams{
 					relayToOtherInstancesParams: relayToOtherInstancesParams{
 						{
-							sess: newTestSession("me"),
+							screenName: state.NewIdentScreenName("me"),
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
@@ -1365,7 +1365,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					},
 					relayToSelfParams: relayToSelfParams{
 						{
-							sess: newTestSession("me"),
+							screenName: state.NewIdentScreenName("me"),
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
@@ -1505,7 +1505,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					},
 					relayToOtherInstancesParams: relayToOtherInstancesParams{
 						{
-							sess: newTestSession("me"),
+							screenName: state.NewIdentScreenName("me"),
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
@@ -1533,7 +1533,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					},
 					relayToSelfParams: relayToSelfParams{
 						{
-							sess: newTestSession("me"),
+							screenName: state.NewIdentScreenName("me"),
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
@@ -1696,7 +1696,7 @@ func TestFeedbagService_DeleteItem(t *testing.T) {
 				messageRelayerParams: messageRelayerParams{
 					relayToOtherInstancesParams: relayToOtherInstancesParams{
 						{
-							sess: newTestSession("me"),
+							screenName: state.NewIdentScreenName("me"),
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
@@ -1724,7 +1724,7 @@ func TestFeedbagService_DeleteItem(t *testing.T) {
 					},
 					relayToSelfParams: relayToSelfParams{
 						{
-							sess: newTestSession("me"),
+							screenName: state.NewIdentScreenName("me"),
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,

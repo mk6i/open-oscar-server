@@ -2152,6 +2152,8 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 								},
 							},
 						},
+					},
+					relayToSelfParams: relayToSelfParams{
 						{
 							screenName: state.NewIdentScreenName("me"),
 							message: wire.SNACMessage{
@@ -2468,6 +2470,13 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 			for _, params := range tt.mockParams.relayToScreenNameParams {
 				messageRelayer.EXPECT().
 					RelayToScreenName(matchContext(), params.screenName, params.message)
+			}
+			for _, params := range tt.mockParams.relayToSelfParams {
+				messageRelayer.EXPECT().
+					RelayToSelf(mock.Anything, mock.Anything, mock.MatchedBy(func(msg wire.SNACMessage) bool {
+						return msg.Frame.FoodGroup == params.message.Frame.FoodGroup &&
+							msg.Frame.SubGroup == params.message.Frame.SubGroup
+					}))
 			}
 			chatRoomManager := newMockChatRoomRegistry(t)
 			for _, params := range tt.mockParams.chatRoomByCookieParams {

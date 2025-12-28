@@ -32,6 +32,7 @@ func NewLocateService(
 ) LocateService {
 	return LocateService{
 		buddyBroadcaster:    newBuddyNotifier(bartItemManager, relationshipFetcher, messageRelayer, sessionRetriever),
+		messageRelayer:      messageRelayer,
 		relationshipFetcher: relationshipFetcher,
 		profileManager:      profileManager,
 		sessionRetriever:    sessionRetriever,
@@ -44,6 +45,7 @@ func NewLocateService(
 // keyword lookups.
 type LocateService struct {
 	buddyBroadcaster    buddyBroadcaster
+	messageRelayer      MessageRelayer
 	relationshipFetcher RelationshipFetcher
 	profileManager      ProfileManager
 	sessionRetriever    SessionRetriever
@@ -76,7 +78,7 @@ func (s LocateService) RightsQuery(_ context.Context, inFrame wire.SNACFrame) wi
 }
 
 // SetInfo sets the user's profile, away message or capabilities.
-func (s LocateService) SetInfo(ctx context.Context, sess *state.SessionInstance, inBody wire.SNAC_0x02_0x04_LocateSetInfo) error {
+func (s LocateService) SetInfo(ctx context.Context, instance *state.SessionInstance, inBody wire.SNAC_0x02_0x04_LocateSetInfo) error {
 
 	// update profile
 	if profileText, hasProfile := inBody.String(wire.LocateTLVTagsInfoSigData); hasProfile {
@@ -87,27 +89,41 @@ func (s LocateService) SetInfo(ctx context.Context, sess *state.SessionInstance,
 			UpdateTime:  time.Now(),
 		}
 
-		sess.SetProfile(profile)
-
 		// set the server-side profile
-		if sess.KerberosAuth() || inBody.HasTag(wire.LocateTLVTagsInfoSupportHostSig) {
+		if instance.KerberosAuth() || inBody.HasTag(wire.LocateTLVTagsInfoSupportHostSig) {
 			// normally, the SupportHostSig TLV indicates that the profile should
 			// be stored server-side. however, some AIM 6 clients expect server-side
 			// profiles but do not send this TLV. in order to cover all bases, just
 			// save the profile for all kerberos-based clients.
-			if err := s.profileManager.SetProfile(ctx, sess.IdentScreenName(), profile); err != nil {
+			if err := s.profileManager.SetProfile(ctx, instance.IdentScreenName(), profile); err != nil {
 				return err
 			}
-		}
 
-		// send update to other sessions?
+			for _, inst := range instance.Instances() {
+				if inst.KerberosAuth() {
+					// update all instances that do server-side profile storage
+					inst.SetProfile(profile)
+				}
+			}
+
+			s.messageRelayer.RelayToOtherInstances(ctx, instance, wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.OService,
+					SubGroup:  wire.OServiceUserInfoUpdate,
+				},
+				Body: newOServiceUserInfoUpdate(instance),
+			})
+		} else {
+			// set the client-side profile
+			instance.SetProfile(profile)
+		}
 	}
 
 	// broadcast away message change to buddies
 	if awayMsg, hasAwayMsg := inBody.String(wire.LocateTLVTagsInfoUnavailableData); hasAwayMsg {
-		sess.SetAwayMessage(awayMsg)
-		if sess.SignonComplete() {
-			if err := s.buddyBroadcaster.BroadcastBuddyArrived(ctx, sess.IdentScreenName(), sess.TLVUserInfo()); err != nil {
+		instance.SetAwayMessage(awayMsg)
+		if instance.SignonComplete() {
+			if err := s.buddyBroadcaster.BroadcastBuddyArrived(ctx, instance.IdentScreenName(), instance.TLVUserInfo()); err != nil {
 				return err
 			}
 		}
@@ -127,9 +143,9 @@ func (s LocateService) SetInfo(ctx context.Context, sess *state.SessionInstance,
 			}
 			caps = append(caps, c)
 		}
-		sess.SetCaps(caps)
-		if sess.SignonComplete() {
-			if err := s.buddyBroadcaster.BroadcastBuddyArrived(ctx, sess.IdentScreenName(), sess.TLVUserInfo()); err != nil {
+		instance.SetCaps(caps)
+		if instance.SignonComplete() {
+			if err := s.buddyBroadcaster.BroadcastBuddyArrived(ctx, instance.IdentScreenName(), instance.TLVUserInfo()); err != nil {
 				return err
 			}
 		}
