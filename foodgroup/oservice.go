@@ -232,24 +232,28 @@ func (s OServiceService) UserInfoQuery(_ context.Context, sess *state.SessionIns
 func (s OServiceService) SetUserInfoFields(ctx context.Context, sess *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields) (wire.SNACMessage, error) {
 	if status, hasStatus := inBody.Uint32BE(wire.OServiceUserInfoStatus); hasStatus {
 		sess.SetUserStatusBitmask(status)
-		if sess.Invisible() {
+		if (status&wire.OServiceUserStatusInvisible == wire.OServiceUserStatusInvisible) && sess.AllInvisible() {
 			if err := s.buddyBroadcaster.BroadcastBuddyDeparted(ctx, sess); err != nil {
 				return wire.SNACMessage{}, err
 			}
-		} else {
+		} else if (status&wire.OServiceUserStatusInvisible != wire.OServiceUserStatusInvisible) && !sess.AllInvisible() {
 			if err := s.buddyBroadcaster.BroadcastBuddyArrived(ctx, sess.IdentScreenName(), sess.TLVUserInfo()); err != nil {
 				return wire.SNACMessage{}, err
 			}
 
 		}
 	}
+
+	update := newOServiceUserInfoUpdate(sess)
+	update.UserInfo[0].Replace(wire.NewTLVBE(wire.OServiceUserInfoStatus, sess.UserStatusBitmask()))
+
 	return wire.SNACMessage{
 		Frame: wire.SNACFrame{
 			FoodGroup: wire.OService,
 			SubGroup:  wire.OServiceUserInfoUpdate,
 			RequestID: inFrame.RequestID,
 		},
-		Body: newOServiceUserInfoUpdate(sess),
+		Body: update,
 	}, nil
 }
 
@@ -760,21 +764,21 @@ func newOServiceUserInfoUpdate(sess *state.SessionInstance) wire.SNAC_0x01_0x0F_
 	// set current session length (seconds)
 	userInfo[0].Append(wire.NewTLVBE(wire.OServiceUserInfoOnlineTime, uint32(time.Since(sess.SignonTime()).Seconds())))
 
-	profile := sess.Profile()
-	if !profile.UpdateTime.IsZero() {
-		// set profile update time if the profile was set
-		userInfo[0].Append(wire.NewTLVBE(wire.OServiceUserInfoSigTime, uint32(profile.UpdateTime.Unix())))
-	}
-
 	if sess.FoodGroupVersions()[wire.OService] >= 4 {
-		instances := sess.Instances()
-
 		// identify the primary session
-		userInfo[0].Append(wire.NewTLVBE(wire.OServiceUserInfoPrimaryInstance, []byte{instances[0].InstanceNum()}))
+		userInfo[0].Append(wire.NewTLVBE(wire.OServiceUserInfoMyInstanceNum, []byte{sess.InstanceNum()}))
 
-		for _, instance := range instances {
+		for _, instance := range sess.Instances() {
 			instanceInfo := instance.TLVUserInfo()
-			instanceInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoMyInstanceNum, []byte{instance.InstanceNum()}))
+			if instance == sess {
+				profile := sess.Profile()
+				if !profile.UpdateTime.IsZero() {
+					// set profile update time if the profile was set
+					instanceInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoSigTime, uint32(profile.UpdateTime.Unix())))
+				}
+			}
+			instanceInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoPrimaryInstance, []byte{instance.InstanceNum()}))
+
 			// ideally, the second block should contain only instance-specific TLVs,
 			// but since the exact structure is unclear, we temporarily duplicate the first.
 			userInfo = append(userInfo, instanceInfo)

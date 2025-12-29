@@ -99,10 +99,10 @@ func (s LocateService) SetInfo(ctx context.Context, instance *state.SessionInsta
 				return err
 			}
 
-			for _, inst := range instance.Instances() {
-				if inst.KerberosAuth() {
+			for _, _instance := range instance.Instances() {
+				if _instance.KerberosAuth() {
 					// update all instances that do server-side profile storage
-					inst.SetProfile(profile)
+					_instance.SetProfile(profile)
 				}
 			}
 

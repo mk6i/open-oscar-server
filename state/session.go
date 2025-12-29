@@ -529,13 +529,8 @@ func (s *Session) userInfo() wire.TLVList {
 
 	// user status flags - user-level (shared)
 	var statusBitmask uint32
-	for _, instance := range s.instances {
-		if !instance.closed {
-			instance.mutex.RLock()
-			statusBitmask = instance.userStatusBitmask
-			instance.mutex.RUnlock()
-			break
-		}
+	if s.allInvisible() {
+		statusBitmask |= wire.OServiceUserStatusInvisible
 	}
 	tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoStatus, statusBitmask))
 
@@ -713,6 +708,29 @@ func (s *Session) IdleTime() time.Time {
 		return time.Time{}
 	}
 	return s.mostRecentIdleTime()
+}
+
+// AllInvisible returns true if all instances are invisible.
+func (s *Session) AllInvisible() bool {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	for _, instance := range s.instances {
+		if !instance.Invisible() {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (s *Session) allInvisible() bool {
+	for _, instance := range s.instances {
+		if !instance.Invisible() {
+			return false
+		}
+	}
+	return true
 }
 
 // generateInstanceNum generates the next instance number for this session group.
