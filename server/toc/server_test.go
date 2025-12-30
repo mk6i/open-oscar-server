@@ -110,7 +110,7 @@ func TestServer_handleTOCRequest_sessClose(t *testing.T) {
 	}()
 
 	// close the session, simulating another client login kicking this session
-	sess.Close()
+	sess.CloseInstance()
 
 	// wait for handleTOCRequest to return
 	wg.Wait()

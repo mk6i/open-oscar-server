@@ -727,7 +727,7 @@ func (s OSCARProxy) ChatLeave(ctx context.Context, chatRegistry *ChatRegistry, a
 
 	s.AuthService.SignoutChat(ctx, me)
 
-	me.Close() // stop async server SNAC reply handler for this chat room
+	me.CloseInstance() // stop async server SNAC reply handler for this chat room
 
 	chatRegistry.RemoveSess(chatID)
 
@@ -1728,7 +1728,7 @@ func (s OSCARProxy) Signout(ctx context.Context, me *state.SessionInstance, chat
 
 	for _, sess := range chatRegistry.Sessions() {
 		s.AuthService.SignoutChat(ctx, sess)
-		sess.Close() // stop async server SNAC reply handler for this chat room
+		sess.CloseInstance() // stop async server SNAC reply handler for this chat room
 	}
 }
 

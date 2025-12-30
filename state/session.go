@@ -74,9 +74,9 @@ type Session struct {
 	// SessionInstance counter for this session group
 	instanceCounter uint8
 
-	initOnce sync.Once
-	shutdown func()
-	nowFn    func() time.Time
+	initOnce      sync.Once
+	onSessCloseFn func()
+	nowFn         func() time.Time
 }
 
 // NewSession creates a new Session for a user.
@@ -85,7 +85,7 @@ func NewSession() *Session {
 		warningCh:       make(chan uint16, 1),
 		instances:       make([]*SessionInstance, 0),
 		instanceCounter: 0,
-		shutdown:        func() {},
+		onSessCloseFn:   func() {},
 		nowFn:           time.Now,
 	}
 }
@@ -102,6 +102,7 @@ func NewInstance(session *Session) *SessionInstance {
 		foodGroupVersions: defaultFoodGroupVersions(),
 		userInfoBitmask:   wire.OServiceUserFlagOSCARFree,
 		userStatusBitmask: wire.OServiceUserStatusAvailable,
+		onInstanceCloseFn: func() {},
 	}
 	session.AddInstance(instance)
 	return instance
@@ -168,11 +169,11 @@ func (s *Session) RunOnce(fn func() error) error {
 	return err
 }
 
-// OnClose registers a function to be called once all instances have closed.
-func (s *Session) OnClose(fn func()) {
+// OnSessionClose registers a function to be called once all instances have closed.
+func (s *Session) OnSessionClose(fn func()) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	s.shutdown = fn
+	s.onSessCloseFn = fn
 }
 
 // allAway returns true if all active instances are away.
@@ -638,15 +639,15 @@ func (s *Session) SignonTime() time.Time {
 	return s.getEarliestInstance()
 }
 
-// Close closes all instances in the session.
-func (s *Session) Close() {
+// CloseSession closes all instances in the session.
+func (s *Session) CloseSession() {
 	s.mutex.RLock()
 	instances := make([]*SessionInstance, len(s.instances))
 	copy(instances, s.instances)
 	s.mutex.RUnlock()
 
 	for _, instance := range instances {
-		instance.Close()
+		instance.closeOnly()
 	}
 }
 
@@ -829,9 +830,10 @@ type SessionInstance struct {
 	userStatusBitmask uint32
 
 	// Per-session profile and buddy icon
-	profile   UserProfile
-	buddyIcon wire.BARTID
-	awayTime  time.Time
+	profile           UserProfile
+	buddyIcon         wire.BARTID
+	awayTime          time.Time
+	onInstanceCloseFn func()
 }
 
 // SetRemoteAddr sets the instance's remote IP address.
@@ -1017,23 +1019,41 @@ func (s *SessionInstance) RelayMessageToInstance(msg wire.SNACMessage) SessSendS
 	}
 }
 
-// Close shuts down the instance's ability to relay messages.
-func (s *SessionInstance) Close() {
+// CloseInstance shuts down the instance's ability to relay messages.
+func (s *SessionInstance) closeOnly() {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	s.close()
-}
 
-func (s *SessionInstance) close() {
 	if s.closed {
 		return
 	}
 	close(s.stopCh)
 	s.closed = true
-	// Remove this instance from its session group
+	// todo move this logic to caller
 	s.Session.RemoveInstance(s)
 	if s.InstanceCount() == 0 {
-		s.shutdown()
+		s.onSessCloseFn()
+	}
+}
+
+// CloseInstance shuts down the instance's ability to relay messages and removes it from the session.
+func (s *SessionInstance) CloseInstance() {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	if s.closed {
+		return
+	}
+	close(s.stopCh)
+	s.closed = true
+
+	s.Session.RemoveInstance(s)
+
+	count := s.InstanceCount()
+	if count == 0 {
+		s.onSessCloseFn()
+	} else {
+		s.onInstanceCloseFn()
 	}
 }
 
@@ -1091,7 +1111,7 @@ func (s *SessionInstance) EvaluateRateLimit(now time.Time, rateClassID wire.Rate
 	status := s.Session.EvaluateRateLimit(now, rateClassID)
 
 	if status == wire.RateLimitStatusDisconnect {
-		s.Close()
+		s.CloseInstance()
 	}
 
 	return status
@@ -1226,4 +1246,13 @@ func (s *SessionInstance) RelayMessage(msg wire.SNACMessage) SessSendStatus {
 	default:
 		return SessQueueFull
 	}
+}
+
+// OnInstanceClose registers a function to be called when the instance closes,
+// but only if other instances remain in the session. If this is the last instance
+// to close, OnSessionClose will be called instead.
+func (s *SessionInstance) OnInstanceClose(fn func()) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.onInstanceCloseFn = fn
 }

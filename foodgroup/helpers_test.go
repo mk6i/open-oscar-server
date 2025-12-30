@@ -892,7 +892,7 @@ func sessOptSomeActive(session *state.SessionInstance) {
 
 // sessOptClosed makes the session instance closed (inactive)
 func sessOptClosed(session *state.SessionInstance) {
-	session.Close()
+	session.CloseInstance()
 }
 
 // sessOptMixedStates simulates a multisession scenario with mixed states

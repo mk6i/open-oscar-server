@@ -105,7 +105,7 @@ func (s *InMemorySessionManager) RelayToSelf(ctx context.Context, instance *Sess
 		s.logger.WarnContext(ctx, "can't send notification because the user's session is closed", "recipient", instance.IdentScreenName(), "message", msg)
 	case SessQueueFull:
 		s.logger.WarnContext(ctx, "can't send notification because queue is full", "recipient", instance.IdentScreenName(), "message", msg)
-		instance.Close()
+		instance.CloseInstance()
 	}
 }
 
@@ -119,7 +119,7 @@ func (s *InMemorySessionManager) RelayToOtherInstances(ctx context.Context, inst
 			s.logger.WarnContext(ctx, "can't send notification because the user's session is closed", "recipient", instance.IdentScreenName(), "message", msg)
 		case SessQueueFull:
 			s.logger.WarnContext(ctx, "can't send notification because queue is full", "recipient", instance.IdentScreenName(), "message", msg)
-			inst.Close()
+			inst.CloseInstance()
 		}
 	}
 }
@@ -143,7 +143,7 @@ func (s *InMemorySessionManager) maybeRelayMessage(ctx context.Context, msg wire
 			s.logger.WarnContext(ctx, "can't send notification because the user's session is closed", "recipient", sess.IdentScreenName(), "message", msg)
 		case SessQueueFull:
 			s.logger.WarnContext(ctx, "can't send notification because queue is full", "recipient", sess.IdentScreenName(), "message", msg)
-			instance.Close()
+			instance.CloseInstance()
 		}
 	}
 }
@@ -158,7 +158,7 @@ func (s *InMemorySessionManager) maybeRelayMessageActiveOnly(ctx context.Context
 			s.logger.WarnContext(ctx, "can't send notification because the user's session is closed", "recipient", sess.IdentScreenName(), "message", msg)
 		case SessQueueFull:
 			s.logger.WarnContext(ctx, "can't send notification because queue is full", "recipient", sess.IdentScreenName(), "message", msg)
-			instance.Close()
+			instance.CloseInstance()
 		}
 	}
 }
@@ -174,7 +174,7 @@ func (s *InMemorySessionManager) AddSession(ctx context.Context, screenName Disp
 	if active != nil {
 		if doMultiSess {
 			if !active.multiSession {
-				active.session.Close()
+				active.session.CloseSession()
 				return s.newSessionGroup(screenName, doMultiSess)
 			}
 
@@ -183,7 +183,7 @@ func (s *InMemorySessionManager) AddSession(ctx context.Context, screenName Disp
 			return instance, nil
 		} else {
 			// signal to callers that this session group has to go
-			active.session.Close()
+			active.session.CloseSession()
 
 			select {
 			case <-active.removed: // wait for RemoveSession to be called
@@ -366,7 +366,7 @@ func (s *InMemoryChatSessionManager) RemoveUserFromAllChats(user IdentScreenName
 	for _, sessionManager := range s.store {
 		userSess := sessionManager.RetrieveSession(user)
 		if userSess != nil {
-			userSess.Close()
+			userSess.CloseSession()
 		}
 	}
 }

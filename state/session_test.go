@@ -310,7 +310,7 @@ func TestSession_SendAndRecvMessage_ExpectSessSendOK(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		defer s.Close()
+		defer s.CloseInstance()
 		status := s.RelayMessage(msg)
 		assert.Equal(t, SessSendOK, status)
 	}()
@@ -330,7 +330,7 @@ loop:
 
 func TestSession_SendMessage_SessSendClosed(t *testing.T) {
 	s := NewInstance(NewSession())
-	s.Close()
+	s.CloseInstance()
 	if res := s.RelayMessage(wire.SNACMessage{}); res != SessSendClosed {
 		t.Fatalf("expected SessSendClosed, got %+v", res)
 	}
@@ -348,8 +348,8 @@ func TestSession_SendMessage_SessQueueFull(t *testing.T) {
 
 func TestSession_Close_Twice(t *testing.T) {
 	s := NewInstance(NewSession())
-	s.Close()
-	s.Close() // make sure close is idempotent
+	s.CloseInstance()
+	s.CloseInstance() // make sure close is idempotent
 	// Check that the session is closed by trying to relay a message
 	if res := s.RelayMessage(wire.SNACMessage{}); res != SessSendClosed {
 		t.Fatalf("expected SessSendClosed, got %+v", res)
@@ -361,7 +361,7 @@ func TestSession_Close_Twice(t *testing.T) {
 	}
 }
 
-func TestSession_Close(t *testing.T) {
+func TestSession_Closed(t *testing.T) {
 	s := NewInstance(NewSession())
 	select {
 	case <-s.Closed():
@@ -369,7 +369,7 @@ func TestSession_Close(t *testing.T) {
 	default:
 		// channel is open by default
 	}
-	s.Close()
+	s.CloseSession()
 	<-s.Closed()
 }
 
@@ -1678,47 +1678,75 @@ func TestSession_RunOnce(t *testing.T) {
 	})
 }
 
-func TestSession_OnClose(t *testing.T) {
-	t.Run("calls function when last instance closes", func(t *testing.T) {
-		s := NewSession()
-		called := false
+func TestSession_CloseInstance(t *testing.T) {
+	s := NewSession()
+	sessionCloseCount := 0
 
-		s.OnClose(func() {
-			called = true
-		})
-
-		// Create and close one instance
-		instance := NewInstance(s)
-		instance.Close()
-
-		// Function should be called when the last instance closes
-		assert.True(t, called, "shutdown function should be called when last instance closes")
+	s.OnSessionClose(func() {
+		sessionCloseCount++
 	})
 
-	t.Run("does not call function when instances remain", func(t *testing.T) {
-		s := NewSession()
-		called := false
+	instance1CloseCount := 0
+	instance2CloseCount := 0
+	instance3CloseCount := 0
 
-		s.OnClose(func() {
-			called = true
-		})
+	instance1 := NewInstance(s)
+	instance2 := NewInstance(s)
+	instance3 := NewInstance(s)
 
-		// Create two instances
-		instance1 := NewInstance(s)
-		instance2 := NewInstance(s)
-
-		// Close one instance
-		instance1.Close()
-
-		// Function should NOT be called because one instance remains
-		assert.False(t, called, "shutdown function should not be called when instances remain")
-
-		// Close the last instance
-		instance2.Close()
-
-		// Now function should be called
-		assert.True(t, called, "shutdown function should be called when last instance closes")
+	instance1.OnInstanceClose(func() {
+		instance1CloseCount++
 	})
+	instance2.OnInstanceClose(func() {
+		instance2CloseCount++
+	})
+	instance3.OnInstanceClose(func() {
+		instance3CloseCount++
+	})
+
+	// Close instance1 (instances 2 and 3 remain)
+	instance1.CloseInstance()
+	instance2.CloseInstance()
+	instance3.CloseInstance()
+
+	assert.Equal(t, 1, instance1CloseCount, "instance1 onInstanceCloseFn should only be called once")
+	assert.Equal(t, 1, instance2CloseCount, "instance2 onInstanceCloseFn should only be called once")
+	assert.Equal(t, 0, instance3CloseCount, "instance3 onInstanceCloseFn should not be called because it's the last instance")
+	assert.Equal(t, 1, sessionCloseCount, "session onSessCloseFn should not be called")
+}
+
+func TestSession_CloseSession(t *testing.T) {
+	s := NewSession()
+	sessionCloseCount := 0
+
+	s.OnSessionClose(func() {
+		sessionCloseCount++
+	})
+
+	instance1CloseCount := 0
+	instance2CloseCount := 0
+	instance3CloseCount := 0
+
+	instance1 := NewInstance(s)
+	instance2 := NewInstance(s)
+	instance3 := NewInstance(s)
+
+	instance1.OnInstanceClose(func() {
+		instance1CloseCount++
+	})
+	instance2.OnInstanceClose(func() {
+		instance2CloseCount++
+	})
+	instance3.OnInstanceClose(func() {
+		instance3CloseCount++
+	})
+
+	s.CloseSession()
+
+	assert.Equal(t, 0, instance1CloseCount, "instance1 onInstanceCloseFn should not be called")
+	assert.Equal(t, 0, instance2CloseCount, "instance2 onInstanceCloseFn should not be called")
+	assert.Equal(t, 0, instance3CloseCount, "instance3 onInstanceCloseFn should not be called")
+	assert.Equal(t, 1, sessionCloseCount, "session onSessCloseFn should only be called once")
 }
 
 func TestSession_AwayMessage(t *testing.T) {

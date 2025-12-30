@@ -308,7 +308,7 @@ func deleteSessionHandler(w http.ResponseWriter, r *http.Request, sessionRetriev
 			errorMsg(w, "session not found", http.StatusNotFound)
 			return
 		}
-		session.Close()
+		session.CloseSession()
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

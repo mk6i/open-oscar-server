@@ -250,7 +250,7 @@ func (s oscarServer) connectToOSCARService(
 			return errors.New("session not found")
 		}
 		defer func() {
-			sess.Close()
+			sess.CloseInstance()
 		}()
 
 		if err = sess.RunOnce(func() error {
@@ -269,7 +269,16 @@ func (s oscarServer) connectToOSCARService(
 			return err
 		}
 
-		sess.OnClose(func() {
+		// Update user visibility when an instance closes, as the user's overall status may change.
+		// Example: With 1 away and 1 non-away instance, the user appears available. If the non-away
+		// instance closes, the user should appear away.
+		sess.OnInstanceClose(func() {
+			if err := s.DepartureNotifier.BroadcastBuddyArrived(ctx, sess.IdentScreenName(), sess.TLVUserInfo()); err != nil {
+				s.Logger.ErrorContext(ctx, "error sending buddy departure notifications", "err", err.Error())
+			}
+		})
+
+		sess.OnSessionClose(func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
 
@@ -304,10 +313,10 @@ func (s oscarServer) connectToOSCARService(
 			return errors.New("session not found")
 		}
 		defer func() {
-			sess.Close()
+			sess.CloseInstance()
 		}()
 
-		sess.OnClose(func() {
+		sess.OnSessionClose(func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
 			s.SignoutChat(ctx, sess)

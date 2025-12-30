@@ -295,7 +295,7 @@ func TestInMemorySessionManager_Broadcast_SkipClosedSession(t *testing.T) {
 	user2, err := sm.AddSession(context.Background(), "user-screen-name-2", false)
 	assert.NoError(t, err)
 	user2.SetSignonComplete()
-	user2.Close()
+	user2.CloseInstance()
 
 	want := wire.SNACMessage{Frame: wire.SNACFrame{FoodGroup: wire.ICBM}}
 

@@ -894,7 +894,7 @@ func TestOSCARProxy_RecvClientCmd_ChatAccept(t *testing.T) {
 			}
 
 			g := &errgroup.Group{}
-			tc.me.Close()
+			tc.me.CloseInstance()
 
 			msg := svc.RecvClientCmd(ctx, tc.me, tc.givenChatRegistry, tc.givenCmd, nil, g.Go)
 
@@ -1367,7 +1367,7 @@ func TestOSCARProxy_RecvClientCmd_ChatJoin(t *testing.T) {
 			}
 
 			g := &errgroup.Group{}
-			tc.me.Close()
+			tc.me.CloseInstance()
 
 			msg := svc.RecvClientCmd(ctx, tc.me, tc.givenChatRegistry, tc.givenCmd, nil, g.Go)
 

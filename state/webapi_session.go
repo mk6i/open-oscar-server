@@ -339,7 +339,7 @@ func (m *WebAPISessionManager) RemoveSession(ctx context.Context, aimsid string)
 	delete(m.sessions, aimsid)
 	delete(m.byUser, session.ScreenName.IdentScreenName())
 
-	// Close the event queue to unblock any waiting fetches
+	// CloseSession the event queue to unblock any waiting fetches
 	if session.EventQueue != nil {
 		session.EventQueue.Close()
 	}
@@ -433,7 +433,7 @@ func (m *WebAPISessionManager) Shutdown(ctx context.Context) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Close all event queues
+	// CloseSession all event queues
 	for _, session := range m.sessions {
 		if session.EventQueue != nil {
 			session.EventQueue.Close()

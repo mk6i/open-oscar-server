@@ -513,6 +513,10 @@ func TestOscarServer_RouteConnection_BOS_MultiSessionSignoff(t *testing.T) {
 		Return(nil)
 
 	departureNotifier := newMockDepartureNotifier(t)
+	departureNotifier.EXPECT().
+		BroadcastBuddyArrived(mock.Anything, mock.Anything, mock.Anything).
+		Return(nil)
+
 	chatSessionManager := newMockChatSessionManager(t)
 
 	wg.Add(2)
@@ -787,7 +791,7 @@ func Test_oscarServer_dispatchIncomingMessages_disconnect_old_client(t *testing.
 		assert.NoError(t, err)
 	}()
 
-	sess.Close()
+	sess.CloseInstance()
 
 	frame := wire.FLAPFrameDisconnect{}
 	assert.NoError(t, wire.UnmarshalBE(&frame, clientConn))
@@ -816,7 +820,7 @@ func Test_oscarServer_dispatchIncomingMessages_disconnect_new_client(t *testing.
 		assert.NoError(t, err)
 	}()
 
-	sess.Close()
+	sess.CloseInstance()
 
 	flapc := wire.NewFlapClient(0, clientConn, clientConn)
 	frame, err := flapc.ReceiveFLAP()
@@ -957,7 +961,7 @@ func Test_oscarServer_receiveSessMessages_BOS_integration(t *testing.T) {
 		assert.Equal(t, expected.Frame.SubGroup, snac.SubGroup)
 	}
 
-	// Close client to let server exit cleanly
+	// CloseSession client to let server exit cleanly
 	_ = clientConn.Close()
 
 	// Wait for server handler to return
