@@ -76,6 +76,7 @@ type Session struct {
 
 	initOnce sync.Once
 	shutdown func()
+	nowFn    func() time.Time
 }
 
 // NewSession creates a new Session for a user.
@@ -85,6 +86,7 @@ func NewSession() *Session {
 		instances:       make([]*SessionInstance, 0),
 		instanceCounter: 0,
 		shutdown:        func() {},
+		nowFn:           time.Now,
 	}
 }
 
@@ -94,7 +96,6 @@ func NewInstance(session *Session) *SessionInstance {
 		Session:           session,
 		instanceNum:       session.generateInstanceNum(),
 		msgCh:             make(chan wire.SNACMessage, 1000),
-		nowFn:             time.Now,
 		stopCh:            make(chan struct{}),
 		signonTime:        time.Now(),
 		caps:              make([][16]byte, 0),
@@ -176,24 +177,13 @@ func (s *Session) OnClose(fn func()) {
 
 // allAway returns true if all active instances are away.
 func (s *Session) allAway() bool {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-
-	activeCount := 0
-	awayCount := 0
-
 	for _, instance := range s.instances {
-		instance.mutex.RLock()
-		if !instance.closed {
-			activeCount++
-			if instance.awayMessage != "" {
-				awayCount++
-			}
+		msg, _ := instance.awayMessage()
+		if msg == "" {
+			return false
 		}
-		instance.mutex.RUnlock()
 	}
-
-	return activeCount > 0 && activeCount == awayCount
+	return true
 }
 
 // allIdle returns true if all active instances are idle.
@@ -201,21 +191,13 @@ func (s *Session) allIdle() bool {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 
-	activeCount := 0
-	idleCount := 0
-
 	for _, instance := range s.instances {
-		instance.mutex.RLock()
-		if !instance.closed {
-			activeCount++
-			if instance.idle {
-				idleCount++
-			}
+		if !instance.Idle() {
+			return false
 		}
-		instance.mutex.RUnlock()
 	}
 
-	return activeCount > 0 && activeCount == idleCount
+	return true
 }
 
 // AllInactive returns true if all instances are not active.
@@ -230,7 +212,7 @@ func (s *Session) AllInactive() bool {
 
 	for _, instance := range s.instances {
 		instance.mutex.RLock()
-		isActive := !instance.closed && !instance.idle && instance.awayMessage == ""
+		isActive := !instance.closed && !instance.idle && instance.awayMsg == ""
 		instance.mutex.RUnlock()
 
 		if isActive {
@@ -248,11 +230,9 @@ func (s *Session) mostRecentIdleTime() time.Time {
 
 	var mostRecent time.Time
 	for _, instance := range s.instances {
-		instance.mutex.RLock()
-		if !instance.closed && instance.idle && instance.idleTime.After(mostRecent) {
-			mostRecent = instance.idleTime
+		if mostRecent.IsZero() || (instance.Idle() && instance.IdleTime().After(mostRecent)) {
+			mostRecent = instance.IdleTime()
 		}
-		instance.mutex.RUnlock()
 	}
 
 	return mostRecent
@@ -458,20 +438,14 @@ func (s *Session) EvaluateRateLimit(now time.Time, rateClassID wire.RateLimitCla
 
 	// Check if all active instances are bots - don't rate limit bots
 	allBots := true
-	hasActiveInstances := false
 	for _, instance := range s.instances {
-		if !instance.closed {
-			hasActiveInstances = true
-			instance.mutex.RLock()
-			isBot := instance.userInfoBitmask&wire.OServiceUserFlagBot == wire.OServiceUserFlagBot
-			instance.mutex.RUnlock()
-			if !isBot {
-				allBots = false
-				break
-			}
+		isBot := instance.UserInfoBitmask()&wire.OServiceUserFlagBot == wire.OServiceUserFlagBot
+		if !isBot {
+			allBots = false
+			break
 		}
 	}
-	if hasActiveInstances && allBots {
+	if allBots {
 		return wire.RateLimitStatusClear // don't rate limit bots
 	}
 
@@ -503,25 +477,13 @@ func (s *Session) TLVUserInfo() wire.TLVUserInfo {
 func (s *Session) userInfo() wire.TLVList {
 	tlvs := wire.TLVList{}
 
-	// Get the best instance for each TLV value
-	earliestInstance := s.getEarliestInstance()
-	mostCapableCaps := s.getMostCapableCaps()
-
 	// sign-in timestamp - use earliest instance
-	if earliestInstance != nil {
-		tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoSignonTOD, uint32(earliestInstance.signonTime.Unix())))
-	}
+	tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoSignonTOD, uint32(s.getEarliestInstance().Unix())))
 
-	// user info flags - user-level with aggregated away status
-	var uFlags uint16
-	for _, instance := range s.instances {
-		if !instance.closed {
-			instance.mutex.RLock()
-			uFlags = instance.userInfoBitmask
-			instance.mutex.RUnlock()
-			break
-		}
-	}
+	// use the first instance as a template
+	// also todo: check instances is non-zero
+	uFlags := s.instances[0].UserInfoBitmask()
+
 	if s.allAway() {
 		uFlags |= wire.OServiceUserFlagUnavailable
 	}
@@ -532,28 +494,17 @@ func (s *Session) userInfo() wire.TLVList {
 	if s.allInvisible() {
 		statusBitmask |= wire.OServiceUserStatusInvisible
 	}
+	// todo: add away message flag?
 	tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoStatus, statusBitmask))
 
 	// idle status - use most recent idle time if all instances are idle
 	if s.allIdle() {
 		mostRecentIdleTime := s.mostRecentIdleTime()
-		if !mostRecentIdleTime.IsZero() {
-			// Find an instance with the most recent idle time to get the nowFn
-			var nowFn func() time.Time
-			for _, instance := range s.instances {
-				if !instance.closed && instance.idle && instance.idleTime.Equal(mostRecentIdleTime) {
-					nowFn = instance.nowFn
-					break
-				}
-			}
-			if nowFn != nil {
-				tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoIdleTime, uint16(nowFn().Sub(mostRecentIdleTime).Minutes())))
-			}
-		}
+		tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoIdleTime, uint16(s.nowFn().Sub(mostRecentIdleTime).Minutes())))
 	}
 
 	// set buddy icon metadata, if user has buddy icon (from any instance)
-	if bartID, hasIcon := s.BuddyIcon(); hasIcon {
+	if bartID, hasIcon := s.firstBuddyIcon(); hasIcon {
 		tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, bartID))
 	}
 
@@ -563,6 +514,8 @@ func (s *Session) userInfo() wire.TLVList {
 		tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoICQDC, wire.ICQDCInfo{}))
 	}
 
+	// Get the best instance for each TLV value
+	mostCapableCaps := s.getMostCapableCaps()
 	// capabilities - show most capable instance (union of all capabilities)
 	if len(mostCapableCaps) > 0 {
 		tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoOscarCaps, mostCapableCaps))
@@ -574,13 +527,11 @@ func (s *Session) userInfo() wire.TLVList {
 }
 
 // getEarliestInstance returns the instance with the earliest signon time
-func (s *Session) getEarliestInstance() *SessionInstance {
-	var earliest *SessionInstance
+func (s *Session) getEarliestInstance() time.Time {
+	var earliest time.Time
 	for _, instance := range s.instances {
-		if !instance.closed {
-			if earliest == nil || instance.signonTime.Before(earliest.signonTime) {
-				earliest = instance
-			}
+		if earliest.IsZero() || instance.SignonTime().Before(earliest) {
+			earliest = instance.SignonTime()
 		}
 	}
 	return earliest
@@ -618,43 +569,50 @@ func (s *Session) getMostCapableCaps() [][16]byte {
 
 // BuddyIcon returns the buddy icon from the first instance that has one set.
 func (s *Session) BuddyIcon() (wire.BARTID, bool) {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	return s.firstBuddyIcon()
+}
+
+// todo return most recently set buddy icon
+func (s *Session) firstBuddyIcon() (wire.BARTID, bool) {
 	for _, instance := range s.instances {
-		if !instance.closed {
-			instance.mutex.RLock()
-			if instance.buddyIcon.Type != 0 {
-				icon := instance.buddyIcon
-				instance.mutex.RUnlock()
-				return icon, true
-			}
-			instance.mutex.RUnlock()
+		icon, hasIcon := instance.BuddyIcon()
+		if !hasIcon {
+			continue
+		}
+		if icon.Type != 0 {
+			return icon, true
 		}
 	}
 	return wire.BARTID{}, false
 }
 
-// AwayMessage returns the away message if all instances are away. It returns
-// the away message from the first instance that has one set. If not all
-// instances are away, it returns an empty string.
+// AwayMessage returns the away message from the last instance to go away,
+// or an empty string if all instances are not away.
 func (s *Session) AwayMessage() string {
-	if !s.allAway() {
-		return ""
-	}
-
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 
+	var latest *SessionInstance
+	var latestTime time.Time
+
 	for _, instance := range s.instances {
-		if !instance.closed {
-			instance.mutex.RLock()
-			if instance.awayMessage != "" {
-				msg := instance.awayMessage
-				instance.mutex.RUnlock()
-				return msg
-			}
-			instance.mutex.RUnlock()
+		msg, awayTime := instance.awayMessage()
+		if msg == "" {
+			return ""
+		}
+		if latest == nil || awayTime.After(latestTime) {
+			latest = instance
+			latestTime = awayTime
 		}
 	}
-	return ""
+
+	if latest == nil {
+		return ""
+	}
+	return latest.awayMsg
 }
 
 // Profile returns the most recently updated non-empty profile from all instances.
@@ -677,11 +635,7 @@ func (s *Session) Profile() UserProfile {
 
 // SignonTime returns the signon time from the earliest instance.
 func (s *Session) SignonTime() time.Time {
-	earliestInstance := s.getEarliestInstance()
-	if earliestInstance != nil {
-		return earliestInstance.SignonTime()
-	}
-	return time.Time{}
+	return s.getEarliestInstance()
 }
 
 // Close closes all instances in the session.
@@ -870,14 +824,14 @@ type SessionInstance struct {
 	// Per-session state
 	idle              bool
 	idleTime          time.Time
-	awayMessage       string
-	nowFn             func() time.Time
+	awayMsg           string
 	userInfoBitmask   uint16
 	userStatusBitmask uint32
 
 	// Per-session profile and buddy icon
 	profile   UserProfile
 	buddyIcon wire.BARTID
+	awayTime  time.Time
 }
 
 // SetRemoteAddr sets the instance's remote IP address.
@@ -956,14 +910,19 @@ func (s *SessionInstance) UnsetIdle() {
 func (s *SessionInstance) SetAwayMessage(awayMessage string) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	s.awayMessage = awayMessage
+	s.awayMsg = awayMessage
+	if awayMessage == "" {
+		s.awayTime = time.Time{}
+	} else {
+		s.awayTime = s.nowFn()
+	}
 }
 
-// AwayMessage returns the instance's away message.
-func (s *SessionInstance) AwayMessage() string {
+// awayMessage returns the instance's away message and the time it was set.
+func (s *SessionInstance) awayMessage() (string, time.Time) {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
-	return s.awayMessage
+	return s.awayMsg, s.awayTime
 }
 
 // SetClientID sets the instance's client ID.
@@ -1110,7 +1069,7 @@ func (s *SessionInstance) Active() bool {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 
-	return !s.closed && s.signonComplete && !s.idle && s.awayMessage == ""
+	return !s.closed && s.signonComplete && !s.idle && s.awayMsg == ""
 }
 
 // ============================================================================
