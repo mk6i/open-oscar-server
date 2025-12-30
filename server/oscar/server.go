@@ -273,8 +273,15 @@ func (s oscarServer) connectToOSCARService(
 		// Example: With 1 away and 1 non-away instance, the user appears available. If the non-away
 		// instance closes, the user should appear away.
 		sess.OnInstanceClose(func() {
-			if err := s.DepartureNotifier.BroadcastBuddyArrived(ctx, sess.IdentScreenName(), sess.TLVUserInfo()); err != nil {
-				s.Logger.ErrorContext(ctx, "error sending buddy departure notifications", "err", err.Error())
+			// todo fix this race condition
+			if sess.AllInvisible() {
+				if err := s.DepartureNotifier.BroadcastBuddyDeparted(ctx, sess); err != nil {
+					s.Logger.ErrorContext(ctx, "error sending buddy departure notifications", "err", err.Error())
+				}
+			} else {
+				if err := s.DepartureNotifier.BroadcastBuddyArrived(ctx, sess.IdentScreenName(), sess.TLVUserInfo()); err != nil {
+					s.Logger.ErrorContext(ctx, "error sending buddy arrival notifications", "err", err.Error())
+				}
 			}
 		})
 

@@ -240,12 +240,12 @@ func (s OServiceService) SetUserInfoFields(ctx context.Context, sess *state.Sess
 			if err := s.buddyBroadcaster.BroadcastBuddyArrived(ctx, sess.IdentScreenName(), sess.TLVUserInfo()); err != nil {
 				return wire.SNACMessage{}, err
 			}
-
 		}
 	}
 
-	update := newOServiceUserInfoUpdate(sess)
-	update.UserInfo[0].Replace(wire.NewTLVBE(wire.OServiceUserInfoStatus, sess.UserStatusBitmask()))
+	// don't use newOServiceUserInfoUpdate(), todo explain why
+	info := sess.TLVUserInfo()
+	info.Replace(wire.NewTLVBE(wire.OServiceUserInfoStatus, sess.UserStatusBitmask()))
 
 	return wire.SNACMessage{
 		Frame: wire.SNACFrame{
@@ -253,7 +253,9 @@ func (s OServiceService) SetUserInfoFields(ctx context.Context, sess *state.Sess
 			SubGroup:  wire.OServiceUserInfoUpdate,
 			RequestID: inFrame.RequestID,
 		},
-		Body: update,
+		Body: wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate{
+			UserInfo: []wire.TLVUserInfo{info},
+		},
 	}, nil
 }
 
@@ -765,11 +767,50 @@ func newOServiceUserInfoUpdate(sess *state.SessionInstance) wire.SNAC_0x01_0x0F_
 	userInfo[0].Append(wire.NewTLVBE(wire.OServiceUserInfoOnlineTime, uint32(time.Since(sess.SignonTime()).Seconds())))
 
 	if sess.FoodGroupVersions()[wire.OService] >= 4 {
-		// identify the primary session
+
 		userInfo[0].Append(wire.NewTLVBE(wire.OServiceUserInfoMyInstanceNum, []byte{sess.InstanceNum()}))
 
 		for _, instance := range sess.Instances() {
-			instanceInfo := instance.TLVUserInfo()
+			instanceInfo := wire.TLVUserInfo{
+				ScreenName:   instance.DisplayScreenName().String(),
+				WarningLevel: instance.Warning(),
+			}
+
+			// sign-in timestamp
+			instanceInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoSignonTOD, uint32(instance.SignonTime().Unix())))
+
+			// use the first instance as a template
+			// also todo: check instances is non-zero
+			uFlags := instance.UserInfoBitmask()
+
+			if instance.AwayMessage() != "" {
+				uFlags |= wire.OServiceUserFlagUnavailable
+			}
+			instanceInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoUserFlags, uFlags))
+
+			// user status flags - user-level (shared)
+			var statusBitmask uint32
+			if instance.Invisible() {
+				statusBitmask |= wire.OServiceUserStatusInvisible
+			}
+			instanceInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoStatus, statusBitmask))
+
+			if instance == sess {
+				if icon, hasIcon := instance.BuddyIcon(); hasIcon {
+					// set buddy icon metadata, if user has buddy icon
+					if icon.Type != 0 {
+						instanceInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, icon))
+					}
+				}
+			}
+
+			//Get the best instance for each TLV value
+			//mostCapableCaps := instance.getMostCapableCaps()
+			//capabilities - show most capable instance (union of all capabilities)
+			instanceInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoOscarCaps, instance.Caps()))
+
+			instanceInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoMySubscriptions, uint32(0)))
+
 			if instance == sess {
 				profile := sess.Profile()
 				if !profile.UpdateTime.IsZero() {
@@ -777,10 +818,9 @@ func newOServiceUserInfoUpdate(sess *state.SessionInstance) wire.SNAC_0x01_0x0F_
 					instanceInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoSigTime, uint32(profile.UpdateTime.Unix())))
 				}
 			}
+
 			instanceInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoPrimaryInstance, []byte{instance.InstanceNum()}))
 
-			// ideally, the second block should contain only instance-specific TLVs,
-			// but since the exact structure is unclear, we temporarily duplicate the first.
 			userInfo = append(userInfo, instanceInfo)
 		}
 	}

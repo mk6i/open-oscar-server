@@ -64,6 +64,7 @@ type Session struct {
 	warningCh       chan uint16
 	offlineMsgCount int
 	chatRoomCookie  string
+	buddyIcon       wire.BARTID
 
 	// Rate limiting (shared across all sessions per user)
 	rateLimitStates         [5]RateClassState
@@ -495,7 +496,6 @@ func (s *Session) userInfo() wire.TLVList {
 	if s.allInvisible() {
 		statusBitmask |= wire.OServiceUserStatusInvisible
 	}
-	// todo: add away message flag?
 	tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoStatus, statusBitmask))
 
 	// idle status - use most recent idle time if all instances are idle
@@ -504,9 +504,9 @@ func (s *Session) userInfo() wire.TLVList {
 		tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoIdleTime, uint16(s.nowFn().Sub(mostRecentIdleTime).Minutes())))
 	}
 
-	// set buddy icon metadata, if user has buddy icon (from any instance)
-	if bartID, hasIcon := s.firstBuddyIcon(); hasIcon {
-		tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, bartID))
+	// set buddy icon metadata, if user has buddy icon
+	if s.buddyIcon.Type != 0 {
+		tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, s.buddyIcon))
 	}
 
 	// ICQ direct-connect info. The TLV is required for buddy arrival events to
@@ -557,26 +557,20 @@ func (s *Session) getMostCapableCaps() [][16]byte {
 	return caps
 }
 
-// BuddyIcon returns the buddy icon from the first instance that has one set.
+// SetBuddyIcon stores the session's buddy icon metadata.
+func (s *Session) SetBuddyIcon(icon wire.BARTID) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.buddyIcon = icon
+}
+
+// BuddyIcon returns the session's buddy icon metadata and reports whether it
+// has been set. The icon is considered set if its type is non-zero.
 func (s *Session) BuddyIcon() (wire.BARTID, bool) {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
-
-	return s.firstBuddyIcon()
-}
-
-// todo return most recently set buddy icon
-func (s *Session) firstBuddyIcon() (wire.BARTID, bool) {
-	for _, instance := range s.instances {
-		icon, hasIcon := instance.BuddyIcon()
-		if !hasIcon {
-			continue
-		}
-		if icon.Type != 0 {
-			return icon, true
-		}
-	}
-	return wire.BARTID{}, false
+	icon := s.buddyIcon
+	return icon, icon.Type != 0
 }
 
 // AwayMessage returns the away message from the last instance to go away,
@@ -826,9 +820,8 @@ type SessionInstance struct {
 	userInfoBitmask   uint16
 	userStatusBitmask uint32
 
-	// Per-session profile and buddy icon
+	// Per-session profile
 	profile           UserProfile
-	buddyIcon         wire.BARTID
 	awayTime          time.Time
 	onInstanceCloseFn func()
 }
@@ -1156,22 +1149,6 @@ func (s *SessionInstance) Profile() UserProfile {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 	return s.profile
-}
-
-// SetBuddyIcon stores the session's buddy icon metadata.
-func (s *SessionInstance) SetBuddyIcon(icon wire.BARTID) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	s.buddyIcon = icon
-}
-
-// BuddyIcon returns the session's buddy icon metadata and reports whether it
-// has been set. The icon is considered set if its type is non-zero.
-func (s *SessionInstance) BuddyIcon() (wire.BARTID, bool) {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-	icon := s.buddyIcon
-	return icon, icon.Type != 0
 }
 
 // SetUserInfoFlag sets a flag in the user info bitmask.

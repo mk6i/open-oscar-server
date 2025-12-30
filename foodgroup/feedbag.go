@@ -303,7 +303,7 @@ func (s FeedbagService) setBARTItem(ctx context.Context, sess *state.SessionInst
 			"hash", fmt.Sprintf("%x", bartID.Hash))
 	}
 
-	s.messageRelayer.RelayToScreenName(ctx, sess.IdentScreenName(), wire.SNACMessage{
+	s.messageRelayer.RelayToSelf(ctx, sess, wire.SNACMessage{
 		Frame: wire.SNACFrame{
 			FoodGroup: wire.OService,
 			SubGroup:  wire.OServiceBartReply,
