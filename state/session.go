@@ -57,6 +57,7 @@ type Session struct {
 	identScreenName   IdentScreenName
 	uin               uint32
 	memberSince       time.Time
+	signonTime        time.Time
 
 	// User-level settings and profile (shared)
 	warning         uint16
@@ -97,7 +98,6 @@ func NewInstance(session *Session) *SessionInstance {
 		instanceNum:       session.generateInstanceNum(),
 		msgCh:             make(chan wire.SNACMessage, 1000),
 		stopCh:            make(chan struct{}),
-		signonTime:        time.Now(),
 		caps:              make([][16]byte, 0),
 		foodGroupVersions: defaultFoodGroupVersions(),
 		userInfoBitmask:   wire.OServiceUserFlagOSCARFree,
@@ -478,8 +478,8 @@ func (s *Session) TLVUserInfo() wire.TLVUserInfo {
 func (s *Session) userInfo() wire.TLVList {
 	tlvs := wire.TLVList{}
 
-	// sign-in timestamp - use earliest instance
-	tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoSignonTOD, uint32(s.getEarliestInstance().Unix())))
+	// sign-in timestamp
+	tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoSignonTOD, uint32(s.signonTime.Unix())))
 
 	// use the first instance as a template
 	// also todo: check instances is non-zero
@@ -525,17 +525,6 @@ func (s *Session) userInfo() wire.TLVList {
 	tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoMySubscriptions, uint32(0)))
 
 	return tlvs
-}
-
-// getEarliestInstance returns the instance with the earliest signon time
-func (s *Session) getEarliestInstance() time.Time {
-	var earliest time.Time
-	for _, instance := range s.instances {
-		if earliest.IsZero() || instance.SignonTime().Before(earliest) {
-			earliest = instance.SignonTime()
-		}
-	}
-	return earliest
 }
 
 // getMostCapableCaps returns the union of all capabilities from all instances
@@ -634,9 +623,18 @@ func (s *Session) Profile() UserProfile {
 	return latest
 }
 
-// SignonTime returns the signon time from the earliest instance.
+// SetSignonTime sets the session's sign-on time.
+func (s *Session) SetSignonTime(t time.Time) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.signonTime = t
+}
+
+// SignonTime returns the session's sign-on time.
 func (s *Session) SignonTime() time.Time {
-	return s.getEarliestInstance()
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.signonTime
 }
 
 // CloseSession closes all instances in the session.
@@ -808,7 +806,6 @@ type SessionInstance struct {
 
 	// Per-session connection state
 	remoteAddr     *netip.AddrPort
-	signonTime     time.Time
 	signonComplete bool
 	closed         bool
 	stopCh         chan struct{}
@@ -848,20 +845,6 @@ func (s *SessionInstance) RemoteAddr() (remoteAddr *netip.AddrPort) {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 	return s.remoteAddr
-}
-
-// SetSignonTime sets the instance's sign-on time.
-func (s *SessionInstance) SetSignonTime(t time.Time) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	s.signonTime = t
-}
-
-// SignonTime reports when the instance signed on.
-func (s *SessionInstance) SignonTime() time.Time {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-	return s.signonTime
 }
 
 // SignonComplete indicates whether the instance has completed the sign-on sequence.
