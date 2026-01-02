@@ -121,6 +121,11 @@ func (s LocateService) SetInfo(ctx context.Context, instance *state.SessionInsta
 
 	// broadcast away message change to buddies
 	if awayMsg, hasAwayMsg := inBody.String(wire.LocateTLVTagsInfoUnavailableData); hasAwayMsg {
+		if awayMsg != "" {
+			instance.SetUserInfoFlag(wire.OServiceUserFlagUnavailable)
+		} else {
+			instance.ClearUserInfoFlag(wire.OServiceUserFlagUnavailable)
+		}
 		instance.SetAwayMessage(awayMsg)
 		if instance.SignonComplete() {
 			if err := s.buddyBroadcaster.BroadcastBuddyArrived(ctx, instance.IdentScreenName(), instance.TLVUserInfo()); err != nil {

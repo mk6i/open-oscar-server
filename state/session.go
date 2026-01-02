@@ -177,11 +177,18 @@ func (s *Session) OnSessionClose(fn func()) {
 	s.onSessCloseFn = fn
 }
 
-// allAway returns true if all active instances are away.
+// AllAway returns true if all instances are away.
+func (s *Session) AllAway() bool {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.allAway()
+}
+
+// allAway returns true if all instances are away.
 func (s *Session) allAway() bool {
 	for _, instance := range s.instances {
-		msg, _ := instance.awayMessage()
-		if msg == "" {
+		if instance.UserInfoBitmask()&wire.OServiceUserFlagUnavailable == 0 &&
+			instance.UserStatusBitmask()&wire.OServiceUserStatusAway == 0 {
 			return false
 		}
 	}
@@ -482,20 +489,33 @@ func (s *Session) userInfo() wire.TLVList {
 	// sign-in timestamp
 	tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoSignonTOD, uint32(s.signonTime.Unix())))
 
-	// use the first instance as a template
-	// also todo: check instances is non-zero
-	uFlags := s.instances[0].UserInfoBitmask()
+	// use the first instance as a template.
+	// most of the flags are static and should match between instances.
+	// the only one that can change is the "away" flag
+	// if there are differences between whether the user is ICQ or AIM,
+	// that should raise an error.
+	var baseUserFlags uint16
+	if len(s.instances) > 0 {
+		baseUserFlags = s.instances[0].UserInfoBitmask()
+	}
 
 	if s.allAway() {
-		uFlags |= wire.OServiceUserFlagUnavailable
+		baseUserFlags |= wire.OServiceUserFlagUnavailable
+	} else {
+		baseUserFlags &^= wire.OServiceUserFlagUnavailable
 	}
-	tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoUserFlags, uFlags))
+
+	tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoUserFlags, baseUserFlags))
 
 	// user status flags - user-level (shared)
 	var statusBitmask uint32
-	if s.allInvisible() {
-		statusBitmask |= wire.OServiceUserStatusInvisible
+	if len(s.instances) > 0 {
+		statusBitmask = s.instances[0].userStatusBitmask
+		for _, instance := range s.instances {
+			statusBitmask &= instance.userStatusBitmask
+		}
 	}
+
 	tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoStatus, statusBitmask))
 
 	// idle status - use most recent idle time if all instances are idle
@@ -511,7 +531,7 @@ func (s *Session) userInfo() wire.TLVList {
 
 	// ICQ direct-connect info. The TLV is required for buddy arrival events to
 	// work in ICQ, even if the values are set to default.
-	if uFlags&wire.OServiceUserFlagICQ == wire.OServiceUserFlagICQ {
+	if baseUserFlags&wire.OServiceUserFlagICQ == wire.OServiceUserFlagICQ {
 		tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoICQDC, wire.ICQDCInfo{}))
 	}
 
@@ -583,10 +603,14 @@ func (s *Session) AwayMessage() string {
 	var latestTime time.Time
 
 	for _, instance := range s.instances {
-		msg, awayTime := instance.awayMessage()
-		if msg == "" {
-			return ""
+		// Only consider instances that are away
+		isAway := instance.UserInfoBitmask()&wire.OServiceUserFlagUnavailable != 0 ||
+			instance.UserStatusBitmask()&wire.OServiceUserStatusAway != 0
+		if !isAway {
+			continue
 		}
+
+		_, awayTime := instance.awayMessage()
 		if latest == nil || awayTime.After(latestTime) {
 			latest = instance
 			latestTime = awayTime
@@ -889,11 +913,6 @@ func (s *SessionInstance) SetAwayMessage(awayMessage string) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	s.awayMsg = awayMessage
-	if awayMessage == "" {
-		s.awayTime = time.Time{}
-	} else {
-		s.awayTime = s.nowFn()
-	}
 }
 
 // awayMessage returns the instance's away message and the time it was set.
@@ -1155,6 +1174,9 @@ func (s *SessionInstance) Profile() UserProfile {
 func (s *SessionInstance) SetUserInfoFlag(flag uint16) (flags uint16) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
+	if flag == wire.OServiceUserFlagUnavailable {
+		s.awayTime = s.nowFn()
+	}
 	s.userInfoBitmask |= flag
 	return s.userInfoBitmask
 }
@@ -1174,10 +1196,27 @@ func (s *SessionInstance) UserInfoBitmask() uint16 {
 	return s.userInfoBitmask
 }
 
+// AllUserStatusBitmask returns whether all instances have user status flag set.
+func (s *SessionInstance) AllUserStatusBitmask(flag uint32) bool {
+	for _, instance := range s.Session.Instances() {
+		if instance.UserStatusBitmask()&flag != flag {
+			return false
+		}
+	}
+	return true
+}
+
 // SetUserStatusBitmask sets the user status bitmask.
 func (s *SessionInstance) SetUserStatusBitmask(bitmask uint32) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
+	if bitmask&wire.OServiceUserStatusAway == wire.OServiceUserStatusAway {
+		alreadyAway := s.userStatusBitmask&wire.OServiceUserStatusAway == wire.OServiceUserStatusAway ||
+			s.userInfoBitmask&wire.OServiceUserFlagUnavailable == wire.OServiceUserFlagUnavailable
+		if !alreadyAway {
+			s.awayTime = s.nowFn()
+		}
+	}
 	s.userStatusBitmask = bitmask
 }
 

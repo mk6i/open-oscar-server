@@ -224,6 +224,7 @@ func (s OServiceService) UserInfoQuery(_ context.Context, sess *state.SessionIns
 	}
 }
 
+// todo rewrite this doc
 // SetUserInfoFields sets the user's visibility status to visible or invisible.
 // The visibility status is set according to the inFrame TLV entry under key
 // wire.OServiceUserInfoStatus. If the value is 0x0000, set invisible. If set
@@ -232,11 +233,12 @@ func (s OServiceService) UserInfoQuery(_ context.Context, sess *state.SessionIns
 func (s OServiceService) SetUserInfoFields(ctx context.Context, sess *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields) (wire.SNACMessage, error) {
 	if status, hasStatus := inBody.Uint32BE(wire.OServiceUserInfoStatus); hasStatus {
 		sess.SetUserStatusBitmask(status)
-		if (status&wire.OServiceUserStatusInvisible == wire.OServiceUserStatusInvisible) && sess.AllInvisible() {
+
+		if sess.AllUserStatusBitmask(wire.OServiceUserStatusInvisible) {
 			if err := s.buddyBroadcaster.BroadcastBuddyDeparted(ctx, sess); err != nil {
 				return wire.SNACMessage{}, err
 			}
-		} else if (status&wire.OServiceUserStatusInvisible != wire.OServiceUserStatusInvisible) && !sess.AllInvisible() {
+		} else {
 			if err := s.buddyBroadcaster.BroadcastBuddyArrived(ctx, sess.IdentScreenName(), sess.TLVUserInfo()); err != nil {
 				return wire.SNACMessage{}, err
 			}
@@ -783,7 +785,7 @@ func newOServiceUserInfoUpdate(sess *state.SessionInstance) wire.SNAC_0x01_0x0F_
 			// also todo: check instances is non-zero
 			uFlags := instance.UserInfoBitmask()
 
-			if instance.AwayMessage() != "" {
+			if instance.AllAway() {
 				uFlags |= wire.OServiceUserFlagUnavailable
 			}
 			instanceInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoUserFlags, uFlags))

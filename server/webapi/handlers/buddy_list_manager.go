@@ -171,7 +171,7 @@ func (m *BuddyListManager) getBuddyInfo(buddyName string) WebAPIBuddyInfo {
 		info.OnlineTime = session.SignonTime().Unix()
 
 		// Check away status
-		if session.AwayMessage() != "" {
+		if session.AllAway() {
 			info.State = "away"
 			info.AwayMsg = session.AwayMessage()
 		}
