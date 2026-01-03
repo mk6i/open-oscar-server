@@ -177,8 +177,8 @@ func (m *BuddyListManager) getBuddyInfo(buddyName string) WebAPIBuddyInfo {
 		}
 
 		// Check idle status
-		if session.Idle() {
-			idleDuration := time.Since(session.IdleTime())
+		if session.SessIdle() {
+			idleDuration := time.Since(session.SessIdleTime())
 			info.IdleTime = int(idleDuration.Minutes())
 			if info.State == "online" {
 				info.State = "idle"

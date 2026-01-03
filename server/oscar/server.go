@@ -169,6 +169,7 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn, listener c
 		_ = conn.Close()
 		s.connWg.Done()
 	}()
+	ctx = context.WithValue(ctx, "ip", conn.RemoteAddr().String())
 	if err := s.handler(ctx, conn, listener); err != nil {
 		s.logger.InfoContext(ctx, "user session failed", "err", err.Error())
 	}

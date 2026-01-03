@@ -296,9 +296,9 @@ func (h *PresenceHandler) getUserPresence(screenName state.IdentScreenName) Budd
 		}
 
 		// Check idle time
-		if session.Idle() {
+		if session.SessIdle() {
 			presence.State = "idle"
-			idleTime := time.Since(session.IdleTime())
+			idleTime := time.Since(session.SessIdleTime())
 			presence.IdleTime = int(idleTime.Minutes())
 		}
 
@@ -635,7 +635,7 @@ func (h *PresenceHandler) Icon(w http.ResponseWriter, r *http.Request) {
 		statusBitmask := session.UserStatusBitmask()
 		if statusBitmask&wire.OServiceUserStatusAway != 0 {
 			iconURL = "/static/icons/away_" + iconType + "_" + size + ".png"
-		} else if session.Idle() {
+		} else if session.SessIdle() {
 			iconURL = "/static/icons/idle_" + iconType + "_" + size + ".png"
 		} else {
 			iconURL = "/static/icons/online_" + iconType + "_" + size + ".png"

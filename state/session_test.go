@@ -751,10 +751,11 @@ func TestInstance_Active(t *testing.T) {
 			setupInstance: func() *SessionInstance {
 				sg := NewSession()
 				instance := &SessionInstance{
-					Session: sg,
-					closed:  false,
-					idle:    false,
-					awayMsg: "I'm away",
+					Session:         sg,
+					closed:          false,
+					idle:            false,
+					awayMsg:         "I'm away",
+					userInfoBitmask: wire.OServiceUserFlagUnavailable,
 				}
 				return instance
 			},
@@ -779,10 +780,11 @@ func TestInstance_Active(t *testing.T) {
 			setupInstance: func() *SessionInstance {
 				sg := NewSession()
 				instance := &SessionInstance{
-					Session: sg,
-					closed:  true,
-					idle:    false,
-					awayMsg: "I'm away",
+					Session:         sg,
+					closed:          true,
+					idle:            false,
+					awayMsg:         "I'm away",
+					userInfoBitmask: wire.OServiceUserFlagUnavailable,
 				}
 				return instance
 			},
@@ -793,10 +795,11 @@ func TestInstance_Active(t *testing.T) {
 			setupInstance: func() *SessionInstance {
 				sg := NewSession()
 				instance := &SessionInstance{
-					Session: sg,
-					closed:  false,
-					idle:    true,
-					awayMsg: "I'm away",
+					Session:         sg,
+					closed:          false,
+					idle:            true,
+					awayMsg:         "I'm away",
+					userInfoBitmask: wire.OServiceUserFlagUnavailable,
 				}
 				return instance
 			},
@@ -807,10 +810,11 @@ func TestInstance_Active(t *testing.T) {
 			setupInstance: func() *SessionInstance {
 				sg := NewSession()
 				instance := &SessionInstance{
-					Session: sg,
-					closed:  true,
-					idle:    true,
-					awayMsg: "I'm away",
+					Session:         sg,
+					closed:          true,
+					idle:            true,
+					awayMsg:         "I'm away",
+					userInfoBitmask: wire.OServiceUserFlagUnavailable,
 				}
 				return instance
 			},
@@ -874,10 +878,11 @@ func TestSessionGroup_AllInactive(t *testing.T) {
 			setupSessionGroup: func() *Session {
 				sg := NewSession()
 				instance := &SessionInstance{
-					Session: sg,
-					closed:  false,
-					idle:    false,
-					awayMsg: "",
+					Session:        sg,
+					closed:         false,
+					idle:           false,
+					awayMsg:        "",
+					signonComplete: true,
 				}
 				sg.AddInstance(instance)
 				return sg
@@ -981,10 +986,11 @@ func TestSessionGroup_AllInactive(t *testing.T) {
 
 				// Add active instance
 				instance2 := &SessionInstance{
-					Session: sg,
-					closed:  false,
-					idle:    false,
-					awayMsg: "",
+					Session:        sg,
+					closed:         false,
+					idle:           false,
+					awayMsg:        "",
+					signonComplete: true,
 				}
 				sg.AddInstance(instance2)
 
@@ -1008,19 +1014,21 @@ func TestSessionGroup_AllInactive(t *testing.T) {
 
 				// Add first active instance
 				instance1 := &SessionInstance{
-					Session: sg,
-					closed:  false,
-					idle:    false,
-					awayMsg: "",
+					Session:        sg,
+					closed:         false,
+					idle:           false,
+					awayMsg:        "",
+					signonComplete: true,
 				}
 				sg.AddInstance(instance1)
 
 				// Add second active instance
 				instance2 := &SessionInstance{
-					Session: sg,
-					closed:  false,
-					idle:    false,
-					awayMsg: "",
+					Session:        sg,
+					closed:         false,
+					idle:           false,
+					awayMsg:        "",
+					signonComplete: true,
 				}
 				sg.AddInstance(instance2)
 
@@ -1062,10 +1070,11 @@ func TestSessionGroup_AllInactive(t *testing.T) {
 
 				// Add active instance
 				instance4 := &SessionInstance{
-					Session: sg,
-					closed:  false,
-					idle:    false,
-					awayMsg: "",
+					Session:        sg,
+					closed:         false,
+					idle:           false,
+					awayMsg:        "",
+					signonComplete: true,
 				}
 				sg.AddInstance(instance4)
 

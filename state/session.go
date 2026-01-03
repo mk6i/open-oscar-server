@@ -177,6 +177,13 @@ func (s *Session) OnSessionClose(fn func()) {
 	s.onSessCloseFn = fn
 }
 
+// SetNowFn sets the function used to get the current time. This is useful for testing.
+func (s *Session) SetNowFn(fn func() time.Time) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.nowFn = fn
+}
+
 // AllAway returns true if all instances are away.
 func (s *Session) AllAway() bool {
 	s.mutex.RLock()
@@ -201,7 +208,7 @@ func (s *Session) allIdle() bool {
 	defer s.mutex.RUnlock()
 
 	for _, instance := range s.instances {
-		if !instance.Idle() {
+		if !instance.InstanceIdle() {
 			return false
 		}
 	}
@@ -210,26 +217,17 @@ func (s *Session) allIdle() bool {
 }
 
 // AllInactive returns true if all instances are not active.
-// An instance is considered inactive if it is closed, idle, or has an away message.
 func (s *Session) AllInactive() bool {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 
-	if len(s.instances) == 0 {
-		return true // No instances means all are inactive
-	}
-
 	for _, instance := range s.instances {
-		instance.mutex.RLock()
-		isActive := !instance.closed && !instance.idle && instance.awayMsg == ""
-		instance.mutex.RUnlock()
-
-		if isActive {
-			return false // Found at least one active instance
+		if instance.Active() {
+			return false
 		}
 	}
 
-	return true // All instances are inactive
+	return true
 }
 
 // mostRecentIdleTime returns the most recent idle time from all instances.
@@ -239,8 +237,8 @@ func (s *Session) mostRecentIdleTime() time.Time {
 
 	var mostRecent time.Time
 	for _, instance := range s.instances {
-		if mostRecent.IsZero() || (instance.Idle() && instance.IdleTime().After(mostRecent)) {
-			mostRecent = instance.IdleTime()
+		if mostRecent.IsZero() || (instance.InstanceIdle() && instance.InstanceIdleTime().After(mostRecent)) {
+			mostRecent = instance.InstanceIdleTime()
 		}
 	}
 
@@ -593,8 +591,7 @@ func (s *Session) BuddyIcon() (wire.BARTID, bool) {
 	return icon, icon.Type != 0
 }
 
-// AwayMessage returns the away message from the last instance to go away,
-// or an empty string if all instances are not away.
+// AwayMessage returns the away message from the last instance to go away.
 func (s *Session) AwayMessage() string {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
@@ -604,13 +601,11 @@ func (s *Session) AwayMessage() string {
 
 	for _, instance := range s.instances {
 		// Only consider instances that are away
-		isAway := instance.UserInfoBitmask()&wire.OServiceUserFlagUnavailable != 0 ||
-			instance.UserStatusBitmask()&wire.OServiceUserStatusAway != 0
-		if !isAway {
+		if !instance.Away() {
 			continue
 		}
 
-		_, awayTime := instance.awayMessage()
+		_, awayTime := instance.AwayMessage()
 		if latest == nil || awayTime.After(latestTime) {
 			latest = instance
 			latestTime = awayTime
@@ -667,14 +662,14 @@ func (s *Session) CloseSession() {
 	}
 }
 
-// Idle returns true if all active instances are idle.
-func (s *Session) Idle() bool {
+// SessIdle returns true if all active instances are idle.
+func (s *Session) SessIdle() bool {
 	return s.allIdle()
 }
 
-// IdleTime returns the latest idle time if all instances are idle. If not all
+// SessIdleTime returns the latest idle time if all instances are idle. If not all
 // instances are idle, it returns a zero time.
-func (s *Session) IdleTime() time.Time {
+func (s *Session) SessIdleTime() time.Time {
 	if !s.allIdle() {
 		return time.Time{}
 	}
@@ -878,15 +873,15 @@ func (s *SessionInstance) SetSignonComplete() {
 	s.signonComplete = true
 }
 
-// Idle reports the instance's idle state.
-func (s *SessionInstance) Idle() bool {
+// InstanceIdle reports the instance's idle state.
+func (s *SessionInstance) InstanceIdle() bool {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 	return s.idle
 }
 
-// IdleTime reports when the instance went idle.
-func (s *SessionInstance) IdleTime() time.Time {
+// InstanceIdleTime reports when the instance went idle.
+func (s *SessionInstance) InstanceIdleTime() time.Time {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 	return s.idleTime
@@ -915,8 +910,22 @@ func (s *SessionInstance) SetAwayMessage(awayMessage string) {
 	s.awayMsg = awayMessage
 }
 
-// awayMessage returns the instance's away message and the time it was set.
-func (s *SessionInstance) awayMessage() (string, time.Time) {
+// away checks if the instance is away based on bitmask flags.
+// This method must be called while holding the mutex lock.
+func (s *SessionInstance) away() bool {
+	return s.userInfoBitmask&wire.OServiceUserFlagUnavailable != 0 ||
+		s.userStatusBitmask&wire.OServiceUserStatusAway != 0
+}
+
+// Away returns true if the instance is away.
+func (s *SessionInstance) Away() bool {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.away()
+}
+
+// AwayMessage returns the instance's away message and the time it was set.
+func (s *SessionInstance) AwayMessage() (string, time.Time) {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 	return s.awayMsg, s.awayTime
@@ -1079,12 +1088,12 @@ func (s *SessionInstance) Live() bool {
 // - it is not closed
 // - it has completed the sign-on sequence
 // - it is not idle
-// - it has no away message
+// - it is not away
 func (s *SessionInstance) Active() bool {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 
-	return !s.closed && s.signonComplete && !s.idle && s.awayMsg == ""
+	return !s.closed && s.signonComplete && !s.idle && !s.away()
 }
 
 // ============================================================================
@@ -1211,9 +1220,7 @@ func (s *SessionInstance) SetUserStatusBitmask(bitmask uint32) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if bitmask&wire.OServiceUserStatusAway == wire.OServiceUserStatusAway {
-		alreadyAway := s.userStatusBitmask&wire.OServiceUserStatusAway == wire.OServiceUserStatusAway ||
-			s.userInfoBitmask&wire.OServiceUserFlagUnavailable == wire.OServiceUserFlagUnavailable
-		if !alreadyAway {
+		if !s.away() {
 			s.awayTime = s.nowFn()
 		}
 	}

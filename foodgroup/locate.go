@@ -213,7 +213,7 @@ func (s LocateService) UserInfoQuery(ctx context.Context, sessInstance *state.Se
 		})
 	}
 
-	if inBody.RequestAwayMessage() {
+	if inBody.RequestAwayMessage() && lookupSess.AllAway() {
 		list.AppendList([]wire.TLV{
 			wire.NewTLVBE(wire.LocateTLVTagsInfoUnavailableMime, `text/aolrtf; charset="us-ascii"`),
 			wire.NewTLVBE(wire.LocateTLVTagsInfoUnavailableData, lookupSess.AwayMessage()),
