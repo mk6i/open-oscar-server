@@ -250,6 +250,9 @@ paths:
                           items:
                             type: object
                             properties:
+                              num:
+                                type: integer
+                                description: Instance number for this session instance.
                               idle_seconds:
                                 type: integer
                                 description: Number of seconds this instance has been idle. 0 if not idle.
@@ -323,6 +326,9 @@ paths:
                           items:
                             type: object
                             properties:
+                              num:
+                                type: integer
+                                description: Instance number for this session instance.
                               idle_seconds:
                                 type: integer
                                 description: Number of seconds this instance has been idle. 0 if not idle.

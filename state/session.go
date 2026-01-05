@@ -1,7 +1,6 @@
 package state
 
 import (
-	"bytes"
 	"net/netip"
 	"sync"
 	"time"
@@ -186,29 +185,15 @@ func (s *Session) SetNowFn(fn func() time.Time) {
 
 // AllAway returns true if all instances are away.
 func (s *Session) AllAway() bool {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-	return s.allAway()
-}
+	instances := s.Instances()
 
-// allAway returns true if all instances are away.
-func (s *Session) allAway() bool {
-	for _, instance := range s.instances {
+	if len(instances) == 0 {
+		return false
+	}
+
+	for _, instance := range instances {
 		if instance.UserInfoBitmask()&wire.OServiceUserFlagUnavailable == 0 &&
 			instance.UserStatusBitmask()&wire.OServiceUserStatusAway == 0 {
-			return false
-		}
-	}
-	return true
-}
-
-// allIdle returns true if all active instances are idle.
-func (s *Session) allIdle() bool {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-
-	for _, instance := range s.instances {
-		if !instance.InstanceIdle() {
 			return false
 		}
 	}
@@ -218,10 +203,7 @@ func (s *Session) allIdle() bool {
 
 // AllInactive returns true if all instances are not active.
 func (s *Session) AllInactive() bool {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-
-	for _, instance := range s.instances {
+	for _, instance := range s.Instances() {
 		if instance.Active() {
 			return false
 		}
@@ -232,11 +214,8 @@ func (s *Session) AllInactive() bool {
 
 // mostRecentIdleTime returns the most recent idle time from all instances.
 func (s *Session) mostRecentIdleTime() time.Time {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-
 	var mostRecent time.Time
-	for _, instance := range s.instances {
+	for _, instance := range s.Instances() {
 		if mostRecent.IsZero() || (instance.InstanceIdle() && instance.InstanceIdleTime().After(mostRecent)) {
 			mostRecent = instance.InstanceIdleTime()
 		}
@@ -469,12 +448,9 @@ func (s *Session) EvaluateRateLimit(now time.Time, rateClassID wire.RateLimitCla
 
 // TLVUserInfo returns a TLV list containing session information aggregated from all instances.
 func (s *Session) TLVUserInfo() wire.TLVUserInfo {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-
 	return wire.TLVUserInfo{
-		ScreenName:   string(s.displayScreenName),
-		WarningLevel: uint16(s.warning),
+		ScreenName:   s.DisplayScreenName().String(),
+		WarningLevel: s.Warning(),
 		TLVBlock: wire.TLVBlock{
 			TLVList: s.userInfo(),
 		},
@@ -485,7 +461,9 @@ func (s *Session) userInfo() wire.TLVList {
 	tlvs := wire.TLVList{}
 
 	// sign-in timestamp
-	tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoSignonTOD, uint32(s.signonTime.Unix())))
+	tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoSignonTOD, uint32(s.SignonTime().Unix())))
+
+	instances := s.Instances()
 
 	// use the first instance as a template.
 	// most of the flags are static and should match between instances.
@@ -493,11 +471,11 @@ func (s *Session) userInfo() wire.TLVList {
 	// if there are differences between whether the user is ICQ or AIM,
 	// that should raise an error.
 	var baseUserFlags uint16
-	if len(s.instances) > 0 {
-		baseUserFlags = s.instances[0].UserInfoBitmask()
+	if len(instances) > 0 {
+		baseUserFlags = instances[0].UserInfoBitmask()
 	}
 
-	if s.allAway() {
+	if s.AllAway() {
 		baseUserFlags |= wire.OServiceUserFlagUnavailable
 	} else {
 		baseUserFlags &^= wire.OServiceUserFlagUnavailable
@@ -507,9 +485,9 @@ func (s *Session) userInfo() wire.TLVList {
 
 	// user status flags - user-level (shared)
 	var statusBitmask uint32
-	if len(s.instances) > 0 {
-		statusBitmask = s.instances[0].userStatusBitmask
-		for _, instance := range s.instances {
+	if len(instances) > 0 {
+		statusBitmask = instances[0].userStatusBitmask
+		for _, instance := range instances {
 			statusBitmask &= instance.userStatusBitmask
 		}
 	}
@@ -517,14 +495,14 @@ func (s *Session) userInfo() wire.TLVList {
 	tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoStatus, statusBitmask))
 
 	// idle status - use most recent idle time if all instances are idle
-	if s.allIdle() {
+	if s.SessIdle() {
 		mostRecentIdleTime := s.mostRecentIdleTime()
 		tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoIdleTime, uint16(s.nowFn().Sub(mostRecentIdleTime).Minutes())))
 	}
 
 	// set buddy icon metadata, if user has buddy icon
-	if s.buddyIcon.Type != 0 {
-		tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, s.buddyIcon))
+	if icon, hasIcon := s.BuddyIcon(); hasIcon {
+		tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, icon))
 	}
 
 	// ICQ direct-connect info. The TLV is required for buddy arrival events to
@@ -533,46 +511,14 @@ func (s *Session) userInfo() wire.TLVList {
 		tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoICQDC, wire.ICQDCInfo{}))
 	}
 
-	// Get the best instance for each TLV value
-	mostCapableCaps := s.getMostCapableCaps()
-	// capabilities - show most capable instance (union of all capabilities)
-	if len(mostCapableCaps) > 0 {
-		tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoOscarCaps, mostCapableCaps))
+	caps := s.Caps()
+	if len(caps) > 0 {
+		tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoOscarCaps, caps))
 	}
 
 	tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoMySubscriptions, uint32(0)))
 
 	return tlvs
-}
-
-// getMostCapableCaps returns the union of all capabilities from all instances
-func (s *Session) getMostCapableCaps() [][16]byte {
-	capMap := make(map[[16]byte]bool)
-
-	for _, instance := range s.instances {
-		if !instance.closed {
-			for _, cap := range instance.caps {
-				capMap[cap] = true
-			}
-		}
-	}
-
-	// Convert map back to slice and sort for deterministic order
-	caps := make([][16]byte, 0, len(capMap))
-	for cap := range capMap {
-		caps = append(caps, cap)
-	}
-
-	// Sort capabilities by their byte values for deterministic order
-	for i := 0; i < len(caps); i++ {
-		for j := i + 1; j < len(caps); j++ {
-			if bytes.Compare(caps[i][:], caps[j][:]) > 0 {
-				caps[i], caps[j] = caps[j], caps[i]
-			}
-		}
-	}
-
-	return caps
 }
 
 // SetBuddyIcon stores the session's buddy icon metadata.
@@ -664,13 +610,24 @@ func (s *Session) CloseSession() {
 
 // SessIdle returns true if all active instances are idle.
 func (s *Session) SessIdle() bool {
-	return s.allIdle()
+	instances := s.Instances()
+	if len(instances) == 0 {
+		return false
+	}
+
+	for _, instance := range instances {
+		if !instance.InstanceIdle() {
+			return false
+		}
+	}
+
+	return true
 }
 
 // SessIdleTime returns the latest idle time if all instances are idle. If not all
 // instances are idle, it returns a zero time.
 func (s *Session) SessIdleTime() time.Time {
-	if !s.allIdle() {
+	if !s.SessIdle() {
 		return time.Time{}
 	}
 	return s.mostRecentIdleTime()
@@ -687,15 +644,6 @@ func (s *Session) AllInvisible() bool {
 		}
 	}
 
-	return true
-}
-
-func (s *Session) allInvisible() bool {
-	for _, instance := range s.instances {
-		if !instance.Invisible() {
-			return false
-		}
-	}
 	return true
 }
 
@@ -805,6 +753,27 @@ func (s *Session) Instance(num uint8) *SessionInstance {
 		}
 	}
 	return nil
+}
+
+func (s *Session) Caps() [][16]byte {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	caps := make(map[[16]byte]bool)
+
+	for _, instance := range s.instances {
+		for _, c := range instance.InstanceCaps() {
+			caps[c] = true
+		}
+	}
+
+	ret := make([][16]byte, 0, len(caps))
+
+	for c := range caps {
+		ret = append(ret, c)
+	}
+
+	return ret
 }
 
 // SessionInstance represents a single session instance with per-session data.
@@ -952,8 +921,8 @@ func (s *SessionInstance) SetCaps(caps [][16]byte) {
 	s.caps = caps
 }
 
-// Caps retrieves instance capabilities.
-func (s *SessionInstance) Caps() [][16]byte {
+// InstanceCaps retrieves instance capabilities.
+func (s *SessionInstance) InstanceCaps() [][16]byte {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 	return s.caps
