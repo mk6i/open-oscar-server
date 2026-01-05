@@ -51,7 +51,8 @@ func TestLocateService_UserInfoQuery(t *testing.T) {
 							screenName: state.NewIdentScreenName("requested-user"),
 							result: newTestSession("requested-user",
 								sessOptCannedSignonTime,
-								sessOptCannedAwayMessage).Session,
+								sessOptCannedAwayMessage,
+								sessOptUserInfoFlag(wire.OServiceUserFlagUnavailable)).Session,
 						},
 					},
 				},
@@ -75,7 +76,8 @@ func TestLocateService_UserInfoQuery(t *testing.T) {
 				Body: wire.SNAC_0x02_0x06_LocateUserInfoReply{
 					TLVUserInfo: newTestSession("requested-user",
 						sessOptCannedSignonTime,
-						sessOptCannedAwayMessage).
+						sessOptCannedAwayMessage,
+						sessOptUserInfoFlag(wire.OServiceUserFlagUnavailable)).
 						TLVUserInfo(),
 					LocateInfo: wire.TLVRestBlock{},
 				},
@@ -106,6 +108,7 @@ func TestLocateService_UserInfoQuery(t *testing.T) {
 							result: newTestSession("requested-user",
 								sessOptCannedSignonTime,
 								sessOptCannedAwayMessage,
+								sessOptUserInfoFlag(wire.OServiceUserFlagUnavailable),
 								sessOptProfile(state.UserProfile{
 									ProfileText: "this is my profile!",
 									MIMEType:    "text/aolrtf; charset=\"us-ascii\"",
@@ -135,7 +138,8 @@ func TestLocateService_UserInfoQuery(t *testing.T) {
 				Body: wire.SNAC_0x02_0x06_LocateUserInfoReply{
 					TLVUserInfo: newTestSession("requested-user",
 						sessOptCannedSignonTime,
-						sessOptCannedAwayMessage).TLVUserInfo(),
+						sessOptCannedAwayMessage,
+						sessOptUserInfoFlag(wire.OServiceUserFlagUnavailable)).TLVUserInfo(),
 					LocateInfo: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
 							wire.NewTLVBE(wire.LocateTLVTagsInfoSigMime, `text/aolrtf; charset="us-ascii"`),
@@ -169,7 +173,8 @@ func TestLocateService_UserInfoQuery(t *testing.T) {
 							screenName: state.NewIdentScreenName("requested-user"),
 							result: newTestSession("requested-user",
 								sessOptCannedSignonTime,
-								sessOptCannedAwayMessage).Session,
+								sessOptCannedAwayMessage,
+								sessOptUserInfoFlag(wire.OServiceUserFlagUnavailable)).Session,
 						},
 					},
 				},
@@ -194,7 +199,8 @@ func TestLocateService_UserInfoQuery(t *testing.T) {
 				Body: wire.SNAC_0x02_0x06_LocateUserInfoReply{
 					TLVUserInfo: newTestSession("requested-user",
 						sessOptCannedSignonTime,
-						sessOptCannedAwayMessage).
+						sessOptCannedAwayMessage,
+						sessOptUserInfoFlag(wire.OServiceUserFlagUnavailable)).
 						TLVUserInfo(),
 					LocateInfo: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -640,7 +646,7 @@ func TestLocateService_SetInfo(t *testing.T) {
 		{
 			name: "set stored profile (AIM 6-7)",
 			userSession: func() *state.SessionInstance {
-				curInstance := newTestSession("test-user")
+				curInstance := newTestSession("test-user", sessOptSetFoodGroupVersion(wire.OService, 4))
 				curInstance.SetKerberosAuth(true)
 
 				// set up other concurrent instances
@@ -686,7 +692,8 @@ func TestLocateService_SetInfo(t *testing.T) {
 									if !ok {
 										return false
 									}
-									_, hasSigTime1 := snac.UserInfo[0].Uint32BE(wire.OServiceUserInfoSigTime)
+									require.Len(t, snac.UserInfo, 4)
+									_, hasSigTime1 := snac.UserInfo[1].Uint32BE(wire.OServiceUserInfoSigTime)
 
 									return assert.True(t, hasSigTime1, "has signature update time")
 								},

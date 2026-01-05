@@ -771,6 +771,13 @@ func sessOptCannedAwayMessage(session *state.SessionInstance) {
 	session.SetAwayMessage("this is my away message!")
 }
 
+// sessOptUserInfoFlag sets a user info flag on the session object
+func sessOptUserInfoFlag(flag uint16) func(session *state.SessionInstance) {
+	return func(session *state.SessionInstance) {
+		session.SetUserInfoFlag(flag)
+	}
+}
+
 // sessOptCannedSignonTime sets a canned sign-on time (1696790127565) on the
 // session object
 func sessOptCannedSignonTime(session *state.SessionInstance) {

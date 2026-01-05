@@ -59,7 +59,7 @@ func TestICBMService_ChannelMsgToHost(t *testing.T) {
 					retrieveSessionParams{
 						{
 							screenName: state.NewIdentScreenName("recipient-screen-name"),
-							result:     newTestSession("recipient-screen-name", sessOptWarning(20)).Session,
+							result:     newTestSession("recipient-screen-name", sessOptWarning(20), sessOptSignonComplete).Session,
 						},
 					},
 				},
@@ -150,7 +150,7 @@ func TestICBMService_ChannelMsgToHost(t *testing.T) {
 					retrieveSessionParams{
 						{
 							screenName: state.NewIdentScreenName("recipient-screen-name"),
-							result:     newTestSession("recipient-screen-name", sessOptWarning(20)).Session,
+							result:     newTestSession("recipient-screen-name", sessOptWarning(20), sessOptSignonComplete).Session,
 						},
 					},
 				},
@@ -227,7 +227,7 @@ func TestICBMService_ChannelMsgToHost(t *testing.T) {
 					retrieveSessionParams{
 						{
 							screenName: state.NewIdentScreenName("recipient-screen-name"),
-							result:     newTestSession("recipient-screen-name", sessOptWarning(20)).Session,
+							result:     newTestSession("recipient-screen-name", sessOptWarning(20), sessOptSignonComplete).Session,
 						},
 					},
 				},
@@ -848,7 +848,7 @@ func TestICBMService_ChannelMsgToHost(t *testing.T) {
 					retrieveSessionParams{
 						{
 							screenName: state.NewIdentScreenName("recipient-screen-name"),
-							result:     newTestSession("recipient-screen-name", sessOptWarning(20)).Session,
+							result:     newTestSession("recipient-screen-name", sessOptWarning(20), sessOptSignonComplete).Session,
 						},
 					},
 				},
@@ -935,7 +935,7 @@ func TestICBMService_ChannelMsgToHost(t *testing.T) {
 					retrieveSessionParams{
 						{
 							screenName: state.NewIdentScreenName("recipient-screen-name"),
-							result:     newTestSession("recipient-screen-name", sessOptWarning(20)).Session,
+							result:     newTestSession("recipient-screen-name", sessOptWarning(20), sessOptSignonComplete).Session,
 						},
 					},
 				},
@@ -1008,7 +1008,7 @@ func TestICBMService_ChannelMsgToHost(t *testing.T) {
 					retrieveSessionParams{
 						{
 							screenName: state.NewIdentScreenName("recipient-screen-name"),
-							result:     newTestSession("recipient-screen-name", sessOptWarning(20)).Session,
+							result:     newTestSession("recipient-screen-name", sessOptWarning(20), sessOptSignonComplete).Session,
 						},
 					},
 				},
@@ -1166,7 +1166,7 @@ func TestICBMService_ChannelMsgToHost(t *testing.T) {
 					retrieveSessionParams{
 						{
 							screenName: state.NewIdentScreenName("recipient-screen-name"),
-							result:     newTestSession("recipient-screen-name", sessOptWarning(20), sessOptSomeActive).Session,
+							result:     newTestSession("recipient-screen-name", sessOptWarning(20), sessOptSomeActive, sessOptSignonComplete).Session,
 						},
 					},
 				},
@@ -1312,7 +1312,7 @@ func TestICBMService_ChannelMsgToHost(t *testing.T) {
 					retrieveSessionParams{
 						{
 							screenName: state.NewIdentScreenName("recipient-screen-name"),
-							result:     newTestSession("recipient-screen-name", sessOptWarning(20), sessOptMixedStates).Session,
+							result:     newTestSession("recipient-screen-name", sessOptWarning(20), sessOptMixedStates, sessOptSignonComplete).Session,
 						},
 					},
 				},

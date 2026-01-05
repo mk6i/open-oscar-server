@@ -1023,24 +1023,6 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.OService,
-									SubGroup:  wire.OServiceBartReply,
-								},
-								Body: wire.SNAC_0x01_0x21_OServiceBARTReply{
-									BARTID: wire.BARTID{
-										Type: wire.BARTTypesBuddyIcon,
-										BARTInfo: wire.BARTInfo{
-											Flags: wire.BARTFlagsCustom | wire.BARTFlagsUnknown,
-											Hash:  []byte{'t', 'h', 'e', 'h', 'a', 's', 'h'},
-										},
-									},
-								},
-							},
-						},
-						{
-							screenName: state.NewIdentScreenName("me"),
-							message: wire.SNACMessage{
-								Frame: wire.SNACFrame{
-									FoodGroup: wire.OService,
 									SubGroup:  wire.OServiceUserInfoUpdate,
 								},
 								Body: func(val any) bool {
@@ -1085,6 +1067,24 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 						},
 					},
 					relayToSelfParams: relayToSelfParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.OService,
+									SubGroup:  wire.OServiceBartReply,
+								},
+								Body: wire.SNAC_0x01_0x21_OServiceBARTReply{
+									BARTID: wire.BARTID{
+										Type: wire.BARTTypesBuddyIcon,
+										BARTInfo: wire.BARTInfo{
+											Flags: wire.BARTFlagsCustom | wire.BARTFlagsUnknown,
+											Hash:  []byte{'t', 'h', 'e', 'h', 'a', 's', 'h'},
+										},
+									},
+								},
+							},
+						},
 						{
 							screenName: state.NewIdentScreenName("me"),
 							message: wire.SNACMessage{
@@ -1181,24 +1181,6 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.OService,
-									SubGroup:  wire.OServiceBartReply,
-								},
-								Body: wire.SNAC_0x01_0x21_OServiceBARTReply{
-									BARTID: wire.BARTID{
-										Type: wire.BARTTypesBuddyIcon,
-										BARTInfo: wire.BARTInfo{
-											Flags: wire.BARTFlagsCustom | wire.BARTFlagsKnown,
-											Hash:  []byte{'t', 'h', 'e', 'h', 'a', 's', 'h'},
-										},
-									},
-								},
-							},
-						},
-						{
-							screenName: state.NewIdentScreenName("me"),
-							message: wire.SNACMessage{
-								Frame: wire.SNACFrame{
-									FoodGroup: wire.OService,
 									SubGroup:  wire.OServiceUserInfoUpdate,
 								},
 								Body: func(val any) bool {
@@ -1243,6 +1225,24 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 						},
 					},
 					relayToSelfParams: relayToSelfParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.OService,
+									SubGroup:  wire.OServiceBartReply,
+								},
+								Body: wire.SNAC_0x01_0x21_OServiceBARTReply{
+									BARTID: wire.BARTID{
+										Type: wire.BARTTypesBuddyIcon,
+										BARTInfo: wire.BARTInfo{
+											Flags: wire.BARTFlagsCustom | wire.BARTFlagsKnown,
+											Hash:  []byte{'t', 'h', 'e', 'h', 'a', 's', 'h'},
+										},
+									},
+								},
+							},
+						},
 						{
 							screenName: state.NewIdentScreenName("me"),
 							message: wire.SNACMessage{
@@ -1368,21 +1368,6 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 							screenName: state.NewIdentScreenName("me"),
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
-									FoodGroup: wire.Feedbag,
-									SubGroup:  wire.FeedbagStatus,
-									RequestID: 1234,
-								},
-								Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
-									Results: []uint16{0x0000},
-								},
-							},
-						},
-					},
-					relayToScreenNameParams: relayToScreenNameParams{
-						{
-							screenName: state.NewIdentScreenName("me"),
-							message: wire.SNACMessage{
-								Frame: wire.SNACFrame{
 									FoodGroup: wire.OService,
 									SubGroup:  wire.OServiceBartReply,
 								},
@@ -1397,6 +1382,21 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 								},
 							},
 						},
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagStatus,
+									RequestID: 1234,
+								},
+								Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
+									Results: []uint16{0x0000},
+								},
+							},
+						},
+					},
+					relayToScreenNameParams: relayToScreenNameParams{
 						{
 							screenName: state.NewIdentScreenName("me"),
 							message: wire.SNACMessage{
@@ -1483,26 +1483,6 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					},
 				},
 				messageRelayerParams: messageRelayerParams{
-					relayToScreenNameParams: relayToScreenNameParams{
-						{
-							screenName: state.NewIdentScreenName("me"),
-							message: wire.SNACMessage{
-								Frame: wire.SNACFrame{
-									FoodGroup: wire.OService,
-									SubGroup:  wire.OServiceBartReply,
-								},
-								Body: wire.SNAC_0x01_0x21_OServiceBARTReply{
-									BARTID: wire.BARTID{
-										Type: wire.BARTTypesArriveSound,
-										BARTInfo: wire.BARTInfo{
-											Flags: wire.BARTFlagsCustom | wire.BARTFlagsUnknown,
-											Hash:  []byte{'t', 'h', 'e', 'h', 'a', 's', 'h'},
-										},
-									},
-								},
-							},
-						},
-					},
 					relayToOtherInstancesParams: relayToOtherInstancesParams{
 						{
 							screenName: state.NewIdentScreenName("me"),
@@ -1532,6 +1512,24 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 						},
 					},
 					relayToSelfParams: relayToSelfParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.OService,
+									SubGroup:  wire.OServiceBartReply,
+								},
+								Body: wire.SNAC_0x01_0x21_OServiceBARTReply{
+									BARTID: wire.BARTID{
+										Type: wire.BARTTypesArriveSound,
+										BARTInfo: wire.BARTInfo{
+											Flags: wire.BARTFlagsCustom | wire.BARTFlagsUnknown,
+											Hash:  []byte{'t', 'h', 'e', 'h', 'a', 's', 'h'},
+										},
+									},
+								},
+							},
+						},
 						{
 							screenName: state.NewIdentScreenName("me"),
 							message: wire.SNACMessage{
