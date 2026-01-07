@@ -419,22 +419,11 @@ func (s *Session) ObserveRateChanges(now time.Time) (classDelta []RateClassState
 
 // EvaluateRateLimit checks and updates the rate limit state.
 func (s *Session) EvaluateRateLimit(now time.Time, rateClassID wire.RateLimitClassID) wire.RateLimitStatus {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	// Check if all active instances are bots - don't rate limit bots
-	allBots := true
-	for _, instance := range s.instances {
-		isBot := instance.UserInfoBitmask()&wire.OServiceUserFlagBot == wire.OServiceUserFlagBot
-		if !isBot {
-			allBots = false
-			break
-		}
-	}
-	if allBots {
+	if s.UserInfoBitmask()&wire.OServiceUserFlagBot == wire.OServiceUserFlagBot {
 		return wire.RateLimitStatusClear // don't rate limit bots
 	}
 
+	s.mutex.Lock()
 	rateClass := &s.rateLimitStates[rateClassID-1]
 
 	status, newLevel := wire.CheckRateLimit(rateClass.LastTime, now, rateClass.RateClass, rateClass.CurrentLevel, rateClass.LimitedNow)
@@ -442,6 +431,11 @@ func (s *Session) EvaluateRateLimit(now time.Time, rateClassID wire.RateLimitCla
 	rateClass.CurrentStatus = status
 	rateClass.LastTime = now
 	rateClass.LimitedNow = status == wire.RateLimitStatusLimited
+	s.mutex.Unlock()
+
+	if status == wire.RateLimitStatusDisconnect {
+		s.CloseSession()
+	}
 
 	return status
 }
@@ -1074,20 +1068,6 @@ func (s *SessionInstance) Invisible() bool {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 	return s.userStatusBitmask&wire.OServiceUserStatusInvisible == wire.OServiceUserStatusInvisible
-}
-
-// EvaluateRateLimit checks and updates the session's rate limit state
-// for the given rate class ID. If the rate status reaches 'disconnect',
-// the session is closed. Rate limits are not enforced if the user is a bot
-// (has wire.OServiceUserFlagBot set in their user info bitmask).
-func (s *SessionInstance) EvaluateRateLimit(now time.Time, rateClassID wire.RateLimitClassID) wire.RateLimitStatus {
-	status := s.Session.EvaluateRateLimit(now, rateClassID)
-
-	if status == wire.RateLimitStatusDisconnect {
-		s.CloseInstance()
-	}
-
-	return status
 }
 
 // Helper functions

@@ -498,8 +498,11 @@ func TestSession_EvaluateRateLimit_ObserveRateChanges(t *testing.T) {
 	t.Run("reach disconnect threshold", func(t *testing.T) {
 		now := time.Now()
 
-		sess := NewInstance(NewSession())
+		sess := NewSession()
 		sess.SetRateClasses(now, rateClasses)
+		NewInstance(sess)
+		NewInstance(sess)
+		NewInstance(sess)
 
 		rateClass := rateClasses.Get(3)
 		sess.SubscribeRateLimits([]wire.RateLimitClassID{rateClass.ID})
@@ -531,10 +534,12 @@ func TestSession_EvaluateRateLimit_ObserveRateChanges(t *testing.T) {
 			assert.Equal(t, want[i], have)
 		}
 
-		select {
-		case <-sess.Closed():
-		default:
-			t.Error("expected session to be closed")
+		for _, instance := range sess.Instances() {
+			select {
+			case <-instance.Closed():
+			default:
+				t.Error("expected session to be closed")
+			}
 		}
 	})
 
