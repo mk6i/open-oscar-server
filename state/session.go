@@ -88,11 +88,13 @@ func NewSession() *Session {
 	}
 }
 
-// NewInstance creates a new SessionInstance within a Session.
-func NewInstance(session *Session) *SessionInstance {
+func (s *Session) AddInstance() *SessionInstance {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
 	instance := &SessionInstance{
-		Session:           session,
-		instanceNum:       session.generateInstanceNum(),
+		Session:           s,
+		instanceNum:       s.generateInstanceNum(),
 		msgCh:             make(chan wire.SNACMessage, 1000),
 		stopCh:            make(chan struct{}),
 		caps:              make([][16]byte, 0),
@@ -101,31 +103,24 @@ func NewInstance(session *Session) *SessionInstance {
 		userStatusBitmask: wire.OServiceUserStatusAvailable,
 		onInstanceCloseFn: func() {},
 	}
-	session.AddInstance(instance)
+
+	s.instances[instance.instanceNum] = instance
+
 	return instance
 }
 
-// ============================================================================
-// Session methods (User-level data)
-// ============================================================================
-
-// AddInstance adds an instance to the session group.
-// An instance number will be automatically assigned.
-func (s *Session) AddInstance(instance *SessionInstance) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	// Find the next available instance number
+// generateInstanceNum generates the next available instance number for this session group.
+// It finds the next number that is not currently in use by iterating over the possible key range.
+func (s *Session) generateInstanceNum() uint8 {
+	// if num reaches 0, all number have been taken
 	for num := uint8(1); num != 0; num++ {
 		if _, exists := s.instances[num]; !exists {
-			instance.instanceNum = num
-			break
+			return num
 		}
 	}
-	// If all numbers are taken (shouldn't happen), panic
-	if instance.instanceNum == 0 {
-		panic("all instance numbers are taken (max 255 instances per session)")
-	}
-	s.instances[instance.instanceNum] = instance
+
+	// the caller should ensure there are no more than 255 instances per session
+	panic("all instance numbers are taken (max 255 instances per session)")
 }
 
 // RemoveInstance removes an instance from the session group.
@@ -649,23 +644,6 @@ func (s *Session) AllInvisible() bool {
 	}
 
 	return true
-}
-
-// generateInstanceNum generates the next available instance number for this session group.
-// It finds the next number that is not currently in use by iterating over the possible key range.
-func (s *Session) generateInstanceNum() uint8 {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	// if num reaches 0, all number have been taken
-	for num := uint8(1); num != 0; num++ {
-		if _, exists := s.instances[num]; !exists {
-			return num
-		}
-	}
-
-	// the caller should ensure there are no more than 255 instances per session
-	panic("all instance numbers are taken (max 255 instances per session)")
 }
 
 // SetMemberSince sets the member since timestamp.

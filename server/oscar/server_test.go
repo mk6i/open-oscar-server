@@ -312,7 +312,7 @@ func TestOscarServer_RouteConnection_Auth_FLAP(t *testing.T) {
 }
 
 func TestOscarServer_RouteConnection_BOS(t *testing.T) {
-	sess := state.NewInstance(state.NewSession())
+	sess := state.NewSession().AddInstance()
 
 	clientConn, serverConn := net.Pipe()
 	addr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:8080")
@@ -435,8 +435,8 @@ func TestOscarServer_RouteConnection_BOS(t *testing.T) {
 // Set up a multi-instance session and connect as the second instance.
 //   - Ensure that disconnecting second instance does not sign out the session.
 func TestOscarServer_RouteConnection_BOS_MultiSessionSignoff(t *testing.T) {
-	sess := state.NewInstance(state.NewSession())
-	sess.AddInstance(state.NewInstance(sess.Session))
+	sess := state.NewSession().AddInstance()
+	sess.Session.AddInstance()
 
 	clientConn, serverConn := net.Pipe()
 	addr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:8080")
@@ -546,7 +546,7 @@ func TestOscarServer_RouteConnection_BOS_MultiSessionSignoff(t *testing.T) {
 }
 
 func TestOscarServer_RouteConnection_Chat(t *testing.T) {
-	sess := state.NewInstance(state.NewSession())
+	sess := state.NewSession().AddInstance()
 
 	clientConn, serverConn := net.Pipe()
 	addr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:8080")
@@ -648,7 +648,7 @@ func TestOscarServer_RouteConnection_Chat(t *testing.T) {
 }
 
 func TestOscarServer_RouteConnection_Admin(t *testing.T) {
-	sess := state.NewInstance(state.NewSession())
+	sess := state.NewSession().AddInstance()
 
 	clientConn, serverConn := net.Pipe()
 	addr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:8080")
@@ -755,7 +755,7 @@ func Test_oscarServer_dispatchIncomingMessages_shutdownSignoff(t *testing.T) {
 		srv := oscarServer{
 			Logger: slog.Default(),
 		}
-		sess := state.NewInstance(state.NewSession())
+		sess := state.NewSession().AddInstance()
 		sess.SetMultiConnFlag(wire.MultiConnFlagsRecentClient)
 		flapc := wire.NewFlapClient(0, serverConn, serverConn)
 		err := srv.dispatchIncomingMessages(ctx, wire.BOS, sess, flapc, serverConn, config.Listener{})
@@ -776,7 +776,7 @@ func Test_oscarServer_dispatchIncomingMessages_shutdownSignoff(t *testing.T) {
 func Test_oscarServer_dispatchIncomingMessages_disconnect_old_client(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
 	ctx := context.Background()
-	sess := state.NewInstance(state.NewSession())
+	sess := state.NewSession().AddInstance()
 	sess.SetMultiConnFlag(wire.MultiConnFlagsOldClient)
 
 	var wg sync.WaitGroup
@@ -805,7 +805,7 @@ func Test_oscarServer_dispatchIncomingMessages_disconnect_old_client(t *testing.
 func Test_oscarServer_dispatchIncomingMessages_disconnect_new_client(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
 	ctx := context.Background()
-	sess := state.NewInstance(state.NewSession())
+	sess := state.NewSession().AddInstance()
 	sess.SetMultiConnFlag(wire.MultiConnFlagsRecentClient)
 
 	var wg sync.WaitGroup
@@ -836,7 +836,7 @@ func Test_oscarServer_receiveSessMessages_BOS_integration(t *testing.T) {
 	defer clientConn.Close()
 
 	// Prepare session and mocks so we can exercise through routeConnection
-	sess := state.NewInstance(state.NewSession())
+	sess := state.NewSession().AddInstance()
 	sess.SetSignonComplete()
 
 	authService := newMockAuthService(t)
@@ -982,7 +982,7 @@ func Test_oscarServer_receiveSessMessages_Chat_integration(t *testing.T) {
 	defer clientConn.Close()
 
 	// Prepare session and mocks so we can exercise through routeConnection
-	sess := state.NewInstance(state.NewSession())
+	sess := state.NewSession().AddInstance()
 	sess.SetSignonComplete()
 
 	authService := newMockAuthService(t)

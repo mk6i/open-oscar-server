@@ -1045,7 +1045,7 @@ func TestHandler_ChatNavCreateRoom(t *testing.T) {
 				Body: wire.SNAC_0x0D_0x09_ChatNavNavInfo{},
 			}
 
-			sess := state.NewInstance(state.NewSession())
+			sess := state.NewSession().AddInstance()
 
 			svc := newMockChatNavService(t)
 			svc.EXPECT().
@@ -1097,7 +1097,7 @@ func TestHandler_ChatNavCreateRoom_ReadErr(t *testing.T) {
 		Body: wire.SNAC_0x0D_0x09_ChatNavNavInfo{},
 	}
 
-	sess := state.NewInstance(state.NewSession())
+	sess := state.NewSession().AddInstance()
 
 	svc := newMockChatNavService(t)
 	svc.EXPECT().
@@ -2828,7 +2828,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqFullInfo - happy path",
 			reqParams: reqParams{
-				sess: state.NewInstance(state.NewSession()),
+				sess: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -2860,7 +2860,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqShortInfo - happy path",
 			reqParams: reqParams{
-				sess: state.NewInstance(state.NewSession()),
+				sess: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -2892,7 +2892,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqFullInfo2 - happy path",
 			reqParams: reqParams{
-				sess: state.NewInstance(state.NewSession()),
+				sess: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -2924,7 +2924,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqXMLReq - happy path",
 			reqParams: reqParams{
-				sess: state.NewInstance(state.NewSession()),
+				sess: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -2956,7 +2956,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSetPermissions - happy path",
 			reqParams: reqParams{
-				sess: state.NewInstance(state.NewSession()),
+				sess: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -2988,7 +2988,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSearchByUIN - happy path",
 			reqParams: reqParams{
-				sess: state.NewInstance(state.NewSession()),
+				sess: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3020,7 +3020,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSearchByUIN2 - happy path",
 			reqParams: reqParams{
-				sess: state.NewInstance(state.NewSession()),
+				sess: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3060,7 +3060,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSearchByEmail - happy path",
 			reqParams: reqParams{
-				sess: state.NewInstance(state.NewSession()),
+				sess: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3092,7 +3092,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSearchByEmail3 - happy path",
 			reqParams: reqParams{
-				sess: state.NewInstance(state.NewSession()),
+				sess: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3132,7 +3132,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSearchByDetails - happy path",
 			reqParams: reqParams{
-				sess: state.NewInstance(state.NewSession()),
+				sess: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3164,7 +3164,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSearchWhitePages - happy path",
 			reqParams: reqParams{
-				sess: state.NewInstance(state.NewSession()),
+				sess: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3196,7 +3196,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSearchWhitePages2 - happy path",
 			reqParams: reqParams{
-				sess: state.NewInstance(state.NewSession()),
+				sess: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3236,7 +3236,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSetBasicInfo - happy path",
 			reqParams: reqParams{
-				sess: state.NewInstance(state.NewSession()),
+				sess: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3268,7 +3268,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSetWorkInfo - happy path",
 			reqParams: reqParams{
-				sess: state.NewInstance(state.NewSession()),
+				sess: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3300,7 +3300,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSetMoreInfo - happy path",
 			reqParams: reqParams{
-				sess: state.NewInstance(state.NewSession()),
+				sess: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3332,7 +3332,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSetNotes - happy path",
 			reqParams: reqParams{
-				sess: state.NewInstance(state.NewSession()),
+				sess: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3364,7 +3364,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSetEmails - happy path",
 			reqParams: reqParams{
-				sess: state.NewInstance(state.NewSession()),
+				sess: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3410,7 +3410,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSetInterests - happy path",
 			reqParams: reqParams{
-				sess: state.NewInstance(state.NewSession()),
+				sess: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3456,7 +3456,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqSetAffiliations - happy path",
 			reqParams: reqParams{
-				sess: state.NewInstance(state.NewSession()),
+				sess: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3518,7 +3518,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "MetaReqStat - happy path",
 			reqParams: reqParams{
-				sess: state.NewInstance(state.NewSession()),
+				sess: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3541,7 +3541,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "unknown metadata request subtype",
 			reqParams: reqParams{
-				sess: state.NewInstance(state.NewSession()),
+				sess: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3565,7 +3565,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "OfflineMsgReq - happy path",
 			reqParams: reqParams{
-				sess: state.NewInstance(state.NewSession()),
+				sess: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3589,7 +3589,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "DeleteMsgReq - happy path",
 			reqParams: reqParams{
-				sess: state.NewInstance(state.NewSession()),
+				sess: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3613,7 +3613,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		{
 			name: "unknown request type",
 			reqParams: reqParams{
-				sess: state.NewInstance(state.NewSession()),
+				sess: state.NewSession().AddInstance(),
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3760,7 +3760,7 @@ func TestHandler_ICQDBQuery_QIP2005UINSearchBug(t *testing.T) {
 		},
 	}
 
-	sess := state.NewInstance(state.NewSession())
+	sess := state.NewSession().AddInstance()
 	icqService.EXPECT().
 		FindByUIN2(mock.Anything, sess, expect, uint16(1)).
 		Return(nil)
@@ -4266,7 +4266,7 @@ func TestHandler_OServiceServiceClientVersions(t *testing.T) {
 				},
 			}
 
-			sess := state.NewInstance(state.NewSession())
+			sess := state.NewSession().AddInstance()
 			svc := newMockOServiceService(t)
 			svc.EXPECT().
 				ClientVersions(mock.Anything, sess, input.Frame, input.Body).
@@ -4399,7 +4399,7 @@ func TestHandler_OServiceServiceRateParamsSubAdd(t *testing.T) {
 				Body: tt.inputBody,
 			}
 
-			sess := state.NewInstance(state.NewSession())
+			sess := state.NewSession().AddInstance()
 
 			svc := newMockOServiceService(t)
 			svc.EXPECT().
@@ -4801,7 +4801,7 @@ func TestHandler_PermitDenyAddDenyListEntries(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sess := state.NewInstance(state.NewSession())
+			sess := state.NewSession().AddInstance()
 			input := wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.PermitDeny,
@@ -4878,7 +4878,7 @@ func TestHandler_PermitDenyDelDenyListEntries(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sess := state.NewInstance(state.NewSession())
+			sess := state.NewSession().AddInstance()
 			input := wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.PermitDeny,
@@ -4955,7 +4955,7 @@ func TestHandler_PermitDenyAddPermListEntries(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sess := state.NewInstance(state.NewSession())
+			sess := state.NewSession().AddInstance()
 			input := wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.PermitDeny,
@@ -5032,7 +5032,7 @@ func TestHandler_PermitDenyDelPermListEntries(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sess := state.NewInstance(state.NewSession())
+			sess := state.NewSession().AddInstance()
 			input := wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.PermitDeny,
@@ -5088,7 +5088,7 @@ func TestHandler_PermitDenySetGroupPermitMask(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sess := state.NewInstance(state.NewSession())
+			sess := state.NewSession().AddInstance()
 			input := wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.PermitDeny,

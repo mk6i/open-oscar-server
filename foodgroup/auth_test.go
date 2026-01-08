@@ -155,7 +155,7 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 								sess := state.NewSession()
 								sess.SetIdentScreenName(user.IdentScreenName)
 								sess.SetDisplayScreenName(user.DisplayScreenName)
-								state.NewInstance(sess)
+								sess.AddInstance()
 								return sess
 							}(),
 						},
@@ -211,8 +211,8 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 								sess := state.NewSession()
 								sess.SetIdentScreenName(user.IdentScreenName)
 								sess.SetDisplayScreenName(user.DisplayScreenName)
-								state.NewInstance(sess)
-								state.NewInstance(sess)
+								sess.AddInstance()
+								sess.AddInstance()
 								return sess
 							}(),
 						},

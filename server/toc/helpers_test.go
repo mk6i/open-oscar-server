@@ -290,7 +290,7 @@ func matchSession(mustMatch state.IdentScreenName) interface{} {
 // newTestSession creates a session object with 0 or more functional options
 // applied
 func newTestSession(screenName state.DisplayScreenName, options ...func(session *state.SessionInstance)) *state.SessionInstance {
-	s := state.NewInstance(state.NewSession())
+	s := state.NewSession().AddInstance()
 	s.SetIdentScreenName(screenName.IdentScreenName())
 	s.SetDisplayScreenName(screenName)
 	s.SetSignonComplete()

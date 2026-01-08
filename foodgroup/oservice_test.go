@@ -1913,7 +1913,7 @@ func TestNewOServiceUserInfoUpdate(t *testing.T) {
 			sessOptSignonTime(signonTime),
 			sessOptSetFoodGroupVersion(wire.OService, 4))
 		// Add a second instance to the session
-		state.NewInstance(session.Session)
+		session.Session.AddInstance()
 		signon := session.SignonTime()
 		onlineLowerBound := uint32(time.Since(signon).Seconds())
 

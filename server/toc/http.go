@@ -151,7 +151,7 @@ func (s OSCARProxy) ProfileHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sess := state.NewInstance(state.NewSession())
+	sess := state.NewSession().AddInstance()
 	sess.SetIdentScreenName(state.NewIdentScreenName(from))
 	inBody := wire.SNAC_0x02_0x05_LocateUserInfoQuery{
 		Type:       uint16(wire.LocateTypeSig),

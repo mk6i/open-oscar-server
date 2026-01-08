@@ -617,10 +617,10 @@ func TestLocateService_SetInfo(t *testing.T) {
 				curInstance.SetKerberosAuth(false)
 
 				// set up other concurrent instances
-				instance2 := state.NewInstance(curInstance.Session)
+				instance2 := curInstance.Session.AddInstance()
 				instance2.SetKerberosAuth(true)
 
-				instance3 := state.NewInstance(curInstance.Session)
+				instance3 := curInstance.Session.AddInstance()
 				instance3.SetKerberosAuth(false)
 				return curInstance
 			}(),
@@ -650,10 +650,10 @@ func TestLocateService_SetInfo(t *testing.T) {
 				curInstance.SetKerberosAuth(true)
 
 				// set up other concurrent instances
-				instance2 := state.NewInstance(curInstance.Session)
+				instance2 := curInstance.Session.AddInstance()
 				instance2.SetKerberosAuth(true)
 
-				instance3 := state.NewInstance(curInstance.Session)
+				instance3 := curInstance.Session.AddInstance()
 				instance3.SetKerberosAuth(false)
 				return curInstance
 			}(),

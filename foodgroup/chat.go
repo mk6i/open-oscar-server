@@ -26,7 +26,7 @@ var (
 		sess := state.NewSession()
 		sess.SetDisplayScreenName(sn)
 		sess.SetIdentScreenName(sn.IdentScreenName())
-		return state.NewInstance(sess)
+		return sess.AddInstance()
 	}()
 
 	// rollDiceRgxp matches a roll dice chat command.

@@ -932,7 +932,7 @@ func newTestSession(screenName state.DisplayScreenName, options ...func(session 
 	session.SetIdentScreenName(screenName.IdentScreenName())
 	session.SetDisplayScreenName(screenName)
 	session.SetRateClasses(time.Now(), wire.DefaultRateLimitClasses())
-	instance := state.NewInstance(session)
+	instance := session.AddInstance()
 	for _, op := range options {
 		op(instance)
 	}

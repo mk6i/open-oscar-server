@@ -178,7 +178,7 @@ func (s *InMemorySessionManager) AddSession(ctx context.Context, screenName Disp
 				return s.newSession(screenName, doMultiSess)
 			}
 
-			instance := NewInstance(active.session)
+			instance := active.session.AddInstance()
 
 			return instance, nil
 		} else {
@@ -202,7 +202,7 @@ func (s *InMemorySessionManager) newSession(screenName DisplayScreenName, doMult
 	sess.SetDisplayScreenName(screenName)
 
 	// Create a new instance within the session group
-	instance := NewInstance(sess)
+	instance := sess.AddInstance()
 
 	s.mapMutex.Lock()
 	s.store[instance.IdentScreenName()] = &sessionSlot{

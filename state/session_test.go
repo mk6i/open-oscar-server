@@ -14,7 +14,7 @@ import (
 )
 
 func TestSession_IncrementAndGetWarning(t *testing.T) {
-	s := NewInstance(NewSession())
+	s := NewSession().AddInstance()
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -33,14 +33,14 @@ func TestSession_IncrementAndGetWarning(t *testing.T) {
 }
 
 func TestSession_SetAndGetInvisible(t *testing.T) {
-	s := NewInstance(NewSession())
+	s := NewSession().AddInstance()
 	assert.False(t, s.Invisible())
 	s.SetUserStatusBitmask(wire.OServiceUserStatusInvisible)
 	assert.True(t, s.Invisible())
 }
 
 func TestSession_SetAndGetScreenName(t *testing.T) {
-	s := NewInstance(NewSession())
+	s := NewSession().AddInstance()
 	assert.Empty(t, s.IdentScreenName())
 	sn := NewIdentScreenName("user-screen-name")
 	s.SetIdentScreenName(sn)
@@ -48,7 +48,7 @@ func TestSession_SetAndGetScreenName(t *testing.T) {
 }
 
 func TestSession_SetAndGetChatRoomCookie(t *testing.T) {
-	s := NewInstance(NewSession())
+	s := NewSession().AddInstance()
 	assert.Empty(t, s.ChatRoomCookie())
 	sn := "the-chat-cookie"
 	s.SetChatRoomCookie(sn)
@@ -56,7 +56,7 @@ func TestSession_SetAndGetChatRoomCookie(t *testing.T) {
 }
 
 func TestSession_SetAndGetUIN(t *testing.T) {
-	s := NewInstance(NewSession())
+	s := NewSession().AddInstance()
 	assert.Empty(t, s.UIN())
 	uin := uint32(100003)
 	s.SetUIN(uin)
@@ -64,7 +64,7 @@ func TestSession_SetAndGetUIN(t *testing.T) {
 }
 
 func TestSession_SetAndGetClientID(t *testing.T) {
-	s := NewInstance(NewSession())
+	s := NewSession().AddInstance()
 	assert.Empty(t, s.ClientID())
 	clientID := "AIM Client ID"
 	s.SetClientID(clientID)
@@ -72,7 +72,7 @@ func TestSession_SetAndGetClientID(t *testing.T) {
 }
 
 func TestSession_SetAndGetKerberosAuth(t *testing.T) {
-	s := NewInstance(NewSession())
+	s := NewSession().AddInstance()
 	assert.False(t, s.KerberosAuth())
 
 	s.SetKerberosAuth(true)
@@ -83,7 +83,7 @@ func TestSession_SetAndGetKerberosAuth(t *testing.T) {
 }
 
 func TestSession_SetAndGetRemoteAddr(t *testing.T) {
-	s := NewInstance(NewSession())
+	s := NewSession().AddInstance()
 	assert.Empty(t, s.RemoteAddr())
 	remoteAddr, _ := netip.ParseAddrPort("1.2.3.4:1234")
 	s.SetRemoteAddr(&remoteAddr)
@@ -99,7 +99,7 @@ func TestSession_TLVUserInfo(t *testing.T) {
 		{
 			name: "user is active and visible",
 			givenSessionFn: func() *SessionInstance {
-				s := NewInstance(NewSession())
+				s := NewSession().AddInstance()
 				s.SetSignonTime(time.Unix(1, 0))
 				s.SetIdentScreenName(NewIdentScreenName("xXAIMUSERXx"))
 				s.SetDisplayScreenName("xXAIMUSERXx")
@@ -123,7 +123,7 @@ func TestSession_TLVUserInfo(t *testing.T) {
 		{
 			name: "user is on ICQ",
 			givenSessionFn: func() *SessionInstance {
-				s := NewInstance(NewSession())
+				s := NewSession().AddInstance()
 				s.SetSignonTime(time.Unix(1, 0))
 				s.SetIdentScreenName(NewIdentScreenName("1000003"))
 				s.SetDisplayScreenName("1000003")
@@ -148,11 +148,11 @@ func TestSession_TLVUserInfo(t *testing.T) {
 			name: "user has away message set - all instances away",
 			givenSessionFn: func() *SessionInstance {
 				sg := NewSession()
-				s := NewInstance(sg)
+				s := sg.AddInstance()
 				s.SetSignonTime(time.Unix(1, 0))
 				s.SetUserInfoFlag(wire.OServiceUserFlagUnavailable)
 				// Add a second instance that is also away
-				s2 := NewInstance(sg)
+				s2 := sg.AddInstance()
 				s2.SetUserInfoFlag(wire.OServiceUserFlagUnavailable)
 				return s
 			},
@@ -172,11 +172,11 @@ func TestSession_TLVUserInfo(t *testing.T) {
 			givenSessionFn: func() *SessionInstance {
 				sg := NewSession()
 				// Create the NOT away instance first so it's used as the base
-				s2 := NewInstance(sg)
+				s2 := sg.AddInstance()
 				s2.SetSignonTime(time.Unix(1, 0))
 				// s2 is NOT away - it has default flags only (OServiceUserFlagOSCARFree)
 				// Now create the away instance
-				s := NewInstance(sg)
+				s := sg.AddInstance()
 				s.SetUserInfoFlag(wire.OServiceUserFlagUnavailable)
 				// Since s2 is the first instance and is not away, and allAway() returns false,
 				// the unavailable flag should not be set
@@ -199,10 +199,10 @@ func TestSession_TLVUserInfo(t *testing.T) {
 				sg := NewSession()
 				sg.SetSignonTime(time.Unix(1, 0))
 				// Set the first instance as away
-				s1 := NewInstance(sg)
+				s1 := sg.AddInstance()
 				s1.SetUserInfoFlag(wire.OServiceUserFlagUnavailable)
 				// Set the second instance as away
-				s2 := NewInstance(sg)
+				s2 := sg.AddInstance()
 				s2.SetUserInfoFlag(wire.OServiceUserFlagUnavailable)
 				// Make the second instance as not away
 				s2.ClearUserInfoFlag(wire.OServiceUserFlagUnavailable)
@@ -222,7 +222,7 @@ func TestSession_TLVUserInfo(t *testing.T) {
 		{
 			name: "user is invisible",
 			givenSessionFn: func() *SessionInstance {
-				s := NewInstance(NewSession())
+				s := NewSession().AddInstance()
 				s.SetSignonTime(time.Unix(1, 0))
 				s.SetUserStatusBitmask(wire.OServiceUserStatusInvisible)
 				return s
@@ -241,7 +241,7 @@ func TestSession_TLVUserInfo(t *testing.T) {
 		{
 			name: "user is idle",
 			givenSessionFn: func() *SessionInstance {
-				s := NewInstance(NewSession())
+				s := NewSession().AddInstance()
 				// sign on at t=0m
 				timeBegin := time.Unix(0, 0)
 				s.SetSignonTime(timeBegin)
@@ -269,7 +269,7 @@ func TestSession_TLVUserInfo(t *testing.T) {
 		{
 			name: "user goes idle then returns",
 			givenSessionFn: func() *SessionInstance {
-				s := NewInstance(NewSession())
+				s := NewSession().AddInstance()
 				s.SetSignonTime(time.Unix(1, 0))
 				s.SetIdle(1 * time.Second)
 				s.UnsetIdle()
@@ -289,7 +289,7 @@ func TestSession_TLVUserInfo(t *testing.T) {
 		{
 			name: "user has capabilities",
 			givenSessionFn: func() *SessionInstance {
-				s := NewInstance(NewSession())
+				s := NewSession().AddInstance()
 				s.SetSignonTime(time.Unix(1, 0))
 				s.SetCaps([][16]byte{
 					{
@@ -327,7 +327,7 @@ func TestSession_TLVUserInfo(t *testing.T) {
 		{
 			name: "user has buddy icon",
 			givenSessionFn: func() *SessionInstance {
-				s := NewInstance(NewSession())
+				s := NewSession().AddInstance()
 				s.SetSignonTime(time.Unix(1, 0))
 				return s
 			},
@@ -353,7 +353,7 @@ func TestSession_TLVUserInfo(t *testing.T) {
 }
 
 func TestSession_SendAndRecvMessage_ExpectSessSendOK(t *testing.T) {
-	s := NewInstance(NewSession())
+	s := NewSession().AddInstance()
 	s.SetSignonComplete()
 
 	msg := wire.SNACMessage{
@@ -385,7 +385,7 @@ loop:
 }
 
 func TestSession_SendMessage_SessSendClosed(t *testing.T) {
-	s := NewInstance(NewSession())
+	s := NewSession().AddInstance()
 	s.CloseInstance()
 	if res := s.RelayMessage(wire.SNACMessage{}); res != SessSendClosed {
 		t.Fatalf("expected SessSendClosed, got %+v", res)
@@ -393,7 +393,7 @@ func TestSession_SendMessage_SessSendClosed(t *testing.T) {
 }
 
 func TestSession_SendMessage_SessQueueFull(t *testing.T) {
-	s := NewInstance(NewSession())
+	s := NewSession().AddInstance()
 	s.SetSignonComplete()
 	// Fill up the message channel (default buffer size is 1000)
 	for i := 0; i < 1000; i++ {
@@ -403,7 +403,7 @@ func TestSession_SendMessage_SessQueueFull(t *testing.T) {
 }
 
 func TestSession_Close_Twice(t *testing.T) {
-	s := NewInstance(NewSession())
+	s := NewSession().AddInstance()
 	s.CloseInstance()
 	s.CloseInstance() // make sure close is idempotent
 	// Check that the session is closed by trying to relay a message
@@ -418,7 +418,7 @@ func TestSession_Close_Twice(t *testing.T) {
 }
 
 func TestSession_Closed(t *testing.T) {
-	s := NewInstance(NewSession())
+	s := NewSession().AddInstance()
 	select {
 	case <-s.Closed():
 		assert.Fail(t, "channel is closed")
@@ -482,7 +482,7 @@ func TestSession_EvaluateRateLimit_ObserveRateChanges(t *testing.T) {
 	t.Run("we can action every 5 seconds indefinitely without getting rate limited", func(t *testing.T) {
 		now := time.Now()
 
-		sess := NewInstance(NewSession())
+		sess := NewSession().AddInstance()
 		sess.SetRateClasses(now, rateClasses)
 
 		rateClass := rateClasses.Get(3)
@@ -500,9 +500,9 @@ func TestSession_EvaluateRateLimit_ObserveRateChanges(t *testing.T) {
 
 		sess := NewSession()
 		sess.SetRateClasses(now, rateClasses)
-		NewInstance(sess)
-		NewInstance(sess)
-		NewInstance(sess)
+		sess.AddInstance()
+		sess.AddInstance()
+		sess.AddInstance()
 
 		rateClass := rateClasses.Get(3)
 		sess.SubscribeRateLimits([]wire.RateLimitClassID{rateClass.ID})
@@ -546,7 +546,7 @@ func TestSession_EvaluateRateLimit_ObserveRateChanges(t *testing.T) {
 	t.Run("reach rate limit threshold, wait for clear threshold", func(t *testing.T) {
 		now := time.Now()
 
-		sess := NewInstance(NewSession())
+		sess := NewSession().AddInstance()
 		sess.SetRateClasses(now, rateClasses)
 
 		rateClass := rateClasses.Get(3)
@@ -619,7 +619,7 @@ func TestSession_EvaluateRateLimit_ObserveRateChanges(t *testing.T) {
 	t.Run("observe a rate class change", func(t *testing.T) {
 		now := time.Now()
 
-		sess := NewInstance(NewSession())
+		sess := NewSession().AddInstance()
 		sess.SetRateClasses(now, rateClasses)
 
 		rateClass := rateClasses.Get(3)
@@ -647,7 +647,7 @@ func TestSession_EvaluateRateLimit_ObserveRateChanges(t *testing.T) {
 	t.Run("as a bot, I can action every second indefinitely without getting rate limited", func(t *testing.T) {
 		now := time.Now()
 
-		sess := NewInstance(NewSession())
+		sess := NewSession().AddInstance()
 		sess.SetUserInfoFlag(wire.OServiceUserFlagBot)
 		sess.SetRateClasses(now, rateClasses)
 
@@ -664,14 +664,14 @@ func TestSession_SetAndGetFoodGroupVersions(t *testing.T) {
 	versions[wire.Feedbag] = 1
 	versions[wire.OService] = 2
 
-	s := NewInstance(NewSession())
+	s := NewSession().AddInstance()
 	s.SetFoodGroupVersions(versions)
 
 	assert.Equal(t, versions, s.FoodGroupVersions())
 }
 
 func TestSession_SetAndGetTypingEventsEnabled(t *testing.T) {
-	s := NewInstance(NewSession())
+	s := NewSession().AddInstance()
 	assert.False(t, s.TypingEventsEnabled())
 	s.SetTypingEventsEnabled(true)
 	assert.True(t, s.TypingEventsEnabled())
@@ -680,7 +680,7 @@ func TestSession_SetAndGetTypingEventsEnabled(t *testing.T) {
 }
 
 func TestSession_SetAndGetMultiConnFlag(t *testing.T) {
-	s := NewInstance(NewSession())
+	s := NewSession().AddInstance()
 	assert.Zero(t, s.MultiConnFlag())
 
 	s.SetMultiConnFlag(wire.MultiConnFlagsOldClient)
@@ -694,7 +694,7 @@ func TestSession_SetAndGetMultiConnFlag(t *testing.T) {
 }
 
 func TestSession_SetAndGetLastWarnLevel(t *testing.T) {
-	s := NewInstance(NewSession())
+	s := NewSession().AddInstance()
 	assert.Zero(t, s.Warning())
 
 	level := uint16(500)
@@ -882,14 +882,11 @@ func TestSessionGroup_AllInactive(t *testing.T) {
 			name: "one active instance - should return false",
 			setupSessionGroup: func() *Session {
 				sg := NewSession()
-				instance := &SessionInstance{
-					Session:        sg,
-					closed:         false,
-					idle:           false,
-					awayMsg:        "",
-					signonComplete: true,
-				}
-				sg.AddInstance(instance)
+				instance := sg.AddInstance()
+				instance.closed = false
+				instance.idle = false
+				instance.awayMsg = ""
+				instance.signonComplete = true
 				return sg
 			},
 			expectedResult: false,
@@ -898,13 +895,10 @@ func TestSessionGroup_AllInactive(t *testing.T) {
 			name: "one closed instance - should return true",
 			setupSessionGroup: func() *Session {
 				sg := NewSession()
-				instance := &SessionInstance{
-					Session: sg,
-					closed:  true,
-					idle:    false,
-					awayMsg: "",
-				}
-				sg.AddInstance(instance)
+				instance := sg.AddInstance()
+				instance.closed = true
+				instance.idle = false
+				instance.awayMsg = ""
 				return sg
 			},
 			expectedResult: true,
@@ -913,13 +907,10 @@ func TestSessionGroup_AllInactive(t *testing.T) {
 			name: "one idle instance - should return true",
 			setupSessionGroup: func() *Session {
 				sg := NewSession()
-				instance := &SessionInstance{
-					Session: sg,
-					closed:  false,
-					idle:    true,
-					awayMsg: "",
-				}
-				sg.AddInstance(instance)
+				instance := sg.AddInstance()
+				instance.closed = false
+				instance.idle = true
+				instance.awayMsg = ""
 				return sg
 			},
 			expectedResult: true,
@@ -928,13 +919,10 @@ func TestSessionGroup_AllInactive(t *testing.T) {
 			name: "one instance with away message - should return true",
 			setupSessionGroup: func() *Session {
 				sg := NewSession()
-				instance := &SessionInstance{
-					Session: sg,
-					closed:  false,
-					idle:    false,
-					awayMsg: "I'm away",
-				}
-				sg.AddInstance(instance)
+				instance := sg.AddInstance()
+				instance.closed = false
+				instance.idle = false
+				instance.awayMsg = "I'm away"
 				return sg
 			},
 			expectedResult: true,
@@ -945,31 +933,22 @@ func TestSessionGroup_AllInactive(t *testing.T) {
 				sg := NewSession()
 
 				// Add closed instance
-				instance1 := &SessionInstance{
-					Session: sg,
-					closed:  true,
-					idle:    false,
-					awayMsg: "",
-				}
-				sg.AddInstance(instance1)
+				instance1 := sg.AddInstance()
+				instance1.closed = true
+				instance1.idle = false
+				instance1.awayMsg = ""
 
 				// Add idle instance
-				instance2 := &SessionInstance{
-					Session: sg,
-					closed:  false,
-					idle:    true,
-					awayMsg: "",
-				}
-				sg.AddInstance(instance2)
+				instance2 := sg.AddInstance()
+				instance2.closed = false
+				instance2.idle = true
+				instance2.awayMsg = ""
 
 				// Add instance with away message
-				instance3 := &SessionInstance{
-					Session: sg,
-					closed:  false,
-					idle:    false,
-					awayMsg: "I'm away",
-				}
-				sg.AddInstance(instance3)
+				instance3 := sg.AddInstance()
+				instance3.closed = false
+				instance3.idle = false
+				instance3.awayMsg = "I'm away"
 
 				return sg
 			},
@@ -981,32 +960,23 @@ func TestSessionGroup_AllInactive(t *testing.T) {
 				sg := NewSession()
 
 				// Add closed instance
-				instance1 := &SessionInstance{
-					Session: sg,
-					closed:  true,
-					idle:    false,
-					awayMsg: "",
-				}
-				sg.AddInstance(instance1)
+				instance1 := sg.AddInstance()
+				instance1.closed = true
+				instance1.idle = false
+				instance1.awayMsg = ""
 
 				// Add active instance
-				instance2 := &SessionInstance{
-					Session:        sg,
-					closed:         false,
-					idle:           false,
-					awayMsg:        "",
-					signonComplete: true,
-				}
-				sg.AddInstance(instance2)
+				instance2 := sg.AddInstance()
+				instance2.closed = false
+				instance2.idle = false
+				instance2.awayMsg = ""
+				instance2.signonComplete = true
 
 				// Add idle instance
-				instance3 := &SessionInstance{
-					Session: sg,
-					closed:  false,
-					idle:    true,
-					awayMsg: "",
-				}
-				sg.AddInstance(instance3)
+				instance3 := sg.AddInstance()
+				instance3.closed = false
+				instance3.idle = true
+				instance3.awayMsg = ""
 
 				return sg
 			},
@@ -1018,24 +988,18 @@ func TestSessionGroup_AllInactive(t *testing.T) {
 				sg := NewSession()
 
 				// Add first active instance
-				instance1 := &SessionInstance{
-					Session:        sg,
-					closed:         false,
-					idle:           false,
-					awayMsg:        "",
-					signonComplete: true,
-				}
-				sg.AddInstance(instance1)
+				instance1 := sg.AddInstance()
+				instance1.closed = false
+				instance1.idle = false
+				instance1.awayMsg = ""
+				instance1.signonComplete = true
 
 				// Add second active instance
-				instance2 := &SessionInstance{
-					Session:        sg,
-					closed:         false,
-					idle:           false,
-					awayMsg:        "",
-					signonComplete: true,
-				}
-				sg.AddInstance(instance2)
+				instance2 := sg.AddInstance()
+				instance2.closed = false
+				instance2.idle = false
+				instance2.awayMsg = ""
+				instance2.signonComplete = true
 
 				return sg
 			},
@@ -1047,41 +1011,29 @@ func TestSessionGroup_AllInactive(t *testing.T) {
 				sg := NewSession()
 
 				// Add closed instance
-				instance1 := &SessionInstance{
-					Session: sg,
-					closed:  true,
-					idle:    false,
-					awayMsg: "",
-				}
-				sg.AddInstance(instance1)
+				instance1 := sg.AddInstance()
+				instance1.closed = true
+				instance1.idle = false
+				instance1.awayMsg = ""
 
 				// Add idle instance
-				instance2 := &SessionInstance{
-					Session: sg,
-					closed:  false,
-					idle:    true,
-					awayMsg: "",
-				}
-				sg.AddInstance(instance2)
+				instance2 := sg.AddInstance()
+				instance2.closed = false
+				instance2.idle = true
+				instance2.awayMsg = ""
 
 				// Add instance with away message
-				instance3 := &SessionInstance{
-					Session: sg,
-					closed:  false,
-					idle:    false,
-					awayMsg: "I'm away",
-				}
-				sg.AddInstance(instance3)
+				instance3 := sg.AddInstance()
+				instance3.closed = false
+				instance3.idle = false
+				instance3.awayMsg = "I'm away"
 
 				// Add active instance
-				instance4 := &SessionInstance{
-					Session:        sg,
-					closed:         false,
-					idle:           false,
-					awayMsg:        "",
-					signonComplete: true,
-				}
-				sg.AddInstance(instance4)
+				instance4 := sg.AddInstance()
+				instance4.closed = false
+				instance4.idle = false
+				instance4.awayMsg = ""
+				instance4.signonComplete = true
 
 				return sg
 			},
@@ -1114,7 +1066,7 @@ func TestSessionGroup_InstanceCount(t *testing.T) {
 			name: "one instance should return 1",
 			setupGroup: func() *Session {
 				sg := NewSession()
-				NewInstance(sg)
+				sg.AddInstance()
 				return sg
 			},
 			expectedCount: 1,
@@ -1124,7 +1076,7 @@ func TestSessionGroup_InstanceCount(t *testing.T) {
 			setupGroup: func() *Session {
 				sg := NewSession()
 				for i := 0; i < 3; i++ {
-					NewInstance(sg)
+					sg.AddInstance()
 				}
 				return sg
 			},
@@ -1134,9 +1086,9 @@ func TestSessionGroup_InstanceCount(t *testing.T) {
 			name: "instance count decreases after removal",
 			setupGroup: func() *Session {
 				sg := NewSession()
-				NewInstance(sg)
-				instance2 := NewInstance(sg)
-				NewInstance(sg)
+				sg.AddInstance()
+				instance2 := sg.AddInstance()
+				sg.AddInstance()
 				// Remove one instance
 				sg.RemoveInstance(instance2)
 				return sg
@@ -1147,10 +1099,10 @@ func TestSessionGroup_InstanceCount(t *testing.T) {
 			name: "instance count is correct after multiple add/remove operations",
 			setupGroup: func() *Session {
 				sg := NewSession()
-				instance1 := NewInstance(sg)
-				NewInstance(sg)
+				instance1 := sg.AddInstance()
+				sg.AddInstance()
 				sg.RemoveInstance(instance1)
-				NewInstance(sg)
+				sg.AddInstance()
 				return sg
 			},
 			expectedCount: 2,
@@ -1184,9 +1136,9 @@ func TestSessionGroup_Instances(t *testing.T) {
 			name: "returns all instances including non-signed-in",
 			setupGroup: func() *Session {
 				sg := NewSession()
-				instance1 := NewInstance(sg)
+				instance1 := sg.AddInstance()
 				instance1.SetSignonComplete()
-				_ = NewInstance(sg)
+				_ = sg.AddInstance()
 				// instance2 has not completed signon
 				return sg
 			},
@@ -1197,11 +1149,11 @@ func TestSessionGroup_Instances(t *testing.T) {
 			name: "returns all instances with mixed signon states",
 			setupGroup: func() *Session {
 				sg := NewSession()
-				instance1 := NewInstance(sg)
+				instance1 := sg.AddInstance()
 				instance1.SetSignonComplete()
-				_ = NewInstance(sg)
+				_ = sg.AddInstance()
 				// instance2 has not completed signon
-				instance3 := NewInstance(sg)
+				instance3 := sg.AddInstance()
 				instance3.SetSignonComplete()
 				return sg
 			},
@@ -1226,7 +1178,7 @@ func TestSessionGroup_Instances(t *testing.T) {
 }
 
 func TestSession_SetAndGetProfile(t *testing.T) {
-	s := NewInstance(NewSession())
+	s := NewSession().AddInstance()
 	profile := s.Profile()
 	assert.Empty(t, profile.ProfileText)
 	assert.Empty(t, profile.MIMEType)
@@ -1263,7 +1215,7 @@ func TestSession_Profile(t *testing.T) {
 			name: "one instance with empty profile - returns empty profile",
 			setupSession: func() *Session {
 				s := NewSession()
-				NewInstance(s)
+				s.AddInstance()
 				return s
 			},
 			expectedProfile: UserProfile{},
@@ -1272,7 +1224,7 @@ func TestSession_Profile(t *testing.T) {
 			name: "one instance with non-empty profile - returns that profile",
 			setupSession: func() *Session {
 				s := NewSession()
-				instance := NewInstance(s)
+				instance := s.AddInstance()
 				profileTime := time.Unix(1234567890, 0)
 				instance.SetProfile(UserProfile{
 					ProfileText: "My profile",
@@ -1291,9 +1243,9 @@ func TestSession_Profile(t *testing.T) {
 			name: "multiple instances, all empty - returns empty profile",
 			setupSession: func() *Session {
 				s := NewSession()
-				NewInstance(s)
-				NewInstance(s)
-				NewInstance(s)
+				s.AddInstance()
+				s.AddInstance()
+				s.AddInstance()
 				return s
 			},
 			expectedProfile: UserProfile{},
@@ -1302,14 +1254,14 @@ func TestSession_Profile(t *testing.T) {
 			name: "multiple instances, one non-empty - returns that one",
 			setupSession: func() *Session {
 				s := NewSession()
-				NewInstance(s) // empty instance
-				instance2 := NewInstance(s)
+				s.AddInstance() // empty instance
+				instance2 := s.AddInstance()
 				instance2.SetProfile(UserProfile{
 					ProfileText: "Profile 2",
 					MIMEType:    "text/plain",
 					UpdateTime:  time.Unix(1234567890, 0),
 				})
-				NewInstance(s) // empty instance
+				s.AddInstance() // empty instance
 				return s
 			},
 			expectedProfile: UserProfile{
@@ -1322,19 +1274,19 @@ func TestSession_Profile(t *testing.T) {
 			name: "multiple instances, multiple non-empty - returns most recent UpdateTime",
 			setupSession: func() *Session {
 				s := NewSession()
-				instance1 := NewInstance(s)
+				instance1 := s.AddInstance()
 				instance1.SetProfile(UserProfile{
 					ProfileText: "Profile 1",
 					MIMEType:    "text/plain",
 					UpdateTime:  time.Unix(1234567900, 0), // later time - should be returned
 				})
-				instance2 := NewInstance(s)
+				instance2 := s.AddInstance()
 				instance2.SetProfile(UserProfile{
 					ProfileText: "Profile 2",
 					MIMEType:    "text/plain",
 					UpdateTime:  time.Unix(1234567890, 0), // earlier time
 				})
-				instance3 := NewInstance(s)
+				instance3 := s.AddInstance()
 				instance3.SetProfile(UserProfile{
 					ProfileText: "Profile 3",
 					MIMEType:    "text/plain",
@@ -1352,14 +1304,14 @@ func TestSession_Profile(t *testing.T) {
 			name: "first instance empty, later instances have profiles - returns most recent non-empty",
 			setupSession: func() *Session {
 				s := NewSession()
-				NewInstance(s) // empty instance
-				instance2 := NewInstance(s)
+				s.AddInstance() // empty instance
+				instance2 := s.AddInstance()
 				instance2.SetProfile(UserProfile{
 					ProfileText: "Profile 2",
 					MIMEType:    "text/plain",
 					UpdateTime:  time.Unix(1234567890, 0), // earlier
 				})
-				instance3 := NewInstance(s)
+				instance3 := s.AddInstance()
 				instance3.SetProfile(UserProfile{
 					ProfileText: "Profile 3",
 					MIMEType:    "text/plain",
@@ -1377,7 +1329,7 @@ func TestSession_Profile(t *testing.T) {
 			name: "profile with empty ProfileText is considered empty",
 			setupSession: func() *Session {
 				s := NewSession()
-				instance := NewInstance(s)
+				instance := s.AddInstance()
 				instance.SetProfile(UserProfile{
 					ProfileText: "",
 					MIMEType:    "text/plain",
@@ -1391,7 +1343,7 @@ func TestSession_Profile(t *testing.T) {
 			name: "profile with null byte ProfileText is considered empty",
 			setupSession: func() *Session {
 				s := NewSession()
-				instance := NewInstance(s)
+				instance := s.AddInstance()
 				instance.SetProfile(UserProfile{
 					ProfileText: "\x00",
 					MIMEType:    "text/plain",
@@ -1413,7 +1365,7 @@ func TestSession_Profile(t *testing.T) {
 }
 
 func TestSession_SetAndGetMemberSince(t *testing.T) {
-	s := NewInstance(NewSession())
+	s := NewSession().AddInstance()
 	assert.True(t, s.MemberSince().IsZero())
 
 	memberTime := time.Unix(1234567890, 0)
@@ -1422,7 +1374,7 @@ func TestSession_SetAndGetMemberSince(t *testing.T) {
 }
 
 func TestSession_SetAndGetOfflineMsgCount(t *testing.T) {
-	s := NewInstance(NewSession())
+	s := NewSession().AddInstance()
 	assert.Zero(t, s.OfflineMsgCount())
 
 	count := 5
@@ -1455,7 +1407,7 @@ func TestSession_ScaleWarningAndRateLimit(t *testing.T) {
 
 		now := time.Now()
 
-		sess := NewInstance(NewSession())
+		sess := NewSession().AddInstance()
 		sess.SetRateClasses(now, rateClasses)
 
 		var wg sync.WaitGroup
@@ -1556,7 +1508,7 @@ func TestSession_ScaleWarningAndRateLimit(t *testing.T) {
 
 		now := time.Now()
 
-		sess := NewInstance(NewSession())
+		sess := NewSession().AddInstance()
 		sess.SetRateClasses(now, rateClasses)
 
 		var wg sync.WaitGroup
@@ -1661,7 +1613,7 @@ func TestSession_ScaleWarningAndRateLimit(t *testing.T) {
 
 		now := time.Now()
 
-		sess := NewInstance(NewSession())
+		sess := NewSession().AddInstance()
 		sess.SetRateClasses(now, rateClasses)
 
 		var wg sync.WaitGroup
@@ -1760,9 +1712,9 @@ func TestSession_CloseInstance(t *testing.T) {
 	instance2CloseCount := 0
 	instance3CloseCount := 0
 
-	instance1 := NewInstance(s)
-	instance2 := NewInstance(s)
-	instance3 := NewInstance(s)
+	instance1 := s.AddInstance()
+	instance2 := s.AddInstance()
+	instance3 := s.AddInstance()
 
 	instance1.OnInstanceClose(func() {
 		instance1CloseCount++
@@ -1797,9 +1749,9 @@ func TestSession_CloseSession(t *testing.T) {
 	instance2CloseCount := 0
 	instance3CloseCount := 0
 
-	instance1 := NewInstance(s)
-	instance2 := NewInstance(s)
-	instance3 := NewInstance(s)
+	instance1 := s.AddInstance()
+	instance2 := s.AddInstance()
+	instance3 := s.AddInstance()
 
 	instance1.OnInstanceClose(func() {
 		instance1CloseCount++
@@ -1836,7 +1788,7 @@ func TestSession_AwayMessage(t *testing.T) {
 			name: "one instance not away - should return empty string",
 			setupSession: func() *Session {
 				sg := NewSession()
-				_ = NewInstance(sg)
+				_ = sg.AddInstance()
 				// instance has no away message and is not set as away
 				return sg
 			},
@@ -1846,7 +1798,7 @@ func TestSession_AwayMessage(t *testing.T) {
 			name: "one instance away via SetUserInfoFlag - should return away message",
 			setupSession: func() *Session {
 				sg := NewSession()
-				instance := NewInstance(sg)
+				instance := sg.AddInstance()
 				instance.SetUserInfoFlag(wire.OServiceUserFlagUnavailable)
 				instance.SetAwayMessage("I'm away")
 				return sg
@@ -1857,7 +1809,7 @@ func TestSession_AwayMessage(t *testing.T) {
 			name: "one instance away via SetUserStatusBitmask - should return away message",
 			setupSession: func() *Session {
 				sg := NewSession()
-				instance := NewInstance(sg)
+				instance := sg.AddInstance()
 				instance.SetUserStatusBitmask(wire.OServiceUserStatusAway)
 				instance.SetAwayMessage("I'm away")
 				return sg
@@ -1868,10 +1820,10 @@ func TestSession_AwayMessage(t *testing.T) {
 			name: "multiple instances - not all away - should return away message from away instance",
 			setupSession: func() *Session {
 				sg := NewSession()
-				instance1 := NewInstance(sg)
+				instance1 := sg.AddInstance()
 				instance1.SetUserInfoFlag(wire.OServiceUserFlagUnavailable)
 				instance1.SetAwayMessage("I'm away")
-				_ = NewInstance(sg)
+				_ = sg.AddInstance()
 				// instance2 has no away message and is not set as away
 				return sg
 			},
@@ -1887,10 +1839,10 @@ func TestSession_AwayMessage(t *testing.T) {
 					callCount++
 					return baseTime.Add(time.Duration(callCount) * time.Second)
 				}
-				instance1 := NewInstance(sg)
+				instance1 := sg.AddInstance()
 				instance1.SetUserInfoFlag(wire.OServiceUserFlagUnavailable)
 				instance1.SetAwayMessage("First away message")
-				instance2 := NewInstance(sg)
+				instance2 := sg.AddInstance()
 				instance2.SetUserInfoFlag(wire.OServiceUserFlagUnavailable)
 				instance2.SetAwayMessage("Second away message")
 				return sg
@@ -1907,10 +1859,10 @@ func TestSession_AwayMessage(t *testing.T) {
 					callCount++
 					return baseTime.Add(time.Duration(callCount) * time.Second)
 				}
-				instance1 := NewInstance(sg)
+				instance1 := sg.AddInstance()
 				instance1.SetUserInfoFlag(wire.OServiceUserFlagUnavailable)
 				instance1.SetAwayMessage("First away message")
-				instance2 := NewInstance(sg)
+				instance2 := sg.AddInstance()
 				instance2.SetUserInfoFlag(wire.OServiceUserFlagUnavailable)
 				instance2.SetAwayMessage("Second away message")
 				// Update instance1's away status again (this will update awayTime)
@@ -1930,10 +1882,10 @@ func TestSession_AwayMessage(t *testing.T) {
 					callCount++
 					return baseTime.Add(time.Duration(callCount) * time.Second)
 				}
-				instance1 := NewInstance(sg)
+				instance1 := sg.AddInstance()
 				instance1.SetUserInfoFlag(wire.OServiceUserFlagUnavailable)
 				instance1.SetAwayMessage("First away message")
-				instance2 := NewInstance(sg)
+				instance2 := sg.AddInstance()
 				instance2.SetUserStatusBitmask(wire.OServiceUserStatusAway)
 				instance2.SetAwayMessage("Second away message")
 				return sg
@@ -1944,7 +1896,7 @@ func TestSession_AwayMessage(t *testing.T) {
 			name: "instance sets away message then clears message - should return empty string",
 			setupSession: func() *Session {
 				sg := NewSession()
-				instance := NewInstance(sg)
+				instance := sg.AddInstance()
 				instance.SetUserInfoFlag(wire.OServiceUserFlagUnavailable)
 				instance.SetAwayMessage("I'm away")
 				instance.SetAwayMessage("") // clear away message (but still away)
@@ -1956,7 +1908,7 @@ func TestSession_AwayMessage(t *testing.T) {
 			name: "instance sets away message then clears away status - should return empty string",
 			setupSession: func() *Session {
 				sg := NewSession()
-				instance := NewInstance(sg)
+				instance := sg.AddInstance()
 				instance.SetUserInfoFlag(wire.OServiceUserFlagUnavailable)
 				instance.SetAwayMessage("I'm away")
 				instance.ClearUserInfoFlag(wire.OServiceUserFlagUnavailable) // clear away status
@@ -1974,10 +1926,10 @@ func TestSession_AwayMessage(t *testing.T) {
 					callCount++
 					return baseTime.Add(time.Duration(callCount) * time.Second)
 				}
-				instance1 := NewInstance(sg)
+				instance1 := sg.AddInstance()
 				instance1.SetUserInfoFlag(wire.OServiceUserFlagUnavailable)
 				instance1.SetAwayMessage("I'm away")
-				instance2 := NewInstance(sg)
+				instance2 := sg.AddInstance()
 				instance2.SetUserInfoFlag(wire.OServiceUserFlagUnavailable)
 				// instance2 is away but has no message, and was set away after instance1
 				return sg
@@ -1994,10 +1946,10 @@ func TestSession_AwayMessage(t *testing.T) {
 					callCount++
 					return baseTime.Add(time.Duration(callCount) * time.Second)
 				}
-				instance1 := NewInstance(sg)
+				instance1 := sg.AddInstance()
 				instance1.SetUserInfoFlag(wire.OServiceUserFlagUnavailable)
 				instance1.SetAwayMessage("I'm away")
-				instance2 := NewInstance(sg)
+				instance2 := sg.AddInstance()
 				instance2.SetUserInfoFlag(wire.OServiceUserFlagUnavailable)
 				// instance2 is away but has no message
 				// Now update instance1's away status to make it more recent
@@ -2053,7 +2005,7 @@ func TestSession_Caps(t *testing.T) {
 			name: "single instance with no caps - should return empty slice",
 			setupSession: func() *Session {
 				sg := NewSession()
-				_ = NewInstance(sg)
+				_ = sg.AddInstance()
 				return sg
 			},
 			expectedCaps:  [][16]byte{},
@@ -2063,7 +2015,7 @@ func TestSession_Caps(t *testing.T) {
 			name: "single instance with one cap - should return that cap",
 			setupSession: func() *Session {
 				sg := NewSession()
-				instance := NewInstance(sg)
+				instance := sg.AddInstance()
 				cap1 := [16]byte{0x74, 0x8f, 0x24, 0x20, 0x62, 0x87, 0x11, 0xd1, 0x82, 0x22, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00}
 				instance.SetCaps([][16]byte{cap1})
 				return sg
@@ -2077,7 +2029,7 @@ func TestSession_Caps(t *testing.T) {
 			name: "single instance with multiple caps - should return all caps",
 			setupSession: func() *Session {
 				sg := NewSession()
-				instance := NewInstance(sg)
+				instance := sg.AddInstance()
 				cap1 := [16]byte{0x74, 0x8f, 0x24, 0x20, 0x62, 0x87, 0x11, 0xd1, 0x82, 0x22, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00}
 				cap2 := [16]byte{0x75, 0x8f, 0x24, 0x20, 0x62, 0x87, 0x11, 0xd1, 0x82, 0x22, 0x44, 0x45, 0x53, 0x54, 0x00, 0x01}
 				cap3 := [16]byte{0x76, 0x8f, 0x24, 0x20, 0x62, 0x87, 0x11, 0xd1, 0x82, 0x22, 0x44, 0x45, 0x53, 0x54, 0x00, 0x02}
@@ -2095,15 +2047,15 @@ func TestSession_Caps(t *testing.T) {
 			name: "multiple instances with no overlapping caps - should return union of all caps",
 			setupSession: func() *Session {
 				sg := NewSession()
-				instance1 := NewInstance(sg)
+				instance1 := sg.AddInstance()
 				cap1 := [16]byte{0x74, 0x8f, 0x24, 0x20, 0x62, 0x87, 0x11, 0xd1, 0x82, 0x22, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00}
 				instance1.SetCaps([][16]byte{cap1})
 
-				instance2 := NewInstance(sg)
+				instance2 := sg.AddInstance()
 				cap2 := [16]byte{0x75, 0x8f, 0x24, 0x20, 0x62, 0x87, 0x11, 0xd1, 0x82, 0x22, 0x44, 0x45, 0x53, 0x54, 0x00, 0x01}
 				instance2.SetCaps([][16]byte{cap2})
 
-				instance3 := NewInstance(sg)
+				instance3 := sg.AddInstance()
 				cap3 := [16]byte{0x76, 0x8f, 0x24, 0x20, 0x62, 0x87, 0x11, 0xd1, 0x82, 0x22, 0x44, 0x45, 0x53, 0x54, 0x00, 0x02}
 				instance3.SetCaps([][16]byte{cap3})
 
@@ -2124,10 +2076,10 @@ func TestSession_Caps(t *testing.T) {
 				cap2 := [16]byte{0x75, 0x8f, 0x24, 0x20, 0x62, 0x87, 0x11, 0xd1, 0x82, 0x22, 0x44, 0x45, 0x53, 0x54, 0x00, 0x01}
 				cap3 := [16]byte{0x76, 0x8f, 0x24, 0x20, 0x62, 0x87, 0x11, 0xd1, 0x82, 0x22, 0x44, 0x45, 0x53, 0x54, 0x00, 0x02}
 
-				instance1 := NewInstance(sg)
+				instance1 := sg.AddInstance()
 				instance1.SetCaps([][16]byte{cap1, cap2})
 
-				instance2 := NewInstance(sg)
+				instance2 := sg.AddInstance()
 				instance2.SetCaps([][16]byte{cap2, cap3}) // cap2 overlaps
 
 				return sg
@@ -2146,13 +2098,13 @@ func TestSession_Caps(t *testing.T) {
 				cap1 := [16]byte{0x74, 0x8f, 0x24, 0x20, 0x62, 0x87, 0x11, 0xd1, 0x82, 0x22, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00}
 				cap2 := [16]byte{0x75, 0x8f, 0x24, 0x20, 0x62, 0x87, 0x11, 0xd1, 0x82, 0x22, 0x44, 0x45, 0x53, 0x54, 0x00, 0x01}
 
-				instance1 := NewInstance(sg)
+				instance1 := sg.AddInstance()
 				instance1.SetCaps([][16]byte{cap1, cap2})
 
-				instance2 := NewInstance(sg)
+				instance2 := sg.AddInstance()
 				instance2.SetCaps([][16]byte{cap1, cap2}) // same caps
 
-				instance3 := NewInstance(sg)
+				instance3 := sg.AddInstance()
 				instance3.SetCaps([][16]byte{cap1, cap2}) // same caps
 
 				return sg
@@ -2167,17 +2119,17 @@ func TestSession_Caps(t *testing.T) {
 			name: "multiple instances with some having caps and some not - should return union",
 			setupSession: func() *Session {
 				sg := NewSession()
-				_ = NewInstance(sg)
+				_ = sg.AddInstance()
 				// instance1 has no caps
 
-				instance2 := NewInstance(sg)
+				instance2 := sg.AddInstance()
 				cap1 := [16]byte{0x74, 0x8f, 0x24, 0x20, 0x62, 0x87, 0x11, 0xd1, 0x82, 0x22, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00}
 				instance2.SetCaps([][16]byte{cap1})
 
-				_ = NewInstance(sg)
+				_ = sg.AddInstance()
 				// instance3 has no caps
 
-				instance4 := NewInstance(sg)
+				instance4 := sg.AddInstance()
 				cap2 := [16]byte{0x75, 0x8f, 0x24, 0x20, 0x62, 0x87, 0x11, 0xd1, 0x82, 0x22, 0x44, 0x45, 0x53, 0x54, 0x00, 0x01}
 				instance4.SetCaps([][16]byte{cap2})
 
@@ -2205,15 +2157,15 @@ func TestSession_Caps(t *testing.T) {
 func TestSession_InstanceNumberAssignment(t *testing.T) {
 	t.Run("first instance gets number 1", func(t *testing.T) {
 		s := NewSession()
-		instance := NewInstance(s)
+		instance := s.AddInstance()
 		assert.Equal(t, uint8(1), instance.InstanceNum())
 	})
 
 	t.Run("multiple instances get sequential numbers", func(t *testing.T) {
 		s := NewSession()
-		instance1 := NewInstance(s)
-		instance2 := NewInstance(s)
-		instance3 := NewInstance(s)
+		instance1 := s.AddInstance()
+		instance2 := s.AddInstance()
+		instance3 := s.AddInstance()
 
 		assert.Equal(t, uint8(1), instance1.InstanceNum())
 		assert.Equal(t, uint8(2), instance2.InstanceNum())
@@ -2222,9 +2174,9 @@ func TestSession_InstanceNumberAssignment(t *testing.T) {
 
 	t.Run("removed instance numbers are reused", func(t *testing.T) {
 		s := NewSession()
-		instance1 := NewInstance(s)
-		instance2 := NewInstance(s)
-		instance3 := NewInstance(s)
+		instance1 := s.AddInstance()
+		instance2 := s.AddInstance()
+		instance3 := s.AddInstance()
 
 		assert.Equal(t, uint8(1), instance1.InstanceNum())
 		assert.Equal(t, uint8(2), instance2.InstanceNum())
@@ -2234,7 +2186,7 @@ func TestSession_InstanceNumberAssignment(t *testing.T) {
 		s.RemoveInstance(instance2)
 
 		// New instance should reuse number 2
-		instance4 := NewInstance(s)
+		instance4 := s.AddInstance()
 		assert.Equal(t, uint8(2), instance4.InstanceNum())
 
 		// Verify all instance numbers are unique
@@ -2249,9 +2201,9 @@ func TestSession_InstanceNumberAssignment(t *testing.T) {
 	t.Run("finds lowest available number", func(t *testing.T) {
 		s := NewSession()
 		// Create instances 1, 2, 3
-		instance1 := NewInstance(s)
-		instance2 := NewInstance(s)
-		instance3 := NewInstance(s)
+		instance1 := s.AddInstance()
+		instance2 := s.AddInstance()
+		instance3 := s.AddInstance()
 
 		assert.Equal(t, uint8(1), instance1.InstanceNum())
 		assert.Equal(t, uint8(2), instance2.InstanceNum())
@@ -2261,14 +2213,14 @@ func TestSession_InstanceNumberAssignment(t *testing.T) {
 		s.RemoveInstance(instance1)
 
 		// New instance should get number 1 (lowest available)
-		instance4 := NewInstance(s)
+		instance4 := s.AddInstance()
 		assert.Equal(t, uint8(1), instance4.InstanceNum())
 
 		// Remove instance 2
 		s.RemoveInstance(instance2)
 
 		// New instance should get number 2 (lowest available)
-		instance5 := NewInstance(s)
+		instance5 := s.AddInstance()
 		assert.Equal(t, uint8(2), instance5.InstanceNum())
 
 		// Verify instance 3 still has its number
@@ -2281,7 +2233,7 @@ func TestSession_InstanceNumberAssignment(t *testing.T) {
 		// Fill up all 255 instance numbers
 		instances := make([]*SessionInstance, 255)
 		for i := 0; i < 255; i++ {
-			instances[i] = NewInstance(s)
+			instances[i] = s.AddInstance()
 		}
 
 		// Verify we have 255 instances
@@ -2289,7 +2241,7 @@ func TestSession_InstanceNumberAssignment(t *testing.T) {
 
 		// Try to create one more - should panic
 		assert.PanicsWithValue(t, "all instance numbers are taken (max 255 instances per session)", func() {
-			NewInstance(s)
+			s.AddInstance()
 		})
 	})
 }
