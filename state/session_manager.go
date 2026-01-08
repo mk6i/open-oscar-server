@@ -175,7 +175,7 @@ func (s *InMemorySessionManager) AddSession(ctx context.Context, screenName Disp
 		if doMultiSess {
 			if !active.multiSession {
 				active.session.CloseSession()
-				return s.newSessionGroup(screenName, doMultiSess)
+				return s.newSession(screenName, doMultiSess)
 			}
 
 			instance := NewInstance(active.session)
@@ -193,20 +193,20 @@ func (s *InMemorySessionManager) AddSession(ctx context.Context, screenName Disp
 		}
 	}
 
-	return s.newSessionGroup(screenName, doMultiSess)
+	return s.newSession(screenName, doMultiSess)
 }
 
-func (s *InMemorySessionManager) newSessionGroup(screenName DisplayScreenName, doMultiSess bool) (*SessionInstance, error) {
-	sessionGroup := NewSession()
-	sessionGroup.SetIdentScreenName(screenName.IdentScreenName())
-	sessionGroup.SetDisplayScreenName(screenName)
+func (s *InMemorySessionManager) newSession(screenName DisplayScreenName, doMultiSess bool) (*SessionInstance, error) {
+	sess := NewSession()
+	sess.SetIdentScreenName(screenName.IdentScreenName())
+	sess.SetDisplayScreenName(screenName)
 
 	// Create a new instance within the session group
-	instance := NewInstance(sessionGroup)
+	instance := NewInstance(sess)
 
 	s.mapMutex.Lock()
 	s.store[instance.IdentScreenName()] = &sessionSlot{
-		session:      sessionGroup,
+		session:      sess,
 		removed:      make(chan bool),
 		multiSession: doMultiSess,
 	}

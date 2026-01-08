@@ -71,10 +71,7 @@ type Session struct {
 	rateLimitStatesOriginal [5]RateClassState
 	lastObservedStates      [5]RateClassState
 
-	// Active instances for this user
-	instances []*SessionInstance
-	// SessionInstance counter for this session group
-	instanceCounter uint8
+	instances map[uint8]*SessionInstance
 
 	initOnce      sync.Once
 	onSessCloseFn func()
@@ -84,11 +81,10 @@ type Session struct {
 // NewSession creates a new Session for a user.
 func NewSession() *Session {
 	return &Session{
-		warningCh:       make(chan uint16, 1),
-		instances:       make([]*SessionInstance, 0),
-		instanceCounter: 0,
-		onSessCloseFn:   func() {},
-		nowFn:           time.Now,
+		warningCh:     make(chan uint16, 1),
+		instances:     make(map[uint8]*SessionInstance),
+		onSessCloseFn: func() {},
+		nowFn:         time.Now,
 	}
 }
 
@@ -114,22 +110,29 @@ func NewInstance(session *Session) *SessionInstance {
 // ============================================================================
 
 // AddInstance adds an instance to the session group.
+// An instance number will be automatically assigned.
 func (s *Session) AddInstance(instance *SessionInstance) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	s.instances = append(s.instances, instance)
+	// Find the next available instance number
+	for num := uint8(1); num != 0; num++ {
+		if _, exists := s.instances[num]; !exists {
+			instance.instanceNum = num
+			break
+		}
+	}
+	// If all numbers are taken (shouldn't happen), panic
+	if instance.instanceNum == 0 {
+		panic("all instance numbers are taken (max 255 instances per session)")
+	}
+	s.instances[instance.instanceNum] = instance
 }
 
 // RemoveInstance removes an instance from the session group.
 func (s *Session) RemoveInstance(instance *SessionInstance) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	for i, inst := range s.instances {
-		if inst.instanceNum == instance.instanceNum {
-			s.instances = append(s.instances[:i], s.instances[i+1:]...)
-			break
-		}
-	}
+	delete(s.instances, instance.instanceNum)
 }
 
 // InstanceCount returns the number of total instances in the session group.
@@ -143,7 +146,11 @@ func (s *Session) InstanceCount() int {
 func (s *Session) Instances() []*SessionInstance {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
-	return s.instances
+	instances := make([]*SessionInstance, 0, len(s.instances))
+	for _, instance := range s.instances {
+		instances = append(instances, instance)
+	}
+	return instances
 }
 
 // HasLiveInstances returns true if the session has at least one live instance.
@@ -594,8 +601,10 @@ func (s *Session) SignonTime() time.Time {
 // CloseSession closes all instances in the session.
 func (s *Session) CloseSession() {
 	s.mutex.RLock()
-	instances := make([]*SessionInstance, len(s.instances))
-	copy(instances, s.instances)
+	instances := make([]*SessionInstance, 0, len(s.instances))
+	for _, instance := range s.instances {
+		instances = append(instances, instance)
+	}
 	s.mutex.RUnlock()
 
 	for _, instance := range instances {
@@ -642,16 +651,21 @@ func (s *Session) AllInvisible() bool {
 	return true
 }
 
-// generateInstanceNum generates the next instance number for this session group.
+// generateInstanceNum generates the next available instance number for this session group.
+// It finds the next number that is not currently in use by iterating over the possible key range.
 func (s *Session) generateInstanceNum() uint8 {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	s.instanceCounter++
-	if s.instanceCounter == 0 {
-		s.instanceCounter = 1 // Start from 1, skip 0
+	// if num reaches 0, all number have been taken
+	for num := uint8(1); num != 0; num++ {
+		if _, exists := s.instances[num]; !exists {
+			return num
+		}
 	}
-	return s.instanceCounter
+
+	// the caller should ensure there are no more than 255 instances per session
+	panic("all instance numbers are taken (max 255 instances per session)")
 }
 
 // SetMemberSince sets the member since timestamp.
@@ -755,13 +769,7 @@ func (s *Session) UserStatusBitmask() uint32 {
 func (s *Session) Instance(num uint8) *SessionInstance {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
-
-	for _, instance := range s.instances {
-		if instance.instanceNum == num {
-			return instance
-		}
-	}
-	return nil
+	return s.instances[num]
 }
 
 func (s *Session) Caps() [][16]byte {

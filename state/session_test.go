@@ -2201,3 +2201,95 @@ func TestSession_Caps(t *testing.T) {
 		})
 	}
 }
+
+func TestSession_InstanceNumberAssignment(t *testing.T) {
+	t.Run("first instance gets number 1", func(t *testing.T) {
+		s := NewSession()
+		instance := NewInstance(s)
+		assert.Equal(t, uint8(1), instance.InstanceNum())
+	})
+
+	t.Run("multiple instances get sequential numbers", func(t *testing.T) {
+		s := NewSession()
+		instance1 := NewInstance(s)
+		instance2 := NewInstance(s)
+		instance3 := NewInstance(s)
+
+		assert.Equal(t, uint8(1), instance1.InstanceNum())
+		assert.Equal(t, uint8(2), instance2.InstanceNum())
+		assert.Equal(t, uint8(3), instance3.InstanceNum())
+	})
+
+	t.Run("removed instance numbers are reused", func(t *testing.T) {
+		s := NewSession()
+		instance1 := NewInstance(s)
+		instance2 := NewInstance(s)
+		instance3 := NewInstance(s)
+
+		assert.Equal(t, uint8(1), instance1.InstanceNum())
+		assert.Equal(t, uint8(2), instance2.InstanceNum())
+		assert.Equal(t, uint8(3), instance3.InstanceNum())
+
+		// Remove instance 2
+		s.RemoveInstance(instance2)
+
+		// New instance should reuse number 2
+		instance4 := NewInstance(s)
+		assert.Equal(t, uint8(2), instance4.InstanceNum())
+
+		// Verify all instance numbers are unique
+		instances := s.Instances()
+		instanceNums := make(map[uint8]bool)
+		for _, inst := range instances {
+			assert.False(t, instanceNums[inst.InstanceNum()], "instance number %d should be unique", inst.InstanceNum())
+			instanceNums[inst.InstanceNum()] = true
+		}
+	})
+
+	t.Run("finds lowest available number", func(t *testing.T) {
+		s := NewSession()
+		// Create instances 1, 2, 3
+		instance1 := NewInstance(s)
+		instance2 := NewInstance(s)
+		instance3 := NewInstance(s)
+
+		assert.Equal(t, uint8(1), instance1.InstanceNum())
+		assert.Equal(t, uint8(2), instance2.InstanceNum())
+		assert.Equal(t, uint8(3), instance3.InstanceNum())
+
+		// Remove instance 1
+		s.RemoveInstance(instance1)
+
+		// New instance should get number 1 (lowest available)
+		instance4 := NewInstance(s)
+		assert.Equal(t, uint8(1), instance4.InstanceNum())
+
+		// Remove instance 2
+		s.RemoveInstance(instance2)
+
+		// New instance should get number 2 (lowest available)
+		instance5 := NewInstance(s)
+		assert.Equal(t, uint8(2), instance5.InstanceNum())
+
+		// Verify instance 3 still has its number
+		assert.Equal(t, uint8(3), instance3.InstanceNum())
+	})
+
+	t.Run("panics when all instance numbers are taken", func(t *testing.T) {
+		s := NewSession()
+
+		// Fill up all 255 instance numbers
+		instances := make([]*SessionInstance, 255)
+		for i := 0; i < 255; i++ {
+			instances[i] = NewInstance(s)
+		}
+
+		// Verify we have 255 instances
+		assert.Equal(t, 255, s.InstanceCount())
+
+		// Try to create one more - should panic
+		assert.PanicsWithValue(t, "all instance numbers are taken (max 255 instances per session)", func() {
+			NewInstance(s)
+		})
+	})
+}
