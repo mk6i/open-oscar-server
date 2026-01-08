@@ -59,11 +59,12 @@ type Session struct {
 	signonTime        time.Time
 
 	// User-level settings and profile (shared)
-	warning         uint16
-	warningCh       chan uint16
-	offlineMsgCount int
-	chatRoomCookie  string
-	buddyIcon       wire.BARTID
+	warning             uint16
+	warningCh           chan uint16
+	offlineMsgCount     int
+	chatRoomCookie      string
+	buddyIcon           wire.BARTID
+	typingEventsEnabled bool
 
 	// Rate limiting (shared across all sessions per user)
 	rateLimitStates         [5]RateClassState
@@ -695,6 +696,20 @@ func (s *Session) ChatRoomCookie() string {
 	return s.chatRoomCookie
 }
 
+// SetTypingEventsEnabled sets whether the session wants to send and receive typing events.
+func (s *Session) SetTypingEventsEnabled(enabled bool) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.typingEventsEnabled = enabled
+}
+
+// TypingEventsEnabled indicates whether the session wants to send and receive typing events.
+func (s *Session) TypingEventsEnabled() bool {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.typingEventsEnabled
+}
+
 // UserInfoBitmask returns the user info bitmask from the first instance.
 func (s *Session) UserInfoBitmask() uint16 {
 	s.mutex.RLock()
@@ -789,11 +804,10 @@ type SessionInstance struct {
 	kerberosAuth   bool
 
 	// Per-session client information
-	clientID            string
-	caps                [][16]byte
-	foodGroupVersions   [wire.MDir + 1]uint16
-	multiConnFlag       wire.MultiConnFlag
-	typingEventsEnabled bool
+	clientID          string
+	caps              [][16]byte
+	foodGroupVersions [wire.MDir + 1]uint16
+	multiConnFlag     wire.MultiConnFlag
 
 	// Per-session state
 	idle              bool
@@ -934,20 +948,6 @@ func (s *SessionInstance) FoodGroupVersions() [wire.MDir + 1]uint16 {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 	return s.foodGroupVersions
-}
-
-// SetTypingEventsEnabled sets whether the instance wants to send and receive typing events.
-func (s *SessionInstance) SetTypingEventsEnabled(enabled bool) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	s.typingEventsEnabled = enabled
-}
-
-// TypingEventsEnabled indicates whether the instance wants to send and receive typing events.
-func (s *SessionInstance) TypingEventsEnabled() bool {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-	return s.typingEventsEnabled
 }
 
 // SetMultiConnFlag sets the multi-connection flag for this instance.

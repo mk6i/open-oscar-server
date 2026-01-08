@@ -394,8 +394,6 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 		mockParams mockParams
 		// expectOutput is the SNAC sent from the server to client
 		expectOutput *wire.SNACMessage
-		// wantTypingEventsEnabled indicates that the session should have typing events enabled
-		wantTypingEventsEnabled bool
 		// sessionMatch verifies the session state after completion
 		sessionMatch func(session *state.SessionInstance)
 	}{
@@ -576,8 +574,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					},
 				},
 			},
-			expectOutput:            nil,
-			wantTypingEventsEnabled: false,
+			expectOutput: nil,
 		},
 		{
 			name:        "enable typing events",
@@ -661,8 +658,10 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					},
 				},
 			},
-			expectOutput:            nil,
-			wantTypingEventsEnabled: true,
+			expectOutput: nil,
+			sessionMatch: func(session *state.SessionInstance) {
+				assert.True(t, session.TypingEventsEnabled())
+			},
 		},
 		{
 			name:        "block buddies",
@@ -1608,8 +1607,6 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 				tc.inputSNAC.Body.(wire.SNAC_0x13_0x08_FeedbagInsertItem).Items)
 			assert.NoError(t, err)
 			assert.Equal(t, tc.expectOutput, output)
-
-			assert.Equal(t, tc.wantTypingEventsEnabled, tc.userSession.TypingEventsEnabled())
 
 			if tc.sessionMatch != nil {
 				tc.sessionMatch(tc.userSession)
