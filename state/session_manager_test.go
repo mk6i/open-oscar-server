@@ -433,9 +433,10 @@ func TestInMemorySessionManager_SessionReplacement_NoMultiSess_NoMultiSess(t *te
 func TestInMemorySessionManager_SessionReplacement_MultiSess_NoMultiSess(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		sm := NewInMemorySessionManager(slog.Default())
+		sm.maxConcurrentSessions = 5
 
 		var sessList []*SessionInstance
-		for i := 0; i < 10; i++ {
+		for i := 0; i < sm.maxConcurrentSessions; i++ {
 			sess, err := sm.AddSession(context.Background(), "user-screen-name-1", true)
 			assert.NoError(t, err)
 			sess.SetSignonComplete()
@@ -955,4 +956,88 @@ func TestInMemorySessionManager_MaybeRelayMessage_SkipsNonLiveInstances(t *testi
 		assert.Fail(t, "user2 should not receive a message because the instance is not live")
 	default:
 	}
+}
+
+func TestInMemorySessionManager_AddSession_MaxConcurrentSessions(t *testing.T) {
+	t.Run("enforces limit", func(t *testing.T) {
+		sm := NewInMemorySessionManager(slog.Default())
+		sm.maxConcurrentSessions = 5
+
+		// Create sessions up to the limit (5)
+		var sessList []*SessionInstance
+		for i := 0; i < sm.maxConcurrentSessions; i++ {
+			sess, err := sm.AddSession(context.Background(), "user-screen-name-1", true)
+			assert.NoError(t, err)
+			sess.SetSignonComplete()
+			sessList = append(sessList, sess)
+		}
+
+		// Verify we have exactly 5 instances
+		assert.Equal(t, sm.maxConcurrentSessions, sessList[0].InstanceCount())
+
+		// Try to add one more session - should fail with ErrMaxConcurrentSessionsReached
+		sess, err := sm.AddSession(context.Background(), "user-screen-name-1", true)
+		assert.Nil(t, sess)
+		assert.ErrorIs(t, err, ErrMaxConcurrentSessionsReached)
+
+		// Verify we still have exactly 5 instances
+		assert.Equal(t, sm.maxConcurrentSessions, sessList[0].InstanceCount())
+	})
+
+	t.Run("allows new session after removal", func(t *testing.T) {
+		sm := NewInMemorySessionManager(slog.Default())
+		sm.maxConcurrentSessions = 5
+
+		// Create sessions up to the limit (5)
+		var sessList []*SessionInstance
+		for i := 0; i < sm.maxConcurrentSessions; i++ {
+			sess, err := sm.AddSession(context.Background(), "user-screen-name-1", true)
+			assert.NoError(t, err)
+			sess.SetSignonComplete()
+			sessList = append(sessList, sess)
+		}
+
+		// Verify we have exactly 5 instances
+		assert.Equal(t, sm.maxConcurrentSessions, sessList[0].InstanceCount())
+
+		// Try to add one more session - should fail
+		sess, err := sm.AddSession(context.Background(), "user-screen-name-1", true)
+		assert.Nil(t, sess)
+		assert.ErrorIs(t, err, ErrMaxConcurrentSessionsReached)
+
+		// Close one instance (this removes it from the Session)
+		sessList[0].CloseInstance()
+
+		// Now we should be able to add a new instance to the same session
+		newSess, err := sm.AddSession(context.Background(), "user-screen-name-1", true)
+		assert.NoError(t, err)
+		assert.NotNil(t, newSess)
+		newSess.SetSignonComplete()
+
+		// Verify we have exactly 5 instances again (4 remaining + 1 new = 5)
+		assert.Equal(t, sm.maxConcurrentSessions, newSess.InstanceCount())
+	})
+
+	t.Run("no limit for non-multi-session", func(t *testing.T) {
+		sm := NewInMemorySessionManager(slog.Default())
+
+		// Create multiple non-multi-session sessions - should not be limited
+		// (though they will replace each other, but that's expected behavior)
+		sess1, err := sm.AddSession(context.Background(), "user-screen-name-1", false)
+		assert.NoError(t, err)
+		sess1.SetSignonComplete()
+
+		// Close and remove the first session to allow a new one
+		go func() {
+			<-sess1.Closed()
+			sm.RemoveSession(sess1)
+		}()
+
+		sess2, err := sm.AddSession(context.Background(), "user-screen-name-1", false)
+		assert.NoError(t, err)
+		sess2.SetSignonComplete()
+
+		// Verify the limit doesn't apply to non-multi-session
+		assert.Equal(t, 1, sess2.InstanceCount())
+	})
 }

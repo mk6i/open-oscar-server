@@ -245,6 +245,18 @@ func (s oscarServer) connectToOSCARService(
 	case wire.BOS:
 		sess, err = s.AuthService.RegisterBOSSession(ctx, cookie)
 		if err != nil {
+			if errors.Is(err, state.ErrMaxConcurrentSessionsReached) {
+				block := wire.TLVRestBlock{}
+				// error code indicating the signon is blocked. i can't find a
+				// more appropriate error code to indicate the maximum session limit is reached
+				block.Append(wire.NewTLVBE(0x0008, uint8(17)))
+				// "more info" button stubbed value for now
+				block.Append(wire.NewTLVBE(0x000b, "https://github.com/mk6i/open-oscar-server"))
+				if err := flapc.NewSignoff(block); err != nil {
+					return fmt.Errorf("unable to gracefully disconnect user. %w", err)
+				}
+				return nil
+			}
 			return err
 		}
 		if sess == nil {

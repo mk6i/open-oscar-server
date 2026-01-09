@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -25,19 +26,32 @@ type userLock struct {
 // synchronized message relay between sessions in the session pool. An
 // InMemorySessionManager is safe for concurrent use by multiple goroutines.
 type InMemorySessionManager struct {
-	store          map[IdentScreenName]*sessionSlot
-	mapMutex       sync.RWMutex
-	userLocks      map[IdentScreenName]*userLock
-	userLocksMutex sync.Mutex
-	logger         *slog.Logger
+	store                 map[IdentScreenName]*sessionSlot
+	mapMutex              sync.RWMutex
+	userLocks             map[IdentScreenName]*userLock
+	userLocksMutex        sync.Mutex
+	logger                *slog.Logger
+	maxConcurrentSessions int
 }
+
+const (
+	// DefaultMaxConcurrentSessions is the default maximum number of concurrent
+	// sessions allowed when multi-session is enabled.
+	DefaultMaxConcurrentSessions = 5
+)
+
+// ErrMaxConcurrentSessionsReached is returned when attempting to add a new
+// session instance but the maximum number of concurrent sessions has been
+// reached.
+var ErrMaxConcurrentSessionsReached = errors.New("maximum number of concurrent sessions reached")
 
 // NewInMemorySessionManager creates a new instance of InMemorySessionManager.
 func NewInMemorySessionManager(logger *slog.Logger) *InMemorySessionManager {
 	return &InMemorySessionManager{
-		logger:    logger,
-		store:     make(map[IdentScreenName]*sessionSlot),
-		userLocks: make(map[IdentScreenName]*userLock),
+		logger:                logger,
+		store:                 make(map[IdentScreenName]*sessionSlot),
+		userLocks:             make(map[IdentScreenName]*userLock),
+		maxConcurrentSessions: DefaultMaxConcurrentSessions,
 	}
 }
 
@@ -176,6 +190,11 @@ func (s *InMemorySessionManager) AddSession(ctx context.Context, screenName Disp
 			if !active.multiSession {
 				active.session.CloseSession()
 				return s.newSession(screenName, doMultiSess)
+			}
+
+			// Check if we've reached the maximum number of concurrent sessions
+			if active.session.InstanceCount() >= s.maxConcurrentSessions {
+				return nil, ErrMaxConcurrentSessionsReached
 			}
 
 			instance := active.session.AddInstance()
