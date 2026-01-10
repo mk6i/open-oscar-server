@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"time"
 
 	"github.com/mk6i/open-oscar-server/config"
@@ -772,7 +773,16 @@ func newOServiceUserInfoUpdate(sess *state.SessionInstance) wire.SNAC_0x01_0x0F_
 
 		userInfo[0].Append(wire.NewTLVBE(wire.OServiceUserInfoMyInstanceNum, []byte{sess.InstanceNum()}))
 
-		for _, instance := range sess.Instances() {
+		// sort for deterministic ordering
+		sortedInstances := make([]*state.SessionInstance, len(sess.Instances()))
+		for i, instance := range sess.Instances() {
+			sortedInstances[i] = instance
+		}
+		sort.Slice(sortedInstances, func(i, j int) bool {
+			return sortedInstances[i].InstanceNum() < sortedInstances[j].InstanceNum()
+		})
+
+		for _, instance := range sortedInstances {
 			instanceInfo := wire.TLVUserInfo{
 				ScreenName:   instance.DisplayScreenName().String(),
 				WarningLevel: instance.Warning(),

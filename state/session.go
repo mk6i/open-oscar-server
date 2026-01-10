@@ -137,7 +137,7 @@ func (s *Session) InstanceCount() int {
 	return len(s.instances)
 }
 
-// Instances returns all live instances.
+// Instances returns all instances. The element order is non-deterministic.
 func (s *Session) Instances() []*SessionInstance {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
