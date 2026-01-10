@@ -545,6 +545,68 @@ func TestOscarServer_RouteConnection_BOS_MultiSessionSignoff(t *testing.T) {
 	wg.Wait()
 }
 
+// Ensure client disconnection if session hits max concurrent sessions limit.
+func TestOscarServer_RouteConnection_BOS_MaxConcurrentSessionsReached(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	addr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:8080")
+	assert.NoError(t, err)
+
+	clientFake := fakeConn{
+		Conn:   serverConn,
+		local:  addr,
+		remote: addr,
+	}
+
+	go func() {
+		// < receive FLAPSignonFrame
+		flap := wire.FLAPFrame{}
+		assert.NoError(t, wire.UnmarshalBE(&flap, clientConn))
+		flapSignonFrame := wire.FLAPSignonFrame{}
+		assert.NoError(t, wire.UnmarshalBE(&flapSignonFrame, bytes.NewBuffer(flap.Payload)))
+
+		// > send FLAPSignonFrame
+		flapSignonFrame = wire.FLAPSignonFrame{
+			FLAPVersion: 1,
+		}
+		flapSignonFrame.Append(wire.NewTLVBE(wire.OServiceTLVTagsLoginCookie, []byte("the-cookie")))
+		buf := &bytes.Buffer{}
+		assert.NoError(t, wire.MarshalBE(flapSignonFrame, buf))
+		flap = wire.FLAPFrame{
+			StartMarker: 42,
+			FrameType:   wire.FLAPFrameSignon,
+			Payload:     buf.Bytes(),
+		}
+		assert.NoError(t, wire.MarshalBE(flap, clientConn))
+
+		flapc := wire.NewFlapClient(0, clientConn, clientConn)
+
+		// < receive SNAC_0x01_0x03_OServiceHostOnline
+		flap, err = flapc.ReceiveFLAP()
+		assert.NoError(t, err)
+
+		assert.NoError(t, clientConn.Close())
+	}()
+
+	wg := &sync.WaitGroup{}
+
+	authService := newMockAuthService(t)
+	authService.EXPECT().
+		RegisterBOSSession(mock.Anything, state.ServerCookie{Service: wire.BOS}).
+		Return(nil, state.ErrMaxConcurrentSessionsReached)
+
+	authService.EXPECT().
+		CrackCookie(mock.Anything).
+		Return(state.ServerCookie{Service: wire.BOS}, nil)
+
+	rt := oscarServer{
+		AuthService: authService,
+		Logger:      slog.Default(),
+	}
+	assert.NoError(t, rt.routeConnection(context.Background(), clientFake, config.Listener{}))
+
+	wg.Wait()
+}
+
 func TestOscarServer_RouteConnection_Chat(t *testing.T) {
 	sess := state.NewSession().AddInstance()
 
