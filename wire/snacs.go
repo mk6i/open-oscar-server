@@ -1151,7 +1151,7 @@ type SNAC_0x0D_0x09_ChatNavNavInfo struct {
 
 type SNAC_0x0D_0x09_TLVExchangeInfo struct {
 	Identifier uint16
-	TLVBlock
+	TLVPaddedRestBlock
 }
 
 //

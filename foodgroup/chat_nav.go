@@ -10,18 +10,16 @@ import (
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
-var defaultExchangeCfg = wire.TLVBlock{
-	TLVList: wire.TLVList{
-		wire.NewTLVBE(wire.ChatRoomTLVMaxConcurrentRooms, uint8(10)),
-		wire.NewTLVBE(wire.ChatRoomTLVClassPerms, uint16(0x0010)),
-		wire.NewTLVBE(wire.ChatRoomTLVMaxNameLen, uint16(100)),
-		wire.NewTLVBE(wire.ChatRoomTLVFlags, uint16(15)),
-		wire.NewTLVBE(wire.ChatRoomTLVNavCreatePerms, uint8(2)),
-		wire.NewTLVBE(wire.ChatRoomTLVCharSet1, "us-ascii"),
-		wire.NewTLVBE(wire.ChatRoomTLVLang1, "en"),
-		wire.NewTLVBE(wire.ChatRoomTLVCharSet2, "us-ascii"),
-		wire.NewTLVBE(wire.ChatRoomTLVLang2, "en"),
-	},
+var defaultExchangeCfg = wire.TLVList{
+	wire.NewTLVBE(wire.ChatRoomTLVMaxConcurrentRooms, uint8(10)),
+	wire.NewTLVBE(wire.ChatRoomTLVClassPerms, uint16(0x0010)),
+	wire.NewTLVBE(wire.ChatRoomTLVMaxNameLen, uint16(100)),
+	wire.NewTLVBE(wire.ChatRoomTLVFlags, uint16(15)),
+	wire.NewTLVBE(wire.ChatRoomTLVNavCreatePerms, uint8(2)),
+	wire.NewTLVBE(wire.ChatRoomTLVCharSet1, "us-ascii"),
+	wire.NewTLVBE(wire.ChatRoomTLVLang1, "en"),
+	wire.NewTLVBE(wire.ChatRoomTLVCharSet2, "us-ascii"),
+	wire.NewTLVBE(wire.ChatRoomTLVLang2, "en"),
 }
 
 var (
@@ -61,11 +59,17 @@ func (s ChatNavService) RequestChatRights(_ context.Context, inFrame wire.SNACFr
 					wire.NewTLVBE(wire.ChatNavTLVMaxConcurrentRooms, uint8(10)),
 					wire.NewTLVBE(wire.ChatNavTLVExchangeInfo, wire.SNAC_0x0D_0x09_TLVExchangeInfo{
 						Identifier: state.PrivateExchange,
-						TLVBlock:   defaultExchangeCfg,
+						TLVPaddedRestBlock: wire.TLVPaddedRestBlock{
+							Reserved: 0,
+							TLVList:  defaultExchangeCfg,
+						},
 					}),
 					wire.NewTLVBE(wire.ChatNavTLVExchangeInfo, wire.SNAC_0x0D_0x09_TLVExchangeInfo{
 						Identifier: state.PublicExchange,
-						TLVBlock:   defaultExchangeCfg,
+						TLVPaddedRestBlock: wire.TLVPaddedRestBlock{
+							Reserved: 0,
+							TLVList:  defaultExchangeCfg,
+						},
 					}),
 				},
 			},
@@ -191,7 +195,10 @@ func (s ChatNavService) ExchangeInfo(_ context.Context, inFrame wire.SNACFrame, 
 					wire.NewTLVBE(wire.ChatNavTLVMaxConcurrentRooms, uint8(10)),
 					wire.NewTLVBE(wire.ChatNavTLVExchangeInfo, wire.SNAC_0x0D_0x09_TLVExchangeInfo{
 						Identifier: inBody.Exchange,
-						TLVBlock:   defaultExchangeCfg,
+						TLVPaddedRestBlock: wire.TLVPaddedRestBlock{
+							Reserved: 0,
+							TLVList:  defaultExchangeCfg,
+						},
 					}),
 				},
 			},
