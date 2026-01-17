@@ -147,3 +147,38 @@ func TestUnmarshalChatMessageText(t *testing.T) {
 		})
 	}
 }
+
+func TestTLVPaddedRestBlock_Marshal(t *testing.T) {
+	block := TLVPaddedRestBlock{
+		Reserved: 0,
+		TLVList: TLVList{
+			NewTLVBE(0x03, uint8(10)),
+		},
+	}
+
+	buf := &bytes.Buffer{}
+	err := MarshalBE(block, buf)
+	assert.NoError(t, err)
+
+	expected := []byte{0x00, 0x00, 0x00, 0x03, 0x00, 0x01, 0x0A}
+	assert.Equal(t, expected, buf.Bytes())
+}
+
+func TestSNAC_0x0D_0x09_TLVExchangeInfo_Marshal(t *testing.T) {
+	info := SNAC_0x0D_0x09_TLVExchangeInfo{
+		Identifier: 4,
+		TLVPaddedRestBlock: TLVPaddedRestBlock{
+			Reserved: 0,
+			TLVList: TLVList{
+				NewTLVBE(0x03, uint8(10)),
+			},
+		},
+	}
+
+	buf := &bytes.Buffer{}
+	err := MarshalBE(info, buf)
+	assert.NoError(t, err)
+
+	expected := []byte{0x00, 0x04, 0x00, 0x00, 0x00, 0x03, 0x00, 0x01, 0x0A}
+	assert.Equal(t, expected, buf.Bytes())
+}

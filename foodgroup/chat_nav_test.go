@@ -614,7 +614,8 @@ func TestChatNavService_RequestChatRights(t *testing.T) {
 					wire.NewTLVBE(wire.ChatNavTLVMaxConcurrentRooms, uint8(10)),
 					wire.NewTLVBE(wire.ChatNavTLVExchangeInfo, wire.SNAC_0x0D_0x09_TLVExchangeInfo{
 						Identifier: 4,
-						TLVBlock: wire.TLVBlock{
+						TLVPaddedRestBlock: wire.TLVPaddedRestBlock{
+							Reserved: 0,
 							TLVList: wire.TLVList{
 								wire.NewTLVBE(wire.ChatRoomTLVMaxConcurrentRooms, uint8(10)),
 								wire.NewTLVBE(wire.ChatRoomTLVClassPerms, uint16(0x0010)),
@@ -630,7 +631,8 @@ func TestChatNavService_RequestChatRights(t *testing.T) {
 					}),
 					wire.NewTLVBE(wire.ChatNavTLVExchangeInfo, wire.SNAC_0x0D_0x09_TLVExchangeInfo{
 						Identifier: 5,
-						TLVBlock: wire.TLVBlock{
+						TLVPaddedRestBlock: wire.TLVPaddedRestBlock{
+							Reserved: 0,
 							TLVList: wire.TLVList{
 								wire.NewTLVBE(wire.ChatRoomTLVMaxConcurrentRooms, uint8(10)),
 								wire.NewTLVBE(wire.ChatRoomTLVClassPerms, uint16(0x0010)),
@@ -682,7 +684,8 @@ func TestChatNavService_ExchangeInfo(t *testing.T) {
 							wire.NewTLVBE(wire.ChatNavTLVMaxConcurrentRooms, uint8(10)),
 							wire.NewTLVBE(wire.ChatNavTLVExchangeInfo, wire.SNAC_0x0D_0x09_TLVExchangeInfo{
 								Identifier: state.PrivateExchange,
-								TLVBlock: wire.TLVBlock{
+								TLVPaddedRestBlock: wire.TLVPaddedRestBlock{
+									Reserved: 0,
 									TLVList: wire.TLVList{
 										wire.NewTLVBE(wire.ChatRoomTLVMaxConcurrentRooms, uint8(10)),
 										wire.NewTLVBE(wire.ChatRoomTLVClassPerms, uint16(0x0010)),
@@ -723,7 +726,8 @@ func TestChatNavService_ExchangeInfo(t *testing.T) {
 							wire.NewTLVBE(wire.ChatNavTLVMaxConcurrentRooms, uint8(10)),
 							wire.NewTLVBE(wire.ChatNavTLVExchangeInfo, wire.SNAC_0x0D_0x09_TLVExchangeInfo{
 								Identifier: state.PublicExchange,
-								TLVBlock: wire.TLVBlock{
+								TLVPaddedRestBlock: wire.TLVPaddedRestBlock{
+									Reserved: 0,
 									TLVList: wire.TLVList{
 										wire.NewTLVBE(wire.ChatRoomTLVMaxConcurrentRooms, uint8(10)),
 										wire.NewTLVBE(wire.ChatRoomTLVClassPerms, uint16(0x0010)),

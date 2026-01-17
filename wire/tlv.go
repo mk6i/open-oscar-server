@@ -66,6 +66,13 @@ type TLVLBlock struct {
 	TLVList `oscar:"len_prefix=uint16"`
 }
 
+// TLVPaddedRestBlock is a TLV array with a 2 byte reserved field followed by
+// TLVs with no count prefix.
+type TLVPaddedRestBlock struct {
+	Reserved uint16
+	TLVList
+}
+
 // TLVList is a list of TLV elements. It provides methods to append and access
 // TLVs in the array. It provides methods that decode the data blob into the
 // appropriate type at runtime. The caller assumes the TLV data type at runtime
