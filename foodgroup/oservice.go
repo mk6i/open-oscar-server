@@ -616,9 +616,9 @@ func (s OServiceService) ServiceRequest(ctx context.Context, service uint16, ses
 		Body: wire.SNAC_0x01_0x05_OServiceServiceResponse{
 			TLVRestBlock: wire.TLVRestBlock{
 				TLVList: wire.TLVList{
+					wire.NewTLVBE(wire.OServiceTLVTagsGroupID, inBody.FoodGroup),
 					wire.NewTLVBE(wire.OServiceTLVTagsReconnectHere, host),
 					wire.NewTLVBE(wire.OServiceTLVTagsLoginCookie, cookie),
-					wire.NewTLVBE(wire.OServiceTLVTagsGroupID, inBody.FoodGroup),
 					wire.NewTLVBE(wire.OServiceTLVTagsSSLState, stateCode),
 				},
 			},
