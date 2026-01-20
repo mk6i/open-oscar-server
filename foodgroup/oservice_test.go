@@ -1773,14 +1773,31 @@ func TestOServiceService_ClientVersions(t *testing.T) {
 		logger: slog.Default(),
 	}
 
-	want := wire.SNACMessage{
-		Frame: wire.SNACFrame{
-			FoodGroup: wire.OService,
-			SubGroup:  wire.OServiceHostVersions,
-			RequestID: 1234,
+	want := []wire.SNACMessage{
+		{
+			Frame: wire.SNACFrame{
+				FoodGroup: wire.OService,
+				SubGroup:  wire.OServiceHostVersions,
+				RequestID: 1234,
+			},
+			Body: wire.SNAC_0x01_0x18_OServiceHostVersions{
+				Versions: []uint16{5, 6, 7, 8},
+			},
 		},
-		Body: wire.SNAC_0x01_0x18_OServiceHostVersions{
-			Versions: []uint16{5, 6, 7, 8},
+		{
+			Frame: wire.SNACFrame{
+				FoodGroup: wire.OService,
+				SubGroup:  wire.OServiceMotd,
+				RequestID: wire.ReqIDFromServer,
+			},
+			Body: wire.SNAC_0x01_0x13_OServiceMOTD{
+				MessageType: 0x0004,
+				TLVRestBlock: wire.TLVRestBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.OServiceTLVTagsMOTDMessage, "Welcome to Open OSCAR Server"),
+					},
+				},
+			},
 		},
 	}
 

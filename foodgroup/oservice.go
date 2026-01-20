@@ -67,14 +67,16 @@ func NewOServiceService(
 // attempt to accommodate any particular food group version. The server
 // implicitly accommodates any food group version for Windows AIM clients 5.x.
 // It returns SNAC wire.OServiceHostVersions containing the server's supported
-// food group versions.
+// food group versions followed by SNAC wire.OServiceMotd containing Message of
+// the Day. MOTD is sent here because some clients such as Jimm wait for it
+// before sending RateParamsQuery, causing the login flow to stall if omitted.
 // todo this documentation
-func (s OServiceService) ClientVersions(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x01_0x17_OServiceClientVersions) wire.SNACMessage {
+func (s OServiceService) ClientVersions(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x01_0x17_OServiceClientVersions) []wire.SNACMessage {
 	var versions [wire.MDir + 1]uint16
 
 	if len(inBody.Versions)%2 != 0 {
 		s.logger.ErrorContext(ctx, "got uneven food group length")
-		return wire.SNACMessage{}
+		return nil
 	}
 
 	for i := 0; i < len(inBody.Versions); i += 2 {
@@ -93,14 +95,31 @@ func (s OServiceService) ClientVersions(ctx context.Context, instance *state.Ses
 
 	instance.SetFoodGroupVersions(versions)
 
-	return wire.SNACMessage{
-		Frame: wire.SNACFrame{
-			FoodGroup: wire.OService,
-			SubGroup:  wire.OServiceHostVersions,
-			RequestID: inFrame.RequestID,
+	return []wire.SNACMessage{
+		{
+			Frame: wire.SNACFrame{
+				FoodGroup: wire.OService,
+				SubGroup:  wire.OServiceHostVersions,
+				RequestID: inFrame.RequestID,
+			},
+			Body: wire.SNAC_0x01_0x18_OServiceHostVersions{
+				Versions: inBody.Versions,
+			},
 		},
-		Body: wire.SNAC_0x01_0x18_OServiceHostVersions{
-			Versions: inBody.Versions,
+		{
+			Frame: wire.SNACFrame{
+				FoodGroup: wire.OService,
+				SubGroup:  wire.OServiceMotd,
+				RequestID: wire.ReqIDFromServer,
+			},
+			Body: wire.SNAC_0x01_0x13_OServiceMOTD{
+				MessageType: 0x0004,
+				TLVRestBlock: wire.TLVRestBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.OServiceTLVTagsMOTDMessage, "Welcome to Open OSCAR Server"),
+					},
+				},
+			},
 		},
 	}
 }
