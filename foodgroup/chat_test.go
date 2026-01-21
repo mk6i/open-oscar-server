@@ -465,6 +465,69 @@ func TestChatService_ChannelMsgToHost(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "fix malformed Kopete encoding ISO 8859 to ISO-8859-1",
+			instance: newTestInstance("user_sending_chat_msg", sessOptCannedSignonTime,
+				sessOptChatRoomCookie("the-chat-cookie")),
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x0E_0x05_ChatChannelMsgToHost{
+					Cookie:  1234,
+					Channel: 14,
+					TLVRestBlock: wire.TLVRestBlock{
+						TLVList: wire.TLVList{
+							{
+								Tag:   wire.ChatTLVPublicWhisperFlag,
+								Value: []byte{},
+							},
+							wire.NewTLVBE(wire.ChatTLVMessageInfo, wire.TLVRestBlock{
+								TLVList: wire.TLVList{
+									wire.NewTLVBE(wire.ChatTLVMessageInfoText,
+										"<HTML><BODY BGCOLOR=\"#ffffff\"><FONT LANG=\"0\">Hello</FONT></BODY></HTML>"),
+									wire.NewTLVBE(wire.ChatTLVMessageInfoEncoding, "ISO 8859"),
+								},
+							}),
+						},
+					},
+				},
+			},
+			mockParams: mockParams{
+				chatMessageRelayerParams: chatMessageRelayerParams{
+					chatRelayToAllExceptParams: chatRelayToAllExceptParams{
+						{
+							screenName: state.NewIdentScreenName("user_sending_chat_msg"),
+							cookie:     "the-chat-cookie",
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Chat,
+									SubGroup:  wire.ChatChannelMsgToClient,
+								},
+								Body: wire.SNAC_0x0E_0x06_ChatChannelMsgToClient{
+									Cookie:  1234,
+									Channel: 14,
+									TLVRestBlock: wire.TLVRestBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.ChatTLVSenderInformation,
+												newTestInstance("user_sending_chat_msg", sessOptCannedSignonTime).Session().TLVUserInfo()),
+											wire.NewTLVBE(wire.ChatTLVPublicWhisperFlag, []byte{}),
+											wire.NewTLVBE(wire.ChatTLVMessageInfo, wire.TLVRestBlock{
+												TLVList: wire.TLVList{
+													wire.NewTLVBE(wire.ChatTLVMessageInfoText,
+														"<HTML><BODY BGCOLOR=\"#ffffff\"><FONT LANG=\"0\">Hello</FONT></BODY></HTML>"),
+													wire.NewTLVBE(wire.ChatTLVMessageInfoEncoding, "ISO-8859-1"),
+												},
+											}),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 
 	for _, tc := range cases {

@@ -117,12 +117,12 @@ func (s ChatService) transformChatMessage(inBody wire.SNAC_0x0E_0x05_ChatChannel
 		return wire.TLVRestBlock{}, errors.New("SNAC(0x0E,0x05) does not contain a message TLV")
 	}
 
-	restBlock := wire.TLVRestBlock{}
-	if err := wire.UnmarshalBE(&restBlock, bytes.NewBuffer(messageBlob)); err != nil {
+	msgBlock := wire.TLVRestBlock{}
+	if err := wire.UnmarshalBE(&msgBlock, bytes.NewBuffer(messageBlob)); err != nil {
 		return wire.TLVRestBlock{}, err
 	}
 
-	txt, err := extractChatMessage(restBlock)
+	txt, err := extractChatMessage(msgBlock)
 	if err != nil {
 		return wire.TLVRestBlock{}, err
 	}
@@ -133,6 +133,14 @@ func (s ChatService) transformChatMessage(inBody wire.SNAC_0x0E_0x05_ChatChannel
 		return newChatTLVBlock(inBody, sessOnlineHost, payload), nil
 	}
 
+	if enc, ok := msgBlock.String(wire.ChatTLVMessageInfoEncoding); ok {
+		if enc == "ISO 8859" {
+			// fix malformed content encoding type sent by Kopete, which causes
+			// chat messages to show up blank in Windows AIM chat windows
+			msgBlock.Replace(wire.NewTLVBE(wire.ChatTLVMessageInfoEncoding, []byte("ISO-8859-1")))
+		}
+	}
+
 	newRestBlock := wire.TLVRestBlock{}
 
 	// Strip down to the essential TLVs for cross-client compatibility.
@@ -141,7 +149,7 @@ func (s ChatService) transformChatMessage(inBody wire.SNAC_0x0E_0x05_ChatChannel
 	// sent by Windows AIM 5.9 will cause macOS AIM 2.x to crash. Rather than
 	// implement complex per-client filtering, we simply preserve only the three
 	// TLVs that every client expects.
-	for _, tlv := range restBlock.TLVList {
+	for _, tlv := range msgBlock.TLVList {
 		if tlv.Tag == wire.ChatTLVMessageInfoText ||
 			tlv.Tag == wire.ChatTLVMessageInfoEncoding ||
 			tlv.Tag == wire.ChatTLVMessageInfoLang {
