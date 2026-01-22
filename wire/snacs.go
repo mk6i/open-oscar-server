@@ -237,6 +237,7 @@ const (
 	OServiceTLVTagsSSLCertName   uint16 = 0x8D
 	OServiceTLVTagsSSLState      uint16 = 0x8E
 	OserviceTLVTagsSSLUseSSL     uint16 = 0x8C
+	OServiceTLVTagsMOTDMessage   uint16 = 0x0B
 
 	OServiceDiscErrNewLogin   uint8 = 0x01
 	OServiceDiscErrAccDeleted uint8 = 0x02
@@ -348,6 +349,11 @@ type SNAC_0x01_0x10_OServiceEvilNotification struct {
 
 type SNAC_0x01_0x11_OServiceIdleNotification struct {
 	IdleTime uint32
+}
+
+type SNAC_0x01_0x13_OServiceMOTD struct {
+	MessageType uint16
+	TLVRestBlock
 }
 
 type SNAC_0x01_0x14_OServiceSetPrivacyFlags struct {

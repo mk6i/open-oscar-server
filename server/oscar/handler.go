@@ -781,9 +781,14 @@ func (rt Handler) OServiceClientVersions(ctx context.Context, instance *state.Se
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
 	}
-	outSNAC := rt.OServiceService.ClientVersions(ctx, instance, inFrame, inBody)
-	rt.LogRequestAndResponse(ctx, inFrame, inBody, outSNAC.Frame, outSNAC.Body)
-	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
+	outSNACs := rt.OServiceService.ClientVersions(ctx, instance, inFrame, inBody)
+	for _, snac := range outSNACs {
+		rt.LogRequestAndResponse(ctx, inFrame, inBody, snac.Frame, snac.Body)
+		if err := rw.SendSNAC(snac.Frame, snac.Body); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (rt Handler) OServiceSetUserInfoFields(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {

@@ -4254,14 +4254,31 @@ func TestHandler_OServiceServiceClientVersions(t *testing.T) {
 				},
 				Body: tt.inputBody,
 			}
-			output := wire.SNACMessage{
-				Frame: wire.SNACFrame{
-					FoodGroup: wire.OService,
-					SubGroup:  wire.OServiceHostVersions,
+			output := []wire.SNACMessage{
+				{
+					Frame: wire.SNACFrame{
+						FoodGroup: wire.OService,
+						SubGroup:  wire.OServiceHostVersions,
+					},
+					Body: wire.SNAC_0x01_0x18_OServiceHostVersions{
+						Versions: []uint16{
+							10,
+						},
+					},
 				},
-				Body: wire.SNAC_0x01_0x18_OServiceHostVersions{
-					Versions: []uint16{
-						10,
+				{
+					Frame: wire.SNACFrame{
+						FoodGroup: wire.OService,
+						SubGroup:  wire.OServiceMotd,
+						RequestID: wire.ReqIDFromServer,
+					},
+					Body: wire.SNAC_0x01_0x13_OServiceMOTD{
+						MessageType: 0x0004,
+						TLVRestBlock: wire.TLVRestBlock{
+							TLVList: wire.TLVList{
+								wire.NewTLVBE(wire.OServiceTLVTagsMOTDMessage, "Welcome to Open OSCAR Server"),
+							},
+						},
 					},
 				},
 			}
@@ -4280,9 +4297,17 @@ func TestHandler_OServiceServiceClientVersions(t *testing.T) {
 			}
 
 			responseWriter := newMockResponseWriter(t)
-			responseWriter.EXPECT().
-				SendSNAC(output.Frame, output.Body).
-				Return(tt.responseError)
+			if tt.responseError == nil {
+				for _, snac := range output {
+					responseWriter.EXPECT().
+						SendSNAC(snac.Frame, snac.Body).
+						Return(nil)
+				}
+			} else {
+				responseWriter.EXPECT().
+					SendSNAC(output[0].Frame, output[0].Body).
+					Return(tt.responseError)
+			}
 
 			buf := &bytes.Buffer{}
 			assert.NoError(t, wire.MarshalBE(input.Body, buf))
