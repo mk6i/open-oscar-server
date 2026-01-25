@@ -120,8 +120,10 @@ func (_mock *mockOServiceService) ClientVersions(ctx context.Context, instance *
 	var r0 []wire.SNACMessage
 	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x01_0x17_OServiceClientVersions) []wire.SNACMessage); ok {
 		r0 = returnFunc(ctx, instance, inFrame, inBody)
-	} else if ret.Get(0) != nil {
-		r0 = ret.Get(0).([]wire.SNACMessage)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]wire.SNACMessage)
+		}
 	}
 	return r0
 }

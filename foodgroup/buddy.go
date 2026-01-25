@@ -132,6 +132,10 @@ func (s BuddyService) BroadcastBuddyDeparted(ctx context.Context, instance *stat
 	return s.buddyBroadcaster.BroadcastBuddyDeparted(ctx, instance)
 }
 
+func (s BuddyService) BroadcastVisibility(ctx context.Context, you *state.SessionInstance, filter []state.IdentScreenName, doSendDepartures bool) error {
+	return s.buddyBroadcaster.BroadcastVisibility(ctx, you, filter, doSendDepartures)
+}
+
 func newBuddyNotifier(
 	bartItemManager BARTItemManager,
 	relationshipFetcher RelationshipFetcher,

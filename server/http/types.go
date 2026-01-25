@@ -47,6 +47,13 @@ type BARTAssetManager interface {
 	DeleteBARTItem(ctx context.Context, hash []byte) error
 }
 
+// BuddyBroadcaster defines a method for broadcasting presence updates.
+type BuddyBroadcaster interface {
+	// BroadcastVisibility sends presence updates to the specified filter list.
+	// If sendDepartures is true, departure events are sent as well.
+	BroadcastVisibility(ctx context.Context, you *state.SessionInstance, filter []state.IdentScreenName, sendDepartures bool) error
+}
+
 // ChatRoomCreator defines a method for creating a new chat room.
 type ChatRoomCreator interface {
 	// CreateChatRoom creates a new chat room.
@@ -100,6 +107,19 @@ type FeedBagRetriever interface {
 	// BuddyIconMetadata retrieves a user's buddy icon metadata. It returns nil
 	// if the user does not have a buddy icon.
 	BuddyIconMetadata(ctx context.Context, screenName state.IdentScreenName) (*wire.BARTID, error)
+}
+
+// FeedbagManager defines methods for managing feedbag (buddy list) entries.
+// This interface matches foodgroup.FeedbagManager and is implemented by state.SQLiteUserStore.
+type FeedbagManager interface {
+	// Feedbag retrieves all feedbag items for a user.
+	Feedbag(ctx context.Context, screenName state.IdentScreenName) ([]wire.FeedbagItem, error)
+
+	// FeedbagUpsert inserts or updates feedbag items.
+	FeedbagUpsert(ctx context.Context, screenName state.IdentScreenName, items []wire.FeedbagItem) error
+
+	// FeedbagDelete deletes feedbag items.
+	FeedbagDelete(ctx context.Context, screenName state.IdentScreenName, items []wire.FeedbagItem) error
 }
 
 // MessageRelayer defines a method for sending a SNAC message to a specific screen name.

@@ -350,11 +350,19 @@ func MgmtAPI(deps Container) *http.Server {
 		Date:    date,
 	}
 	logger := deps.logger.With("svc", "API")
+	buddyService := foodgroup.NewBuddyService(
+		deps.inMemorySessionManager,
+		deps.sqLiteUserStore,
+		deps.sqLiteUserStore,
+		deps.inMemorySessionManager,
+		deps.sqLiteUserStore,
+	)
 	return http.NewManagementAPI(
 		bld,
 		deps.cfg.APIListener,
 		deps.sqLiteUserStore,        // userManager
 		deps.inMemorySessionManager, // sessionRetriever
+		buddyService,
 		deps.sqLiteUserStore,        // chatRoomRetriever
 		deps.sqLiteUserStore,        // chatRoomCreator
 		deps.sqLiteUserStore,        // chatRoomDeleter
@@ -363,6 +371,7 @@ func MgmtAPI(deps Container) *http.Server {
 		deps.inMemorySessionManager, // messageRelayer
 		deps.sqLiteUserStore,        // bartAssetManager
 		deps.sqLiteUserStore,        // feedbagRetriever
+		deps.sqLiteUserStore,        // feedbagManager
 		deps.sqLiteUserStore,        // accountManager
 		deps.sqLiteUserStore,        // profileRetriever
 		deps.sqLiteUserStore,        // webAPIKeyManager
