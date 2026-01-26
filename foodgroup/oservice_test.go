@@ -866,10 +866,12 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
+		// checkSession validates the state of the session
+		checkSession func(*testing.T, *state.Session)
 	}{
 		{
 			name:     "set user status to visible aim < 6",
-			instance: newTestInstance("me"),
+			instance: newTestInstance("me", sessOptInvisible),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -908,6 +910,9 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 						},
 					},
 				},
+			},
+			checkSession: func(t *testing.T, session *state.Session) {
+				assert.False(t, session.Invisible())
 			},
 		},
 		{
@@ -952,10 +957,13 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 					},
 				},
 			},
+			checkSession: func(t *testing.T, session *state.Session) {
+				assert.True(t, session.Invisible())
+			},
 		},
 		{
 			name:     "set user status to visible aim >= 6",
-			instance: newTestInstance("me", sessOptSetFoodGroupVersion(wire.OService, 4)),
+			instance: newTestInstance("me", sessOptInvisible, sessOptSetFoodGroupVersion(wire.OService, 4)),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -994,6 +1002,9 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 						},
 					},
 				},
+			},
+			checkSession: func(t *testing.T, session *state.Session) {
+				assert.False(t, session.Invisible())
 			},
 		},
 		{
@@ -1038,6 +1049,9 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 					},
 				},
 			},
+			checkSession: func(t *testing.T, session *state.Session) {
+				assert.True(t, session.Invisible())
+			},
 		},
 	}
 
@@ -1073,6 +1087,7 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 			} else {
 				assert.Equal(t, tc.expectOutput.Body, outputSNAC.Body)
 			}
+			tc.checkSession(t, tc.instance.Session())
 		})
 	}
 }

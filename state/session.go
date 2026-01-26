@@ -1194,15 +1194,14 @@ func (s *SessionInstance) SetRemoteAddr(remoteAddr *netip.AddrPort) {
 	s.remoteAddr = remoteAddr
 }
 
-// SetUserInfoFlag sets a flag in the user info bitmask.
-func (s *SessionInstance) SetUserInfoFlag(flag uint16) (flags uint16) {
+// SetUserInfoFlag sets a flag on the user info bitmask.
+func (s *SessionInstance) SetUserInfoFlag(flag uint16) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if flag == wire.OServiceUserFlagUnavailable {
 		s.awayTime = s.session.nowFn()
 	}
 	s.userInfoBitmask |= flag
-	return s.userInfoBitmask
 }
 
 // SetUserStatusBitmask sets the user status bitmask.
