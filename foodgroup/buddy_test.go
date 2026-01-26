@@ -506,6 +506,26 @@ func TestBuddyNotifier_BroadcastBuddyArrived(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:       "user invisible, don't send notification",
+			screenName: state.NewIdentScreenName("me"),
+			userInfo: wire.TLVUserInfo{
+				ScreenName: "me",
+				TLVBlock: wire.TLVBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.OServiceUserInfoStatus, wire.OServiceUserStatusInvisible),
+					},
+				},
+			},
+			mockParams: mockParams{
+				relationshipFetcherParams: relationshipFetcherParams{
+					allRelationshipsParams: allRelationshipsParams{}, // don't look up relationships
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNamesParams: relayToScreenNamesParams{}, // don't send notification
+				},
+			},
+		},
 	}
 
 	for _, tc := range cases {
@@ -745,6 +765,139 @@ func Test_buddyNotifier_BroadcastVisibility(t *testing.T) {
 						{
 							screenName: state.NewIdentScreenName("friend4-visible-on-both-lists"),
 							message:    newBuddyArrivedNotif("me"),
+						},
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message:    newBuddyArrivedNotif("friend4-visible-on-both-lists"),
+						},
+						{
+							screenName: state.NewIdentScreenName("friend5-blocked-on-their-list"),
+							message:    newBuddyDepartedNotif("me"),
+						},
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message:    newBuddyDepartedNotif("friend6-blocked-on-your-list"),
+						},
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message:    newBuddyDepartedNotif("friend7-blocked-on-both-lists"),
+						},
+						{
+							screenName: state.NewIdentScreenName("friend7-blocked-on-both-lists"),
+							message:    newBuddyDepartedNotif("me"),
+						},
+					},
+				},
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams: retrieveSessionParams{
+						{
+							screenName: state.NewIdentScreenName("friend2-visible-on-their-list"),
+							result:     newTestInstance("friend2-visible-on-their-list").Session(),
+						},
+						{
+							screenName: state.NewIdentScreenName("friend3-visible-on-your-list"),
+							result:     newTestInstance("friend3-visible-on-your-list").Session(),
+						},
+						{
+							screenName: state.NewIdentScreenName("friend4-visible-on-both-lists"),
+							result:     newTestInstance("friend4-visible-on-both-lists").Session(),
+						},
+						{
+							screenName: state.NewIdentScreenName("friend5-blocked-on-their-list"),
+							result:     newTestInstance("friend5-blocked-on-their-list").Session(),
+						},
+						{
+							screenName: state.NewIdentScreenName("friend6-blocked-on-your-list"),
+							result:     newTestInstance("friend6-blocked-on-your-list").Session(),
+						},
+						{
+							screenName: state.NewIdentScreenName("friend7-blocked-on-both-lists"),
+							result:     newTestInstance("friend7-blocked-on-both-lists").Session(),
+						},
+						{
+							screenName: state.NewIdentScreenName("friend7-visible-offline"),
+							result:     nil,
+						},
+					},
+				},
+			},
+			doSendDepartures: true,
+		},
+		{
+			name:     "user invisible, don't send notification to buddies",
+			instance: newTestInstance("me", sessOptInvisible),
+			mockParams: mockParams{
+				relationshipFetcherParams: relationshipFetcherParams{
+					allRelationshipsParams: allRelationshipsParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							filter:     nil,
+							result: []state.Relationship{
+								{
+									User:          state.NewIdentScreenName("friend1-blocks-you"),
+									BlocksYou:     true,
+									YouBlock:      false,
+									IsOnYourList:  true,
+									IsOnTheirList: true,
+								},
+								{
+									User:          state.NewIdentScreenName("friend2-visible-on-their-list"),
+									BlocksYou:     false,
+									YouBlock:      false,
+									IsOnYourList:  false,
+									IsOnTheirList: true,
+								},
+								{
+									User:          state.NewIdentScreenName("friend3-visible-on-your-list"),
+									BlocksYou:     false,
+									YouBlock:      false,
+									IsOnYourList:  true,
+									IsOnTheirList: false,
+								},
+								{
+									User:          state.NewIdentScreenName("friend4-visible-on-both-lists"),
+									BlocksYou:     false,
+									YouBlock:      false,
+									IsOnYourList:  true,
+									IsOnTheirList: true,
+								},
+								{
+									User:          state.NewIdentScreenName("friend5-blocked-on-their-list"),
+									BlocksYou:     false,
+									YouBlock:      true,
+									IsOnYourList:  false,
+									IsOnTheirList: true,
+								},
+								{
+									User:          state.NewIdentScreenName("friend6-blocked-on-your-list"),
+									BlocksYou:     false,
+									YouBlock:      true,
+									IsOnYourList:  true,
+									IsOnTheirList: false,
+								},
+								{
+									User:          state.NewIdentScreenName("friend7-blocked-on-both-lists"),
+									BlocksYou:     false,
+									YouBlock:      true,
+									IsOnYourList:  true,
+									IsOnTheirList: true,
+								},
+								{
+									User:          state.NewIdentScreenName("friend7-visible-offline"),
+									BlocksYou:     false,
+									YouBlock:      false,
+									IsOnYourList:  true,
+									IsOnTheirList: true,
+								},
+							},
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message:    newBuddyArrivedNotif("friend3-visible-on-your-list"),
 						},
 						{
 							screenName: state.NewIdentScreenName("me"),

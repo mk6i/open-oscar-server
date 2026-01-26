@@ -147,3 +147,93 @@ func TestUnmarshalChatMessageText(t *testing.T) {
 		})
 	}
 }
+
+func TestTLVUserInfo_IsAway(t *testing.T) {
+	tests := []struct {
+		name     string
+		userInfo TLVUserInfo
+		want     bool
+	}{
+		{
+			name: "flag is set",
+			userInfo: TLVUserInfo{
+				TLVBlock: TLVBlock{
+					TLVList: TLVList{
+						NewTLVBE(OServiceUserInfoUserFlags, OServiceUserFlagUnavailable),
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "flag is not set",
+			userInfo: TLVUserInfo{
+				TLVBlock: TLVBlock{
+					TLVList: TLVList{
+						NewTLVBE(OServiceUserInfoUserFlags, OServiceUserFlagOSCARFree),
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "TLV is missing",
+			userInfo: TLVUserInfo{
+				TLVBlock: TLVBlock{
+					TLVList: TLVList{},
+				},
+			},
+			want: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, tt.userInfo.IsAway())
+		})
+	}
+}
+
+func TestTLVUserInfo_IsInvisible(t *testing.T) {
+	tests := []struct {
+		name     string
+		userInfo TLVUserInfo
+		want     bool
+	}{
+		{
+			name: "status mask has invisible bit set",
+			userInfo: TLVUserInfo{
+				TLVBlock: TLVBlock{
+					TLVList: TLVList{
+						NewTLVBE(OServiceUserInfoStatus, OServiceUserStatusInvisible),
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "status mask does not have invisible bit set",
+			userInfo: TLVUserInfo{
+				TLVBlock: TLVBlock{
+					TLVList: TLVList{
+						NewTLVBE(OServiceUserInfoStatus, OServiceUserStatusAvailable),
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "TLV is missing",
+			userInfo: TLVUserInfo{
+				TLVBlock: TLVBlock{
+					TLVList: TLVList{},
+				},
+			},
+			want: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, tt.userInfo.IsInvisible())
+		})
+	}
+}

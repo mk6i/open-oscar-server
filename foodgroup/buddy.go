@@ -164,6 +164,10 @@ type buddyNotifier struct {
 // only used to indicate the user coming online. It can also notify changes to
 // buddy icons, warning levels, invisibility status, etc.
 func (s buddyNotifier) BroadcastBuddyArrived(ctx context.Context, screenName state.IdentScreenName, userInfo wire.TLVUserInfo) error {
+	if userInfo.IsInvisible() {
+		return nil
+	}
+
 	users, err := s.relationshipFetcher.AllRelationships(ctx, screenName, nil)
 	if err != nil {
 		return err
@@ -319,6 +323,9 @@ func (s buddyNotifier) unicastBuddyDeparted(ctx context.Context, from *state.Ses
 // only used to indicate the user coming online. It can also notify changes to
 // buddy icons, warning levels, invisibility status, etc.
 func (s buddyNotifier) unicastBuddyArrived(ctx context.Context, userInfo wire.TLVUserInfo, to state.IdentScreenName) {
+	if userInfo.IsInvisible() {
+		return
+	}
 	s.messageRelayer.RelayToScreenName(ctx, to, wire.SNACMessage{
 		Frame: wire.SNACFrame{
 			FoodGroup: wire.Buddy,
