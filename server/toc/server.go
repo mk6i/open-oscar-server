@@ -76,7 +76,7 @@ func (l *channelListener) Accept() (net.Conn, error) {
 	case <-l.ctx.Done():
 		return nil, io.EOF
 	case ch := <-l.ch:
-		return ch, io.EOF
+		return ch, nil
 	}
 }
 

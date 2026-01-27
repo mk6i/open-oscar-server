@@ -453,6 +453,7 @@ func TOC(deps Container) *toc.Server {
 			ChatNavService:    foodgroup.NewChatNavService(logger, deps.sqLiteUserStore),
 			SNACRateLimits:    deps.snacRateLimits,
 			HTTPIPRateLimiter: toc.NewIPRateLimiter(rate.Every(1*time.Minute), 10, 1*time.Minute),
+			SessionRetriever:  deps.inMemorySessionManager,
 		},
 		toc.NewIPRateLimiter(rate.Every(1*time.Minute), 10, 1*time.Minute),
 		deps.icbmSvc.RestoreWarningLevel,

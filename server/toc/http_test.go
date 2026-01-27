@@ -72,6 +72,14 @@ func TestOSCARProxy_NewServeMux(t *testing.T) {
 						},
 					},
 				},
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams: retrieveSessionParams{
+						{
+							screenName:      state.NewIdentScreenName("me"),
+							returnedSession: newTestSession("me").Session(),
+						},
+					},
+				},
 			},
 		},
 		{
@@ -102,6 +110,14 @@ func TestOSCARProxy_NewServeMux(t *testing.T) {
 									},
 								},
 							},
+						},
+					},
+				},
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams: retrieveSessionParams{
+						{
+							screenName:      state.NewIdentScreenName("me"),
+							returnedSession: newTestSession("me").Session(),
 						},
 					},
 				},
@@ -165,6 +181,14 @@ func TestOSCARProxy_NewServeMux(t *testing.T) {
 						},
 					},
 				},
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams: retrieveSessionParams{
+						{
+							screenName:      state.NewIdentScreenName("me"),
+							returnedSession: newTestSession("me").Session(),
+						},
+					},
+				},
 			},
 		},
 		{
@@ -188,6 +212,14 @@ func TestOSCARProxy_NewServeMux(t *testing.T) {
 								},
 								Body: wire.SNAC_0x04_0x09_ICBMEvilReply{},
 							},
+						},
+					},
+				},
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams: retrieveSessionParams{
+						{
+							screenName:      state.NewIdentScreenName("me"),
+							returnedSession: newTestSession("me").Session(),
 						},
 					},
 				},
@@ -219,6 +251,14 @@ func TestOSCARProxy_NewServeMux(t *testing.T) {
 						},
 					},
 				},
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams: retrieveSessionParams{
+						{
+							screenName:      state.NewIdentScreenName("me"),
+							returnedSession: newTestSession("me").Session(),
+						},
+					},
+				},
 			},
 		},
 		{
@@ -244,6 +284,14 @@ func TestOSCARProxy_NewServeMux(t *testing.T) {
 									Code: wire.ErrorCodeInvalidSnac,
 								},
 							},
+						},
+					},
+				},
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams: retrieveSessionParams{
+						{
+							screenName:      state.NewIdentScreenName("me"),
+							returnedSession: newTestSession("me").Session(),
 						},
 					},
 				},
@@ -622,12 +670,19 @@ func TestOSCARProxy_NewServeMux(t *testing.T) {
 					InfoQuery(mock.Anything, wire.SNACFrame{}, params.inBody).
 					Return(params.msg, params.err)
 			}
+			sessionRetriever := newMockSessionRetriever(t)
+			for _, params := range tc.mockParams.retrieveSessionParams {
+				sessionRetriever.EXPECT().
+					RetrieveSession(params.screenName).
+					Return(params.returnedSession)
+			}
 
 			svc := OSCARProxy{
 				CookieBaker:       cookieBaker,
 				DirSearchService:  dirSearchSvc,
 				LocateService:     locateSvc,
 				Logger:            slog.Default(),
+				SessionRetriever:  sessionRetriever,
 				HTTPIPRateLimiter: NewIPRateLimiter(rate.Every(1*time.Minute), 10, 1*time.Minute),
 				SNACRateLimits:    wire.DefaultSNACRateLimits(),
 			}

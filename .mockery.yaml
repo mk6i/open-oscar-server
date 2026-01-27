@@ -204,6 +204,9 @@ packages:
       CookieBaker:
         config:
           filename: "mock_cookie_baker_test.go"
+      SessionRetriever:
+        config:
+          filename: "mock_session_retriever_test.go"
   github.com/mk6i/open-oscar-server/server/kerberos:
     interfaces:
       AuthService:

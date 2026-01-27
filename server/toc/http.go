@@ -151,15 +151,25 @@ func (s OSCARProxy) ProfileHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sess := state.NewSession().AddInstance()
-	sess.Session().SetIdentScreenName(state.NewIdentScreenName(from))
+	sess := s.SessionRetriever.RetrieveSession(state.NewIdentScreenName(from))
+	if sess == nil {
+		http.Error(w, "invalid session", http.StatusForbidden)
+		return
+	}
+
+	instances := sess.Instances()
+	if len(instances) == 0 {
+		http.Error(w, "invalid session", http.StatusForbidden)
+		return
+	}
+
 	inBody := wire.SNAC_0x02_0x05_LocateUserInfoQuery{
 		Type:       uint16(wire.LocateTypeSig),
 		ScreenName: user,
 	}
 
 	ctx := r.Context()
-	info, err := s.LocateService.UserInfoQuery(ctx, sess, wire.SNACFrame{}, inBody)
+	info, err := s.LocateService.UserInfoQuery(ctx, instances[0], wire.SNACFrame{}, inBody)
 	if err != nil {
 		s.logAndReturn500(ctx, w, fmt.Errorf("LocateService.UserInfoQuery: %w", err))
 		return

@@ -247,6 +247,15 @@ type userParams []struct {
 	err          error
 }
 
+type retrieveSessionParams []struct {
+	screenName      state.IdentScreenName
+	returnedSession *state.Session
+}
+
+type sessionRetrieverParams struct {
+	retrieveSessionParams
+}
+
 type tocConfigParams struct {
 	setTOCConfigParams
 	userParams
@@ -265,6 +274,7 @@ type mockParams struct {
 	locateParams
 	oServiceParams
 	permitDenyParams
+	sessionRetrieverParams
 	tocConfigParams
 }
 

@@ -129,6 +129,7 @@ type OSCARProxy struct {
 	OServiceService   OServiceService
 	PermitDenyService PermitDenyService
 	TOCConfigStore    TOCConfigStore
+	SessionRetriever  SessionRetriever
 	SNACRateLimits    wire.SNACRateLimits
 	HTTPIPRateLimiter *IPRateLimiter
 }
