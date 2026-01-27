@@ -246,6 +246,7 @@ func (s oscarServer) connectToOSCARService(
 		instance, err = s.AuthService.RegisterBOSSession(ctx, cookie)
 		if err != nil {
 			if errors.Is(err, state.ErrMaxConcurrentSessionsReached) {
+				s.Logger.Debug("session registration failed", "err", err.Error())
 				block := wire.TLVRestBlock{}
 				// error code indicating the signon is blocked. i can't find a
 				// more appropriate error code to indicate the maximum session limit is reached
