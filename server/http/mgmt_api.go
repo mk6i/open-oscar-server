@@ -1342,26 +1342,35 @@ func putFeedbagBuddyHandler(w http.ResponseWriter, r *http.Request, buddyBroadca
 
 	var group *wire.FeedbagItem
 
+	count := 0
 	for _, item := range items {
 		switch {
 		case item.ClassID == wire.FeedbagClassIdGroup && item.GroupID == groupID:
 			group = &item
-		case item.ClassID == wire.FeedbagClassIdBuddy && item.GroupID == groupID && item.Name == newBuddy.IdentScreenName().String():
-			response := struct {
-				Name    string `json:"name"`
-				GroupID uint16 `json:"group_id"`
-				ItemID  uint16 `json:"item_id"`
-			}{
-				Name:    buddyScreenName,
-				GroupID: groupID,
-				ItemID:  item.ItemID,
+		case item.ClassID == wire.FeedbagClassIdBuddy && item.GroupID == groupID:
+			count++
+			if item.Name == newBuddy.IdentScreenName().String() {
+				response := struct {
+					Name    string `json:"name"`
+					GroupID uint16 `json:"group_id"`
+					ItemID  uint16 `json:"item_id"`
+				}{
+					Name:    buddyScreenName,
+					GroupID: groupID,
+					ItemID:  item.ItemID,
+				}
+				w.WriteHeader(http.StatusOK)
+				if err := json.NewEncoder(w).Encode(response); err != nil {
+					logger.Error("error encoding response", "err", err.Error())
+				}
+				return
 			}
-			w.WriteHeader(http.StatusOK)
-			if err := json.NewEncoder(w).Encode(response); err != nil {
-				logger.Error("error encoding response", "err", err.Error())
-			}
-			return
 		}
+	}
+
+	if count >= 30 {
+		errorMsg(w, "too many buddies in group. max: 30", http.StatusBadRequest)
+		return
 	}
 
 	if group == nil {

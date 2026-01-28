@@ -3701,6 +3701,43 @@ func TestFeedbagBuddyHandler_PUT(t *testing.T) {
 			},
 		},
 		{
+			name:           "too many buddies in group - max 30",
+			screenName:     "userA",
+			groupID:        "1",
+			requestBody:    `{"name":"newbuddy"}`,
+			wantStatusCode: http.StatusBadRequest,
+			wantResponse:   `{"message":"too many buddies in group. max: 30"}`,
+			mockParams: mockParams{
+				feedbagManagerParams: feedbagManagerParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("userA"),
+							result: func() []wire.FeedbagItem {
+								items := []wire.FeedbagItem{
+									{
+										ClassID: wire.FeedbagClassIdGroup,
+										Name:    "Friends",
+										GroupID: 1,
+									},
+								}
+								// Add 30 buddies to the group
+								for i := 1; i <= 30; i++ {
+									items = append(items, wire.FeedbagItem{
+										ItemID:  uint16(i),
+										ClassID: wire.FeedbagClassIdBuddy,
+										Name:    fmt.Sprintf("buddy%d", i),
+										GroupID: 1,
+									})
+								}
+								return items
+							}(),
+							err: nil,
+						},
+					},
+				},
+			},
+		},
+		{
 			name:           "group not found",
 			screenName:     "userA",
 			groupID:        "999",
