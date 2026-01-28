@@ -1320,7 +1320,18 @@ func putFeedbagBuddyHandler(w http.ResponseWriter, r *http.Request, buddyBroadca
 		return
 	}
 
-	newBuddy := state.NewIdentScreenName(buddyScreenName)
+	newBuddy := state.DisplayScreenName(buddyScreenName)
+	if newBuddy.IsUIN() {
+		if err := newBuddy.ValidateUIN(); err != nil {
+			errorMsg(w, fmt.Sprintf("invalid uin: %s", err), http.StatusBadRequest)
+			return
+		}
+	} else {
+		if err := newBuddy.ValidateAIMHandle(); err != nil {
+			errorMsg(w, fmt.Sprintf("invalid screen name: %s", err), http.StatusBadRequest)
+			return
+		}
+	}
 
 	items, err := feedbagManager.Feedbag(r.Context(), me)
 	if err != nil {
@@ -1335,7 +1346,7 @@ func putFeedbagBuddyHandler(w http.ResponseWriter, r *http.Request, buddyBroadca
 		switch {
 		case item.ClassID == wire.FeedbagClassIdGroup && item.GroupID == groupID:
 			group = &item
-		case item.ClassID == wire.FeedbagClassIdBuddy && item.GroupID == groupID && item.Name == newBuddy.String():
+		case item.ClassID == wire.FeedbagClassIdBuddy && item.GroupID == groupID && item.Name == newBuddy.IdentScreenName().String():
 			response := struct {
 				Name    string `json:"name"`
 				GroupID uint16 `json:"group_id"`
@@ -1416,7 +1427,7 @@ func putFeedbagBuddyHandler(w http.ResponseWriter, r *http.Request, buddyBroadca
 		})
 		instances := session.Instances()
 		if len(instances) > 0 {
-			if err := buddyBroadcaster.BroadcastVisibility(r.Context(), instances[0], []state.IdentScreenName{newBuddy}, false); err != nil {
+			if err := buddyBroadcaster.BroadcastVisibility(r.Context(), instances[0], []state.IdentScreenName{newBuddy.IdentScreenName()}, false); err != nil {
 				logger.Error("error broadcasting visibility", "err", err.Error())
 			}
 		}

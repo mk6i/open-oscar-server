@@ -3438,9 +3438,9 @@ func TestFeedbagBuddyHandler_PUT(t *testing.T) {
 			name:           "add a buddy that already exists in a group",
 			screenName:     "userA",
 			groupID:        "1",
-			requestBody:    `{"name":"existingbuddy"}`,
+			requestBody:    `{"name":"ExistingBuddy"}`,
 			wantStatusCode: http.StatusOK,
-			wantResponse:   `{"name":"existingbuddy","group_id":1,"item_id":12345}`,
+			wantResponse:   `{"name":"ExistingBuddy","group_id":1,"item_id":12345}`,
 			mockParams: mockParams{
 				feedbagManagerParams: feedbagManagerParams{
 					feedbagParams: feedbagParams{
@@ -3648,6 +3648,38 @@ func TestFeedbagBuddyHandler_PUT(t *testing.T) {
 			requestBody:    `{}`,
 			wantStatusCode: http.StatusBadRequest,
 			wantResponse:   `{"message":"buddy_screen_name is required"}`,
+		},
+		{
+			name:           "invalid UIN - too low",
+			screenName:     "userA",
+			groupID:        "1",
+			requestBody:    `{"name":"9999"}`,
+			wantStatusCode: http.StatusBadRequest,
+			wantResponse:   `{"message":"invalid uin: uin must be a number in the range 10000-2147483646"}`,
+		},
+		{
+			name:           "invalid UIN - too high",
+			screenName:     "userA",
+			groupID:        "1",
+			requestBody:    `{"name":"2147483647"}`,
+			wantStatusCode: http.StatusBadRequest,
+			wantResponse:   `{"message":"invalid uin: uin must be a number in the range 10000-2147483646"}`,
+		},
+		{
+			name:           "invalid AIM handle - too short",
+			screenName:     "userA",
+			groupID:        "1",
+			requestBody:    `{"name":"Us"}`,
+			wantStatusCode: http.StatusBadRequest,
+			wantResponse:   `{"message":"invalid screen name: screen name must be between 3 and 16 characters"}`,
+		},
+		{
+			name:           "invalid AIM handle - too long",
+			screenName:     "userA",
+			groupID:        "1",
+			requestBody:    `{"name":"ThisIsAReallyLongScreenName"}`,
+			wantStatusCode: http.StatusBadRequest,
+			wantResponse:   `{"message":"invalid screen name: screen name must be between 3 and 16 characters"}`,
 		},
 		{
 			name:           "error retrieving feedbag",
