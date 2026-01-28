@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -32,6 +33,7 @@ func NewAuthService(
 	accountManager AccountManager,
 	bartItemManager BARTItemManager,
 	classes wire.RateLimitClasses,
+	logger *slog.Logger,
 ) *AuthService {
 	return &AuthService{
 		chatSessionRegistry:        chatSessionRegistry,
@@ -46,6 +48,7 @@ func NewAuthService(
 		rateLimitClasses:           classes,
 		timeNow:                    time.Now,
 		maxConcurrentLoginsPerUser: MaxConcurrentLoginsPerUser,
+		logger:                     logger,
 	}
 }
 
@@ -57,6 +60,7 @@ type AuthService struct {
 	chatSessionRegistry        ChatSessionRegistry
 	config                     config.Config
 	cookieBaker                CookieBaker
+	logger                     *slog.Logger
 	sessionManager             SessionRegistry
 	sessionRetriever           SessionRetriever
 	userManager                UserManager
@@ -209,13 +213,19 @@ func (s AuthService) BUCPChallenge(ctx context.Context, inBody wire.SNAC_0x17_0x
 
 	screenName, exists := inBody.String(wire.LoginTLVTagsScreenName)
 	if !exists {
+		s.logger.Debug("BUCPChallenge: screen name TLV not found in request")
 		return wire.SNACMessage{}, errors.New("screen name doesn't exist in tlv")
 	}
+
+	s.logger.Debug("BUCPChallenge: received challenge request",
+		"screen_name", screenName,
+		"is_uin", state.DisplayScreenName(screenName).IsUIN())
 
 	var authKey string
 
 	user, err := s.userManager.User(ctx, state.NewIdentScreenName(screenName))
 	if err != nil {
+		s.logger.Error("BUCPChallenge: user lookup failed", "screen_name", screenName, "err", err.Error())
 		return wire.SNACMessage{}, err
 	}
 
@@ -223,11 +233,19 @@ func (s AuthService) BUCPChallenge(ctx context.Context, inBody wire.SNAC_0x17_0x
 	case user != nil:
 		// user lookup succeeded
 		authKey = user.AuthKey
+		s.logger.Debug("BUCPChallenge: user found, returning auth key",
+			"screen_name", screenName,
+			"auth_key_len", len(authKey))
 	case s.config.DisableAuth:
 		// can't find user, generate stub auth key
 		authKey = newUUID().String()
+		s.logger.Debug("BUCPChallenge: user not found, auth disabled, generating stub auth key",
+			"screen_name", screenName)
 	default:
 		// can't find user, return login error
+		s.logger.Debug("BUCPChallenge: user not found, returning error",
+			"screen_name", screenName,
+			"error_code", wire.LoginErrInvalidUsernameOrPassword)
 		return wire.SNACMessage{
 			Frame: wire.SNACFrame{
 				FoodGroup: wire.BUCP,
@@ -264,9 +282,9 @@ func (s AuthService) BUCPChallenge(ctx context.Context, inBody wire.SNAC_0x17_0x
 // (wire.LoginTLVTagsReconnectHere) and an authorization cookie
 // (wire.LoginTLVTagsAuthorizationCookie). Else, an error code is set
 // (wire.LoginTLVTagsErrorSubcode).
-func (s AuthService) BUCPLogin(ctx context.Context, inBody wire.SNAC_0x17_0x02_BUCPLoginRequest, newUserFn func(screenName state.DisplayScreenName) (state.User, error), advertisedHost string) (wire.SNACMessage, error) {
+func (s AuthService) BUCPLogin(ctx context.Context, inBody wire.SNAC_0x17_0x02_BUCPLoginRequest, newUserFn func(screenName state.DisplayScreenName) (state.User, error), advertisedHost string, advertisedHostSSL string) (wire.SNACMessage, error) {
 
-	block, err := s.login(ctx, inBody.TLVList, newUserFn, advertisedHost)
+	block, err := s.login(ctx, inBody.TLVList, newUserFn, advertisedHost, advertisedHostSSL)
 	if err != nil {
 		return wire.SNACMessage{}, err
 	}
@@ -292,8 +310,8 @@ func (s AuthService) BUCPLogin(ctx context.Context, inBody wire.SNAC_0x17_0x02_B
 // (wire.LoginTLVTagsReconnectHere) and an authorization cookie
 // (wire.LoginTLVTagsAuthorizationCookie). Else, an error code is set
 // (wire.LoginTLVTagsErrorSubcode).
-func (s AuthService) FLAPLogin(ctx context.Context, inFrame wire.FLAPSignonFrame, newUserFn func(screenName state.DisplayScreenName) (state.User, error), advertisedHost string) (wire.TLVRestBlock, error) {
-	return s.login(ctx, inFrame.TLVList, newUserFn, advertisedHost)
+func (s AuthService) FLAPLogin(ctx context.Context, inFrame wire.FLAPSignonFrame, newUserFn func(screenName state.DisplayScreenName) (state.User, error), advertisedHost string, advertisedHostSSL string) (wire.TLVRestBlock, error) {
+	return s.login(ctx, inFrame.TLVList, newUserFn, advertisedHost, advertisedHostSSL)
 }
 
 // KerberosLogin handles AIM-style Kerberos authentication for AIM 6.0+.
@@ -304,7 +322,7 @@ func (s AuthService) FLAPLogin(ctx context.Context, inFrame wire.FLAPSignonFrame
 //
 // Several values in the response are poorly understood but necessary for proper
 // processing on the client side.
-func (s AuthService) KerberosLogin(ctx context.Context, inBody wire.SNAC_0x050C_0x0002_KerberosLoginRequest, newUserFn func(screenName state.DisplayScreenName) (state.User, error), advertisedHost string) (wire.SNACMessage, error) {
+func (s AuthService) KerberosLogin(ctx context.Context, inBody wire.SNAC_0x050C_0x0002_KerberosLoginRequest, newUserFn func(screenName state.DisplayScreenName) (state.User, error), advertisedHost string, advertisedHostSSL string) (wire.SNACMessage, error) {
 
 	b, ok := inBody.TicketRequestMetadata.Bytes(wire.KerberosTLVTicketRequest)
 	if !ok {
@@ -327,7 +345,7 @@ func (s AuthService) KerberosLogin(ctx context.Context, inBody wire.SNAC_0x050C_
 		list = append(list, wire.NewTLVBE(wire.LoginTLVTagsPlaintextPassword, info.Password))
 	}
 
-	result, err := s.login(ctx, list, newUserFn, "") //todo
+	result, err := s.login(ctx, list, newUserFn, advertisedHost, advertisedHostSSL)
 	if err != nil {
 		return wire.SNACMessage{}, fmt.Errorf("login: %w", err)
 	}
@@ -462,59 +480,99 @@ func (l *loginProperties) fromTLV(list wire.TLVList) error {
 
 // login validates a user's credentials and creates their session. it returns
 // metadata used in both BUCP and FLAP authentication responses.
-func (s AuthService) login(ctx context.Context, tlv wire.TLVList, newUserFn func(screenName state.DisplayScreenName) (state.User, error), advertisedHost string) (wire.TLVRestBlock, error) {
+func (s AuthService) login(ctx context.Context, tlv wire.TLVList, newUserFn func(screenName state.DisplayScreenName) (state.User, error), advertisedHost string, advertisedHostSSL string) (wire.TLVRestBlock, error) {
 
 	props := loginProperties{}
 	if err := props.fromTLV(tlv); err != nil {
+		s.logger.Debug("login: failed to parse TLVs", "err", err.Error())
 		return wire.TLVRestBlock{}, err
 	}
 
+	s.logger.Debug("login: parsed login properties",
+		"screen_name", props.screenName,
+		"client_id", props.clientID,
+		"is_bucp", props.isBUCPAuth,
+		"is_flap", props.isFLAPAuth,
+		"is_flap_java", props.isFLAPJavaAuth,
+		"is_toc", props.isTOCAuth,
+		"is_kerberos_plaintext", props.isKerberosPlaintextAuth,
+		"is_kerberos_roasted", props.isKerberosRoastedAuth,
+		"password_hash_len", len(props.passwordHash),
+		"roasted_pass_len", len(props.roastedPass))
+
 	user, err := s.userManager.User(ctx, props.screenName.IdentScreenName())
 	if err != nil {
+		s.logger.Error("login: user lookup failed", "screen_name", props.screenName, "err", err.Error())
 		return wire.TLVRestBlock{}, err
 	}
 
 	if user == nil {
+		s.logger.Debug("login: user not found", "screen_name", props.screenName)
 		// user not found
 		if s.config.DisableAuth {
 			// auth disabled, create the user
-			return s.createUser(ctx, props, newUserFn, advertisedHost)
+			s.logger.Debug("login: auth disabled, creating user", "screen_name", props.screenName)
+			return s.createUser(ctx, props, newUserFn, advertisedHost, advertisedHostSSL)
 		}
 		// auth enabled, return separate login errors for ICQ and AIM
 		loginErr := wire.LoginErrInvalidUsernameOrPassword
 		if props.screenName.IsUIN() {
 			loginErr = wire.LoginErrICQUserErr
 		}
+		s.logger.Debug("login: returning user not found error",
+			"screen_name", props.screenName,
+			"error_code", loginErr)
 		return loginFailureResponse(props, loginErr), nil
 	}
 
+	s.logger.Debug("login: user found", "screen_name", props.screenName, "is_icq", user.IsICQ)
+
 	// check if suspended status should prevent login
 	if user.SuspendedStatus > 0x0 {
+		s.logger.Debug("login: user suspended",
+			"screen_name", props.screenName,
+			"suspended_status", user.SuspendedStatus)
 		return loginFailureResponse(props, user.SuspendedStatus), nil
 	}
 
 	if s.config.DisableAuth {
 		// user exists, but don't validate
-		return s.loginSuccessResponse(props, advertisedHost)
+		s.logger.Debug("login: auth disabled, skipping password validation", "screen_name", props.screenName)
+		return s.loginSuccessResponse(props, advertisedHost, advertisedHostSSL)
 	}
 
 	var loginOK bool
+	var authMethod string
 	switch {
 	case props.isBUCPAuth:
+		authMethod = "BUCP"
 		loginOK = user.ValidateHash(props.passwordHash)
 	case props.isFLAPAuth:
+		authMethod = "FLAP"
 		loginOK = user.ValidateRoastedPass(props.roastedPass)
 	case props.isFLAPJavaAuth:
+		authMethod = "FLAP_Java"
 		loginOK = user.ValidateRoastedJavaPass(props.roastedPass)
 	case props.isTOCAuth:
+		authMethod = "TOC"
 		loginOK = user.ValidateRoastedTOCPass(props.roastedPass)
 	case props.isKerberosPlaintextAuth:
+		authMethod = "Kerberos_Plaintext"
 		loginOK = user.ValidatePlaintextPass(props.plaintextPassword)
 	case props.isKerberosRoastedAuth:
+		authMethod = "Kerberos_Roasted"
 		loginOK = user.ValidateRoastedKerberosPass(props.roastedPass)
 	}
 
+	s.logger.Debug("login: password validation result",
+		"screen_name", props.screenName,
+		"auth_method", authMethod,
+		"login_ok", loginOK)
+
 	if !loginOK {
+		s.logger.Debug("login: password validation failed",
+			"screen_name", props.screenName,
+			"auth_method", authMethod)
 		return loginFailureResponse(props, wire.LoginErrInvalidPassword), nil
 	}
 
@@ -522,14 +580,18 @@ func (s AuthService) login(ctx context.Context, tlv wire.TLVList, newUserFn func
 	if props.multiConnFlag == uint8(wire.MultiConnFlagsRecentClient) {
 		sess := s.sessionRetriever.RetrieveSession(props.screenName.IdentScreenName())
 		if sess != nil && sess.InstanceCount() >= s.maxConcurrentLoginsPerUser {
+			s.logger.Debug("login: too many concurrent sessions",
+				"screen_name", props.screenName,
+				"instance_count", sess.InstanceCount())
 			return loginFailureResponse(props, wire.LoginErrRateLimitExceeded), nil
 		}
 	}
 
-	return s.loginSuccessResponse(props, advertisedHost)
+	s.logger.Debug("login: login successful", "screen_name", props.screenName)
+	return s.loginSuccessResponse(props, advertisedHost, advertisedHostSSL)
 }
 
-func (s AuthService) createUser(ctx context.Context, props loginProperties, newUserFn func(screenName state.DisplayScreenName) (state.User, error), advertisedHost string) (wire.TLVRestBlock, error) {
+func (s AuthService) createUser(ctx context.Context, props loginProperties, newUserFn func(screenName state.DisplayScreenName) (state.User, error), advertisedHost string, advertisedHostSSL string) (wire.TLVRestBlock, error) {
 
 	var err error
 	if props.screenName.IsUIN() {
@@ -559,10 +621,10 @@ func (s AuthService) createUser(ctx context.Context, props loginProperties, newU
 		return wire.TLVRestBlock{}, err
 	}
 
-	return s.loginSuccessResponse(props, advertisedHost)
+	return s.loginSuccessResponse(props, advertisedHost, advertisedHostSSL)
 }
 
-func (s AuthService) loginSuccessResponse(props loginProperties, advertisedHost string) (wire.TLVRestBlock, error) {
+func (s AuthService) loginSuccessResponse(props loginProperties, advertisedHost string, advertisedHostSSL string) (wire.TLVRestBlock, error) {
 	loginCookie := state.ServerCookie{
 		Service:       wire.BOS,
 		ScreenName:    props.screenName,
@@ -582,11 +644,20 @@ func (s AuthService) loginSuccessResponse(props loginProperties, advertisedHost 
 		return wire.TLVRestBlock{}, fmt.Errorf("failed to issue auth cookie: %w", err)
 	}
 
+	reconnectHost := advertisedHost
+	sslState := wire.OServiceServiceResponseSSLStateNotUsed
+
+	s.logger.Debug("loginSuccessResponse: returning login response",
+		"screen_name", props.screenName,
+		"reconnect_host", reconnectHost,
+		"ssl_state", sslState)
+
 	return wire.TLVRestBlock{
 		TLVList: []wire.TLV{
 			wire.NewTLVBE(wire.LoginTLVTagsScreenName, props.screenName),
-			wire.NewTLVBE(wire.LoginTLVTagsReconnectHere, advertisedHost),
+			wire.NewTLVBE(wire.LoginTLVTagsReconnectHere, reconnectHost),
 			wire.NewTLVBE(wire.LoginTLVTagsAuthorizationCookie, cookie),
+			wire.NewTLVBE(wire.OServiceTLVTagsSSLState, sslState),
 		},
 	}, nil
 }

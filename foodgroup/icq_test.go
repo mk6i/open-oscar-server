@@ -2548,8 +2548,22 @@ func TestICQService_SetPermissions(t *testing.T) {
 			name:     "happy path",
 			seq:      1,
 			instance: newTestInstance("100003", sessOptUIN(100003)),
-			req:      wire.ICQ_0x07D0_0x0424_DBQueryMetaReqSetPermissions{},
+			req: wire.ICQ_0x07D0_0x0424_DBQueryMetaReqSetPermissions{
+				Authorization: 1,
+				WebAware:      1,
+			},
 			mockParams: mockParams{
+				icqUserUpdaterParams: icqUserUpdaterParams{
+					setPermissionsParams: setPermissionsParams{
+						{
+							name: state.NewIdentScreenName("100003"),
+							data: state.ICQPermissions{
+								AuthRequired: true,
+								WebAware:     true,
+							},
+						},
+					},
+				},
 				messageRelayerParams: messageRelayerParams{
 					relayToScreenNameParams: relayToScreenNameParams{
 						{
@@ -2585,13 +2599,20 @@ func TestICQService_SetPermissions(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			userUpdater := newMockICQUserUpdater(t)
+			for _, params := range tt.mockParams.setPermissionsParams {
+				userUpdater.EXPECT().
+					SetPermissions(matchContext(), params.name, params.data).
+					Return(params.err)
+			}
+
 			messageRelayer := newMockMessageRelayer(t)
 			for _, params := range tt.mockParams.relayToScreenNameParams {
 				messageRelayer.EXPECT().RelayToScreenName(mock.Anything, params.screenName, params.message)
 			}
 
 			s := ICQService{
-				logger:         slog.Default(),
+				userUpdater:    userUpdater,
 				messageRelayer: messageRelayer,
 			}
 			err := s.SetPermissions(context.Background(), tt.instance, tt.req, tt.seq)

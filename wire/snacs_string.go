@@ -370,6 +370,8 @@ var icqDBQueryMeta = map[uint16]string{
 	ICQDBQueryMetaReqStat0ad2:          "ICQDBQueryMetaReqStat0ad2",
 	ICQDBQueryMetaReqStat0ad7:          "ICQDBQueryMetaReqStat0ad7",
 	ICQDBQueryMetaReqStat0758:          "ICQDBQueryMetaReqStat0758",
+	ICQDBQueryMetaReqDirectoryQuery:    "ICQDBQueryMetaReqDirectoryQuery",
+	ICQDBQueryMetaReqDirectoryUpdate:   "ICQDBQueryMetaReqDirectoryUpdate",
 	ICQDBQueryMetaReplySetBasicInfo:    "ICQDBQueryMetaReplySetBasicInfo",
 	ICQDBQueryMetaReplySetWorkInfo:     "ICQDBQueryMetaReplySetWorkInfo",
 	ICQDBQueryMetaReplySetMoreInfo:     "ICQDBQueryMetaReplySetMoreInfo",

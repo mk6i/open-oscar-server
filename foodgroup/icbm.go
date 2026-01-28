@@ -148,6 +148,15 @@ func (s ICBMService) ChannelMsgToHost(ctx context.Context, instance *state.Sessi
 				return nil, fmt.Errorf("addExternalIP: %w", err)
 			}
 		}
+		// Strip HTML from message if recipient doesn't support XHTML
+		if (clientIM.ChannelID == wire.ICBMChannelIM || clientIM.ChannelID == wire.ICBMChannelMIME) &&
+			tlv.Tag == wire.ICBMTLVAOLIMData {
+			if !recipSess.HasCap(wire.CapXHTMLIM) {
+				if transformedTLV, err := stripHTMLFromICBMTLV(tlv); err == nil {
+					tlv = transformedTLV
+				}
+			}
+		}
 		clientIM.Append(tlv)
 	}
 
@@ -296,6 +305,51 @@ func addExternalIP(instance *state.SessionInstance, tlv wire.TLV) (wire.TLV, err
 	}
 
 	return tlv, nil
+}
+
+// stripHTMLFromICBMTLV transforms an ICBMTLVAOLIMData TLV by stripping HTML
+// from the message text for clients that don't support XHTML.
+func stripHTMLFromICBMTLV(tlv wire.TLV) (wire.TLV, error) {
+	var frags []wire.ICBMCh1Fragment
+	if err := wire.UnmarshalBE(&frags, bytes.NewBuffer(tlv.Value)); err != nil {
+		return tlv, fmt.Errorf("unmarshal ICBM fragments: %w", err)
+	}
+
+	modified := false
+	for i, frag := range frags {
+		if frag.ID == 1 { // 1 = message text
+			msg := wire.ICBMCh1Message{}
+			if err := wire.UnmarshalBE(&msg, bytes.NewBuffer(frag.Payload)); err != nil {
+				continue
+			}
+
+			// Strip HTML from message text
+			strippedText := wire.StripHTML(msg.Text)
+			if !bytes.Equal(strippedText, msg.Text) {
+				msg.Text = strippedText
+
+				// Remarshal the message
+				msgBuf := bytes.Buffer{}
+				if err := wire.MarshalBE(msg, &msgBuf); err != nil {
+					continue
+				}
+				frags[i].Payload = msgBuf.Bytes()
+				modified = true
+			}
+		}
+	}
+
+	if !modified {
+		return tlv, nil
+	}
+
+	// Remarshal the fragments
+	newValue, err := wire.MarshalICBMFragmentList(frags)
+	if err != nil {
+		return tlv, err
+	}
+
+	return wire.NewTLVBE(tlv.Tag, newValue), nil
 }
 
 // ClientEvent relays SNAC wire.ICBMClientEvent typing events from the

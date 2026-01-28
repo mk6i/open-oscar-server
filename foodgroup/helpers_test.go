@@ -172,6 +172,7 @@ type icqUserUpdaterParams struct {
 	setBasicInfoParams
 	setInterestsParams
 	setMoreInfoParams
+	setPermissionsParams
 	setUserNotesParams
 	setWorkInfoParams
 }
@@ -221,6 +222,14 @@ type setWorkInfoParams []struct {
 type setMoreInfoParams []struct {
 	name state.IdentScreenName
 	data state.ICQMoreInfo
+	err  error
+}
+
+// setPermissionsParams is the list of parameters passed at the mock
+// ICQUserUpdater.SetPermissions call site
+type setPermissionsParams []struct {
+	name state.IdentScreenName
+	data state.ICQPermissions
 	err  error
 }
 

@@ -2024,6 +2024,27 @@ func TestOServiceService_UserInfoQuery(t *testing.T) {
 	}
 }
 
+func TestOServiceService_ProbeReq(t *testing.T) {
+	svc := NewOServiceService(config.Config{}, nil, slog.Default(), nil, nil, nil, nil, nil, wire.DefaultSNACRateLimits(), nil, nil, nil)
+
+	inFrame := wire.SNACFrame{
+		FoodGroup: wire.OService,
+		SubGroup:  wire.OServiceProbeReq,
+		RequestID: 12345,
+	}
+
+	want := wire.SNACMessage{
+		Frame: wire.SNACFrame{
+			FoodGroup: wire.OService,
+			SubGroup:  wire.OServiceProbeAck,
+			RequestID: 12345,
+		},
+	}
+
+	have := svc.ProbeReq(context.Background(), inFrame)
+	assert.Equal(t, want, have)
+}
+
 func TestOServiceService_IdleNotification(t *testing.T) {
 	tests := []struct {
 		name     string

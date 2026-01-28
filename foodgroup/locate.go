@@ -13,12 +13,9 @@ import (
 // omitCaps is the map of to filter out of the client's capability list
 // because they are not currently supported by the server.
 var omitCaps = map[[16]byte]bool{
-	// 0946134a-4c7f-11d1-8222-444553540000 (games)
-	{9, 70, 19, 74, 76, 127, 17, 209, 130, 34, 68, 69, 83, 84, 0, 0}: true,
-	// 0946134d-4c7f-11d1-8222-444553540000 (ICQ inter-op)
-	{9, 70, 19, 77, 76, 127, 17, 209, 130, 34, 68, 69, 83, 84, 0, 0}: true,
-	// 09461341-4c7f-11d1-8222-444553540000 (voice chat)
-	{9, 70, 19, 65, 76, 127, 17, 209, 130, 34, 68, 69, 83, 84, 0, 0}: true,
+	wire.CapGames:      true, // games
+	wire.CapSupportICQ: true, // ICQ inter-op
+	wire.CapVoiceChat:  true, // voice chat
 }
 
 // NewLocateService creates a new instance of LocateService.
