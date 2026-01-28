@@ -398,6 +398,10 @@ type ICQPermissions struct {
 	// AuthRequired indicates where users must ask this permission to add them
 	// to their contact list.
 	AuthRequired bool
+	// WebAware indicates whether the user's online status is visible via web.
+	WebAware bool
+	// AllowSpam indicates whether to allow messages from users not on the contact list.
+	AllowSpam bool
 }
 
 // Age returns the user's age relative to their birthday and timeNow.

@@ -202,6 +202,11 @@ func TestOscarServer_RouteConnection_Auth_BUCP(t *testing.T) {
 		frame = wire.SNACFrame{}
 		assert.NoError(t, flapc.ReceiveSNAC(&frame, &wire.SNAC_0x17_0x03_BUCPLoginResponse{}))
 		assert.Equal(t, wire.SNACFrame{FoodGroup: wire.BUCP, SubGroup: wire.BUCPLoginResponse}, frame)
+
+		// < receive FLAPSignoffFrame (server sends this after SNAC for Kopete compatibility)
+		flap = wire.FLAPFrame{}
+		assert.NoError(t, wire.UnmarshalBE(&flap, clientConn))
+		assert.Equal(t, wire.FLAPFrameSignoff, flap.FrameType)
 	}()
 
 	wg := &sync.WaitGroup{}

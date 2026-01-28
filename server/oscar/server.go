@@ -439,9 +439,14 @@ func (s oscarServer) authenticate(
 		return s.processFLAPAuth(ctx, flap, flapc, advertisedHost)
 	}
 
+	// Check for TLV 0x8003 (Miranda sends this, Kopete doesn't)
+	// Clients that send this TLV expect login response on FLAP channel 4
+	// Clients without this TLV expect login response as SNAC on FLAP channel 2
+	_, useFLAPSignoff := flap.Uint32BE(wire.LoginTLVTagsMaxRecvSize)
+
 	s.SetBUCP(ip)
 
-	return s.processBUCPAuth(ctx, flapc, advertisedHost)
+	return s.processBUCPAuth(ctx, flapc, advertisedHost, useFLAPSignoff)
 }
 
 func (s oscarServer) processFLAPAuth(
@@ -457,7 +462,7 @@ func (s oscarServer) processFLAPAuth(
 	return flapc.NewSignoff(tlv)
 }
 
-func (s oscarServer) processBUCPAuth(ctx context.Context, flapc *wire.FlapClient, advertisedHost string) error {
+func (s oscarServer) processBUCPAuth(ctx context.Context, flapc *wire.FlapClient, advertisedHost string, useFLAPSignoff bool) error {
 	frames := 0
 
 	for {
@@ -513,7 +518,18 @@ func (s oscarServer) processBUCPAuth(ctx context.Context, flapc *wire.FlapClient
 					return err
 				}
 
-				return flapc.SendSNAC(outSNAC.Frame, outSNAC.Body)
+				loginResp := outSNAC.Body.(wire.SNAC_0x17_0x03_BUCPLoginResponse)
+
+				if useFLAPSignoff {
+					// Clients that send TLV 0x8003 (like Miranda) expect redirect TLVs on FLAP channel 4
+					return flapc.NewSignoff(loginResp.TLVRestBlock)
+				}
+				// Clients without TLV 0x8003 (like Kopete) expect SNAC response on FLAP channel 2
+				// followed by a FLAP signoff frame to properly close the auth connection
+				if err := flapc.SendSNAC(outSNAC.Frame, loginResp); err != nil {
+					return err
+				}
+				return flapc.NewSignoff(loginResp.TLVRestBlock)
 			default:
 				s.Logger.Debug("unexpected SNAC received during login",
 					"foodgroup", wire.FoodGroupName(fr.FoodGroup),
