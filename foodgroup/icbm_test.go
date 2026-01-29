@@ -1071,6 +1071,89 @@ func TestICBMService_ChannelMsgToHost(t *testing.T) {
 			expectOutput: nil,
 		},
 		{
+			name:     "relay Xtraz XStatus message",
+			instance: newTestInstance("sender-screen-name", sessOptWarning(10)),
+			mockParams: mockParams{
+				relationshipFetcherParams: relationshipFetcherParams{
+					relationshipParams: relationshipParams{
+						{
+							me:   state.NewIdentScreenName("sender-screen-name"),
+							them: state.NewIdentScreenName("recipient-screen-name"),
+							result: state.Relationship{
+								User:          state.NewIdentScreenName("recipient-screen-name"),
+								BlocksYou:     false,
+								YouBlock:      false,
+								IsOnTheirList: false,
+								IsOnYourList:  false,
+							},
+						},
+					},
+				},
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams{
+						{
+							screenName: state.NewIdentScreenName("recipient-screen-name"),
+							result:     newTestInstance("recipient-screen-name", sessOptWarning(20), sessOptSignonComplete).Session(),
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameActiveOnlyParams: relayToScreenNameActiveOnlyParams{
+						{
+							screenName: state.NewIdentScreenName("recipient-screen-name"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.ICBM,
+									SubGroup:  wire.ICBMChannelMsgToClient,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
+									ChannelID:   wire.ICBMChannelRendezvous,
+									TLVUserInfo: newTestInstance("sender-screen-name", sessOptWarning(10)).Session().TLVUserInfo(),
+									TLVRestBlock: wire.TLVRestBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.ICBMTLVData, wire.ICBMCh2Fragment{
+												Type:       wire.ICBMRdvMessagePropose,
+												Capability: wire.CapXtrazScript,
+												TLVRestBlock: wire.TLVRestBlock{
+													TLVList: wire.TLVList{
+														wire.NewTLVBE(0x2711, []byte("xtraz-xml-payload")),
+													},
+												},
+											}),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
+					ChannelID:  wire.ICBMChannelRendezvous,
+					ScreenName: "recipient-screen-name",
+					TLVRestBlock: wire.TLVRestBlock{
+						TLVList: wire.TLVList{
+							wire.NewTLVBE(wire.ICBMTLVData, wire.ICBMCh2Fragment{
+								Type:       wire.ICBMRdvMessagePropose,
+								Capability: wire.CapXtrazScript,
+								TLVRestBlock: wire.TLVRestBlock{
+									TLVList: wire.TLVList{
+										wire.NewTLVBE(0x2711, []byte("xtraz-xml-payload")),
+									},
+								},
+							}),
+						},
+					},
+				},
+			},
+			expectOutput: nil,
+		},
+		{
 			name:     "transmit message to recipient with all sessions inactive - use RelayToScreenName",
 			instance: newTestInstance("sender-screen-name", sessOptWarning(10)),
 			mockParams: mockParams{

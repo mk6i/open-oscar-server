@@ -94,6 +94,21 @@ func (rt Handler) AlertNotifyDisplayCapabilities(ctx context.Context, _ *state.S
 	return nil
 }
 
+func (rt Handler) InviteRequest(ctx context.Context, _ *state.SessionInstance, inFrame wire.SNACFrame, _ io.Reader, _ ResponseWriter) error {
+	rt.LogRequest(ctx, inFrame, nil)
+	return nil
+}
+
+func (rt Handler) PluginRequest(ctx context.Context, _ *state.SessionInstance, inFrame wire.SNACFrame, _ io.Reader, _ ResponseWriter) error {
+	rt.LogRequest(ctx, inFrame, nil)
+	return nil
+}
+
+func (rt Handler) MDirRequest(ctx context.Context, _ *state.SessionInstance, inFrame wire.SNACFrame, _ io.Reader, _ ResponseWriter) error {
+	rt.LogRequest(ctx, inFrame, nil)
+	return nil
+}
+
 func (rt Handler) BARTUploadQuery(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inBody := wire.SNAC_0x10_0x02_BARTUploadQuery{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
@@ -627,6 +642,8 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 			wire.ICQDBQueryMetaReqStat0ad7,
 			wire.ICQDBQueryMetaReqStat0758:
 			rt.Logger.Debug("got a request for stats, not doing anything right now")
+		case wire.ICQDBQueryMetaReqDirectoryQuery, wire.ICQDBQueryMetaReqDirectoryUpdate:
+			rt.Logger.Debug("got a directory query/update request, not implemented yet")
 		default:
 			return fmt.Errorf("%w: %X", errUnknownICQMetaReqSubType, icqMD.Optional.ReqSubType)
 		}
@@ -1053,6 +1070,11 @@ func (rt Handler) Handle(ctx context.Context, server uint16, instance *state.Ses
 		case wire.FeedbagUse:
 			return rt.FeedbagUse(ctx, instance, inFrame, r, rw)
 		}
+	case wire.Invite:
+		switch inFrame.SubGroup {
+		case wire.InviteRequestQuery, wire.InviteRequestReply:
+			return rt.InviteRequest(ctx, instance, inFrame, r, rw)
+		}
 	case wire.ICQ:
 		switch inFrame.SubGroup {
 		case wire.ICQDBQuery:
@@ -1092,6 +1114,8 @@ func (rt Handler) Handle(ctx context.Context, server uint16, instance *state.Ses
 		case wire.LocateUserInfoQuery2:
 			return rt.LocateUserInfoQuery2(ctx, instance, inFrame, r, rw)
 		}
+	case wire.MDir:
+		return rt.MDirRequest(ctx, instance, inFrame, r, rw)
 	case wire.ODir:
 		switch inFrame.SubGroup {
 		case wire.ODirInfoQuery:
@@ -1137,6 +1161,8 @@ func (rt Handler) Handle(ctx context.Context, server uint16, instance *state.Ses
 		case wire.PermitDenySetGroupPermitMask:
 			return rt.PermitDenySetGroupPermitMask(ctx, instance, inFrame, r, rw)
 		}
+	case wire.Plugin:
+		return rt.PluginRequest(ctx, instance, inFrame, r, rw)
 	case wire.Stats:
 		switch inFrame.SubGroup {
 		case wire.StatsReportEvents:

@@ -99,6 +99,7 @@ const (
 	LoginTLVTagsErrorSubcode            uint16 = 0x08
 	LoginTLVTagsPasswordHash            uint16 = 0x25
 	LoginTLVTagsMultiConnFlags          uint16 = 0x4A
+	LoginTLVTagsMaxRecvSize             uint16 = 0x8003
 	LoginTLVTagsRoastedKerberosPassword uint16 = 0x1335
 	LoginTLVTagsRoastedTOCPassword      uint16 = 0x1337
 	LoginTLVTagsPlaintextPassword       uint16 = 0x1338
@@ -1775,6 +1776,36 @@ const (
 	ICQTLVTagsOriginallyFromState       uint16 = 0x032A // User originally from state
 	ICQTLVTagsOriginallyFromCountryCode uint16 = 0x0334 // User originally from country (code)
 
+	ICQDirTLVTagsPrivacyToken   uint16 = 0x003C // Privacy token (16 bytes)
+	ICQDirTLVTagsVerifiedEmail  uint16 = 0x0050 // Verified email address
+	ICQDirTLVTagsPendingEmail   uint16 = 0x0055 // Pending email address
+	ICQDirTLVTagsFirstName      uint16 = 0x0064 // First name
+	ICQDirTLVTagsLastName       uint16 = 0x006E // Last name
+	ICQDirTLVTagsNickname       uint16 = 0x0078 // Nickname
+	ICQDirTLVTagsGender         uint16 = 0x0082 // Gender (1=Female, 2=Male)
+	ICQDirTLVTagsEmailAddresses uint16 = 0x008C // Email addresses (record list)
+	ICQDirTLVTagsHomeAddress    uint16 = 0x0096 // Home address
+	ICQDirTLVTagsOriginAddress  uint16 = 0x00A0 // Origin/birth address
+	ICQDirTLVTagsLanguage1      uint16 = 0x00AA // Primary language
+	ICQDirTLVTagsLanguage2      uint16 = 0x00B4 // Secondary language
+	ICQDirTLVTagsLanguage3      uint16 = 0x00BE // Tertiary language
+	ICQDirTLVTagsPhoneNumbers   uint16 = 0x00C8 // Phone numbers (record list)
+	ICQDirTLVTagsHomepage       uint16 = 0x00FA // Homepage URL
+	ICQDirTLVTagsEducation      uint16 = 0x010E // Education info
+	ICQDirTLVTagsCompanyInfo    uint16 = 0x0118 // Company/work info
+	ICQDirTLVTagsInterests      uint16 = 0x0122 // Interests
+	ICQDirTLVTagsMaritalStatus  uint16 = 0x012C // Marital status
+	ICQDirTLVTagsTimezone       uint16 = 0x017C // Timezone
+	ICQDirTLVTagsAboutBio       uint16 = 0x0186 // About/biography text
+	ICQDirTLVTagsAuthRequired   uint16 = 0x019A // Authorization required flag
+	ICQDirTLVTagsBirthDate      uint16 = 0x01A4 // Birth date
+	ICQDirTLVTagsCodePage       uint16 = 0x01C2 // Code page
+	ICQDirTLVTagsMetadataTime   uint16 = 0x01CC // Metadata update time
+	ICQDirTLVTagsAllowSpam      uint16 = 0x01EA // Allow spam/messages from non-contacts flag
+	ICQDirTLVTagsPrivacyLevel   uint16 = 0x01F9 // Privacy level
+	ICQDirTLVTagsWebAware       uint16 = 0x0212 // Web aware flag (online visibility via web)
+	ICQDirTLVTagsStatusNote     uint16 = 0x0226 // Status note/message
+
 	ICQStatusCodeOK   uint8 = 0x0A
 	ICQStatusCodeFail uint8 = 0x32
 	ICQStatusCodeErr  uint8 = 0x14
@@ -1823,6 +1854,8 @@ const (
 	ICQDBQueryMetaReqStat0acd          uint16 = 0x0ACD
 	ICQDBQueryMetaReqStat0ad2          uint16 = 0x0AD2
 	ICQDBQueryMetaReqStat0ad7          uint16 = 0x0AD7
+	ICQDBQueryMetaReqDirectoryQuery    uint16 = 0x0FA0
+	ICQDBQueryMetaReqDirectoryUpdate   uint16 = 0x0FD2
 
 	ICQDBQueryMetaReplySetBasicInfo    uint16 = 0x0064
 	ICQDBQueryMetaReplySetWorkInfo     uint16 = 0x006E

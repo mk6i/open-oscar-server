@@ -560,7 +560,15 @@ func (s ICQService) SetMoreInfo(ctx context.Context, instance *state.SessionInst
 }
 
 func (s ICQService) SetPermissions(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x0424_DBQueryMetaReqSetPermissions, seq uint16) error {
-	s.logger.Debug("setting permissions is not yet supported")
+	u := state.ICQPermissions{
+		AuthRequired: inBody.Authorization == 1,
+		WebAware:     inBody.WebAware == 1,
+	}
+
+	if err := s.userUpdater.SetPermissions(ctx, instance.IdentScreenName(), u); err != nil {
+		return err
+	}
+
 	return s.reqAck(ctx, instance, seq, wire.ICQDBQueryMetaReplySetPermissions)
 }
 
