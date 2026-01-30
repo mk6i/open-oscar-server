@@ -9,6 +9,10 @@
 
 **Open OSCAR Server** is an open-source instant messaging server compatible with classic AIM and ICQ clients.
 
+<p align="center">
+<img width="816" alt="image" src="https://github.com/user-attachments/assets/4d76b06f-fd0c-4f0a-9e9f-d9516653cfb4" />
+</p>
+
 | Disclaimer                                                                                                                                                                                                                           |
 |--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | This project is an independent, open-source initiative and is not affiliated with, endorsed by, or associated with AOL or Yahoo! Inc. This project is entirely non-commercial and does not generate any revenue or accept donations. |
@@ -59,6 +63,11 @@ Don't have AIM installed yet? Check out the [AIM Client Setup Guide](./docs/CLIE
 This project is under active development. Contributions are welcome!
 
 Follow [this guide](./docs/BUILD.md) to learn how to compile and run Open OSCAR Server.
+
+## 🌍 Community
+
+Check out the Retro AIM Server [Discord server](https://discord.gg/E5etJfRAqR) to get help or find out how to get
+involved.
 
 ## 👤 Management API
 
