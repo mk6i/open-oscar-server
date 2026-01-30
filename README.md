@@ -66,7 +66,7 @@ Follow [this guide](./docs/BUILD.md) to learn how to compile and run Open OSCAR 
 
 ## 🌍 Community
 
-Check out the Retro AIM Server [Discord server](https://discord.gg/E5etJfRAqR) to get help or find out how to get
+Check out the Open OSCAR Server [Discord server](https://discord.gg/E5etJfRAqR) to get help or find out how to get
 involved.
 
 ## 👤 Management API
