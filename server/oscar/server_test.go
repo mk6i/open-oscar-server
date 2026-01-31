@@ -396,7 +396,6 @@ func TestOscarServer_RouteConnection_BOS(t *testing.T) {
 			SubGroup:  wire.OServiceClientOnline,
 		}
 		assert.NoError(t, flapc.SendSNAC(frame, struct{}{}))
-		assert.NoError(t, clientConn.Close())
 	}()
 
 	wg := &sync.WaitGroup{}
@@ -447,6 +446,7 @@ func TestOscarServer_RouteConnection_BOS(t *testing.T) {
 	wg.Add(2)
 	handler := func(ctx context.Context, serverType uint16, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter, listener config.Listener) error {
 		defer wg.Done()
+		assert.NoError(t, clientConn.Close())
 		return nil
 	}
 
@@ -520,7 +520,6 @@ func TestOscarServer_RouteConnection_BOS_MultiSessionSignoff(t *testing.T) {
 			SubGroup:  wire.OServiceClientOnline,
 		}
 		assert.NoError(t, flapc.SendSNAC(frame, struct{}{}))
-		assert.NoError(t, clientConn.Close())
 	}()
 
 	wg := &sync.WaitGroup{}
@@ -560,6 +559,7 @@ func TestOscarServer_RouteConnection_BOS_MultiSessionSignoff(t *testing.T) {
 	wg.Add(2)
 	handler := func(ctx context.Context, serverType uint16, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter, listener config.Listener) error {
 		defer wg.Done()
+		assert.NoError(t, clientConn.Close())
 		return nil
 	}
 
@@ -692,7 +692,6 @@ func TestOscarServer_RouteConnection_Chat(t *testing.T) {
 			SubGroup:  wire.OServiceClientOnline,
 		}
 		assert.NoError(t, flapc.SendSNAC(frame, struct{}{}))
-		assert.NoError(t, clientConn.Close())
 	}()
 
 	wg := &sync.WaitGroup{}
@@ -730,6 +729,7 @@ func TestOscarServer_RouteConnection_Chat(t *testing.T) {
 	wg.Add(1)
 	handler := func(ctx context.Context, serverType uint16, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter, listener config.Listener) error {
 		defer wg.Done()
+		assert.NoError(t, clientConn.Close())
 		return nil
 	}
 
@@ -794,7 +794,6 @@ func TestOscarServer_RouteConnection_Admin(t *testing.T) {
 			SubGroup:  wire.OServiceClientOnline,
 		}
 		assert.NoError(t, flapc.SendSNAC(frame, struct{}{}))
-		assert.NoError(t, clientConn.Close())
 	}()
 
 	wg := &sync.WaitGroup{}
@@ -825,6 +824,7 @@ func TestOscarServer_RouteConnection_Admin(t *testing.T) {
 	wg.Add(1)
 	handler := func(ctx context.Context, serverType uint16, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter, listener config.Listener) error {
 		defer wg.Done()
+		assert.NoError(t, clientConn.Close())
 		return nil
 	}
 

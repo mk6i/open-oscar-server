@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
+	"math/rand"
 	"net/http"
 	"strconv"
 	"strings"
@@ -22,7 +24,7 @@ import (
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
-func NewManagementAPI(bld config.Build, listener string, userManager UserManager, sessionRetriever SessionRetriever, chatRoomRetriever ChatRoomRetriever, chatRoomCreator ChatRoomCreator, chatRoomDeleter ChatRoomDeleter, chatSessionRetriever ChatSessionRetriever, directoryManager DirectoryManager, messageRelayer MessageRelayer, bartAssetManager BARTAssetManager, feedbagRetriever FeedBagRetriever, accountManager AccountManager, profileRetriever ProfileRetriever, webAPIKeyManager WebAPIKeyManager, logger *slog.Logger) *Server {
+func NewManagementAPI(bld config.Build, listener string, userManager UserManager, sessionRetriever SessionRetriever, buddyBroadcaster BuddyBroadcaster, chatRoomRetriever ChatRoomRetriever, chatRoomCreator ChatRoomCreator, chatRoomDeleter ChatRoomDeleter, chatSessionRetriever ChatSessionRetriever, directoryManager DirectoryManager, messageRelayer MessageRelayer, bartAssetManager BARTAssetManager, feedbagRetriever FeedBagRetriever, feedbagManager FeedbagManager, accountManager AccountManager, profileRetriever ProfileRetriever, webAPIKeyManager WebAPIKeyManager, logger *slog.Logger) *Server {
 	mux := http.NewServeMux()
 
 	// Handlers for '/user' route
@@ -157,6 +159,19 @@ func NewManagementAPI(bld config.Build, listener string, userManager UserManager
 	})
 	mux.HandleFunc("DELETE /bart/{hash}", func(w http.ResponseWriter, r *http.Request) {
 		deleteBARTHandler(w, r, bartAssetManager, logger)
+	})
+
+	// Handlers for '/feedbag/{screen_name}/group' route
+	mux.HandleFunc("GET /feedbag/{screen_name}/group", func(w http.ResponseWriter, r *http.Request) {
+		getFeedbagBuddyHandler(w, r, feedbagManager, logger)
+	})
+
+	// Handlers for '/feedbag/{screen_name}/group/{group_id}/buddy/{buddy_screen_name}' route
+	mux.HandleFunc("PUT /feedbag/{screen_name}/group/{group_id}/buddy/{buddy_screen_name}", func(w http.ResponseWriter, r *http.Request) {
+		putFeedbagBuddyHandler(w, r, buddyBroadcaster, feedbagManager, sessionRetriever, messageRelayer, logger, rand.Intn)
+	})
+	mux.HandleFunc("DELETE /feedbag/{screen_name}/group/{group_id}/buddy/{buddy_screen_name}", func(w http.ResponseWriter, r *http.Request) {
+		deleteFeedbagBuddyHandler(w, r, buddyBroadcaster, feedbagManager, sessionRetriever, messageRelayer, logger)
 	})
 
 	return &Server{
@@ -1205,4 +1220,344 @@ func deleteBARTHandler(w http.ResponseWriter, r *http.Request, bartAssetManager 
 
 	msg := messageBody{Message: "BART asset deleted successfully."}
 	json.NewEncoder(w).Encode(msg)
+}
+
+// getFeedbagBuddyHandler handles the GET /feedbag/{screen_name}/group endpoint.
+func getFeedbagBuddyHandler(w http.ResponseWriter, r *http.Request, feedbagManager FeedbagManager, logger *slog.Logger) {
+	w.Header().Set("Content-Type", "application/json")
+
+	screenName := r.PathValue("screen_name")
+	if screenName == "" {
+		errorMsg(w, "screen_name is required", http.StatusBadRequest)
+		return
+	}
+
+	items, err := feedbagManager.Feedbag(r.Context(), state.NewIdentScreenName(screenName))
+	if err != nil {
+		logger.Error("error retrieving feedbag", "err", err.Error())
+		errorMsg(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if len(items) == 0 {
+		errorMsg(w, "feedbag not found", http.StatusNotFound)
+		return
+	}
+
+	buddyMap := make(map[uint16][]*wire.FeedbagItem)
+
+	for _, item := range items {
+		switch item.ClassID {
+		case wire.FeedbagClassIdBuddy:
+			buddyMap[item.GroupID] = append(buddyMap[item.GroupID], &item)
+		}
+	}
+
+	type buddyItem struct {
+		Name   string `json:"name"`
+		ItemID uint16 `json:"item_id"`
+	}
+	type groupItem struct {
+		GroupID   uint16      `json:"group_id"`
+		GroupName string      `json:"group_name"`
+		Buddies   []buddyItem `json:"buddies"`
+	}
+
+	response := make([]groupItem, 0)
+
+	for _, item := range items {
+		switch item.ClassID {
+		case wire.FeedbagClassIdGroup:
+			if item.GroupID == 0 {
+				// can't add buddies to the root group
+				continue
+			}
+			group := groupItem{
+				GroupID:   item.GroupID,
+				GroupName: item.Name,
+				Buddies:   make([]buddyItem, 0, len(buddyMap[item.GroupID])),
+			}
+			for _, buddy := range buddyMap[item.GroupID] {
+				group.Buddies = append(group.Buddies, buddyItem{
+					Name:   buddy.Name,
+					ItemID: buddy.ItemID,
+				})
+			}
+			response = append(response, group)
+		}
+	}
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		logger.Error("error encoding response", "err", err.Error())
+	}
+}
+
+// putFeedbagBuddyHandler handles the PUT /feedbag/{screen_name}/group/{group_id}/buddy/{buddy_screen_name} endpoint.
+func putFeedbagBuddyHandler(w http.ResponseWriter, r *http.Request, buddyBroadcaster BuddyBroadcaster, feedbagManager FeedbagManager, sessionRetriever SessionRetriever, messageRelayer MessageRelayer, logger *slog.Logger, randInt func(n int) int) {
+	w.Header().Set("Content-Type", "application/json")
+
+	gid, err := strconv.ParseUint(r.PathValue("group_id"), 10, 16)
+	if err != nil {
+		errorMsg(w, "invalid group_id", http.StatusBadRequest)
+		return
+	}
+	groupID := uint16(gid)
+
+	if groupID == 0 {
+		errorMsg(w, "can't add buddies to root group", http.StatusBadRequest)
+		return
+	}
+
+	screenName := r.PathValue("screen_name")
+	if screenName == "" {
+		errorMsg(w, "screen_name is required", http.StatusBadRequest)
+		return
+	}
+	me := state.NewIdentScreenName(screenName)
+
+	buddyScreenName := r.PathValue("buddy_screen_name")
+	if buddyScreenName == "" {
+		errorMsg(w, "buddy_screen_name is required", http.StatusBadRequest)
+		return
+	}
+
+	newBuddy := state.DisplayScreenName(buddyScreenName)
+	if newBuddy.IsUIN() {
+		if err := newBuddy.ValidateUIN(); err != nil {
+			errorMsg(w, fmt.Sprintf("invalid uin: %s", err), http.StatusBadRequest)
+			return
+		}
+	} else {
+		if err := newBuddy.ValidateAIMHandle(); err != nil {
+			errorMsg(w, fmt.Sprintf("invalid screen name: %s", err), http.StatusBadRequest)
+			return
+		}
+	}
+
+	items, err := feedbagManager.Feedbag(r.Context(), me)
+	if err != nil {
+		logger.Error("error retrieving feedbag", "err", err.Error())
+		errorMsg(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	var group *wire.FeedbagItem
+
+	count := 0
+	for _, item := range items {
+		switch {
+		case item.ClassID == wire.FeedbagClassIdGroup && item.GroupID == groupID:
+			group = &item
+		case item.ClassID == wire.FeedbagClassIdBuddy && item.GroupID == groupID:
+			count++
+			if item.Name == newBuddy.IdentScreenName().String() {
+				response := struct {
+					Name    string `json:"name"`
+					GroupID uint16 `json:"group_id"`
+					ItemID  uint16 `json:"item_id"`
+				}{
+					Name:    buddyScreenName,
+					GroupID: groupID,
+					ItemID:  item.ItemID,
+				}
+				w.WriteHeader(http.StatusOK)
+				if err := json.NewEncoder(w).Encode(response); err != nil {
+					logger.Error("error encoding response", "err", err.Error())
+				}
+				return
+			}
+		}
+	}
+
+	if count >= 30 {
+		errorMsg(w, "too many buddies in group. max: 30", http.StatusBadRequest)
+		return
+	}
+
+	if group == nil {
+		errorMsg(w, "group not found", http.StatusNotFound)
+		return
+	}
+
+	buddyItem := wire.FeedbagItem{
+		Name:    buddyScreenName,
+		GroupID: groupID,
+		ItemID:  randItemID(randInt, items),
+		ClassID: wire.FeedbagClassIdBuddy,
+	}
+
+	if buddyItem.ItemID == 0 {
+		errorMsg(w, "maximum items reached", http.StatusConflict)
+		return
+	}
+
+	if order, hasOrder := group.Bytes(wire.FeedbagAttributesOrder); hasOrder {
+		var memberIDs []uint16
+		if err := wire.UnmarshalBE(&memberIDs, bytes.NewReader(order)); err != nil {
+			logger.Error("error decoding order TLV", "err", err.Error())
+			errorMsg(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		group.Replace(wire.NewTLVBE(wire.FeedbagAttributesOrder, append(memberIDs, buddyItem.ItemID)))
+	} else {
+		group.Append(wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{buddyItem.ItemID}))
+	}
+
+	updates := []wire.FeedbagItem{
+		buddyItem,
+		*group,
+	}
+	if err := feedbagManager.FeedbagUpsert(r.Context(), me, updates); err != nil {
+		logger.Error("error inserting feedbag item", "err", err.Error())
+		errorMsg(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	session := sessionRetriever.RetrieveSession(me)
+	if session != nil {
+		messageRelayer.RelayToScreenName(r.Context(), me, wire.SNACMessage{
+			Frame: wire.SNACFrame{
+				FoodGroup: wire.Feedbag,
+				SubGroup:  wire.FeedbagInsertItem,
+				RequestID: wire.ReqIDFromServer,
+			},
+			Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
+				Items: []wire.FeedbagItem{buddyItem},
+			},
+		})
+		messageRelayer.RelayToScreenName(r.Context(), me, wire.SNACMessage{
+			Frame: wire.SNACFrame{
+				FoodGroup: wire.Feedbag,
+				SubGroup:  wire.FeedbagUpdateItem,
+				RequestID: wire.ReqIDFromServer,
+			},
+			Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
+				Items: []wire.FeedbagItem{*group},
+			},
+		})
+		instances := session.Instances()
+		if len(instances) > 0 {
+			if err := buddyBroadcaster.BroadcastVisibility(r.Context(), instances[0], []state.IdentScreenName{newBuddy.IdentScreenName()}, false); err != nil {
+				logger.Error("error broadcasting visibility", "err", err.Error())
+			}
+		}
+	}
+
+	response := struct {
+		Name    string `json:"name"`
+		GroupID uint16 `json:"group_id"`
+		ItemID  uint16 `json:"item_id"`
+	}{
+		Name:    buddyItem.Name,
+		GroupID: buddyItem.GroupID,
+		ItemID:  buddyItem.ItemID,
+	}
+
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		logger.Error("error encoding response", "err", err.Error())
+	}
+}
+
+func randItemID(randInt func(n int) int, items []wire.FeedbagItem) uint16 {
+	num := uint16(randInt(math.MaxUint16))
+	for itemID := num; itemID != num-1; itemID++ {
+		if itemID == 0 {
+			continue
+		}
+		exists := false
+		for _, item := range items {
+			if item.GroupID == itemID || item.ItemID == itemID {
+				exists = true
+				break
+			}
+		}
+		if !exists {
+			return itemID
+		}
+	}
+	return 0
+}
+
+// deleteFeedbagBuddyHandler handles the DELETE /feedbag/{screen_name}/group/{group_id}/buddy/{buddy_screen_name} endpoint.
+func deleteFeedbagBuddyHandler(w http.ResponseWriter, r *http.Request, buddyBroadcaster BuddyBroadcaster, feedbagManager FeedbagManager, sessionRetriever SessionRetriever, messageRelayer MessageRelayer, logger *slog.Logger) {
+	gid, err := strconv.ParseUint(r.PathValue("group_id"), 10, 16)
+	if err != nil {
+		errorMsg(w, "invalid group_id", http.StatusBadRequest)
+		return
+	}
+	groupID := uint16(gid)
+
+	if groupID == 0 {
+		errorMsg(w, "can't add buddies to root group", http.StatusBadRequest)
+		return
+	}
+
+	screenName := r.PathValue("screen_name")
+	if screenName == "" {
+		errorMsg(w, "screen_name is required", http.StatusBadRequest)
+		return
+	}
+	me := state.NewIdentScreenName(screenName)
+
+	buddyScreenName := r.PathValue("buddy_screen_name")
+	if buddyScreenName == "" {
+		errorMsg(w, "buddy_screen_name is required", http.StatusBadRequest)
+		return
+	}
+	deleteBuddy := state.NewIdentScreenName(buddyScreenName)
+
+	items, err := feedbagManager.Feedbag(r.Context(), me)
+	if err != nil {
+		logger.Error("error retrieving feedbag", "err", err.Error())
+		errorMsg(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	var itemToDelete *wire.FeedbagItem
+	var groupFound bool
+	for _, item := range items {
+		switch {
+		case item.ClassID == wire.FeedbagClassIdGroup && item.GroupID == groupID:
+			groupFound = true
+		case item.ClassID == wire.FeedbagClassIdBuddy && item.Name == buddyScreenName && item.GroupID == groupID:
+			itemToDelete = &item
+		}
+	}
+
+	switch {
+	case !groupFound:
+		errorMsg(w, "group not found", http.StatusNotFound)
+		return
+	case itemToDelete == nil:
+		errorMsg(w, "buddy not found", http.StatusNotFound)
+		return
+	}
+
+	if err := feedbagManager.FeedbagDelete(r.Context(), me, []wire.FeedbagItem{*itemToDelete}); err != nil {
+		logger.Error("error deleting feedbag item", "err", err.Error())
+		errorMsg(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	session := sessionRetriever.RetrieveSession(me)
+	if session != nil {
+		messageRelayer.RelayToScreenName(r.Context(), me, wire.SNACMessage{
+			Frame: wire.SNACFrame{
+				FoodGroup: wire.Feedbag,
+				SubGroup:  wire.FeedbagDeleteItem,
+				RequestID: wire.ReqIDFromServer,
+			},
+			Body: wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
+				Items: []wire.FeedbagItem{*itemToDelete},
+			},
+		})
+		instances := session.Instances()
+		if len(instances) > 0 {
+			if err := buddyBroadcaster.BroadcastVisibility(r.Context(), instances[0], []state.IdentScreenName{deleteBuddy}, true); err != nil {
+				logger.Error("error broadcasting visibility", "err", err.Error())
+			}
+		}
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }

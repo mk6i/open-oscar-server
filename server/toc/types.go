@@ -104,3 +104,12 @@ type CookieBaker interface {
 type AdminService interface {
 	InfoChangeRequest(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x07_0x04_AdminInfoChangeRequest) (wire.SNACMessage, error)
 }
+
+// SessionRetriever defines a method for retrieving an active session
+// associated with a given screen name.
+type SessionRetriever interface {
+	// RetrieveSession returns the session associated with the given screen name,
+	// or nil if no active session exists. Returns the Session object if there
+	// are active instances with complete signon.
+	RetrieveSession(screenName state.IdentScreenName) *state.Session
+}

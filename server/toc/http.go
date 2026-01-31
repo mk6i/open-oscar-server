@@ -31,6 +31,7 @@ const directoryTpl = `
 <TABLE>
 {{- range .Results -}}
 <TR><TD>
+<B>Screen Name:</B> {{.ScreenName}}<BR>
 {{- if .FirstName}}<B>First Name:</B> {{.FirstName}}<BR>{{- end -}}
 {{- if .MiddleName}}<B>Middle Name:</B> {{.MiddleName}}<BR>{{- end -}}
 {{- if .LastName}}<B>Last Name:</B> {{.LastName}}<BR>{{- end -}}
@@ -151,15 +152,25 @@ func (s OSCARProxy) ProfileHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sess := state.NewSession().AddInstance()
-	sess.Session().SetIdentScreenName(state.NewIdentScreenName(from))
+	sess := s.SessionRetriever.RetrieveSession(state.NewIdentScreenName(from))
+	if sess == nil {
+		http.Error(w, "invalid session", http.StatusForbidden)
+		return
+	}
+
+	instances := sess.Instances()
+	if len(instances) == 0 {
+		http.Error(w, "invalid session", http.StatusForbidden)
+		return
+	}
+
 	inBody := wire.SNAC_0x02_0x05_LocateUserInfoQuery{
 		Type:       uint16(wire.LocateTypeSig),
 		ScreenName: user,
 	}
 
 	ctx := r.Context()
-	info, err := s.LocateService.UserInfoQuery(ctx, sess, wire.SNACFrame{}, inBody)
+	info, err := s.LocateService.UserInfoQuery(ctx, instances[0], wire.SNACFrame{}, inBody)
 	if err != nil {
 		s.logAndReturn500(ctx, w, fmt.Errorf("LocateService.UserInfoQuery: %w", err))
 		return
@@ -319,6 +330,7 @@ func (s OSCARProxy) outputSearchResults(ctx context.Context, w http.ResponseWrit
 		NickName   string
 		ZIP        string
 		Address    string
+		ScreenName string
 	}
 	type PageData struct {
 		Results []DirSearchResult
@@ -327,6 +339,7 @@ func (s OSCARProxy) outputSearchResults(ctx context.Context, w http.ResponseWrit
 	results := make([]DirSearchResult, 0, len(users))
 	for _, result := range users {
 		rec := DirSearchResult{}
+		rec.ScreenName, _ = result.String(wire.ODirTLVScreenName)
 		rec.FirstName, _ = result.String(wire.ODirTLVFirstName)
 		rec.MiddleName, _ = result.String(wire.ODirTLVMiddleName)
 		rec.LastName, _ = result.String(wire.ODirTLVLastName)

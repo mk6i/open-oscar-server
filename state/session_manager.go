@@ -194,7 +194,7 @@ func (s *InMemorySessionManager) AddSession(ctx context.Context, screenName Disp
 
 			// Check if we've reached the maximum number of concurrent sessions
 			if active.session.InstanceCount() >= s.maxConcurrentSessions {
-				return nil, ErrMaxConcurrentSessionsReached
+				return nil, fmt.Errorf("%w: max instance(s) = %d", ErrMaxConcurrentSessionsReached, s.maxConcurrentSessions)
 			}
 
 			instance := active.session.AddInstance()

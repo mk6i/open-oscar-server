@@ -13,11 +13,14 @@ import (
 type mockParams struct {
 	accountManagerParams
 	bartAssetManagerParams
+	buddyBroadcasterParams
 	chatRoomDeleterParams
 	chatRoomRetrieverParams
 	chatSessionRetrieverParams
 	directoryManagerParams
 	feedBagRetrieverParams
+	feedbagManagerParams
+	messageRelayerParams
 	profileRetrieverParams
 	sessionRetrieverParams
 	userManagerParams
@@ -112,6 +115,21 @@ type listBARTItemsParams []struct {
 type deleteBARTItemParams []struct {
 	hash []byte
 	err  error
+}
+
+// buddyBroadcasterParams is a helper struct that contains mock parameters for
+// BuddyBroadcaster methods
+type buddyBroadcasterParams struct {
+	broadcastVisibilityParams
+}
+
+// broadcastVisibilityParams is the list of parameters passed at the mock
+// BuddyBroadcaster.BroadcastVisibility call site
+type broadcastVisibilityParams []struct {
+	you            *state.SessionInstance
+	filter         []state.IdentScreenName
+	sendDepartures bool
+	err            error
 }
 
 // chatRoomRetrieverParams is a helper struct that contains mock parameters for
@@ -222,6 +240,51 @@ type buddyIconMetadataParams []struct {
 	screenName state.IdentScreenName
 	result     *wire.BARTID
 	err        error
+}
+
+// feedbagManagerParams is a helper struct that contains mock parameters for
+// FeedbagManager methods
+type feedbagManagerParams struct {
+	feedbagParams
+	feedbagUpsertParams
+	feedbagDeleteParams
+}
+
+// feedbagParams is the list of parameters passed at the mock
+// FeedbagManager.Feedbag call site
+type feedbagParams []struct {
+	screenName state.IdentScreenName
+	result     []wire.FeedbagItem
+	err        error
+}
+
+// feedbagUpsertParams is the list of parameters passed at the mock
+// FeedbagManager.FeedbagUpsert call site
+type feedbagUpsertParams []struct {
+	screenName state.IdentScreenName
+	items      []wire.FeedbagItem
+	err        error
+}
+
+// feedbagDeleteParams is the list of parameters passed at the mock
+// FeedbagManager.FeedbagDelete call site
+type feedbagDeleteParams []struct {
+	screenName state.IdentScreenName
+	items      []wire.FeedbagItem
+	err        error
+}
+
+// messageRelayerParams is a helper struct that contains mock parameters for
+// MessageRelayer methods
+type messageRelayerParams struct {
+	relayToScreenNameParams
+}
+
+// relayToScreenNameParams is the list of parameters passed at the mock
+// MessageRelayer.RelayToScreenName call site
+type relayToScreenNameParams []struct {
+	screenName state.IdentScreenName
+	msg        wire.SNACMessage
 }
 
 // profileRetrieverParams is a helper struct that contains mock parameters for

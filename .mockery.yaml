@@ -77,6 +77,9 @@ packages:
       BARTAssetManager:
         config:
           filename: "mock_bart_asset_manager_test.go"
+      BuddyBroadcaster:
+        config:
+          filename: "mock_buddy_broadcaster_test.go"
       ChatRoomCreator:
         config:
           filename: "mock_chat_room_creator_test.go"
@@ -201,6 +204,9 @@ packages:
       CookieBaker:
         config:
           filename: "mock_cookie_baker_test.go"
+      SessionRetriever:
+        config:
+          filename: "mock_session_retriever_test.go"
   github.com/mk6i/open-oscar-server/server/kerberos:
     interfaces:
       AuthService:

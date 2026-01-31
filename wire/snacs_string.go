@@ -1,6 +1,7 @@
 package wire
 
 var foodGroupName = map[uint16]string{
+	BOS:         "BOS",
 	OService:    "OService",
 	Locate:      "Locate",
 	Buddy:       "Buddy",

@@ -2677,6 +2677,11 @@ func (t TLVUserInfo) IsAway() bool {
 	return flags&OServiceUserFlagUnavailable == OServiceUserFlagUnavailable
 }
 
+func (t TLVUserInfo) IsInvisible() bool {
+	mask, _ := t.Uint32BE(OServiceUserInfoStatus)
+	return mask&OServiceUserStatusInvisible == OServiceUserStatusInvisible
+}
+
 type FeedbagItem struct {
 	Name    string `oscar:"len_prefix=uint16"`
 	GroupID uint16

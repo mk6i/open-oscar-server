@@ -1200,6 +1200,171 @@ paths:
               schema:
                 $ref: '#/components/schemas/MessageResponse'
 
+  /feedbag/{screen_name}/group:
+    get:
+      summary: Get buddy list for a user
+      description: Retrieve all buddies for a user, grouped by group ID.
+      parameters:
+        - name: screen_name
+          in: path
+          description: User's AIM screen name or ICQ UIN.
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response containing buddy list grouped by group ID.
+          content:
+            application/json:
+              schema:
+                type: array
+                description: List of buddy groups.
+                items:
+                  type: object
+                  properties:
+                    group_id:
+                      type: integer
+                      description: The group ID.
+                    group_name:
+                      type: string
+                      description: The name of the group.
+                    buddies:
+                      type: array
+                      description: List of buddies in this group.
+                      items:
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                            description: The buddy's screen name.
+                          item_id:
+                            type: integer
+                            description: The feedbag item ID for this buddy.
+                  required:
+                    - group_id
+                    - group_name
+                    - buddies
+        '404':
+          description: User or feedbag not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
+  /feedbag/{screen_name}/group/{group_id}/buddy/{buddy_screen_name}:
+    put:
+      summary: Add a buddy to a group
+      description: Add a buddy to a specific group in the user's feedbag. This operation is idempotent - if the buddy already exists in the group, the request will succeed without error.
+      parameters:
+        - name: screen_name
+          in: path
+          description: User's AIM screen name or ICQ UIN.
+          required: true
+          schema:
+            type: string
+        - name: group_id
+          in: path
+          description: The group ID to add the buddy to.
+          required: true
+          schema:
+            type: integer
+        - name: buddy_screen_name
+          in: path
+          description: The screen name of the buddy to add.
+          required: true
+          schema:
+            type: string
+          example: "buddy123"
+      responses:
+        '200':
+          description: Buddy added or already exists in the group. Operation is idempotent.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name:
+                    type: string
+                    description: The buddy's screen name.
+                  group_id:
+                    type: integer
+                    description: The group ID the buddy was added to.
+                  item_id:
+                    type: integer
+                    description: The feedbag item ID for this buddy.
+                required:
+                  - name
+                  - group_id
+                  - item_id
+        '400':
+          description: Bad request. Invalid input data.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '404':
+          description: User or group not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+    delete:
+      summary: Delete a buddy from a group
+      description: Remove a buddy from a specific group in the user's feedbag.
+      parameters:
+        - name: screen_name
+          in: path
+          description: User's AIM screen name or ICQ UIN.
+          required: true
+          schema:
+            type: string
+        - name: group_id
+          in: path
+          description: The group ID to remove the buddy from.
+          required: true
+          schema:
+            type: integer
+        - name: buddy_screen_name
+          in: path
+          description: The screen name of the buddy to remove.
+          required: true
+          schema:
+            type: string
+          example: "buddy123"
+      responses:
+        '204':
+          description: Buddy deleted successfully.
+        '400':
+          description: Bad request. Invalid input data.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '404':
+          description: User, group, or buddy not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
 
 components:
   schemas:
