@@ -7,7 +7,7 @@
 
 </div>
 
-**Open OSCAR Server** is an open-source instant messaging server compatible with classic AIM and ICQ clients.
+**Open OSCAR Server** is an open-source instant messaging server compatible with classic AIM and ICQ clients written in golang.
 
 <p align="center">
 <img width="816" alt="image" src="https://github.com/user-attachments/assets/4d76b06f-fd0c-4f0a-9e9f-d9516653cfb4" />
@@ -66,7 +66,7 @@ Follow [this guide](./docs/BUILD.md) to learn how to compile and run Open OSCAR 
 
 ## 🌍 Community
 
-Check out the Open OSCAR Server [Discord server](https://discord.gg/E5etJfRAqR) to get help or find out how to get
+Check out the Open OSCAR Server [Discord server](https://discord.gg/zjFGGTa8mu) to get help or find out how to get
 involved.
 
 ## 👤 Management API
