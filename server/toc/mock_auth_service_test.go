@@ -113,8 +113,8 @@ func (_c *mockAuthService_BUCPChallenge_Call) RunAndReturn(run func(ctx context.
 }
 
 // BUCPLogin provides a mock function for the type mockAuthService
-func (_mock *mockAuthService) BUCPLogin(ctx context.Context, inBody wire.SNAC_0x17_0x02_BUCPLoginRequest, newUserFn func(screenName state.DisplayScreenName) (state.User, error), advertisedHost string) (wire.SNACMessage, error) {
-	ret := _mock.Called(ctx, inBody, newUserFn, advertisedHost)
+func (_mock *mockAuthService) BUCPLogin(ctx context.Context, inBody wire.SNAC_0x17_0x02_BUCPLoginRequest, newUserFn func(screenName state.DisplayScreenName) (state.User, error), advertisedHost string, advertisedHostSSL string) (wire.SNACMessage, error) {
+	ret := _mock.Called(ctx, inBody, newUserFn, advertisedHost, advertisedHostSSL)
 
 	if len(ret) == 0 {
 		panic("no return value specified for BUCPLogin")
@@ -122,16 +122,16 @@ func (_mock *mockAuthService) BUCPLogin(ctx context.Context, inBody wire.SNAC_0x
 
 	var r0 wire.SNACMessage
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, wire.SNAC_0x17_0x02_BUCPLoginRequest, func(screenName state.DisplayScreenName) (state.User, error), string) (wire.SNACMessage, error)); ok {
-		return returnFunc(ctx, inBody, newUserFn, advertisedHost)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, wire.SNAC_0x17_0x02_BUCPLoginRequest, func(screenName state.DisplayScreenName) (state.User, error), string, string) (wire.SNACMessage, error)); ok {
+		return returnFunc(ctx, inBody, newUserFn, advertisedHost, advertisedHostSSL)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, wire.SNAC_0x17_0x02_BUCPLoginRequest, func(screenName state.DisplayScreenName) (state.User, error), string) wire.SNACMessage); ok {
-		r0 = returnFunc(ctx, inBody, newUserFn, advertisedHost)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, wire.SNAC_0x17_0x02_BUCPLoginRequest, func(screenName state.DisplayScreenName) (state.User, error), string, string) wire.SNACMessage); ok {
+		r0 = returnFunc(ctx, inBody, newUserFn, advertisedHost, advertisedHostSSL)
 	} else {
 		r0 = ret.Get(0).(wire.SNACMessage)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, wire.SNAC_0x17_0x02_BUCPLoginRequest, func(screenName state.DisplayScreenName) (state.User, error), string) error); ok {
-		r1 = returnFunc(ctx, inBody, newUserFn, advertisedHost)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, wire.SNAC_0x17_0x02_BUCPLoginRequest, func(screenName state.DisplayScreenName) (state.User, error), string, string) error); ok {
+		r1 = returnFunc(ctx, inBody, newUserFn, advertisedHost, advertisedHostSSL)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -148,11 +148,12 @@ type mockAuthService_BUCPLogin_Call struct {
 //   - inBody wire.SNAC_0x17_0x02_BUCPLoginRequest
 //   - newUserFn func(screenName state.DisplayScreenName) (state.User, error)
 //   - advertisedHost string
-func (_e *mockAuthService_Expecter) BUCPLogin(ctx interface{}, inBody interface{}, newUserFn interface{}, advertisedHost interface{}) *mockAuthService_BUCPLogin_Call {
-	return &mockAuthService_BUCPLogin_Call{Call: _e.mock.On("BUCPLogin", ctx, inBody, newUserFn, advertisedHost)}
+//   - advertisedHostSSL string
+func (_e *mockAuthService_Expecter) BUCPLogin(ctx interface{}, inBody interface{}, newUserFn interface{}, advertisedHost interface{}, advertisedHostSSL interface{}) *mockAuthService_BUCPLogin_Call {
+	return &mockAuthService_BUCPLogin_Call{Call: _e.mock.On("BUCPLogin", ctx, inBody, newUserFn, advertisedHost, advertisedHostSSL)}
 }
 
-func (_c *mockAuthService_BUCPLogin_Call) Run(run func(ctx context.Context, inBody wire.SNAC_0x17_0x02_BUCPLoginRequest, newUserFn func(screenName state.DisplayScreenName) (state.User, error), advertisedHost string)) *mockAuthService_BUCPLogin_Call {
+func (_c *mockAuthService_BUCPLogin_Call) Run(run func(ctx context.Context, inBody wire.SNAC_0x17_0x02_BUCPLoginRequest, newUserFn func(screenName state.DisplayScreenName) (state.User, error), advertisedHost string, advertisedHostSSL string)) *mockAuthService_BUCPLogin_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -170,11 +171,16 @@ func (_c *mockAuthService_BUCPLogin_Call) Run(run func(ctx context.Context, inBo
 		if args[3] != nil {
 			arg3 = args[3].(string)
 		}
+		var arg4 string
+		if args[4] != nil {
+			arg4 = args[4].(string)
+		}
 		run(
 			arg0,
 			arg1,
 			arg2,
 			arg3,
+			arg4,
 		)
 	})
 	return _c
@@ -185,7 +191,7 @@ func (_c *mockAuthService_BUCPLogin_Call) Return(sNACMessage wire.SNACMessage, e
 	return _c
 }
 
-func (_c *mockAuthService_BUCPLogin_Call) RunAndReturn(run func(ctx context.Context, inBody wire.SNAC_0x17_0x02_BUCPLoginRequest, newUserFn func(screenName state.DisplayScreenName) (state.User, error), advertisedHost string) (wire.SNACMessage, error)) *mockAuthService_BUCPLogin_Call {
+func (_c *mockAuthService_BUCPLogin_Call) RunAndReturn(run func(ctx context.Context, inBody wire.SNAC_0x17_0x02_BUCPLoginRequest, newUserFn func(screenName state.DisplayScreenName) (state.User, error), advertisedHost string, advertisedHostSSL string) (wire.SNACMessage, error)) *mockAuthService_BUCPLogin_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -251,8 +257,8 @@ func (_c *mockAuthService_CrackCookie_Call) RunAndReturn(run func(authCookie []b
 }
 
 // FLAPLogin provides a mock function for the type mockAuthService
-func (_mock *mockAuthService) FLAPLogin(ctx context.Context, inFrame wire.FLAPSignonFrame, newUserFn func(screenName state.DisplayScreenName) (state.User, error), advertisedHost string) (wire.TLVRestBlock, error) {
-	ret := _mock.Called(ctx, inFrame, newUserFn, advertisedHost)
+func (_mock *mockAuthService) FLAPLogin(ctx context.Context, inFrame wire.FLAPSignonFrame, newUserFn func(screenName state.DisplayScreenName) (state.User, error), advertisedHost string, advertisedHostSSL string) (wire.TLVRestBlock, error) {
+	ret := _mock.Called(ctx, inFrame, newUserFn, advertisedHost, advertisedHostSSL)
 
 	if len(ret) == 0 {
 		panic("no return value specified for FLAPLogin")
@@ -260,16 +266,16 @@ func (_mock *mockAuthService) FLAPLogin(ctx context.Context, inFrame wire.FLAPSi
 
 	var r0 wire.TLVRestBlock
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, wire.FLAPSignonFrame, func(screenName state.DisplayScreenName) (state.User, error), string) (wire.TLVRestBlock, error)); ok {
-		return returnFunc(ctx, inFrame, newUserFn, advertisedHost)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, wire.FLAPSignonFrame, func(screenName state.DisplayScreenName) (state.User, error), string, string) (wire.TLVRestBlock, error)); ok {
+		return returnFunc(ctx, inFrame, newUserFn, advertisedHost, advertisedHostSSL)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, wire.FLAPSignonFrame, func(screenName state.DisplayScreenName) (state.User, error), string) wire.TLVRestBlock); ok {
-		r0 = returnFunc(ctx, inFrame, newUserFn, advertisedHost)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, wire.FLAPSignonFrame, func(screenName state.DisplayScreenName) (state.User, error), string, string) wire.TLVRestBlock); ok {
+		r0 = returnFunc(ctx, inFrame, newUserFn, advertisedHost, advertisedHostSSL)
 	} else {
 		r0 = ret.Get(0).(wire.TLVRestBlock)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, wire.FLAPSignonFrame, func(screenName state.DisplayScreenName) (state.User, error), string) error); ok {
-		r1 = returnFunc(ctx, inFrame, newUserFn, advertisedHost)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, wire.FLAPSignonFrame, func(screenName state.DisplayScreenName) (state.User, error), string, string) error); ok {
+		r1 = returnFunc(ctx, inFrame, newUserFn, advertisedHost, advertisedHostSSL)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -286,11 +292,12 @@ type mockAuthService_FLAPLogin_Call struct {
 //   - inFrame wire.FLAPSignonFrame
 //   - newUserFn func(screenName state.DisplayScreenName) (state.User, error)
 //   - advertisedHost string
-func (_e *mockAuthService_Expecter) FLAPLogin(ctx interface{}, inFrame interface{}, newUserFn interface{}, advertisedHost interface{}) *mockAuthService_FLAPLogin_Call {
-	return &mockAuthService_FLAPLogin_Call{Call: _e.mock.On("FLAPLogin", ctx, inFrame, newUserFn, advertisedHost)}
+//   - advertisedHostSSL string
+func (_e *mockAuthService_Expecter) FLAPLogin(ctx interface{}, inFrame interface{}, newUserFn interface{}, advertisedHost interface{}, advertisedHostSSL interface{}) *mockAuthService_FLAPLogin_Call {
+	return &mockAuthService_FLAPLogin_Call{Call: _e.mock.On("FLAPLogin", ctx, inFrame, newUserFn, advertisedHost, advertisedHostSSL)}
 }
 
-func (_c *mockAuthService_FLAPLogin_Call) Run(run func(ctx context.Context, inFrame wire.FLAPSignonFrame, newUserFn func(screenName state.DisplayScreenName) (state.User, error), advertisedHost string)) *mockAuthService_FLAPLogin_Call {
+func (_c *mockAuthService_FLAPLogin_Call) Run(run func(ctx context.Context, inFrame wire.FLAPSignonFrame, newUserFn func(screenName state.DisplayScreenName) (state.User, error), advertisedHost string, advertisedHostSSL string)) *mockAuthService_FLAPLogin_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -308,11 +315,16 @@ func (_c *mockAuthService_FLAPLogin_Call) Run(run func(ctx context.Context, inFr
 		if args[3] != nil {
 			arg3 = args[3].(string)
 		}
+		var arg4 string
+		if args[4] != nil {
+			arg4 = args[4].(string)
+		}
 		run(
 			arg0,
 			arg1,
 			arg2,
 			arg3,
+			arg4,
 		)
 	})
 	return _c
@@ -323,7 +335,7 @@ func (_c *mockAuthService_FLAPLogin_Call) Return(tLVRestBlock wire.TLVRestBlock,
 	return _c
 }
 
-func (_c *mockAuthService_FLAPLogin_Call) RunAndReturn(run func(ctx context.Context, inFrame wire.FLAPSignonFrame, newUserFn func(screenName state.DisplayScreenName) (state.User, error), advertisedHost string) (wire.TLVRestBlock, error)) *mockAuthService_FLAPLogin_Call {
+func (_c *mockAuthService_FLAPLogin_Call) RunAndReturn(run func(ctx context.Context, inFrame wire.FLAPSignonFrame, newUserFn func(screenName state.DisplayScreenName) (state.User, error), advertisedHost string, advertisedHostSSL string) (wire.TLVRestBlock, error)) *mockAuthService_FLAPLogin_Call {
 	_c.Call.Return(run)
 	return _c
 }

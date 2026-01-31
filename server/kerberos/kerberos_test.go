@@ -201,7 +201,7 @@ func TestKerberosLoginHandler(t *testing.T) {
 				mockAuth := newMockAuthService(t)
 				if tt.expectLogin {
 					mockAuth.EXPECT().
-						KerberosLogin(mock.Anything, tt.request.Body, mock.Anything, mock.Anything).
+						KerberosLogin(mock.Anything, tt.request.Body, mock.Anything, mock.Anything, mock.Anything).
 						Return(tt.response, tt.responseErr)
 				}
 				srv = NewKerberosServer(tt.listeners, log, mockAuth)

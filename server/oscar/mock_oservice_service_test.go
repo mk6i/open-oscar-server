@@ -294,6 +294,63 @@ func (_c *mockOServiceService_IdleNotification_Call) RunAndReturn(run func(ctx c
 	return _c
 }
 
+// ProbeReq provides a mock function for the type mockOServiceService
+func (_mock *mockOServiceService) ProbeReq(ctx context.Context, inFrame wire.SNACFrame) wire.SNACMessage {
+	ret := _mock.Called(ctx, inFrame)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ProbeReq")
+	}
+
+	var r0 wire.SNACMessage
+	if returnFunc, ok := ret.Get(0).(func(context.Context, wire.SNACFrame) wire.SNACMessage); ok {
+		r0 = returnFunc(ctx, inFrame)
+	} else {
+		r0 = ret.Get(0).(wire.SNACMessage)
+	}
+	return r0
+}
+
+// mockOServiceService_ProbeReq_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ProbeReq'
+type mockOServiceService_ProbeReq_Call struct {
+	*mock.Call
+}
+
+// ProbeReq is a helper method to define mock.On call
+//   - ctx context.Context
+//   - inFrame wire.SNACFrame
+func (_e *mockOServiceService_Expecter) ProbeReq(ctx interface{}, inFrame interface{}) *mockOServiceService_ProbeReq_Call {
+	return &mockOServiceService_ProbeReq_Call{Call: _e.mock.On("ProbeReq", ctx, inFrame)}
+}
+
+func (_c *mockOServiceService_ProbeReq_Call) Run(run func(ctx context.Context, inFrame wire.SNACFrame)) *mockOServiceService_ProbeReq_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 wire.SNACFrame
+		if args[1] != nil {
+			arg1 = args[1].(wire.SNACFrame)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *mockOServiceService_ProbeReq_Call) Return(sNACMessage wire.SNACMessage) *mockOServiceService_ProbeReq_Call {
+	_c.Call.Return(sNACMessage)
+	return _c
+}
+
+func (_c *mockOServiceService_ProbeReq_Call) RunAndReturn(run func(ctx context.Context, inFrame wire.SNACFrame) wire.SNACMessage) *mockOServiceService_ProbeReq_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // RateParamsQuery provides a mock function for the type mockOServiceService
 func (_mock *mockOServiceService) RateParamsQuery(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame) wire.SNACMessage {
 	ret := _mock.Called(ctx, instance, inFrame)

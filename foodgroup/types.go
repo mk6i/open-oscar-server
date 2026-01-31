@@ -279,6 +279,9 @@ type ICQUserUpdater interface {
 
 	// SetWorkInfo updates the user's professional or employment-related details.
 	SetWorkInfo(ctx context.Context, name state.IdentScreenName, data state.ICQWorkInfo) error
+
+	// SetPermissions updates the user's privacy and permission settings.
+	SetPermissions(ctx context.Context, name state.IdentScreenName, data state.ICQPermissions) error
 }
 
 // MessageRelayer defines methods for delivering SNAC messages to one or more

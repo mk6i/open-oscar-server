@@ -306,6 +306,19 @@ func (s OServiceService) SetPrivacyFlags(ctx context.Context, inBody wire.SNAC_0
 	}
 }
 
+// ProbeReq responds to client probe requests. Some ICQ clients send probe
+// requests to test server connectivity before authenticating. This returns a
+// simple ProbeAck to indicate the server is responsive.
+func (s OServiceService) ProbeReq(ctx context.Context, inFrame wire.SNACFrame) wire.SNACMessage {
+	return wire.SNACMessage{
+		Frame: wire.SNACFrame{
+			FoodGroup: wire.OService,
+			SubGroup:  wire.OServiceProbeAck,
+			RequestID: inFrame.RequestID,
+		},
+	}
+}
+
 // RateParamsSubAdd subscribes to rate parameter changes. AOL's OSCAR spec says
 // that notifications will be queued after calling this method. I don't see the
 // point of doing that since all clients appear to call RateParamsQuery at
