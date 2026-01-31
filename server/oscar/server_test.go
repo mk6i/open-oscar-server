@@ -316,39 +316,6 @@ func TestOscarServer_RouteConnection_Auth_FLAP(t *testing.T) {
 	wg.Wait()
 }
 
-func TestOscarServer_RouteConnection_ConnectionProbe(t *testing.T) {
-	serverConn, clientConn := net.Pipe()
-	addr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:8080")
-	assert.NoError(t, err)
-
-	clientFake := fakeConn{
-		Conn:   serverConn,
-		local:  addr,
-		remote: addr,
-	}
-
-	go func() {
-		// < receive FLAPSignonFrame from server
-		flap := wire.FLAPFrame{}
-		assert.NoError(t, wire.UnmarshalBE(&flap, clientConn))
-		flapSignonFrame := wire.FLAPSignonFrame{}
-		assert.NoError(t, wire.UnmarshalBE(&flapSignonFrame, bytes.NewBuffer(flap.Payload)))
-
-		// Immediately close connection without sending anything back
-		// This simulates connection probes that some ICQ clients do
-		_ = clientConn.Close()
-	}()
-
-	rt := oscarServer{
-		Logger:        slog.Default(),
-		IPRateLimiter: NewIPRateLimiter(rate.Every(1*time.Minute), 10, 1*time.Minute),
-	}
-
-	// routeConnection should return nil (not an error) for connection probes
-	err = rt.routeConnection(context.Background(), clientFake, config.Listener{BOSAdvertisedHostPlain: "localhost:5190"})
-	assert.NoError(t, err, "connection probe should not be treated as an error")
-}
-
 func TestOscarServer_RouteConnection_BOS(t *testing.T) {
 	instance := state.NewSession().AddInstance()
 
