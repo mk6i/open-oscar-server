@@ -2158,3 +2158,48 @@ func TestFeedbagBuddyPref(t *testing.T) {
 		})
 	}
 }
+
+func TestFeedbagService_StartCluster(t *testing.T) {
+	instance := newTestInstance("me")
+	inFrame := wire.SNACFrame{
+		FoodGroup: wire.Feedbag,
+		SubGroup:  wire.FeedbagStartCluster,
+		RequestID: 1234,
+	}
+	inBody := wire.SNAC_0x13_0x11_FeedbagStartCluster{
+		TLVRestBlock: wire.TLVRestBlock{
+			TLVList: wire.TLVList{
+				wire.NewTLVBE(0x01, uint16(100)),
+			},
+		},
+	}
+
+	messageRelayer := newMockMessageRelayer(t)
+	messageRelayer.EXPECT().
+		RelayToOtherInstances(matchContext(), instance, wire.SNACMessage{
+			Frame: inFrame,
+			Body:  inBody,
+		})
+
+	svc := NewFeedbagService(slog.Default(), messageRelayer, nil, nil, nil, nil)
+	svc.StartCluster(context.Background(), instance, inFrame, inBody)
+}
+
+func TestFeedbagService_EndCluster(t *testing.T) {
+	instance := newTestInstance("me")
+	inFrame := wire.SNACFrame{
+		FoodGroup: wire.Feedbag,
+		SubGroup:  wire.FeedbagEndCluster,
+		RequestID: 1234,
+	}
+
+	messageRelayer := newMockMessageRelayer(t)
+	messageRelayer.EXPECT().
+		RelayToOtherInstances(matchContext(), instance, wire.SNACMessage{
+			Frame: inFrame,
+			Body:  wire.SNAC_0x13_0x12_FeedbagEndCluster{},
+		})
+
+	svc := NewFeedbagService(slog.Default(), messageRelayer, nil, nil, nil, nil)
+	svc.EndCluster(context.Background(), instance, inFrame)
+}

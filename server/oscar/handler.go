@@ -336,17 +336,18 @@ func (rt Handler) FeedbagDeleteItem(ctx context.Context, instance *state.Session
 	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
 }
 
-func (rt Handler) FeedbagStartCluster(ctx context.Context, _ *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, _ ResponseWriter) error {
+func (rt Handler) FeedbagStartCluster(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, _ ResponseWriter) error {
 	inBody := wire.SNAC_0x13_0x11_FeedbagStartCluster{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
 	}
-	rt.FeedbagService.StartCluster(ctx, inFrame, inBody)
+	rt.FeedbagService.StartCluster(ctx, instance, inFrame, inBody)
 	rt.LogRequest(ctx, inFrame, inBody)
 	return nil
 }
 
-func (rt Handler) FeedbagEndCluster(ctx context.Context, _ *state.SessionInstance, inFrame wire.SNACFrame, _ io.Reader, _ ResponseWriter) error {
+func (rt Handler) FeedbagEndCluster(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+	rt.FeedbagService.EndCluster(ctx, instance, inFrame)
 	rt.LogRequest(ctx, inFrame, nil)
 	return nil
 }

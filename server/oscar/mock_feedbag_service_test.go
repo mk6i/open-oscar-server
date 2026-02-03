@@ -119,6 +119,58 @@ func (_c *mockFeedbagService_DeleteItem_Call) RunAndReturn(run func(ctx context.
 	return _c
 }
 
+// EndCluster provides a mock function for the type mockFeedbagService
+func (_mock *mockFeedbagService) EndCluster(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame) {
+	_mock.Called(ctx, instance, inFrame)
+	return
+}
+
+// mockFeedbagService_EndCluster_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'EndCluster'
+type mockFeedbagService_EndCluster_Call struct {
+	*mock.Call
+}
+
+// EndCluster is a helper method to define mock.On call
+//   - ctx context.Context
+//   - instance *state.SessionInstance
+//   - inFrame wire.SNACFrame
+func (_e *mockFeedbagService_Expecter) EndCluster(ctx interface{}, instance interface{}, inFrame interface{}) *mockFeedbagService_EndCluster_Call {
+	return &mockFeedbagService_EndCluster_Call{Call: _e.mock.On("EndCluster", ctx, instance, inFrame)}
+}
+
+func (_c *mockFeedbagService_EndCluster_Call) Run(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame)) *mockFeedbagService_EndCluster_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 *state.SessionInstance
+		if args[1] != nil {
+			arg1 = args[1].(*state.SessionInstance)
+		}
+		var arg2 wire.SNACFrame
+		if args[2] != nil {
+			arg2 = args[2].(wire.SNACFrame)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *mockFeedbagService_EndCluster_Call) Return() *mockFeedbagService_EndCluster_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *mockFeedbagService_EndCluster_Call) RunAndReturn(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame)) *mockFeedbagService_EndCluster_Call {
+	_c.Run(run)
+	return _c
+}
+
 // Query provides a mock function for the type mockFeedbagService
 func (_mock *mockFeedbagService) Query(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame) (wire.SNACMessage, error) {
 	ret := _mock.Called(ctx, instance, inFrame)
@@ -396,8 +448,8 @@ func (_c *mockFeedbagService_RightsQuery_Call) RunAndReturn(run func(ctx context
 }
 
 // StartCluster provides a mock function for the type mockFeedbagService
-func (_mock *mockFeedbagService) StartCluster(ctx context.Context, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x11_FeedbagStartCluster) {
-	_mock.Called(ctx, inFrame, inBody)
+func (_mock *mockFeedbagService) StartCluster(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x11_FeedbagStartCluster) {
+	_mock.Called(ctx, instance, inFrame, inBody)
 	return
 }
 
@@ -408,30 +460,36 @@ type mockFeedbagService_StartCluster_Call struct {
 
 // StartCluster is a helper method to define mock.On call
 //   - ctx context.Context
+//   - instance *state.SessionInstance
 //   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x13_0x11_FeedbagStartCluster
-func (_e *mockFeedbagService_Expecter) StartCluster(ctx interface{}, inFrame interface{}, inBody interface{}) *mockFeedbagService_StartCluster_Call {
-	return &mockFeedbagService_StartCluster_Call{Call: _e.mock.On("StartCluster", ctx, inFrame, inBody)}
+func (_e *mockFeedbagService_Expecter) StartCluster(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}) *mockFeedbagService_StartCluster_Call {
+	return &mockFeedbagService_StartCluster_Call{Call: _e.mock.On("StartCluster", ctx, instance, inFrame, inBody)}
 }
 
-func (_c *mockFeedbagService_StartCluster_Call) Run(run func(ctx context.Context, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x11_FeedbagStartCluster)) *mockFeedbagService_StartCluster_Call {
+func (_c *mockFeedbagService_StartCluster_Call) Run(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x11_FeedbagStartCluster)) *mockFeedbagService_StartCluster_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 wire.SNACFrame
+		var arg1 *state.SessionInstance
 		if args[1] != nil {
-			arg1 = args[1].(wire.SNACFrame)
+			arg1 = args[1].(*state.SessionInstance)
 		}
-		var arg2 wire.SNAC_0x13_0x11_FeedbagStartCluster
+		var arg2 wire.SNACFrame
 		if args[2] != nil {
-			arg2 = args[2].(wire.SNAC_0x13_0x11_FeedbagStartCluster)
+			arg2 = args[2].(wire.SNACFrame)
+		}
+		var arg3 wire.SNAC_0x13_0x11_FeedbagStartCluster
+		if args[3] != nil {
+			arg3 = args[3].(wire.SNAC_0x13_0x11_FeedbagStartCluster)
 		}
 		run(
 			arg0,
 			arg1,
 			arg2,
+			arg3,
 		)
 	})
 	return _c
@@ -442,7 +500,7 @@ func (_c *mockFeedbagService_StartCluster_Call) Return() *mockFeedbagService_Sta
 	return _c
 }
 
-func (_c *mockFeedbagService_StartCluster_Call) RunAndReturn(run func(ctx context.Context, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x11_FeedbagStartCluster)) *mockFeedbagService_StartCluster_Call {
+func (_c *mockFeedbagService_StartCluster_Call) RunAndReturn(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x11_FeedbagStartCluster)) *mockFeedbagService_StartCluster_Call {
 	_c.Run(run)
 	return _c
 }

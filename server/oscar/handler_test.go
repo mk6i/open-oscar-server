@@ -1616,6 +1616,9 @@ func TestHandler_FeedbagEndCluster(t *testing.T) {
 			}
 
 			svc := newMockFeedbagService(t)
+			svc.EXPECT().
+				EndCluster(mock.Anything, mock.Anything, input.Frame)
+
 			h := Handler{
 				FeedbagService: svc,
 				RouteLogger: middleware.RouteLogger{
@@ -2075,7 +2078,7 @@ func TestHandler_FeedbagStartCluster(t *testing.T) {
 
 			svc := newMockFeedbagService(t)
 			svc.EXPECT().
-				StartCluster(mock.Anything, input.Frame, input.Body)
+				StartCluster(mock.Anything, mock.Anything, input.Frame, input.Body)
 
 			h := Handler{
 				FeedbagService: svc,

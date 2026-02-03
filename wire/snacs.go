@@ -1702,6 +1702,9 @@ type SNAC_0x13_0x11_FeedbagStartCluster struct {
 	TLVRestBlock
 }
 
+type SNAC_0x13_0x12_FeedbagEndCluster struct {
+}
+
 type SNAC_0x13_0x18_FeedbagRequestAuthorizationToHost struct {
 	ScreenName string `oscar:"len_prefix=uint8"`
 	Reason     string `oscar:"len_prefix=uint16"`
