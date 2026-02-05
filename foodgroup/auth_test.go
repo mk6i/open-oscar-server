@@ -788,7 +788,7 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 				maxConcurrentLoginsPerUser: 2,
 				logger:                     slog.Default(),
 			}
-			outputSNAC, err := svc.BUCPLogin(context.Background(), tc.inputSNAC, tc.newUserFn, tc.advertisedHost, "")
+			outputSNAC, err := svc.BUCPLogin(context.Background(), tc.inputSNAC, tc.newUserFn, tc.advertisedHost)
 			assert.ErrorIs(t, err, tc.wantErr)
 			assert.Equal(t, tc.expectOutput, outputSNAC)
 		})
@@ -1231,7 +1231,7 @@ func TestAuthService_FLAPLogin(t *testing.T) {
 				userManager: userManager,
 				logger:      slog.Default(),
 			}
-			outputSNAC, err := svc.FLAPLogin(context.Background(), tc.inputSNAC, tc.newUserFn, tc.advertisedHost, "")
+			outputSNAC, err := svc.FLAPLogin(context.Background(), tc.inputSNAC, tc.newUserFn, tc.advertisedHost)
 			assert.ErrorIs(t, err, tc.wantErr)
 			assert.Equal(t, tc.expectOutput, outputSNAC)
 		})
@@ -1572,7 +1572,7 @@ func TestAuthService_KerberosLogin(t *testing.T) {
 				maxConcurrentLoginsPerUser: 2,
 				logger:                     slog.Default(),
 			}
-			outputSNAC, err := svc.KerberosLogin(context.Background(), tc.inputSNAC, tc.newUserFn, tc.advertisedHost, "")
+			outputSNAC, err := svc.KerberosLogin(context.Background(), tc.inputSNAC, tc.newUserFn, tc.advertisedHost)
 			assert.ErrorIs(t, err, tc.wantErr)
 			assert.Equal(t, tc.expectOutput, outputSNAC)
 		})

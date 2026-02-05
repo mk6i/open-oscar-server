@@ -3443,3 +3443,79 @@ func Test_calcRefreshInterval(t *testing.T) {
 		assert.Equal(t, interval, newInterval)
 	})
 }
+
+func TestStripHTML(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []byte
+		expected []byte
+	}{
+		{
+			name:     "simple HTML tags",
+			input:    []byte("<HTML><BODY>Hello World</BODY></HTML>"),
+			expected: []byte("Hello World"),
+		},
+		{
+			name:     "BR tag to newline",
+			input:    []byte("Line 1<BR>Line 2"),
+			expected: []byte("Line 1\nLine 2"),
+		},
+		{
+			name:     "lowercase br tag",
+			input:    []byte("Line 1<br>Line 2"),
+			expected: []byte("Line 1\nLine 2"),
+		},
+		{
+			name:     "self-closing br tag",
+			input:    []byte("Line 1<br/>Line 2"),
+			expected: []byte("Line 1\nLine 2"),
+		},
+		{
+			name:     "HTML entities",
+			input:    []byte("&lt;test&gt; &amp; &quot;quoted&quot;"),
+			expected: []byte("<test> & \"quoted\""),
+		},
+		{
+			name:     "FONT tags with attributes",
+			input:    []byte(`<FONT FACE="Arial" SIZE="3">Text</FONT>`),
+			expected: []byte("Text"),
+		},
+		{
+			name:     "mixed formatting",
+			input:    []byte("<HTML><BODY><B>Bold</B> <I>Italic</I></BODY></HTML>"),
+			expected: []byte("Bold Italic"),
+		},
+		{
+			name:     "plain text unchanged",
+			input:    []byte("Hello World"),
+			expected: []byte("Hello World"),
+		},
+		{
+			name:     "empty input",
+			input:    []byte(""),
+			expected: []byte(""),
+		},
+		{
+			name:     "nbsp entity",
+			input:    []byte("Hello&nbsp;World"),
+			expected: []byte("Hello\u00a0World"),
+		},
+		{
+			name:     "realistic HTML message",
+			input:    []byte(`<HTML><BODY dir="ltr"><FONT color="#000000" size="2" face="Arial">Hello</FONT></BODY></HTML>`),
+			expected: []byte("Hello"),
+		},
+		{
+			name:     "apos entity",
+			input:    []byte("it&apos;s working"),
+			expected: []byte("it's working"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := stripHTML(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}

@@ -40,8 +40,8 @@ func (_m *mockAuthService) EXPECT() *mockAuthService_Expecter {
 }
 
 // KerberosLogin provides a mock function for the type mockAuthService
-func (_mock *mockAuthService) KerberosLogin(ctx context.Context, inBody wire.SNAC_0x050C_0x0002_KerberosLoginRequest, newUserFn func(screenName state.DisplayScreenName) (state.User, error), advertisedHost string, advertisedHostSSL string) (wire.SNACMessage, error) {
-	ret := _mock.Called(ctx, inBody, newUserFn, advertisedHost, advertisedHostSSL)
+func (_mock *mockAuthService) KerberosLogin(ctx context.Context, inBody wire.SNAC_0x050C_0x0002_KerberosLoginRequest, newUserFn func(screenName state.DisplayScreenName) (state.User, error), advertisedHost string) (wire.SNACMessage, error) {
+	ret := _mock.Called(ctx, inBody, newUserFn, advertisedHost)
 
 	if len(ret) == 0 {
 		panic("no return value specified for KerberosLogin")
@@ -49,16 +49,16 @@ func (_mock *mockAuthService) KerberosLogin(ctx context.Context, inBody wire.SNA
 
 	var r0 wire.SNACMessage
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, wire.SNAC_0x050C_0x0002_KerberosLoginRequest, func(screenName state.DisplayScreenName) (state.User, error), string, string) (wire.SNACMessage, error)); ok {
-		return returnFunc(ctx, inBody, newUserFn, advertisedHost, advertisedHostSSL)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, wire.SNAC_0x050C_0x0002_KerberosLoginRequest, func(screenName state.DisplayScreenName) (state.User, error), string) (wire.SNACMessage, error)); ok {
+		return returnFunc(ctx, inBody, newUserFn, advertisedHost)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, wire.SNAC_0x050C_0x0002_KerberosLoginRequest, func(screenName state.DisplayScreenName) (state.User, error), string, string) wire.SNACMessage); ok {
-		r0 = returnFunc(ctx, inBody, newUserFn, advertisedHost, advertisedHostSSL)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, wire.SNAC_0x050C_0x0002_KerberosLoginRequest, func(screenName state.DisplayScreenName) (state.User, error), string) wire.SNACMessage); ok {
+		r0 = returnFunc(ctx, inBody, newUserFn, advertisedHost)
 	} else {
 		r0 = ret.Get(0).(wire.SNACMessage)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, wire.SNAC_0x050C_0x0002_KerberosLoginRequest, func(screenName state.DisplayScreenName) (state.User, error), string, string) error); ok {
-		r1 = returnFunc(ctx, inBody, newUserFn, advertisedHost, advertisedHostSSL)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, wire.SNAC_0x050C_0x0002_KerberosLoginRequest, func(screenName state.DisplayScreenName) (state.User, error), string) error); ok {
+		r1 = returnFunc(ctx, inBody, newUserFn, advertisedHost)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -75,12 +75,11 @@ type mockAuthService_KerberosLogin_Call struct {
 //   - inBody wire.SNAC_0x050C_0x0002_KerberosLoginRequest
 //   - newUserFn func(screenName state.DisplayScreenName) (state.User, error)
 //   - advertisedHost string
-//   - advertisedHostSSL string
-func (_e *mockAuthService_Expecter) KerberosLogin(ctx interface{}, inBody interface{}, newUserFn interface{}, advertisedHost interface{}, advertisedHostSSL interface{}) *mockAuthService_KerberosLogin_Call {
-	return &mockAuthService_KerberosLogin_Call{Call: _e.mock.On("KerberosLogin", ctx, inBody, newUserFn, advertisedHost, advertisedHostSSL)}
+func (_e *mockAuthService_Expecter) KerberosLogin(ctx interface{}, inBody interface{}, newUserFn interface{}, advertisedHost interface{}) *mockAuthService_KerberosLogin_Call {
+	return &mockAuthService_KerberosLogin_Call{Call: _e.mock.On("KerberosLogin", ctx, inBody, newUserFn, advertisedHost)}
 }
 
-func (_c *mockAuthService_KerberosLogin_Call) Run(run func(ctx context.Context, inBody wire.SNAC_0x050C_0x0002_KerberosLoginRequest, newUserFn func(screenName state.DisplayScreenName) (state.User, error), advertisedHost string, advertisedHostSSL string)) *mockAuthService_KerberosLogin_Call {
+func (_c *mockAuthService_KerberosLogin_Call) Run(run func(ctx context.Context, inBody wire.SNAC_0x050C_0x0002_KerberosLoginRequest, newUserFn func(screenName state.DisplayScreenName) (state.User, error), advertisedHost string)) *mockAuthService_KerberosLogin_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -98,16 +97,11 @@ func (_c *mockAuthService_KerberosLogin_Call) Run(run func(ctx context.Context, 
 		if args[3] != nil {
 			arg3 = args[3].(string)
 		}
-		var arg4 string
-		if args[4] != nil {
-			arg4 = args[4].(string)
-		}
 		run(
 			arg0,
 			arg1,
 			arg2,
 			arg3,
-			arg4,
 		)
 	})
 	return _c
@@ -118,7 +112,7 @@ func (_c *mockAuthService_KerberosLogin_Call) Return(sNACMessage wire.SNACMessag
 	return _c
 }
 
-func (_c *mockAuthService_KerberosLogin_Call) RunAndReturn(run func(ctx context.Context, inBody wire.SNAC_0x050C_0x0002_KerberosLoginRequest, newUserFn func(screenName state.DisplayScreenName) (state.User, error), advertisedHost string, advertisedHostSSL string) (wire.SNACMessage, error)) *mockAuthService_KerberosLogin_Call {
+func (_c *mockAuthService_KerberosLogin_Call) RunAndReturn(run func(ctx context.Context, inBody wire.SNAC_0x050C_0x0002_KerberosLoginRequest, newUserFn func(screenName state.DisplayScreenName) (state.User, error), advertisedHost string) (wire.SNACMessage, error)) *mockAuthService_KerberosLogin_Call {
 	_c.Call.Return(run)
 	return _c
 }

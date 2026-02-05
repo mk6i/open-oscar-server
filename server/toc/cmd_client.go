@@ -1675,7 +1675,7 @@ func (s OSCARProxy) Signon(ctx context.Context, args []byte) (*state.SessionInst
 	signonFrame.Append(wire.NewTLVBE(wire.LoginTLVTagsScreenName, userName))
 	signonFrame.Append(wire.NewTLVBE(wire.LoginTLVTagsRoastedTOCPassword, passwordHash))
 
-	block, err := s.AuthService.FLAPLogin(ctx, signonFrame, state.NewStubUser, "", "")
+	block, err := s.AuthService.FLAPLogin(ctx, signonFrame, state.NewStubUser, "")
 	if err != nil {
 		return nil, []string{s.runtimeErr(ctx, fmt.Errorf("AuthService.FLAPLogin: %w", err))}
 	}

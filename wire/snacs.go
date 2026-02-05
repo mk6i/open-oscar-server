@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/google/uuid"
 )
@@ -928,52 +927,6 @@ func MarshalICBMFragmentList(frags []ICBMCh1Fragment) ([]byte, error) {
 		return nil, fmt.Errorf("unable to marshal ICBM fragments: %w", err)
 	}
 	return buf.Bytes(), nil
-}
-
-// StripHTML removes HTML tags and converts HTML entities to plain text.
-func StripHTML(text []byte) []byte {
-	if len(text) == 0 {
-		return text
-	}
-
-	s := string(text)
-
-	// Convert <BR> tags to newlines (case-insensitive)
-	s = strings.ReplaceAll(s, "<BR>", "\n")
-	s = strings.ReplaceAll(s, "<br>", "\n")
-	s = strings.ReplaceAll(s, "<br/>", "\n")
-	s = strings.ReplaceAll(s, "<br />", "\n")
-
-	// Strip all HTML tags
-	var result strings.Builder
-	result.Grow(len(s))
-	inTag := false
-
-	for i := 0; i < len(s); i++ {
-		if s[i] == '<' {
-			inTag = true
-			continue
-		}
-		if s[i] == '>' {
-			inTag = false
-			continue
-		}
-		if !inTag {
-			result.WriteByte(s[i])
-		}
-	}
-
-	s = result.String()
-
-	// Convert common HTML entities
-	s = strings.ReplaceAll(s, "&lt;", "<")
-	s = strings.ReplaceAll(s, "&gt;", ">")
-	s = strings.ReplaceAll(s, "&amp;", "&")
-	s = strings.ReplaceAll(s, "&quot;", "\"")
-	s = strings.ReplaceAll(s, "&nbsp;", " ")
-	s = strings.ReplaceAll(s, "&apos;", "'")
-
-	return []byte(s)
 }
 
 type SNAC_0x04_0x08_ICBMEvilRequest struct {

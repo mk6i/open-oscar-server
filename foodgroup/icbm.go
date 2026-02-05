@@ -5,11 +5,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/patrickmn/go-cache"
+	"golang.org/x/net/html"
 
 	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
@@ -148,8 +151,10 @@ func (s ICBMService) ChannelMsgToHost(ctx context.Context, instance *state.Sessi
 				return nil, fmt.Errorf("addExternalIP: %w", err)
 			}
 		}
-		// Strip HTML from message if recipient doesn't support XHTML
-		if (clientIM.ChannelID == wire.ICBMChannelIM || clientIM.ChannelID == wire.ICBMChannelMIME) &&
+		// Strip HTML from ICQ messages if recipient doesn't support XHTML.
+		// AIM clients send HTML formatted messages that should be preserved.
+		if instance.UIN() > 0 &&
+			(clientIM.ChannelID == wire.ICBMChannelIM || clientIM.ChannelID == wire.ICBMChannelMIME) &&
 			tlv.Tag == wire.ICBMTLVAOLIMData {
 			if !recipSess.HasCap(wire.CapXHTMLIM) {
 				if transformedTLV, err := stripHTMLFromICBMTLV(tlv); err == nil {
@@ -307,6 +312,35 @@ func addExternalIP(instance *state.SessionInstance, tlv wire.TLV) (wire.TLV, err
 	return tlv, nil
 }
 
+// stripHTML extracts plaintext from HTML content.
+func stripHTML(text []byte) []byte {
+	if len(text) == 0 {
+		return text
+	}
+
+	var result strings.Builder
+	tok := html.NewTokenizer(strings.NewReader(string(text)))
+
+	for {
+		tt := tok.Next()
+		switch tt {
+		case html.TextToken:
+			result.Write(tok.Text())
+		case html.SelfClosingTagToken, html.StartTagToken:
+			tn, _ := tok.TagName()
+			if string(tn) == "br" {
+				result.WriteByte('\n')
+			}
+		case html.ErrorToken:
+			if tok.Err() == io.EOF {
+				return []byte(result.String())
+			}
+			// on error return what we have
+			return []byte(result.String())
+		}
+	}
+}
+
 // stripHTMLFromICBMTLV transforms an ICBMTLVAOLIMData TLV by stripping HTML
 // from the message text for clients that don't support XHTML.
 func stripHTMLFromICBMTLV(tlv wire.TLV) (wire.TLV, error) {
@@ -324,7 +358,7 @@ func stripHTMLFromICBMTLV(tlv wire.TLV) (wire.TLV, error) {
 			}
 
 			// Strip HTML from message text
-			strippedText := wire.StripHTML(msg.Text)
+			strippedText := stripHTML(msg.Text)
 			if !bytes.Equal(strippedText, msg.Text) {
 				msg.Text = strippedText
 

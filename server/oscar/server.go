@@ -204,7 +204,7 @@ func (s oscarServer) routeConnection(ctx context.Context, conn net.Conn, listene
 		return err
 	}
 
-	flapc := wire.NewFlapClient(0, conn, conn)
+	flapc := wire.NewFlapClient(100, conn, conn)
 
 	// send flap signon with server capabilities
 	signonTLVs := []wire.TLV{
@@ -224,7 +224,7 @@ func (s oscarServer) routeConnection(ctx context.Context, conn net.Conn, listene
 		return s.connectToOSCARService(ctx, flap, flapc, conn, listener)
 	}
 
-	return s.authenticate(ctx, flap, ip, conn, flapc, listener.BOSAdvertisedHostPlain, listener.BOSAdvertisedHostSSL)
+	return s.authenticate(ctx, flap, ip, conn, flapc, listener.BOSAdvertisedHostPlain)
 }
 
 func (s oscarServer) connectToOSCARService(
@@ -408,7 +408,6 @@ func (s oscarServer) authenticate(
 	conn net.Conn,
 	flapc *wire.FlapClient,
 	advertisedHost string,
-	advertisedHostSSL string,
 ) error {
 	if ok, isBUCP := s.Allow(ip); !ok {
 		s.Logger.Error("user rate limited at login", "remote", ip)
@@ -444,12 +443,12 @@ func (s oscarServer) authenticate(
 	// indicator of FLAP-auth because older ICQ clients appear to omit the
 	// roasted password TLV when the password is not stored client-side.
 	if _, hasScreenName := flap.Uint16BE(wire.LoginTLVTagsScreenName); hasScreenName {
-		return s.processFLAPAuth(ctx, flap, flapc, advertisedHost, advertisedHostSSL)
+		return s.processFLAPAuth(ctx, flap, flapc, advertisedHost)
 	}
 
 	s.SetBUCP(ip)
 
-	return s.processBUCPAuth(ctx, flapc, advertisedHost, advertisedHostSSL)
+	return s.processBUCPAuth(ctx, flapc, advertisedHost)
 }
 
 func (s oscarServer) processFLAPAuth(
@@ -457,16 +456,15 @@ func (s oscarServer) processFLAPAuth(
 	signonFrame wire.FLAPSignonFrame,
 	flapc *wire.FlapClient,
 	advertisedHost string,
-	advertisedHostSSL string,
 ) error {
-	tlv, err := s.AuthService.FLAPLogin(ctx, signonFrame, state.NewStubUser, advertisedHost, advertisedHostSSL)
+	tlv, err := s.AuthService.FLAPLogin(ctx, signonFrame, state.NewStubUser, advertisedHost)
 	if err != nil {
 		return err
 	}
 	return flapc.NewSignoff(tlv)
 }
 
-func (s oscarServer) processBUCPAuth(ctx context.Context, flapc *wire.FlapClient, advertisedHost string, advertisedHostSSL string) error {
+func (s oscarServer) processBUCPAuth(ctx context.Context, flapc *wire.FlapClient, advertisedHost string) error {
 	frames := 0
 
 	for {
@@ -517,7 +515,7 @@ func (s oscarServer) processBUCPAuth(ctx context.Context, flapc *wire.FlapClient
 				if err := wire.UnmarshalBE(&loginRequest, buf); err != nil {
 					return err
 				}
-				outSNAC, err := s.BUCPLogin(ctx, loginRequest, state.NewStubUser, advertisedHost, advertisedHostSSL)
+				outSNAC, err := s.BUCPLogin(ctx, loginRequest, state.NewStubUser, advertisedHost)
 				if err != nil {
 					return err
 				}

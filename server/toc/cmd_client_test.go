@@ -4163,7 +4163,7 @@ func TestOSCARProxy_Signon(t *testing.T) {
 			authSvc := newMockAuthService(t)
 			for _, params := range tc.mockParams.flapLoginParams {
 				authSvc.EXPECT().
-					FLAPLogin(matchContext(), params.frame, mock.Anything, "", "").
+					FLAPLogin(matchContext(), params.frame, mock.Anything, "").
 					Return(params.tlv, params.err)
 			}
 			for _, params := range tc.mockParams.crackCookieParams {
