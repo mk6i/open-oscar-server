@@ -20,6 +20,11 @@ const (
 	FLAPFrameKeepAlive uint8 = 0x05
 )
 
+const (
+	// FLAPMaxDataSize is the maximum size of a FLAP packet's data (excluding header).
+	FLAPMaxDataSize uint32 = 0xFFF9
+)
+
 type FLAPFrame struct {
 	StartMarker uint8
 	FrameType   uint8

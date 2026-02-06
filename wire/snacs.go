@@ -99,9 +99,13 @@ const (
 	LoginTLVTagsErrorSubcode            uint16 = 0x08
 	LoginTLVTagsPasswordHash            uint16 = 0x25
 	LoginTLVTagsMultiConnFlags          uint16 = 0x4A
+	LoginTLVTagsMaxSendSize             uint16 = 0x8001
+	LoginTLVTagsMaxRecvSize             uint16 = 0x8003
+	LoginTLVTagsHostSuffix              uint16 = 0x8004
 	LoginTLVTagsRoastedKerberosPassword uint16 = 0x1335
 	LoginTLVTagsRoastedTOCPassword      uint16 = 0x1337
 	LoginTLVTagsPlaintextPassword       uint16 = 0x1338
+	LoginTLVTagsUseBigTime              uint16 = 0x2038
 )
 
 const (
@@ -137,6 +141,82 @@ var (
 	CapChat = uuid.MustParse("748F2420-6287-11D1-8222-444553540000")
 	// CapFileTransfer is the UUID that represents an OSCAR client's ability to send files
 	CapFileTransfer = uuid.MustParse("09461343-4C7F-11D1-8222-444553540000")
+
+	//
+	// Short Caps (0946XXYY-4C7F-11D1-8222-444553540000 format)
+	//
+
+	// CapShortCaps indicates the client supports short capability format
+	CapShortCaps = uuid.MustParse("09460000-4C7F-11D1-8222-444553540000")
+	// CapSecureIM indicates the client supports SECURE_IM encryption
+	CapSecureIM = uuid.MustParse("09460001-4C7F-11D1-8222-444553540000")
+	// CapXHTMLIM indicates the client supports XHTML profile and IMs instead of AOLRTF
+	CapXHTMLIM = uuid.MustParse("09460002-4C7F-11D1-8222-444553540000")
+	// CapRTCVideo indicates the client supports SIP/RTP video
+	CapRTCVideo = uuid.MustParse("09460101-4C7F-11D1-8222-444553540000")
+	// CapHasCamera indicates the client has a camera
+	CapHasCamera = uuid.MustParse("09460102-4C7F-11D1-8222-444553540000")
+	// CapHasMicrophone indicates the client has a microphone
+	CapHasMicrophone = uuid.MustParse("09460103-4C7F-11D1-8222-444553540000")
+	// CapRTCAudio indicates the client supports RTC audio
+	CapRTCAudio = uuid.MustParse("09460104-4C7F-11D1-8222-444553540000")
+	// CapHostStatusTextAware indicates the client supports new status message features
+	CapHostStatusTextAware = uuid.MustParse("0946010A-4C7F-11D1-8222-444553540000")
+	// CapRTIM indicates the client supports "see as I type" IMs
+	CapRTIM = uuid.MustParse("0946010B-4C7F-11D1-8222-444553540000")
+	// CapSmartCaps indicates the client only asserts caps for services it is participating in
+	CapSmartCaps = uuid.MustParse("094601FF-4C7F-11D1-8222-444553540000")
+	// CapVoiceChat indicates the client supports voice chat (AIM)
+	CapVoiceChat = uuid.MustParse("09461341-4C7F-11D1-8222-444553540000")
+	// CapDirectPlay indicates the client supports direct play service (AIM)
+	CapDirectPlay = uuid.MustParse("09461342-4C7F-11D1-8222-444553540000")
+	// CapRouteFinder indicates the client supports route finder (ICQ)
+	CapRouteFinder = uuid.MustParse("09461344-4C7F-11D1-8222-444553540000")
+	// CapDirectICBM indicates the client supports P2P IMs
+	CapDirectICBM = uuid.MustParse("09461345-4C7F-11D1-8222-444553540000")
+	// CapAvatarService indicates the client supports avatar service (AIM)
+	CapAvatarService = uuid.MustParse("09461346-4C7F-11D1-8222-444553540000")
+	// CapStocksAddins indicates the client supports stocks/add-ins (AIM)
+	CapStocksAddins = uuid.MustParse("09461347-4C7F-11D1-8222-444553540000")
+	// CapFileSharing indicates the client supports file sharing
+	CapFileSharing = uuid.MustParse("09461348-4C7F-11D1-8222-444553540000")
+	// CapICQCh2Extended indicates the client supports channel 2 extended TLV(0x2711) messages (ICQ)
+	CapICQCh2Extended = uuid.MustParse("09461349-4C7F-11D1-8222-444553540000")
+	// CapGames indicates the client supports games (AIM)
+	CapGames = uuid.MustParse("0946134A-4C7F-11D1-8222-444553540000")
+	// CapBuddyListTransfer indicates the client supports buddy lists transfer (AIM)
+	CapBuddyListTransfer = uuid.MustParse("0946134B-4C7F-11D1-8222-444553540000")
+	// CapSupportICQ indicates the client supports talking to ICQ users
+	CapSupportICQ = uuid.MustParse("0946134D-4C7F-11D1-8222-444553540000")
+	// CapUTF8Messages indicates the client supports UTF-8 messages (AIM)
+	CapUTF8Messages = uuid.MustParse("0946134E-4C7F-11D1-8222-444553540000")
+
+	//
+	// Full UUIDs (non-short format)
+	//
+
+	// CapRTFMessages indicates the client supports RTF messages (ICQ)
+	CapRTFMessages = uuid.MustParse("97B12751-243C-4334-AD22-D6ABF73F1492")
+	// CapTrillianSecureIM indicates the client supports Trillian SecureIM messages
+	CapTrillianSecureIM = uuid.MustParse("F2E7C7F4-FEAD-4DFB-B235-36798BDF0000")
+	// CapXtrazScript is the UUID for the ICQ Xtraz/Tzer.
+	// Xtraz enables extended status (XStatus), greeting cards, and chat invitations.
+	CapXtrazScript = uuid.MustParse("3B60B3EF-D82A-6C45-A4E0-9C5A5E67E865")
+
+	//
+	// Unknown/Legacy UUIDs
+	//
+
+	// CapUnknownICQ2001_2002 is an unknown capability seen in ICQ 2001/2002
+	CapUnknownICQ2001_2002 = uuid.MustParse("A0E93F37-4C7F-11D1-8222-444553540000")
+	// CapUnknownICQ2002 is an unknown capability seen in ICQ 2002
+	CapUnknownICQ2002 = uuid.MustParse("10CF40D1-4C7F-11D1-8222-444553540000")
+	// CapUnknownICQ2001 is an unknown capability seen in ICQ 2001
+	CapUnknownICQ2001 = uuid.MustParse("2E7A6475-FADF-4DC8-886F-EA3595FDB6DF")
+	// CapUnknownICQLite is an unknown capability seen in ICQLite/ICQ2Go
+	CapUnknownICQLite = uuid.MustParse("563FC809-0B6F-41BD-9F79-422609DFA2F3")
+	// CapGamesAlt is an alternate games capability with different endianness (AIM)
+	CapGamesAlt = uuid.MustParse("0946134A-4C7F-11D1-2282-444553540000")
 )
 
 //
@@ -837,6 +917,16 @@ func UnmarshalICBMMessageText(b []byte) (string, error) {
 	}
 
 	return "", errors.New("unable to find message fragment")
+}
+
+// MarshalICBMFragmentList serializes an ICBM fragment list for an ICBM channel 1
+// message. This is the inverse of UnmarshalICBMMessageText's internal unmarshaling.
+func MarshalICBMFragmentList(frags []ICBMCh1Fragment) ([]byte, error) {
+	buf := bytes.Buffer{}
+	if err := MarshalBE(frags, &buf); err != nil {
+		return nil, fmt.Errorf("unable to marshal ICBM fragments: %w", err)
+	}
+	return buf.Bytes(), nil
 }
 
 type SNAC_0x04_0x08_ICBMEvilRequest struct {
@@ -1778,6 +1868,36 @@ const (
 	ICQTLVTagsOriginallyFromState       uint16 = 0x032A // User originally from state
 	ICQTLVTagsOriginallyFromCountryCode uint16 = 0x0334 // User originally from country (code)
 
+	ICQDirTLVTagsPrivacyToken   uint16 = 0x003C // Privacy token (16 bytes)
+	ICQDirTLVTagsVerifiedEmail  uint16 = 0x0050 // Verified email address
+	ICQDirTLVTagsPendingEmail   uint16 = 0x0055 // Pending email address
+	ICQDirTLVTagsFirstName      uint16 = 0x0064 // First name
+	ICQDirTLVTagsLastName       uint16 = 0x006E // Last name
+	ICQDirTLVTagsNickname       uint16 = 0x0078 // Nickname
+	ICQDirTLVTagsGender         uint16 = 0x0082 // Gender (1=Female, 2=Male)
+	ICQDirTLVTagsEmailAddresses uint16 = 0x008C // Email addresses (record list)
+	ICQDirTLVTagsHomeAddress    uint16 = 0x0096 // Home address
+	ICQDirTLVTagsOriginAddress  uint16 = 0x00A0 // Origin/birth address
+	ICQDirTLVTagsLanguage1      uint16 = 0x00AA // Primary language
+	ICQDirTLVTagsLanguage2      uint16 = 0x00B4 // Secondary language
+	ICQDirTLVTagsLanguage3      uint16 = 0x00BE // Tertiary language
+	ICQDirTLVTagsPhoneNumbers   uint16 = 0x00C8 // Phone numbers (record list)
+	ICQDirTLVTagsHomepage       uint16 = 0x00FA // Homepage URL
+	ICQDirTLVTagsEducation      uint16 = 0x010E // Education info
+	ICQDirTLVTagsCompanyInfo    uint16 = 0x0118 // Company/work info
+	ICQDirTLVTagsInterests      uint16 = 0x0122 // Interests
+	ICQDirTLVTagsMaritalStatus  uint16 = 0x012C // Marital status
+	ICQDirTLVTagsTimezone       uint16 = 0x017C // Timezone
+	ICQDirTLVTagsAboutBio       uint16 = 0x0186 // About/biography text
+	ICQDirTLVTagsAuthRequired   uint16 = 0x019A // Authorization required flag
+	ICQDirTLVTagsBirthDate      uint16 = 0x01A4 // Birth date
+	ICQDirTLVTagsCodePage       uint16 = 0x01C2 // Code page
+	ICQDirTLVTagsMetadataTime   uint16 = 0x01CC // Metadata update time
+	ICQDirTLVTagsAllowSpam      uint16 = 0x01EA // Allow spam/messages from non-contacts flag
+	ICQDirTLVTagsPrivacyLevel   uint16 = 0x01F9 // Privacy level
+	ICQDirTLVTagsWebAware       uint16 = 0x0212 // Web aware flag (online visibility via web)
+	ICQDirTLVTagsStatusNote     uint16 = 0x0226 // Status note/message
+
 	ICQStatusCodeOK   uint8 = 0x0A
 	ICQStatusCodeFail uint8 = 0x32
 	ICQStatusCodeErr  uint8 = 0x14
@@ -1826,6 +1946,8 @@ const (
 	ICQDBQueryMetaReqStat0acd          uint16 = 0x0ACD
 	ICQDBQueryMetaReqStat0ad2          uint16 = 0x0AD2
 	ICQDBQueryMetaReqStat0ad7          uint16 = 0x0AD7
+	ICQDBQueryMetaReqDirectoryQuery    uint16 = 0x0FA0
+	ICQDBQueryMetaReqDirectoryUpdate   uint16 = 0x0FD2
 
 	ICQDBQueryMetaReplySetBasicInfo    uint16 = 0x0064
 	ICQDBQueryMetaReplySetWorkInfo     uint16 = 0x006E

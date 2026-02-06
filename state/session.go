@@ -2,6 +2,7 @@ package state
 
 import (
 	"net/netip"
+	"slices"
 	"sync"
 	"time"
 
@@ -656,7 +657,27 @@ func (s *Session) Caps() [][16]byte {
 		ret = append(ret, c)
 	}
 
+	// Sort capabilities to ensure deterministic order
+	slices.SortFunc(ret, func(a, b [16]byte) int {
+		for i := 0; i < 16; i++ {
+			if a[i] != b[i] {
+				return int(a[i]) - int(b[i])
+			}
+		}
+		return 0
+	})
+
 	return ret
+}
+
+// HasCap returns true if any instance in the session has the given capability UUID.
+func (s *Session) HasCap(cap [16]byte) bool {
+	for _, c := range s.Caps() {
+		if c == cap {
+			return true
+		}
+	}
+	return false
 }
 
 // MemberSince reports when the user became a member.

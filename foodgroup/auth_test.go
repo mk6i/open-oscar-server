@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -103,6 +104,7 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 							wire.NewTLVBE(wire.LoginTLVTagsScreenName, user.DisplayScreenName),
 							wire.NewTLVBE(wire.LoginTLVTagsReconnectHere, "127.0.0.1:5190"),
 							wire.NewTLVBE(wire.LoginTLVTagsAuthorizationCookie, []byte("the-cookie")),
+							wire.NewTLVBE(wire.OServiceTLVTagsSSLState, uint8(0x00)),
 						},
 					},
 				},
@@ -173,6 +175,7 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 							wire.NewTLVBE(wire.LoginTLVTagsScreenName, user.DisplayScreenName),
 							wire.NewTLVBE(wire.LoginTLVTagsReconnectHere, "127.0.0.1:5190"),
 							wire.NewTLVBE(wire.LoginTLVTagsAuthorizationCookie, []byte("the-cookie")),
+							wire.NewTLVBE(wire.OServiceTLVTagsSSLState, uint8(0x00)),
 						},
 					},
 				},
@@ -284,6 +287,7 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 							wire.NewTLVBE(wire.LoginTLVTagsScreenName, user.DisplayScreenName),
 							wire.NewTLVBE(wire.LoginTLVTagsReconnectHere, "127.0.0.1:5190"),
 							wire.NewTLVBE(wire.LoginTLVTagsAuthorizationCookie, []byte("the-cookie")),
+							wire.NewTLVBE(wire.OServiceTLVTagsSSLState, uint8(0x00)),
 						},
 					},
 				},
@@ -493,6 +497,7 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 							wire.NewTLVBE(wire.LoginTLVTagsScreenName, user.DisplayScreenName),
 							wire.NewTLVBE(wire.LoginTLVTagsReconnectHere, "127.0.0.1:5190"),
 							wire.NewTLVBE(wire.LoginTLVTagsAuthorizationCookie, []byte("the-cookie")),
+							wire.NewTLVBE(wire.OServiceTLVTagsSSLState, uint8(0x00)),
 						},
 					},
 				},
@@ -629,6 +634,7 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 							wire.NewTLVBE(wire.LoginTLVTagsScreenName, user.DisplayScreenName),
 							wire.NewTLVBE(wire.LoginTLVTagsReconnectHere, "127.0.0.1:5190"),
 							wire.NewTLVBE(wire.LoginTLVTagsAuthorizationCookie, []byte("the-cookie")),
+							wire.NewTLVBE(wire.OServiceTLVTagsSSLState, uint8(0x00)),
 						},
 					},
 				},
@@ -703,6 +709,7 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 							wire.NewTLVBE(wire.LoginTLVTagsScreenName, user.DisplayScreenName),
 							wire.NewTLVBE(wire.LoginTLVTagsReconnectHere, "127.0.0.1:5190"),
 							wire.NewTLVBE(wire.LoginTLVTagsAuthorizationCookie, []byte("the-cookie")),
+							wire.NewTLVBE(wire.OServiceTLVTagsSSLState, uint8(0x00)),
 						},
 					},
 				},
@@ -779,6 +786,7 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 				userManager:                userManager,
 				sessionRetriever:           sessionRetriever,
 				maxConcurrentLoginsPerUser: 2,
+				logger:                     slog.Default(),
 			}
 			outputSNAC, err := svc.BUCPLogin(context.Background(), tc.inputSNAC, tc.newUserFn, tc.advertisedHost)
 			assert.ErrorIs(t, err, tc.wantErr)
@@ -855,6 +863,7 @@ func TestAuthService_FLAPLogin(t *testing.T) {
 					wire.NewTLVBE(wire.LoginTLVTagsScreenName, user.DisplayScreenName),
 					wire.NewTLVBE(wire.LoginTLVTagsReconnectHere, "127.0.0.1:5190"),
 					wire.NewTLVBE(wire.LoginTLVTagsAuthorizationCookie, []byte("the-cookie")),
+					wire.NewTLVBE(wire.OServiceTLVTagsSSLState, uint8(0x00)),
 				},
 			},
 		},
@@ -901,6 +910,7 @@ func TestAuthService_FLAPLogin(t *testing.T) {
 					wire.NewTLVBE(wire.LoginTLVTagsScreenName, user.DisplayScreenName),
 					wire.NewTLVBE(wire.LoginTLVTagsReconnectHere, "127.0.0.1:5190"),
 					wire.NewTLVBE(wire.LoginTLVTagsAuthorizationCookie, []byte("the-cookie")),
+					wire.NewTLVBE(wire.OServiceTLVTagsSSLState, uint8(0x00)),
 				},
 			},
 		},
@@ -1041,6 +1051,7 @@ func TestAuthService_FLAPLogin(t *testing.T) {
 					wire.NewTLVBE(wire.LoginTLVTagsScreenName, user.DisplayScreenName),
 					wire.NewTLVBE(wire.LoginTLVTagsReconnectHere, "127.0.0.1:5190"),
 					wire.NewTLVBE(wire.LoginTLVTagsAuthorizationCookie, []byte("the-cookie")),
+					wire.NewTLVBE(wire.OServiceTLVTagsSSLState, uint8(0x00)),
 				},
 			},
 		},
@@ -1091,6 +1102,7 @@ func TestAuthService_FLAPLogin(t *testing.T) {
 					wire.NewTLVBE(wire.LoginTLVTagsScreenName, user.DisplayScreenName),
 					wire.NewTLVBE(wire.LoginTLVTagsReconnectHere, "127.0.0.1:5190"),
 					wire.NewTLVBE(wire.LoginTLVTagsAuthorizationCookie, []byte("the-cookie")),
+					wire.NewTLVBE(wire.OServiceTLVTagsSSLState, uint8(0x00)),
 				},
 			},
 		},
@@ -1159,6 +1171,7 @@ func TestAuthService_FLAPLogin(t *testing.T) {
 					wire.NewTLVBE(wire.LoginTLVTagsScreenName, user.DisplayScreenName),
 					wire.NewTLVBE(wire.LoginTLVTagsReconnectHere, "127.0.0.1:5190"),
 					wire.NewTLVBE(wire.LoginTLVTagsAuthorizationCookie, []byte("the-cookie")),
+					wire.NewTLVBE(wire.OServiceTLVTagsSSLState, uint8(0x00)),
 				},
 			},
 		},
@@ -1216,6 +1229,7 @@ func TestAuthService_FLAPLogin(t *testing.T) {
 				config:      tc.cfg,
 				cookieBaker: cookieBaker,
 				userManager: userManager,
+				logger:      slog.Default(),
 			}
 			outputSNAC, err := svc.FLAPLogin(context.Background(), tc.inputSNAC, tc.newUserFn, tc.advertisedHost)
 			assert.ErrorIs(t, err, tc.wantErr)
@@ -1556,6 +1570,7 @@ func TestAuthService_KerberosLogin(t *testing.T) {
 				sessionRetriever:           sessionRetriever,
 				timeNow:                    tc.timeNow,
 				maxConcurrentLoginsPerUser: 2,
+				logger:                     slog.Default(),
 			}
 			outputSNAC, err := svc.KerberosLogin(context.Background(), tc.inputSNAC, tc.newUserFn, tc.advertisedHost)
 			assert.ErrorIs(t, err, tc.wantErr)
@@ -1717,6 +1732,7 @@ func TestAuthService_BUCPChallengeRequest(t *testing.T) {
 			svc := AuthService{
 				config:      tc.cfg,
 				userManager: userManager,
+				logger:      slog.Default(),
 			}
 			fnNewUUID := func() uuid.UUID {
 				return sessUUID
@@ -1744,7 +1760,7 @@ func TestAuthService_RegisterChatSession_HappyPath(t *testing.T) {
 	chatCookieBuf := &bytes.Buffer{}
 	assert.NoError(t, wire.MarshalBE(serverCookie, chatCookieBuf))
 
-	svc := NewAuthService(config.Config{}, nil, nil, chatSessionRegistry, nil, nil, nil, nil, nil, wire.DefaultRateLimitClasses())
+	svc := NewAuthService(config.Config{}, nil, nil, chatSessionRegistry, nil, nil, nil, nil, nil, wire.DefaultRateLimitClasses(), slog.Default())
 
 	have, err := svc.RegisterChatSession(context.Background(), serverCookie)
 	assert.NoError(t, err)
@@ -1954,7 +1970,7 @@ func TestAuthService_RegisterBOSSession(t *testing.T) {
 					Return(params.result, params.err)
 			}
 
-			svc := NewAuthService(config.Config{}, sessionRegistry, nil, nil, userManager, nil, nil, accountManager, bartItemManager, wire.DefaultRateLimitClasses())
+			svc := NewAuthService(config.Config{}, sessionRegistry, nil, nil, userManager, nil, nil, accountManager, bartItemManager, wire.DefaultRateLimitClasses(), slog.Default())
 
 			have, err := svc.RegisterBOSSession(context.Background(), tc.cookie)
 			assert.NoError(t, err)
@@ -1985,7 +2001,7 @@ func TestAuthService_RetrieveBOSSession_HappyPath(t *testing.T) {
 		User(matchContext(), instance.IdentScreenName()).
 		Return(&state.User{IdentScreenName: instance.IdentScreenName()}, nil)
 
-	svc := NewAuthService(config.Config{}, nil, sessionRetriever, nil, userManager, nil, nil, nil, nil, wire.DefaultRateLimitClasses())
+	svc := NewAuthService(config.Config{}, nil, sessionRetriever, nil, userManager, nil, nil, nil, nil, wire.DefaultRateLimitClasses(), slog.Default())
 
 	have, err := svc.RetrieveBOSSession(context.Background(), aimAuthCookie)
 	assert.NoError(t, err)
@@ -2010,7 +2026,7 @@ func TestAuthService_RetrieveBOSSession_SessionNotFound(t *testing.T) {
 		User(matchContext(), instance.IdentScreenName()).
 		Return(&state.User{IdentScreenName: instance.IdentScreenName()}, nil)
 
-	svc := NewAuthService(config.Config{}, nil, sessionRetriever, nil, userManager, nil, nil, nil, nil, wire.DefaultRateLimitClasses())
+	svc := NewAuthService(config.Config{}, nil, sessionRetriever, nil, userManager, nil, nil, nil, nil, wire.DefaultRateLimitClasses(), slog.Default())
 
 	have, err := svc.RetrieveBOSSession(context.Background(), aimAuthCookie)
 	assert.NoError(t, err)
@@ -2103,7 +2119,7 @@ func TestAuthService_SignoutChat(t *testing.T) {
 					RemoveSession(matchSession(params.screenName))
 			}
 
-			svc := NewAuthService(config.Config{}, nil, nil, sessionManager, nil, nil, chatMessageRelayer, nil, nil, wire.DefaultRateLimitClasses())
+			svc := NewAuthService(config.Config{}, nil, nil, sessionManager, nil, nil, chatMessageRelayer, nil, nil, wire.DefaultRateLimitClasses(), slog.Default())
 			svc.SignoutChat(context.Background(), tt.instance)
 		})
 	}
@@ -2148,7 +2164,7 @@ func TestAuthService_Signout(t *testing.T) {
 			for _, params := range tt.mockParams.removeSessionParams {
 				sessionManager.EXPECT().RemoveSession(matchSession(params.screenName))
 			}
-			svc := NewAuthService(config.Config{}, sessionManager, nil, nil, nil, nil, nil, nil, nil, wire.DefaultRateLimitClasses())
+			svc := NewAuthService(config.Config{}, sessionManager, nil, nil, nil, nil, nil, nil, nil, wire.DefaultRateLimitClasses(), slog.Default())
 
 			svc.Signout(context.Background(), tt.instance)
 		})

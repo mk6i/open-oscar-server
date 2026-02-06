@@ -206,7 +206,13 @@ func (s oscarServer) routeConnection(ctx context.Context, conn net.Conn, listene
 
 	flapc := wire.NewFlapClient(100, conn, conn)
 
-	if err := flapc.SendSignonFrame(nil); err != nil {
+	// send flap signon with server capabilities
+	signonTLVs := []wire.TLV{
+		wire.NewTLVBE(wire.LoginTLVTagsMaxSendSize, wire.FLAPMaxDataSize),
+		wire.NewTLVBE(wire.LoginTLVTagsMaxRecvSize, wire.FLAPMaxDataSize),
+		wire.NewTLVBE(wire.LoginTLVTagsUseBigTime, []byte{}), // empty TLV indicates support
+	}
+	if err := flapc.SendSignonFrame(signonTLVs); err != nil {
 		return err
 	}
 	flap, err := flapc.ReceiveSignonFrame()
@@ -514,7 +520,15 @@ func (s oscarServer) processBUCPAuth(ctx context.Context, flapc *wire.FlapClient
 					return err
 				}
 
-				return flapc.SendSNAC(outSNAC.Frame, outSNAC.Body)
+				loginResp := outSNAC.Body.(wire.SNAC_0x17_0x03_BUCPLoginResponse)
+
+				// Clients expect login response as SNAC on FLAP
+				// channel 2 followed by a FLAP signoff frame to properly close the auth
+				// connection
+				if err := flapc.SendSNAC(outSNAC.Frame, loginResp); err != nil {
+					return err
+				}
+				return flapc.NewSignoff(loginResp.TLVRestBlock)
 			default:
 				s.Logger.Debug("unexpected SNAC received during login",
 					"foodgroup", wire.FoodGroupName(fr.FoodGroup),

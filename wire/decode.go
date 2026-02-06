@@ -173,10 +173,11 @@ func unmarshalString(v reflect.Value, oscTag oscarTag, r io.Reader, order binary
 			return err
 		}
 		if oscTag.nullTerminated {
-			if buf[len(buf)-1] != 0x00 {
-				return errNotNullTerminated
+			// search for null within string and truncate there if found
+			// needed for icq 6 login to be working
+			if nullPos := bytes.IndexByte(buf, 0x00); nullPos != -1 {
+				buf = buf[0:nullPos]
 			}
-			buf = buf[0 : len(buf)-1] // remove null terminator
 		}
 	}
 
