@@ -1905,6 +1905,8 @@ func buildToc2Config(fb []wire.FeedbagItem) ([]string, error) {
 			group.order = val
 			buddylist.groups[item.GroupID] = group
 		}
+	}
+	for _, item := range fb {
 		if item.ClassID == wire.FeedbagClassIdBuddy {
 			buddy := buddy{
 				name: item.Name,
