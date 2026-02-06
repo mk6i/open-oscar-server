@@ -222,11 +222,10 @@ func (s OSCARProxy) convertICBMInstantMsg(ctx context.Context, me *state.Session
 		return fmt.Sprintf("IM_IN_ENC2:%s:%s:::%s:::en:%s", snac.ScreenName, autoResp, uc, txt)
 	}
 
-	cmdSuffix := ""
 	if (me.TocVersion() & state.SupportsTOC2) == state.SupportsTOC2 {
-		cmdSuffix = "2"
+		return fmt.Sprintf("IM_IN2:%s:%s:%s:%s", snac.ScreenName, autoResp, "F", txt)
 	}
-	return fmt.Sprintf("IM_IN%s:%s:%s:%s", cmdSuffix, snac.ScreenName, autoResp, txt)
+	return fmt.Sprintf("IM_IN:%s:%s:%s", snac.ScreenName, autoResp, txt)
 }
 
 // convertICBMRendezvous converts an ICBM rendezvous SNAC to a TOC response.
