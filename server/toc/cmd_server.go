@@ -438,11 +438,10 @@ func userInfoToUpdateBuddy(snac wire.TLVUserInfo, me *state.SessionInstance) str
 	uc := strings.Join(ucArray[:], "")
 
 	warning := fmt.Sprintf("%d", snac.WarningLevel/10)
-	cmd := "UPDATE_BUDDY"
 	if hasFlag(me.TocVersion(), state.SupportsTOC2) {
-		cmd = "UPDATE_BUDDY2"
+		return fmt.Sprintf("UPDATE_BUDDY2:%s:%s:%s:%d:%d:%s:", snac.ScreenName, "T", warning, online, idle, uc)
 	}
-	return fmt.Sprintf("%s:%s:%s:%s:%d:%d:%s", cmd, snac.ScreenName, "T", warning, online, idle, uc)
+	return fmt.Sprintf("UPDATE_BUDDY:%s:%s:%s:%d:%d:%s", snac.ScreenName, "T", warning, online, idle, uc)
 }
 
 // hasFlag checks if a specific flag is set in the bitmask.
