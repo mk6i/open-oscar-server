@@ -244,6 +244,20 @@ func (s OSCARProxy) RecvClientCmd(
 		return s.SendIMEnc(ctx, sessBOS, args)
 	case "toc2_remove_buddy":
 		return s.RemoveBuddy2(ctx, sessBOS, args)
+	case "toc2_new_group":
+		return s.NewGroup(ctx, sessBOS, args)
+	case "toc2_del_group":
+		return s.DelGroup(ctx, sessBOS, args)
+	case "toc2_new_buddies":
+		return s.NewBuddies(ctx, sessBOS, args)
+	case "toc2_add_permit":
+		return s.AddPermit2(ctx, sessBOS, args)
+	case "toc2_remove_permit":
+		return s.RemovePermit2(ctx, sessBOS, args)
+	case "toc2_add_deny":
+		return s.AddDeny2(ctx, sessBOS, args)
+	case "toc2_remove_deny":
+		return s.RemoveDeny2(ctx, sessBOS, args)
 	}
 
 	s.Logger.ErrorContext(ctx, fmt.Sprintf("unsupported TOC command %s", cmd))
@@ -1387,16 +1401,297 @@ func (s OSCARProxy) SetPDMode(ctx context.Context, me *state.SessionInstance, ar
 	return []string{}
 }
 
+// NewGroup handles the toc2_new_group TOC2 command.
+//
+// From the TOC2 docs by Jeffrey Rosen:
+//
+//	This is an entirely new command that allows you to add groups. These should be
+//	quoted and you can't add more than one per command.
+//
+// Command syntax: toc2_new_group <group>
+func (s OSCARProxy) NewGroup(ctx context.Context, me *state.SessionInstance, args []byte) []string {
+	if errMsg, isLimited := s.checkRateLimit(ctx, me, wire.Feedbag, wire.FeedbagInsertItem); isLimited {
+		return errMsg
+	}
+
+	var groupName string
+	if _, err := parseArgs(args, &groupName); err != nil {
+		return s.runtimeErr(ctx, fmt.Errorf("parseArgs: %w", err))
+	}
+	groupName = unescape(groupName)
+
+	if groupName == "" {
+		return s.runtimeErr(ctx, fmt.Errorf("empty group name"))
+	}
+
+	fb, err := s.FeedbagManager.Feedbag(ctx, me.IdentScreenName())
+	if err != nil {
+		return s.runtimeErr(ctx, fmt.Errorf("FeedbagManager.Feedbag: %w", err))
+	}
+
+	// Scan feedbag to check if group exists and find next GroupID
+	var maxGroupID uint16
+	groupExists := false
+	for _, item := range fb {
+		if item.ClassID == wire.FeedbagClassIdGroup {
+			if item.ItemID > maxGroupID {
+				maxGroupID = item.ItemID
+			}
+			if item.Name == groupName {
+				groupExists = true
+			}
+		}
+	}
+
+	if groupExists {
+		// Group already exists, return success (idempotent)
+		return []string{}
+	}
+
+	nextGroupID := maxGroupID + 1
+	if nextGroupID == 0 {
+		nextGroupID = 1 // Start from 1, not 0 (0 is root group)
+	}
+
+	groupItem := wire.FeedbagItem{
+		ItemID:  nextGroupID,
+		ClassID: wire.FeedbagClassIdGroup,
+		GroupID: 0,
+		Name:    groupName,
+		TLVLBlock: wire.TLVLBlock{
+			TLVList: wire.TLVList{},
+		},
+	}
+
+	if _, err := s.FeedbagService.UpsertItem(ctx, me, wire.SNACFrame{}, []wire.FeedbagItem{groupItem}); err != nil {
+		return s.runtimeErr(ctx, fmt.Errorf("FeedbagService.UpsertItem: %w", err))
+	}
+
+	return []string{}
+}
+
+// DelGroup handles the toc2_del_group TOC2 command.
+//
+// From the TOC2 docs by Jeffrey Rosen:
+//
+//	Delete a group.
+//
+// Command syntax: toc2_del_group <group>
+func (s OSCARProxy) DelGroup(ctx context.Context, me *state.SessionInstance, args []byte) []string {
+	if errMsg, isLimited := s.checkRateLimit(ctx, me, wire.Feedbag, wire.FeedbagDeleteItem); isLimited {
+		return errMsg
+	}
+
+	var groupName string
+	if _, err := parseArgs(args, &groupName); err != nil {
+		return s.runtimeErr(ctx, fmt.Errorf("parseArgs: %w", err))
+	}
+	groupName = unescape(groupName)
+
+	if groupName == "" {
+		return s.runtimeErr(ctx, fmt.Errorf("empty group name"))
+	}
+
+	fb, err := s.FeedbagManager.Feedbag(ctx, me.IdentScreenName())
+	if err != nil {
+		return s.runtimeErr(ctx, fmt.Errorf("FeedbagManager.Feedbag: %w", err))
+	}
+
+	// Scan feedbag to find group
+	var groupItem *wire.FeedbagItem
+	for _, item := range fb {
+		if item.ClassID == wire.FeedbagClassIdGroup && item.Name == groupName {
+			groupItem = &item
+			break
+		}
+	}
+
+	if groupItem == nil {
+		return s.runtimeErr(ctx, fmt.Errorf("group not found: %s", groupName))
+	}
+
+	deleteItem := wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
+		Items: []wire.FeedbagItem{*groupItem},
+	}
+
+	if _, err := s.FeedbagService.DeleteItem(ctx, me, wire.SNACFrame{}, deleteItem); err != nil {
+		return s.runtimeErr(ctx, fmt.Errorf("FeedbagService.DeleteItem: %w", err))
+	}
+
+	return []string{}
+}
+
+// NewBuddies handles the toc2_new_buddies TOC2 command.
+//
+// From the TOC2 docs by Jeffrey Rosen:
+//
+//	In TOC2.0, you must add buddies in "config format". If you sent that with the
+//	toc2_new_buddies command, you would add the three buddies (buddytest,
+//	buddytest2, and buddytest3) into the group "test". Note that if the group
+//	doesn't already exist, it will be created.
+//
+// Config format: {g:group<lf>b:buddy1<lf>b:buddy2<lf>}
+// Where <lf> is a linefeed character (ASCII 10).
+//
+// Command syntax: toc2_new_buddies <config format>
+func (s OSCARProxy) NewBuddies(ctx context.Context, me *state.SessionInstance, args []byte) []string {
+	if errMsg, isLimited := s.checkRateLimit(ctx, me, wire.Feedbag, wire.FeedbagInsertItem); isLimited {
+		return errMsg
+	}
+
+	// Parse config string (handle quotes, unescape)
+	configStr := string(args)
+	configStr = strings.Trim(configStr, "'\" ")
+	configStr = unescape(configStr)
+
+	if configStr == "" {
+		return s.runtimeErr(ctx, fmt.Errorf("empty config"))
+	}
+
+	// Parse config format
+	groups, err := parseTOC2Config(configStr)
+	if err != nil {
+		return s.runtimeErr(ctx, fmt.Errorf("parseTOC2Config: %w", err))
+	}
+
+	fb, err := s.FeedbagManager.Feedbag(ctx, me.IdentScreenName())
+	if err != nil {
+		return s.runtimeErr(ctx, fmt.Errorf("FeedbagManager.Feedbag: %w", err))
+	}
+
+	// Build lookup maps by scanning feedbag
+	groupNameToID := make(map[string]uint16)
+	existingItemIDs := make(map[uint16]bool)
+	existingBuddies := make(map[uint16]map[string]bool) // groupID -> buddyName -> exists
+
+	var maxGroupID uint16
+	var maxItemID uint16
+
+	for _, item := range fb {
+		existingItemIDs[item.ItemID] = true
+		if item.ItemID > maxItemID {
+			maxItemID = item.ItemID
+		}
+
+		if item.ClassID == wire.FeedbagClassIdGroup {
+			if item.ItemID > maxGroupID {
+				maxGroupID = item.ItemID
+			}
+			groupNameToID[item.Name] = item.ItemID
+		} else if item.ClassID == wire.FeedbagClassIdBuddy {
+			if existingBuddies[item.GroupID] == nil {
+				existingBuddies[item.GroupID] = make(map[string]bool)
+			}
+			existingBuddies[item.GroupID][item.Name] = true
+		}
+	}
+
+	var updates []wire.FeedbagItem
+	var replies []string
+
+	// Process each group in config
+	for groupName, buddies := range groups {
+		// Find or create group
+		groupID, exists := groupNameToID[groupName]
+		if !exists {
+			// Create new group
+			maxGroupID++
+			if maxGroupID == 0 {
+				maxGroupID = 1 // Start from 1, not 0
+			}
+			groupID = maxGroupID
+			groupNameToID[groupName] = groupID
+
+			groupItem := wire.FeedbagItem{
+				ItemID:  groupID,
+				ClassID: wire.FeedbagClassIdGroup,
+				GroupID: 0,
+				Name:    groupName,
+				TLVLBlock: wire.TLVLBlock{
+					TLVList: wire.TLVList{},
+				},
+			}
+			updates = append(updates, groupItem)
+			// Initialize existingBuddies map for the new group
+			if existingBuddies[groupID] == nil {
+				existingBuddies[groupID] = make(map[string]bool)
+			}
+		}
+
+		// Process buddies in this group
+		for _, buddyEntry := range buddies {
+			// Parse buddy entry (may contain alias/note: b:buddy:alias:::::note)
+			parts := strings.Split(buddyEntry, ":")
+			buddyName := parts[0]
+			if buddyName == "" {
+				continue
+			}
+
+			// Normalize screen name
+			normalizedBuddy := state.NewIdentScreenName(buddyName).String()
+
+			// Check if buddy already exists in this group
+			if existingBuddies[groupID] != nil && existingBuddies[groupID][normalizedBuddy] {
+				continue // Skip duplicate
+			}
+
+			// Find next available ItemID
+			maxItemID++
+			for existingItemIDs[maxItemID] {
+				maxItemID++
+				if maxItemID == 0 {
+					maxItemID = 1 // Skip 0
+				}
+			}
+			nextItemID := maxItemID
+			existingItemIDs[nextItemID] = true
+
+			// Create buddy item
+			buddyItem := wire.FeedbagItem{
+				ItemID:  nextItemID,
+				ClassID: wire.FeedbagClassIdBuddy,
+				GroupID: groupID,
+				Name:    normalizedBuddy,
+				TLVLBlock: wire.TLVLBlock{
+					TLVList: wire.TLVList{},
+				},
+			}
+
+			// Handle alias if present (parts[1])
+			if len(parts) > 1 && parts[1] != "" {
+				buddyItem.Append(wire.NewTLVBE(wire.FeedbagAttributesAlias, parts[1]))
+			}
+
+			// Handle note if present (parts[6] after alias and colons)
+			if len(parts) > 6 && parts[6] != "" {
+				buddyItem.Append(wire.NewTLVBE(wire.FeedbagAttributesNote, parts[6]))
+			}
+
+			updates = append(updates, buddyItem)
+			replies = append(replies, fmt.Sprintf("NEW_BUDDY_REPLY2:%s:added", normalizedBuddy))
+		}
+	}
+
+	if len(updates) == 0 {
+		return []string{}
+	}
+
+	if _, err := s.FeedbagService.UpsertItem(ctx, me, wire.SNACFrame{}, updates); err != nil {
+		return s.runtimeErr(ctx, fmt.Errorf("FeedbagService.UpsertItem: %w", err))
+	}
+
+	return replies
+}
+
 // RemoveBuddy2 handles the toc2_remove_buddy command.
 //
-// From the TOC2 docs by Jeffrey Rosen
+// From the TOC2 docs by Jeffrey Rosen:
 //
-// You can remove multiple names in the same group using the syntax <screenname> <screenname> <group>.
+//	You can remove multiple names in the same group using the syntax <screenname> <screenname> <group>.
 //
-// toc2_remove_buddy <screenname> [screenname] ... [screenname] <group>
-
+// Command syntax: toc2_remove_buddy <screenname> [screenname] ... [screenname] <group>
 func (s OSCARProxy) RemoveBuddy2(ctx context.Context, me *state.SessionInstance, args []byte) []string {
-	if errMsg, isLimited := s.checkRateLimit(ctx, me, wire.Locate, wire.LocateSetInfo); isLimited {
+	if errMsg, isLimited := s.checkRateLimit(ctx, me, wire.Feedbag, wire.FeedbagDeleteItem); isLimited {
 		return errMsg
 	}
 
@@ -1405,8 +1700,355 @@ func (s OSCARProxy) RemoveBuddy2(ctx context.Context, me *state.SessionInstance,
 		return s.runtimeErr(ctx, fmt.Errorf("parseArgs: %w", err))
 	}
 	if len(params) < 2 {
-		return s.runtimeErr(ctx, fmt.Errorf("misssing params"))
+		return s.runtimeErr(ctx, fmt.Errorf("missing params: need at least one screenname and group"))
 	}
+
+	// Last parameter is group name, rest are screennames
+	groupName := params[len(params)-1]
+	screenNames := params[:len(params)-1]
+
+	// Normalize all screennames
+	normalizedNames := make([]string, len(screenNames))
+	for i, sn := range screenNames {
+		normalizedNames[i] = state.NewIdentScreenName(sn).String()
+	}
+
+	fb, err := s.FeedbagManager.Feedbag(ctx, me.IdentScreenName())
+	if err != nil {
+		return s.runtimeErr(ctx, fmt.Errorf("FeedbagManager.Feedbag: %w", err))
+	}
+
+	// Find group by name
+	var groupID uint16
+	groupFound := false
+	for _, item := range fb {
+		if item.ClassID == wire.FeedbagClassIdGroup && item.Name == groupName {
+			groupID = item.ItemID
+			groupFound = true
+			break
+		}
+	}
+
+	if !groupFound {
+		return s.runtimeErr(ctx, fmt.Errorf("group not found: %s", groupName))
+	}
+
+	// Find buddy items to delete
+	var itemsToDelete []wire.FeedbagItem
+	for _, normalizedName := range normalizedNames {
+		for _, item := range fb {
+			if item.ClassID == wire.FeedbagClassIdBuddy &&
+				item.GroupID == groupID &&
+				item.Name == normalizedName {
+				itemsToDelete = append(itemsToDelete, item)
+				break
+			}
+		}
+	}
+
+	if len(itemsToDelete) == 0 {
+		return s.runtimeErr(ctx, fmt.Errorf("no buddies found to delete"))
+	}
+
+	deleteItem := wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
+		Items: itemsToDelete,
+	}
+
+	if _, err := s.FeedbagService.DeleteItem(ctx, me, wire.SNACFrame{}, deleteItem); err != nil {
+		return s.runtimeErr(ctx, fmt.Errorf("FeedbagService.DeleteItem: %w", err))
+	}
+
+	return []string{}
+}
+
+// AddPermit2 handles the toc2_add_permit TOC2 command.
+//
+// From the TOC2 docs by Jeffrey Rosen:
+//
+//	Add user(s) to permit list. <screenname> should be normalized and you can add
+//	multiple people at a time by separating the screennames with a space.
+//
+// Command syntax: toc2_add_permit <screenname> [screenname] ...
+func (s OSCARProxy) AddPermit2(ctx context.Context, me *state.SessionInstance, args []byte) []string {
+	if errMsg, isLimited := s.checkRateLimit(ctx, me, wire.Feedbag, wire.FeedbagInsertItem); isLimited {
+		return errMsg
+	}
+
+	screenNames, err := parseArgs(args)
+	if err != nil {
+		return s.runtimeErr(ctx, fmt.Errorf("parseArgs: %w", err))
+	}
+
+	if len(screenNames) == 0 {
+		return s.runtimeErr(ctx, fmt.Errorf("no screennames provided"))
+	}
+
+	// Normalize screen names
+	normalizedNames := make([]string, len(screenNames))
+	for i, sn := range screenNames {
+		normalizedNames[i] = state.NewIdentScreenName(sn).String()
+	}
+
+	fb, err := s.FeedbagManager.Feedbag(ctx, me.IdentScreenName())
+	if err != nil {
+		return s.runtimeErr(ctx, fmt.Errorf("FeedbagManager.Feedbag: %w", err))
+	}
+
+	// Build set of existing permit screennames and find max ItemID
+	existingPermits := make(map[string]bool)
+	var maxItemID uint16
+	for _, item := range fb {
+		if item.ItemID > maxItemID {
+			maxItemID = item.ItemID
+		}
+		if item.ClassID == wire.FeedbagClassIDPermit {
+			existingPermits[item.Name] = true
+		}
+	}
+
+	var updates []wire.FeedbagItem
+	nextItemID := maxItemID
+
+	for _, normalizedName := range normalizedNames {
+		// Skip if already in permit list
+		if existingPermits[normalizedName] {
+			continue
+		}
+
+		// Find next available ItemID
+		nextItemID++
+		for nextItemID == 0 {
+			nextItemID = 1 // Skip 0
+		}
+
+		permitItem := wire.FeedbagItem{
+			ItemID:  nextItemID,
+			ClassID: wire.FeedbagClassIDPermit,
+			GroupID: 0,
+			Name:    normalizedName,
+			TLVLBlock: wire.TLVLBlock{
+				TLVList: wire.TLVList{},
+			},
+		}
+		updates = append(updates, permitItem)
+	}
+
+	if len(updates) == 0 {
+		return []string{}
+	}
+
+	if _, err := s.FeedbagService.UpsertItem(ctx, me, wire.SNACFrame{}, updates); err != nil {
+		return s.runtimeErr(ctx, fmt.Errorf("FeedbagService.UpsertItem: %w", err))
+	}
+
+	return []string{}
+}
+
+// RemovePermit2 handles the toc2_remove_permit TOC2 command.
+//
+// From the TOC2 docs by Jeffrey Rosen:
+//
+//	Remove user(s) from permit list. <screenname> should be normalized and you can
+//	remove multiple people at a time by separating the screennames with a space.
+//
+// Command syntax: toc2_remove_permit <screenname> [screenname] ...
+func (s OSCARProxy) RemovePermit2(ctx context.Context, me *state.SessionInstance, args []byte) []string {
+	if errMsg, isLimited := s.checkRateLimit(ctx, me, wire.Feedbag, wire.FeedbagDeleteItem); isLimited {
+		return errMsg
+	}
+
+	screenNames, err := parseArgs(args)
+	if err != nil {
+		return s.runtimeErr(ctx, fmt.Errorf("parseArgs: %w", err))
+	}
+
+	if len(screenNames) == 0 {
+		return s.runtimeErr(ctx, fmt.Errorf("no screennames provided"))
+	}
+
+	// Normalize screen names
+	normalizedNames := make([]string, len(screenNames))
+	for i, sn := range screenNames {
+		normalizedNames[i] = state.NewIdentScreenName(sn).String()
+	}
+
+	fb, err := s.FeedbagManager.Feedbag(ctx, me.IdentScreenName())
+	if err != nil {
+		return s.runtimeErr(ctx, fmt.Errorf("FeedbagManager.Feedbag: %w", err))
+	}
+
+	// Find permit items to delete
+	var itemsToDelete []wire.FeedbagItem
+	for _, normalizedName := range normalizedNames {
+		for _, item := range fb {
+			if item.ClassID == wire.FeedbagClassIDPermit && item.Name == normalizedName {
+				itemsToDelete = append(itemsToDelete, item)
+				break
+			}
+		}
+	}
+
+	if len(itemsToDelete) == 0 {
+		return s.runtimeErr(ctx, fmt.Errorf("no permit entries found to delete"))
+	}
+
+	deleteItem := wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
+		Items: itemsToDelete,
+	}
+
+	if _, err := s.FeedbagService.DeleteItem(ctx, me, wire.SNACFrame{}, deleteItem); err != nil {
+		return s.runtimeErr(ctx, fmt.Errorf("FeedbagService.DeleteItem: %w", err))
+	}
+
+	return []string{}
+}
+
+// AddDeny2 handles the toc2_add_deny TOC2 command.
+//
+// From the TOC2 docs by Jeffrey Rosen:
+//
+//	Add user(s) to deny list. <screenname> should be normalized and you can add
+//	multiple people at a time by separating the screennames with a space.
+//
+// Command syntax: toc2_add_deny <screenname> [screenname] ...
+func (s OSCARProxy) AddDeny2(ctx context.Context, me *state.SessionInstance, args []byte) []string {
+	if errMsg, isLimited := s.checkRateLimit(ctx, me, wire.Feedbag, wire.FeedbagInsertItem); isLimited {
+		return errMsg
+	}
+
+	screenNames, err := parseArgs(args)
+	if err != nil {
+		return s.runtimeErr(ctx, fmt.Errorf("parseArgs: %w", err))
+	}
+
+	if len(screenNames) == 0 {
+		return s.runtimeErr(ctx, fmt.Errorf("no screennames provided"))
+	}
+
+	// Normalize screen names
+	normalizedNames := make([]string, len(screenNames))
+	for i, sn := range screenNames {
+		normalizedNames[i] = state.NewIdentScreenName(sn).String()
+	}
+
+	fb, err := s.FeedbagManager.Feedbag(ctx, me.IdentScreenName())
+	if err != nil {
+		return s.runtimeErr(ctx, fmt.Errorf("FeedbagManager.Feedbag: %w", err))
+	}
+
+	// Build set of existing deny screennames and find max ItemID
+	existingDenies := make(map[string]bool)
+	var maxItemID uint16
+	myScreenName := me.IdentScreenName().String()
+
+	for _, item := range fb {
+		if item.ItemID > maxItemID {
+			maxItemID = item.ItemID
+		}
+		if item.ClassID == wire.FeedbagClassIDDeny {
+			existingDenies[item.Name] = true
+		}
+	}
+
+	var updates []wire.FeedbagItem
+	nextItemID := maxItemID
+
+	for _, normalizedName := range normalizedNames {
+		// Prevent self-block
+		if normalizedName == myScreenName {
+			continue
+		}
+
+		// Skip if already in deny list
+		if existingDenies[normalizedName] {
+			continue
+		}
+
+		// Find next available ItemID
+		nextItemID++
+		for nextItemID == 0 {
+			nextItemID = 1 // Skip 0
+		}
+
+		denyItem := wire.FeedbagItem{
+			ItemID:  nextItemID,
+			ClassID: wire.FeedbagClassIDDeny,
+			GroupID: 0,
+			Name:    normalizedName,
+			TLVLBlock: wire.TLVLBlock{
+				TLVList: wire.TLVList{},
+			},
+		}
+		updates = append(updates, denyItem)
+	}
+
+	if len(updates) == 0 {
+		return []string{}
+	}
+
+	if _, err := s.FeedbagService.UpsertItem(ctx, me, wire.SNACFrame{}, updates); err != nil {
+		return s.runtimeErr(ctx, fmt.Errorf("FeedbagService.UpsertItem: %w", err))
+	}
+
+	return []string{}
+}
+
+// RemoveDeny2 handles the toc2_remove_deny TOC2 command.
+//
+// From the TOC2 docs by Jeffrey Rosen:
+//
+//	Remove user(s) from deny list. <screenname> should be normalized and you can
+//	remove multiple people at a time by separating the screennames with a space.
+//
+// Command syntax: toc2_remove_deny <screenname> [screenname] ...
+func (s OSCARProxy) RemoveDeny2(ctx context.Context, me *state.SessionInstance, args []byte) []string {
+	if errMsg, isLimited := s.checkRateLimit(ctx, me, wire.Feedbag, wire.FeedbagDeleteItem); isLimited {
+		return errMsg
+	}
+
+	screenNames, err := parseArgs(args)
+	if err != nil {
+		return s.runtimeErr(ctx, fmt.Errorf("parseArgs: %w", err))
+	}
+
+	if len(screenNames) == 0 {
+		return s.runtimeErr(ctx, fmt.Errorf("no screennames provided"))
+	}
+
+	// Normalize screen names
+	normalizedNames := make([]string, len(screenNames))
+	for i, sn := range screenNames {
+		normalizedNames[i] = state.NewIdentScreenName(sn).String()
+	}
+
+	fb, err := s.FeedbagManager.Feedbag(ctx, me.IdentScreenName())
+	if err != nil {
+		return s.runtimeErr(ctx, fmt.Errorf("FeedbagManager.Feedbag: %w", err))
+	}
+
+	// Find deny items to delete
+	var itemsToDelete []wire.FeedbagItem
+	for _, normalizedName := range normalizedNames {
+		for _, item := range fb {
+			if item.ClassID == wire.FeedbagClassIDDeny && item.Name == normalizedName {
+				itemsToDelete = append(itemsToDelete, item)
+				break
+			}
+		}
+	}
+
+	if len(itemsToDelete) == 0 {
+		return s.runtimeErr(ctx, fmt.Errorf("no deny entries found to delete"))
+	}
+
+	deleteItem := wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
+		Items: itemsToDelete,
+	}
+
+	if _, err := s.FeedbagService.DeleteItem(ctx, me, wire.SNACFrame{}, deleteItem); err != nil {
+		return s.runtimeErr(ctx, fmt.Errorf("FeedbagService.DeleteItem: %w", err))
+	}
+
 	return []string{}
 }
 
@@ -1908,6 +2550,14 @@ func buildToc2Config(fb []wire.FeedbagItem) ([]string, error) {
 	}
 	for _, item := range fb {
 		if item.ClassID == wire.FeedbagClassIdBuddy {
+			// Ensure group exists (handle orphaned buddies)
+			if _, exists := buddylist.groups[item.GroupID]; !exists {
+				buddylist.groups[item.GroupID] = group{
+					name:    "", // Unknown group name
+					buddies: make(map[uint16]buddy),
+					order:   []uint16{},
+				}
+			}
 			buddy := buddy{
 				name: item.Name,
 			}
@@ -2100,4 +2750,56 @@ func unescape(encoded string) string {
 	}
 
 	return result.String()
+}
+
+// parseTOC2Config parses the TOC2 config format string into a map of group names to buddy lists.
+//
+// Config format: {g:group<lf>b:buddy1<lf>b:buddy2<lf>}
+// Where <lf> is a linefeed character (ASCII 10, \n).
+//
+// Extended format for buddies with alias/note:
+// b:buddy:alias:::::note
+//
+// Returns a map where keys are group names and values are slices of buddy entries.
+// Each buddy entry is a string that may contain alias/note information.
+func parseTOC2Config(config string) (map[string][]string, error) {
+	// Remove surrounding braces
+	config = strings.TrimPrefix(config, "{")
+	config = strings.TrimSuffix(config, "}")
+
+	// Split by linefeed (ASCII 10)
+	lines := strings.Split(config, "\n")
+
+	result := make(map[string][]string)
+	var currentGroup string
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		if strings.HasPrefix(line, "g:") {
+			// Group line: g:groupname
+			currentGroup = strings.TrimPrefix(line, "g:")
+			if currentGroup == "" {
+				return nil, fmt.Errorf("empty group name")
+			}
+			if result[currentGroup] == nil {
+				result[currentGroup] = []string{}
+			}
+		} else if strings.HasPrefix(line, "b:") {
+			// Buddy line: b:buddy or b:buddy:alias:::::note
+			if currentGroup == "" {
+				return nil, fmt.Errorf("buddy entry without group")
+			}
+			buddyEntry := strings.TrimPrefix(line, "b:")
+			if buddyEntry == "" {
+				return nil, fmt.Errorf("empty buddy name")
+			}
+			result[currentGroup] = append(result[currentGroup], buddyEntry)
+		}
+	}
+
+	return result, nil
 }
