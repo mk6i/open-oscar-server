@@ -1924,6 +1924,7 @@ const (
 	ICQDBQueryMetaReqSetInterests      uint16 = 0x0410
 	ICQDBQueryMetaReqSetAffiliations   uint16 = 0x041A
 	ICQDBQueryMetaReqSetPermissions    uint16 = 0x0424
+	ICQDBQueryMetaReqSetICQPhone       uint16 = 0x0654
 	ICQDBQueryMetaReqShortInfo         uint16 = 0x04BA
 	ICQDBQueryMetaReqFullInfo          uint16 = 0x04B2
 	ICQDBQueryMetaReqFullInfo2         uint16 = 0x04D0
@@ -1957,6 +1958,7 @@ const (
 	ICQDBQueryMetaReplySetInterests    uint16 = 0x008C
 	ICQDBQueryMetaReplySetAffiliations uint16 = 0x0096
 	ICQDBQueryMetaReplySetPermissions  uint16 = 0x00A0
+	ICQDBQueryMetaReplySetICQPhone     uint16 = 0x031E
 	ICQDBQueryMetaReplyBasicInfo       uint16 = 0x00C8
 	ICQDBQueryMetaReplyWorkInfo        uint16 = 0x00D2
 	ICQDBQueryMetaReplyMoreInfo        uint16 = 0x00DC
@@ -1988,6 +1990,12 @@ type ICQ_0x07D0_0x0424_DBQueryMetaReqSetPermissions struct {
 	WebAware      uint8 // webaware (0-no, 1-yes)
 	DCPerms       uint8 // dc_perms (0-any, 1-contact, 2-authorization)
 	Unknown       uint8
+}
+
+// ICQ_0x07D0_0x0654_DBQueryMetaReqSetICQPhone represents a request to set
+// ICQPhone information.
+type ICQ_0x07D0_0x0654_DBQueryMetaReqSetICQPhone struct {
+	// acknowledge the data, do nothing
 }
 
 type ICQ_0x07D0_0x051F_DBQueryMetaReqSearchByUIN struct {
