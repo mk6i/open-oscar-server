@@ -78,7 +78,7 @@ func (c HMACCookieBaker) Issue(data []byte) ([]byte, error) {
 func (c HMACCookieBaker) Crack(data []byte) ([]byte, error) {
 	hmacTok := hmacToken{}
 	if err := wire.UnmarshalBE(&hmacTok, bytes.NewBuffer(data)); err != nil {
-		return nil, fmt.Errorf("unable to unmarshal HMAC cooie: %w", err)
+		return nil, fmt.Errorf("unable to unmarshal HMAC cookie: %w", err)
 	}
 
 	if !hmacTok.validate(c.key) {
