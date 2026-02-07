@@ -100,6 +100,9 @@ func NewManagementAPI(bld config.Build, listener string, userManager UserManager
 		getVersionHandler(w, bld)
 	})
 
+	// Handler for admin UI
+	mux.HandleFunc("GET /admin", adminUIHandler)
+
 	// Handlers for '/admin/webapi/keys' route - Web API key management
 	mux.HandleFunc("POST /admin/webapi/keys", func(w http.ResponseWriter, r *http.Request) {
 		postWebAPIKeyHandler(w, r, webAPIKeyManager, uuid.New, logger)
