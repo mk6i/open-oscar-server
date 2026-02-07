@@ -2194,6 +2194,71 @@ func TestICQService_SetEmails(t *testing.T) {
 	}
 }
 
+func TestICQService_SetICQPhone(t *testing.T) {
+	tests := []struct {
+		name       string
+		seq        uint16
+		instance   *state.SessionInstance
+		req        wire.ICQ_0x07D0_0x0654_DBQueryMetaReqSetICQPhone
+		mockParams mockParams
+		wantErr    error
+	}{
+		{
+			name:     "happy path",
+			seq:      1,
+			instance: newTestInstance("100003", sessOptUIN(100003)),
+			req:      wire.ICQ_0x07D0_0x0654_DBQueryMetaReqSetICQPhone{},
+			mockParams: mockParams{
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("100003"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.ICQ,
+									SubGroup:  wire.ICQDBReply,
+								},
+								Body: wire.SNAC_0x15_0x02_DBReply{
+									TLVRestBlock: wire.TLVRestBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.ICQTLVTagsMetadata, wire.ICQMessageReplyEnvelope{
+												Message: wire.ICQ_0x07DA_0x00DC_DBQueryMetaReplyMoreInfo{
+													ICQMetadata: wire.ICQMetadata{
+														UIN:     100003,
+														ReqType: wire.ICQDBQueryMetaReply,
+														Seq:     1,
+													},
+													ReqSubType: wire.ICQDBQueryMetaReplySetICQPhone,
+													Success:    wire.ICQStatusCodeOK,
+												},
+											}),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			messageRelayer := newMockMessageRelayer(t)
+			for _, params := range tt.mockParams.relayToScreenNameParams {
+				messageRelayer.EXPECT().RelayToScreenName(mock.Anything, params.screenName, params.message)
+			}
+
+			s := ICQService{
+				logger:         slog.Default(),
+				messageRelayer: messageRelayer,
+			}
+			err := s.SetICQPhone(context.Background(), tt.instance, tt.req, tt.seq)
+			assert.NoError(t, err)
+		})
+	}
+}
+
 func TestICQService_SetBasicInfo(t *testing.T) {
 	tests := []struct {
 		name       string

@@ -518,6 +518,11 @@ func (s ICQService) SetEmails(ctx context.Context, instance *state.SessionInstan
 	return s.reqAck(ctx, instance, seq, wire.ICQDBQueryMetaReplySetEmails)
 }
 
+func (s ICQService) SetICQPhone(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x0654_DBQueryMetaReqSetICQPhone, seq uint16) error {
+	s.logger.Debug("received SetICQPhone request")
+	return s.reqAck(ctx, instance, seq, wire.ICQDBQueryMetaReplySetICQPhone)
+}
+
 func (s ICQService) SetInterests(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x0410_DBQueryMetaReqSetInterests, seq uint16) error {
 	if len(inBody.Interests) != 4 {
 		return fmt.Errorf("%w: expected 4 interests", errICQBadRequest)
