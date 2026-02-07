@@ -217,6 +217,14 @@ func getEnvOrDefault(key, defaultValue string) string {
 func OSCAR(deps Container) *oscar.Server {
 	logger := deps.logger.With("svc", "OSCAR")
 
+	createAccount := state.NewAccountCreator(
+		deps.sqLiteUserStore.InsertUser,
+		func(ctx context.Context, screenName state.IdentScreenName, items []wire.FeedbagItem) error {
+			// No-op: feedbag initialization skipped per user request
+			return nil
+		},
+	)
+
 	adminService := foodgroup.NewAdminService(
 		deps.sqLiteUserStore,
 		deps.sqLiteUserStore,
@@ -236,6 +244,7 @@ func OSCAR(deps Container) *oscar.Server {
 		deps.sqLiteUserStore,
 		deps.sqLiteUserStore,
 		deps.rateLimitClasses,
+		createAccount,
 		logger,
 	)
 	bartService := foodgroup.NewBARTService(
@@ -339,7 +348,14 @@ func OSCAR(deps Container) *oscar.Server {
 // KerberosAPI creates an HTTP server for the Kerberos server.
 func KerberosAPI(deps Container) *kerberos.Server {
 	logger := deps.logger.With("svc", "Kerberos")
-	authService := foodgroup.NewAuthService(deps.cfg, deps.inMemorySessionManager, deps.inMemorySessionManager, deps.chatSessionManager, deps.sqLiteUserStore, deps.hmacCookieBaker, deps.chatSessionManager, deps.sqLiteUserStore, deps.sqLiteUserStore, deps.rateLimitClasses, logger)
+	createAccount := state.NewAccountCreator(
+		deps.sqLiteUserStore.InsertUser,
+		func(ctx context.Context, screenName state.IdentScreenName, items []wire.FeedbagItem) error {
+			// No-op: feedbag initialization skipped per user request
+			return nil
+		},
+	)
+	authService := foodgroup.NewAuthService(deps.cfg, deps.inMemorySessionManager, deps.inMemorySessionManager, deps.chatSessionManager, deps.sqLiteUserStore, deps.hmacCookieBaker, deps.chatSessionManager, deps.sqLiteUserStore, deps.sqLiteUserStore, deps.rateLimitClasses, createAccount, logger)
 	return kerberos.NewKerberosServer(deps.Listeners, logger, authService)
 }
 
@@ -357,6 +373,13 @@ func MgmtAPI(deps Container) *http.Server {
 		deps.sqLiteUserStore,
 		deps.inMemorySessionManager,
 		deps.sqLiteUserStore,
+	)
+	createAccount := state.NewAccountCreator(
+		deps.sqLiteUserStore.InsertUser,
+		func(ctx context.Context, screenName state.IdentScreenName, items []wire.FeedbagItem) error {
+			// No-op: feedbag initialization skipped per user request
+			return nil
+		},
 	)
 	return http.NewManagementAPI(
 		bld,
@@ -376,6 +399,7 @@ func MgmtAPI(deps Container) *http.Server {
 		deps.sqLiteUserStore,        // accountManager
 		deps.sqLiteUserStore,        // profileRetriever
 		deps.sqLiteUserStore,        // webAPIKeyManager
+		createAccount,
 		logger,
 	)
 }
@@ -383,6 +407,14 @@ func MgmtAPI(deps Container) *http.Server {
 // TOC creates a TOC server.
 func TOC(deps Container) *toc.Server {
 	logger := deps.logger.With("svc", "TOC")
+
+	createAccount := state.NewAccountCreator(
+		deps.sqLiteUserStore.InsertUser,
+		func(ctx context.Context, screenName state.IdentScreenName, items []wire.FeedbagItem) error {
+			// No-op: feedbag initialization skipped per user request
+			return nil
+		},
+	)
 
 	return toc.NewServer(
 		deps.cfg.TOCListeners,
@@ -407,6 +439,7 @@ func TOC(deps Container) *toc.Server {
 				deps.sqLiteUserStore,
 				deps.sqLiteUserStore,
 				deps.rateLimitClasses,
+				createAccount,
 				logger,
 			),
 			BuddyListRegistry: deps.sqLiteUserStore,
@@ -488,6 +521,14 @@ func WebAPI(deps Container) *webapi.Server {
 		deps.sqLiteUserStore,
 	)
 
+	createAccount := state.NewAccountCreator(
+		deps.sqLiteUserStore.InsertUser,
+		func(ctx context.Context, screenName state.IdentScreenName, items []wire.FeedbagItem) error {
+			// No-op: feedbag initialization skipped per user request
+			return nil
+		},
+	)
+
 	handler := webapi.Handler{
 		AdminService: foodgroup.NewAdminService(
 			deps.sqLiteUserStore,
@@ -508,6 +549,7 @@ func WebAPI(deps Container) *webapi.Server {
 			deps.sqLiteUserStore,
 			deps.sqLiteUserStore,
 			deps.rateLimitClasses,
+			createAccount,
 			logger,
 		),
 		BuddyListRegistry: deps.sqLiteUserStore,

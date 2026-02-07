@@ -24,7 +24,7 @@ import (
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
-func NewManagementAPI(bld config.Build, listener string, userManager UserManager, sessionRetriever SessionRetriever, buddyBroadcaster BuddyBroadcaster, chatRoomRetriever ChatRoomRetriever, chatRoomCreator ChatRoomCreator, chatRoomDeleter ChatRoomDeleter, chatSessionRetriever ChatSessionRetriever, directoryManager DirectoryManager, messageRelayer MessageRelayer, bartAssetManager BARTAssetManager, feedbagRetriever FeedBagRetriever, feedbagManager FeedbagManager, accountManager AccountManager, profileRetriever ProfileRetriever, webAPIKeyManager WebAPIKeyManager, logger *slog.Logger) *Server {
+func NewManagementAPI(bld config.Build, listener string, userManager UserManager, sessionRetriever SessionRetriever, buddyBroadcaster BuddyBroadcaster, chatRoomRetriever ChatRoomRetriever, chatRoomCreator ChatRoomCreator, chatRoomDeleter ChatRoomDeleter, chatSessionRetriever ChatSessionRetriever, directoryManager DirectoryManager, messageRelayer MessageRelayer, bartAssetManager BARTAssetManager, feedbagRetriever FeedBagRetriever, feedbagManager FeedbagManager, accountManager AccountManager, profileRetriever ProfileRetriever, webAPIKeyManager WebAPIKeyManager, createAccount state.CreateAccountFunc, logger *slog.Logger) *Server {
 	mux := http.NewServeMux()
 
 	// Handlers for '/user' route
@@ -35,7 +35,7 @@ func NewManagementAPI(bld config.Build, listener string, userManager UserManager
 		getUserHandler(w, r, userManager, logger)
 	})
 	mux.HandleFunc("POST /user", func(w http.ResponseWriter, r *http.Request) {
-		postUserHandler(w, r, userManager, uuid.New, logger)
+		postUserHandler(w, r, createAccount, logger)
 	})
 
 	// Handlers for '/user/password' route
@@ -383,7 +383,7 @@ func getUserHandler(w http.ResponseWriter, r *http.Request, userManager UserMana
 }
 
 // postUserHandler handles the POST /user endpoint.
-func postUserHandler(w http.ResponseWriter, r *http.Request, userManager UserManager, newUUID func() uuid.UUID, logger *slog.Logger) {
+func postUserHandler(w http.ResponseWriter, r *http.Request, createAccount state.CreateAccountFunc, logger *slog.Logger) {
 	input, err := userFromBody(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -392,34 +392,19 @@ func postUserHandler(w http.ResponseWriter, r *http.Request, userManager UserMan
 
 	sn := state.DisplayScreenName(input.ScreenName)
 
-	if sn.IsUIN() {
-		if err := sn.ValidateUIN(); err != nil {
-			http.Error(w, fmt.Sprintf("invalid uin: %s", err), http.StatusBadRequest)
-			return
-		}
-	} else {
-		if err := sn.ValidateAIMHandle(); err != nil {
-			http.Error(w, fmt.Sprintf("invalid screen name: %s", err), http.StatusBadRequest)
-			return
-		}
-	}
-
-	user := state.User{
-		AuthKey:           newUUID().String(),
-		DisplayScreenName: sn,
-		IdentScreenName:   sn.IdentScreenName(),
-		IsICQ:             sn.IsUIN(),
-	}
-
-	if err := user.HashPassword(input.Password); err != nil {
-		http.Error(w, fmt.Sprintf("invalid password: %s", err), http.StatusBadRequest)
-		return
-	}
-
-	err = userManager.InsertUser(r.Context(), user)
+	_, err = createAccount(r.Context(), sn, input.Password)
 	switch {
 	case errors.Is(err, state.ErrDupUser):
 		http.Error(w, "user already exists", http.StatusConflict)
+		return
+	case errors.Is(err, state.ErrAIMHandleInvalidFormat), errors.Is(err, state.ErrAIMHandleLength):
+		http.Error(w, fmt.Sprintf("invalid screen name: %s", err), http.StatusBadRequest)
+		return
+	case errors.Is(err, state.ErrICQUINInvalidFormat):
+		http.Error(w, fmt.Sprintf("invalid uin: %s", err), http.StatusBadRequest)
+		return
+	case errors.Is(err, state.ErrPasswordInvalid):
+		http.Error(w, fmt.Sprintf("invalid password: %s", err), http.StatusBadRequest)
 		return
 	case err != nil:
 		logger.Error("error inserting user POST /user", "err", err.Error())

@@ -222,7 +222,7 @@ func TestOscarServer_RouteConnection_Auth_BUCP(t *testing.T) {
 			Body: wire.SNAC_0x17_0x07_BUCPChallengeResponse{},
 		}, nil)
 	authService.EXPECT().
-		BUCPLogin(matchContext(), mock.Anything, mock.Anything, "localhost:5190").
+		BUCPLogin(matchContext(), mock.Anything, "localhost:5190").
 		Return(wire.SNACMessage{
 			Frame: wire.SNACFrame{
 				FoodGroup: wire.BUCP,
@@ -297,7 +297,7 @@ func TestOscarServer_RouteConnection_Auth_FLAP(t *testing.T) {
 
 	authService := newMockAuthService(t)
 	authService.EXPECT().
-		FLAPLogin(matchContext(), mock.Anything, mock.Anything, "localhost:5190").
+		FLAPLogin(matchContext(), mock.Anything, "localhost:5190").
 		Return(wire.TLVRestBlock{
 			TLVList: []wire.TLV{
 				wire.NewTLVBE(wire.LoginTLVTagsScreenName, "testuser"),

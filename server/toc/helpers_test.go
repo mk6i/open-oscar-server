@@ -119,10 +119,9 @@ type oServiceParams struct {
 }
 
 type flapLoginParams []struct {
-	frame     wire.FLAPSignonFrame
-	newUserFn func(screenName state.DisplayScreenName) (state.User, error)
-	tlv       wire.TLVRestBlock
-	err       error
+	frame wire.FLAPSignonFrame
+	tlv   wire.TLVRestBlock
+	err   error
 }
 
 type registerBOSSessionParams []struct {

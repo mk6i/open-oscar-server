@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/mk6i/open-oscar-server/wire"
 
 	"github.com/stretchr/testify/assert"
@@ -565,20 +567,6 @@ func TestSQLiteUserStore_DeleteUser_DeleteNonExistentUser(t *testing.T) {
 
 	err = f.DeleteUser(context.Background(), NewIdentScreenName("userA"))
 	assert.ErrorIs(t, ErrNoUser, err)
-}
-
-func TestNewStubUser(t *testing.T) {
-	have, err := NewStubUser("userA")
-	assert.NoError(t, err)
-
-	want := User{
-		IdentScreenName:   NewIdentScreenName("userA"),
-		DisplayScreenName: "userA",
-		AuthKey:           have.AuthKey,
-	}
-	assert.NoError(t, want.HashPassword("welcome1"))
-
-	assert.Equal(t, want, have)
 }
 
 func newFeedbagItem(classID uint16, itemID uint16, name string) wire.FeedbagItem {
@@ -2022,8 +2010,13 @@ func TestSQLiteUserStore_RetrieveMessages(t *testing.T) {
 
 	createStubUser := func(t *testing.T, store SQLiteUserStore, screenName DisplayScreenName) {
 		t.Helper()
-		user, err := NewStubUser(screenName)
-		require.NoError(t, err)
+		user := User{
+			IdentScreenName:   NewIdentScreenName(string(screenName)),
+			DisplayScreenName: screenName,
+			AuthKey:           uuid.New().String(),
+			IsICQ:             screenName.IsUIN(),
+		}
+		require.NoError(t, user.HashPassword("welcome1"))
 		require.NoError(t, store.InsertUser(context.Background(), user))
 	}
 
@@ -2099,8 +2092,13 @@ func TestSQLiteUserStore_DeleteMessages(t *testing.T) {
 
 	createStubUser := func(t *testing.T, store SQLiteUserStore, screenName DisplayScreenName) {
 		t.Helper()
-		user, err := NewStubUser(screenName)
-		require.NoError(t, err)
+		user := User{
+			IdentScreenName:   NewIdentScreenName(string(screenName)),
+			DisplayScreenName: screenName,
+			AuthKey:           uuid.New().String(),
+			IsICQ:             screenName.IsUIN(),
+		}
+		require.NoError(t, user.HashPassword("welcome1"))
 		require.NoError(t, store.InsertUser(context.Background(), user))
 	}
 
@@ -2183,8 +2181,13 @@ func TestSQLiteUserStore_SaveMessage(t *testing.T) {
 
 	createStubUser := func(t *testing.T, store SQLiteUserStore, screenName DisplayScreenName) {
 		t.Helper()
-		user, err := NewStubUser(screenName)
-		require.NoError(t, err)
+		user := User{
+			IdentScreenName:   NewIdentScreenName(string(screenName)),
+			DisplayScreenName: screenName,
+			AuthKey:           uuid.New().String(),
+			IsICQ:             screenName.IsUIN(),
+		}
+		require.NoError(t, user.HashPassword("welcome1"))
 		require.NoError(t, store.InsertUser(context.Background(), user))
 	}
 	createStubUser(t, *store, DisplayScreenName("Sender"))

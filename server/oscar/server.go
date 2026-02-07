@@ -457,7 +457,7 @@ func (s oscarServer) processFLAPAuth(
 	flapc *wire.FlapClient,
 	advertisedHost string,
 ) error {
-	tlv, err := s.AuthService.FLAPLogin(ctx, signonFrame, state.NewStubUser, advertisedHost)
+	tlv, err := s.AuthService.FLAPLogin(ctx, signonFrame, advertisedHost)
 	if err != nil {
 		return err
 	}
@@ -515,7 +515,7 @@ func (s oscarServer) processBUCPAuth(ctx context.Context, flapc *wire.FlapClient
 				if err := wire.UnmarshalBE(&loginRequest, buf); err != nil {
 					return err
 				}
-				outSNAC, err := s.BUCPLogin(ctx, loginRequest, state.NewStubUser, advertisedHost)
+				outSNAC, err := s.BUCPLogin(ctx, loginRequest, advertisedHost)
 				if err != nil {
 					return err
 				}
