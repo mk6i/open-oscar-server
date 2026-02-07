@@ -165,6 +165,33 @@ type UserManager interface {
 	User(ctx context.Context, screenName state.IdentScreenName) (*state.User, error)
 }
 
+// ICQProfileManager defines methods for getting and setting ICQ user profile data.
+type ICQProfileManager interface {
+	// User returns all attributes for a user.
+	User(ctx context.Context, screenName state.IdentScreenName) (*state.User, error)
+
+	// SetBasicInfo updates the user's basic ICQ profile info.
+	SetBasicInfo(ctx context.Context, name state.IdentScreenName, data state.ICQBasicInfo) error
+
+	// SetMoreInfo updates the user's additional ICQ info.
+	SetMoreInfo(ctx context.Context, name state.IdentScreenName, data state.ICQMoreInfo) error
+
+	// SetWorkInfo updates the user's work info.
+	SetWorkInfo(ctx context.Context, name state.IdentScreenName, data state.ICQWorkInfo) error
+
+	// SetUserNotes updates the user's notes.
+	SetUserNotes(ctx context.Context, name state.IdentScreenName, data state.ICQUserNotes) error
+
+	// SetInterests updates the user's interests.
+	SetInterests(ctx context.Context, name state.IdentScreenName, data state.ICQInterests) error
+
+	// SetAffiliations updates the user's affiliations.
+	SetAffiliations(ctx context.Context, name state.IdentScreenName, data state.ICQAffiliations) error
+
+	// SetPermissions updates the user's privacy permissions.
+	SetPermissions(ctx context.Context, name state.IdentScreenName, data state.ICQPermissions) error
+}
+
 type userWithPassword struct {
 	ScreenName string `json:"screen_name"`
 	Password   string `json:"password,omitempty"`
@@ -292,6 +319,93 @@ type webAPIKeyResponse struct {
 	RateLimit      int        `json:"rate_limit"`
 	AllowedOrigins []string   `json:"allowed_origins,omitempty"`
 	Capabilities   []string   `json:"capabilities,omitempty"`
+}
+
+// icqProfileHandle is the JSON representation of a full ICQ user profile.
+type icqProfileHandle struct {
+	UIN         uint32                `json:"uin"`
+	BasicInfo   icqBasicInfoHandle    `json:"basic_info"`
+	MoreInfo    icqMoreInfoHandle     `json:"more_info"`
+	WorkInfo    icqWorkInfoHandle     `json:"work_info"`
+	Notes       string                `json:"notes"`
+	Interests   icqInterestsHandle    `json:"interests"`
+	Affiliations icqAffiliationsHandle `json:"affiliations"`
+	Permissions icqPermissionsHandle  `json:"permissions"`
+}
+
+type icqBasicInfoHandle struct {
+	Nickname     string `json:"nickname"`
+	FirstName    string `json:"first_name"`
+	LastName     string `json:"last_name"`
+	EmailAddress string `json:"email"`
+	City         string `json:"city"`
+	State        string `json:"state"`
+	Phone        string `json:"phone"`
+	Fax          string `json:"fax"`
+	Address      string `json:"address"`
+	CellPhone    string `json:"cell_phone"`
+	ZIPCode      string `json:"zip"`
+	CountryCode  uint16 `json:"country_code"`
+	GMTOffset    uint8  `json:"gmt_offset"`
+	PublishEmail bool   `json:"publish_email"`
+}
+
+type icqMoreInfoHandle struct {
+	Gender       uint16 `json:"gender"`
+	HomePageAddr string `json:"homepage"`
+	BirthYear    uint16 `json:"birth_year"`
+	BirthMonth   uint8  `json:"birth_month"`
+	BirthDay     uint8  `json:"birth_day"`
+	Lang1        uint8  `json:"lang1"`
+	Lang2        uint8  `json:"lang2"`
+	Lang3        uint8  `json:"lang3"`
+}
+
+type icqWorkInfoHandle struct {
+	Company        string `json:"company"`
+	Department     string `json:"department"`
+	Position       string `json:"position"`
+	OccupationCode uint16 `json:"occupation_code"`
+	Address        string `json:"address"`
+	City           string `json:"city"`
+	State          string `json:"state"`
+	ZIPCode        string `json:"zip"`
+	CountryCode    uint16 `json:"country_code"`
+	Phone          string `json:"phone"`
+	Fax            string `json:"fax"`
+	WebPage        string `json:"web_page"`
+}
+
+type icqInterestsHandle struct {
+	Code1    uint16 `json:"code1"`
+	Keyword1 string `json:"keyword1"`
+	Code2    uint16 `json:"code2"`
+	Keyword2 string `json:"keyword2"`
+	Code3    uint16 `json:"code3"`
+	Keyword3 string `json:"keyword3"`
+	Code4    uint16 `json:"code4"`
+	Keyword4 string `json:"keyword4"`
+}
+
+type icqAffiliationsHandle struct {
+	PastCode1       uint16 `json:"past_code1"`
+	PastKeyword1    string `json:"past_keyword1"`
+	PastCode2       uint16 `json:"past_code2"`
+	PastKeyword2    string `json:"past_keyword2"`
+	PastCode3       uint16 `json:"past_code3"`
+	PastKeyword3    string `json:"past_keyword3"`
+	CurrentCode1    uint16 `json:"current_code1"`
+	CurrentKeyword1 string `json:"current_keyword1"`
+	CurrentCode2    uint16 `json:"current_code2"`
+	CurrentKeyword2 string `json:"current_keyword2"`
+	CurrentCode3    uint16 `json:"current_code3"`
+	CurrentKeyword3 string `json:"current_keyword3"`
+}
+
+type icqPermissionsHandle struct {
+	AuthRequired bool `json:"auth_required"`
+	WebAware     bool `json:"web_aware"`
+	AllowSpam    bool `json:"allow_spam"`
 }
 
 type updateWebAPIKeyRequest struct {

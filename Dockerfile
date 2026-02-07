@@ -15,6 +15,6 @@ WORKDIR /app
 
 COPY --from=builder /app/open_oscar_server /app/
 
-EXPOSE 5190 8080 9898 1088
+EXPOSE 5190 8080 9898 1088 4000/udp
 
 CMD ["/app/open_oscar_server"]

@@ -78,6 +78,12 @@ func main() {
 		g.Go(webAPI.ListenAndServe)
 	}
 
+	// Start ICQ Legacy server if enabled
+	icqLegacy := ICQLegacy(deps)
+	if deps.cfg.ICQLegacy.Enabled {
+		g.Go(icqLegacy.ListenAndServe)
+	}
+
 	select {
 	case <-ctx.Done():
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -88,6 +94,9 @@ func main() {
 		_ = toc.Shutdown(shutdownCtx)
 		if os.Getenv("ENABLE_WEBAPI") == "1" {
 			_ = webAPI.Shutdown(shutdownCtx)
+		}
+		if deps.cfg.ICQLegacy.Enabled {
+			_ = icqLegacy.Shutdown(shutdownCtx)
 		}
 	}
 

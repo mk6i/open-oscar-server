@@ -24,7 +24,7 @@ import (
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
-func NewManagementAPI(bld config.Build, listener string, userManager UserManager, sessionRetriever SessionRetriever, buddyBroadcaster BuddyBroadcaster, chatRoomRetriever ChatRoomRetriever, chatRoomCreator ChatRoomCreator, chatRoomDeleter ChatRoomDeleter, chatSessionRetriever ChatSessionRetriever, directoryManager DirectoryManager, messageRelayer MessageRelayer, bartAssetManager BARTAssetManager, feedbagRetriever FeedBagRetriever, feedbagManager FeedbagManager, accountManager AccountManager, profileRetriever ProfileRetriever, webAPIKeyManager WebAPIKeyManager, createAccount state.CreateAccountFunc, logger *slog.Logger) *Server {
+func NewManagementAPI(bld config.Build, listener string, userManager UserManager, sessionRetriever SessionRetriever, buddyBroadcaster BuddyBroadcaster, chatRoomRetriever ChatRoomRetriever, chatRoomCreator ChatRoomCreator, chatRoomDeleter ChatRoomDeleter, chatSessionRetriever ChatSessionRetriever, directoryManager DirectoryManager, messageRelayer MessageRelayer, bartAssetManager BARTAssetManager, feedbagRetriever FeedBagRetriever, feedbagManager FeedbagManager, accountManager AccountManager, profileRetriever ProfileRetriever, webAPIKeyManager WebAPIKeyManager, icqProfileManager ICQProfileManager, createAccount state.CreateAccountFunc, logger *slog.Logger) *Server {
 	mux := http.NewServeMux()
 
 	// Handlers for '/user' route
@@ -59,6 +59,14 @@ func NewManagementAPI(bld config.Build, listener string, userManager UserManager
 	// Handlers for '/user/{screenname}/icon' route
 	mux.HandleFunc("GET /user/{screenname}/icon", func(w http.ResponseWriter, r *http.Request) {
 		getUserBuddyIconHandler(w, r, userManager, feedbagRetriever, bartAssetManager, logger)
+	})
+
+	// Handlers for '/user/{screenname}/icq' route
+	mux.HandleFunc("GET /user/{screenname}/icq", func(w http.ResponseWriter, r *http.Request) {
+		getICQProfileHandler(w, r, icqProfileManager, logger)
+	})
+	mux.HandleFunc("PUT /user/{screenname}/icq", func(w http.ResponseWriter, r *http.Request) {
+		putICQProfileHandler(w, r, icqProfileManager, logger)
 	})
 
 	// Handlers for '/session' route
@@ -99,6 +107,9 @@ func NewManagementAPI(bld config.Build, listener string, userManager UserManager
 	mux.HandleFunc("GET /version", func(w http.ResponseWriter, r *http.Request) {
 		getVersionHandler(w, bld)
 	})
+
+	// Handler for admin UI
+	mux.HandleFunc("GET /admin", adminUIHandler)
 
 	// Handlers for '/admin/webapi/keys' route - Web API key management
 	mux.HandleFunc("POST /admin/webapi/keys", func(w http.ResponseWriter, r *http.Request) {
@@ -1034,6 +1045,331 @@ func deleteDirectoryKeywordHandler(w http.ResponseWriter, r *http.Request, manag
 			errorMsg(w, "internal server error", http.StatusInternalServerError)
 			return
 		}
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// getICQProfileHandler handles the GET /user/{screenname}/icq endpoint.
+func getICQProfileHandler(w http.ResponseWriter, r *http.Request, mgr ICQProfileManager, logger *slog.Logger) {
+	w.Header().Set("Content-Type", "application/json")
+
+	screenName := r.PathValue("screenname")
+	user, err := mgr.User(r.Context(), state.NewIdentScreenName(screenName))
+	if err != nil {
+		logger.Error("error in GET /user/{screenname}/icq", "err", err.Error())
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if user == nil {
+		http.Error(w, "user not found", http.StatusNotFound)
+		return
+	}
+	if !user.IsICQ {
+		http.Error(w, "user is not an ICQ account", http.StatusBadRequest)
+		return
+	}
+
+	out := icqProfileHandle{
+		UIN: user.IdentScreenName.UIN(),
+		BasicInfo: icqBasicInfoHandle{
+			Nickname:     user.ICQBasicInfo.Nickname,
+			FirstName:    user.ICQBasicInfo.FirstName,
+			LastName:     user.ICQBasicInfo.LastName,
+			EmailAddress: user.ICQBasicInfo.EmailAddress,
+			City:         user.ICQBasicInfo.City,
+			State:        user.ICQBasicInfo.State,
+			Phone:        user.ICQBasicInfo.Phone,
+			Fax:          user.ICQBasicInfo.Fax,
+			Address:      user.ICQBasicInfo.Address,
+			CellPhone:    user.ICQBasicInfo.CellPhone,
+			ZIPCode:      user.ICQBasicInfo.ZIPCode,
+			CountryCode:  user.ICQBasicInfo.CountryCode,
+			GMTOffset:    user.ICQBasicInfo.GMTOffset,
+			PublishEmail: user.ICQBasicInfo.PublishEmail,
+		},
+		MoreInfo: icqMoreInfoHandle{
+			Gender:       user.ICQMoreInfo.Gender,
+			HomePageAddr: user.ICQMoreInfo.HomePageAddr,
+			BirthYear:    user.ICQMoreInfo.BirthYear,
+			BirthMonth:   user.ICQMoreInfo.BirthMonth,
+			BirthDay:     user.ICQMoreInfo.BirthDay,
+			Lang1:        user.ICQMoreInfo.Lang1,
+			Lang2:        user.ICQMoreInfo.Lang2,
+			Lang3:        user.ICQMoreInfo.Lang3,
+		},
+		WorkInfo: icqWorkInfoHandle{
+			Company:        user.ICQWorkInfo.Company,
+			Department:     user.ICQWorkInfo.Department,
+			Position:       user.ICQWorkInfo.Position,
+			OccupationCode: user.ICQWorkInfo.OccupationCode,
+			Address:        user.ICQWorkInfo.Address,
+			City:           user.ICQWorkInfo.City,
+			State:          user.ICQWorkInfo.State,
+			ZIPCode:        user.ICQWorkInfo.ZIPCode,
+			CountryCode:    user.ICQWorkInfo.CountryCode,
+			Phone:          user.ICQWorkInfo.Phone,
+			Fax:            user.ICQWorkInfo.Fax,
+			WebPage:        user.ICQWorkInfo.WebPage,
+		},
+		Notes: user.ICQNotes.Notes,
+		Interests: icqInterestsHandle{
+			Code1:    user.ICQInterests.Code1,
+			Keyword1: user.ICQInterests.Keyword1,
+			Code2:    user.ICQInterests.Code2,
+			Keyword2: user.ICQInterests.Keyword2,
+			Code3:    user.ICQInterests.Code3,
+			Keyword3: user.ICQInterests.Keyword3,
+			Code4:    user.ICQInterests.Code4,
+			Keyword4: user.ICQInterests.Keyword4,
+		},
+		Affiliations: icqAffiliationsHandle{
+			PastCode1:       user.ICQAffiliations.PastCode1,
+			PastKeyword1:    user.ICQAffiliations.PastKeyword1,
+			PastCode2:       user.ICQAffiliations.PastCode2,
+			PastKeyword2:    user.ICQAffiliations.PastKeyword2,
+			PastCode3:       user.ICQAffiliations.PastCode3,
+			PastKeyword3:    user.ICQAffiliations.PastKeyword3,
+			CurrentCode1:    user.ICQAffiliations.CurrentCode1,
+			CurrentKeyword1: user.ICQAffiliations.CurrentKeyword1,
+			CurrentCode2:    user.ICQAffiliations.CurrentCode2,
+			CurrentKeyword2: user.ICQAffiliations.CurrentKeyword2,
+			CurrentCode3:    user.ICQAffiliations.CurrentCode3,
+			CurrentKeyword3: user.ICQAffiliations.CurrentKeyword3,
+		},
+		Permissions: icqPermissionsHandle{
+			AuthRequired: user.ICQPermissions.AuthRequired,
+			WebAware:     user.ICQPermissions.WebAware,
+			AllowSpam:    user.ICQPermissions.AllowSpam,
+		},
+	}
+
+	if err := json.NewEncoder(w).Encode(out); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+// putICQProfileHandler handles the PUT /user/{screenname}/icq endpoint.
+func putICQProfileHandler(w http.ResponseWriter, r *http.Request, mgr ICQProfileManager, logger *slog.Logger) {
+	w.Header().Set("Content-Type", "application/json")
+
+	screenName := r.PathValue("screenname")
+	user, err := mgr.User(r.Context(), state.NewIdentScreenName(screenName))
+	if err != nil {
+		logger.Error("error in PUT /user/{screenname}/icq", "err", err.Error())
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if user == nil {
+		http.Error(w, "user not found", http.StatusNotFound)
+		return
+	}
+	if !user.IsICQ {
+		http.Error(w, "user is not an ICQ account", http.StatusBadRequest)
+		return
+	}
+
+	var input icqProfileHandle
+	d := json.NewDecoder(r.Body)
+	if err := d.Decode(&input); err != nil {
+		errorMsg(w, "malformed input: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Validate field lengths. ICQ clients typically handle:
+	// - String fields: max 127 chars (some fields shorter)
+	// - Nickname: max 20 chars
+	// - Phone/fax: max 30 chars
+	// - Email: max 64 chars
+	// - Address/city/state: max 64 chars
+	// - ZIP: max 12 chars
+	// - Homepage: max 127 chars
+	// - Notes: max 450 chars (v5 limit)
+	// - Interest/affiliation keywords: max 64 chars
+	// - Company/department/position: max 64 chars
+	// - Web page: max 127 chars
+	type fieldCheck struct {
+		name string
+		val  string
+		max  int
+	}
+	checks := []fieldCheck{
+		{"basic_info.nickname", input.BasicInfo.Nickname, 20},
+		{"basic_info.first_name", input.BasicInfo.FirstName, 64},
+		{"basic_info.last_name", input.BasicInfo.LastName, 64},
+		{"basic_info.email", input.BasicInfo.EmailAddress, 64},
+		{"basic_info.city", input.BasicInfo.City, 64},
+		{"basic_info.state", input.BasicInfo.State, 64},
+		{"basic_info.phone", input.BasicInfo.Phone, 30},
+		{"basic_info.fax", input.BasicInfo.Fax, 30},
+		{"basic_info.address", input.BasicInfo.Address, 64},
+		{"basic_info.cell_phone", input.BasicInfo.CellPhone, 30},
+		{"basic_info.zip", input.BasicInfo.ZIPCode, 12},
+		{"more_info.homepage", input.MoreInfo.HomePageAddr, 127},
+		{"work_info.company", input.WorkInfo.Company, 64},
+		{"work_info.department", input.WorkInfo.Department, 64},
+		{"work_info.position", input.WorkInfo.Position, 64},
+		{"work_info.address", input.WorkInfo.Address, 64},
+		{"work_info.city", input.WorkInfo.City, 64},
+		{"work_info.state", input.WorkInfo.State, 64},
+		{"work_info.zip", input.WorkInfo.ZIPCode, 12},
+		{"work_info.phone", input.WorkInfo.Phone, 30},
+		{"work_info.fax", input.WorkInfo.Fax, 30},
+		{"work_info.web_page", input.WorkInfo.WebPage, 127},
+		{"notes", input.Notes, 450},
+		{"interests.keyword1", input.Interests.Keyword1, 64},
+		{"interests.keyword2", input.Interests.Keyword2, 64},
+		{"interests.keyword3", input.Interests.Keyword3, 64},
+		{"interests.keyword4", input.Interests.Keyword4, 64},
+		{"affiliations.past_keyword1", input.Affiliations.PastKeyword1, 64},
+		{"affiliations.past_keyword2", input.Affiliations.PastKeyword2, 64},
+		{"affiliations.past_keyword3", input.Affiliations.PastKeyword3, 64},
+		{"affiliations.current_keyword1", input.Affiliations.CurrentKeyword1, 64},
+		{"affiliations.current_keyword2", input.Affiliations.CurrentKeyword2, 64},
+		{"affiliations.current_keyword3", input.Affiliations.CurrentKeyword3, 64},
+	}
+	var validationErrors []string
+	for _, c := range checks {
+		if len(c.val) > c.max {
+			msg := fmt.Sprintf("field %s exceeds max length of %d (got %d)", c.name, c.max, len(c.val))
+			validationErrors = append(validationErrors, msg)
+			logger.Warn("ICQ profile field exceeds max length",
+				"screenname", screenName,
+				"field", c.name,
+				"max", c.max,
+				"got", len(c.val),
+			)
+		}
+	}
+
+	// Validate gender (0=not specified, 1=female, 2=male)
+	if input.MoreInfo.Gender > 2 {
+		validationErrors = append(validationErrors, "more_info.gender must be 0 (unspecified), 1 (female), or 2 (male)")
+		logger.Warn("ICQ profile invalid gender value", "screenname", screenName, "gender", input.MoreInfo.Gender)
+	}
+
+	// Validate birth date
+	if input.MoreInfo.BirthMonth > 12 {
+		validationErrors = append(validationErrors, "more_info.birth_month must be 0-12")
+		logger.Warn("ICQ profile invalid birth month", "screenname", screenName, "birth_month", input.MoreInfo.BirthMonth)
+	}
+	if input.MoreInfo.BirthDay > 31 {
+		validationErrors = append(validationErrors, "more_info.birth_day must be 0-31")
+		logger.Warn("ICQ profile invalid birth day", "screenname", screenName, "birth_day", input.MoreInfo.BirthDay)
+	}
+
+	if len(validationErrors) > 0 {
+		errorMsg(w, strings.Join(validationErrors, "; "), http.StatusBadRequest)
+		return
+	}
+
+	sn := user.IdentScreenName
+
+	if err := mgr.SetBasicInfo(r.Context(), sn, state.ICQBasicInfo{
+		Nickname:     input.BasicInfo.Nickname,
+		FirstName:    input.BasicInfo.FirstName,
+		LastName:     input.BasicInfo.LastName,
+		EmailAddress: input.BasicInfo.EmailAddress,
+		City:         input.BasicInfo.City,
+		State:        input.BasicInfo.State,
+		Phone:        input.BasicInfo.Phone,
+		Fax:          input.BasicInfo.Fax,
+		Address:      input.BasicInfo.Address,
+		CellPhone:    input.BasicInfo.CellPhone,
+		ZIPCode:      input.BasicInfo.ZIPCode,
+		CountryCode:  input.BasicInfo.CountryCode,
+		GMTOffset:    input.BasicInfo.GMTOffset,
+		PublishEmail: input.BasicInfo.PublishEmail,
+	}); err != nil {
+		logger.Error("error setting basic info", "err", err.Error())
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if err := mgr.SetMoreInfo(r.Context(), sn, state.ICQMoreInfo{
+		Gender:       input.MoreInfo.Gender,
+		HomePageAddr: input.MoreInfo.HomePageAddr,
+		BirthYear:    input.MoreInfo.BirthYear,
+		BirthMonth:   input.MoreInfo.BirthMonth,
+		BirthDay:     input.MoreInfo.BirthDay,
+		Lang1:        input.MoreInfo.Lang1,
+		Lang2:        input.MoreInfo.Lang2,
+		Lang3:        input.MoreInfo.Lang3,
+	}); err != nil {
+		logger.Error("error setting more info", "err", err.Error())
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if err := mgr.SetWorkInfo(r.Context(), sn, state.ICQWorkInfo{
+		Company:        input.WorkInfo.Company,
+		Department:     input.WorkInfo.Department,
+		Position:       input.WorkInfo.Position,
+		OccupationCode: input.WorkInfo.OccupationCode,
+		Address:        input.WorkInfo.Address,
+		City:           input.WorkInfo.City,
+		State:          input.WorkInfo.State,
+		ZIPCode:        input.WorkInfo.ZIPCode,
+		CountryCode:    input.WorkInfo.CountryCode,
+		Phone:          input.WorkInfo.Phone,
+		Fax:            input.WorkInfo.Fax,
+		WebPage:        input.WorkInfo.WebPage,
+	}); err != nil {
+		logger.Error("error setting work info", "err", err.Error())
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if err := mgr.SetUserNotes(r.Context(), sn, state.ICQUserNotes{
+		Notes: input.Notes,
+	}); err != nil {
+		logger.Error("error setting notes", "err", err.Error())
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if err := mgr.SetInterests(r.Context(), sn, state.ICQInterests{
+		Code1:    input.Interests.Code1,
+		Keyword1: input.Interests.Keyword1,
+		Code2:    input.Interests.Code2,
+		Keyword2: input.Interests.Keyword2,
+		Code3:    input.Interests.Code3,
+		Keyword3: input.Interests.Keyword3,
+		Code4:    input.Interests.Code4,
+		Keyword4: input.Interests.Keyword4,
+	}); err != nil {
+		logger.Error("error setting interests", "err", err.Error())
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if err := mgr.SetAffiliations(r.Context(), sn, state.ICQAffiliations{
+		PastCode1:       input.Affiliations.PastCode1,
+		PastKeyword1:    input.Affiliations.PastKeyword1,
+		PastCode2:       input.Affiliations.PastCode2,
+		PastKeyword2:    input.Affiliations.PastKeyword2,
+		PastCode3:       input.Affiliations.PastCode3,
+		PastKeyword3:    input.Affiliations.PastKeyword3,
+		CurrentCode1:    input.Affiliations.CurrentCode1,
+		CurrentKeyword1: input.Affiliations.CurrentKeyword1,
+		CurrentCode2:    input.Affiliations.CurrentCode2,
+		CurrentKeyword2: input.Affiliations.CurrentKeyword2,
+		CurrentCode3:    input.Affiliations.CurrentCode3,
+		CurrentKeyword3: input.Affiliations.CurrentKeyword3,
+	}); err != nil {
+		logger.Error("error setting affiliations", "err", err.Error())
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if err := mgr.SetPermissions(r.Context(), sn, state.ICQPermissions{
+		AuthRequired: input.Permissions.AuthRequired,
+		WebAware:     input.Permissions.WebAware,
+		AllowSpam:    input.Permissions.AllowSpam,
+	}); err != nil {
+		logger.Error("error setting permissions", "err", err.Error())
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
 	}
 
 	w.WriteHeader(http.StatusNoContent)

@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Open OSCAR Server Admin</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; color: #333; line-height: 1.6; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; margin-bottom: 20px; border-radius: 8px; }
+        header h1 { font-size: 1.5rem; }
+        header p { opacity: 0.9; font-size: 0.9rem; }
+        .tabs { display: flex; gap: 5px; margin-bottom: 20px; flex-wrap: wrap; }
+        .tab { padding: 10px 20px; background: white; border: none; border-radius: 8px 8px 0 0; cursor: pointer; font-size: 0.9rem; transition: all 0.2s; }
+        .tab:hover { background: #e0e0e0; }
+        .tab.active { background: #667eea; color: white; }
+        .panel { display: none; background: white; padding: 20px; border-radius: 0 8px 8px 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .panel.active { display: block; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: 500; font-size: 0.9rem; }
+        .form-group input, .form-group select { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem; }
+        .form-group input:focus, .form-group select:focus { outline: none; border-color: #667eea; }
+        .btn { padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem; transition: all 0.2s; }
+        .btn-primary { background: #667eea; color: white; }
+        .btn-primary:hover { background: #5a6fd6; }
+        .btn-danger { background: #e74c3c; color: white; }
+        .btn-danger:hover { background: #c0392b; }
+        .btn-secondary { background: #95a5a6; color: white; }
+        .btn-secondary:hover { background: #7f8c8d; }
+        .btn-sm { padding: 5px 10px; font-size: 0.8rem; }
+        .actions { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 0.9rem; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; }
+        th { background: #f8f9fa; font-weight: 600; }
+        tr:hover { background: #f8f9fa; }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; }
+        .badge-success { background: #d4edda; color: #155724; }
+        .badge-warning { background: #fff3cd; color: #856404; }
+        .badge-info { background: #d1ecf1; color: #0c5460; }
+        .badge-danger { background: #f8d7da; color: #721c24; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; }
+        .modal.active { display: flex; align-items: center; justify-content: center; }
+        .modal-content { background: white; padding: 25px; border-radius: 8px; width: 90%; max-width: 400px; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .modal-header h3 { font-size: 1.1rem; }
+        .modal-close { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #999; }
+        .toast { position: fixed; bottom: 20px; right: 20px; padding: 15px 25px; border-radius: 4px; color: white; z-index: 1001; animation: slideIn 0.3s; }
+        .toast-success { background: #27ae60; }
+        .toast-error { background: #e74c3c; }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        .stat-card { background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center; }
+        .stat-card h4 { font-size: 0.8rem; color: #666; margin-bottom: 5px; }
+        .stat-card .value { font-size: 1.5rem; font-weight: bold; color: #667eea; }
+        .empty { text-align: center; padding: 40px; color: #999; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        @media (max-width: 600px) { .form-row { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Open OSCAR Server Admin</h1>
+            <p id="version-info">Loading version...</p>
+        </header>
+
+        <div class="tabs">
+            <button class="tab active" data-tab="users">Users</button>
+            <button class="tab" data-tab="sessions">Sessions</button>
+            <button class="tab" data-tab="chatrooms">Chat Rooms</button>
+            <button class="tab" data-tab="messaging">Messaging</button>
+            <button class="tab" data-tab="directory">Directory</button>
+            <button class="tab" data-tab="icqprofiles">ICQ Profiles</button>
+        </div>
+
+        <!-- Users Panel -->
+        <div class="panel active" id="users">
+            <div class="actions">
+                <button class="btn btn-primary" onclick="showModal('createUser')">Create User</button>
+                <button class="btn btn-secondary" onclick="loadUsers()">Refresh</button>
+            </div>
+            <table>
+                <thead><tr><th>Screen Name</th><th>Type</th><th>Status</th><th>Bot</th><th>Actions</th></tr></thead>
+                <tbody id="users-table"></tbody>
+            </table>
+        </div>
+
+        <!-- Sessions Panel -->
+        <div class="panel" id="sessions">
+            <div class="stats" id="session-stats"></div>
+            <div class="actions">
+                <button class="btn btn-secondary" onclick="loadSessions()">Refresh</button>
+            </div>
+            <table>
+                <thead><tr><th>Screen Name</th><th>Type</th><th>Online</th><th>Status</th><th>Instances</th><th>Actions</th></tr></thead>
+                <tbody id="sessions-table"></tbody>
+            </table>
+        </div>
+
+        <!-- Chat Rooms Panel -->
+        <div class="panel" id="chatrooms">
+            <div class="actions">
+                <button class="btn btn-primary" onclick="showModal('createChat')">Create Public Room</button>
+                <button class="btn btn-secondary" onclick="loadChatRooms()">Refresh</button>
+            </div>
+            <h3 style="margin: 20px 0 10px;">Public Rooms</h3>
+            <table>
+                <thead><tr><th>Name</th><th>Created</th><th>Participants</th><th>Actions</th></tr></thead>
+                <tbody id="public-rooms-table"></tbody>
+            </table>
+            <h3 style="margin: 20px 0 10px;">Private Rooms</h3>
+            <table>
+                <thead><tr><th>Name</th><th>Creator</th><th>Created</th><th>Participants</th></tr></thead>
+                <tbody id="private-rooms-table"></tbody>
+            </table>
+        </div>
+
+        <!-- Messaging Panel -->
+        <div class="panel" id="messaging">
+            <h3 style="margin-bottom: 15px;">Send Instant Message</h3>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>From (Screen Name)</label>
+                    <input type="text" id="msg-from" placeholder="SenderName">
+                </div>
+                <div class="form-group">
+                    <label>To (Screen Name)</label>
+                    <input type="text" id="msg-to" placeholder="RecipientName">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Message</label>
+                <input type="text" id="msg-text" placeholder="Hello!">
+            </div>
+            <button class="btn btn-primary" onclick="sendMessage()">Send Message</button>
+        </div>
+
+        <!-- Directory Panel -->
+        <div class="panel" id="directory">
+            <div class="actions">
+                <button class="btn btn-primary" onclick="showModal('createCategory')">Create Category</button>
+                <button class="btn btn-secondary" onclick="loadDirectory()">Refresh</button>
+            </div>
+            <div id="directory-content"></div>
+        </div>
+
+        <!-- ICQ Profiles Panel -->
+        <div class="panel" id="icqprofiles">
+            <div class="actions" style="align-items: center;">
+                <div class="form-group" style="margin-bottom:0; flex: 1; max-width: 300px;">
+                    <input type="text" id="icq-uin-input" placeholder="Enter UIN (e.g. 123400)">
+                </div>
+                <button class="btn btn-primary" onclick="loadICQProfile()">Load Profile</button>
+            </div>
+            <div id="icq-profile-content" style="display:none;">
+                <h3 style="margin: 15px 0 10px;">UIN: <span id="icq-profile-uin"></span></h3>
+
+                <div style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                    <h4 style="margin-bottom: 10px;">Basic Info</h4>
+                    <div class="form-row">
+                        <div class="form-group"><label>Nickname (max 20)</label><input type="text" id="icq-nickname" maxlength="20"></div>
+                        <div class="form-group"><label>First Name (max 64)</label><input type="text" id="icq-firstname" maxlength="64"></div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group"><label>Last Name (max 64)</label><input type="text" id="icq-lastname" maxlength="64"></div>
+                        <div class="form-group"><label>Email (max 64)</label><input type="text" id="icq-email" maxlength="64"></div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group"><label>Address (max 64)</label><input type="text" id="icq-address" maxlength="64"></div>
+                        <div class="form-group"><label>City (max 64)</label><input type="text" id="icq-city" maxlength="64"></div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group"><label>State (max 64)</label><input type="text" id="icq-state" maxlength="64"></div>
+                        <div class="form-group"><label>ZIP (max 12)</label><input type="text" id="icq-zip" maxlength="12"></div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group"><label>Phone (max 30)</label><input type="text" id="icq-phone" maxlength="30"></div>
+                        <div class="form-group"><label>Fax (max 30)</label><input type="text" id="icq-fax" maxlength="30"></div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group"><label>Cell Phone (max 30)</label><input type="text" id="icq-cellphone" maxlength="30"></div>
+                        <div class="form-group"><label>Country Code</label><input type="number" id="icq-countrycode" min="0" max="65535"></div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group"><label>GMT Offset</label><input type="number" id="icq-gmtoffset" min="0" max="255"></div>
+                        <div class="form-group"><label>Publish Email</label><select id="icq-publishemail"><option value="false">No</option><option value="true">Yes</option></select></div>
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                    <h4 style="margin-bottom: 10px;">More Info</h4>
+                    <div class="form-row">
+                        <div class="form-group"><label>Gender</label><select id="icq-gender"><option value="0">Not specified</option><option value="1">Female</option><option value="2">Male</option></select></div>
+                        <div class="form-group"><label>Homepage (max 127)</label><input type="text" id="icq-homepage" maxlength="127"></div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group"><label>Birth Year</label><input type="number" id="icq-birthyear" min="0" max="65535"></div>
+                        <div class="form-group"><label>Birth Month (1-12)</label><input type="number" id="icq-birthmonth" min="0" max="12"></div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group"><label>Birth Day (1-31)</label><input type="number" id="icq-birthday" min="0" max="31"></div>
+                        <div class="form-group"><label>Language 1</label><input type="number" id="icq-lang1" min="0" max="255"></div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group"><label>Language 2</label><input type="number" id="icq-lang2" min="0" max="255"></div>
+                        <div class="form-group"><label>Language 3</label><input type="number" id="icq-lang3" min="0" max="255"></div>
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                    <h4 style="margin-bottom: 10px;">Work Info</h4>
+                    <div class="form-row">
+                        <div class="form-group"><label>Company (max 64)</label><input type="text" id="icq-company" maxlength="64"></div>
+                        <div class="form-group"><label>Department (max 64)</label><input type="text" id="icq-department" maxlength="64"></div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group"><label>Position (max 64)</label><input type="text" id="icq-position" maxlength="64"></div>
+                        <div class="form-group"><label>Occupation Code</label><input type="number" id="icq-occupationcode" min="0" max="65535"></div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group"><label>Address (max 64)</label><input type="text" id="icq-waddress" maxlength="64"></div>
+                        <div class="form-group"><label>City (max 64)</label><input type="text" id="icq-wcity" maxlength="64"></div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group"><label>State (max 64)</label><input type="text" id="icq-wstate" maxlength="64"></div>
+                        <div class="form-group"><label>ZIP (max 12)</label><input type="text" id="icq-wzip" maxlength="12"></div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group"><label>Country Code</label><input type="number" id="icq-wcountrycode" min="0" max="65535"></div>
+                        <div class="form-group"><label>Phone (max 30)</label><input type="text" id="icq-wphone" maxlength="30"></div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group"><label>Fax (max 30)</label><input type="text" id="icq-wfax" maxlength="30"></div>
+                        <div class="form-group"><label>Web Page (max 127)</label><input type="text" id="icq-wwebpage" maxlength="127"></div>
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                    <h4 style="margin-bottom: 10px;">Notes (max 450)</h4>
+                    <div class="form-group"><textarea id="icq-notes" maxlength="450" rows="3" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:4px;font-size:0.9rem;resize:vertical;"></textarea></div>
+                </div>
+
+                <div style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                    <h4 style="margin-bottom: 10px;">Interests (4 slots, keyword max 64)</h4>
+                    <div class="form-row">
+                        <div class="form-group"><label>Code 1</label><input type="number" id="icq-intcode1" min="0" max="65535"></div>
+                        <div class="form-group"><label>Keyword 1</label><input type="text" id="icq-intkey1" maxlength="64"></div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group"><label>Code 2</label><input type="number" id="icq-intcode2" min="0" max="65535"></div>
+                        <div class="form-group"><label>Keyword 2</label><input type="text" id="icq-intkey2" maxlength="64"></div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group"><label>Code 3</label><input type="number" id="icq-intcode3" min="0" max="65535"></div>
+                        <div class="form-group"><label>Keyword 3</label><input type="text" id="icq-intkey3" maxlength="64"></div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group"><label>Code 4</label><input type="number" id="icq-intcode4" min="0" max="65535"></div>
+                        <div class="form-group"><label>Keyword 4</label><input type="text" id="icq-intkey4" maxlength="64"></div>
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                    <h4 style="margin-bottom: 10px;">Affiliations (3 past + 3 current, keyword max 64)</h4>
+                    <h5 style="margin: 10px 0 5px; color: #666;">Past</h5>
+                    <div class="form-row">
+                        <div class="form-group"><label>Code 1</label><input type="number" id="icq-pastcode1" min="0" max="65535"></div>
+                        <div class="form-group"><label>Keyword 1</label><input type="text" id="icq-pastkey1" maxlength="64"></div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group"><label>Code 2</label><input type="number" id="icq-pastcode2" min="0" max="65535"></div>
+                        <div class="form-group"><label>Keyword 2</label><input type="text" id="icq-pastkey2" maxlength="64"></div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group"><label>Code 3</label><input type="number" id="icq-pastcode3" min="0" max="65535"></div>
+                        <div class="form-group"><label>Keyword 3</label><input type="text" id="icq-pastkey3" maxlength="64"></div>
+                    </div>
+                    <h5 style="margin: 10px 0 5px; color: #666;">Current</h5>
+                    <div class="form-row">
+                        <div class="form-group"><label>Code 1</label><input type="number" id="icq-curcode1" min="0" max="65535"></div>
+                        <div class="form-group"><label>Keyword 1</label><input type="text" id="icq-curkey1" maxlength="64"></div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group"><label>Code 2</label><input type="number" id="icq-curcode2" min="0" max="65535"></div>
+                        <div class="form-group"><label>Keyword 2</label><input type="text" id="icq-curkey2" maxlength="64"></div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group"><label>Code 3</label><input type="number" id="icq-curcode3" min="0" max="65535"></div>
+                        <div class="form-group"><label>Keyword 3</label><input type="text" id="icq-curkey3" maxlength="64"></div>
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                    <h4 style="margin-bottom: 10px;">Permissions</h4>
+                    <div class="form-row">
+                        <div class="form-group"><label>Auth Required</label><select id="icq-authrequired"><option value="false">No</option><option value="true">Yes</option></select></div>
+                        <div class="form-group"><label>Web Aware</label><select id="icq-webaware"><option value="false">No</option><option value="true">Yes</option></select></div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group"><label>Allow Spam</label><select id="icq-allowspam"><option value="false">No</option><option value="true">Yes</option></select></div>
+                        <div class="form-group"></div>
+                    </div>
+                </div>
+
+                <button class="btn btn-primary" onclick="saveICQProfile()">Save Profile</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create User Modal -->
+    <div class="modal" id="modal-createUser">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Create User</h3>
+                <button class="modal-close" onclick="hideModal('createUser')">&times;</button>
+            </div>
+            <div class="form-group">
+                <label>Screen Name (or ICQ UIN)</label>
+                <input type="text" id="new-screen-name" placeholder="MyScreenName or 123456">
+            </div>
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" id="new-password">
+            </div>
+            <button class="btn btn-primary" onclick="createUser()">Create</button>
+        </div>
+    </div>
+
+    <!-- Change Password Modal -->
+    <div class="modal" id="modal-changePassword">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Change Password</h3>
+                <button class="modal-close" onclick="hideModal('changePassword')">&times;</button>
+            </div>
+            <div class="form-group">
+                <label>Screen Name</label>
+                <input type="text" id="pwd-screen-name" readonly>
+            </div>
+            <div class="form-group">
+                <label>New Password</label>
+                <input type="password" id="pwd-new-password">
+            </div>
+            <button class="btn btn-primary" onclick="changePassword()">Update</button>
+        </div>
+    </div>
+
+    <!-- Create Chat Room Modal -->
+    <div class="modal" id="modal-createChat">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Create Public Chat Room</h3>
+                <button class="modal-close" onclick="hideModal('createChat')">&times;</button>
+            </div>
+            <div class="form-group">
+                <label>Room Name</label>
+                <input type="text" id="new-room-name" placeholder="My Chat Room">
+            </div>
+            <button class="btn btn-primary" onclick="createChatRoom()">Create</button>
+        </div>
+    </div>
+
+    <!-- Create Category Modal -->
+    <div class="modal" id="modal-createCategory">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Create Category</h3>
+                <button class="modal-close" onclick="hideModal('createCategory')">&times;</button>
+            </div>
+            <div class="form-group">
+                <label>Category Name</label>
+                <input type="text" id="new-category-name">
+            </div>
+            <button class="btn btn-primary" onclick="createCategory()">Create</button>
+        </div>
+    </div>
+
+    <!-- Create Keyword Modal -->
+    <div class="modal" id="modal-createKeyword">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Create Keyword</h3>
+                <button class="modal-close" onclick="hideModal('createKeyword')">&times;</button>
+            </div>
+            <div class="form-group">
+                <label>Keyword Name</label>
+                <input type="text" id="new-keyword-name">
+                <input type="hidden" id="new-keyword-category-id">
+            </div>
+            <button class="btn btn-primary" onclick="createKeyword()">Create</button>
+        </div>
+    </div>
+
+    <script>
+        const API = '';
+
+        // Tab switching
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+                tab.classList.add('active');
+                document.getElementById(tab.dataset.tab).classList.add('active');
+                loadTabData(tab.dataset.tab);
+            });
+        });
+
+        function loadTabData(tab) {
+            switch(tab) {
+                case 'users': loadUsers(); break;
+                case 'sessions': loadSessions(); break;
+                case 'chatrooms': loadChatRooms(); break;
+                case 'directory': loadDirectory(); break;
+            }
+        }
+
+        function showModal(name) { document.getElementById('modal-' + name).classList.add('active'); }
+        function hideModal(name) { document.getElementById('modal-' + name).classList.remove('active'); }
+
+        function toast(msg, type = 'success') {
+            const t = document.createElement('div');
+            t.className = 'toast toast-' + type;
+            t.textContent = msg;
+            document.body.appendChild(t);
+            setTimeout(() => t.remove(), 3000);
+        }
+
+        async function api(path, opts = {}) {
+            try {
+                const res = await fetch(API + path, opts);
+                if (!res.ok) {
+                    const text = await res.text();
+                    throw new Error(text || res.statusText);
+                }
+                const ct = res.headers.get('content-type');
+                if (ct && ct.includes('application/json')) return res.json();
+                return res.text();
+            } catch (e) {
+                toast(e.message, 'error');
+                throw e;
+            }
+        }
+
+        // Version
+        async function loadVersion() {
+            try {
+                const v = await api('/version');
+                document.getElementById('version-info').textContent = `Version ${v.version || 'dev'} (${v.commit?.slice(0,7) || 'unknown'})`;
+            } catch {}
+        }
+
+        // Users
+        async function loadUsers() {
+            try {
+                const users = await api('/user');
+                const tbody = document.getElementById('users-table');
+                if (!users.length) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="empty">No users found</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = users.map(u => `
+                    <tr>
+                        <td>${esc(u.screen_name)}</td>
+                        <td><span class="badge ${u.is_icq ? 'badge-info' : 'badge-success'}">${u.is_icq ? 'ICQ' : 'AIM'}</span></td>
+                        <td>${u.suspended_status ? `<span class="badge badge-danger">${esc(u.suspended_status)}</span>` : '<span class="badge badge-success">Active</span>'}</td>
+                        <td>${u.is_bot ? '<span class="badge badge-warning">Bot</span>' : '-'}</td>
+                        <td>
+                            ${u.is_icq ? `<button class="btn btn-primary btn-sm" onclick="openICQProfile('${esc(u.screen_name)}')">ICQ Profile</button>` : ''}
+                            <button class="btn btn-secondary btn-sm" onclick="showChangePassword('${esc(u.screen_name)}')">Password</button>
+                            <button class="btn btn-danger btn-sm" onclick="deleteUser('${esc(u.screen_name)}')">Delete</button>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch {}
+        }
+
+        async function createUser() {
+            const sn = document.getElementById('new-screen-name').value.trim();
+            const pw = document.getElementById('new-password').value;
+            if (!sn || !pw) { toast('Please fill all fields', 'error'); return; }
+            try {
+                await api('/user', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({screen_name: sn, password: pw})
+                });
+                toast('User created');
+                hideModal('createUser');
+                document.getElementById('new-screen-name').value = '';
+                document.getElementById('new-password').value = '';
+                loadUsers();
+            } catch {}
+        }
+
+        async function deleteUser(sn) {
+            if (!confirm(`Delete user "${sn}"?`)) return;
+            try {
+                await api('/user', {
+                    method: 'DELETE',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({screen_name: sn})
+                });
+                toast('User deleted');
+                loadUsers();
+            } catch {}
+        }
+
+        function showChangePassword(sn) {
+            document.getElementById('pwd-screen-name').value = sn;
+            document.getElementById('pwd-new-password').value = '';
+            showModal('changePassword');
+        }
+
+        async function changePassword() {
+            const sn = document.getElementById('pwd-screen-name').value;
+            const pw = document.getElementById('pwd-new-password').value;
+            if (!pw) { toast('Please enter a password', 'error'); return; }
+            try {
+                await api('/user/password', {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({screen_name: sn, password: pw})
+                });
+                toast('Password updated');
+                hideModal('changePassword');
+            } catch {}
+        }
+
+        // Sessions
+        async function loadSessions() {
+            try {
+                const data = await api('/session');
+                document.getElementById('session-stats').innerHTML = `
+                    <div class="stat-card"><h4>Online Users</h4><div class="value">${data.count || 0}</div></div>
+                `;
+                const tbody = document.getElementById('sessions-table');
+                if (!data.sessions?.length) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="empty">No active sessions</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = data.sessions.map(s => `
+                    <tr>
+                        <td>${esc(s.screen_name)}</td>
+                        <td><span class="badge ${s.is_icq ? 'badge-info' : 'badge-success'}">${s.is_icq ? 'ICQ' : 'AIM'}</span></td>
+                        <td>${formatDuration(s.online_seconds)}</td>
+                        <td>
+                            ${s.is_away ? '<span class="badge badge-warning">Away</span>' : ''}
+                            ${s.is_invisible ? '<span class="badge badge-secondary">Invisible</span>' : ''}
+                            ${s.idle_seconds > 0 ? `<span class="badge badge-info">Idle ${formatDuration(s.idle_seconds)}</span>` : ''}
+                        </td>
+                        <td>${s.instance_count || 1}</td>
+                        <td><button class="btn btn-danger btn-sm" onclick="disconnectSession('${esc(s.screen_name)}')">Disconnect</button></td>
+                    </tr>
+                `).join('');
+            } catch {}
+        }
+
+        async function disconnectSession(sn) {
+            if (!confirm(`Disconnect "${sn}"?`)) return;
+            try {
+                await api('/session/' + encodeURIComponent(sn), {method: 'DELETE'});
+                toast('Session disconnected');
+                loadSessions();
+            } catch {}
+        }
+
+        // Chat Rooms
+        async function loadChatRooms() {
+            try {
+                const [pub, priv] = await Promise.all([
+                    api('/chat/room/public'),
+                    api('/chat/room/private')
+                ]);
+                
+                const pubTbody = document.getElementById('public-rooms-table');
+                if (!pub?.length) {
+                    pubTbody.innerHTML = '<tr><td colspan="4" class="empty">No public rooms</td></tr>';
+                } else {
+                    pubTbody.innerHTML = pub.map(r => `
+                        <tr>
+                            <td>${esc(r.name)}</td>
+                            <td>${r.create_time ? new Date(r.create_time).toLocaleString() : '-'}</td>
+                            <td>${r.participants?.length || 0}</td>
+                            <td><button class="btn btn-danger btn-sm" onclick="deleteChatRoom('${esc(r.name)}')">Delete</button></td>
+                        </tr>
+                    `).join('');
+                }
+
+                const privTbody = document.getElementById('private-rooms-table');
+                if (!priv?.length) {
+                    privTbody.innerHTML = '<tr><td colspan="4" class="empty">No private rooms</td></tr>';
+                } else {
+                    privTbody.innerHTML = priv.map(r => `
+                        <tr>
+                            <td>${esc(r.name)}</td>
+                            <td>${esc(r.creator_id || '-')}</td>
+                            <td>${r.create_time ? new Date(r.create_time).toLocaleString() : '-'}</td>
+                            <td>${r.participants?.length || 0}</td>
+                        </tr>
+                    `).join('');
+                }
+            } catch {}
+        }
+
+        async function createChatRoom() {
+            const name = document.getElementById('new-room-name').value.trim();
+            if (!name) { toast('Please enter a room name', 'error'); return; }
+            try {
+                await api('/chat/room/public', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({name})
+                });
+                toast('Chat room created');
+                hideModal('createChat');
+                document.getElementById('new-room-name').value = '';
+                loadChatRooms();
+            } catch {}
+        }
+
+        async function deleteChatRoom(name) {
+            if (!confirm(`Delete chat room "${name}"?`)) return;
+            try {
+                await api('/chat/room/public', {
+                    method: 'DELETE',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({names: [name]})
+                });
+                toast('Chat room deleted');
+                loadChatRooms();
+            } catch {}
+        }
+
+        // Messaging
+        async function sendMessage() {
+            const from = document.getElementById('msg-from').value.trim();
+            const to = document.getElementById('msg-to').value.trim();
+            const text = document.getElementById('msg-text').value.trim();
+            if (!from || !to || !text) { toast('Please fill all fields', 'error'); return; }
+            try {
+                await api('/instant-message', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({from, to, text})
+                });
+                toast('Message sent');
+            } catch {}
+        }
+
+        // Directory
+        async function loadDirectory() {
+            try {
+                const categories = await api('/directory/category');
+                const container = document.getElementById('directory-content');
+                if (!categories?.length) {
+                    container.innerHTML = '<div class="empty">No categories found</div>';
+                    return;
+                }
+                let html = '';
+                for (const cat of categories) {
+                    const keywords = await api('/directory/category/' + cat.id + '/keyword').catch(() => []);
+                    html += `
+                        <div style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                <strong>${esc(cat.name)}</strong>
+                                <div>
+                                    <button class="btn btn-secondary btn-sm" onclick="showCreateKeyword(${cat.id})">Add Keyword</button>
+                                    <button class="btn btn-danger btn-sm" onclick="deleteCategory(${cat.id})">Delete</button>
+                                </div>
+                            </div>
+                            <div style="display: flex; flex-wrap: wrap; gap: 5px;">
+                                ${keywords?.length ? keywords.map(k => `
+                                    <span class="badge badge-info" style="cursor: pointer;" onclick="deleteKeyword(${k.id})">${esc(k.name)} x</span>
+                                `).join('') : '<span style="color: #999;">No keywords</span>'}
+                            </div>
+                        </div>
+                    `;
+                }
+                container.innerHTML = html;
+            } catch {}
+        }
+
+        async function createCategory() {
+            const name = document.getElementById('new-category-name').value.trim();
+            if (!name) { toast('Please enter a name', 'error'); return; }
+            try {
+                await api('/directory/category', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({name})
+                });
+                toast('Category created');
+                hideModal('createCategory');
+                document.getElementById('new-category-name').value = '';
+                loadDirectory();
+            } catch {}
+        }
+
+        async function deleteCategory(id) {
+            if (!confirm('Delete this category?')) return;
+            try {
+                await api('/directory/category/' + id, {method: 'DELETE'});
+                toast('Category deleted');
+                loadDirectory();
+            } catch {}
+        }
+
+        function showCreateKeyword(categoryId) {
+            document.getElementById('new-keyword-category-id').value = categoryId;
+            document.getElementById('new-keyword-name').value = '';
+            showModal('createKeyword');
+        }
+
+        async function createKeyword() {
+            const categoryId = parseInt(document.getElementById('new-keyword-category-id').value);
+            const name = document.getElementById('new-keyword-name').value.trim();
+            if (!name) { toast('Please enter a name', 'error'); return; }
+            try {
+                await api('/directory/keyword', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({category_id: categoryId, name})
+                });
+                toast('Keyword created');
+                hideModal('createKeyword');
+                loadDirectory();
+            } catch {}
+        }
+
+        async function deleteKeyword(id) {
+            if (!confirm('Delete this keyword?')) return;
+            try {
+                await api('/directory/keyword/' + id, {method: 'DELETE'});
+                toast('Keyword deleted');
+                loadDirectory();
+            } catch {}
+        }
+
+        // ICQ Profiles
+        async function loadICQProfile() {
+            const uin = document.getElementById('icq-uin-input').value.trim();
+            if (!uin) { toast('Enter a UIN', 'error'); return; }
+            try {
+                const p = await api('/user/' + encodeURIComponent(uin) + '/icq');
+                document.getElementById('icq-profile-uin').textContent = p.uin;
+                // Basic
+                document.getElementById('icq-nickname').value = p.basic_info.nickname || '';
+                document.getElementById('icq-firstname').value = p.basic_info.first_name || '';
+                document.getElementById('icq-lastname').value = p.basic_info.last_name || '';
+                document.getElementById('icq-email').value = p.basic_info.email || '';
+                document.getElementById('icq-address').value = p.basic_info.address || '';
+                document.getElementById('icq-city').value = p.basic_info.city || '';
+                document.getElementById('icq-state').value = p.basic_info.state || '';
+                document.getElementById('icq-zip').value = p.basic_info.zip || '';
+                document.getElementById('icq-phone').value = p.basic_info.phone || '';
+                document.getElementById('icq-fax').value = p.basic_info.fax || '';
+                document.getElementById('icq-cellphone').value = p.basic_info.cell_phone || '';
+                document.getElementById('icq-countrycode').value = p.basic_info.country_code || 0;
+                document.getElementById('icq-gmtoffset').value = p.basic_info.gmt_offset || 0;
+                document.getElementById('icq-publishemail').value = p.basic_info.publish_email ? 'true' : 'false';
+                // More
+                document.getElementById('icq-gender').value = p.more_info.gender || 0;
+                document.getElementById('icq-homepage').value = p.more_info.homepage || '';
+                document.getElementById('icq-birthyear').value = p.more_info.birth_year || 0;
+                document.getElementById('icq-birthmonth').value = p.more_info.birth_month || 0;
+                document.getElementById('icq-birthday').value = p.more_info.birth_day || 0;
+                document.getElementById('icq-lang1').value = p.more_info.lang1 || 0;
+                document.getElementById('icq-lang2').value = p.more_info.lang2 || 0;
+                document.getElementById('icq-lang3').value = p.more_info.lang3 || 0;
+                // Work
+                document.getElementById('icq-company').value = p.work_info.company || '';
+                document.getElementById('icq-department').value = p.work_info.department || '';
+                document.getElementById('icq-position').value = p.work_info.position || '';
+                document.getElementById('icq-occupationcode').value = p.work_info.occupation_code || 0;
+                document.getElementById('icq-waddress').value = p.work_info.address || '';
+                document.getElementById('icq-wcity').value = p.work_info.city || '';
+                document.getElementById('icq-wstate').value = p.work_info.state || '';
+                document.getElementById('icq-wzip').value = p.work_info.zip || '';
+                document.getElementById('icq-wcountrycode').value = p.work_info.country_code || 0;
+                document.getElementById('icq-wphone').value = p.work_info.phone || '';
+                document.getElementById('icq-wfax').value = p.work_info.fax || '';
+                document.getElementById('icq-wwebpage').value = p.work_info.web_page || '';
+                // Notes
+                document.getElementById('icq-notes').value = p.notes || '';
+                // Interests
+                document.getElementById('icq-intcode1').value = p.interests.code1 || 0;
+                document.getElementById('icq-intkey1').value = p.interests.keyword1 || '';
+                document.getElementById('icq-intcode2').value = p.interests.code2 || 0;
+                document.getElementById('icq-intkey2').value = p.interests.keyword2 || '';
+                document.getElementById('icq-intcode3').value = p.interests.code3 || 0;
+                document.getElementById('icq-intkey3').value = p.interests.keyword3 || '';
+                document.getElementById('icq-intcode4').value = p.interests.code4 || 0;
+                document.getElementById('icq-intkey4').value = p.interests.keyword4 || '';
+                // Affiliations
+                document.getElementById('icq-pastcode1').value = p.affiliations.past_code1 || 0;
+                document.getElementById('icq-pastkey1').value = p.affiliations.past_keyword1 || '';
+                document.getElementById('icq-pastcode2').value = p.affiliations.past_code2 || 0;
+                document.getElementById('icq-pastkey2').value = p.affiliations.past_keyword2 || '';
+                document.getElementById('icq-pastcode3').value = p.affiliations.past_code3 || 0;
+                document.getElementById('icq-pastkey3').value = p.affiliations.past_keyword3 || '';
+                document.getElementById('icq-curcode1').value = p.affiliations.current_code1 || 0;
+                document.getElementById('icq-curkey1').value = p.affiliations.current_keyword1 || '';
+                document.getElementById('icq-curcode2').value = p.affiliations.current_code2 || 0;
+                document.getElementById('icq-curkey2').value = p.affiliations.current_keyword2 || '';
+                document.getElementById('icq-curcode3').value = p.affiliations.current_code3 || 0;
+                document.getElementById('icq-curkey3').value = p.affiliations.current_keyword3 || '';
+                // Permissions
+                document.getElementById('icq-authrequired').value = p.permissions.auth_required ? 'true' : 'false';
+                document.getElementById('icq-webaware').value = p.permissions.web_aware ? 'true' : 'false';
+                document.getElementById('icq-allowspam').value = p.permissions.allow_spam ? 'true' : 'false';
+
+                document.getElementById('icq-profile-content').style.display = 'block';
+                toast('Profile loaded');
+            } catch {}
+        }
+
+        async function saveICQProfile() {
+            const uin = document.getElementById('icq-profile-uin').textContent;
+            if (!uin) { toast('No profile loaded', 'error'); return; }
+            const body = {
+                uin: parseInt(uin),
+                basic_info: {
+                    nickname: document.getElementById('icq-nickname').value,
+                    first_name: document.getElementById('icq-firstname').value,
+                    last_name: document.getElementById('icq-lastname').value,
+                    email: document.getElementById('icq-email').value,
+                    address: document.getElementById('icq-address').value,
+                    city: document.getElementById('icq-city').value,
+                    state: document.getElementById('icq-state').value,
+                    zip: document.getElementById('icq-zip').value,
+                    phone: document.getElementById('icq-phone').value,
+                    fax: document.getElementById('icq-fax').value,
+                    cell_phone: document.getElementById('icq-cellphone').value,
+                    country_code: parseInt(document.getElementById('icq-countrycode').value) || 0,
+                    gmt_offset: parseInt(document.getElementById('icq-gmtoffset').value) || 0,
+                    publish_email: document.getElementById('icq-publishemail').value === 'true',
+                },
+                more_info: {
+                    gender: parseInt(document.getElementById('icq-gender').value) || 0,
+                    homepage: document.getElementById('icq-homepage').value,
+                    birth_year: parseInt(document.getElementById('icq-birthyear').value) || 0,
+                    birth_month: parseInt(document.getElementById('icq-birthmonth').value) || 0,
+                    birth_day: parseInt(document.getElementById('icq-birthday').value) || 0,
+                    lang1: parseInt(document.getElementById('icq-lang1').value) || 0,
+                    lang2: parseInt(document.getElementById('icq-lang2').value) || 0,
+                    lang3: parseInt(document.getElementById('icq-lang3').value) || 0,
+                },
+                work_info: {
+                    company: document.getElementById('icq-company').value,
+                    department: document.getElementById('icq-department').value,
+                    position: document.getElementById('icq-position').value,
+                    occupation_code: parseInt(document.getElementById('icq-occupationcode').value) || 0,
+                    address: document.getElementById('icq-waddress').value,
+                    city: document.getElementById('icq-wcity').value,
+                    state: document.getElementById('icq-wstate').value,
+                    zip: document.getElementById('icq-wzip').value,
+                    country_code: parseInt(document.getElementById('icq-wcountrycode').value) || 0,
+                    phone: document.getElementById('icq-wphone').value,
+                    fax: document.getElementById('icq-wfax').value,
+                    web_page: document.getElementById('icq-wwebpage').value,
+                },
+                notes: document.getElementById('icq-notes').value,
+                interests: {
+                    code1: parseInt(document.getElementById('icq-intcode1').value) || 0,
+                    keyword1: document.getElementById('icq-intkey1').value,
+                    code2: parseInt(document.getElementById('icq-intcode2').value) || 0,
+                    keyword2: document.getElementById('icq-intkey2').value,
+                    code3: parseInt(document.getElementById('icq-intcode3').value) || 0,
+                    keyword3: document.getElementById('icq-intkey3').value,
+                    code4: parseInt(document.getElementById('icq-intcode4').value) || 0,
+                    keyword4: document.getElementById('icq-intkey4').value,
+                },
+                affiliations: {
+                    past_code1: parseInt(document.getElementById('icq-pastcode1').value) || 0,
+                    past_keyword1: document.getElementById('icq-pastkey1').value,
+                    past_code2: parseInt(document.getElementById('icq-pastcode2').value) || 0,
+                    past_keyword2: document.getElementById('icq-pastkey2').value,
+                    past_code3: parseInt(document.getElementById('icq-pastcode3').value) || 0,
+                    past_keyword3: document.getElementById('icq-pastkey3').value,
+                    current_code1: parseInt(document.getElementById('icq-curcode1').value) || 0,
+                    current_keyword1: document.getElementById('icq-curkey1').value,
+                    current_code2: parseInt(document.getElementById('icq-curcode2').value) || 0,
+                    current_keyword2: document.getElementById('icq-curkey2').value,
+                    current_code3: parseInt(document.getElementById('icq-curcode3').value) || 0,
+                    current_keyword3: document.getElementById('icq-curkey3').value,
+                },
+                permissions: {
+                    auth_required: document.getElementById('icq-authrequired').value === 'true',
+                    web_aware: document.getElementById('icq-webaware').value === 'true',
+                    allow_spam: document.getElementById('icq-allowspam').value === 'true',
+                },
+            };
+            try {
+                await api('/user/' + encodeURIComponent(uin) + '/icq', {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(body)
+                });
+                toast('Profile saved');
+            } catch {}
+        }
+
+        // Open ICQ Profile from user list
+        function openICQProfile(sn) {
+            // Switch to ICQ Profiles tab
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+            const icqTab = document.querySelector('.tab[data-tab="icqprofiles"]');
+            icqTab.classList.add('active');
+            document.getElementById('icqprofiles').classList.add('active');
+            // Fill UIN and load
+            document.getElementById('icq-uin-input').value = sn;
+            loadICQProfile();
+        }
+
+        // Helpers
+        function esc(s) { return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+        function formatDuration(sec) {
+            if (sec < 60) return sec + 's';
+            if (sec < 3600) return Math.floor(sec/60) + 'm';
+            return Math.floor(sec/3600) + 'h ' + Math.floor((sec%3600)/60) + 'm';
+        }
+
+        // Init
+        loadVersion();
+        loadUsers();
+    </script>
+</body>
+</html>
