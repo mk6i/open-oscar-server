@@ -657,7 +657,7 @@ func (f SQLiteUserStore) SetUserPassword(ctx context.Context, screenName IdentSc
 	return tx.Commit()
 }
 
-func (f SQLiteUserStore) Feedbag(ctx context.Context, screenName IdentScreenName) ([]wire.FeedbagItem, error) {
+func (f SQLiteUserStore) Feedbag(ctx context.Context, screenName IdentScreenName) (wire.FeedbagItems, error) {
 	q := `
 		SELECT 
 			groupID,
@@ -675,7 +675,7 @@ func (f SQLiteUserStore) Feedbag(ctx context.Context, screenName IdentScreenName
 	}
 	defer rows.Close()
 
-	var items []wire.FeedbagItem
+	var items wire.FeedbagItems
 	for rows.Next() {
 		var item wire.FeedbagItem
 		var attrs []byte
@@ -698,7 +698,7 @@ func (f SQLiteUserStore) FeedbagLastModified(ctx context.Context, screenName Ide
 	return time.Unix(lastModified.Int64, 0), err
 }
 
-func (f SQLiteUserStore) FeedbagDelete(ctx context.Context, screenName IdentScreenName, items []wire.FeedbagItem) error {
+func (f SQLiteUserStore) FeedbagDelete(ctx context.Context, screenName IdentScreenName, items wire.FeedbagItems) error {
 	// todo add transaction
 	q := `DELETE FROM feedbag WHERE screenName = ? AND itemID = ?`
 
@@ -711,7 +711,7 @@ func (f SQLiteUserStore) FeedbagDelete(ctx context.Context, screenName IdentScre
 	return nil
 }
 
-func (f SQLiteUserStore) FeedbagUpsert(ctx context.Context, screenName IdentScreenName, items []wire.FeedbagItem) error {
+func (f SQLiteUserStore) FeedbagUpsert(ctx context.Context, screenName IdentScreenName, items wire.FeedbagItems) error {
 	q := `
 		INSERT INTO feedbag (screenName, groupID, itemID, classID, name, attributes, pdMode, lastModified)
 		VALUES (?, ?, ?, ?, ?, ?, ?, UNIXEPOCH())

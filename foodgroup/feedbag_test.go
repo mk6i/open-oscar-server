@@ -44,7 +44,7 @@ func TestFeedbagService_Query(t *testing.T) {
 					feedbagParams: feedbagParams{
 						{
 							screenName: state.NewIdentScreenName("me"),
-							results:    []wire.FeedbagItem{},
+							results:    wire.FeedbagItems{},
 						},
 					},
 					feedbagLastModifiedParams: feedbagLastModifiedParams{},
@@ -57,7 +57,7 @@ func TestFeedbagService_Query(t *testing.T) {
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x13_0x06_FeedbagReply{
-					Items: []wire.FeedbagItem{},
+					Items: wire.FeedbagItems{},
 				},
 			},
 		},
@@ -76,7 +76,7 @@ func TestFeedbagService_Query(t *testing.T) {
 					feedbagParams: feedbagParams{
 						{
 							screenName: state.NewIdentScreenName("me"),
-							results: []wire.FeedbagItem{
+							results: wire.FeedbagItems{
 								{
 									Name: "buddy1",
 								},
@@ -102,7 +102,7 @@ func TestFeedbagService_Query(t *testing.T) {
 				},
 				Body: wire.SNAC_0x13_0x06_FeedbagReply{
 					Version: 0,
-					Items: []wire.FeedbagItem{
+					Items: wire.FeedbagItems{
 						{
 							Name: "buddy1",
 						},
@@ -172,7 +172,7 @@ func TestFeedbagService_QueryIfModified(t *testing.T) {
 					feedbagParams: feedbagParams{
 						{
 							screenName: state.NewIdentScreenName("me"),
-							results:    []wire.FeedbagItem{},
+							results:    wire.FeedbagItems{},
 						},
 					},
 				},
@@ -184,7 +184,7 @@ func TestFeedbagService_QueryIfModified(t *testing.T) {
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x13_0x06_FeedbagReply{
-					Items: []wire.FeedbagItem{},
+					Items: wire.FeedbagItems{},
 				},
 			},
 		},
@@ -206,7 +206,7 @@ func TestFeedbagService_QueryIfModified(t *testing.T) {
 					feedbagParams: feedbagParams{
 						{
 							screenName: state.NewIdentScreenName("me"),
-							results: []wire.FeedbagItem{
+							results: wire.FeedbagItems{
 								{
 									Name: "buddy1",
 								},
@@ -232,7 +232,7 @@ func TestFeedbagService_QueryIfModified(t *testing.T) {
 				},
 				Body: wire.SNAC_0x13_0x06_FeedbagReply{
 					Version: 0,
-					Items: []wire.FeedbagItem{
+					Items: wire.FeedbagItems{
 						{
 							Name: "buddy1",
 						},
@@ -262,7 +262,7 @@ func TestFeedbagService_QueryIfModified(t *testing.T) {
 					feedbagParams: feedbagParams{
 						{
 							screenName: state.NewIdentScreenName("me"),
-							results: []wire.FeedbagItem{
+							results: wire.FeedbagItems{
 								{
 									Name: "buddy1",
 								},
@@ -407,7 +407,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x13_0x08_FeedbagInsertItem{
-					Items: []wire.FeedbagItem{
+					Items: wire.FeedbagItems{
 						{
 							ClassID: wire.FeedbagClassIDPermit,
 							Name:    "buddy1",
@@ -424,7 +424,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					feedbagUpsertParams: feedbagUpsertParams{
 						{
 							screenName: state.NewIdentScreenName("me"),
-							items: []wire.FeedbagItem{
+							items: wire.FeedbagItems{
 								{
 									ClassID: wire.FeedbagClassIDPermit,
 									Name:    "buddy1",
@@ -459,7 +459,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 									RequestID: wire.ReqIDFromServer,
 								},
 								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
-									Items: []wire.FeedbagItem{
+									Items: wire.FeedbagItems{
 										{
 											ClassID: wire.FeedbagClassIDPermit,
 											Name:    "buddy1",
@@ -502,7 +502,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x13_0x08_FeedbagInsertItem{
-					Items: []wire.FeedbagItem{
+					Items: wire.FeedbagItems{
 						{
 							ClassID: wire.FeedbagClassIdBuddyPrefs,
 							TLVLBlock: wire.TLVLBlock{
@@ -519,7 +519,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					feedbagUpsertParams: feedbagUpsertParams{
 						{
 							screenName: state.NewIdentScreenName("me"),
-							items: []wire.FeedbagItem{
+							items: wire.FeedbagItems{
 								{
 									ClassID: wire.FeedbagClassIdBuddyPrefs,
 									TLVLBlock: wire.TLVLBlock{
@@ -543,7 +543,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 									RequestID: wire.ReqIDFromServer,
 								},
 								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
-									Items: []wire.FeedbagItem{
+									Items: wire.FeedbagItems{
 										{
 											ClassID: wire.FeedbagClassIdBuddyPrefs,
 											TLVLBlock: wire.TLVLBlock{
@@ -586,7 +586,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x13_0x08_FeedbagInsertItem{
-					Items: []wire.FeedbagItem{
+					Items: wire.FeedbagItems{
 						{
 							ClassID: wire.FeedbagClassIdBuddyPrefs,
 							TLVLBlock: wire.TLVLBlock{
@@ -603,7 +603,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					feedbagUpsertParams: feedbagUpsertParams{
 						{
 							screenName: state.NewIdentScreenName("me"),
-							items: []wire.FeedbagItem{
+							items: wire.FeedbagItems{
 								{
 									ClassID: wire.FeedbagClassIdBuddyPrefs,
 									TLVLBlock: wire.TLVLBlock{
@@ -627,7 +627,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 									RequestID: wire.ReqIDFromServer,
 								},
 								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
-									Items: []wire.FeedbagItem{
+									Items: wire.FeedbagItems{
 										{
 											ClassID: wire.FeedbagClassIdBuddyPrefs,
 											TLVLBlock: wire.TLVLBlock{
@@ -673,7 +673,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x13_0x08_FeedbagInsertItem{
-					Items: []wire.FeedbagItem{
+					Items: wire.FeedbagItems{
 						{
 							ClassID: wire.FeedbagClassIDDeny,
 							Name:    "buddy1",
@@ -690,7 +690,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					feedbagUpsertParams: feedbagUpsertParams{
 						{
 							screenName: state.NewIdentScreenName("me"),
-							items: []wire.FeedbagItem{
+							items: wire.FeedbagItems{
 								{
 									ClassID: wire.FeedbagClassIDDeny,
 									Name:    "buddy1",
@@ -725,7 +725,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 									RequestID: wire.ReqIDFromServer,
 								},
 								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
-									Items: []wire.FeedbagItem{
+									Items: wire.FeedbagItems{
 										{
 											ClassID: wire.FeedbagClassIDDeny,
 											Name:    "buddy1",
@@ -768,7 +768,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x13_0x08_FeedbagInsertItem{
-					Items: []wire.FeedbagItem{
+					Items: wire.FeedbagItems{
 						{
 							ClassID: wire.FeedbagClassIDPermit,
 							Name:    "buddy1",
@@ -785,7 +785,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					feedbagUpsertParams: feedbagUpsertParams{
 						{
 							screenName: state.NewIdentScreenName("me"),
-							items: []wire.FeedbagItem{
+							items: wire.FeedbagItems{
 								{
 									ClassID: wire.FeedbagClassIDPermit,
 									Name:    "buddy1",
@@ -820,7 +820,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 									RequestID: wire.ReqIDFromServer,
 								},
 								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
-									Items: []wire.FeedbagItem{
+									Items: wire.FeedbagItems{
 										{
 											ClassID: wire.FeedbagClassIDPermit,
 											Name:    "buddy1",
@@ -863,7 +863,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x13_0x08_FeedbagInsertItem{
-					Items: []wire.FeedbagItem{
+					Items: wire.FeedbagItems{
 						{
 							ClassID: wire.FeedbagClassIdPdinfo,
 						},
@@ -875,7 +875,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					feedbagUpsertParams: feedbagUpsertParams{
 						{
 							screenName: state.NewIdentScreenName("me"),
-							items: []wire.FeedbagItem{
+							items: wire.FeedbagItems{
 								{
 									ClassID: wire.FeedbagClassIdPdinfo,
 								},
@@ -902,7 +902,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 									RequestID: wire.ReqIDFromServer,
 								},
 								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
-									Items: []wire.FeedbagItem{
+									Items: wire.FeedbagItems{
 										{
 											ClassID: wire.FeedbagClassIdPdinfo,
 										},
@@ -940,7 +940,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x13_0x08_FeedbagInsertItem{
-					Items: []wire.FeedbagItem{
+					Items: wire.FeedbagItems{
 						{
 							ClassID: wire.FeedbagClassIDDeny,
 							Name:    "me",
@@ -969,7 +969,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x13_0x08_FeedbagInsertItem{
-					Items: []wire.FeedbagItem{
+					Items: wire.FeedbagItems{
 						{
 							Name:    fmt.Sprintf("%d", wire.BARTTypesBuddyIcon),
 							ClassID: wire.FeedbagClassIdBart,
@@ -998,7 +998,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					feedbagUpsertParams: feedbagUpsertParams{
 						{
 							screenName: state.NewIdentScreenName("me"),
-							items: []wire.FeedbagItem{
+							items: wire.FeedbagItems{
 								{
 									Name:    fmt.Sprintf("%d", wire.BARTTypesBuddyIcon),
 									ClassID: wire.FeedbagClassIdBart,
@@ -1047,7 +1047,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 									RequestID: wire.ReqIDFromServer,
 								},
 								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
-									Items: []wire.FeedbagItem{
+									Items: wire.FeedbagItems{
 										{
 											Name:    fmt.Sprintf("%d", wire.BARTTypesBuddyIcon),
 											ClassID: wire.FeedbagClassIdBart,
@@ -1124,7 +1124,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x13_0x08_FeedbagInsertItem{
-					Items: []wire.FeedbagItem{
+					Items: wire.FeedbagItems{
 						{
 							Name:    fmt.Sprintf("%d", wire.BARTTypesBuddyIcon),
 							ClassID: wire.FeedbagClassIdBart,
@@ -1154,7 +1154,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					feedbagUpsertParams: feedbagUpsertParams{
 						{
 							screenName: state.NewIdentScreenName("me"),
-							items: []wire.FeedbagItem{
+							items: wire.FeedbagItems{
 								{
 									Name:    fmt.Sprintf("%d", wire.BARTTypesBuddyIcon),
 									ClassID: wire.FeedbagClassIdBart,
@@ -1205,7 +1205,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 									RequestID: wire.ReqIDFromServer,
 								},
 								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
-									Items: []wire.FeedbagItem{
+									Items: wire.FeedbagItems{
 										{
 											Name:    fmt.Sprintf("%d", wire.BARTTypesBuddyIcon),
 											ClassID: wire.FeedbagClassIdBart,
@@ -1289,7 +1289,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x13_0x08_FeedbagInsertItem{
-					Items: []wire.FeedbagItem{
+					Items: wire.FeedbagItems{
 						{
 							Name:    fmt.Sprintf("%d", wire.BARTTypesBuddyIcon),
 							ClassID: wire.FeedbagClassIdBart,
@@ -1310,7 +1310,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					feedbagUpsertParams: feedbagUpsertParams{
 						{
 							screenName: state.NewIdentScreenName("me"),
-							items: []wire.FeedbagItem{
+							items: wire.FeedbagItems{
 								{
 									Name:    fmt.Sprintf("%d", wire.BARTTypesBuddyIcon),
 									ClassID: wire.FeedbagClassIdBart,
@@ -1345,7 +1345,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 									RequestID: wire.ReqIDFromServer,
 								},
 								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
-									Items: []wire.FeedbagItem{
+									Items: wire.FeedbagItems{
 										{
 											Name:    fmt.Sprintf("%d", wire.BARTTypesBuddyIcon),
 											ClassID: wire.FeedbagClassIdBart,
@@ -1435,7 +1435,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x13_0x08_FeedbagInsertItem{
-					Items: []wire.FeedbagItem{
+					Items: wire.FeedbagItems{
 						{
 							Name:    fmt.Sprintf("%d", wire.BARTTypesArriveSound),
 							ClassID: wire.FeedbagClassIdBart,
@@ -1464,7 +1464,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					feedbagUpsertParams: feedbagUpsertParams{
 						{
 							screenName: state.NewIdentScreenName("me"),
-							items: []wire.FeedbagItem{
+							items: wire.FeedbagItems{
 								{
 									Name:    fmt.Sprintf("%d", wire.BARTTypesArriveSound),
 									ClassID: wire.FeedbagClassIdBart,
@@ -1492,7 +1492,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 									RequestID: wire.ReqIDFromServer,
 								},
 								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
-									Items: []wire.FeedbagItem{
+									Items: wire.FeedbagItems{
 										{
 											Name:    fmt.Sprintf("%d", wire.BARTTypesArriveSound),
 											ClassID: wire.FeedbagClassIdBart,
@@ -1639,7 +1639,7 @@ func TestFeedbagService_DeleteItem(t *testing.T) {
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
-					Items: []wire.FeedbagItem{
+					Items: wire.FeedbagItems{
 						{
 							ClassID: wire.FeedbagClassIdBuddy,
 							Name:    "buddy1",
@@ -1660,7 +1660,7 @@ func TestFeedbagService_DeleteItem(t *testing.T) {
 					feedbagDeleteParams: feedbagDeleteParams{
 						{
 							screenName: state.NewIdentScreenName("me"),
-							items: []wire.FeedbagItem{
+							items: wire.FeedbagItems{
 								{
 									ClassID: wire.FeedbagClassIdBuddy,
 									Name:    "buddy1",
@@ -1699,7 +1699,7 @@ func TestFeedbagService_DeleteItem(t *testing.T) {
 									RequestID: wire.ReqIDFromServer,
 								},
 								Body: wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
-									Items: []wire.FeedbagItem{
+									Items: wire.FeedbagItems{
 										{
 											ClassID: wire.FeedbagClassIdBuddy,
 											Name:    "buddy1",
@@ -1827,7 +1827,7 @@ func TestFeedbagService_Use(t *testing.T) {
 					feedbagParams: feedbagParams{
 						{
 							screenName: state.NewIdentScreenName("me"),
-							results: []wire.FeedbagItem{
+							results: wire.FeedbagItems{
 								{
 									ClassID: wire.FeedbagClassIdBuddyPrefs,
 									TLVLBlock: wire.TLVLBlock{
@@ -1857,7 +1857,7 @@ func TestFeedbagService_Use(t *testing.T) {
 					feedbagParams: feedbagParams{
 						{
 							screenName: state.NewIdentScreenName("me"),
-							results: []wire.FeedbagItem{
+							results: wire.FeedbagItems{
 								{
 									ClassID: wire.FeedbagClassIdBuddyPrefs,
 									TLVLBlock: wire.TLVLBlock{

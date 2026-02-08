@@ -18,7 +18,7 @@ type FeedbagAdapter struct {
 }
 
 // RetrieveFeedbag implements FeedbagRetriever interface
-func (f *FeedbagAdapter) RetrieveFeedbag(ctx context.Context, screenName state.IdentScreenName) ([]wire.FeedbagItem, error) {
+func (f *FeedbagAdapter) RetrieveFeedbag(ctx context.Context, screenName state.IdentScreenName) (wire.FeedbagItems, error) {
 	return f.Store.Feedbag(ctx, screenName)
 }
 
@@ -50,19 +50,19 @@ func (f *FeedbagAdapter) RelationshipsByUser(ctx context.Context, screenName sta
 // InsertItem implements FeedbagManager interface
 func (f *FeedbagAdapter) InsertItem(ctx context.Context, screenName state.IdentScreenName, item wire.FeedbagItem) error {
 	// Use FeedbagUpsert to insert a new item
-	return f.Store.FeedbagUpsert(ctx, screenName, []wire.FeedbagItem{item})
+	return f.Store.FeedbagUpsert(ctx, screenName, wire.FeedbagItems{item})
 }
 
 // UpdateItem implements FeedbagManager interface
 func (f *FeedbagAdapter) UpdateItem(ctx context.Context, screenName state.IdentScreenName, item wire.FeedbagItem) error {
 	// Use FeedbagUpsert to update an existing item
-	return f.Store.FeedbagUpsert(ctx, screenName, []wire.FeedbagItem{item})
+	return f.Store.FeedbagUpsert(ctx, screenName, wire.FeedbagItems{item})
 }
 
 // DeleteItem implements FeedbagManager interface
 func (f *FeedbagAdapter) DeleteItem(ctx context.Context, screenName state.IdentScreenName, item wire.FeedbagItem) error {
 	// Use FeedbagDelete to remove an item
-	return f.Store.FeedbagDelete(ctx, screenName, []wire.FeedbagItem{item})
+	return f.Store.FeedbagDelete(ctx, screenName, wire.FeedbagItems{item})
 }
 
 // Message Conversion Functions

@@ -506,7 +506,7 @@ func (_c *mockFeedbagService_StartCluster_Call) RunAndReturn(run func(ctx contex
 }
 
 // UpsertItem provides a mock function for the type mockFeedbagService
-func (_mock *mockFeedbagService) UpsertItem(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, items []wire.FeedbagItem) (*wire.SNACMessage, error) {
+func (_mock *mockFeedbagService) UpsertItem(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, items wire.FeedbagItems) (*wire.SNACMessage, error) {
 	ret := _mock.Called(ctx, instance, inFrame, items)
 
 	if len(ret) == 0 {
@@ -515,17 +515,17 @@ func (_mock *mockFeedbagService) UpsertItem(ctx context.Context, instance *state
 
 	var r0 *wire.SNACMessage
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame, []wire.FeedbagItem) (*wire.SNACMessage, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.FeedbagItems) (*wire.SNACMessage, error)); ok {
 		return returnFunc(ctx, instance, inFrame, items)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame, []wire.FeedbagItem) *wire.SNACMessage); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.FeedbagItems) *wire.SNACMessage); ok {
 		r0 = returnFunc(ctx, instance, inFrame, items)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*wire.SNACMessage)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, *state.SessionInstance, wire.SNACFrame, []wire.FeedbagItem) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.FeedbagItems) error); ok {
 		r1 = returnFunc(ctx, instance, inFrame, items)
 	} else {
 		r1 = ret.Error(1)
@@ -542,12 +542,12 @@ type mockFeedbagService_UpsertItem_Call struct {
 //   - ctx context.Context
 //   - instance *state.SessionInstance
 //   - inFrame wire.SNACFrame
-//   - items []wire.FeedbagItem
+//   - items wire.FeedbagItems
 func (_e *mockFeedbagService_Expecter) UpsertItem(ctx interface{}, instance interface{}, inFrame interface{}, items interface{}) *mockFeedbagService_UpsertItem_Call {
 	return &mockFeedbagService_UpsertItem_Call{Call: _e.mock.On("UpsertItem", ctx, instance, inFrame, items)}
 }
 
-func (_c *mockFeedbagService_UpsertItem_Call) Run(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, items []wire.FeedbagItem)) *mockFeedbagService_UpsertItem_Call {
+func (_c *mockFeedbagService_UpsertItem_Call) Run(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, items wire.FeedbagItems)) *mockFeedbagService_UpsertItem_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -561,9 +561,9 @@ func (_c *mockFeedbagService_UpsertItem_Call) Run(run func(ctx context.Context, 
 		if args[2] != nil {
 			arg2 = args[2].(wire.SNACFrame)
 		}
-		var arg3 []wire.FeedbagItem
+		var arg3 wire.FeedbagItems
 		if args[3] != nil {
-			arg3 = args[3].([]wire.FeedbagItem)
+			arg3 = args[3].(wire.FeedbagItems)
 		}
 		run(
 			arg0,
@@ -580,7 +580,7 @@ func (_c *mockFeedbagService_UpsertItem_Call) Return(sNACMessage *wire.SNACMessa
 	return _c
 }
 
-func (_c *mockFeedbagService_UpsertItem_Call) RunAndReturn(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, items []wire.FeedbagItem) (*wire.SNACMessage, error)) *mockFeedbagService_UpsertItem_Call {
+func (_c *mockFeedbagService_UpsertItem_Call) RunAndReturn(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, items wire.FeedbagItems) (*wire.SNACMessage, error)) *mockFeedbagService_UpsertItem_Call {
 	_c.Call.Return(run)
 	return _c
 }

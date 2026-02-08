@@ -1732,27 +1732,6 @@ const (
 	FeedbagRecentBuddyUpdate        uint16 = 0x0025
 )
 
-// FeedbagPDMode represents a buddy list permit/deny mode setting that
-// determines who can interact with a user.
-type FeedbagPDMode uint8
-
-const (
-	// FeedbagPDModePermitAll allows all users to see and talk to user. This is
-	// the session default.
-	FeedbagPDModePermitAll FeedbagPDMode = 0x01
-	// FeedbagPDModeDenyAll blocks all users from communicating with user.
-	FeedbagPDModeDenyAll FeedbagPDMode = 0x02
-	// FeedbagPDModePermitSome only allows a specified list of users to see and
-	// talk to user and blocks all others from communicating.
-	FeedbagPDModePermitSome FeedbagPDMode = 0x03
-	// FeedbagPDModeDenySome blocks a list of users from seeing and talking to
-	// user and allows all others to communicate.
-	FeedbagPDModeDenySome FeedbagPDMode = 0x04
-	// FeedbagPDModePermitOnList only allows communication with users on buddy
-	// list and blocks all others from communicating.
-	FeedbagPDModePermitOnList FeedbagPDMode = 0x05
-)
-
 type SNAC_0x13_0x02_FeedbagRightsQuery struct {
 	TLVRestBlock
 }
@@ -1768,20 +1747,20 @@ type SNAC_0x13_0x05_FeedbagQueryIfModified struct {
 
 type SNAC_0x13_0x06_FeedbagReply struct {
 	Version    uint8
-	Items      []FeedbagItem `oscar:"count_prefix=uint16"`
+	Items      FeedbagItems `oscar:"count_prefix=uint16"`
 	LastUpdate uint32
 }
 
 type SNAC_0x13_0x08_FeedbagInsertItem struct {
-	Items []FeedbagItem
+	Items FeedbagItems
 }
 
 type SNAC_0x13_0x09_FeedbagUpdateItem struct {
-	Items []FeedbagItem
+	Items FeedbagItems
 }
 
 type SNAC_0x13_0x0A_FeedbagDeleteItem struct {
-	Items []FeedbagItem
+	Items FeedbagItems
 }
 
 type SNAC_0x13_0x0E_FeedbagStatus struct {
@@ -2644,14 +2623,6 @@ func (t TLVUserInfo) IsAway() bool {
 func (t TLVUserInfo) IsInvisible() bool {
 	mask, _ := t.Uint32BE(OServiceUserInfoStatus)
 	return mask&OServiceUserStatusInvisible == OServiceUserStatusInvisible
-}
-
-type FeedbagItem struct {
-	Name    string `oscar:"len_prefix=uint16"`
-	GroupID uint16
-	ItemID  uint16
-	ClassID uint16
-	TLVLBlock
 }
 
 // ICQDCInfo represents ICQ direct connect settings.

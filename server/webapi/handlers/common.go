@@ -23,7 +23,7 @@ type SessionRetriever interface {
 
 // FeedbagRetriever provides methods to retrieve feedbag data.
 type FeedbagRetriever interface {
-	RetrieveFeedbag(ctx context.Context, screenName state.IdentScreenName) ([]wire.FeedbagItem, error)
+	RetrieveFeedbag(ctx context.Context, screenName state.IdentScreenName) (wire.FeedbagItems, error)
 	RelationshipsByUser(ctx context.Context, screenName state.IdentScreenName) ([]state.IdentScreenName, error)
 }
 

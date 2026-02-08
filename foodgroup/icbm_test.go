@@ -527,7 +527,7 @@ func TestICBMService_ChannelMsgToHost(t *testing.T) {
 					feedbagParams: feedbagParams{
 						{
 							screenName: state.NewIdentScreenName("22222222"),
-							results:    []wire.FeedbagItem{},
+							results:    wire.FeedbagItems{},
 						},
 					},
 				},
@@ -620,7 +620,7 @@ func TestICBMService_ChannelMsgToHost(t *testing.T) {
 					feedbagParams: feedbagParams{
 						{
 							screenName: state.NewIdentScreenName("recipient-screen-name"),
-							results: []wire.FeedbagItem{
+							results: wire.FeedbagItems{
 								{
 									ClassID: wire.FeedbagClassIdBuddyPrefs,
 									TLVLBlock: wire.TLVLBlock{
@@ -701,7 +701,7 @@ func TestICBMService_ChannelMsgToHost(t *testing.T) {
 					feedbagParams: feedbagParams{
 						{
 							screenName: state.NewIdentScreenName("recipient-screen-name"),
-							results: []wire.FeedbagItem{
+							results: wire.FeedbagItems{
 								{
 									ClassID: wire.FeedbagClassIdBuddyPrefs,
 									TLVLBlock: wire.TLVLBlock{
@@ -806,7 +806,7 @@ func TestICBMService_ChannelMsgToHost(t *testing.T) {
 					feedbagParams: feedbagParams{
 						{
 							screenName: state.NewIdentScreenName("recipient-screen-name"),
-							results: []wire.FeedbagItem{
+							results: wire.FeedbagItems{
 								{
 									ClassID: wire.FeedbagClassIdBuddyPrefs,
 									TLVLBlock: wire.TLVLBlock{
@@ -1537,7 +1537,7 @@ func TestICBMService_ChannelMsgToHost(t *testing.T) {
 					feedbagParams: feedbagParams{
 						{
 							screenName: state.NewIdentScreenName("recipient-screen-name"),
-							results: []wire.FeedbagItem{
+							results: wire.FeedbagItems{
 								{
 									ClassID: wire.FeedbagClassIdBuddyPrefs,
 									TLVLBlock: wire.TLVLBlock{
@@ -1633,7 +1633,7 @@ func TestICBMService_ChannelMsgToHost(t *testing.T) {
 					feedbagParams: feedbagParams{
 						{
 							screenName: state.NewIdentScreenName("recipient-screen-name"),
-							results: []wire.FeedbagItem{
+							results: wire.FeedbagItems{
 								{
 									ClassID: wire.FeedbagClassIdBuddyPrefs,
 									TLVLBlock: wire.TLVLBlock{
@@ -1738,7 +1738,7 @@ func TestICBMService_ChannelMsgToHost(t *testing.T) {
 					feedbagParams: feedbagParams{
 						{
 							screenName: state.NewIdentScreenName("recipient-screen-name"),
-							results: []wire.FeedbagItem{
+							results: wire.FeedbagItems{
 								{
 									ClassID: wire.FeedbagClassIdBuddyPrefs,
 									TLVLBlock: wire.TLVLBlock{

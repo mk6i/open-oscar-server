@@ -254,7 +254,7 @@ type feedbagManagerParams struct {
 // FeedbagManager.Feedbag call site
 type feedbagParams []struct {
 	screenName state.IdentScreenName
-	result     []wire.FeedbagItem
+	result     wire.FeedbagItems
 	err        error
 }
 
@@ -262,7 +262,7 @@ type feedbagParams []struct {
 // FeedbagManager.FeedbagUpsert call site
 type feedbagUpsertParams []struct {
 	screenName state.IdentScreenName
-	items      []wire.FeedbagItem
+	items      wire.FeedbagItems
 	err        error
 }
 
@@ -270,7 +270,7 @@ type feedbagUpsertParams []struct {
 // FeedbagManager.FeedbagDelete call site
 type feedbagDeleteParams []struct {
 	screenName state.IdentScreenName
-	items      []wire.FeedbagItem
+	items      wire.FeedbagItems
 	err        error
 }
 

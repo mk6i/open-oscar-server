@@ -29,7 +29,7 @@ func TestSQLiteUserStore_FeedbagUpsert(t *testing.T) {
 		f, err := NewSQLiteUserStore(testFile)
 		assert.NoError(t, err)
 
-		given := []wire.FeedbagItem{
+		given := wire.FeedbagItems{
 			{
 				GroupID:   0,
 				ItemID:    1805,
@@ -44,7 +44,7 @@ func TestSQLiteUserStore_FeedbagUpsert(t *testing.T) {
 				Name:    "Friends",
 			},
 		}
-		expect := []wire.FeedbagItem{
+		expect := wire.FeedbagItems{
 			{
 				GroupID:   0,
 				ItemID:    1805,
@@ -78,7 +78,7 @@ func TestSQLiteUserStore_FeedbagUpsert(t *testing.T) {
 		f, err := NewSQLiteUserStore(testFile)
 		assert.NoError(t, err)
 
-		given := []wire.FeedbagItem{
+		given := wire.FeedbagItems{
 			{
 				GroupID: 0x0A,
 				ItemID:  0,
@@ -109,7 +109,7 @@ func TestSQLiteUserStore_FeedbagUpsert(t *testing.T) {
 		f, err := NewSQLiteUserStore(testFile)
 		assert.NoError(t, err)
 
-		given := []wire.FeedbagItem{
+		given := wire.FeedbagItems{
 			{
 				GroupID:   0x0A,
 				ItemID:    0,
@@ -140,7 +140,7 @@ func TestFeedbagDelete(t *testing.T) {
 	f, err := NewSQLiteUserStore(testFile)
 	assert.NoError(t, err)
 
-	itemsIn := []wire.FeedbagItem{
+	itemsIn := wire.FeedbagItems{
 		{
 			GroupID: 0,
 			ItemID:  1805,
@@ -170,7 +170,7 @@ func TestFeedbagDelete(t *testing.T) {
 		t.Fatalf("failed to upsert: %s", err.Error())
 	}
 
-	if err := f.FeedbagDelete(context.Background(), screenName, []wire.FeedbagItem{itemsIn[0]}); err != nil {
+	if err := f.FeedbagDelete(context.Background(), screenName, wire.FeedbagItems{itemsIn[0]}); err != nil {
 		t.Fatalf("failed to delete: %s", err.Error())
 	}
 
@@ -215,7 +215,7 @@ func TestLastModifiedNotEmpty(t *testing.T) {
 	f, err := NewSQLiteUserStore(testFile)
 	assert.NoError(t, err)
 
-	itemsIn := []wire.FeedbagItem{
+	itemsIn := wire.FeedbagItems{
 		{
 			GroupID: 0x0A,
 			ItemID:  0,
@@ -2254,7 +2254,7 @@ func TestSQLiteUserStore_BuddyIconMetadataExistingRef(t *testing.T) {
 	feedbagStore, err := NewSQLiteUserStore(testFile)
 	assert.NoError(t, err)
 
-	itemsIn := []wire.FeedbagItem{
+	itemsIn := wire.FeedbagItems{
 		{
 			Name:    "1",
 			ClassID: wire.FeedbagClassIdBart,
@@ -2291,7 +2291,7 @@ func TestSQLiteUserStore_BuddyIconMetadataMissingRef(t *testing.T) {
 	feedbagStore, err := NewSQLiteUserStore(testFile)
 	assert.NoError(t, err)
 
-	itemsIn := []wire.FeedbagItem{
+	itemsIn := wire.FeedbagItems{
 		{
 			Name:    "1",
 			ClassID: wire.FeedbagClassIdBart,

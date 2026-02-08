@@ -63,19 +63,19 @@ func (m *BuddyListManager) GetBuddyListForUser(ctx context.Context, screenName s
 
 	// Build group map
 	groupMap := make(map[uint16]string)
-	buddyGroupMap := make(map[uint16][]wire.FeedbagItem)
+	buddyGroupMap := make(map[uint16]wire.FeedbagItems)
 
 	for _, item := range items {
 		switch item.ClassID {
 		case wire.FeedbagClassIdGroup:
 			// Store group name
 			groupMap[item.ItemID] = item.Name
-			buddyGroupMap[item.ItemID] = []wire.FeedbagItem{}
+			buddyGroupMap[item.ItemID] = wire.FeedbagItems{}
 		case wire.FeedbagClassIdBuddy:
 			// Add buddy to its group
 			if _, exists := buddyGroupMap[item.GroupID]; !exists {
 				// Create implicit group if it doesn't exist
-				buddyGroupMap[item.GroupID] = []wire.FeedbagItem{}
+				buddyGroupMap[item.GroupID] = wire.FeedbagItems{}
 			}
 			buddyGroupMap[item.GroupID] = append(buddyGroupMap[item.GroupID], item)
 		}

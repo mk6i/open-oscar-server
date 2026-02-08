@@ -42,10 +42,10 @@ type MockFeedbagManager struct {
 	mock.Mock
 }
 
-func (m *MockFeedbagManager) RetrieveFeedbag(ctx context.Context, screenName state.IdentScreenName) ([]wire.FeedbagItem, error) {
+func (m *MockFeedbagManager) RetrieveFeedbag(ctx context.Context, screenName state.IdentScreenName) (wire.FeedbagItems, error) {
 	args := m.Called(ctx, screenName)
 	if items := args.Get(0); items != nil {
-		return items.([]wire.FeedbagItem), args.Error(1)
+		return items.(wire.FeedbagItems), args.Error(1)
 	}
 	return nil, args.Error(1)
 }
@@ -395,7 +395,7 @@ func TestBuddyListHandler_AddBuddy(t *testing.T) {
 				sm.On("TouchSession", mock.Anything, aimsid).Return(nil)
 
 				// Mock feedbag retrieval with existing group
-				existingItems := []wire.FeedbagItem{
+				existingItems := wire.FeedbagItems{
 					{
 						ItemID:  1,
 						ClassID: wire.FeedbagClassIdGroup,
@@ -435,7 +435,7 @@ func TestBuddyListHandler_AddBuddy(t *testing.T) {
 
 				// Mock feedbag retrieval with no existing groups
 				fm.On("RetrieveFeedbag", mock.Anything, state.NewIdentScreenName("testuser")).
-					Return([]wire.FeedbagItem{}, nil)
+					Return(wire.FeedbagItems{}, nil)
 
 				// Mock group creation
 				fm.On("InsertItem", mock.Anything, state.NewIdentScreenName("testuser"), mock.MatchedBy(func(item wire.FeedbagItem) bool {
@@ -472,7 +472,7 @@ func TestBuddyListHandler_AddBuddy(t *testing.T) {
 				sm.On("TouchSession", mock.Anything, aimsid).Return(nil)
 
 				// Mock feedbag retrieval with existing buddy
-				existingItems := []wire.FeedbagItem{
+				existingItems := wire.FeedbagItems{
 					{
 						ItemID:  1,
 						ClassID: wire.FeedbagClassIdBuddy,

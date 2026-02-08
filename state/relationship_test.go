@@ -3157,7 +3157,7 @@ func TestSQLiteUserStore_AllRelationships(t *testing.T) {
 			for sn, list := range tt.serverSideLists {
 				assert.NoError(t, feedbagStore.UseFeedbag(context.Background(), sn))
 				itemID := uint16(1)
-				items := []wire.FeedbagItem{
+				items := wire.FeedbagItems{
 					pdInfoItem(itemID, list.privacyMode),
 				}
 				itemID++

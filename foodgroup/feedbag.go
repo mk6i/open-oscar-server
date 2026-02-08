@@ -175,7 +175,7 @@ func (s FeedbagService) QueryIfModified(ctx context.Context, instance *state.Ses
 // UpdateItem updates items in the user's feedbag (aka buddy list). Sends user
 // buddy arrival notifications for each online & visible buddy added to the
 // feedbag. It returns wire.FeedbagStatus, which contains update confirmation.
-func (s FeedbagService) UpsertItem(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, items []wire.FeedbagItem) (*wire.SNACMessage, error) {
+func (s FeedbagService) UpsertItem(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, items wire.FeedbagItems) (*wire.SNACMessage, error) {
 	for _, item := range items {
 		// don't let users block themselves, it causes the AIM client to go
 		// into a weird state.
@@ -450,7 +450,7 @@ func (s FeedbagService) RespondAuthorizeToHost(ctx context.Context, instance *st
 }
 
 // setSessionBuddyPrefs sets session preferences based on the feedbag buddy prefs item, if present.
-func setSessionBuddyPrefs(items []wire.FeedbagItem, instance *state.SessionInstance) {
+func setSessionBuddyPrefs(items wire.FeedbagItems, instance *state.SessionInstance) {
 	for _, item := range items {
 		if item.ClassID == wire.FeedbagClassIdBuddyPrefs && item.HasTag(wire.FeedbagAttributesBuddyPrefs) {
 			buddyPrefs, _ := item.Uint32BE(wire.FeedbagAttributesBuddyPrefs)

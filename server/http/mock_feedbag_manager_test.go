@@ -40,23 +40,23 @@ func (_m *mockFeedbagManager) EXPECT() *mockFeedbagManager_Expecter {
 }
 
 // Feedbag provides a mock function for the type mockFeedbagManager
-func (_mock *mockFeedbagManager) Feedbag(ctx context.Context, screenName state.IdentScreenName) ([]wire.FeedbagItem, error) {
+func (_mock *mockFeedbagManager) Feedbag(ctx context.Context, screenName state.IdentScreenName) (wire.FeedbagItems, error) {
 	ret := _mock.Called(ctx, screenName)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Feedbag")
 	}
 
-	var r0 []wire.FeedbagItem
+	var r0 wire.FeedbagItems
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, state.IdentScreenName) ([]wire.FeedbagItem, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, state.IdentScreenName) (wire.FeedbagItems, error)); ok {
 		return returnFunc(ctx, screenName)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, state.IdentScreenName) []wire.FeedbagItem); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, state.IdentScreenName) wire.FeedbagItems); ok {
 		r0 = returnFunc(ctx, screenName)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]wire.FeedbagItem)
+			r0 = ret.Get(0).(wire.FeedbagItems)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, state.IdentScreenName) error); ok {
@@ -86,13 +86,13 @@ func (_c *mockFeedbagManager_Feedbag_Call) Run(run func(ctx context.Context, scr
 	return _c
 }
 
-func (_c *mockFeedbagManager_Feedbag_Call) Return(result []wire.FeedbagItem, err error) *mockFeedbagManager_Feedbag_Call {
+func (_c *mockFeedbagManager_Feedbag_Call) Return(result wire.FeedbagItems, err error) *mockFeedbagManager_Feedbag_Call {
 	_c.Call.Return(result, err)
 	return _c
 }
 
 // FeedbagUpsert provides a mock function for the type mockFeedbagManager
-func (_mock *mockFeedbagManager) FeedbagUpsert(ctx context.Context, screenName state.IdentScreenName, items []wire.FeedbagItem) error {
+func (_mock *mockFeedbagManager) FeedbagUpsert(ctx context.Context, screenName state.IdentScreenName, items wire.FeedbagItems) error {
 	ret := _mock.Called(ctx, screenName, items)
 
 	if len(ret) == 0 {
@@ -100,7 +100,7 @@ func (_mock *mockFeedbagManager) FeedbagUpsert(ctx context.Context, screenName s
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, state.IdentScreenName, []wire.FeedbagItem) error); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, state.IdentScreenName, wire.FeedbagItems) error); ok {
 		return returnFunc(ctx, screenName, items)
 	}
 	if ret.Get(0) != nil {
@@ -117,14 +117,14 @@ type mockFeedbagManager_FeedbagUpsert_Call struct {
 // FeedbagUpsert is a helper method to define mock.On call
 //   - ctx context.Context
 //   - screenName state.IdentScreenName
-//   - items []wire.FeedbagItem
+//   - items wire.FeedbagItems
 func (_e *mockFeedbagManager_Expecter) FeedbagUpsert(ctx interface{}, screenName interface{}, items interface{}) *mockFeedbagManager_FeedbagUpsert_Call {
 	return &mockFeedbagManager_FeedbagUpsert_Call{Call: _e.mock.On("FeedbagUpsert", ctx, screenName, items)}
 }
 
-func (_c *mockFeedbagManager_FeedbagUpsert_Call) Run(run func(ctx context.Context, screenName state.IdentScreenName, items []wire.FeedbagItem)) *mockFeedbagManager_FeedbagUpsert_Call {
+func (_c *mockFeedbagManager_FeedbagUpsert_Call) Run(run func(ctx context.Context, screenName state.IdentScreenName, items wire.FeedbagItems)) *mockFeedbagManager_FeedbagUpsert_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(state.IdentScreenName), args[2].([]wire.FeedbagItem))
+		run(args[0].(context.Context), args[1].(state.IdentScreenName), args[2].(wire.FeedbagItems))
 	})
 	return _c
 }
@@ -135,7 +135,7 @@ func (_c *mockFeedbagManager_FeedbagUpsert_Call) Return(err error) *mockFeedbagM
 }
 
 // FeedbagDelete provides a mock function for the type mockFeedbagManager
-func (_mock *mockFeedbagManager) FeedbagDelete(ctx context.Context, screenName state.IdentScreenName, items []wire.FeedbagItem) error {
+func (_mock *mockFeedbagManager) FeedbagDelete(ctx context.Context, screenName state.IdentScreenName, items wire.FeedbagItems) error {
 	ret := _mock.Called(ctx, screenName, items)
 
 	if len(ret) == 0 {
@@ -143,7 +143,7 @@ func (_mock *mockFeedbagManager) FeedbagDelete(ctx context.Context, screenName s
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, state.IdentScreenName, []wire.FeedbagItem) error); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, state.IdentScreenName, wire.FeedbagItems) error); ok {
 		return returnFunc(ctx, screenName, items)
 	}
 	if ret.Get(0) != nil {
@@ -160,14 +160,14 @@ type mockFeedbagManager_FeedbagDelete_Call struct {
 // FeedbagDelete is a helper method to define mock.On call
 //   - ctx context.Context
 //   - screenName state.IdentScreenName
-//   - items []wire.FeedbagItem
+//   - items wire.FeedbagItems
 func (_e *mockFeedbagManager_Expecter) FeedbagDelete(ctx interface{}, screenName interface{}, items interface{}) *mockFeedbagManager_FeedbagDelete_Call {
 	return &mockFeedbagManager_FeedbagDelete_Call{Call: _e.mock.On("FeedbagDelete", ctx, screenName, items)}
 }
 
-func (_c *mockFeedbagManager_FeedbagDelete_Call) Run(run func(ctx context.Context, screenName state.IdentScreenName, items []wire.FeedbagItem)) *mockFeedbagManager_FeedbagDelete_Call {
+func (_c *mockFeedbagManager_FeedbagDelete_Call) Run(run func(ctx context.Context, screenName state.IdentScreenName, items wire.FeedbagItems)) *mockFeedbagManager_FeedbagDelete_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(state.IdentScreenName), args[2].([]wire.FeedbagItem))
+		run(args[0].(context.Context), args[1].(state.IdentScreenName), args[2].(wire.FeedbagItems))
 	})
 	return _c
 }

@@ -1480,7 +1480,7 @@ func TestHandler_FeedbagDeleteItem(t *testing.T) {
 		{
 			name: "success",
 			inputBody: wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
-				Items: []wire.FeedbagItem{
+				Items: wire.FeedbagItems{
 					{
 						Name: "my-item",
 					},
@@ -1499,7 +1499,7 @@ func TestHandler_FeedbagDeleteItem(t *testing.T) {
 		{
 			name: "success (nil output)",
 			inputBody: wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
-				Items: []wire.FeedbagItem{
+				Items: wire.FeedbagItems{
 					{
 						Name: "my-item",
 					},
@@ -1510,7 +1510,7 @@ func TestHandler_FeedbagDeleteItem(t *testing.T) {
 		{
 			name: "service error",
 			inputBody: wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
-				Items: []wire.FeedbagItem{
+				Items: wire.FeedbagItems{
 					{
 						Name: "my-item",
 					},
@@ -1531,7 +1531,7 @@ func TestHandler_FeedbagDeleteItem(t *testing.T) {
 		{
 			name: "response writer error",
 			inputBody: wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
-				Items: []wire.FeedbagItem{
+				Items: wire.FeedbagItems{
 					{
 						Name: "my-item",
 					},
@@ -1652,7 +1652,7 @@ func TestHandler_FeedbagInsertItem(t *testing.T) {
 		{
 			name: "success",
 			inputBody: wire.SNAC_0x13_0x08_FeedbagInsertItem{
-				Items: []wire.FeedbagItem{
+				Items: wire.FeedbagItems{
 					{
 						Name: "my-item",
 					},
@@ -1663,7 +1663,7 @@ func TestHandler_FeedbagInsertItem(t *testing.T) {
 		{
 			name: "success (non-nil output)",
 			inputBody: wire.SNAC_0x13_0x08_FeedbagInsertItem{
-				Items: []wire.FeedbagItem{
+				Items: wire.FeedbagItems{
 					{
 						Name: "my-item",
 					},
@@ -1682,7 +1682,7 @@ func TestHandler_FeedbagInsertItem(t *testing.T) {
 		{
 			name: "service error",
 			inputBody: wire.SNAC_0x13_0x08_FeedbagInsertItem{
-				Items: []wire.FeedbagItem{
+				Items: wire.FeedbagItems{
 					{
 						Name: "my-item",
 					},
@@ -1703,7 +1703,7 @@ func TestHandler_FeedbagInsertItem(t *testing.T) {
 		{
 			name: "response writer error",
 			inputBody: wire.SNAC_0x13_0x08_FeedbagInsertItem{
-				Items: []wire.FeedbagItem{
+				Items: wire.FeedbagItems{
 					{
 						Name: "my-item",
 					},
@@ -2114,7 +2114,7 @@ func TestHandler_FeedbagUpdateItem(t *testing.T) {
 		{
 			name: "success",
 			inputBody: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
-				Items: []wire.FeedbagItem{
+				Items: wire.FeedbagItems{
 					{
 						Name: "my-item",
 					},
@@ -2125,7 +2125,7 @@ func TestHandler_FeedbagUpdateItem(t *testing.T) {
 		{
 			name: "success (non-nil output)",
 			inputBody: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
-				Items: []wire.FeedbagItem{
+				Items: wire.FeedbagItems{
 					{
 						Name: "my-item",
 					},
@@ -2144,7 +2144,7 @@ func TestHandler_FeedbagUpdateItem(t *testing.T) {
 		{
 			name: "service error",
 			inputBody: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
-				Items: []wire.FeedbagItem{
+				Items: wire.FeedbagItems{
 					{
 						Name: "my-item",
 					},
@@ -2165,7 +2165,7 @@ func TestHandler_FeedbagUpdateItem(t *testing.T) {
 		{
 			name: "response writer error",
 			inputBody: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
-				Items: []wire.FeedbagItem{
+				Items: wire.FeedbagItems{
 					{
 						Name: "my-item",
 					},

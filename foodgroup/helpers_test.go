@@ -326,7 +326,7 @@ type adjacentUsersParams []struct {
 // FeedbagManager.FeedbagUpsert call site
 type feedbagUpsertParams []struct {
 	screenName state.IdentScreenName
-	items      []wire.FeedbagItem
+	items      wire.FeedbagItems
 }
 
 // buddiesParams is the list of parameters passed at the mock
@@ -346,7 +346,7 @@ type useParams []struct {
 // FeedbagManager.Feedbag call site
 type feedbagParams []struct {
 	screenName state.IdentScreenName
-	results    []wire.FeedbagItem
+	results    wire.FeedbagItems
 	err        error
 }
 
@@ -361,7 +361,7 @@ type feedbagLastModifiedParams []struct {
 // FeedbagManager.FeedbagDelete call site
 type feedbagDeleteParams []struct {
 	screenName state.IdentScreenName
-	items      []wire.FeedbagItem
+	items      wire.FeedbagItems
 }
 
 // messageRelayerParams is a helper struct that contains mock parameters for

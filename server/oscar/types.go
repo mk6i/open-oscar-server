@@ -97,7 +97,7 @@ type FeedbagService interface {
 	RightsQuery(ctx context.Context, inFrame wire.SNACFrame) wire.SNACMessage
 	StartCluster(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x11_FeedbagStartCluster)
 	EndCluster(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame)
-	UpsertItem(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, items []wire.FeedbagItem) (*wire.SNACMessage, error)
+	UpsertItem(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, items wire.FeedbagItems) (*wire.SNACMessage, error)
 	Use(ctx context.Context, instance *state.SessionInstance) error
 }
 

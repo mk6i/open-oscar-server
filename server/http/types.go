@@ -113,13 +113,13 @@ type FeedBagRetriever interface {
 // This interface matches foodgroup.FeedbagManager and is implemented by state.SQLiteUserStore.
 type FeedbagManager interface {
 	// Feedbag retrieves all feedbag items for a user.
-	Feedbag(ctx context.Context, screenName state.IdentScreenName) ([]wire.FeedbagItem, error)
+	Feedbag(ctx context.Context, screenName state.IdentScreenName) (wire.FeedbagItems, error)
 
 	// FeedbagUpsert inserts or updates feedbag items.
-	FeedbagUpsert(ctx context.Context, screenName state.IdentScreenName, items []wire.FeedbagItem) error
+	FeedbagUpsert(ctx context.Context, screenName state.IdentScreenName, items wire.FeedbagItems) error
 
 	// FeedbagDelete deletes feedbag items.
-	FeedbagDelete(ctx context.Context, screenName state.IdentScreenName, items []wire.FeedbagItem) error
+	FeedbagDelete(ctx context.Context, screenName state.IdentScreenName, items wire.FeedbagItems) error
 }
 
 // MessageRelayer defines a method for sending a SNAC message to a specific screen name.
