@@ -353,6 +353,69 @@ func (_c *mockICQUserUpdater_SetPermissions_Call) RunAndReturn(run func(ctx cont
 	return _c
 }
 
+// SetHomepageCategory provides a mock function for the type mockICQUserUpdater
+func (_mock *mockICQUserUpdater) SetHomepageCategory(ctx context.Context, name state.IdentScreenName, data state.ICQHomepageCategory) error {
+	ret := _mock.Called(ctx, name, data)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetHomepageCategory")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, state.IdentScreenName, state.ICQHomepageCategory) error); ok {
+		r0 = returnFunc(ctx, name, data)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// mockICQUserUpdater_SetHomepageCategory_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetHomepageCategory'
+type mockICQUserUpdater_SetHomepageCategory_Call struct {
+	*mock.Call
+}
+
+// SetHomepageCategory is a helper method to define mock.On call
+//   - ctx context.Context
+//   - name state.IdentScreenName
+//   - data state.ICQHomepageCategory
+func (_e *mockICQUserUpdater_Expecter) SetHomepageCategory(ctx interface{}, name interface{}, data interface{}) *mockICQUserUpdater_SetHomepageCategory_Call {
+	return &mockICQUserUpdater_SetHomepageCategory_Call{Call: _e.mock.On("SetHomepageCategory", ctx, name, data)}
+}
+
+func (_c *mockICQUserUpdater_SetHomepageCategory_Call) Run(run func(ctx context.Context, name state.IdentScreenName, data state.ICQHomepageCategory)) *mockICQUserUpdater_SetHomepageCategory_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 state.IdentScreenName
+		if args[1] != nil {
+			arg1 = args[1].(state.IdentScreenName)
+		}
+		var arg2 state.ICQHomepageCategory
+		if args[2] != nil {
+			arg2 = args[2].(state.ICQHomepageCategory)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *mockICQUserUpdater_SetHomepageCategory_Call) Return(err error) *mockICQUserUpdater_SetHomepageCategory_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *mockICQUserUpdater_SetHomepageCategory_Call) RunAndReturn(run func(ctx context.Context, name state.IdentScreenName, data state.ICQHomepageCategory) error) *mockICQUserUpdater_SetHomepageCategory_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // SetUserNotes provides a mock function for the type mockICQUserUpdater
 func (_mock *mockICQUserUpdater) SetUserNotes(ctx context.Context, name state.IdentScreenName, data state.ICQUserNotes) error {
 	ret := _mock.Called(ctx, name, data)

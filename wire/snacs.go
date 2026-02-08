@@ -2,6 +2,7 @@ package wire
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 
@@ -899,6 +900,11 @@ func ICBMFragmentList(text string) ([]ICBMCh1Fragment, error) {
 
 // UnmarshalICBMMessageText extracts message text from an ICBM fragment list.
 // Param b is a slice from TLV wire.ICBMTLVAOLIMData.
+//
+// The message charset is respected: UCS-2 BE (0x0002) is decoded to UTF-8,
+// while ASCII (0x0000) and Latin-1 (0x0003) are returned as-is since they are
+// valid subsets of UTF-8 for the 7-bit range and Go handles Latin-1 bytes
+// transparently.
 func UnmarshalICBMMessageText(b []byte) (string, error) {
 	var frags []ICBMCh1Fragment
 	if err := UnmarshalBE(&frags, bytes.NewBuffer(b)); err != nil {
@@ -910,13 +916,32 @@ func UnmarshalICBMMessageText(b []byte) (string, error) {
 			msg := ICBMCh1Message{}
 			err := UnmarshalBE(&msg, bytes.NewBuffer(frag.Payload))
 			if err != nil {
-				err = fmt.Errorf("unable to unmarshal ICBM message: %w", err)
+				return "", fmt.Errorf("unable to unmarshal ICBM message: %w", err)
 			}
-			return string(msg.Text), err
+			if msg.Charset == ICBMMessageEncodingUnicode {
+				return decodeUCS2BE(msg.Text), nil
+			}
+			return string(msg.Text), nil
 		}
 	}
 
 	return "", errors.New("unable to find message fragment")
+}
+
+// decodeUCS2BE converts UCS-2 big-endian encoded bytes to a Go UTF-8 string.
+func decodeUCS2BE(data []byte) string {
+	if len(data) < 2 {
+		return ""
+	}
+	runes := make([]rune, 0, len(data)/2)
+	for i := 0; i+1 < len(data); i += 2 {
+		r := rune(binary.BigEndian.Uint16(data[i : i+2]))
+		if r == 0 {
+			continue
+		}
+		runes = append(runes, r)
+	}
+	return string(runes)
 }
 
 // MarshalICBMFragmentList serializes an ICBM fragment list for an ICBM channel 1
@@ -2536,7 +2561,7 @@ type KerberosLoginRequestTicket struct {
 	// Unknown is an unknown field.
 	Unknown uint16
 
-	// Password holds the user’s password.
+	// Password holds the user's password.
 	Password []byte `oscar:"len_prefix=uint16"`
 
 	// PasswordMetadata may hold additional metadata about the password.
@@ -2547,7 +2572,7 @@ type KerberosLoginRequestTicket struct {
 // SNAC(0x050C, 0x0003) "Kerberos Login Success" response.
 //
 // TicketBlob follows the general layout of an RFC 4120 Ticket,
-// but is delivered in AIM’s TLV wrapper rather than a full KRB-TGS-REP.
+// but is delivered in AIM's TLV wrapper rather than a full KRB-TGS-REP.
 type KerberosTicket struct {
 	// PVNO is the Kerberos protocol-version number carried
 	// in the ticket header.  In Kerberos V5 this is always 0x0005.
@@ -2577,8 +2602,8 @@ type KerberosTicket struct {
 	KVNO uint8
 
 	// SessionKey is the clear-text session key that the KDC also placed,
-	// encrypted, inside EncTicket.  Provided here for the client’s
-	// convenience so it doesn’t have to decrypt the ticket itself.
+	// encrypted, inside EncTicket.  Provided here for the client's
+	// convenience so it doesn't have to decrypt the ticket itself.
 	SessionKey []byte `oscar:"len_prefix=uint16"`
 
 	// Unknown1 is typically zero. Possibly reserved or unused.

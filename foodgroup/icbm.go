@@ -71,6 +71,16 @@ type ICBMService struct {
 	logger                *slog.Logger
 	interval              time.Duration
 	offlineMessageManager OfflineMessageManager
+	legacyMessageSender   LegacyMessageSender
+}
+
+// SetLegacyMessageSender sets the legacy message sender for delivering messages
+// to legacy ICQ clients (V2-V5) that don't have OSCAR sessions.
+// This bridges the OSCAR->legacy gap: when an OSCAR/AIM user sends a message
+// to a UIN that's connected via legacy protocol, the message is delivered
+// through this sender instead of going to offline storage.
+func (s *ICBMService) SetLegacyMessageSender(sender LegacyMessageSender) {
+	s.legacyMessageSender = sender
 }
 
 // ParameterQuery returns ICBM service parameters.
@@ -113,6 +123,32 @@ func (s ICBMService) ChannelMsgToHost(ctx context.Context, instance *state.Sessi
 
 	recipSess := s.sessionRetriever.RetrieveSession(recip)
 	if recipSess == nil {
+		// Check if recipient is online via legacy ICQ protocol (V2-V5).
+		// Legacy clients don't have OSCAR sessions, so sessionRetriever won't find them.
+		if s.legacyMessageSender != nil {
+			msgText := extractICBMText(inBody)
+			if msgText != "" {
+				if err := s.legacyMessageSender.SendMessage(recip.UIN(), instance.IdentScreenName().UIN(), wire.ICQLegacyMsgText, msgText); err == nil {
+					// Message delivered to legacy client - send host ack if requested
+					if _, requestedConfirmation := inBody.TLVRestBlock.Bytes(wire.ICBMTLVRequestHostAck); requestedConfirmation {
+						return &wire.SNACMessage{
+							Frame: wire.SNACFrame{
+								FoodGroup: wire.ICBM,
+								SubGroup:  wire.ICBMHostAck,
+								RequestID: inFrame.RequestID,
+							},
+							Body: wire.SNAC_0x04_0x0C_ICBMHostAck{
+								Cookie:    inBody.Cookie,
+								ChannelID: inBody.ChannelID,
+							},
+						}, nil
+					}
+					return nil, nil
+				}
+				// SendMessage returned error - fall through to offline storage
+			}
+		}
+
 		// check for TLV that indicates that the message should be saved offline.
 		// For AIM 6/7, this is only set if the sender has the recipient on
 		// their buddy list and they've seen them online at least once.
@@ -297,12 +333,12 @@ func addExternalIP(instance *state.SessionInstance, tlv wire.TLV) (wire.TLV, err
 	if frag.HasTag(wire.ICBMRdvTLVTagsRequesterIP) && instance.RemoteAddr() != nil && instance.RemoteAddr().Addr().Is4() {
 		ip := instance.RemoteAddr().Addr()
 		// replace the IP set by the client with the actual IP seen by the
-		// server. unlike AOL’s original behavior, this allows NATed clients
+		// server. unlike AOL's original behavior, this allows NATed clients
 		// to use rendezvous by replacing their LAN IP with the correct
 		// external IP.
 		frag.Replace(wire.NewTLVBE(wire.ICBMRdvTLVTagsRequesterIP, ip.AsSlice()))
-		// append the client’s IP as seen by the server. the recipient uses
-		// this to verify that the sender’s claimed IP matches what the server
+		// append the client's IP as seen by the server. the recipient uses
+		// this to verify that the sender's claimed IP matches what the server
 		// detects. although redundant since we override the requester IP
 		// above, it remains required for client compatibility.
 		frag.Append(wire.NewTLVBE(wire.ICBMRdvTLVTagsVerifiedIP, ip.AsSlice()))
@@ -384,6 +420,25 @@ func stripHTMLFromICBMTLV(tlv wire.TLV) (wire.TLV, error) {
 	}
 
 	return wire.NewTLVBE(tlv.Tag, newValue), nil
+}
+
+// extractICBMText extracts plaintext from an ICBM message body.
+// Used to convert OSCAR messages to legacy ICQ format for delivery to V2-V5 clients.
+func extractICBMText(inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) string {
+	payload, hasPayload := inBody.Bytes(wire.ICBMTLVAOLIMData)
+	if !hasPayload {
+		return ""
+	}
+	text, err := wire.UnmarshalICBMMessageText(payload)
+	if err != nil {
+		return ""
+	}
+	// Strip HTML tags if present (AIM clients send HTML-formatted messages)
+	if strings.Contains(text, "<") {
+		stripped := stripHTML([]byte(text))
+		return string(stripped)
+	}
+	return text
 }
 
 // ClientEvent relays SNAC wire.ICBMClientEvent typing events from the
