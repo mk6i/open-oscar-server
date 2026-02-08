@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,7 +16,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
@@ -1139,58 +1139,32 @@ func TestUserHandler_GET(t *testing.T) {
 
 func TestUserHandler_POST(t *testing.T) {
 	tt := []struct {
-		name       string
-		body       string
-		UUID       uuid.UUID
-		want       string
-		password   string
-		statusCode int
-		mockParams mockParams
+		name          string
+		body          string
+		want          string
+		statusCode    int
+		createAccount state.CreateAccountFunc
 	}{
 		{
-			name: "with valid AIM user",
-			body: `{"screen_name":"userA", "password":"thepassword"}`,
-			UUID: uuid.MustParse("07c70701-ba68-49a9-9f9b-67a53816e37b"),
-
+			name:       "with valid AIM user",
+			body:       `{"screen_name":"userA", "password":"thepassword"}`,
 			want:       `User account created successfully.`,
-			password:   "thepassword",
 			statusCode: http.StatusCreated,
-			mockParams: mockParams{
-				userManagerParams: userManagerParams{
-					insertUserParams: insertUserParams{
-						{
-							u: state.User{
-								AuthKey:           uuid.MustParse("07c70701-ba68-49a9-9f9b-67a53816e37b").String(),
-								DisplayScreenName: "userA",
-								IdentScreenName:   state.NewIdentScreenName("userA"),
-							},
-							err: nil,
-						},
-					},
-				},
+			createAccount: func(ctx context.Context, screenName state.DisplayScreenName, password string) error {
+				assert.Equal(t, state.DisplayScreenName("userA"), screenName)
+				assert.Equal(t, "thepassword", password)
+				return nil
 			},
 		},
 		{
 			name:       "with valid ICQ user",
 			body:       `{"screen_name":"100003", "password":"thepass"}`,
-			UUID:       uuid.MustParse("07c70701-ba68-49a9-9f9b-67a53816e37b"),
 			want:       `User account created successfully.`,
-			password:   "thepass",
 			statusCode: http.StatusCreated,
-			mockParams: mockParams{
-				userManagerParams: userManagerParams{
-					insertUserParams: insertUserParams{
-						{
-							u: state.User{
-								AuthKey:           uuid.MustParse("07c70701-ba68-49a9-9f9b-67a53816e37b").String(),
-								DisplayScreenName: "100003",
-								IdentScreenName:   state.NewIdentScreenName("100003"),
-								IsICQ:             true,
-							},
-							err: nil,
-						},
-					},
-				},
+			createAccount: func(ctx context.Context, screenName state.DisplayScreenName, password string) error {
+				assert.Equal(t, state.DisplayScreenName("100003"), screenName)
+				assert.Equal(t, "thepass", password)
+				return nil
 			},
 		},
 		{
@@ -1202,74 +1176,68 @@ func TestUserHandler_POST(t *testing.T) {
 		{
 			name:       "user handler error",
 			body:       `{"screen_name":"userA", "password":"thepassword"}`,
-			UUID:       uuid.MustParse("07c70701-ba68-49a9-9f9b-67a53816e37b"),
 			want:       `internal server error`,
-			password:   "thepassword",
 			statusCode: http.StatusInternalServerError,
-			mockParams: mockParams{
-				userManagerParams: userManagerParams{
-					insertUserParams: insertUserParams{
-						{
-							u: state.User{
-								AuthKey:           uuid.MustParse("07c70701-ba68-49a9-9f9b-67a53816e37b").String(),
-								DisplayScreenName: "userA",
-								IdentScreenName:   state.NewIdentScreenName("userA"),
-							},
-							err: io.EOF,
-						},
-					},
-				},
+			createAccount: func(ctx context.Context, screenName state.DisplayScreenName, password string) error {
+				assert.Equal(t, state.DisplayScreenName("userA"), screenName)
+				assert.Equal(t, "thepassword", password)
+				return io.EOF
 			},
 		},
 		{
 			name:       "duplicate user",
 			body:       `{"screen_name":"userA", "password":"thepassword"}`,
-			UUID:       uuid.MustParse("07c70701-ba68-49a9-9f9b-67a53816e37b"),
 			want:       `user already exists`,
-			password:   "thepassword",
 			statusCode: http.StatusConflict,
-			mockParams: mockParams{
-				userManagerParams: userManagerParams{
-					insertUserParams: insertUserParams{
-						{
-							u: state.User{
-								AuthKey:           uuid.MustParse("07c70701-ba68-49a9-9f9b-67a53816e37b").String(),
-								DisplayScreenName: "userA",
-								IdentScreenName:   state.NewIdentScreenName("userA"),
-							},
-							err: state.ErrDupUser,
-						},
-					},
-				},
+			createAccount: func(ctx context.Context, screenName state.DisplayScreenName, password string) error {
+				assert.Equal(t, state.DisplayScreenName("userA"), screenName)
+				assert.Equal(t, "thepassword", password)
+				return state.ErrDupUser
 			},
 		},
 		{
 			name:       "invalid AIM screen name",
 			body:       `{"screen_name":"a", "password":"thepassword"}`,
-			UUID:       uuid.MustParse("07c70701-ba68-49a9-9f9b-67a53816e37b"),
 			want:       `invalid screen name: screen name must be between 3 and 16 characters`,
 			statusCode: http.StatusBadRequest,
+			createAccount: func(ctx context.Context, screenName state.DisplayScreenName, password string) error {
+				assert.Equal(t, state.DisplayScreenName("a"), screenName)
+				assert.Equal(t, "thepassword", password)
+				return state.ErrAIMHandleLength
+			},
 		},
 		{
 			name:       "invalid AIM password",
 			body:       `{"screen_name":"userA", "password":"1"}`,
-			UUID:       uuid.MustParse("07c70701-ba68-49a9-9f9b-67a53816e37b"),
 			want:       `invalid password: invalid password length: password length must be between 4-16 characters`,
 			statusCode: http.StatusBadRequest,
+			createAccount: func(ctx context.Context, screenName state.DisplayScreenName, password string) error {
+				assert.Equal(t, state.DisplayScreenName("userA"), screenName)
+				assert.Equal(t, "1", password)
+				return fmt.Errorf("%w: password length must be between 4-16 characters", state.ErrPasswordInvalid)
+			},
 		},
 		{
 			name:       "invalid ICQ UIN",
 			body:       `{"screen_name":"1000", "password":"thepass"}`,
-			UUID:       uuid.MustParse("07c70701-ba68-49a9-9f9b-67a53816e37b"),
 			want:       `invalid uin: uin must be a number in the range 10000-2147483646`,
 			statusCode: http.StatusBadRequest,
+			createAccount: func(ctx context.Context, screenName state.DisplayScreenName, password string) error {
+				assert.Equal(t, state.DisplayScreenName("1000"), screenName)
+				assert.Equal(t, "thepass", password)
+				return state.ErrICQUINInvalidFormat
+			},
 		},
 		{
 			name:       "invalid ICQ password",
 			body:       `{"screen_name":"100003", "password":"thelongpassword"}`,
-			UUID:       uuid.MustParse("07c70701-ba68-49a9-9f9b-67a53816e37b"),
 			want:       `invalid password: invalid password length: password must be between 6-8 characters`,
 			statusCode: http.StatusBadRequest,
+			createAccount: func(ctx context.Context, screenName state.DisplayScreenName, password string) error {
+				assert.Equal(t, state.DisplayScreenName("100003"), screenName)
+				assert.Equal(t, "thelongpassword", password)
+				return fmt.Errorf("%w: password must be between 6-8 characters", state.ErrPasswordInvalid)
+			},
 		},
 	}
 
@@ -1278,16 +1246,7 @@ func TestUserHandler_POST(t *testing.T) {
 			request := httptest.NewRequest(http.MethodPost, "/user", strings.NewReader(tc.body))
 			responseRecorder := httptest.NewRecorder()
 
-			userManager := newMockUserManager(t)
-			for _, params := range tc.mockParams.userManagerParams.insertUserParams {
-				assert.NoError(t, params.u.HashPassword(tc.password))
-				userManager.EXPECT().
-					InsertUser(matchContext(), params.u).
-					Return(params.err)
-			}
-
-			newUUID := func() uuid.UUID { return tc.UUID }
-			postUserHandler(responseRecorder, request, userManager, newUUID, slog.Default())
+			postUserHandler(responseRecorder, request, tc.createAccount, slog.Default())
 
 			if responseRecorder.Code != tc.statusCode {
 				t.Errorf("want status '%d', got '%d'", tc.statusCode, responseRecorder.Code)

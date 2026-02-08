@@ -3864,7 +3864,6 @@ func TestOSCARProxy_Signon(t *testing.T) {
 									},
 								},
 							},
-							newUserFn: state.NewStubUser,
 							tlv: wire.TLVRestBlock{
 								TLVList: wire.TLVList{
 									wire.NewTLVBE(wire.OServiceTLVTagsLoginCookie, []byte("thecookie")),
@@ -3920,8 +3919,7 @@ func TestOSCARProxy_Signon(t *testing.T) {
 									},
 								},
 							},
-							newUserFn: state.NewStubUser,
-							err:       io.EOF,
+							err: io.EOF,
 						},
 					},
 				},
@@ -3943,7 +3941,6 @@ func TestOSCARProxy_Signon(t *testing.T) {
 									},
 								},
 							},
-							newUserFn: state.NewStubUser,
 							tlv: wire.TLVRestBlock{
 								TLVList: wire.TLVList{
 									wire.NewTLVBE(wire.OServiceTLVTagsLoginCookie, []byte("thecookie")),
@@ -3982,7 +3979,6 @@ func TestOSCARProxy_Signon(t *testing.T) {
 									},
 								},
 							},
-							newUserFn: state.NewStubUser,
 							tlv: wire.TLVRestBlock{
 								TLVList: wire.TLVList{
 									wire.NewTLVBE(wire.OServiceTLVTagsLoginCookie, []byte("thecookie")),
@@ -4029,7 +4025,6 @@ func TestOSCARProxy_Signon(t *testing.T) {
 									},
 								},
 							},
-							newUserFn: state.NewStubUser,
 							tlv: wire.TLVRestBlock{
 								TLVList: wire.TLVList{
 									wire.NewTLVBE(wire.OServiceTLVTagsLoginCookie, []byte("thecookie")),
@@ -4083,7 +4078,6 @@ func TestOSCARProxy_Signon(t *testing.T) {
 									},
 								},
 							},
-							newUserFn: state.NewStubUser,
 							tlv: wire.TLVRestBlock{
 								TLVList: wire.TLVList{
 									wire.NewTLVBE(wire.OServiceTLVTagsLoginCookie, []byte("thecookie")),
@@ -4137,7 +4131,6 @@ func TestOSCARProxy_Signon(t *testing.T) {
 									},
 								},
 							},
-							newUserFn: state.NewStubUser,
 							tlv: wire.TLVRestBlock{
 								TLVList: wire.TLVList{
 									wire.NewTLVBE(wire.LoginTLVTagsErrorSubcode, wire.LoginErrInvalidUsernameOrPassword),
@@ -4163,7 +4156,7 @@ func TestOSCARProxy_Signon(t *testing.T) {
 			authSvc := newMockAuthService(t)
 			for _, params := range tc.mockParams.flapLoginParams {
 				authSvc.EXPECT().
-					FLAPLogin(matchContext(), params.frame, mock.Anything, "").
+					FLAPLogin(matchContext(), params.frame, "").
 					Return(params.tlv, params.err)
 			}
 			for _, params := range tc.mockParams.crackCookieParams {

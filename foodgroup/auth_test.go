@@ -38,8 +38,8 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
-		// newUserFn is the function that registers a new user account
-		newUserFn func(screenName state.DisplayScreenName) (state.User, error)
+		// createAccount is the function that creates a new user account
+		createAccount state.CreateAccountFunc
 		// expectOutput is the SNAC sent from the server to client
 		expectOutput wire.SNACMessage
 		// wantErr is the error we expect from the method
@@ -461,11 +461,6 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 							result:     nil,
 						},
 					},
-					insertUserParams: insertUserParams{
-						{
-							user: user,
-						},
-					},
 				},
 				cookieBakerParams: cookieBakerParams{
 					cookieIssueParams: cookieIssueParams{
@@ -483,8 +478,10 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 					},
 				},
 			},
-			newUserFn: func(screenName state.DisplayScreenName) (state.User, error) {
-				return user, nil
+			createAccount: func(ctx context.Context, screenName state.DisplayScreenName, password string) error {
+				assert.Equal(t, user.DisplayScreenName, screenName)
+				assert.Equal(t, "welcome1", password)
+				return nil
 			},
 			expectOutput: wire.SNACMessage{
 				Frame: wire.SNACFrame{
@@ -527,6 +524,11 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 					},
 				},
 			},
+			createAccount: func(ctx context.Context, screenName state.DisplayScreenName, password string) error {
+				assert.Equal(t, state.DisplayScreenName("2coolforschool"), screenName)
+				assert.Equal(t, "welcome1", password)
+				return state.ErrAIMHandleInvalidFormat
+			},
 			expectOutput: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.BUCP,
@@ -565,6 +567,11 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 						},
 					},
 				},
+			},
+			createAccount: func(ctx context.Context, screenName state.DisplayScreenName, password string) error {
+				assert.Equal(t, state.DisplayScreenName("99"), screenName)
+				assert.Equal(t, "welcome1", password)
+				return state.ErrICQUINInvalidFormat
 			},
 			expectOutput: wire.SNACMessage{
 				Frame: wire.SNACFrame{
@@ -619,9 +626,6 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 						},
 					},
 				},
-			},
-			newUserFn: func(screenName state.DisplayScreenName) (state.User, error) {
-				return user, nil
 			},
 			expectOutput: wire.SNACMessage{
 				Frame: wire.SNACFrame{
@@ -761,11 +765,6 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 					User(matchContext(), params.screenName).
 					Return(params.result, params.err)
 			}
-			for _, params := range tc.mockParams.insertUserParams {
-				userManager.EXPECT().
-					InsertUser(matchContext(), params.user).
-					Return(params.err)
-			}
 			cookieBaker := newMockCookieBaker(t)
 			for _, params := range tc.mockParams.cookieIssueParams {
 				cookieBaker.EXPECT().
@@ -786,9 +785,10 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 				userManager:                userManager,
 				sessionRetriever:           sessionRetriever,
 				maxConcurrentLoginsPerUser: 2,
+				createAccount:              tc.createAccount,
 				logger:                     slog.Default(),
 			}
-			outputSNAC, err := svc.BUCPLogin(context.Background(), tc.inputSNAC, tc.newUserFn, tc.advertisedHost)
+			outputSNAC, err := svc.BUCPLogin(context.Background(), tc.inputSNAC, tc.advertisedHost)
 			assert.ErrorIs(t, err, tc.wantErr)
 			assert.Equal(t, tc.expectOutput, outputSNAC)
 		})
@@ -815,8 +815,8 @@ func TestAuthService_FLAPLogin(t *testing.T) {
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
-		// newUserFn is the function that registers a new user account
-		newUserFn func(screenName state.DisplayScreenName) (state.User, error)
+		// createAccount is the function that creates a new user account
+		createAccount state.CreateAccountFunc
 		// expectOutput is the response sent from the server to client
 		expectOutput wire.TLVRestBlock
 		// wantErr is the error we expect from the method
@@ -1021,11 +1021,6 @@ func TestAuthService_FLAPLogin(t *testing.T) {
 							result:     nil,
 						},
 					},
-					insertUserParams: insertUserParams{
-						{
-							user: user,
-						},
-					},
 				},
 				cookieBakerParams: cookieBakerParams{
 					cookieIssueParams: cookieIssueParams{
@@ -1043,8 +1038,10 @@ func TestAuthService_FLAPLogin(t *testing.T) {
 					},
 				},
 			},
-			newUserFn: func(screenName state.DisplayScreenName) (state.User, error) {
-				return user, nil
+			createAccount: func(ctx context.Context, screenName state.DisplayScreenName, password string) error {
+				assert.Equal(t, user.DisplayScreenName, screenName)
+				assert.Equal(t, "welcome1", password)
+				return nil
 			},
 			expectOutput: wire.TLVRestBlock{
 				TLVList: wire.TLVList{
@@ -1093,9 +1090,6 @@ func TestAuthService_FLAPLogin(t *testing.T) {
 						},
 					},
 				},
-			},
-			newUserFn: func(screenName state.DisplayScreenName) (state.User, error) {
-				return user, nil
 			},
 			expectOutput: wire.TLVRestBlock{
 				TLVList: wire.TLVList{
@@ -1214,11 +1208,6 @@ func TestAuthService_FLAPLogin(t *testing.T) {
 					User(matchContext(), params.screenName).
 					Return(params.result, params.err)
 			}
-			for _, params := range tc.mockParams.insertUserParams {
-				userManager.EXPECT().
-					InsertUser(matchContext(), params.user).
-					Return(params.err)
-			}
 			cookieBaker := newMockCookieBaker(t)
 			for _, params := range tc.mockParams.cookieIssueParams {
 				cookieBaker.EXPECT().
@@ -1226,12 +1215,13 @@ func TestAuthService_FLAPLogin(t *testing.T) {
 					Return(params.cookieOut, params.err)
 			}
 			svc := AuthService{
-				config:      tc.cfg,
-				cookieBaker: cookieBaker,
-				userManager: userManager,
-				logger:      slog.Default(),
+				config:        tc.cfg,
+				cookieBaker:   cookieBaker,
+				userManager:   userManager,
+				createAccount: tc.createAccount,
+				logger:        slog.Default(),
 			}
-			outputSNAC, err := svc.FLAPLogin(context.Background(), tc.inputSNAC, tc.newUserFn, tc.advertisedHost)
+			outputSNAC, err := svc.FLAPLogin(context.Background(), tc.inputSNAC, tc.advertisedHost)
 			assert.ErrorIs(t, err, tc.wantErr)
 			assert.Equal(t, tc.expectOutput, outputSNAC)
 		})
@@ -1258,8 +1248,8 @@ func TestAuthService_KerberosLogin(t *testing.T) {
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
-		// newUserFn is the function that registers a new user account
-		newUserFn func(screenName state.DisplayScreenName) (state.User, error)
+		// createAccount is the function that creates a new user account
+		createAccount state.CreateAccountFunc
 		// expectOutput is the response sent from the server to client
 		expectOutput wire.SNACMessage
 		// wantErr is the error we expect from the method
@@ -1570,9 +1560,10 @@ func TestAuthService_KerberosLogin(t *testing.T) {
 				sessionRetriever:           sessionRetriever,
 				timeNow:                    tc.timeNow,
 				maxConcurrentLoginsPerUser: 2,
+				createAccount:              tc.createAccount,
 				logger:                     slog.Default(),
 			}
-			outputSNAC, err := svc.KerberosLogin(context.Background(), tc.inputSNAC, tc.newUserFn, tc.advertisedHost)
+			outputSNAC, err := svc.KerberosLogin(context.Background(), tc.inputSNAC, tc.advertisedHost)
 			assert.ErrorIs(t, err, tc.wantErr)
 			assert.Equal(t, tc.expectOutput, outputSNAC)
 		})
@@ -1760,7 +1751,7 @@ func TestAuthService_RegisterChatSession_HappyPath(t *testing.T) {
 	chatCookieBuf := &bytes.Buffer{}
 	assert.NoError(t, wire.MarshalBE(serverCookie, chatCookieBuf))
 
-	svc := NewAuthService(config.Config{}, nil, nil, chatSessionRegistry, nil, nil, nil, nil, nil, wire.DefaultRateLimitClasses(), slog.Default())
+	svc := NewAuthService(config.Config{}, nil, nil, chatSessionRegistry, nil, nil, nil, nil, nil, wire.DefaultRateLimitClasses(), nil, slog.Default())
 
 	have, err := svc.RegisterChatSession(context.Background(), serverCookie)
 	assert.NoError(t, err)
@@ -1970,7 +1961,7 @@ func TestAuthService_RegisterBOSSession(t *testing.T) {
 					Return(params.result, params.err)
 			}
 
-			svc := NewAuthService(config.Config{}, sessionRegistry, nil, nil, userManager, nil, nil, accountManager, bartItemManager, wire.DefaultRateLimitClasses(), slog.Default())
+			svc := NewAuthService(config.Config{}, sessionRegistry, nil, nil, userManager, nil, nil, accountManager, bartItemManager, wire.DefaultRateLimitClasses(), nil, slog.Default())
 
 			have, err := svc.RegisterBOSSession(context.Background(), tc.cookie)
 			assert.NoError(t, err)
@@ -2001,7 +1992,7 @@ func TestAuthService_RetrieveBOSSession_HappyPath(t *testing.T) {
 		User(matchContext(), instance.IdentScreenName()).
 		Return(&state.User{IdentScreenName: instance.IdentScreenName()}, nil)
 
-	svc := NewAuthService(config.Config{}, nil, sessionRetriever, nil, userManager, nil, nil, nil, nil, wire.DefaultRateLimitClasses(), slog.Default())
+	svc := NewAuthService(config.Config{}, nil, sessionRetriever, nil, userManager, nil, nil, nil, nil, wire.DefaultRateLimitClasses(), nil, slog.Default())
 
 	have, err := svc.RetrieveBOSSession(context.Background(), aimAuthCookie)
 	assert.NoError(t, err)
@@ -2026,7 +2017,7 @@ func TestAuthService_RetrieveBOSSession_SessionNotFound(t *testing.T) {
 		User(matchContext(), instance.IdentScreenName()).
 		Return(&state.User{IdentScreenName: instance.IdentScreenName()}, nil)
 
-	svc := NewAuthService(config.Config{}, nil, sessionRetriever, nil, userManager, nil, nil, nil, nil, wire.DefaultRateLimitClasses(), slog.Default())
+	svc := NewAuthService(config.Config{}, nil, sessionRetriever, nil, userManager, nil, nil, nil, nil, wire.DefaultRateLimitClasses(), nil, slog.Default())
 
 	have, err := svc.RetrieveBOSSession(context.Background(), aimAuthCookie)
 	assert.NoError(t, err)
@@ -2119,7 +2110,7 @@ func TestAuthService_SignoutChat(t *testing.T) {
 					RemoveSession(matchSession(params.screenName))
 			}
 
-			svc := NewAuthService(config.Config{}, nil, nil, sessionManager, nil, nil, chatMessageRelayer, nil, nil, wire.DefaultRateLimitClasses(), slog.Default())
+			svc := NewAuthService(config.Config{}, nil, nil, sessionManager, nil, nil, chatMessageRelayer, nil, nil, wire.DefaultRateLimitClasses(), nil, slog.Default())
 			svc.SignoutChat(context.Background(), tt.instance)
 		})
 	}
@@ -2164,7 +2155,7 @@ func TestAuthService_Signout(t *testing.T) {
 			for _, params := range tt.mockParams.removeSessionParams {
 				sessionManager.EXPECT().RemoveSession(matchSession(params.screenName))
 			}
-			svc := NewAuthService(config.Config{}, sessionManager, nil, nil, nil, nil, nil, nil, nil, wire.DefaultRateLimitClasses(), slog.Default())
+			svc := NewAuthService(config.Config{}, sessionManager, nil, nil, nil, nil, nil, nil, nil, wire.DefaultRateLimitClasses(), nil, slog.Default())
 
 			svc.Signout(context.Background(), tt.instance)
 		})

@@ -12,12 +12,11 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/mk6i/open-oscar-server/config"
-	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
 type AuthService interface {
-	KerberosLogin(ctx context.Context, inBody wire.SNAC_0x050C_0x0002_KerberosLoginRequest, newUserFn func(screenName state.DisplayScreenName) (state.User, error), advertisedHost string) (wire.SNACMessage, error)
+	KerberosLogin(ctx context.Context, inBody wire.SNAC_0x050C_0x0002_KerberosLoginRequest, advertisedHost string) (wire.SNACMessage, error)
 }
 
 func NewKerberosServer(listeners []config.Listener, logger *slog.Logger, authService AuthService) *Server {
@@ -112,7 +111,7 @@ func postHandler(w http.ResponseWriter, r *http.Request, authService AuthService
 		return
 	}
 
-	response, err := authService.KerberosLogin(r.Context(), body, state.NewStubUser, listenAddress)
+	response, err := authService.KerberosLogin(r.Context(), body, listenAddress)
 	if err != nil {
 		logger.Error("authService.KerberosLogin", "err", err.Error())
 		http.Error(w, "internal server error", http.StatusInternalServerError)

@@ -33,6 +33,7 @@ func NewAuthService(
 	accountManager AccountManager,
 	bartItemManager BARTItemManager,
 	classes wire.RateLimitClasses,
+	createAccount state.CreateAccountFunc,
 	logger *slog.Logger,
 ) *AuthService {
 	return &AuthService{
@@ -48,6 +49,7 @@ func NewAuthService(
 		rateLimitClasses:           classes,
 		timeNow:                    time.Now,
 		maxConcurrentLoginsPerUser: MaxConcurrentLoginsPerUser,
+		createAccount:              createAccount,
 		logger:                     logger,
 	}
 }
@@ -69,6 +71,7 @@ type AuthService struct {
 	rateLimitClasses           wire.RateLimitClasses
 	timeNow                    func() time.Time
 	maxConcurrentLoginsPerUser int
+	createAccount              state.CreateAccountFunc
 }
 
 // RegisterChatSession adds a user to a chat room. The authCookie param is an
@@ -282,9 +285,9 @@ func (s AuthService) BUCPChallenge(ctx context.Context, inBody wire.SNAC_0x17_0x
 // (wire.LoginTLVTagsReconnectHere) and an authorization cookie
 // (wire.LoginTLVTagsAuthorizationCookie). Else, an error code is set
 // (wire.LoginTLVTagsErrorSubcode).
-func (s AuthService) BUCPLogin(ctx context.Context, inBody wire.SNAC_0x17_0x02_BUCPLoginRequest, newUserFn func(screenName state.DisplayScreenName) (state.User, error), advertisedHost string) (wire.SNACMessage, error) {
+func (s AuthService) BUCPLogin(ctx context.Context, inBody wire.SNAC_0x17_0x02_BUCPLoginRequest, advertisedHost string) (wire.SNACMessage, error) {
 
-	block, err := s.login(ctx, inBody.TLVList, newUserFn, advertisedHost)
+	block, err := s.login(ctx, inBody.TLVList, advertisedHost)
 	if err != nil {
 		return wire.SNACMessage{}, err
 	}
@@ -310,8 +313,8 @@ func (s AuthService) BUCPLogin(ctx context.Context, inBody wire.SNAC_0x17_0x02_B
 // (wire.LoginTLVTagsReconnectHere) and an authorization cookie
 // (wire.LoginTLVTagsAuthorizationCookie). Else, an error code is set
 // (wire.LoginTLVTagsErrorSubcode).
-func (s AuthService) FLAPLogin(ctx context.Context, inFrame wire.FLAPSignonFrame, newUserFn func(screenName state.DisplayScreenName) (state.User, error), advertisedHost string) (wire.TLVRestBlock, error) {
-	return s.login(ctx, inFrame.TLVList, newUserFn, advertisedHost)
+func (s AuthService) FLAPLogin(ctx context.Context, inFrame wire.FLAPSignonFrame, advertisedHost string) (wire.TLVRestBlock, error) {
+	return s.login(ctx, inFrame.TLVList, advertisedHost)
 }
 
 // KerberosLogin handles AIM-style Kerberos authentication for AIM 6.0+.
@@ -322,7 +325,7 @@ func (s AuthService) FLAPLogin(ctx context.Context, inFrame wire.FLAPSignonFrame
 //
 // Several values in the response are poorly understood but necessary for proper
 // processing on the client side.
-func (s AuthService) KerberosLogin(ctx context.Context, inBody wire.SNAC_0x050C_0x0002_KerberosLoginRequest, newUserFn func(screenName state.DisplayScreenName) (state.User, error), advertisedHost string) (wire.SNACMessage, error) {
+func (s AuthService) KerberosLogin(ctx context.Context, inBody wire.SNAC_0x050C_0x0002_KerberosLoginRequest, advertisedHost string) (wire.SNACMessage, error) {
 
 	b, ok := inBody.TicketRequestMetadata.Bytes(wire.KerberosTLVTicketRequest)
 	if !ok {
@@ -345,7 +348,7 @@ func (s AuthService) KerberosLogin(ctx context.Context, inBody wire.SNAC_0x050C_
 		list = append(list, wire.NewTLVBE(wire.LoginTLVTagsPlaintextPassword, info.Password))
 	}
 
-	result, err := s.login(ctx, list, newUserFn, advertisedHost)
+	result, err := s.login(ctx, list, advertisedHost)
 	if err != nil {
 		return wire.SNACMessage{}, fmt.Errorf("login: %w", err)
 	}
@@ -480,7 +483,7 @@ func (l *loginProperties) fromTLV(list wire.TLVList) error {
 
 // login validates a user's credentials and creates their session. it returns
 // metadata used in both BUCP and FLAP authentication responses.
-func (s AuthService) login(ctx context.Context, tlv wire.TLVList, newUserFn func(screenName state.DisplayScreenName) (state.User, error), advertisedHost string) (wire.TLVRestBlock, error) {
+func (s AuthService) login(ctx context.Context, tlv wire.TLVList, advertisedHost string) (wire.TLVRestBlock, error) {
 
 	props := loginProperties{}
 	if err := props.fromTLV(tlv); err != nil {
@@ -512,7 +515,7 @@ func (s AuthService) login(ctx context.Context, tlv wire.TLVList, newUserFn func
 		if s.config.DisableAuth {
 			// auth disabled, create the user
 			s.logger.Debug("login: auth disabled, creating user", "screen_name", props.screenName)
-			return s.createUser(ctx, props, newUserFn, advertisedHost)
+			return s.createUser(ctx, props, advertisedHost)
 		}
 		// auth enabled, return separate login errors for ICQ and AIM
 		loginErr := wire.LoginErrInvalidUsernameOrPassword
@@ -591,15 +594,8 @@ func (s AuthService) login(ctx context.Context, tlv wire.TLVList, newUserFn func
 	return s.loginSuccessResponse(props, advertisedHost)
 }
 
-func (s AuthService) createUser(ctx context.Context, props loginProperties, newUserFn func(screenName state.DisplayScreenName) (state.User, error), advertisedHost string) (wire.TLVRestBlock, error) {
-
-	var err error
-	if props.screenName.IsUIN() {
-		err = props.screenName.ValidateUIN()
-	} else {
-		err = props.screenName.ValidateAIMHandle()
-	}
-
+func (s AuthService) createUser(ctx context.Context, props loginProperties, advertisedHost string) (wire.TLVRestBlock, error) {
+	err := s.createAccount(ctx, props.screenName, "welcome1")
 	if err != nil {
 		switch {
 		case errors.Is(err, state.ErrAIMHandleInvalidFormat) || errors.Is(err, state.ErrAIMHandleLength):
@@ -609,16 +605,6 @@ func (s AuthService) createUser(ctx context.Context, props loginProperties, newU
 		default:
 			return wire.TLVRestBlock{}, err
 		}
-	}
-
-	newUser, err := newUserFn(props.screenName)
-	if err != nil {
-		return wire.TLVRestBlock{}, err
-	}
-
-	err = s.userManager.InsertUser(ctx, newUser)
-	if err != nil {
-		return wire.TLVRestBlock{}, err
 	}
 
 	return s.loginSuccessResponse(props, advertisedHost)

@@ -9,8 +9,6 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/google/uuid"
-
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
@@ -131,23 +129,6 @@ func (s DisplayScreenName) IdentScreenName() IdentScreenName {
 // casing and spaces.
 func (s DisplayScreenName) String() string {
 	return string(s)
-}
-
-// NewStubUser creates a new user with canned credentials. The default password
-// is "welcome1". This is typically used for development purposes.
-func NewStubUser(screenName DisplayScreenName) (User, error) {
-	uid, err := uuid.NewRandom()
-	if err != nil {
-		return User{}, err
-	}
-	u := User{
-		IdentScreenName:   NewIdentScreenName(string(screenName)),
-		DisplayScreenName: screenName,
-		AuthKey:           uid.String(),
-		IsICQ:             screenName.IsUIN(),
-	}
-	err = u.HashPassword("welcome1")
-	return u, err
 }
 
 // User represents a user account.

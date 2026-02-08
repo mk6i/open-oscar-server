@@ -236,6 +236,7 @@ func OSCAR(deps Container) *oscar.Server {
 		deps.sqLiteUserStore,
 		deps.sqLiteUserStore,
 		deps.rateLimitClasses,
+		state.NewAccountCreator(deps.sqLiteUserStore.InsertUser),
 		logger,
 	)
 	bartService := foodgroup.NewBARTService(
@@ -269,8 +270,14 @@ func OSCAR(deps Container) *oscar.Server {
 		deps.inMemorySessionManager,
 		deps.inMemorySessionManager,
 	)
-	icqService := foodgroup.NewICQService(deps.inMemorySessionManager, deps.sqLiteUserStore, deps.sqLiteUserStore,
-		logger, deps.inMemorySessionManager, deps.sqLiteUserStore)
+	icqService := foodgroup.NewICQService(
+		deps.inMemorySessionManager,
+		deps.sqLiteUserStore,
+		deps.sqLiteUserStore,
+		logger,
+		deps.inMemorySessionManager,
+		deps.sqLiteUserStore,
+	)
 	locateService := foodgroup.NewLocateService(
 		deps.sqLiteUserStore,
 		deps.inMemorySessionManager,
@@ -339,7 +346,20 @@ func OSCAR(deps Container) *oscar.Server {
 // KerberosAPI creates an HTTP server for the Kerberos server.
 func KerberosAPI(deps Container) *kerberos.Server {
 	logger := deps.logger.With("svc", "Kerberos")
-	authService := foodgroup.NewAuthService(deps.cfg, deps.inMemorySessionManager, deps.inMemorySessionManager, deps.chatSessionManager, deps.sqLiteUserStore, deps.hmacCookieBaker, deps.chatSessionManager, deps.sqLiteUserStore, deps.sqLiteUserStore, deps.rateLimitClasses, logger)
+	authService := foodgroup.NewAuthService(
+		deps.cfg,
+		deps.inMemorySessionManager,
+		deps.inMemorySessionManager,
+		deps.chatSessionManager,
+		deps.sqLiteUserStore,
+		deps.hmacCookieBaker,
+		deps.chatSessionManager,
+		deps.sqLiteUserStore,
+		deps.sqLiteUserStore,
+		deps.rateLimitClasses,
+		state.NewAccountCreator(deps.sqLiteUserStore.InsertUser),
+		logger,
+	)
 	return kerberos.NewKerberosServer(deps.Listeners, logger, authService)
 }
 
@@ -376,6 +396,7 @@ func MgmtAPI(deps Container) *http.Server {
 		deps.sqLiteUserStore,        // accountManager
 		deps.sqLiteUserStore,        // profileRetriever
 		deps.sqLiteUserStore,        // webAPIKeyManager
+		state.NewAccountCreator(deps.sqLiteUserStore.InsertUser),
 		logger,
 	)
 }
@@ -407,6 +428,7 @@ func TOC(deps Container) *toc.Server {
 				deps.sqLiteUserStore,
 				deps.sqLiteUserStore,
 				deps.rateLimitClasses,
+				state.NewAccountCreator(deps.sqLiteUserStore.InsertUser),
 				logger,
 			),
 			BuddyListRegistry: deps.sqLiteUserStore,
@@ -508,6 +530,7 @@ func WebAPI(deps Container) *webapi.Server {
 			deps.sqLiteUserStore,
 			deps.sqLiteUserStore,
 			deps.rateLimitClasses,
+			state.NewAccountCreator(deps.sqLiteUserStore.InsertUser),
 			logger,
 		),
 		BuddyListRegistry: deps.sqLiteUserStore,
