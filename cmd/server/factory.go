@@ -15,6 +15,7 @@ import (
 	"github.com/mk6i/open-oscar-server/config"
 	"github.com/mk6i/open-oscar-server/foodgroup"
 	"github.com/mk6i/open-oscar-server/server/http"
+	"github.com/mk6i/open-oscar-server/server/icq_legacy"
 	"github.com/mk6i/open-oscar-server/server/kerberos"
 	"github.com/mk6i/open-oscar-server/server/oscar"
 	oscarmiddleware "github.com/mk6i/open-oscar-server/server/oscar/middleware"
@@ -604,4 +605,106 @@ func WebAPI(deps Container) *webapi.Server {
 	}
 	// Pass SQLiteUserStore as the API key validator (it implements middleware.APIKeyValidator)
 	return webapi.NewServer([]string{"0.0.0.0:9000"}, logger, handler, deps.sqLiteUserStore, deps.webAPISessionManager)
+}
+
+// ICQLegacy creates a legacy ICQ server for v2-v5 protocols.
+func ICQLegacy(deps Container) *icq_legacy.LegacyServer {
+	logger := deps.logger.With("svc", "ICQLegacy")
+
+	// Create session manager
+	sessionManager := icq_legacy.NewLegacySessionManager(
+		deps.inMemorySessionManager,
+		deps.cfg.ICQLegacy,
+		logger,
+	)
+
+	// Create the ICQ legacy service
+	icqLegacyService := foodgroup.NewICQLegacyService(
+		deps.sqLiteUserStore,        // userManager
+		deps.sqLiteUserStore,        // accountManager
+		deps.inMemorySessionManager, // sessionRetriever
+		deps.inMemorySessionManager, // messageRelayer
+		foodgroup.NewBuddyService(   // buddyBroadcaster
+			deps.inMemorySessionManager,
+			deps.sqLiteUserStore,
+			deps.sqLiteUserStore,
+			deps.inMemorySessionManager,
+			deps.sqLiteUserStore,
+		),
+		deps.sqLiteUserStore, // offlineMessageManager
+		deps.sqLiteUserStore, // userFinder
+		deps.sqLiteUserStore, // userUpdater
+		deps.sqLiteUserStore, // feedbagManager
+		deps.sqLiteUserStore, // relationshipFetcher
+		logger,
+	)
+
+	// Create handlers (sender will be set after server creation)
+	v2Handler := icq_legacy.NewV2Handler(sessionManager, icqLegacyService, nil, logger)
+	v3Handler := icq_legacy.NewV3Handler(sessionManager, icqLegacyService, nil, logger)
+	v4Handler := icq_legacy.NewV4Handler(sessionManager, icqLegacyService, nil, logger)
+	v5Handler := icq_legacy.NewV5Handler(sessionManager, icqLegacyService, nil, logger)
+
+	// Create protocol dispatcher
+	dispatcher := icq_legacy.NewProtocolDispatcher(
+		v2Handler,
+		v3Handler,
+		v4Handler,
+		v5Handler,
+		deps.cfg.ICQLegacy,
+		logger,
+	)
+
+	// Create server
+	server := icq_legacy.NewLegacyServer(
+		deps.cfg.ICQLegacy,
+		sessionManager,
+		dispatcher,
+		logger,
+	)
+
+	// Set the packet sender on handlers (circular dependency resolution)
+	v2Handler.SetSender(server)
+	v3Handler.SetSender(server)
+	v4Handler.SetSender(server)
+	v5Handler.SetSender(server)
+
+	// Set the dispatcher on handlers for cross-protocol messaging
+	v3Handler.SetDispatcher(dispatcher)
+	v5Handler.SetDispatcher(dispatcher)
+
+	// Set the legacy session manager on the service using an adapter
+	icqLegacyService.SetLegacySessionManager(&legacySessionManagerAdapter{sessionManager})
+
+	return server
+}
+
+// legacySessionManagerAdapter adapts icq_legacy.LegacySessionManager to foodgroup.LegacySessionManager
+type legacySessionManagerAdapter struct {
+	mgr *icq_legacy.LegacySessionManager
+}
+
+func (a *legacySessionManagerAdapter) GetSession(uin uint32) foodgroup.LegacySessionInstance {
+	session := a.mgr.GetSession(uin)
+	if session == nil {
+		return nil
+	}
+	return session
+}
+
+func (a *legacySessionManagerAdapter) GetAllSessions() []foodgroup.LegacySessionInstance {
+	sessions := a.mgr.GetAllSessions()
+	result := make([]foodgroup.LegacySessionInstance, len(sessions))
+	for i, s := range sessions {
+		result[i] = s
+	}
+	return result
+}
+
+func (a *legacySessionManagerAdapter) NotifyContactsOfStatus(session foodgroup.LegacySessionInstance) []uint32 {
+	legacySession, ok := session.(*icq_legacy.LegacySession)
+	if !ok {
+		return nil
+	}
+	return a.mgr.NotifyContactsOfStatus(legacySession)
 }

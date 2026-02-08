@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/url"
 	"strings"
+	"time"
 )
 
 var (
@@ -52,6 +53,47 @@ type Config struct {
 	DisableAuth            bool   `envconfig:"DISABLE_AUTH" required:"true" basic:"true" ssl:"true" description:"Disable password check and auto-create new users at login time. Useful for quickly creating new accounts during development without having to register new users via the management API."`
 	DisableMultiLoginNotif bool   `envconfig:"DISABLE_MULTI_LOGIN_NOTIF" required:"false" basic:"true" ssl:"true" description:"Disable notification sent when another client signs in with the same screen name."`
 	LogLevel               string `envconfig:"LOG_LEVEL" required:"true" basic:"info" ssl:"info" description:"Set logging granularity. Possible values: 'trace', 'debug', 'info', 'warn', 'error'."`
+
+	// ICQ Legacy Protocol Configuration
+	ICQLegacy ICQLegacyConfig
+}
+
+// ICQLegacyConfig holds configuration for legacy ICQ protocol support (v2-v5)
+type ICQLegacyConfig struct {
+	Enabled            bool          `envconfig:"ICQ_LEGACY_ENABLED" required:"false" basic:"true" ssl:"true" description:"Enable legacy ICQ protocol support (v2-v5). Allows vintage ICQ clients to connect."`
+	UDPListener        string        `envconfig:"ICQ_LEGACY_UDP_LISTENER" required:"false" basic:"0.0.0.0:4000" ssl:"0.0.0.0:4000" description:"UDP listener address for legacy ICQ protocols.\n\nFormat: HOST:PORT\n\nExamples:\n\t// All interfaces\n\t0.0.0.0:4000\n\t// Specific interface\n\t192.168.1.10:4000"`
+	SupportedVersions  []int         `envconfig:"ICQ_LEGACY_VERSIONS" required:"false" basic:"2,3,4,5" ssl:"2,3,4,5" description:"Comma-separated list of supported ICQ protocol versions. Valid values: 2, 3, 4, 5."`
+	SessionTimeout     time.Duration `envconfig:"ICQ_LEGACY_SESSION_TIMEOUT" required:"false" basic:"120s" ssl:"120s" description:"Session timeout for legacy ICQ connections. Sessions are cleaned up after this duration of inactivity."`
+	KeepAliveInterval  time.Duration `envconfig:"ICQ_LEGACY_KEEPALIVE_INTERVAL" required:"false" basic:"120s" ssl:"120s" description:"Expected keep-alive interval from clients. Used for timeout calculations."`
+	AutoRegistration   bool          `envconfig:"ICQ_LEGACY_AUTO_REGISTRATION" required:"false" basic:"false" ssl:"false" description:"Allow automatic user registration from legacy clients. When enabled, new UINs can be created via the legacy protocol."`
+	DepartmentsEnabled bool          `envconfig:"ICQ_LEGACY_DEPARTMENTS_ENABLED" required:"false" basic:"false" ssl:"false" description:"Enable department listing feature (groupware functionality)."`
+	BroadcastEnabled   bool          `envconfig:"ICQ_LEGACY_BROADCAST_ENABLED" required:"false" basic:"true" ssl:"true" description:"Enable broadcast message functionality."`
+	WWPEnabled         bool          `envconfig:"ICQ_LEGACY_WWP_ENABLED" required:"false" basic:"true" ssl:"true" description:"Enable Web Pager (WWP) message support."`
+}
+
+// DefaultICQLegacyConfig returns the default configuration for ICQ legacy protocol
+func DefaultICQLegacyConfig() ICQLegacyConfig {
+	return ICQLegacyConfig{
+		Enabled:            true,
+		UDPListener:        "0.0.0.0:4000",
+		SupportedVersions:  []int{2, 3, 4, 5},
+		SessionTimeout:     120 * time.Second,
+		KeepAliveInterval:  120 * time.Second,
+		AutoRegistration:   false,
+		DepartmentsEnabled: false,
+		BroadcastEnabled:   true,
+		WWPEnabled:         true,
+	}
+}
+
+// SupportsVersion checks if a specific protocol version is enabled
+func (c *ICQLegacyConfig) SupportsVersion(version int) bool {
+	for _, v := range c.SupportedVersions {
+		if v == version {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Config) ParseListenersCfg() ([]Listener, error) {
