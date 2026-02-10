@@ -1580,74 +1580,42 @@ func (s OSCARProxy) NewBuddies(ctx context.Context, me *state.SessionInstance, a
 		return s.runtimeErr(ctx, fmt.Errorf("parseTOC2Config: %w", err))
 	}
 
-	fb, err := s.FeedbagManager.Feedbag(ctx, me.IdentScreenName())
-	if err != nil {
-		return s.runtimeErr(ctx, fmt.Errorf("FeedbagManager.Feedbag: %w", err))
-	}
-
-	// Build lookup maps by scanning feedbag
-	groupNameToID := make(map[string]uint16)
-	existingItemIDs := make(map[uint16]bool)
-	existingBuddies := make(map[uint16]map[string]bool) // groupID -> buddyName -> exists
-
-	var maxGroupID uint16
-	var maxItemID uint16
-
-	for _, item := range fb {
-		existingItemIDs[item.ItemID] = true
-		if item.ItemID > maxItemID {
-			maxItemID = item.ItemID
-		}
-
-		if item.ClassID == wire.FeedbagClassIdGroup {
-			if item.ItemID > maxGroupID {
-				maxGroupID = item.ItemID
-			}
-			groupNameToID[item.Name] = item.ItemID
-		} else if item.ClassID == wire.FeedbagClassIdBuddy {
-			if existingBuddies[item.GroupID] == nil {
-				existingBuddies[item.GroupID] = make(map[string]bool)
-			}
-			existingBuddies[item.GroupID][item.Name] = true
-		}
-	}
-
-	var updates []wire.FeedbagItem
 	var replies []string
 
 	// Process each group in config
 	for groupName, buddies := range groups {
-		// Find or create group
-		groupID, exists := groupNameToID[groupName]
-		if !exists {
-			// Create new group
-			maxGroupID++
-			if maxGroupID == 0 {
-				maxGroupID = 1 // Start from 1, not 0
-			}
-			groupID = maxGroupID
-			groupNameToID[groupName] = groupID
 
-			groupItem := wire.FeedbagItem{
-				ItemID:  groupID,
+		var updates []wire.FeedbagItem
+
+		fb, err := s.FeedbagManager.Feedbag(ctx, me.IdentScreenName())
+		if err != nil {
+			return s.runtimeErr(ctx, fmt.Errorf("FeedbagManager.Feedbag: %w", err))
+		}
+
+		var groupItem *wire.FeedbagItem
+		// Get the group
+		for _, item := range fb {
+			if item.ClassID == wire.FeedbagClassIdGroup && item.Name == groupName {
+				groupItem = &item
+			}
+		}
+		if groupItem == nil {
+			groupItem = &wire.FeedbagItem{
 				ClassID: wire.FeedbagClassIdGroup,
-				GroupID: 0,
 				Name:    groupName,
+				GroupID: randItemID(rand.Intn, fb),
 				TLVLBlock: wire.TLVLBlock{
 					TLVList: wire.TLVList{},
 				},
 			}
-			updates = append(updates, groupItem)
-			// Initialize existingBuddies map for the new group
-			if existingBuddies[groupID] == nil {
-				existingBuddies[groupID] = make(map[string]bool)
-			}
 		}
 
-		// Process buddies in this group
-		for _, buddyEntry := range buddies {
+		// Does the item already exist in the group?
+		count := 0
+		for _, buddy := range buddies {
+
 			// Parse buddy entry (may contain alias/note: b:buddy:alias:::::note)
-			parts := strings.Split(buddyEntry, ":")
+			parts := strings.Split(buddy, ":")
 			buddyName := parts[0]
 			if buddyName == "" {
 				continue
@@ -1656,27 +1624,25 @@ func (s OSCARProxy) NewBuddies(ctx context.Context, me *state.SessionInstance, a
 			// Normalize screen name
 			normalizedBuddy := state.NewIdentScreenName(buddyName).String()
 
-			// Check if buddy already exists in this group
-			if existingBuddies[groupID] != nil && existingBuddies[groupID][normalizedBuddy] {
-				continue // Skip duplicate
-			}
-
-			// Find next available ItemID
-			maxItemID++
-			for existingItemIDs[maxItemID] {
-				maxItemID++
-				if maxItemID == 0 {
-					maxItemID = 1 // Skip 0
+			buddyFound := false
+			for _, item := range fb {
+				if item.ClassID == wire.FeedbagClassIdBuddy && item.GroupID == groupItem.GroupID {
+					count++
+					if item.Name == normalizedBuddy {
+						buddyFound = true
+						break
+					}
 				}
 			}
-			nextItemID := maxItemID
-			existingItemIDs[nextItemID] = true
+			if buddyFound {
+				continue
+			}
 
 			// Create buddy item
 			buddyItem := wire.FeedbagItem{
-				ItemID:  nextItemID,
+				ItemID:  randItemID(rand.Intn, fb),
 				ClassID: wire.FeedbagClassIdBuddy,
-				GroupID: groupID,
+				GroupID: groupItem.GroupID,
 				Name:    normalizedBuddy,
 				TLVLBlock: wire.TLVLBlock{
 					TLVList: wire.TLVList{},
@@ -1694,16 +1660,38 @@ func (s OSCARProxy) NewBuddies(ctx context.Context, me *state.SessionInstance, a
 			}
 
 			updates = append(updates, buddyItem)
+			fb = append(fb, buddyItem) // make sure item wasn't already added so far in loop
 			replies = append(replies, fmt.Sprintf("NEW_BUDDY_REPLY2:%s:added", normalizedBuddy))
 		}
-	}
 
-	if len(updates) == 0 {
-		return []string{}
-	}
+		if len(updates) == 0 {
+			continue
+		}
 
-	if _, err := s.FeedbagService.UpsertItem(ctx, me, wire.SNACFrame{}, updates); err != nil {
-		return s.runtimeErr(ctx, fmt.Errorf("FeedbagService.UpsertItem: %w", err))
+		// insert the items
+		if _, err := s.FeedbagService.UpsertItem(ctx, me, wire.SNACFrame{}, updates); err != nil {
+			return s.runtimeErr(ctx, fmt.Errorf("FeedbagService.UpsertItem: %w", err))
+		}
+
+		var itemIDs []uint16
+		for _, item := range updates {
+			itemIDs = append(itemIDs, item.ItemID)
+		}
+
+		// update group
+		if order, hasOrder := groupItem.Bytes(wire.FeedbagAttributesOrder); hasOrder {
+			var memberIDs []uint16
+			if err := wire.UnmarshalBE(&memberIDs, bytes.NewReader(order)); err != nil {
+				return s.runtimeErr(ctx, fmt.Errorf("wire.UnmarshalBE: %w", err))
+			}
+			groupItem.Replace(wire.NewTLVBE(wire.FeedbagAttributesOrder, append(memberIDs, itemIDs...)))
+		} else {
+			groupItem.Append(wire.NewTLVBE(wire.FeedbagAttributesOrder, itemIDs))
+		}
+
+		if _, err := s.FeedbagService.UpsertItem(ctx, me, wire.SNACFrame{}, []wire.FeedbagItem{*groupItem}); err != nil {
+			return s.runtimeErr(ctx, fmt.Errorf("FeedbagService.UpsertItem: %w", err))
+		}
 	}
 
 	return replies
