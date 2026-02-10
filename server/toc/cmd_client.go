@@ -9,6 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
+	"math/rand"
 	"net/url"
 	"strconv"
 	"strings"
@@ -1429,45 +1431,69 @@ func (s OSCARProxy) NewGroup(ctx context.Context, me *state.SessionInstance, arg
 		return s.runtimeErr(ctx, fmt.Errorf("FeedbagManager.Feedbag: %w", err))
 	}
 
-	// Scan feedbag to check if group exists and find next GroupID
-	var maxGroupID uint16
-	groupExists := false
+	rootGroupExists := false
 	for _, item := range fb {
 		if item.ClassID == wire.FeedbagClassIdGroup {
-			if item.ItemID > maxGroupID {
-				maxGroupID = item.ItemID
-			}
 			if item.Name == groupName {
-				groupExists = true
+				// Group already exists, return success (idempotent)
+				return []string{}
+			}
+			if item.GroupID == 0 {
+				rootGroupExists = true
 			}
 		}
 	}
 
-	if groupExists {
-		// Group already exists, return success (idempotent)
-		return []string{}
+	newGroupID := randItemID(rand.Intn, fb)
+
+	var items []wire.FeedbagItem
+	if !rootGroupExists {
+		items = append(items, wire.FeedbagItem{
+			ClassID: wire.FeedbagClassIdGroup,
+			GroupID: 0,
+			Name:    "",
+			TLVLBlock: wire.TLVLBlock{
+				TLVList: wire.TLVList{
+					wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{newGroupID}),
+				},
+			},
+		})
 	}
 
-	nextGroupID := maxGroupID + 1
-	if nextGroupID == 0 {
-		nextGroupID = 1 // Start from 1, not 0 (0 is root group)
-	}
-
-	groupItem := wire.FeedbagItem{
-		ItemID:  nextGroupID,
+	items = append(items, wire.FeedbagItem{
 		ClassID: wire.FeedbagClassIdGroup,
-		GroupID: 0,
+		GroupID: newGroupID,
 		Name:    groupName,
 		TLVLBlock: wire.TLVLBlock{
 			TLVList: wire.TLVList{},
 		},
-	}
+	})
 
-	if _, err := s.FeedbagService.UpsertItem(ctx, me, wire.SNACFrame{}, []wire.FeedbagItem{groupItem}); err != nil {
+	if _, err := s.FeedbagService.UpsertItem(ctx, me, wire.SNACFrame{}, items); err != nil {
 		return s.runtimeErr(ctx, fmt.Errorf("FeedbagService.UpsertItem: %w", err))
 	}
 
 	return []string{}
+}
+
+func randItemID(randInt func(n int) int, items []wire.FeedbagItem) uint16 {
+	num := uint16(randInt(math.MaxUint16))
+	for itemID := num; itemID != num-1; itemID++ {
+		if itemID == 0 {
+			continue
+		}
+		exists := false
+		for _, item := range items {
+			if item.GroupID == itemID || item.ItemID == itemID {
+				exists = true
+				break
+			}
+		}
+		if !exists {
+			return itemID
+		}
+	}
+	return 0
 }
 
 // DelGroup handles the toc2_del_group TOC2 command.
