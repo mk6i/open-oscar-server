@@ -12,6 +12,7 @@ import (
 	"math"
 	"math/rand"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -136,6 +137,9 @@ type OSCARProxy struct {
 	FeedbagManager    FeedbagManager
 	SNACRateLimits    wire.SNACRateLimits
 	HTTPIPRateLimiter *IPRateLimiter
+	// RandIntn is the source for feedbag item ID generation. If nil, math/rand.Intn is used.
+	// Inject a deterministic func in tests to assert exact feedbag item slices.
+	RandIntn func(n int) int
 }
 
 // RecvClientCmd processes a client TOC command and returns a server reply.
@@ -1444,7 +1448,11 @@ func (s OSCARProxy) NewGroup(ctx context.Context, me *state.SessionInstance, arg
 		}
 	}
 
-	newGroupID := randItemID(rand.Intn, fb)
+	randInt := s.RandIntn
+	if randInt == nil {
+		randInt = rand.Intn
+	}
+	newGroupID := randItemID(randInt, fb)
 
 	var items []wire.FeedbagItem
 	if !rootGroupExists {
@@ -1580,19 +1588,32 @@ func (s OSCARProxy) NewBuddies(ctx context.Context, me *state.SessionInstance, a
 		return s.runtimeErr(ctx, fmt.Errorf("parseTOC2Config: %w", err))
 	}
 
+	randInt := s.RandIntn
+	if randInt == nil {
+		randInt = rand.Intn
+	}
+
+	fb, err := s.FeedbagManager.Feedbag(ctx, me.IdentScreenName())
+	if err != nil {
+		return s.runtimeErr(ctx, fmt.Errorf("FeedbagManager.Feedbag: %w", err))
+	}
+
 	var replies []string
 
-	// Process each group in config
-	for groupName, buddies := range groups {
+	var newGroups []uint16
+	// Process each group in config (deterministic order so tests and root Order are stable)
+	groupNames := make([]string, 0, len(groups))
+	for k := range groups {
+		groupNames = append(groupNames, k)
+	}
+	sort.Strings(groupNames)
+	for _, groupName := range groupNames {
+		buddies := groups[groupName]
 
 		var updates []wire.FeedbagItem
 
-		fb, err := s.FeedbagManager.Feedbag(ctx, me.IdentScreenName())
-		if err != nil {
-			return s.runtimeErr(ctx, fmt.Errorf("FeedbagManager.Feedbag: %w", err))
-		}
-
 		var groupItem *wire.FeedbagItem
+		var isNewGroup bool
 		// Get the group
 		for _, item := range fb {
 			if item.ClassID == wire.FeedbagClassIdGroup && item.Name == groupName {
@@ -1600,10 +1621,11 @@ func (s OSCARProxy) NewBuddies(ctx context.Context, me *state.SessionInstance, a
 			}
 		}
 		if groupItem == nil {
+			isNewGroup = true
 			groupItem = &wire.FeedbagItem{
 				ClassID: wire.FeedbagClassIdGroup,
 				Name:    groupName,
-				GroupID: randItemID(rand.Intn, fb),
+				GroupID: randItemID(randInt, fb),
 				TLVLBlock: wire.TLVLBlock{
 					TLVList: wire.TLVList{},
 				},
@@ -1640,7 +1662,7 @@ func (s OSCARProxy) NewBuddies(ctx context.Context, me *state.SessionInstance, a
 
 			// Create buddy item
 			buddyItem := wire.FeedbagItem{
-				ItemID:  randItemID(rand.Intn, fb),
+				ItemID:  randItemID(randInt, fb),
 				ClassID: wire.FeedbagClassIdBuddy,
 				GroupID: groupItem.GroupID,
 				Name:    normalizedBuddy,
@@ -1689,7 +1711,50 @@ func (s OSCARProxy) NewBuddies(ctx context.Context, me *state.SessionInstance, a
 			groupItem.Append(wire.NewTLVBE(wire.FeedbagAttributesOrder, itemIDs))
 		}
 
-		if _, err := s.FeedbagService.UpsertItem(ctx, me, wire.SNACFrame{}, []wire.FeedbagItem{*groupItem}); err != nil {
+		itemsToUpsert := []wire.FeedbagItem{*groupItem}
+		if isNewGroup {
+			newGroups = append(newGroups, groupItem.GroupID)
+		}
+		if _, err := s.FeedbagService.UpsertItem(ctx, me, wire.SNACFrame{}, itemsToUpsert); err != nil {
+			return s.runtimeErr(ctx, fmt.Errorf("FeedbagService.UpsertItem: %w", err))
+		}
+		if isNewGroup {
+			fb = append(fb, *groupItem)
+		}
+	}
+
+	// When we added new groups, update or create the root so its Order lists them (once at end).
+	if len(newGroups) > 0 {
+		var rootItem *wire.FeedbagItem
+		for _, item := range fb {
+			if item.ClassID == wire.FeedbagClassIdGroup && item.GroupID == 0 {
+				rootCopy := item
+				rootItem = &rootCopy
+				break
+			}
+		}
+		if rootItem != nil {
+			if order, hasOrder := rootItem.Bytes(wire.FeedbagAttributesOrder); hasOrder {
+				var memberIDs []uint16
+				if err := wire.UnmarshalBE(&memberIDs, bytes.NewReader(order)); err != nil {
+					return s.runtimeErr(ctx, fmt.Errorf("wire.UnmarshalBE: %w", err))
+				}
+				rootItem.Replace(wire.NewTLVBE(wire.FeedbagAttributesOrder, append(memberIDs, newGroups...)))
+			} else {
+				rootItem.Append(wire.NewTLVBE(wire.FeedbagAttributesOrder, newGroups))
+			}
+		} else {
+			rootItem = &wire.FeedbagItem{
+				ClassID: wire.FeedbagClassIdGroup,
+				Name:    "",
+				GroupID: 0,
+				ItemID:  0,
+				TLVLBlock: wire.TLVLBlock{
+					TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, newGroups)},
+				},
+			}
+		}
+		if _, err := s.FeedbagService.UpsertItem(ctx, me, wire.SNACFrame{}, []wire.FeedbagItem{*rootItem}); err != nil {
 			return s.runtimeErr(ctx, fmt.Errorf("FeedbagService.UpsertItem: %w", err))
 		}
 	}
@@ -1761,7 +1826,7 @@ func (s OSCARProxy) RemoveBuddy2(ctx context.Context, me *state.SessionInstance,
 	}
 
 	if len(itemsToDelete) == 0 {
-		return s.runtimeErr(ctx, fmt.Errorf("no buddies found to delete"))
+		return []string{}
 	}
 
 	deleteItem := wire.SNAC_0x13_0x0A_FeedbagDeleteItem{

@@ -2803,6 +2803,224 @@ func TestOSCARProxy_RecvClientCmd_RemoveBuddy(t *testing.T) {
 	}
 }
 
+func TestOSCARProxy_NewBuddies(t *testing.T) {
+	cases := []struct {
+		name       string
+		me         *state.SessionInstance
+		args       []byte
+		wantMsg    []string
+		mockParams mockParams
+	}{
+		{
+			name:    "add new users to existing group",
+			me:      newTestSession("me"),
+			args:    []byte("{g:Buddies\nb:mike\nb:mk6i\ng:Family\nb:alice\nb:bob\n}"),
+			wantMsg: []string{"NEW_BUDDY_REPLY2:mike:added", "NEW_BUDDY_REPLY2:mk6i:added", "NEW_BUDDY_REPLY2:alice:added", "NEW_BUDDY_REPLY2:bob:added"},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results: []wire.FeedbagItem{
+								{
+									Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{17724, 21827, 29709})}},
+								},
+								{Name: "Buddies", GroupID: 17724, ItemID: 0, ClassID: wire.FeedbagClassIdGroup},
+								{Name: "Co-Workers", GroupID: 21827, ItemID: 0, ClassID: wire.FeedbagClassIdGroup},
+								{Name: "Family", GroupID: 29709, ItemID: 0, ClassID: wire.FeedbagClassIdGroup},
+							},
+							err: nil,
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{
+						{
+							items: []wire.FeedbagItem{
+								{ItemID: 1, ClassID: wire.FeedbagClassIdBuddy, GroupID: 17724, Name: "mike", TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{}}},
+								{ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, GroupID: 17724, Name: "mk6i", TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{}}},
+							},
+							msg: nil, err: nil,
+						},
+						{
+							items: []wire.FeedbagItem{
+								{
+									Name: "Buddies", GroupID: 17724, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1, 2})}},
+								},
+							},
+							msg: nil, err: nil,
+						},
+						{
+							items: []wire.FeedbagItem{
+								{ItemID: 3, ClassID: wire.FeedbagClassIdBuddy, GroupID: 29709, Name: "alice", TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{}}},
+								{ItemID: 4, ClassID: wire.FeedbagClassIdBuddy, GroupID: 29709, Name: "bob", TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{}}},
+							},
+							msg: nil, err: nil,
+						},
+						{
+							items: []wire.FeedbagItem{
+								{
+									Name: "Family", GroupID: 29709, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{3, 4})}},
+								},
+							},
+							msg: nil, err: nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:    "empty feedbag: add new group and buddies",
+			me:      newTestSession("me"),
+			args:    []byte("{g:Buddies\nb:mike\nb:mk6i\n}"),
+			wantMsg: []string{"NEW_BUDDY_REPLY2:mike:added", "NEW_BUDDY_REPLY2:mk6i:added"},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results:    []wire.FeedbagItem{},
+							err:        nil,
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{
+						// First: insert the two buddy items (deterministic randIntn gives GroupID 1, ItemIDs 2 and 3)
+						{
+							items: []wire.FeedbagItem{
+								{ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, GroupID: 1, Name: "mike", TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{}}},
+								{ItemID: 3, ClassID: wire.FeedbagClassIdBuddy, GroupID: 1, Name: "mk6i", TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{}}},
+							},
+							msg: nil, err: nil,
+						},
+						// Second: insert the new Buddies group with Order listing the buddy item IDs
+						{
+							items: []wire.FeedbagItem{
+								{
+									Name: "Buddies", GroupID: 1, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{2, 3})}},
+								},
+							},
+							msg: nil, err: nil,
+						},
+						// Third: insert the root group so its Order lists the new group ID
+						{
+							items: []wire.FeedbagItem{
+								{
+									Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1})}},
+								},
+							},
+							msg: nil, err: nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:    "add new group and buddies",
+			me:      newTestSession("me"),
+			args:    []byte("{g:Co-Workers\nb:carol\nb:dan\ng:Family\nb:alice\nb:bob\n}"),
+			wantMsg: []string{"NEW_BUDDY_REPLY2:carol:added", "NEW_BUDDY_REPLY2:dan:added", "NEW_BUDDY_REPLY2:alice:added", "NEW_BUDDY_REPLY2:bob:added"},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results: []wire.FeedbagItem{
+								{
+									Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{17724})}},
+								},
+								{Name: "Buddies", GroupID: 17724, ItemID: 0, ClassID: wire.FeedbagClassIdGroup},
+							},
+							err: nil,
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{
+						{
+							items: []wire.FeedbagItem{
+								{ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, GroupID: 1, Name: "carol", TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{}}},
+								{ItemID: 3, ClassID: wire.FeedbagClassIdBuddy, GroupID: 1, Name: "dan", TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{}}},
+							},
+							msg: nil, err: nil,
+						},
+						{
+							items: []wire.FeedbagItem{
+								{
+									Name: "Co-Workers", GroupID: 1, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{2, 3})}},
+								},
+							},
+							msg: nil, err: nil,
+						},
+						{
+							items: []wire.FeedbagItem{
+								{ItemID: 5, ClassID: wire.FeedbagClassIdBuddy, GroupID: 4, Name: "alice", TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{}}},
+								{ItemID: 6, ClassID: wire.FeedbagClassIdBuddy, GroupID: 4, Name: "bob", TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{}}},
+							},
+							msg: nil, err: nil,
+						},
+						{
+							items: []wire.FeedbagItem{
+								{
+									Name: "Family", GroupID: 4, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{5, 6})}},
+								},
+							},
+							msg: nil, err: nil,
+						},
+						// Root updated once at end
+						{
+							items: []wire.FeedbagItem{
+								{
+									Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{17724, 1, 4})}},
+								},
+							},
+							msg: nil, err: nil,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+
+			fbMgr := newMockFeedbagManager(t)
+			for _, params := range tc.mockParams.feedBagParams.feedbagParams {
+				fbMgr.EXPECT().
+					Feedbag(ctx, params.screenName).
+					Return(params.results, params.err)
+			}
+			fbSvc := newMockFeedbagService(t)
+			for _, params := range tc.mockParams.feedBagParams.feedbagServiceUpsertItemParams {
+				fbSvc.EXPECT().
+					UpsertItem(ctx, matchSession(tc.me.IdentScreenName()), wire.SNACFrame{}, params.items).
+					Return(params.msg, params.err)
+			}
+
+			// Deterministic item ID: increment by 1 per call so IDs are unique and predictable per test.
+			var randCall int
+			randIntn := func(n int) int {
+				randCall++
+				return randCall
+			}
+			svc := OSCARProxy{
+				Logger:         slog.Default(),
+				FeedbagManager: fbMgr,
+				FeedbagService: fbSvc,
+				RandIntn:       randIntn,
+			}
+			got := svc.NewBuddies(ctx, tc.me, tc.args)
+			assert.Equal(t, tc.wantMsg, got)
+		})
+	}
+}
+
 func TestOSCARProxy_RecvClientCmd_RvousAccept(t *testing.T) {
 	cases := []struct {
 		// name is the unit test name

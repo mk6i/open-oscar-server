@@ -263,11 +263,30 @@ type tocConfigParams struct {
 
 type feedBagParams struct {
 	useFeedbagParams
+	feedbagParams
+	feedbagServiceUpsertItemParams
 }
 
 type useFeedbagParams []struct {
 	me  state.IdentScreenName
 	err error
+}
+
+// feedbagParams is the list of parameters passed at the mock
+// FeedbagManager.Feedbag call site (e.g. for NewBuddies).
+type feedbagParams []struct {
+	screenName state.IdentScreenName
+	results    []wire.FeedbagItem
+	err        error
+}
+
+// feedbagServiceUpsertItemParams is the list of parameters for each expected
+// FeedbagService.UpsertItem call. Items is the exact slice of feedbag items
+// expected to be passed to UpsertItem (order of params = order of calls).
+type feedbagServiceUpsertItemParams []struct {
+	items []wire.FeedbagItem
+	msg   *wire.SNACMessage
+	err   error
 }
 
 type mockParams struct {
