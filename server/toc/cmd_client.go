@@ -1365,10 +1365,9 @@ func (s OSCARProxy) RvousCancel(ctx context.Context, me *state.SessionInstance, 
 
 // SetPDMode handles the toc2_set_pdmode TOC2 command.
 //
-
 // Command syntax: toc2_set_pdmode <mode>
 func (s OSCARProxy) SetPDMode(ctx context.Context, me *state.SessionInstance, args []byte) []string {
-	if errMsg, isLimited := s.checkRateLimit(ctx, me, wire.OService, wire.OServiceIdleNotification); isLimited {
+	if errMsg, isLimited := s.checkRateLimit(ctx, me, wire.OService, wire.FeedbagInsertItem); isLimited {
 		return errMsg
 	}
 
@@ -1387,21 +1386,43 @@ func (s OSCARProxy) SetPDMode(ctx context.Context, me *state.SessionInstance, ar
 		return s.runtimeErr(ctx, errors.New("invalid pd mode specified"))
 	}
 
-	snac := wire.SNAC_0x13_0x09_FeedbagUpdateItem{
-		Items: []wire.FeedbagItem{
-			{
-				ClassID: wire.FeedbagClassIdPdinfo,
-				TLVLBlock: wire.TLVLBlock{
-					TLVList: wire.TLVList{
-						wire.NewTLVBE(wire.FeedbagAttributesPdMode, uint8(mode)),
-					},
-				},
-			},
-		},
+	fb, err := s.FeedbagManager.Feedbag(ctx, me.IdentScreenName())
+	if err != nil {
+		return s.runtimeErr(ctx, fmt.Errorf("FeedbagManager.Feedbag: %w", err))
 	}
 
-	if _, err := s.FeedbagService.UpsertItem(ctx, me, wire.SNACFrame{}, snac.Items); err != nil {
-		return s.runtimeErr(ctx, fmt.Errorf("FeedbagManager.UpsertItem: %w", err))
+	var pdinfo *wire.FeedbagItem
+	for i := range fb {
+		if fb[i].ClassID == wire.FeedbagClassIdPdinfo {
+			pdinfo = &fb[i]
+			break
+		}
+	}
+
+	if pdinfo == nil {
+		pdinfo = &wire.FeedbagItem{
+			ClassID: wire.FeedbagClassIdPdinfo,
+			GroupID: 0,
+			ItemID:  randItemID(s.RandIntn, fb),
+			TLVLBlock: wire.TLVLBlock{
+				TLVList: wire.TLVList{
+					wire.NewTLVBE(wire.FeedbagAttributesPdMode, uint8(mode)),
+				},
+			},
+		}
+	} else {
+		if currentMode, hasMode := pdinfo.TLVLBlock.Uint8(wire.FeedbagAttributesPdMode); hasMode {
+			if currentMode == uint8(mode) {
+				return []string{}
+			}
+			pdinfo.Replace(wire.NewTLVBE(wire.FeedbagAttributesPdMode, uint8(mode)))
+		} else {
+			pdinfo.Append(wire.NewTLVBE(wire.FeedbagAttributesPdMode, uint8(mode)))
+		}
+	}
+
+	if _, err := s.FeedbagService.UpsertItem(ctx, me, wire.SNACFrame{}, []wire.FeedbagItem{*pdinfo}); err != nil {
+		return s.runtimeErr(ctx, fmt.Errorf("FeedbagService.UpsertItem: %w", err))
 	}
 
 	return []string{}
@@ -1448,11 +1469,7 @@ func (s OSCARProxy) NewGroup(ctx context.Context, me *state.SessionInstance, arg
 		}
 	}
 
-	randInt := s.RandIntn
-	if randInt == nil {
-		randInt = rand.Intn
-	}
-	newGroupID := randItemID(randInt, fb)
+	newGroupID := randItemID(s.RandIntn, fb)
 
 	var items []wire.FeedbagItem
 	if !rootGroupExists {

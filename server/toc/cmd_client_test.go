@@ -3021,6 +3021,201 @@ func TestOSCARProxy_NewBuddies(t *testing.T) {
 	}
 }
 
+func TestOSCARProxy_SetPDMode(t *testing.T) {
+	cases := []struct {
+		name       string
+		me         *state.SessionInstance
+		args       []byte
+		wantMsg    []string
+		mockParams mockParams
+	}{
+		{
+			name:    "success mode 4",
+			me:      newTestSession("me"),
+			args:    []byte("4"),
+			wantMsg: []string{},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results:    []wire.FeedbagItem{},
+							err:        nil,
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{
+						{
+							items: []wire.FeedbagItem{
+								{
+									ClassID: wire.FeedbagClassIdPdinfo,
+									GroupID: 0,
+									ItemID:  1,
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.FeedbagAttributesPdMode, uint8(4)),
+										},
+									},
+								},
+							},
+							msg: nil, err: nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:    "pdinfo already exists but does not have FeedbagAttributesPdMode",
+			me:      newTestSession("me"),
+			args:    []byte("2"),
+			wantMsg: []string{},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results: []wire.FeedbagItem{
+								{
+									ClassID: wire.FeedbagClassIdPdinfo,
+									GroupID: 0,
+									ItemID:  99,
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{},
+									},
+								},
+							},
+							err: nil,
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{
+						{
+							items: []wire.FeedbagItem{
+								{
+									ClassID: wire.FeedbagClassIdPdinfo,
+									GroupID: 0,
+									ItemID:  99,
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.FeedbagAttributesPdMode, uint8(2)),
+										},
+									},
+								},
+							},
+							msg: nil, err: nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:    "pdinfo already exists and already has FeedbagAttributesPdMode with same mode",
+			me:      newTestSession("me"),
+			args:    []byte("3"),
+			wantMsg: []string{},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results: []wire.FeedbagItem{
+								{
+									ClassID: wire.FeedbagClassIdPdinfo,
+									GroupID: 0,
+									ItemID:  99,
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.FeedbagAttributesPdMode, uint8(3)),
+										},
+									},
+								},
+							},
+							err: nil,
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{},
+				},
+			},
+		},
+		{
+			name:    "pdinfo already exists and already has FeedbagAttributesPdMode with different mode",
+			me:      newTestSession("me"),
+			args:    []byte("3"),
+			wantMsg: []string{},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results: []wire.FeedbagItem{
+								{
+									ClassID: wire.FeedbagClassIdPdinfo,
+									GroupID: 0,
+									ItemID:  99,
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.FeedbagAttributesPdMode, uint8(1)),
+										},
+									},
+								},
+							},
+							err: nil,
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{
+						{
+							items: []wire.FeedbagItem{
+								{
+									ClassID: wire.FeedbagClassIdPdinfo,
+									GroupID: 0,
+									ItemID:  99,
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.FeedbagAttributesPdMode, uint8(3)),
+										},
+									},
+								},
+							},
+							msg: nil, err: nil,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+
+			fbMgr := newMockFeedbagManager(t)
+			for _, params := range tc.mockParams.feedBagParams.feedbagParams {
+				fbMgr.EXPECT().
+					Feedbag(ctx, params.screenName).
+					Return(params.results, params.err)
+			}
+			fbSvc := newMockFeedbagService(t)
+			for _, params := range tc.mockParams.feedBagParams.feedbagServiceUpsertItemParams {
+				fbSvc.EXPECT().
+					UpsertItem(ctx, matchSession(tc.me.IdentScreenName()), wire.SNACFrame{}, params.items).
+					Return(params.msg, params.err)
+			}
+
+			var randCall int
+			randIntn := func(n int) int {
+				randCall++
+				return randCall
+			}
+			svc := OSCARProxy{
+				Logger:         slog.Default(),
+				FeedbagManager: fbMgr,
+				FeedbagService: fbSvc,
+				RandIntn:       randIntn,
+			}
+			got := svc.SetPDMode(ctx, tc.me, tc.args)
+			assert.Equal(t, tc.wantMsg, got)
+		})
+	}
+}
+
 func TestOSCARProxy_RecvClientCmd_RvousAccept(t *testing.T) {
 	cases := []struct {
 		// name is the unit test name
