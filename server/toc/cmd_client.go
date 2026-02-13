@@ -1814,18 +1814,18 @@ func (s OSCARProxy) RemoveBuddy2(ctx context.Context, me *state.SessionInstance,
 		return s.runtimeErr(ctx, fmt.Errorf("FeedbagManager.Feedbag: %w", err))
 	}
 
-	// Find group by name
+	// Find group by name and keep a pointer so we can update its order TLV
 	var groupID uint16
-	groupFound := false
-	for _, item := range fb {
-		if item.ClassID == wire.FeedbagClassIdGroup && item.Name == groupName {
-			groupID = item.ItemID
-			groupFound = true
+	var groupItem *wire.FeedbagItem
+	for i := range fb {
+		if fb[i].ClassID == wire.FeedbagClassIdGroup && fb[i].Name == groupName {
+			groupID = fb[i].GroupID
+			groupItem = &fb[i]
 			break
 		}
 	}
 
-	if !groupFound {
+	if groupItem == nil {
 		return s.runtimeErr(ctx, fmt.Errorf("group not found: %s", groupName))
 	}
 
@@ -1852,6 +1852,24 @@ func (s OSCARProxy) RemoveBuddy2(ctx context.Context, me *state.SessionInstance,
 
 	if _, err := s.FeedbagService.DeleteItem(ctx, me, wire.SNACFrame{}, deleteItem); err != nil {
 		return s.runtimeErr(ctx, fmt.Errorf("FeedbagService.DeleteItem: %w", err))
+	}
+
+	// Remove deleted buddy ItemIDs from the group's order TLV
+	if order, hasOrder := groupItem.Uint16SliceBE(wire.FeedbagAttributesOrder); hasOrder {
+		removeIDs := make(map[uint16]bool)
+		for _, item := range itemsToDelete {
+			removeIDs[item.ItemID] = true
+		}
+		newOrder := make([]uint16, 0, len(order))
+		for _, id := range order {
+			if !removeIDs[id] {
+				newOrder = append(newOrder, id)
+			}
+		}
+		groupItem.Replace(wire.NewTLVBE(wire.FeedbagAttributesOrder, newOrder))
+		if _, err := s.FeedbagService.UpsertItem(ctx, me, wire.SNACFrame{}, []wire.FeedbagItem{*groupItem}); err != nil {
+			return s.runtimeErr(ctx, fmt.Errorf("FeedbagService.UpsertItem: %w", err))
+		}
 	}
 
 	return []string{}

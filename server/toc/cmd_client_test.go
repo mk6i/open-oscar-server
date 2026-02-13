@@ -3030,7 +3030,7 @@ func TestOSCARProxy_SetPDMode(t *testing.T) {
 		mockParams mockParams
 	}{
 		{
-			name:    "success mode 4",
+			name:    "empty feedbag creates new Pdinfo with mode 4",
 			me:      newTestSession("me"),
 			args:    []byte("4"),
 			wantMsg: []string{},
@@ -3211,6 +3211,95 @@ func TestOSCARProxy_SetPDMode(t *testing.T) {
 				RandIntn:       randIntn,
 			}
 			got := svc.SetPDMode(ctx, tc.me, tc.args)
+			assert.Equal(t, tc.wantMsg, got)
+		})
+	}
+}
+
+func TestOSCARProxy_RemoveBuddy2(t *testing.T) {
+	cases := []struct {
+		name       string
+		me         *state.SessionInstance
+		args       []byte
+		wantMsg    []string
+		mockParams mockParams
+	}{
+		{
+			name:    "removes buddy from group order TLV and upserts group",
+			me:      newTestSession("me"),
+			args:    []byte("friend2 Buddies"),
+			wantMsg: []string{},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results: []wire.FeedbagItem{
+								{
+									Name: "Buddies", GroupID: 100, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1, 2, 3})}},
+								},
+								{ItemID: 1, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "friend1", TLVLBlock: wire.TLVLBlock{}},
+								{ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "friend2", TLVLBlock: wire.TLVLBlock{}},
+								{ItemID: 3, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "friend3", TLVLBlock: wire.TLVLBlock{}},
+							},
+							err: nil,
+						},
+					},
+					feedbagServiceDeleteItemParams: feedbagServiceDeleteItemParams{
+						{
+							inBody: wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
+								Items: []wire.FeedbagItem{
+									{ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "friend2", TLVLBlock: wire.TLVLBlock{}},
+								},
+							},
+							msg: nil, err: nil,
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{
+						{
+							items: []wire.FeedbagItem{
+								{
+									Name: "Buddies", GroupID: 100, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1, 3})}},
+								},
+							},
+							msg: nil, err: nil,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+
+			fbMgr := newMockFeedbagManager(t)
+			for _, params := range tc.mockParams.feedBagParams.feedbagParams {
+				fbMgr.EXPECT().
+					Feedbag(ctx, params.screenName).
+					Return(params.results, params.err)
+			}
+			fbSvc := newMockFeedbagService(t)
+			for _, params := range tc.mockParams.feedBagParams.feedbagServiceDeleteItemParams {
+				fbSvc.EXPECT().
+					DeleteItem(ctx, matchSession(tc.me.IdentScreenName()), wire.SNACFrame{}, params.inBody).
+					Return(params.msg, params.err)
+			}
+			for _, params := range tc.mockParams.feedBagParams.feedbagServiceUpsertItemParams {
+				fbSvc.EXPECT().
+					UpsertItem(ctx, matchSession(tc.me.IdentScreenName()), wire.SNACFrame{}, params.items).
+					Return(params.msg, params.err)
+			}
+
+			svc := OSCARProxy{
+				Logger:         slog.Default(),
+				FeedbagManager: fbMgr,
+				FeedbagService: fbSvc,
+			}
+			got := svc.RemoveBuddy2(ctx, tc.me, tc.args)
 			assert.Equal(t, tc.wantMsg, got)
 		})
 	}

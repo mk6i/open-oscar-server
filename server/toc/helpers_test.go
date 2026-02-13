@@ -265,6 +265,7 @@ type feedBagParams struct {
 	useFeedbagParams
 	feedbagParams
 	feedbagServiceUpsertItemParams
+	feedbagServiceDeleteItemParams
 }
 
 type useFeedbagParams []struct {
@@ -287,6 +288,14 @@ type feedbagServiceUpsertItemParams []struct {
 	items []wire.FeedbagItem
 	msg   *wire.SNACMessage
 	err   error
+}
+
+// feedbagServiceDeleteItemParams is the list of parameters for each expected
+// FeedbagService.DeleteItem call.
+type feedbagServiceDeleteItemParams []struct {
+	inBody wire.SNAC_0x13_0x0A_FeedbagDeleteItem
+	msg    *wire.SNACMessage
+	err    error
 }
 
 type mockParams struct {
