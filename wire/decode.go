@@ -147,7 +147,9 @@ func unmarshalSlice(v reflect.Value, oscTag oscarTag, r io.Reader, order binary.
 		for {
 			elem := reflect.New(elemType).Elem()
 			if err := unmarshal(elemType, elem, "", r, order); err != nil {
-				if errors.Is(err, io.EOF) {
+				// Tolerate partial or malformed TLV. It fixes compatibility with vanilla
+				// Jimm, which sends an incorrect TLV value length and then leaving orphaned bytes that fail to parse as a TLV.
+				if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
 					break
 				}
 				return err
