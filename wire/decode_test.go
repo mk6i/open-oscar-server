@@ -312,6 +312,22 @@ func TestUnmarshal(t *testing.T) {
 			given: []byte{0x0, 0xa, 0x0, 0x2, 0x4, 0xd2, 0x0, 0x14, 0x0, 0x2, 0x4, 0xd2},
 		},
 		{
+			name: "struct slice without prefix tolerates trailing garbage bytes",
+			prototype: &struct {
+				Val []TLV
+			}{},
+			want: &struct {
+				Val []TLV
+			}{
+				Val: []TLV{
+					NewTLVBE(10, uint16(1234)),
+				},
+			},
+			// one valid TLV followed by 3 trailing garbage bytes that
+			// don't form a complete TLV (simulates Jimm 0.5.1 bug)
+			given: []byte{0x0, 0xa, 0x0, 0x2, 0x4, 0xd2, 0xff, 0xff, 0xff},
+		},
+		{
 			name: "slice of unsupported type without prefix",
 			prototype: &struct {
 				Val []int
