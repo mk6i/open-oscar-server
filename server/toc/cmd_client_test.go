@@ -2835,13 +2835,15 @@ func TestOSCARProxy_NewBuddies(t *testing.T) {
 					},
 					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{
 						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem},
 							items: []wire.FeedbagItem{
-								{ItemID: 1, ClassID: wire.FeedbagClassIdBuddy, GroupID: 17724, Name: "mike", TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{}}},
-								{ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, GroupID: 17724, Name: "mk6i", TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{}}},
+								{ItemID: 1, ClassID: wire.FeedbagClassIdBuddy, GroupID: 17724, Name: "mike", TLVLBlock: wire.TLVLBlock{}},
+								{ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, GroupID: 17724, Name: "mk6i", TLVLBlock: wire.TLVLBlock{}},
 							},
 							msg: nil, err: nil,
 						},
 						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagUpdateItem},
 							items: []wire.FeedbagItem{
 								{
 									Name: "Buddies", GroupID: 17724, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
@@ -2851,13 +2853,15 @@ func TestOSCARProxy_NewBuddies(t *testing.T) {
 							msg: nil, err: nil,
 						},
 						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem},
 							items: []wire.FeedbagItem{
-								{ItemID: 3, ClassID: wire.FeedbagClassIdBuddy, GroupID: 29709, Name: "alice", TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{}}},
-								{ItemID: 4, ClassID: wire.FeedbagClassIdBuddy, GroupID: 29709, Name: "bob", TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{}}},
+								{ItemID: 3, ClassID: wire.FeedbagClassIdBuddy, GroupID: 29709, Name: "alice", TLVLBlock: wire.TLVLBlock{}},
+								{ItemID: 4, ClassID: wire.FeedbagClassIdBuddy, GroupID: 29709, Name: "bob", TLVLBlock: wire.TLVLBlock{}},
 							},
 							msg: nil, err: nil,
 						},
 						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagUpdateItem},
 							items: []wire.FeedbagItem{
 								{
 									Name: "Family", GroupID: 29709, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
@@ -2887,14 +2891,16 @@ func TestOSCARProxy_NewBuddies(t *testing.T) {
 					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{
 						// First: insert the two buddy items (deterministic randIntn gives GroupID 1, ItemIDs 2 and 3)
 						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem},
 							items: []wire.FeedbagItem{
-								{ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, GroupID: 1, Name: "mike", TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{}}},
-								{ItemID: 3, ClassID: wire.FeedbagClassIdBuddy, GroupID: 1, Name: "mk6i", TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{}}},
+								{ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, GroupID: 1, Name: "mike", TLVLBlock: wire.TLVLBlock{}},
+								{ItemID: 3, ClassID: wire.FeedbagClassIdBuddy, GroupID: 1, Name: "mk6i", TLVLBlock: wire.TLVLBlock{}},
 							},
 							msg: nil, err: nil,
 						},
 						// Second: insert the new Buddies group with Order listing the buddy item IDs
 						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagUpdateItem},
 							items: []wire.FeedbagItem{
 								{
 									Name: "Buddies", GroupID: 1, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
@@ -2905,6 +2911,7 @@ func TestOSCARProxy_NewBuddies(t *testing.T) {
 						},
 						// Third: insert the root group so its Order lists the new group ID
 						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagUpdateItem},
 							items: []wire.FeedbagItem{
 								{
 									Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
@@ -2939,13 +2946,15 @@ func TestOSCARProxy_NewBuddies(t *testing.T) {
 					},
 					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{
 						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem},
 							items: []wire.FeedbagItem{
-								{ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, GroupID: 1, Name: "carol", TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{}}},
-								{ItemID: 3, ClassID: wire.FeedbagClassIdBuddy, GroupID: 1, Name: "dan", TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{}}},
+								{ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, GroupID: 1, Name: "carol", TLVLBlock: wire.TLVLBlock{}},
+								{ItemID: 3, ClassID: wire.FeedbagClassIdBuddy, GroupID: 1, Name: "dan", TLVLBlock: wire.TLVLBlock{}},
 							},
 							msg: nil, err: nil,
 						},
 						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagUpdateItem},
 							items: []wire.FeedbagItem{
 								{
 									Name: "Co-Workers", GroupID: 1, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
@@ -2955,13 +2964,15 @@ func TestOSCARProxy_NewBuddies(t *testing.T) {
 							msg: nil, err: nil,
 						},
 						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem},
 							items: []wire.FeedbagItem{
-								{ItemID: 5, ClassID: wire.FeedbagClassIdBuddy, GroupID: 4, Name: "alice", TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{}}},
-								{ItemID: 6, ClassID: wire.FeedbagClassIdBuddy, GroupID: 4, Name: "bob", TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{}}},
+								{ItemID: 5, ClassID: wire.FeedbagClassIdBuddy, GroupID: 4, Name: "alice", TLVLBlock: wire.TLVLBlock{}},
+								{ItemID: 6, ClassID: wire.FeedbagClassIdBuddy, GroupID: 4, Name: "bob", TLVLBlock: wire.TLVLBlock{}},
 							},
 							msg: nil, err: nil,
 						},
 						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagUpdateItem},
 							items: []wire.FeedbagItem{
 								{
 									Name: "Family", GroupID: 4, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
@@ -2972,6 +2983,7 @@ func TestOSCARProxy_NewBuddies(t *testing.T) {
 						},
 						// Root updated once at end
 						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagUpdateItem},
 							items: []wire.FeedbagItem{
 								{
 									Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
@@ -2999,7 +3011,7 @@ func TestOSCARProxy_NewBuddies(t *testing.T) {
 			fbSvc := newMockFeedbagService(t)
 			for _, params := range tc.mockParams.feedBagParams.feedbagServiceUpsertItemParams {
 				fbSvc.EXPECT().
-					UpsertItem(ctx, matchSession(tc.me.IdentScreenName()), wire.SNACFrame{}, params.items).
+					UpsertItem(ctx, matchSession(tc.me.IdentScreenName()), params.frame, params.items).
 					Return(params.msg, params.err)
 			}
 
@@ -3045,6 +3057,7 @@ func TestOSCARProxy_SetPDMode(t *testing.T) {
 					},
 					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{
 						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem},
 							items: []wire.FeedbagItem{
 								{
 									ClassID: wire.FeedbagClassIdPdinfo,
@@ -3088,6 +3101,7 @@ func TestOSCARProxy_SetPDMode(t *testing.T) {
 					},
 					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{
 						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem},
 							items: []wire.FeedbagItem{
 								{
 									ClassID: wire.FeedbagClassIdPdinfo,
@@ -3162,6 +3176,7 @@ func TestOSCARProxy_SetPDMode(t *testing.T) {
 					},
 					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{
 						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem},
 							items: []wire.FeedbagItem{
 								{
 									ClassID: wire.FeedbagClassIdPdinfo,
@@ -3195,7 +3210,7 @@ func TestOSCARProxy_SetPDMode(t *testing.T) {
 			fbSvc := newMockFeedbagService(t)
 			for _, params := range tc.mockParams.feedBagParams.feedbagServiceUpsertItemParams {
 				fbSvc.EXPECT().
-					UpsertItem(ctx, matchSession(tc.me.IdentScreenName()), wire.SNACFrame{}, params.items).
+					UpsertItem(ctx, matchSession(tc.me.IdentScreenName()), params.frame, params.items).
 					Return(params.msg, params.err)
 			}
 
@@ -3211,6 +3226,237 @@ func TestOSCARProxy_SetPDMode(t *testing.T) {
 				RandIntn:       randIntn,
 			}
 			got := svc.SetPDMode(ctx, tc.me, tc.args)
+			assert.Equal(t, tc.wantMsg, got)
+		})
+	}
+}
+
+func TestOSCARProxy_AddPermit2(t *testing.T) {
+	cases := []struct {
+		name       string
+		me         *state.SessionInstance
+		args       []byte
+		wantMsg    []string
+		mockParams mockParams
+	}{
+		{
+			name:    "add permits to empty feedbag",
+			me:      newTestSession("me"),
+			args:    []byte("alice bob"),
+			wantMsg: []string{},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results:   []wire.FeedbagItem{},
+							err:       nil,
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem},
+							items: []wire.FeedbagItem{
+								{ItemID: 1, ClassID: wire.FeedbagClassIDPermit, GroupID: 0, Name: "alice", TLVLBlock: wire.TLVLBlock{}},
+								{ItemID: 2, ClassID: wire.FeedbagClassIDPermit, GroupID: 0, Name: "bob", TLVLBlock: wire.TLVLBlock{}},
+							},
+							msg: nil, err: nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:    "skip existing permit, add only new",
+			me:      newTestSession("me"),
+			args:    []byte("alice bob"),
+			wantMsg: []string{},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results: []wire.FeedbagItem{
+								{ItemID: 1, ClassID: wire.FeedbagClassIDPermit, GroupID: 0, Name: "alice", TLVLBlock: wire.TLVLBlock{}},
+							},
+							err: nil,
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem},
+							items: []wire.FeedbagItem{
+								{ItemID: 2, ClassID: wire.FeedbagClassIDPermit, GroupID: 0, Name: "bob", TLVLBlock: wire.TLVLBlock{}},
+							},
+							msg: nil, err: nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:    "no-op when permit already in feedbag",
+			me:      newTestSession("me"),
+			args:    []byte("alice"),
+			wantMsg: []string{},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results: []wire.FeedbagItem{
+								{ItemID: 1, ClassID: wire.FeedbagClassIDPermit, GroupID: 0, Name: "alice", TLVLBlock: wire.TLVLBlock{}},
+							},
+							err: nil,
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{},
+				},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			fbMgr := newMockFeedbagManager(t)
+			for _, params := range tc.mockParams.feedBagParams.feedbagParams {
+				fbMgr.EXPECT().
+					Feedbag(ctx, params.screenName).
+					Return(params.results, params.err)
+			}
+			fbSvc := newMockFeedbagService(t)
+			for _, params := range tc.mockParams.feedBagParams.feedbagServiceUpsertItemParams {
+				fbSvc.EXPECT().
+					UpsertItem(ctx, matchSession(tc.me.IdentScreenName()), params.frame, params.items).
+					Return(params.msg, params.err)
+			}
+			var randCall int
+			randIntn := func(n int) int {
+				randCall++
+				return randCall
+			}
+			svc := OSCARProxy{
+				Logger:         slog.Default(),
+				FeedbagManager: fbMgr,
+				FeedbagService: fbSvc,
+				RandIntn:       randIntn,
+			}
+			got := svc.AddPermit2(ctx, tc.me, tc.args)
+			assert.Equal(t, tc.wantMsg, got)
+		})
+	}
+}
+
+func TestOSCARProxy_AddDeny2(t *testing.T) {
+	cases := []struct {
+		name       string
+		me         *state.SessionInstance
+		args       []byte
+		wantMsg    []string
+		mockParams mockParams
+	}{
+		{
+			name:    "add deny to empty feedbag",
+			me:      newTestSession("me"),
+			args:    []byte("alice"),
+			wantMsg: []string{},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results:   []wire.FeedbagItem{},
+							err:       nil,
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem},
+							items: []wire.FeedbagItem{
+								{ItemID: 1, ClassID: wire.FeedbagClassIDDeny, GroupID: 0, Name: "alice", TLVLBlock: wire.TLVLBlock{}},
+							},
+							msg: nil, err: nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:    "skip existing deny, add only new",
+			me:      newTestSession("me"),
+			args:    []byte("alice bob"),
+			wantMsg: []string{},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results: []wire.FeedbagItem{
+								{ItemID: 1, ClassID: wire.FeedbagClassIDDeny, GroupID: 0, Name: "alice", TLVLBlock: wire.TLVLBlock{}},
+							},
+							err: nil,
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem},
+							items: []wire.FeedbagItem{
+								{ItemID: 2, ClassID: wire.FeedbagClassIDDeny, GroupID: 0, Name: "bob", TLVLBlock: wire.TLVLBlock{}},
+							},
+							msg: nil, err: nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:    "no-op when deny already in feedbag",
+			me:      newTestSession("me"),
+			args:    []byte("alice"),
+			wantMsg: []string{},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results: []wire.FeedbagItem{
+								{ItemID: 1, ClassID: wire.FeedbagClassIDDeny, GroupID: 0, Name: "alice", TLVLBlock: wire.TLVLBlock{}},
+							},
+							err: nil,
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{},
+				},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			fbMgr := newMockFeedbagManager(t)
+			for _, params := range tc.mockParams.feedBagParams.feedbagParams {
+				fbMgr.EXPECT().
+					Feedbag(ctx, params.screenName).
+					Return(params.results, params.err)
+			}
+			fbSvc := newMockFeedbagService(t)
+			for _, params := range tc.mockParams.feedBagParams.feedbagServiceUpsertItemParams {
+				fbSvc.EXPECT().
+					UpsertItem(ctx, matchSession(tc.me.IdentScreenName()), params.frame, params.items).
+					Return(params.msg, params.err)
+			}
+			var randCall int
+			randIntn := func(n int) int {
+				randCall++
+				return randCall
+			}
+			svc := OSCARProxy{
+				Logger:         slog.Default(),
+				FeedbagManager: fbMgr,
+				FeedbagService: fbSvc,
+				RandIntn:       randIntn,
+			}
+			got := svc.AddDeny2(ctx, tc.me, tc.args)
 			assert.Equal(t, tc.wantMsg, got)
 		})
 	}
@@ -3248,6 +3494,7 @@ func TestOSCARProxy_RemoveBuddy2(t *testing.T) {
 					},
 					feedbagServiceDeleteItemParams: feedbagServiceDeleteItemParams{
 						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagDeleteItem},
 							inBody: wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
 								Items: []wire.FeedbagItem{
 									{ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "friend2", TLVLBlock: wire.TLVLBlock{}},
@@ -3258,6 +3505,7 @@ func TestOSCARProxy_RemoveBuddy2(t *testing.T) {
 					},
 					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{
 						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagUpdateItem},
 							items: []wire.FeedbagItem{
 								{
 									Name: "Buddies", GroupID: 100, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
@@ -3285,12 +3533,12 @@ func TestOSCARProxy_RemoveBuddy2(t *testing.T) {
 			fbSvc := newMockFeedbagService(t)
 			for _, params := range tc.mockParams.feedBagParams.feedbagServiceDeleteItemParams {
 				fbSvc.EXPECT().
-					DeleteItem(ctx, matchSession(tc.me.IdentScreenName()), wire.SNACFrame{}, params.inBody).
+					DeleteItem(ctx, matchSession(tc.me.IdentScreenName()), params.frame, params.inBody).
 					Return(params.msg, params.err)
 			}
 			for _, params := range tc.mockParams.feedBagParams.feedbagServiceUpsertItemParams {
 				fbSvc.EXPECT().
-					UpsertItem(ctx, matchSession(tc.me.IdentScreenName()), wire.SNACFrame{}, params.items).
+					UpsertItem(ctx, matchSession(tc.me.IdentScreenName()), params.frame, params.items).
 					Return(params.msg, params.err)
 			}
 
@@ -3300,6 +3548,236 @@ func TestOSCARProxy_RemoveBuddy2(t *testing.T) {
 				FeedbagService: fbSvc,
 			}
 			got := svc.RemoveBuddy2(ctx, tc.me, tc.args)
+			assert.Equal(t, tc.wantMsg, got)
+		})
+	}
+}
+
+func TestOSCARProxy_RemovePermit2(t *testing.T) {
+	cases := []struct {
+		name       string
+		me         *state.SessionInstance
+		args       []byte
+		wantMsg    []string
+		mockParams mockParams
+	}{
+		{
+			name:    "remove permits from feedbag",
+			me:      newTestSession("me"),
+			args:    []byte("alice bob"),
+			wantMsg: []string{},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results: []wire.FeedbagItem{
+								{ItemID: 1, ClassID: wire.FeedbagClassIDPermit, GroupID: 0, Name: "alice", TLVLBlock: wire.TLVLBlock{}},
+								{ItemID: 2, ClassID: wire.FeedbagClassIDPermit, GroupID: 0, Name: "bob", TLVLBlock: wire.TLVLBlock{}},
+							},
+							err: nil,
+						},
+					},
+					feedbagServiceDeleteItemParams: feedbagServiceDeleteItemParams{
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagDeleteItem},
+							inBody: wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
+								Items: []wire.FeedbagItem{
+									{ItemID: 1, ClassID: wire.FeedbagClassIDPermit, GroupID: 0, Name: "alice", TLVLBlock: wire.TLVLBlock{}},
+									{ItemID: 2, ClassID: wire.FeedbagClassIDPermit, GroupID: 0, Name: "bob", TLVLBlock: wire.TLVLBlock{}},
+								},
+							},
+							msg: nil, err: nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:    "remove only existing permits",
+			me:      newTestSession("me"),
+			args:    []byte("alice bob"),
+			wantMsg: []string{},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results: []wire.FeedbagItem{
+								{ItemID: 1, ClassID: wire.FeedbagClassIDPermit, GroupID: 0, Name: "alice", TLVLBlock: wire.TLVLBlock{}},
+							},
+							err: nil,
+						},
+					},
+					feedbagServiceDeleteItemParams: feedbagServiceDeleteItemParams{
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagDeleteItem},
+							inBody: wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
+								Items: []wire.FeedbagItem{
+									{ItemID: 1, ClassID: wire.FeedbagClassIDPermit, GroupID: 0, Name: "alice", TLVLBlock: wire.TLVLBlock{}},
+								},
+							},
+							msg: nil, err: nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:    "no-op when no permits in feedbag",
+			me:      newTestSession("me"),
+			args:    []byte("alice"),
+			wantMsg: []string{},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results:   []wire.FeedbagItem{},
+							err:       nil,
+						},
+					},
+					feedbagServiceDeleteItemParams: feedbagServiceDeleteItemParams{},
+				},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			fbMgr := newMockFeedbagManager(t)
+			for _, params := range tc.mockParams.feedBagParams.feedbagParams {
+				fbMgr.EXPECT().
+					Feedbag(ctx, params.screenName).
+					Return(params.results, params.err)
+			}
+			fbSvc := newMockFeedbagService(t)
+			for _, params := range tc.mockParams.feedBagParams.feedbagServiceDeleteItemParams {
+				fbSvc.EXPECT().
+					DeleteItem(ctx, matchSession(tc.me.IdentScreenName()), params.frame, params.inBody).
+					Return(params.msg, params.err)
+			}
+			svc := OSCARProxy{
+				Logger:         slog.Default(),
+				FeedbagManager: fbMgr,
+				FeedbagService: fbSvc,
+			}
+			got := svc.RemovePermit2(ctx, tc.me, tc.args)
+			assert.Equal(t, tc.wantMsg, got)
+		})
+	}
+}
+
+func TestOSCARProxy_RemoveDeny2(t *testing.T) {
+	cases := []struct {
+		name       string
+		me         *state.SessionInstance
+		args       []byte
+		wantMsg    []string
+		mockParams mockParams
+	}{
+		{
+			name:    "remove denies from feedbag",
+			me:      newTestSession("me"),
+			args:    []byte("alice bob"),
+			wantMsg: []string{},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results: []wire.FeedbagItem{
+								{ItemID: 1, ClassID: wire.FeedbagClassIDDeny, GroupID: 0, Name: "alice", TLVLBlock: wire.TLVLBlock{}},
+								{ItemID: 2, ClassID: wire.FeedbagClassIDDeny, GroupID: 0, Name: "bob", TLVLBlock: wire.TLVLBlock{}},
+							},
+							err: nil,
+						},
+					},
+					feedbagServiceDeleteItemParams: feedbagServiceDeleteItemParams{
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagDeleteItem},
+							inBody: wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
+								Items: []wire.FeedbagItem{
+									{ItemID: 1, ClassID: wire.FeedbagClassIDDeny, GroupID: 0, Name: "alice", TLVLBlock: wire.TLVLBlock{}},
+									{ItemID: 2, ClassID: wire.FeedbagClassIDDeny, GroupID: 0, Name: "bob", TLVLBlock: wire.TLVLBlock{}},
+								},
+							},
+							msg: nil, err: nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:    "remove only existing denies",
+			me:      newTestSession("me"),
+			args:    []byte("alice bob"),
+			wantMsg: []string{},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results: []wire.FeedbagItem{
+								{ItemID: 1, ClassID: wire.FeedbagClassIDDeny, GroupID: 0, Name: "alice", TLVLBlock: wire.TLVLBlock{}},
+							},
+							err: nil,
+						},
+					},
+					feedbagServiceDeleteItemParams: feedbagServiceDeleteItemParams{
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagDeleteItem},
+							inBody: wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
+								Items: []wire.FeedbagItem{
+									{ItemID: 1, ClassID: wire.FeedbagClassIDDeny, GroupID: 0, Name: "alice", TLVLBlock: wire.TLVLBlock{}},
+								},
+							},
+							msg: nil, err: nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:    "no-op when no denies in feedbag",
+			me:      newTestSession("me"),
+			args:    []byte("alice"),
+			wantMsg: []string{},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results:   []wire.FeedbagItem{},
+							err:       nil,
+						},
+					},
+					feedbagServiceDeleteItemParams: feedbagServiceDeleteItemParams{},
+				},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			fbMgr := newMockFeedbagManager(t)
+			for _, params := range tc.mockParams.feedBagParams.feedbagParams {
+				fbMgr.EXPECT().
+					Feedbag(ctx, params.screenName).
+					Return(params.results, params.err)
+			}
+			fbSvc := newMockFeedbagService(t)
+			for _, params := range tc.mockParams.feedBagParams.feedbagServiceDeleteItemParams {
+				fbSvc.EXPECT().
+					DeleteItem(ctx, matchSession(tc.me.IdentScreenName()), params.frame, params.inBody).
+					Return(params.msg, params.err)
+			}
+			svc := OSCARProxy{
+				Logger:         slog.Default(),
+				FeedbagManager: fbMgr,
+				FeedbagService: fbSvc,
+			}
+			got := svc.RemoveDeny2(ctx, tc.me, tc.args)
 			assert.Equal(t, tc.wantMsg, got)
 		})
 	}
@@ -4418,6 +4896,7 @@ func TestOSCARProxy_Signon_TOC1(t *testing.T) {
 									TLVList: wire.TLVList{
 										wire.NewTLVBE(wire.LoginTLVTagsScreenName, "me"),
 										wire.NewTLVBE(wire.LoginTLVTagsRoastedTOCPassword, roastedPass),
+										wire.NewTLVBE(wire.LoginTLVTagsMultiConnFlags, wire.MultiConnFlagsRecentClient),
 									},
 								},
 							},
@@ -4473,6 +4952,7 @@ func TestOSCARProxy_Signon_TOC1(t *testing.T) {
 									TLVList: wire.TLVList{
 										wire.NewTLVBE(wire.LoginTLVTagsScreenName, "me"),
 										wire.NewTLVBE(wire.LoginTLVTagsRoastedTOCPassword, roastedPass),
+										wire.NewTLVBE(wire.LoginTLVTagsMultiConnFlags, wire.MultiConnFlagsRecentClient),
 									},
 								},
 							},
@@ -4495,6 +4975,7 @@ func TestOSCARProxy_Signon_TOC1(t *testing.T) {
 									TLVList: wire.TLVList{
 										wire.NewTLVBE(wire.LoginTLVTagsScreenName, "me"),
 										wire.NewTLVBE(wire.LoginTLVTagsRoastedTOCPassword, roastedPass),
+										wire.NewTLVBE(wire.LoginTLVTagsMultiConnFlags, wire.MultiConnFlagsRecentClient),
 									},
 								},
 							},
@@ -4533,6 +5014,7 @@ func TestOSCARProxy_Signon_TOC1(t *testing.T) {
 									TLVList: wire.TLVList{
 										wire.NewTLVBE(wire.LoginTLVTagsScreenName, "me"),
 										wire.NewTLVBE(wire.LoginTLVTagsRoastedTOCPassword, roastedPass),
+										wire.NewTLVBE(wire.LoginTLVTagsMultiConnFlags, wire.MultiConnFlagsRecentClient),
 									},
 								},
 							},
@@ -4579,6 +5061,7 @@ func TestOSCARProxy_Signon_TOC1(t *testing.T) {
 									TLVList: wire.TLVList{
 										wire.NewTLVBE(wire.LoginTLVTagsScreenName, "me"),
 										wire.NewTLVBE(wire.LoginTLVTagsRoastedTOCPassword, roastedPass),
+										wire.NewTLVBE(wire.LoginTLVTagsMultiConnFlags, wire.MultiConnFlagsRecentClient),
 									},
 								},
 							},
@@ -4632,6 +5115,7 @@ func TestOSCARProxy_Signon_TOC1(t *testing.T) {
 									TLVList: wire.TLVList{
 										wire.NewTLVBE(wire.LoginTLVTagsScreenName, "me"),
 										wire.NewTLVBE(wire.LoginTLVTagsRoastedTOCPassword, roastedPass),
+										wire.NewTLVBE(wire.LoginTLVTagsMultiConnFlags, wire.MultiConnFlagsRecentClient),
 									},
 								},
 							},
@@ -4685,6 +5169,7 @@ func TestOSCARProxy_Signon_TOC1(t *testing.T) {
 									TLVList: wire.TLVList{
 										wire.NewTLVBE(wire.LoginTLVTagsScreenName, "me"),
 										wire.NewTLVBE(wire.LoginTLVTagsRoastedTOCPassword, roastedPass),
+										wire.NewTLVBE(wire.LoginTLVTagsMultiConnFlags, wire.MultiConnFlagsRecentClient),
 									},
 								},
 							},

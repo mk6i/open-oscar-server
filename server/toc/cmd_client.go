@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
-	"math/rand"
 	"net/url"
 	"sort"
 	"strconv"
@@ -137,7 +136,7 @@ type OSCARProxy struct {
 	FeedbagManager    FeedbagManager
 	SNACRateLimits    wire.SNACRateLimits
 	HTTPIPRateLimiter *IPRateLimiter
-	// RandIntn is the source for feedbag item ID generation. If nil, math/rand.Intn is used.
+	// RandIntn is the source for feedbag item ID generation.
 	// Inject a deterministic func in tests to assert exact feedbag item slices.
 	RandIntn func(n int) int
 }
@@ -1489,12 +1488,9 @@ func (s OSCARProxy) NewGroup(ctx context.Context, me *state.SessionInstance, arg
 		ClassID: wire.FeedbagClassIdGroup,
 		GroupID: newGroupID,
 		Name:    groupName,
-		TLVLBlock: wire.TLVLBlock{
-			TLVList: wire.TLVList{},
-		},
 	})
 
-	if _, err := s.FeedbagService.UpsertItem(ctx, me, wire.SNACFrame{}, items); err != nil {
+	if _, err := s.FeedbagService.UpsertItem(ctx, me, wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem}, items); err != nil {
 		return s.runtimeErr(ctx, fmt.Errorf("FeedbagService.UpsertItem: %w", err))
 	}
 
@@ -1565,7 +1561,7 @@ func (s OSCARProxy) DelGroup(ctx context.Context, me *state.SessionInstance, arg
 		Items: []wire.FeedbagItem{*groupItem},
 	}
 
-	if _, err := s.FeedbagService.DeleteItem(ctx, me, wire.SNACFrame{}, deleteItem); err != nil {
+	if _, err := s.FeedbagService.DeleteItem(ctx, me, wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagDeleteItem}, deleteItem); err != nil {
 		return s.runtimeErr(ctx, fmt.Errorf("FeedbagService.DeleteItem: %w", err))
 	}
 
@@ -1605,11 +1601,6 @@ func (s OSCARProxy) NewBuddies(ctx context.Context, me *state.SessionInstance, a
 		return s.runtimeErr(ctx, fmt.Errorf("parseTOC2Config: %w", err))
 	}
 
-	randInt := s.RandIntn
-	if randInt == nil {
-		randInt = rand.Intn
-	}
-
 	fb, err := s.FeedbagManager.Feedbag(ctx, me.IdentScreenName())
 	if err != nil {
 		return s.runtimeErr(ctx, fmt.Errorf("FeedbagManager.Feedbag: %w", err))
@@ -1624,6 +1615,12 @@ func (s OSCARProxy) NewBuddies(ctx context.Context, me *state.SessionInstance, a
 		groupNames = append(groupNames, k)
 	}
 	sort.Strings(groupNames)
+
+	//s.FeedbagService.StartCluster(ctx, me, wire.SNACFrame{
+	//	FoodGroup: wire.Feedbag,
+	//	SubGroup:  wire.FeedbagStartCluster,
+	//}, wire.SNAC_0x13_0x11_FeedbagStartCluster{})
+
 	for _, groupName := range groupNames {
 		buddies := groups[groupName]
 
@@ -1642,10 +1639,7 @@ func (s OSCARProxy) NewBuddies(ctx context.Context, me *state.SessionInstance, a
 			groupItem = &wire.FeedbagItem{
 				ClassID: wire.FeedbagClassIdGroup,
 				Name:    groupName,
-				GroupID: randItemID(randInt, fb),
-				TLVLBlock: wire.TLVLBlock{
-					TLVList: wire.TLVList{},
-				},
+				GroupID: randItemID(s.RandIntn, fb),
 			}
 		}
 
@@ -1679,13 +1673,10 @@ func (s OSCARProxy) NewBuddies(ctx context.Context, me *state.SessionInstance, a
 
 			// Create buddy item
 			buddyItem := wire.FeedbagItem{
-				ItemID:  randItemID(randInt, fb),
+				ItemID:  randItemID(s.RandIntn, fb),
 				ClassID: wire.FeedbagClassIdBuddy,
 				GroupID: groupItem.GroupID,
 				Name:    normalizedBuddy,
-				TLVLBlock: wire.TLVLBlock{
-					TLVList: wire.TLVList{},
-				},
 			}
 
 			// Handle alias if present (parts[1])
@@ -1708,7 +1699,7 @@ func (s OSCARProxy) NewBuddies(ctx context.Context, me *state.SessionInstance, a
 		}
 
 		// insert the items
-		if _, err := s.FeedbagService.UpsertItem(ctx, me, wire.SNACFrame{}, updates); err != nil {
+		if _, err := s.FeedbagService.UpsertItem(ctx, me, wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem}, updates); err != nil {
 			return s.runtimeErr(ctx, fmt.Errorf("FeedbagService.UpsertItem: %w", err))
 		}
 
@@ -1732,7 +1723,7 @@ func (s OSCARProxy) NewBuddies(ctx context.Context, me *state.SessionInstance, a
 		if isNewGroup {
 			newGroups = append(newGroups, groupItem.GroupID)
 		}
-		if _, err := s.FeedbagService.UpsertItem(ctx, me, wire.SNACFrame{}, itemsToUpsert); err != nil {
+		if _, err := s.FeedbagService.UpsertItem(ctx, me, wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagUpdateItem}, itemsToUpsert); err != nil {
 			return s.runtimeErr(ctx, fmt.Errorf("FeedbagService.UpsertItem: %w", err))
 		}
 		if isNewGroup {
@@ -1771,10 +1762,14 @@ func (s OSCARProxy) NewBuddies(ctx context.Context, me *state.SessionInstance, a
 				},
 			}
 		}
-		if _, err := s.FeedbagService.UpsertItem(ctx, me, wire.SNACFrame{}, []wire.FeedbagItem{*rootItem}); err != nil {
+		if _, err := s.FeedbagService.UpsertItem(ctx, me, wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagUpdateItem}, []wire.FeedbagItem{*rootItem}); err != nil {
 			return s.runtimeErr(ctx, fmt.Errorf("FeedbagService.UpsertItem: %w", err))
 		}
 	}
+
+	//s.FeedbagService.EndCluster(ctx, me, wire.SNACFrame{
+	//	FoodGroup: wire.Feedbag,
+	//	SubGroup:  wire.FeedbagEndCluster})
 
 	return replies
 }
@@ -1850,7 +1845,7 @@ func (s OSCARProxy) RemoveBuddy2(ctx context.Context, me *state.SessionInstance,
 		Items: itemsToDelete,
 	}
 
-	if _, err := s.FeedbagService.DeleteItem(ctx, me, wire.SNACFrame{}, deleteItem); err != nil {
+	if _, err := s.FeedbagService.DeleteItem(ctx, me, wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagDeleteItem}, deleteItem); err != nil {
 		return s.runtimeErr(ctx, fmt.Errorf("FeedbagService.DeleteItem: %w", err))
 	}
 
@@ -1867,7 +1862,7 @@ func (s OSCARProxy) RemoveBuddy2(ctx context.Context, me *state.SessionInstance,
 			}
 		}
 		groupItem.Replace(wire.NewTLVBE(wire.FeedbagAttributesOrder, newOrder))
-		if _, err := s.FeedbagService.UpsertItem(ctx, me, wire.SNACFrame{}, []wire.FeedbagItem{*groupItem}); err != nil {
+		if _, err := s.FeedbagService.UpsertItem(ctx, me, wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagUpdateItem}, []wire.FeedbagItem{*groupItem}); err != nil {
 			return s.runtimeErr(ctx, fmt.Errorf("FeedbagService.UpsertItem: %w", err))
 		}
 	}
@@ -1908,50 +1903,36 @@ func (s OSCARProxy) AddPermit2(ctx context.Context, me *state.SessionInstance, a
 		return s.runtimeErr(ctx, fmt.Errorf("FeedbagManager.Feedbag: %w", err))
 	}
 
-	// Build set of existing permit screennames and find max ItemID
+	// Build set of existing permit screennames
 	existingPermits := make(map[string]bool)
-	var maxItemID uint16
 	for _, item := range fb {
-		if item.ItemID > maxItemID {
-			maxItemID = item.ItemID
-		}
 		if item.ClassID == wire.FeedbagClassIDPermit {
 			existingPermits[item.Name] = true
 		}
 	}
 
 	var updates []wire.FeedbagItem
-	nextItemID := maxItemID
-
 	for _, normalizedName := range normalizedNames {
 		// Skip if already in permit list
 		if existingPermits[normalizedName] {
 			continue
 		}
 
-		// Find next available ItemID
-		nextItemID++
-		for nextItemID == 0 {
-			nextItemID = 1 // Skip 0
-		}
-
 		permitItem := wire.FeedbagItem{
-			ItemID:  nextItemID,
+			ItemID:  randItemID(s.RandIntn, fb),
 			ClassID: wire.FeedbagClassIDPermit,
 			GroupID: 0,
 			Name:    normalizedName,
-			TLVLBlock: wire.TLVLBlock{
-				TLVList: wire.TLVList{},
-			},
 		}
 		updates = append(updates, permitItem)
+		fb = append(fb, permitItem)
 	}
 
 	if len(updates) == 0 {
 		return []string{}
 	}
 
-	if _, err := s.FeedbagService.UpsertItem(ctx, me, wire.SNACFrame{}, updates); err != nil {
+	if _, err := s.FeedbagService.UpsertItem(ctx, me, wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem}, updates); err != nil {
 		return s.runtimeErr(ctx, fmt.Errorf("FeedbagService.UpsertItem: %w", err))
 	}
 
@@ -2003,14 +1984,14 @@ func (s OSCARProxy) RemovePermit2(ctx context.Context, me *state.SessionInstance
 	}
 
 	if len(itemsToDelete) == 0 {
-		return s.runtimeErr(ctx, fmt.Errorf("no permit entries found to delete"))
+		return []string{}
 	}
 
 	deleteItem := wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
 		Items: itemsToDelete,
 	}
 
-	if _, err := s.FeedbagService.DeleteItem(ctx, me, wire.SNACFrame{}, deleteItem); err != nil {
+	if _, err := s.FeedbagService.DeleteItem(ctx, me, wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagDeleteItem}, deleteItem); err != nil {
 		return s.runtimeErr(ctx, fmt.Errorf("FeedbagService.DeleteItem: %w", err))
 	}
 
@@ -2050,23 +2031,16 @@ func (s OSCARProxy) AddDeny2(ctx context.Context, me *state.SessionInstance, arg
 		return s.runtimeErr(ctx, fmt.Errorf("FeedbagManager.Feedbag: %w", err))
 	}
 
-	// Build set of existing deny screennames and find max ItemID
+	// Build set of existing deny screennames
 	existingDenies := make(map[string]bool)
-	var maxItemID uint16
 	myScreenName := me.IdentScreenName().String()
-
 	for _, item := range fb {
-		if item.ItemID > maxItemID {
-			maxItemID = item.ItemID
-		}
 		if item.ClassID == wire.FeedbagClassIDDeny {
 			existingDenies[item.Name] = true
 		}
 	}
 
 	var updates []wire.FeedbagItem
-	nextItemID := maxItemID
-
 	for _, normalizedName := range normalizedNames {
 		// Prevent self-block
 		if normalizedName == myScreenName {
@@ -2078,29 +2052,21 @@ func (s OSCARProxy) AddDeny2(ctx context.Context, me *state.SessionInstance, arg
 			continue
 		}
 
-		// Find next available ItemID
-		nextItemID++
-		for nextItemID == 0 {
-			nextItemID = 1 // Skip 0
-		}
-
 		denyItem := wire.FeedbagItem{
-			ItemID:  nextItemID,
+			ItemID:  randItemID(s.RandIntn, fb),
 			ClassID: wire.FeedbagClassIDDeny,
 			GroupID: 0,
 			Name:    normalizedName,
-			TLVLBlock: wire.TLVLBlock{
-				TLVList: wire.TLVList{},
-			},
 		}
 		updates = append(updates, denyItem)
+		fb = append(fb, denyItem)
 	}
 
 	if len(updates) == 0 {
 		return []string{}
 	}
 
-	if _, err := s.FeedbagService.UpsertItem(ctx, me, wire.SNACFrame{}, updates); err != nil {
+	if _, err := s.FeedbagService.UpsertItem(ctx, me, wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem}, updates); err != nil {
 		return s.runtimeErr(ctx, fmt.Errorf("FeedbagService.UpsertItem: %w", err))
 	}
 
@@ -2152,14 +2118,14 @@ func (s OSCARProxy) RemoveDeny2(ctx context.Context, me *state.SessionInstance, 
 	}
 
 	if len(itemsToDelete) == 0 {
-		return s.runtimeErr(ctx, fmt.Errorf("no deny entries found to delete"))
+		return []string{}
 	}
 
 	deleteItem := wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
 		Items: itemsToDelete,
 	}
 
-	if _, err := s.FeedbagService.DeleteItem(ctx, me, wire.SNACFrame{}, deleteItem); err != nil {
+	if _, err := s.FeedbagService.DeleteItem(ctx, me, wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagDeleteItem}, deleteItem); err != nil {
 		return s.runtimeErr(ctx, fmt.Errorf("FeedbagService.DeleteItem: %w", err))
 	}
 
@@ -2562,6 +2528,7 @@ func (s OSCARProxy) Signon(ctx context.Context, args []byte, tocVersion state.TO
 	signonFrame := wire.FLAPSignonFrame{}
 	signonFrame.Append(wire.NewTLVBE(wire.LoginTLVTagsScreenName, userName))
 	signonFrame.Append(wire.NewTLVBE(wire.LoginTLVTagsRoastedTOCPassword, passwordHash))
+	signonFrame.Append(wire.NewTLVBE(wire.LoginTLVTagsMultiConnFlags, wire.MultiConnFlagsRecentClient))
 
 	block, err := s.AuthService.FLAPLogin(ctx, signonFrame, "")
 	if err != nil {

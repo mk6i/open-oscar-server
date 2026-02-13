@@ -282,9 +282,10 @@ type feedbagParams []struct {
 }
 
 // feedbagServiceUpsertItemParams is the list of parameters for each expected
-// FeedbagService.UpsertItem call. Items is the exact slice of feedbag items
-// expected to be passed to UpsertItem (order of params = order of calls).
+// FeedbagService.UpsertItem call. Frame is the expected SNACFrame, items is the
+// exact slice of feedbag items (order of params = order of calls).
 type feedbagServiceUpsertItemParams []struct {
+	frame wire.SNACFrame
 	items []wire.FeedbagItem
 	msg   *wire.SNACMessage
 	err   error
@@ -293,6 +294,7 @@ type feedbagServiceUpsertItemParams []struct {
 // feedbagServiceDeleteItemParams is the list of parameters for each expected
 // FeedbagService.DeleteItem call.
 type feedbagServiceDeleteItemParams []struct {
+	frame  wire.SNACFrame
 	inBody wire.SNAC_0x13_0x0A_FeedbagDeleteItem
 	msg    *wire.SNACMessage
 	err    error
