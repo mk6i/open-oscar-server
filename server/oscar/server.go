@@ -501,6 +501,7 @@ func (s oscarServer) processBUCPAuth(ctx context.Context, flapc *wire.FlapClient
 				if err != nil {
 					return err
 				}
+				outSNAC.Frame.RequestID = fr.RequestID
 				if err := flapc.SendSNAC(outSNAC.Frame, outSNAC.Body); err != nil {
 					return err
 				}
@@ -519,6 +520,7 @@ func (s oscarServer) processBUCPAuth(ctx context.Context, flapc *wire.FlapClient
 				if err != nil {
 					return err
 				}
+				outSNAC.Frame.RequestID = fr.RequestID
 
 				loginResp := outSNAC.Body.(wire.SNAC_0x17_0x03_BUCPLoginResponse)
 
