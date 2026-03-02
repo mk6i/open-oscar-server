@@ -179,6 +179,7 @@ func TestOscarServer_RouteConnection_Auth_BUCP(t *testing.T) {
 		frame := wire.SNACFrame{
 			FoodGroup: wire.BUCP,
 			SubGroup:  wire.BUCPChallengeRequest,
+			RequestID: 4,
 		}
 		bodyIn := wire.SNAC_0x17_0x06_BUCPChallengeRequest{}
 		assert.NoError(t, flapc.SendSNAC(frame, bodyIn))
@@ -186,7 +187,7 @@ func TestOscarServer_RouteConnection_Auth_BUCP(t *testing.T) {
 		// < receive SNAC_0x17_0x07_BUCPChallengeResponse
 		frame = wire.SNACFrame{}
 		assert.NoError(t, flapc.ReceiveSNAC(&frame, &wire.SNAC_0x17_0x07_BUCPChallengeResponse{}))
-		assert.Equal(t, wire.SNACFrame{FoodGroup: wire.BUCP, SubGroup: wire.BUCPChallengeResponse}, frame)
+		assert.Equal(t, wire.SNACFrame{FoodGroup: wire.BUCP, SubGroup: wire.BUCPChallengeResponse, RequestID: 4}, frame)
 
 		// > send keep alive frame (like BSFlite does mid-login)
 		assert.NoError(t, flapc.SendKeepAliveFrame())
@@ -195,13 +196,14 @@ func TestOscarServer_RouteConnection_Auth_BUCP(t *testing.T) {
 		frame = wire.SNACFrame{
 			FoodGroup: wire.BUCP,
 			SubGroup:  wire.BUCPLoginRequest,
+			RequestID: 5,
 		}
 		assert.NoError(t, flapc.SendSNAC(frame, wire.SNAC_0x17_0x02_BUCPLoginRequest{}))
 
 		// < receive SNAC_0x17_0x03_BUCPLoginResponse
 		frame = wire.SNACFrame{}
 		assert.NoError(t, flapc.ReceiveSNAC(&frame, &wire.SNAC_0x17_0x03_BUCPLoginResponse{}))
-		assert.Equal(t, wire.SNACFrame{FoodGroup: wire.BUCP, SubGroup: wire.BUCPLoginResponse}, frame)
+		assert.Equal(t, wire.SNACFrame{FoodGroup: wire.BUCP, SubGroup: wire.BUCPLoginResponse, RequestID: 5}, frame)
 
 		// < receive FLAPSignoffFrame (server sends this after SNAC for Kopete compatibility)
 		flap = wire.FLAPFrame{}
