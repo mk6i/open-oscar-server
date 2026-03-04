@@ -841,18 +841,6 @@ func (s *Session) userInfo() wire.TLVList {
 	return tlvs
 }
 
-// TOCVersion is a bitmask that indicates the TOC protocol versions a client supports.
-type TOCVersion uint8
-
-const (
-	// SupportsTOC indicates client supports TOC protocol
-	SupportsTOC TOCVersion = 1 << iota
-	// SupportsTOC2 indicates client supports TOC2 protocol
-	SupportsTOC2
-	// SupportsTOC2Enhanced indicates client supports TOC2 Enhanced protocol
-	SupportsTOC2Enhanced
-)
-
 // SessionInstance represents a single client connection instance within a user's
 // session. Multiple SessionInstance objects can belong to the same Session,
 // allowing a user to maintain concurrent connections from different clients or
@@ -885,7 +873,8 @@ type SessionInstance struct {
 	capabilities      [][16]byte
 	foodGroupVersions [wire.MDir + 1]uint16
 	multiConnFlag     wire.MultiConnFlag
-	tocVersion        TOCVersion
+	toc2              bool
+	toc2MsgEnc        bool
 
 	// Per-session state
 	idle              bool
@@ -948,18 +937,26 @@ func (s *SessionInstance) SetClientID(clientID string) {
 	s.clientID = clientID
 }
 
-// SetTocVersion sets the session TOC version
-func (s *SessionInstance) SetTocVersion(tocVersion TOCVersion) {
+// SetTOC2 sets this instance to TOC2. supportsTOC2MsgEnc is true for toc2_login (encoded messaging), false for toc2_signon.
+func (s *SessionInstance) SetTOC2(supportsTOC2MsgEnc bool) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	s.tocVersion = tocVersion
+	s.toc2 = true
+	s.toc2MsgEnc = supportsTOC2MsgEnc
 }
 
-// TocVersion returns session TOC version
-func (s *SessionInstance) TocVersion() (tocVersion TOCVersion) {
+// IsTOC2 returns true when the client is TOC2 (with or without encoded messaging).
+func (s *SessionInstance) IsTOC2() bool {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
-	return s.tocVersion
+	return s.toc2
+}
+
+// SupportsTOC2MsgEnc returns true only when TOC2 with encoded messaging (toc2_login).
+func (s *SessionInstance) SupportsTOC2MsgEnc() bool {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.toc2MsgEnc
 }
 
 //

@@ -341,7 +341,7 @@ func (s *Server) dispatchFLAP(ctx context.Context, conn net.Conn) error {
 
 	ctx = context.WithValue(ctx, "ip", conn.RemoteAddr().String())
 
-	clientFlap, err := s.initFLAP(conn)
+	clientFlap, err := s.initFLAP(ctx, conn)
 	if err != nil {
 		return err
 	}
@@ -459,10 +459,7 @@ func (s *Server) runClientCommands(ctx context.Context, doAsync func(f func() er
 			}
 
 			msg := s.bosProxy.RecvClientCmd(ctx, sessBOS, chatRegistry, clientFrame.Payload, toCh, doAsync)
-			// jgk: checking for empty string in slice. This works because for now we will never
-			// send more than one response if element 0 is empty.
-			// should i be iterating all elements and filering out empty strings instead?
-			if len(msg) > 0 && len(msg[0]) > 0 {
+			if len(msg) > 0 {
 				select {
 				case toCh <- msg:
 				case <-ctx.Done():
@@ -485,7 +482,6 @@ func (s *Server) sendToClient(ctx context.Context, toClient <-chan []string, cli
 				if err := clientFlap.SendDataFrame([]byte(m)); err != nil {
 					return fmt.Errorf("clientFlap.SendDataFrame: %w", err)
 				}
-				// jgk: need to clean up, server response debug doesn't work?
 				if s.logger.Enabled(ctx, slog.LevelDebug) {
 					s.logger.DebugContext(ctx, "server response", "command", m)
 				} else {
@@ -510,46 +506,41 @@ func (s *Server) login(ctx context.Context, clientFlap *wire.FlapClient) (*state
 		return nil, fmt.Errorf("clientFlap.ReceiveFLAP: %w", err)
 	}
 
-	cmd := clientFrame.Payload
-	var args []byte
+	sessBOS, reply := s.bosProxy.Signon(ctx, clientFrame.Payload)
 
-	if idx := bytes.IndexByte(clientFrame.Payload, ' '); idx > -1 {
-		cmd, args = clientFrame.Payload[:idx], clientFrame.Payload[idx:]
-	}
-	var tocVersion state.TOCVersion
-	if string(cmd) == "toc_signon" {
-		tocVersion = state.SupportsTOC
-	} else if string(cmd) == "toc2_signon" {
-		tocVersion = state.SupportsTOC2
-	} else if string(cmd) == "toc2_login" {
-		tocVersion = state.SupportsTOC2 | state.SupportsTOC2Enhanced
-	} else {
-		return nil, errors.New("expected one of toc_signon, toc2_signon, toc2_login")
-	}
-
-	sessBOS, reply := s.bosProxy.Signon(ctx, args, tocVersion)
-	sessBOS.SetTocVersion(tocVersion)
 	for _, m := range reply {
 		if err := clientFlap.SendDataFrame([]byte(m)); err != nil {
 			return nil, fmt.Errorf("clientFlap.SendDataFrame: %w", err)
 		}
 	}
+
 	return sessBOS, nil
 }
 
 // initFLAP sets up a new FLAP connection. It returns a flap client if the
-// connection successfully initialized.
-func (s *Server) initFLAP(rw io.ReadWriter) (*wire.FlapClient, error) {
-	buf := make([]byte, 10)
+// connection successfully initialized. It accepts either "FLAPON\n\n" or
+// "FLAPON\r\n\r\n".
+func (s *Server) initFLAP(ctx context.Context, rw io.ReadWriter) (*wire.FlapClient, error) {
+	buf := make([]byte, 8)
 
-	count, err := rw.Read(buf)
+	_, err := io.ReadFull(rw, buf)
 	if err != nil {
-		return nil, fmt.Errorf("rw.Read: %w", err)
+		return nil, fmt.Errorf("io.ReadFull: %w", err)
 	}
-
-	header := string(buf[:count])
-	if !(header == "FLAPON\n\n" || header == "FLAPON\r\n\r\n") {
-		return nil, fmt.Errorf("expected FLAPON, got %X", buf)
+	if string(buf[:6]) != "FLAPON" {
+		return nil, fmt.Errorf("expected FLAPON, got %s", buf)
+	}
+	if buf[6] == '\r' && buf[7] == '\n' {
+		crlf := make([]byte, 2)
+		_, err := io.ReadFull(rw, crlf)
+		if err != nil {
+			return nil, fmt.Errorf("io.ReadFull: %w", err)
+		}
+		if crlf[0] != '\r' || crlf[1] != '\n' {
+			return nil, fmt.Errorf("expected \\r\\n after FLAPON\\r\\n, got %s", crlf)
+		}
+	} else if buf[6] != '\n' || buf[7] != '\n' {
+		return nil, fmt.Errorf("expected FLAPON then \\n\\n or \\r\\n\\r\\n, got %s", buf)
 	}
 
 	clientFlap := wire.NewFlapClient(0, rw, rw)
@@ -557,8 +548,15 @@ func (s *Server) initFLAP(rw io.ReadWriter) (*wire.FlapClient, error) {
 	if err := clientFlap.SendSignonFrame(nil); err != nil {
 		return nil, fmt.Errorf("clientFlap.SendSignonFrame: %w", err)
 	}
-	if _, err := clientFlap.ReceiveSignonFrame(); err != nil {
+
+	frame, err := clientFlap.ReceiveSignonFrame()
+	if err != nil {
 		return nil, fmt.Errorf("clientFlap.ReceiveSignonFrame: %w", err)
+	}
+	if sn, hasSn := frame.String(0x01); hasSn {
+		s.logger.DebugContext(ctx, "new connection", "screen_name", sn)
+	} else {
+		s.logger.DebugContext(ctx, "new connection from unknown screen name")
 	}
 
 	return clientFlap, nil

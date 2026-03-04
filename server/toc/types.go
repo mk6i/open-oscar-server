@@ -136,7 +136,7 @@ type SessionRetriever interface {
 }
 
 type OSCARProxyer interface {
-	Signon(ctx context.Context, args []byte, tocVersion state.TOCVersion) (*state.Session, []string)
+	Signon(ctx context.Context, args []byte, isTOC1 bool) (*state.Session, []string)
 	RecvBOS(ctx context.Context, sessBOS *state.Session, chatRegistry *ChatRegistry, msgCh chan<- []string) error
 	RecvClientCmd(ctx context.Context, sessBOS *state.Session, chatRegistry *ChatRegistry, payload []byte, toCh chan<- []string, doAsync func(f func() error)) []string
 	NewServeMux() http.Handler
