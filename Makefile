@@ -56,6 +56,18 @@ docker-run-bg: ## Run Open OSCAR Server in background with docker-compose
 docker-run-stop: ## Stop Open OSCAR Server docker-compose services
 	OSCAR_HOST=$(OSCAR_HOST) docker compose down
 
+.PHONY: run
+run: # run the server with plain socket config
+	./scripts/run_dev.sh ./config/settings.env
+
+.PHONY: run-ssl
+run-ssl: # run the server with ssl socket config
+	./scripts/run_dev.sh ./config/ssl/settings.env
+
+.PHONY: run-stunnel
+run-stunnel: # run stunnel for SSL termination
+	./scripts/run_stunnel.sh ./certs/server.pem
+
 ################################################################################
 # SSL Helpers
 ################################################################################
