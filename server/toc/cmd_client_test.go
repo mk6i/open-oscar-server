@@ -3230,13 +3230,25 @@ func TestOSCARProxy_RecvClientCmd_NewBuddies(t *testing.T) {
 									Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
 									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{100})}},
 								},
-								{Name: "Buddies", GroupID: 100, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
-									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{})}}},
+								{
+									Name: "Buddies", GroupID: 100, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{})}},
+								},
 							},
 							err: nil,
 						},
 					},
 					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagUpdateItem},
+							items: []wire.FeedbagItem{
+								{
+									Name: "Buddies", GroupID: 100, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1})}},
+								},
+							},
+							msg: nil, err: nil,
+						},
 						{
 							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem},
 							items: []wire.FeedbagItem{
@@ -3485,6 +3497,10 @@ func TestOSCARProxy_RecvClientCmd_NewGroup(t *testing.T) {
 						{
 							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem},
 							items: []wire.FeedbagItem{
+								{
+									Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{17724, 1})}},
+								},
 								{ClassID: wire.FeedbagClassIdGroup, GroupID: 1, Name: "Family"},
 							},
 							msg: nil, err: nil,
@@ -3605,6 +3621,10 @@ func TestOSCARProxy_RecvClientCmd_NewGroup(t *testing.T) {
 						{
 							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem},
 							items: []wire.FeedbagItem{
+								{
+									Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{17724, 1})}},
+								},
 								{ClassID: wire.FeedbagClassIdGroup, GroupID: 1, Name: "Family"},
 							},
 							msg: nil, err: assert.AnError,
@@ -3684,6 +3704,18 @@ func TestOSCARProxy_RecvClientCmd_DelGroup(t *testing.T) {
 							inBody: wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
 								Items: []wire.FeedbagItem{
 									{Name: "Family", GroupID: 29709, ItemID: 0, ClassID: wire.FeedbagClassIdGroup},
+								},
+							},
+							msg: nil, err: nil,
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem},
+							items: []wire.FeedbagItem{
+								{
+									Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{17724})}},
 								},
 							},
 							msg: nil, err: nil,
@@ -3797,6 +3829,11 @@ func TestOSCARProxy_RecvClientCmd_DelGroup(t *testing.T) {
 			for _, params := range tc.mockParams.feedBagParams.feedbagServiceDeleteItemParams {
 				fbSvc.EXPECT().
 					DeleteItem(ctx, matchSession(tc.me.IdentScreenName()), params.frame, params.inBody).
+					Return(params.msg, params.err)
+			}
+			for _, params := range tc.mockParams.feedBagParams.feedbagServiceUpsertItemParams {
+				fbSvc.EXPECT().
+					UpsertItem(ctx, matchSession(tc.me.IdentScreenName()), params.frame, params.items).
 					Return(params.msg, params.err)
 			}
 

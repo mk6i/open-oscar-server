@@ -2654,6 +2654,55 @@ type FeedbagItem struct {
 	TLVLBlock
 }
 
+// IsEqual reports whether f and other have identical field values, including
+// the same TLVs in the same order with the same data.
+func (f *FeedbagItem) IsEqual(other FeedbagItem) bool {
+	if f.Name != other.Name || f.GroupID != other.GroupID || f.ClassID != other.ClassID {
+		return false
+	}
+	if len(f.TLVLBlock.TLVList) != len(other.TLVLBlock.TLVList) {
+		return false
+	}
+	for i, tlv := range f.TLVLBlock.TLVList {
+		o := other.TLVLBlock.TLVList[i]
+		if tlv.Tag != o.Tag || !bytes.Equal(tlv.Value, o.Value) {
+			return false
+		}
+	}
+	return true
+}
+
+// AppendOrderMembers adds member IDs to the item's order attribute TLV. If
+// the order TLV already exists, the new IDs are appended to it. Otherwise a
+// new order TLV is created.
+func (f *FeedbagItem) AppendOrderMembers(memberIDs ...uint16) {
+	if existing, ok := f.Uint16SliceBE(FeedbagAttributesOrder); ok {
+		f.Replace(NewTLVBE(FeedbagAttributesOrder, append(existing, memberIDs...)))
+	} else {
+		f.Append(NewTLVBE(FeedbagAttributesOrder, memberIDs))
+	}
+}
+
+// RemoveOrderMembers removes the specified member IDs from the item's order
+// attribute TLV. IDs not present in the order are ignored.
+func (f *FeedbagItem) RemoveOrderMembers(memberIDs ...uint16) {
+	existing, ok := f.Uint16SliceBE(FeedbagAttributesOrder)
+	if !ok {
+		return
+	}
+	remove := make(map[uint16]struct{}, len(memberIDs))
+	for _, id := range memberIDs {
+		remove[id] = struct{}{}
+	}
+	filtered := make([]uint16, 0, len(existing))
+	for _, id := range existing {
+		if _, found := remove[id]; !found {
+			filtered = append(filtered, id)
+		}
+	}
+	f.Replace(NewTLVBE(FeedbagAttributesOrder, filtered))
+}
+
 // ICQDCInfo represents ICQ direct connect settings.
 type ICQDCInfo struct {
 	IP                      uint32
