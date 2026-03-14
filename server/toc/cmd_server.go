@@ -89,7 +89,7 @@ func (s OSCARProxy) RecvChat(ctx context.Context, me *state.SessionInstance, cha
 			case wire.SNAC_0x0E_0x03_ChatUsersJoined:
 				sendOrCancel(ctx, ch, s.ChatUpdateBuddyArrived(v, chatID))
 			case wire.SNAC_0x0E_0x06_ChatChannelMsgToClient:
-				sendOrCancel(ctx, ch, s.ChatIn(ctx, v, chatID))
+				sendOrCancel(ctx, ch, s.ChatIn(ctx, me, v, chatID))
 			default:
 				s.Logger.DebugContext(ctx, fmt.Sprintf("unsupported snac. foodgroup: %s subgroup: %s",
 					wire.FoodGroupName(snac.Frame.FoodGroup),
@@ -99,14 +99,20 @@ func (s OSCARProxy) RecvChat(ctx context.Context, me *state.SessionInstance, cha
 	}
 }
 
-// ChatIn handles the CHAT_IN TOC command.
+// ChatIn handles the CHAT_IN and ENC_CHAT_IN TOC commands.
 //
 // From the TiK documentation:
 //
 //	A chat message was sent in a chat room.
 //
+// From the BlueTOC documentation:
+//
+//	This command received instead of CHAT_IN. It is similar to TOC 1.0 except there are a two new parameters.
+//	One of them is language; the other is unknown but is usually "A"
+//
 // Command syntax: CHAT_IN:<Chat Room Id>:<Source User>:<Whisper? T/F>:<Message>
-func (s OSCARProxy) ChatIn(ctx context.Context, snac wire.SNAC_0x0E_0x06_ChatChannelMsgToClient, chatID int) []string {
+// Command syntax: CHAT_IN_ENC:<chatroom id>:<user>:<whisper T/F>:<???>:en:<message>
+func (s OSCARProxy) ChatIn(ctx context.Context, me *state.SessionInstance, snac wire.SNAC_0x0E_0x06_ChatChannelMsgToClient, chatID int) []string {
 	b, ok := snac.Bytes(wire.ChatTLVSenderInformation)
 	if !ok {
 		return s.runtimeErr(ctx, errors.New("snac.Bytes: missing wire.ChatTLVSenderInformation"))
@@ -126,6 +132,10 @@ func (s OSCARProxy) ChatIn(ctx context.Context, snac wire.SNAC_0x0E_0x06_ChatCha
 	text, err := wire.UnmarshalChatMessageText(b)
 	if err != nil {
 		return s.runtimeErr(ctx, fmt.Errorf("wire.UnmarshalChatMessageText: %w", err))
+	}
+
+	if me.SupportsTOC2MsgEnc() {
+		return []string{fmt.Sprintf("CHAT_IN_ENC:%d:%s:F:A:en:%s", chatID, u.ScreenName, text)}
 	}
 
 	return []string{fmt.Sprintf("CHAT_IN:%d:%s:F:%s", chatID, u.ScreenName, text)}

@@ -28,7 +28,7 @@ func TestOSCARProxy_RecvBOS_ChatIn(t *testing.T) {
 		wantCmd string
 	}{
 		{
-			name:   "send chat message",
+			name:   "send chat message - plain CHAT_IN",
 			me:     newTestSession("me"),
 			chatID: 0,
 			givenMsg: wire.SNACMessage{
@@ -48,6 +48,28 @@ func TestOSCARProxy_RecvBOS_ChatIn(t *testing.T) {
 				},
 			},
 			wantCmd: "CHAT_IN:0:them:F:<p>hello world!</p>",
+		},
+		{
+			name:   "send chat message - TOC2 encoded CHAT_IN_ENC",
+			me:     newTestSession("me", func(i *state.SessionInstance) { i.SetTOC2(true) }),
+			chatID: 0,
+			givenMsg: wire.SNACMessage{
+				Body: wire.SNAC_0x0E_0x06_ChatChannelMsgToClient{
+					TLVRestBlock: wire.TLVRestBlock{
+						TLVList: wire.TLVList{
+							wire.NewTLVBE(wire.ChatTLVSenderInformation, wire.TLVUserInfo{
+								ScreenName: "them",
+							}),
+							wire.NewTLVBE(wire.ChatTLVMessageInfo, wire.TLVRestBlock{
+								TLVList: wire.TLVList{
+									wire.NewTLVBE(wire.ChatTLVMessageInfoText, "<p>hello world!</p>"),
+								},
+							}),
+						},
+					},
+				},
+			},
+			wantCmd: "CHAT_IN_ENC:0:them:F:A:en:<p>hello world!</p>",
 		},
 	}
 
