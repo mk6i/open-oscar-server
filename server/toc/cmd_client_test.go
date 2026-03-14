@@ -595,6 +595,8 @@ func TestOSCARProxy_RecvClientCmd_ChatAccept(t *testing.T) {
 		// expectChatSession indicates whether a chat session should be present
 		// in the chat registry
 		expectChatSession bool
+		// checkSession validates the state of the registered chat session (chat ID 0)
+		checkSession func(*testing.T, *state.SessionInstance)
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
@@ -657,6 +659,70 @@ func TestOSCARProxy_RecvClientCmd_ChatAccept(t *testing.T) {
 			},
 			wantMsg:           []string{"CHAT_JOIN:0:cool room"},
 			expectChatSession: true,
+		},
+		{
+			name:     "accept chat - TOC2 with encoded messaging propagates to chat session",
+			me:       newTestSession("me", func(i *state.SessionInstance) { i.SetTOC2(true) }),
+			givenCmd: []byte(`toc_chat_accept 0`),
+			givenChatRegistry: func() *ChatRegistry {
+				reg := NewChatRegistry()
+				reg.Add(wire.ICBMRoomInfo{
+					Cookie:   "the-cookie",
+					Exchange: 4,
+					Instance: 0,
+				})
+				return reg
+			}(),
+			mockParams: mockParams{
+				chatNavParams: chatNavParams{
+					requestRoomInfoParams: requestRoomInfoParams{
+						{
+							inBody: wire.SNAC_0x0D_0x04_ChatNavRequestRoomInfo{
+								Cookie:         "the-cookie",
+								Exchange:       4,
+								InstanceNumber: 0,
+							},
+							msg: navInfo,
+						},
+					},
+				},
+				oServiceParams: oServiceParams{
+					serviceRequestParams: serviceRequestParams{
+						{
+							me:     state.NewIdentScreenName("me"),
+							bodyIn: svcReq,
+							msg:    svcResp,
+						},
+					},
+					clientOnlineParams: clientOnlineParams{
+						{
+							body: wire.SNAC_0x01_0x02_OServiceClientOnline{},
+							me:   state.NewIdentScreenName("me"),
+						},
+					},
+				},
+				authParams: authParams{
+					crackCookieParams: crackCookieParams{
+						{
+							cookieIn:  []byte("chat-auth-cookie"),
+							cookieOut: state.ServerCookie{ChatCookie: "chat-auth-cookie"},
+						},
+					},
+					registerChatSessionParams: registerChatSessionParams{
+						{
+							authCookie: state.ServerCookie{ChatCookie: "chat-auth-cookie"},
+							instance:   newTestSession("me"),
+						},
+					},
+				},
+			},
+			wantMsg:           []string{"CHAT_JOIN:0:cool room"},
+			expectChatSession: true,
+			checkSession: func(t *testing.T, sess *state.SessionInstance) {
+				assert.NotNil(t, sess, "chat session should be registered")
+				assert.True(t, sess.IsTOC2(), "chat session should have TOC2 set")
+				assert.True(t, sess.SupportsTOC2MsgEnc(), "chat session should have TOC2 msg enc set")
+			},
 		},
 		{
 			name:     "accept chat, receive error from client online",
@@ -908,6 +974,9 @@ func TestOSCARProxy_RecvClientCmd_ChatAccept(t *testing.T) {
 			assert.NoError(t, g.Wait())
 			assert.Equal(t, tc.wantMsg, msg)
 			assert.Equal(t, tc.expectChatSession, len(tc.givenChatRegistry.Sessions()) == 1)
+			if tc.checkSession != nil {
+				tc.checkSession(t, tc.givenChatRegistry.RetrieveSess(0))
+			}
 		})
 	}
 }
@@ -1124,6 +1193,8 @@ func TestOSCARProxy_RecvClientCmd_ChatJoin(t *testing.T) {
 		// expectChatSession indicates whether a chat session should be present
 		// in the chat registry
 		expectChatSession bool
+		// checkSession validates the state of the registered chat session (chat ID 0)
+		checkSession func(*testing.T, *state.SessionInstance)
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
@@ -1175,6 +1246,59 @@ func TestOSCARProxy_RecvClientCmd_ChatJoin(t *testing.T) {
 			},
 			wantMsg:           []string{"CHAT_JOIN:0:cool room :)"},
 			expectChatSession: true,
+		},
+		{
+			name:              "successfully join chat - TOC2 with encoded messaging propagates to chat session",
+			me:                newTestSession("me", func(i *state.SessionInstance) { i.SetTOC2(true) }),
+			givenCmd:          []byte(`toc_chat_join 4 "cool room :\)"`),
+			givenChatRegistry: NewChatRegistry(),
+			mockParams: mockParams{
+				chatNavParams: chatNavParams{
+					createRoomParams: createRoomParams{
+						{
+							me:     state.NewIdentScreenName("me"),
+							inBody: roomInfo,
+							msg:    navInfo,
+						},
+					},
+				},
+				oServiceParams: oServiceParams{
+					serviceRequestParams: serviceRequestParams{
+						{
+							me:     state.NewIdentScreenName("me"),
+							bodyIn: svcReq,
+							msg:    svcResp,
+						},
+					},
+					clientOnlineParams: clientOnlineParams{
+						{
+							body: wire.SNAC_0x01_0x02_OServiceClientOnline{},
+							me:   state.NewIdentScreenName("me"),
+						},
+					},
+				},
+				authParams: authParams{
+					crackCookieParams: crackCookieParams{
+						{
+							cookieIn:  []byte("chat-auth-cookie"),
+							cookieOut: state.ServerCookie{ChatCookie: "chat-auth-cookie"},
+						},
+					},
+					registerChatSessionParams: registerChatSessionParams{
+						{
+							authCookie: state.ServerCookie{ChatCookie: "chat-auth-cookie"},
+							instance:   newTestSession("me"),
+						},
+					},
+				},
+			},
+			wantMsg:           []string{"CHAT_JOIN:0:cool room :)"},
+			expectChatSession: true,
+			checkSession: func(t *testing.T, sess *state.SessionInstance) {
+				assert.NotNil(t, sess, "chat session should be registered")
+				assert.True(t, sess.IsTOC2(), "chat session should have TOC2 set")
+				assert.True(t, sess.SupportsTOC2MsgEnc(), "chat session should have TOC2 msg enc set")
+			},
 		},
 		{
 			name:              "accept chat, receive error from client online",
@@ -1382,6 +1506,9 @@ func TestOSCARProxy_RecvClientCmd_ChatJoin(t *testing.T) {
 			assert.NoError(t, g.Wait())
 			assert.Equal(t, tc.wantMsg, msg)
 			assert.Equal(t, tc.expectChatSession, len(tc.givenChatRegistry.Sessions()) == 1)
+			if tc.checkSession != nil {
+				tc.checkSession(t, tc.givenChatRegistry.RetrieveSess(0))
+			}
 		})
 	}
 }
@@ -1528,6 +1655,58 @@ func TestOSCARProxy_RecvClientCmd_ChatSend(t *testing.T) {
 				},
 			},
 			wantMsg: []string{"CHAT_IN:0:me:F:Hello world! :)"},
+		},
+		{
+			name:     "successfully send chat message - TOC2 encoded returns CHAT_IN_ENC",
+			me:       newTestSession("me"),
+			givenCmd: []byte(`toc_chat_send 0 "Hello world! :\)"`),
+			givenChatRegistry: func() *ChatRegistry {
+				reg := NewChatRegistry()
+				reg.RegisterSess(0, newTestSession("me", func(i *state.SessionInstance) { i.SetTOC2(true) }))
+				return reg
+			}(),
+			mockParams: mockParams{
+				chatParams: chatParams{
+					channelMsgToHostParamsChat: channelMsgToHostParamsChat{
+						{
+							sender: state.NewIdentScreenName("me"),
+							inBody: wire.SNAC_0x0E_0x05_ChatChannelMsgToHost{
+								Channel: wire.ICBMChannelMIME,
+								TLVRestBlock: wire.TLVRestBlock{
+									TLVList: wire.TLVList{
+										wire.NewTLVBE(wire.ChatTLVEnableReflectionFlag, uint8(1)),
+										wire.NewTLVBE(wire.ChatTLVSenderInformation, newTestSession("me").Session().TLVUserInfo()),
+										wire.NewTLVBE(wire.ChatTLVPublicWhisperFlag, []byte{}),
+										wire.NewTLVBE(wire.ChatTLVMessageInfo, wire.TLVRestBlock{
+											TLVList: wire.TLVList{
+												wire.NewTLVBE(wire.ChatTLVMessageInfoText, "Hello world! :)"),
+											},
+										}),
+									},
+								},
+							},
+							result: &wire.SNACMessage{
+								Body: wire.SNAC_0x0E_0x06_ChatChannelMsgToClient{
+									Channel: wire.ICBMChannelMIME,
+									TLVRestBlock: wire.TLVRestBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.ChatTLVSenderInformation,
+												newTestSession("me").Session().TLVUserInfo()),
+											wire.NewTLVBE(wire.ChatTLVPublicWhisperFlag, []byte{}),
+											wire.NewTLVBE(wire.ChatTLVMessageInfo, wire.TLVRestBlock{
+												TLVList: wire.TLVList{
+													wire.NewTLVBE(wire.ChatTLVMessageInfoText, "Hello world! :)"),
+												},
+											}),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantMsg: []string{"CHAT_IN_ENC:0:me:F:A:en:Hello world! :)"},
 		},
 		{
 			name:     "send chat message, receive error from chat svc",
