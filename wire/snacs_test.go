@@ -292,6 +292,36 @@ func TestCapabilityUUIDs(t *testing.T) {
 	}
 }
 
+func TestShortCapHexToUUID(t *testing.T) {
+	tests := []struct {
+		name     string
+		hexStr   string
+		wantUUID uuid.UUID
+		wantOK   bool
+	}{
+		{"1348 -> CapFileSharing", "1348", CapFileSharing, true},
+		{"134B -> CapBuddyListTransfer", "134B", CapBuddyListTransfer, true},
+		{"1FF -> CapSmartCaps", "1FF", CapSmartCaps, true},
+		{"1341 -> CapVoiceChat", "1341", CapVoiceChat, true},
+		{"0000 -> CapShortCaps", "0000", CapShortCaps, true},
+		{"empty string", "", uuid.Nil, false},
+		{"invalid hex", "GGGG", uuid.Nil, false},
+		{"too large for uint16", "10000", uuid.Nil, false},
+		{"whitespace trimmed", "  1348  ", CapFileSharing, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := ShortCapHexToUUID(tt.hexStr)
+			assert.Equal(t, tt.wantOK, ok)
+			if tt.wantOK {
+				assert.Equal(t, tt.wantUUID, got)
+			} else {
+				assert.Equal(t, uuid.Nil, got)
+			}
+		})
+	}
+}
+
 func TestFeedbagItem_AppendOrderMembers(t *testing.T) {
 	t.Run("creates order TLV when none exists", func(t *testing.T) {
 		item := FeedbagItem{ClassID: FeedbagClassIdGroup, GroupID: 1}

@@ -2032,13 +2032,28 @@ func (s OSCARProxy) SetCaps(ctx context.Context, me *state.SessionInstance, args
 		return s.runtimeErr(ctx, fmt.Errorf("parseArgs: %w", err))
 	}
 
-	caps := make([]uuid.UUID, 0, 16*(len(params)+1))
-	for _, capStr := range params {
-		uid, err := uuid.Parse(capStr)
-		if err != nil {
-			return s.runtimeErr(ctx, fmt.Errorf("UUID.Parse: %w", err))
+	// Clients may send capabilities as space-separated UUIDs or as a single
+	// comma-separated string (e.g. TameClone: "UUID,1348,134B,..."). Split each
+	// param on comma. Accept full UUIDs and OSCAR short caps (1–4 hex digits
+	// expanded to 0946XXYY-4C7F-11D1-8222-444553540000); ignore unknown tokens.
+	caps := make([]uuid.UUID, 0, 16)
+	for _, param := range params {
+		for _, token := range strings.Split(param, ",") {
+			token = strings.TrimSpace(token)
+			if token == "" {
+				continue
+			}
+			uid, err := uuid.Parse(token)
+			if err != nil {
+				uid, ok := wire.ShortCapHexToUUID(token)
+				if !ok {
+					continue
+				}
+				caps = append(caps, uid)
+				continue
+			}
+			caps = append(caps, uid)
 		}
-		caps = append(caps, uid)
 	}
 	// assume client supports chat, although we may want to do this according
 	// to client ID

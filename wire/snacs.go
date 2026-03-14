@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/google/uuid"
 )
@@ -218,6 +220,27 @@ var (
 	// CapGamesAlt is an alternate games capability with different endianness (AIM)
 	CapGamesAlt = uuid.MustParse("0946134A-4C7F-11D1-2282-444553540000")
 )
+
+// ShortCapHexToUUID converts an OSCAR short capability code (1–4 hex digits, e.g. "1348", "1FF")
+// to the full UUID form 0946XXYY-4C7F-11D1-8222-444553540000. Returns the UUID and true if the
+// input is valid hex that fits in a uint16; otherwise returns zero UUID and false.
+func ShortCapHexToUUID(hexStr string) (uuid.UUID, bool) {
+	hexStr = strings.TrimSpace(hexStr)
+	if hexStr == "" || len(hexStr) > 4 {
+		return uuid.Nil, false
+	}
+	val, err := strconv.ParseUint(hexStr, 16, 16)
+	if err != nil {
+		return uuid.Nil, false
+	}
+	// Format: 0946XXYY-4C7F-11D1-8222-444553540000 (XXYY = 16-bit short cap in big-endian hex)
+	uuidStr := fmt.Sprintf("0946%04X-4C7F-11D1-8222-444553540000", val)
+	uid, err := uuid.Parse(uuidStr)
+	if err != nil {
+		return uuid.Nil, false
+	}
+	return uid, true
+}
 
 //
 // 0x01: OService

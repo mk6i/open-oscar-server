@@ -5623,10 +5623,61 @@ func TestOSCARProxy_RecvClientCmd_SetCaps(t *testing.T) {
 			wantMsg: []string{cmdInternalSvcErr},
 		},
 		{
-			name:     "set malformed capability UUID",
+			name:     "set malformed capability UUID is skipped",
 			me:       newTestSession("me"),
 			givenCmd: []byte(`toc_set_caps 09460000-`),
-			wantMsg:  []string{cmdInternalSvcErr},
+			mockParams: mockParams{
+				locateParams: locateParams{
+					setInfoParams: setInfoParams{
+						{
+							me: state.NewIdentScreenName("me"),
+							inBody: wire.SNAC_0x02_0x04_LocateSetInfo{
+								TLVRestBlock: wire.TLVRestBlock{
+									TLVList: wire.TLVList{
+										wire.NewTLVBE(wire.LocateTLVTagsInfoCapabilities, []uuid.UUID{
+											wire.CapChat,
+										}),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantMsg: []string{},
+		},
+		{
+			name:     "set capabilities with comma-separated list (TameClone format)",
+			me:       newTestSession("me"),
+			givenCmd: []byte(`toc_set_caps 748F2420-6287-11D1-8222-444553540000,1348,134B,1341,1343,1FF,1345,1346,1347,`),
+			mockParams: mockParams{
+				locateParams: locateParams{
+					setInfoParams: setInfoParams{
+						{
+							me: state.NewIdentScreenName("me"),
+							inBody: wire.SNAC_0x02_0x04_LocateSetInfo{
+								TLVRestBlock: wire.TLVRestBlock{
+									TLVList: wire.TLVList{
+										wire.NewTLVBE(wire.LocateTLVTagsInfoCapabilities, []uuid.UUID{
+											wire.CapChat,              // 748F... from client
+											wire.CapFileSharing,       // 1348
+											wire.CapBuddyListTransfer, // 134B
+											wire.CapVoiceChat,         // 1341
+											wire.CapFileTransfer,      // 1343
+											wire.CapSmartCaps,         // 1FF
+											wire.CapDirectICBM,        // 1345
+											wire.CapAvatarService,     // 1346
+											wire.CapStocksAddins,      // 1347
+											wire.CapChat,              // auto-appended
+										}),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantMsg: []string{},
 		},
 	}
 
