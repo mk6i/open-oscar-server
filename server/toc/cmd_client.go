@@ -540,6 +540,9 @@ func (s OSCARProxy) ChatAccept(
 	}
 
 	chatRegistry.RegisterSess(chatID, chatSess)
+	if me.IsTOC2() {
+		chatSess.SetTOC2(me.SupportsTOC2MsgEnc())
+	}
 
 	return chatID, []string{fmt.Sprintf("CHAT_JOIN:%d:%s", chatID, roomName)}
 }
@@ -732,6 +735,9 @@ func (s OSCARProxy) ChatJoin(
 	}
 	chatID := chatRegistry.Add(roomInfo)
 	chatRegistry.RegisterSess(chatID, chatSess)
+	if me.IsTOC2() {
+		chatSess.SetTOC2(me.SupportsTOC2MsgEnc())
+	}
 
 	return chatID, []string{fmt.Sprintf("CHAT_JOIN:%d:%s", chatID, roomName)}
 }
@@ -845,6 +851,10 @@ func (s OSCARProxy) ChatSend(ctx context.Context, chatRegistry *ChatRegistry, ar
 		var userInfo wire.TLVUserInfo
 		if err := wire.UnmarshalBE(&userInfo, bytes.NewReader(senderInfo)); err != nil {
 			return s.runtimeErr(ctx, fmt.Errorf("wire.UnmarshalBE: %w", err))
+		}
+
+		if me.SupportsTOC2MsgEnc() {
+			return []string{fmt.Sprintf("CHAT_IN_ENC:%d:%s:F:A:en:%s", chatID, userInfo.ScreenName, reflectMsg)}
 		}
 
 		return []string{fmt.Sprintf("CHAT_IN:%d:%s:F:%s", chatID, userInfo.ScreenName, reflectMsg)}
