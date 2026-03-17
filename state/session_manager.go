@@ -379,10 +379,17 @@ func (s *InMemoryChatSessionManager) RemoveSession(instance *SessionInstance) {
 
 // RemoveUserFromAllChats removes a user's session from all chat rooms.
 func (s *InMemoryChatSessionManager) RemoveUserFromAllChats(user IdentScreenName) {
-	s.mapMutex.Lock()
-	defer s.mapMutex.Unlock()
+	var cpy []*InMemorySessionManager
 
+	// make a copy since CloseSession() may call back to InMemoryChatSessionManager
+	// and deadlock with this call
+	s.mapMutex.RLock()
 	for _, sessionManager := range s.store {
+		cpy = append(cpy, sessionManager)
+	}
+	s.mapMutex.RUnlock()
+
+	for _, sessionManager := range cpy {
 		userSess := sessionManager.RetrieveSession(user)
 		if userSess != nil {
 			userSess.CloseSession()

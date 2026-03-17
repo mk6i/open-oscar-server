@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/mk6i/open-oscar-server/wire"
+	"github.com/stretchr/testify/require"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -698,6 +699,64 @@ func TestInMemoryChatSessionManager_RemoveUserFromAllChats(t *testing.T) {
 	assert.False(t, lookup[user1sess.Session()])
 	assert.True(t, lookup[user2sess.Session()])
 
+}
+
+// TestInMemoryChatSessionManager_NoDeadlockOnCloseHookReentry verifies that
+// session close hooks don't deadlock when they re-enter
+// InMemoryChatSessionManager.
+//
+// The deadlock scenario under test:
+//
+//  1. BOS session closes, triggering its close hook.
+//  2. The close hook calls RemoveUserFromAllChats, which iterates chat rooms
+//     and calls CloseSession on the user's chat session.
+//  3. The chat session's close hook calls AllSessions, which acquires
+//     mapMutex.RLock.
+//
+// If RemoveUserFromAllChats naively held mapMutex.RLock while calling
+// CloseSession in step 2, the AllSessions call in step 3 would attempt a
+// recursive read lock on the same goroutine—something sync.RWMutex forbids—and
+// deadlock. The production code avoids this by copying the session managers and
+// releasing the lock before calling CloseSession.
+func TestInMemoryChatSessionManager_NoDeadlockOnCloseHookReentry(t *testing.T) {
+	user := DisplayScreenName("user-screen-name-1")
+	cookie := "chat-room-1"
+
+	bosSM := NewInMemorySessionManager(slog.Default())
+	chatSM := NewInMemoryChatSessionManager(slog.Default())
+
+	bosSess, err := bosSM.AddSession(context.Background(), user, false)
+	require.NoError(t, err)
+	bosSess.Session().SetIdentScreenName(user.IdentScreenName())
+	bosSess.SetSignonComplete()
+
+	chatSess, err := chatSM.AddSession(context.Background(), cookie, user)
+	require.NoError(t, err)
+	chatSess.SetSignonComplete()
+
+	// Simulate the real signoff flow: when the BOS session closes, remove
+	// the user from all chat rooms.
+	bosSess.Session().OnSessionClose(func() {
+		chatSM.RemoveUserFromAllChats(user.IdentScreenName())
+	})
+	// When the chat session closes, re-enter the chat session manager to
+	// simulate some cleanup operations, which would deadlock if the manager's
+	// lock were still held.
+	chatSess.Session().OnSessionClose(func() {
+		chatSM.AllSessions(cookie)
+	})
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		bosSess.Session().CloseSession()
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for session close — probable deadlock in close hook chain")
+	}
 }
 
 func TestInMemorySessionManager_RelayToAll_SkipIncompleteSignon(t *testing.T) {
