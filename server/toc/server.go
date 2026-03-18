@@ -359,7 +359,9 @@ func (s *Server) dispatchFLAP(ctx context.Context, conn net.Conn) error {
 		return nil
 	}
 
-	sessBOS, err := s.login(ctx, clientFlap)
+	chatRegistry := NewChatRegistry()
+
+	sessBOS, err := s.login(ctx, clientFlap, chatRegistry)
 	if err != nil {
 		return fmt.Errorf("s.login: %w", err)
 	}
@@ -377,8 +379,6 @@ func (s *Server) dispatchFLAP(ctx context.Context, conn net.Conn) error {
 		}
 		sessBOS.SetRemoteAddr(&ip)
 	}
-
-	chatRegistry := NewChatRegistry()
 
 	return s.handleTOCRequest(ctx, closeConn, sessBOS, chatRegistry, clientFlap)
 }
@@ -398,10 +398,6 @@ func (s *Server) handleTOCRequest(
 	chatRegistry *ChatRegistry,
 	clientFlap *wire.FlapClient,
 ) error {
-	if err := s.recalcWarning(ctx, sessBOS); err != nil {
-		return fmt.Errorf("failed to recalculate warning level: %w", err)
-	}
-
 	// TOC response queue
 	msgCh := make(chan []string, 1)
 
@@ -425,12 +421,6 @@ func (s *Server) handleTOCRequest(
 		err := s.sendToClient(ctx, msgCh, clientFlap)
 		closeConn() // unblock runClientCommands
 		return errors.Join(err, errServerWrite)
-	})
-
-	// process warning limits
-	g.Go(func() error {
-		s.lowerWarnLevel(ctx, sessBOS)
-		return nil
 	})
 
 	return g.Wait()
@@ -497,7 +487,7 @@ func (s *Server) sendToClient(ctx context.Context, toClient <-chan []string, cli
 	}
 }
 
-func (s *Server) login(ctx context.Context, clientFlap *wire.FlapClient) (*state.SessionInstance, error) {
+func (s *Server) login(ctx context.Context, clientFlap *wire.FlapClient, chatRegistry *ChatRegistry) (*state.SessionInstance, error) {
 	clientFrame, err := clientFlap.ReceiveFLAP()
 	if err != nil {
 		if errors.Is(err, io.EOF) {
@@ -506,7 +496,7 @@ func (s *Server) login(ctx context.Context, clientFlap *wire.FlapClient) (*state
 		return nil, fmt.Errorf("clientFlap.ReceiveFLAP: %w", err)
 	}
 
-	sessBOS, reply := s.bosProxy.Signon(ctx, clientFrame.Payload)
+	sessBOS, reply := s.bosProxy.Signon(ctx, clientFrame.Payload, s.recalcWarning, s.lowerWarnLevel, chatRegistry)
 
 	for _, m := range reply {
 		if err := clientFlap.SendDataFrame([]byte(m)); err != nil {

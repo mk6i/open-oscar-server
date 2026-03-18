@@ -9,7 +9,6 @@ import (
 	"log/slog"
 	"net"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 
@@ -32,11 +31,7 @@ func (s OSCARProxy) RecvBOS(ctx context.Context, me *state.SessionInstance, chat
 	for {
 		select {
 		case <-ctx.Done():
-			func() {
-				shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
-				s.Signout(shutdownCtx, me, chatRegistry)
-			}()
+			me.CloseInstance()
 			return nil
 		case <-me.Closed():
 			return errDisconnect

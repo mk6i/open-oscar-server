@@ -2288,7 +2288,7 @@ func (s OSCARProxy) SetInfo(ctx context.Context, me *state.SessionInstance, args
 // Command syntax: toc_signon <authorizer host> <authorizer port> <User Name> <Password> <language> <version>
 // Command syntax: toc2_signon <authorizer host> <authorizer port> <User Name> <Password> <language> <version>
 // Command syntax: toc2_login <authorizer host> <authorizer port> <User Name> <Password> <language> <version> [additional params...]
-func (s OSCARProxy) Signon(ctx context.Context, args []byte) (*state.SessionInstance, []string) {
+func (s OSCARProxy) Signon(ctx context.Context, args []byte, recalcWarning func(ctx context.Context, instance *state.SessionInstance) error, lowerWarnLevel func(ctx context.Context, instance *state.SessionInstance), chatRegistry *ChatRegistry) (*state.SessionInstance, []string) {
 	var cmd, userName, password string
 
 	if _, err := parseArgs(args, &cmd, nil, nil, &userName, &password); err != nil {
@@ -2338,54 +2338,117 @@ func (s OSCARProxy) Signon(ctx context.Context, args []byte) (*state.SessionInst
 		return nil, s.runtimeErr(ctx, fmt.Errorf("AuthService.CrackCookie: %w", err))
 	}
 
-	sess, err := s.AuthService.RegisterBOSSession(ctx, serverCookie)
+	instance, err := s.AuthService.RegisterBOSSession(ctx, serverCookie)
 	if err != nil {
 		return nil, s.runtimeErr(ctx, fmt.Errorf("AuthService.RegisterBOSSession: %w", err))
 	}
 
+	if err = instance.Session().RunOnce(func() error {
+		// make buddy list visible to other users
+		if err := s.BuddyListRegistry.RegisterBuddyList(ctx, instance.IdentScreenName()); err != nil {
+			return fmt.Errorf("unable to init buddy list: %w", err)
+		}
+		// restore warning level from last session
+		if err := recalcWarning(ctx, instance); err != nil {
+			return fmt.Errorf("failed to recalculate warning level: %w", err)
+		}
+		// periodically decay warning level
+		go lowerWarnLevel(ctx, instance)
+		return nil
+	}); err != nil {
+		return nil, s.runtimeErr(ctx, fmt.Errorf("Session.RunOnce: %w", err))
+	}
+
+	// Update user visibility when an instance closes, as the user's overall status may change.
+	// Example: With 1 away and 1 non-away instance, the user appears available. If the non-away
+	// instance closes, the user should appear away.
+	instance.OnClose(func() {
+		if shuttingDown(ctx) {
+			return
+		}
+		if instance.Session().Invisible() {
+			if err := s.BuddyService.BroadcastBuddyDeparted(ctx, instance); err != nil {
+				s.Logger.ErrorContext(ctx, "error sending buddy departure notifications", "err", err.Error())
+			}
+		} else {
+			if err := s.BuddyService.BroadcastBuddyArrived(ctx, instance.IdentScreenName(), instance.Session().TLVUserInfo()); err != nil {
+				s.Logger.ErrorContext(ctx, "error sending buddy arrival notifications", "err", err.Error())
+			}
+		}
+	})
+
+	instance.Session().OnSessionClose(func() {
+		if !shuttingDown(ctx) {
+			if err := s.BuddyService.BroadcastBuddyDeparted(ctx, instance); err != nil {
+				s.Logger.ErrorContext(ctx, "error sending buddy departure notifications", "err", err.Error())
+			}
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+
+		// buddy list must be cleared before session is closed, otherwise
+		// there will be a race condition that could cause the buddy list
+		// be prematurely deleted.
+		if err := s.BuddyListRegistry.UnregisterBuddyList(ctx, instance.IdentScreenName()); err != nil {
+			s.Logger.ErrorContext(ctx, "error removing buddy list entry", "err", err.Error())
+		}
+		for _, sess := range chatRegistry.Sessions() {
+			s.AuthService.SignoutChat(ctx, sess)
+			sess.CloseInstance() // stop async server SNAC reply handler for this chat room
+		}
+		s.AuthService.Signout(ctx, instance)
+	})
+
 	// set chat capability so that... tk
-	sess.SetCaps([][16]byte{wire.CapChat})
-
-	if err := s.BuddyListRegistry.RegisterBuddyList(ctx, sess.IdentScreenName()); err != nil {
-		return nil, s.runtimeErr(ctx, fmt.Errorf("BuddyListRegistry.RegisterBuddyList: %w", err))
-	}
-
-	u, err := s.TOCConfigStore.User(ctx, sess.IdentScreenName())
-	if err != nil {
-		return nil, s.runtimeErr(ctx, fmt.Errorf("TOCConfigStore.User: %w", err))
-	}
-	if u == nil {
-		return nil, s.runtimeErr(ctx, fmt.Errorf("TOCConfigStore.User: user not found"))
-	}
+	instance.SetCaps([][16]byte{wire.CapChat})
 
 	if cmd == "toc_signon" {
-		return sess, []string{"SIGN_ON:TOC1.0", fmt.Sprintf("CONFIG:%s", u.TOCConfig), fmt.Sprintf("NICK:%s", sess.DisplayScreenName().String())}
+		u, err := s.TOCConfigStore.User(ctx, instance.IdentScreenName())
+		if err != nil {
+			return nil, s.runtimeErr(ctx, fmt.Errorf("TOCConfigStore.User: %w", err))
+		}
+		if u == nil {
+			return nil, s.runtimeErr(ctx, fmt.Errorf("TOCConfigStore.User: user not found"))
+		}
+
+		return instance, []string{"SIGN_ON:TOC1.0", fmt.Sprintf("CONFIG:%s", u.TOCConfig), fmt.Sprintf("NICK:%s", instance.DisplayScreenName().String())}
 	}
 
 	supportsTOC2MsgEnc := cmd == "toc2_login"
-	sess.SetTOC2(supportsTOC2MsgEnc)
+	instance.SetTOC2(supportsTOC2MsgEnc)
 
-	if err := s.FeedbagService.Use(ctx, sess); err != nil {
-		return sess, s.runtimeErr(ctx, fmt.Errorf("FeedbagService.Use: %w", err))
+	if err := s.FeedbagService.Use(ctx, instance); err != nil {
+		return instance, s.runtimeErr(ctx, fmt.Errorf("FeedbagService.Use: %w", err))
 	}
 
-	fb, err := s.FeedbagManager.Feedbag(ctx, sess.IdentScreenName())
+	fb, err := s.FeedbagManager.Feedbag(ctx, instance.IdentScreenName())
 	if err != nil {
-		return sess, s.runtimeErr(ctx, fmt.Errorf("FeedbagManager.Feedbag: %w", err))
+		return instance, s.runtimeErr(ctx, fmt.Errorf("FeedbagManager.Feedbag: %w", err))
 	}
 
 	signon := []string{
 		"SIGN_ON:TOC2.0",
-		fmt.Sprintf("NICK:%s", sess.DisplayScreenName().String()),
+		fmt.Sprintf("NICK:%s", instance.DisplayScreenName().String()),
 	}
 
 	cfg, err := buildToc2Config(fb)
 	if err != nil {
-		return sess, s.runtimeErr(ctx, fmt.Errorf("buildToc2Config: %w", err))
+		return instance, s.runtimeErr(ctx, fmt.Errorf("buildToc2Config: %w", err))
 	}
 	signon = append(signon, cfg...)
 
-	return sess, signon
+	return instance, signon
+}
+
+func shuttingDown(ctx context.Context) bool {
+	select {
+	case <-ctx.Done():
+		// server is shutting down, don't send buddy notifications
+		return true
+	default:
+	}
+	return false
 }
 
 // buildToc2Config constructs configuration for CONFIG2
@@ -2489,23 +2552,6 @@ func buildToc2Config(fb []wire.FeedbagItem) ([]string, error) {
 	cfg = append(cfg, "done:")
 
 	return []string{"CONFIG2:" + strings.Join(cfg, "\n") + "\n"}, nil
-}
-
-// Signout terminates a TOC session. It sends departure notifications to
-// buddies, de-registers buddy list and session.
-func (s OSCARProxy) Signout(ctx context.Context, me *state.SessionInstance, chatRegistry *ChatRegistry) {
-	if err := s.BuddyService.BroadcastBuddyDeparted(ctx, me); err != nil {
-		s.Logger.ErrorContext(ctx, "error sending departure notifications", "err", err.Error())
-	}
-	if err := s.BuddyListRegistry.UnregisterBuddyList(ctx, me.IdentScreenName()); err != nil {
-		s.Logger.ErrorContext(ctx, "error removing buddy list entry", "err", err.Error())
-	}
-	s.AuthService.Signout(ctx, me)
-
-	for _, sess := range chatRegistry.Sessions() {
-		s.AuthService.SignoutChat(ctx, sess)
-		sess.CloseInstance() // stop async server SNAC reply handler for this chat room
-	}
 }
 
 // newHTTPAuthToken creates a HMAC token for authenticating TOC HTTP requests

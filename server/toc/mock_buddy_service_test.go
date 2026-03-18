@@ -102,6 +102,69 @@ func (_c *mockBuddyService_AddBuddies_Call) RunAndReturn(run func(ctx context.Co
 	return _c
 }
 
+// BroadcastBuddyArrived provides a mock function for the type mockBuddyService
+func (_mock *mockBuddyService) BroadcastBuddyArrived(ctx context.Context, screenName state.IdentScreenName, userInfo wire.TLVUserInfo) error {
+	ret := _mock.Called(ctx, screenName, userInfo)
+
+	if len(ret) == 0 {
+		panic("no return value specified for BroadcastBuddyArrived")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, state.IdentScreenName, wire.TLVUserInfo) error); ok {
+		r0 = returnFunc(ctx, screenName, userInfo)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// mockBuddyService_BroadcastBuddyArrived_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'BroadcastBuddyArrived'
+type mockBuddyService_BroadcastBuddyArrived_Call struct {
+	*mock.Call
+}
+
+// BroadcastBuddyArrived is a helper method to define mock.On call
+//   - ctx context.Context
+//   - screenName state.IdentScreenName
+//   - userInfo wire.TLVUserInfo
+func (_e *mockBuddyService_Expecter) BroadcastBuddyArrived(ctx interface{}, screenName interface{}, userInfo interface{}) *mockBuddyService_BroadcastBuddyArrived_Call {
+	return &mockBuddyService_BroadcastBuddyArrived_Call{Call: _e.mock.On("BroadcastBuddyArrived", ctx, screenName, userInfo)}
+}
+
+func (_c *mockBuddyService_BroadcastBuddyArrived_Call) Run(run func(ctx context.Context, screenName state.IdentScreenName, userInfo wire.TLVUserInfo)) *mockBuddyService_BroadcastBuddyArrived_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 state.IdentScreenName
+		if args[1] != nil {
+			arg1 = args[1].(state.IdentScreenName)
+		}
+		var arg2 wire.TLVUserInfo
+		if args[2] != nil {
+			arg2 = args[2].(wire.TLVUserInfo)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *mockBuddyService_BroadcastBuddyArrived_Call) Return(err error) *mockBuddyService_BroadcastBuddyArrived_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *mockBuddyService_BroadcastBuddyArrived_Call) RunAndReturn(run func(ctx context.Context, screenName state.IdentScreenName, userInfo wire.TLVUserInfo) error) *mockBuddyService_BroadcastBuddyArrived_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // BroadcastBuddyDeparted provides a mock function for the type mockBuddyService
 func (_mock *mockBuddyService) BroadcastBuddyDeparted(ctx context.Context, instance *state.SessionInstance) error {
 	ret := _mock.Called(ctx, instance)

@@ -6488,14 +6488,6 @@ func TestOSCARProxy_Signon(t *testing.T) {
 						},
 					},
 				},
-				tocConfigParams: tocConfigParams{
-					userParams: userParams{
-						{
-							screenName:   state.NewIdentScreenName("me"),
-							returnedUser: &state.User{}, // TOC2 path calls User but does not use result
-						},
-					},
-				},
 				feedBagParams: feedBagParams{
 					feedbagServiceUseParams: feedbagServiceUseParams{{err: nil}},
 					feedbagParams: feedbagParams{
@@ -6558,14 +6550,6 @@ func TestOSCARProxy_Signon(t *testing.T) {
 						},
 					},
 				},
-				tocConfigParams: tocConfigParams{
-					userParams: userParams{
-						{
-							screenName:   state.NewIdentScreenName("me"),
-							returnedUser: &state.User{},
-						},
-					},
-				},
 				feedBagParams: feedBagParams{
 					feedbagServiceUseParams: feedbagServiceUseParams{{err: nil}},
 					feedbagParams: feedbagParams{
@@ -6622,11 +6606,6 @@ func TestOSCARProxy_Signon(t *testing.T) {
 						{user: state.NewIdentScreenName("me")},
 					},
 				},
-				tocConfigParams: tocConfigParams{
-					userParams: userParams{
-						{screenName: state.NewIdentScreenName("me"), returnedUser: &state.User{}},
-					},
-				},
 				feedBagParams: feedBagParams{
 					feedbagServiceUseParams: feedbagServiceUseParams{{err: io.EOF}},
 				},
@@ -6674,11 +6653,6 @@ func TestOSCARProxy_Signon(t *testing.T) {
 				buddyListRegistryParams: buddyListRegistryParams{
 					registerBuddyListParams: registerBuddyListParams{
 						{user: state.NewIdentScreenName("me")},
-					},
-				},
-				tocConfigParams: tocConfigParams{
-					userParams: userParams{
-						{screenName: state.NewIdentScreenName("me"), returnedUser: &state.User{}},
 					},
 				},
 				feedBagParams: feedBagParams{
@@ -6984,15 +6958,22 @@ func TestOSCARProxy_Signon(t *testing.T) {
 					Return(params.results, params.err)
 			}
 
+			buddySvc := newMockBuddyService(t)
+
 			svc := OSCARProxy{
 				AuthService:       authSvc,
 				BuddyListRegistry: buddyRegistry,
+				BuddyService:      buddySvc,
 				Logger:            slog.Default(),
 				TOCConfigStore:    tocCfg,
 				FeedbagService:    fbSvc,
 				FeedbagManager:    fbMgr,
 			}
-			sess, msg := svc.Signon(ctx, tc.givenCmd)
+			sess, msg := svc.Signon(ctx, tc.givenCmd,
+				func(ctx context.Context, instance *state.SessionInstance) error { return nil },
+				func(ctx context.Context, instance *state.SessionInstance) {},
+				NewChatRegistry(),
+			)
 
 			assert.Equal(t, tc.wantMsg, msg)
 			if tc.checkSession != nil {
@@ -7000,167 +6981,6 @@ func TestOSCARProxy_Signon(t *testing.T) {
 			} else {
 				assert.Nil(t, sess)
 			}
-		})
-	}
-}
-
-func TestOSCARProxy_Signout(t *testing.T) {
-	cases := []struct {
-		// name is the unit test name
-		name string
-		// me is the TOC user session
-		me *state.SessionInstance
-		// givenChatRegistry is the chat registry passed to the function
-		chatRegistry *ChatRegistry
-		// mockParams is the list of params sent to mocks that satisfy this
-		// method's dependencies
-		mockParams mockParams
-	}{
-		{
-			name: "successfully sign out",
-			me:   newTestSession("me"),
-			chatRegistry: func() *ChatRegistry {
-				cr := NewChatRegistry()
-
-				s1 := state.NewSession().AddInstance()
-				s1.Session().SetIdentScreenName(state.NewIdentScreenName("me1"))
-				cr.RegisterSess(0, s1)
-
-				s2 := state.NewSession().AddInstance()
-				s2.Session().SetIdentScreenName(state.NewIdentScreenName("me2"))
-				cr.RegisterSess(1, s2)
-
-				return cr
-			}(),
-			mockParams: mockParams{
-				buddyParams: buddyParams{
-					broadcastBuddyDepartedParams: broadcastBuddyDepartedParams{
-						{
-							me: state.NewIdentScreenName("me"),
-						},
-					},
-				},
-				buddyListRegistryParams: buddyListRegistryParams{
-					unregisterBuddyListParams: unregisterBuddyListParams{
-						{
-							user: state.NewIdentScreenName("me"),
-						},
-					},
-				},
-				authParams: authParams{
-					signoutParams: signoutParams{
-						{
-							me: state.NewIdentScreenName("me"),
-						},
-					},
-					signoutChatParams: signoutChatParams{
-						{
-							me: state.NewIdentScreenName("me1"),
-						},
-						{
-							me: state.NewIdentScreenName("me2"),
-						},
-					},
-				},
-			},
-		},
-		{
-			name: "sign out, receive error from buddy service",
-			me:   newTestSession("me"),
-			chatRegistry: func() *ChatRegistry {
-				return NewChatRegistry()
-			}(),
-			mockParams: mockParams{
-				buddyParams: buddyParams{
-					broadcastBuddyDepartedParams: broadcastBuddyDepartedParams{
-						{
-							me:  state.NewIdentScreenName("me"),
-							err: io.EOF,
-						},
-					},
-				},
-				buddyListRegistryParams: buddyListRegistryParams{
-					unregisterBuddyListParams: unregisterBuddyListParams{
-						{
-							user: state.NewIdentScreenName("me"),
-						},
-					},
-				},
-				authParams: authParams{
-					signoutParams: signoutParams{
-						{
-							me: state.NewIdentScreenName("me"),
-						},
-					},
-				},
-			},
-		},
-		{
-			name: "sign out, receive error from buddy list registry",
-			me:   newTestSession("me"),
-			chatRegistry: func() *ChatRegistry {
-				return NewChatRegistry()
-			}(),
-			mockParams: mockParams{
-				buddyParams: buddyParams{
-					broadcastBuddyDepartedParams: broadcastBuddyDepartedParams{
-						{
-							me: state.NewIdentScreenName("me"),
-						},
-					},
-				},
-				buddyListRegistryParams: buddyListRegistryParams{
-					unregisterBuddyListParams: unregisterBuddyListParams{
-						{
-							user: state.NewIdentScreenName("me"),
-							err:  io.EOF,
-						},
-					},
-				},
-				authParams: authParams{
-					signoutParams: signoutParams{
-						{
-							me: state.NewIdentScreenName("me"),
-						},
-					},
-				},
-			},
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			ctx := context.Background()
-
-			buddySvc := newMockBuddyService(t)
-			for _, params := range tc.mockParams.broadcastBuddyDepartedParams {
-				buddySvc.EXPECT().
-					BroadcastBuddyDeparted(ctx, matchSession(params.me)).
-					Return(params.err)
-			}
-
-			buddyListSvc := newMockBuddyListRegistry(t)
-			for _, params := range tc.mockParams.unregisterBuddyListParams {
-				buddyListSvc.EXPECT().
-					UnregisterBuddyList(matchContext(), params.user).
-					Return(params.err)
-			}
-
-			authSvc := newMockAuthService(t)
-			for _, params := range tc.mockParams.signoutParams {
-				authSvc.EXPECT().Signout(ctx, matchSession(params.me))
-			}
-			for _, params := range tc.mockParams.signoutChatParams {
-				authSvc.EXPECT().SignoutChat(ctx, matchSession(params.me))
-			}
-
-			svc := OSCARProxy{
-				AuthService:       authSvc,
-				BuddyListRegistry: buddyListSvc,
-				BuddyService:      buddySvc,
-				Logger:            slog.Default(),
-			}
-			svc.Signout(ctx, tc.me, tc.chatRegistry)
 		})
 	}
 }
