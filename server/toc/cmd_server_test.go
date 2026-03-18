@@ -553,10 +553,10 @@ func TestOSCARProxy_RecvBOS_UpdateBuddyArrival(t *testing.T) {
 					},
 				},
 			},
-		wantCmd: []string{"UPDATE_BUDDY:me:T:0:1234:5678: O "},
-	},
-	{
-		name: "send buddy arrival - buddy warned 10%",
+			wantCmd: []string{"UPDATE_BUDDY:me:T:0:1234:5678: O "},
+		},
+		{
+			name: "send buddy arrival - buddy warned 10%",
 			me:   newTestSession("me"),
 			givenMsg: wire.SNACMessage{
 				Body: wire.SNAC_0x03_0x0B_BuddyArrived{
@@ -693,10 +693,10 @@ func TestOSCARProxy_RecvBOS_UpdateBuddyArrival(t *testing.T) {
 					},
 				},
 			},
-		wantCmd: []string{"UPDATE_BUDDY2:buddy:T:0:1234:5678: O :"},
-	},
-	{
-		name: "send buddy arrival - TOC2 caps length not divisible by 16 (userInfoToBuddyCaps returns empty)",
+			wantCmd: []string{"UPDATE_BUDDY2:buddy:T:0:1234:5678: O :"},
+		},
+		{
+			name: "send buddy arrival - TOC2 caps length not divisible by 16 (userInfoToBuddyCaps returns empty)",
 			me:   newTestSession("me", func(i *state.SessionInstance) { i.SetTOC2(false) }),
 			givenMsg: wire.SNACMessage{
 				Body: wire.SNAC_0x03_0x0B_BuddyArrived{
@@ -715,10 +715,10 @@ func TestOSCARProxy_RecvBOS_UpdateBuddyArrival(t *testing.T) {
 					},
 				},
 			},
-		wantCmd: []string{"UPDATE_BUDDY2:buddy:T:0:1234:5678: O :"},
-	},
-	{
-		name: "send buddy arrival - TOC2 with one capability (userInfoToBuddyCaps formats caps as UUIDs)",
+			wantCmd: []string{"UPDATE_BUDDY2:buddy:T:0:1234:5678: O :"},
+		},
+		{
+			name: "send buddy arrival - TOC2 with one capability (userInfoToBuddyCaps formats caps as UUIDs)",
 			me:   newTestSession("me", func(i *state.SessionInstance) { i.SetTOC2(false) }),
 			givenMsg: wire.SNACMessage{
 				Body: wire.SNAC_0x03_0x0B_BuddyArrived{
@@ -938,10 +938,7 @@ func TestOSCARProxy_RecvBOS_ClientEvent(t *testing.T) {
 func TestOSCARProxy_RecvBOS_Signout(t *testing.T) {
 }
 
-func TestOSCARProxy_Inserted2(t *testing.T) {
-	ctx := context.Background()
-	me := newTestSession("me")
-
+func TestOSCARProxy_RecvBOS_Inserted2(t *testing.T) {
 	buddyWithAlias := wire.FeedbagItem{
 		ItemID: 1, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "alice",
 		TLVLBlock: wire.TLVLBlock{},
@@ -1077,6 +1074,8 @@ func TestOSCARProxy_Inserted2(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+
 			fbMgr := newMockFeedbagManager(t)
 			for _, params := range tc.mockParams.feedBagParams.feedbagParams {
 				fbMgr.EXPECT().
@@ -1084,19 +1083,34 @@ func TestOSCARProxy_Inserted2(t *testing.T) {
 					Return(params.results, params.err)
 			}
 
-			svc := OSCARProxy{
-				Logger:         slog.Default(),
-				FeedbagManager: fbMgr,
-			}
-			got := svc.Inserted2(ctx, me, tc.snac)
-			assert.Equal(t, tc.wantCmd, got)
+			svc := testOSCARProxy(t)
+			svc.FeedbagManager = fbMgr
+
+			me := newTestSession("me", func(i *state.SessionInstance) { i.SetTOC2(true) })
+
+			ch := make(chan []string)
+			wg := &sync.WaitGroup{}
+			wg.Add(1)
+
+			go func() {
+				defer wg.Done()
+				err := svc.RecvBOS(ctx, me, NewChatRegistry(), ch)
+				assert.NoError(t, err)
+			}()
+
+			status := me.RelayMessageToInstance(wire.SNACMessage{Body: tc.snac})
+			assert.Equal(t, state.SessSendOK, status)
+
+			gotCmd := <-ch
+			assert.Equal(t, tc.wantCmd, gotCmd)
+
+			cancel()
+			wg.Wait()
 		})
 	}
 }
 
-func TestOSCARProxy_Deleted2(t *testing.T) {
-	ctx := context.Background()
-	me := newTestSession("me")
+func TestOSCARProxy_RecvBOS_Deleted2(t *testing.T) {
 
 	cases := []struct {
 		name       string
@@ -1236,6 +1250,8 @@ func TestOSCARProxy_Deleted2(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+
 			fbMgr := newMockFeedbagManager(t)
 			for _, params := range tc.mockParams.feedBagParams.feedbagParams {
 				fbMgr.EXPECT().
@@ -1243,12 +1259,29 @@ func TestOSCARProxy_Deleted2(t *testing.T) {
 					Return(params.results, params.err)
 			}
 
-			svc := OSCARProxy{
-				Logger:         slog.Default(),
-				FeedbagManager: fbMgr,
-			}
-			got := svc.Deleted2(ctx, me, tc.snac)
-			assert.Equal(t, tc.wantCmd, got)
+			svc := testOSCARProxy(t)
+			svc.FeedbagManager = fbMgr
+
+			me := newTestSession("me", func(i *state.SessionInstance) { i.SetTOC2(true) })
+
+			ch := make(chan []string)
+			wg := &sync.WaitGroup{}
+			wg.Add(1)
+
+			go func() {
+				defer wg.Done()
+				err := svc.RecvBOS(ctx, me, NewChatRegistry(), ch)
+				assert.NoError(t, err)
+			}()
+
+			status := me.RelayMessageToInstance(wire.SNACMessage{Body: tc.snac})
+			assert.Equal(t, state.SessSendOK, status)
+
+			gotCmd := <-ch
+			assert.Equal(t, tc.wantCmd, gotCmd)
+
+			cancel()
+			wg.Wait()
 		})
 	}
 }
