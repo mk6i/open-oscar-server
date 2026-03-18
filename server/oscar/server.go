@@ -410,7 +410,7 @@ func (s oscarServer) authenticate(
 	advertisedHost string,
 ) error {
 	if ok, isBUCP := s.Allow(ip); !ok {
-		s.Logger.Error("user rate limited at login", "remote", ip)
+		s.Logger.InfoContext(ctx, "user rate limited at login, dropping connection")
 		tlv := wire.TLVRestBlock{
 			TLVList: []wire.TLV{
 				wire.NewTLVBE(wire.LoginTLVTagsErrorSubcode, wire.LoginErrRateLimitExceeded),

@@ -353,6 +353,7 @@ func (s *Server) dispatchFLAP(ctx context.Context, conn net.Conn) error {
 	}
 
 	if ok := s.loginIPRateLimiter.Allow(ip); !ok {
+		s.logger.InfoContext(ctx, "user rate limited at login, dropping connection")
 		if err := clientFlap.SendDataFrame([]byte("ERROR:983")); err != nil {
 			return fmt.Errorf("clientFlap.SendDataFrame: %w", err)
 		}
