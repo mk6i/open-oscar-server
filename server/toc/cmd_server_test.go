@@ -553,10 +553,10 @@ func TestOSCARProxy_RecvBOS_UpdateBuddyArrival(t *testing.T) {
 					},
 				},
 			},
-			wantCmd: []string{"UPDATE_BUDDY:me:T:0:1234:5678: O ", ""},
-		},
-		{
-			name: "send buddy arrival - buddy warned 10%",
+		wantCmd: []string{"UPDATE_BUDDY:me:T:0:1234:5678: O "},
+	},
+	{
+		name: "send buddy arrival - buddy warned 10%",
 			me:   newTestSession("me"),
 			givenMsg: wire.SNACMessage{
 				Body: wire.SNAC_0x03_0x0B_BuddyArrived{
@@ -573,7 +573,7 @@ func TestOSCARProxy_RecvBOS_UpdateBuddyArrival(t *testing.T) {
 					},
 				},
 			},
-			wantCmd: []string{"UPDATE_BUDDY:me:T:10:1234:5678: O ", ""},
+			wantCmd: []string{"UPDATE_BUDDY:me:T:10:1234:5678: O "},
 		},
 		{
 			name: "send buddy arrival - buddy away",
@@ -593,7 +593,7 @@ func TestOSCARProxy_RecvBOS_UpdateBuddyArrival(t *testing.T) {
 					},
 				},
 			},
-			wantCmd: []string{"UPDATE_BUDDY:me:T:0:1234:5678: OU", ""},
+			wantCmd: []string{"UPDATE_BUDDY:me:T:0:1234:5678: OU"},
 		},
 		{
 			name: "send buddy arrival - user class AOL (userClassString uc[0])",
@@ -613,7 +613,7 @@ func TestOSCARProxy_RecvBOS_UpdateBuddyArrival(t *testing.T) {
 					},
 				},
 			},
-			wantCmd: []string{"UPDATE_BUDDY:me:T:0:1234:5678:A  ", ""},
+			wantCmd: []string{"UPDATE_BUDDY:me:T:0:1234:5678:A  "},
 		},
 		{
 			name: "send buddy arrival - user class Administrator (userClassString uc[1])",
@@ -633,7 +633,7 @@ func TestOSCARProxy_RecvBOS_UpdateBuddyArrival(t *testing.T) {
 					},
 				},
 			},
-			wantCmd: []string{"UPDATE_BUDDY:me:T:0:1234:5678: A ", ""},
+			wantCmd: []string{"UPDATE_BUDDY:me:T:0:1234:5678: A "},
 		},
 		{
 			name: "send buddy arrival - user class Wireless (userClassString uc[1])",
@@ -653,7 +653,7 @@ func TestOSCARProxy_RecvBOS_UpdateBuddyArrival(t *testing.T) {
 					},
 				},
 			},
-			wantCmd: []string{"UPDATE_BUDDY:me:T:0:1234:5678: C ", ""},
+			wantCmd: []string{"UPDATE_BUDDY:me:T:0:1234:5678: C "},
 		},
 		{
 			name: "send buddy arrival - user class Unconfirmed (userClassString uc[1])",
@@ -673,7 +673,7 @@ func TestOSCARProxy_RecvBOS_UpdateBuddyArrival(t *testing.T) {
 					},
 				},
 			},
-			wantCmd: []string{"UPDATE_BUDDY:me:T:0:1234:5678: U ", ""},
+			wantCmd: []string{"UPDATE_BUDDY:me:T:0:1234:5678: U "},
 		},
 		{
 			name: "send buddy arrival - TOC2 no caps (userInfoToBuddyCaps returns empty when no OServiceUserInfoOscarCaps TLV)",
@@ -693,10 +693,10 @@ func TestOSCARProxy_RecvBOS_UpdateBuddyArrival(t *testing.T) {
 					},
 				},
 			},
-			wantCmd: []string{"UPDATE_BUDDY2:buddy:T:0:1234:5678: O :", ""},
-		},
-		{
-			name: "send buddy arrival - TOC2 caps length not divisible by 16 (userInfoToBuddyCaps returns empty)",
+		wantCmd: []string{"UPDATE_BUDDY2:buddy:T:0:1234:5678: O :"},
+	},
+	{
+		name: "send buddy arrival - TOC2 caps length not divisible by 16 (userInfoToBuddyCaps returns empty)",
 			me:   newTestSession("me", func(i *state.SessionInstance) { i.SetTOC2(false) }),
 			givenMsg: wire.SNACMessage{
 				Body: wire.SNAC_0x03_0x0B_BuddyArrived{
@@ -715,10 +715,10 @@ func TestOSCARProxy_RecvBOS_UpdateBuddyArrival(t *testing.T) {
 					},
 				},
 			},
-			wantCmd: []string{"UPDATE_BUDDY2:buddy:T:0:1234:5678: O :", ""},
-		},
-		{
-			name: "send buddy arrival - TOC2 with one capability (userInfoToBuddyCaps formats caps as UUIDs)",
+		wantCmd: []string{"UPDATE_BUDDY2:buddy:T:0:1234:5678: O :"},
+	},
+	{
+		name: "send buddy arrival - TOC2 with one capability (userInfoToBuddyCaps formats caps as UUIDs)",
 			me:   newTestSession("me", func(i *state.SessionInstance) { i.SetTOC2(false) }),
 			givenMsg: wire.SNACMessage{
 				Body: wire.SNAC_0x03_0x0B_BuddyArrived{
@@ -789,7 +789,7 @@ func TestOSCARProxy_RecvBOS_UpdateBuddyArrival(t *testing.T) {
 			assert.Equal(t, state.SessSendOK, status)
 
 			gotCmd := <-ch
-			assert.Len(t, gotCmd, len(tc.wantCmd), "UpdateBuddyArrival returns UPDATE_BUDDY line and BUDDY_CAPS2 line (empty for non-TOC2)")
+			assert.Len(t, gotCmd, len(tc.wantCmd))
 			for i, want := range tc.wantCmd {
 				assert.Equal(t, want, gotCmd[i])
 			}

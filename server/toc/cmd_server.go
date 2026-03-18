@@ -358,7 +358,11 @@ func (s OSCARProxy) convertICBMRendezvous(ctx context.Context, chatRegistry *Cha
 // For TOC2 this sends UPDATE_BUDDY2 with the same fields (plus a trailing field). When
 // the buddy has capabilities, BUDDY_CAPS2 is also sent (see userInfoToBuddyCaps).
 func (s OSCARProxy) UpdateBuddyArrival(snac wire.SNAC_0x03_0x0B_BuddyArrived, me *state.SessionInstance) []string {
-	return []string{userInfoToUpdateBuddy(snac.TLVUserInfo, me), userInfoToBuddyCaps(snac.TLVUserInfo, me, s.Logger)}
+	msgs := []string{userInfoToUpdateBuddy(snac.TLVUserInfo, me)}
+	if caps := userInfoToBuddyCaps(snac.TLVUserInfo, me, s.Logger); caps != "" {
+		msgs = append(msgs, caps)
+	}
+	return msgs
 }
 
 // UpdateBuddyDeparted handles the UPDATE_BUDDY TOC command for buddy departure events.
