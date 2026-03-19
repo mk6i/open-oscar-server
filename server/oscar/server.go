@@ -68,8 +68,10 @@ func NewServer(
 type Server struct {
 	logger *slog.Logger
 
-	listenerCfg []config.Listener
-	listeners   []net.Listener
+	listenerCfg   []config.Listener
+	listeners     []net.Listener
+	listenerMu    sync.Mutex
+	listenersDone bool
 
 	connMu sync.Mutex
 	conns  map[net.Conn]struct{}
@@ -93,6 +95,11 @@ func (s *Server) ListenAndServe() error {
 			return fmt.Errorf("failed to listen on %s: %w", listenCfg.BOSListenAddress, err)
 		}
 
+		// Atomically append the listener, or bail out if Shutdown already ran.
+		if !s.tryAddListener(ln) {
+			return nil
+		}
+
 		args := []any{
 			"listen_address", listenCfg.BOSListenAddress,
 			"advertised_host_plain", listenCfg.BOSAdvertisedHostPlain,
@@ -102,7 +109,6 @@ func (s *Server) ListenAndServe() error {
 		}
 		s.logger.Info("starting server", args...)
 
-		s.listeners = append(s.listeners, ln)
 		s.listenWg.Add(1)
 		go s.acceptLoop(ln, listenCfg)
 	}
@@ -175,7 +181,23 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn, listener c
 	}
 }
 
+// tryAddListener atomically appends ln to s.listeners if shutdown has not yet
+// started. If cleanup has already run, ln is closed and false is returned.
+func (s *Server) tryAddListener(ln net.Listener) bool {
+	s.listenerMu.Lock()
+	defer s.listenerMu.Unlock()
+	if s.listenersDone {
+		_ = ln.Close()
+		return false
+	}
+	s.listeners = append(s.listeners, ln)
+	return true
+}
+
 func (s *Server) cleanupListeners() {
+	s.listenerMu.Lock()
+	defer s.listenerMu.Unlock()
+	s.listenersDone = true
 	for _, ln := range s.listeners {
 		_ = ln.Close()
 	}
