@@ -142,3 +142,9 @@ type OSCARProxyer interface {
 	RecvClientCmd(ctx context.Context, sessBOS *state.Session, chatRegistry *ChatRegistry, payload []byte, toCh chan<- []string, doAsync func(f func() error)) []string
 	NewServeMux() http.Handler
 }
+
+// ChatSessionManager is the interface for closing chat sessions
+// when a client disconnects.
+type ChatSessionManager interface {
+	RemoveUserFromAllChats(user state.IdentScreenName)
+}

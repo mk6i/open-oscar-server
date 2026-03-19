@@ -116,25 +116,26 @@ func (c *ChatRegistry) Sessions() []*state.SessionInstance {
 //   - Receives incoming messages from the OSCAR server and translates them into
 //     TOC responses for the client.
 type OSCARProxy struct {
-	AdminService      AdminService
-	AuthService       AuthService
-	BuddyListRegistry BuddyListRegistry
-	BuddyService      BuddyService
-	ChatNavService    ChatNavService
-	ChatService       ChatService
-	CookieBaker       CookieBaker
-	DirSearchService  DirSearchService
-	ICBMService       ICBMService
-	LocateService     LocateService
-	Logger            *slog.Logger
-	OServiceService   OServiceService
-	PermitDenyService PermitDenyService
-	TOCConfigStore    TOCConfigStore
-	SessionRetriever  SessionRetriever
-	FeedbagService    FeedbagService
-	FeedbagManager    FeedbagManager
-	SNACRateLimits    wire.SNACRateLimits
-	HTTPIPRateLimiter *IPRateLimiter
+	AdminService       AdminService
+	AuthService        AuthService
+	BuddyListRegistry  BuddyListRegistry
+	BuddyService       BuddyService
+	ChatNavService     ChatNavService
+	ChatService        ChatService
+	ChatSessionManager ChatSessionManager
+	CookieBaker        CookieBaker
+	DirSearchService   DirSearchService
+	ICBMService        ICBMService
+	LocateService      LocateService
+	Logger             *slog.Logger
+	OServiceService    OServiceService
+	PermitDenyService  PermitDenyService
+	TOCConfigStore     TOCConfigStore
+	SessionRetriever   SessionRetriever
+	FeedbagService     FeedbagService
+	FeedbagManager     FeedbagManager
+	SNACRateLimits     wire.SNACRateLimits
+	HTTPIPRateLimiter  *IPRateLimiter
 	// RandIntn is the source for feedbag item ID generation.
 	// Inject a deterministic func in tests to assert exact feedbag item slices.
 	RandIntn func(n int) int
@@ -531,6 +532,12 @@ func (s OSCARProxy) ChatAccept(
 		return 0, s.runtimeErr(ctx, fmt.Errorf("AuthService.RegisterChatSession: %w", err))
 	}
 
+	chatSess.Session().OnSessionClose(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		s.AuthService.SignoutChat(ctx, chatSess)
+	})
+
 	if msg, isLimited := s.checkRateLimit(ctx, me, wire.OService, wire.OServiceClientOnline); isLimited {
 		return 0, msg
 	}
@@ -720,6 +727,12 @@ func (s OSCARProxy) ChatJoin(
 		return 0, s.runtimeErr(ctx, fmt.Errorf("AuthService.RegisterChatSession: %w", err))
 	}
 
+	chatSess.Session().OnSessionClose(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		s.AuthService.SignoutChat(ctx, chatSess)
+	})
+
 	if msg, isLimited := s.checkRateLimit(ctx, me, wire.OService, wire.OServiceClientOnline); isLimited {
 		return 0, msg
 	}
@@ -765,8 +778,6 @@ func (s OSCARProxy) ChatLeave(ctx context.Context, chatRegistry *ChatRegistry, a
 	if me == nil {
 		return s.runtimeErr(ctx, fmt.Errorf("chatRegistry.RetrieveSess: chat session `%d` not found", chatID))
 	}
-
-	s.AuthService.SignoutChat(ctx, me)
 
 	me.CloseInstance() // stop async server SNAC reply handler for this chat room
 
@@ -2393,10 +2404,7 @@ func (s OSCARProxy) Signon(ctx context.Context, args []byte, recalcWarning func(
 		if err := s.BuddyListRegistry.UnregisterBuddyList(ctx, instance.IdentScreenName()); err != nil {
 			s.Logger.ErrorContext(ctx, "error removing buddy list entry", "err", err.Error())
 		}
-		for _, sess := range chatRegistry.Sessions() {
-			s.AuthService.SignoutChat(ctx, sess)
-			sess.CloseInstance() // stop async server SNAC reply handler for this chat room
-		}
+		s.ChatSessionManager.RemoveUserFromAllChats(instance.IdentScreenName())
 		s.AuthService.Signout(ctx, instance)
 	})
 

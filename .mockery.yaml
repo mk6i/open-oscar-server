@@ -177,6 +177,9 @@ packages:
       ChatNavService:
         config:
           filename: "mock_chat_nav_service_test.go"
+      ChatSessionManager:
+        config:
+          filename: "mock_chat_session_manager_test.go"
       ICBMService:
         config:
           filename: "mock_icbm_service_test.go"

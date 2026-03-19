@@ -1538,15 +1538,6 @@ func TestOSCARProxy_RecvClientCmd_ChatLeave(t *testing.T) {
 				reg.RegisterSess(0, newTestSession("me"))
 				return reg
 			}(),
-			mockParams: mockParams{
-				authParams: authParams{
-					signoutChatParams: signoutChatParams{
-						{
-							me: state.NewIdentScreenName("me"),
-						},
-					},
-				},
-			},
 			wantMsg: []string{"CHAT_LEFT:0"},
 		},
 		{
@@ -1572,14 +1563,8 @@ func TestOSCARProxy_RecvClientCmd_ChatLeave(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := context.Background()
 
-			authSvc := newMockAuthService(t)
-			for _, params := range tc.mockParams.signoutChatParams {
-				authSvc.EXPECT().SignoutChat(ctx, matchSession(params.me))
-			}
-
 			svc := OSCARProxy{
-				Logger:      slog.Default(),
-				AuthService: authSvc,
+				Logger: slog.Default(),
 			}
 			msg := svc.RecvClientCmd(ctx, nil, tc.givenChatRegistry, tc.givenCmd, nil, nil)
 
@@ -6960,14 +6945,21 @@ func TestOSCARProxy_Signon(t *testing.T) {
 
 			buddySvc := newMockBuddyService(t)
 
+			chatSessionMgr := newMockChatSessionManager(t)
+			for _, params := range tc.mockParams.removeUserFromAllChatsParams {
+				chatSessionMgr.EXPECT().
+					RemoveUserFromAllChats(params.user)
+			}
+
 			svc := OSCARProxy{
-				AuthService:       authSvc,
-				BuddyListRegistry: buddyRegistry,
-				BuddyService:      buddySvc,
-				Logger:            slog.Default(),
-				TOCConfigStore:    tocCfg,
-				FeedbagService:    fbSvc,
-				FeedbagManager:    fbMgr,
+				AuthService:        authSvc,
+				BuddyListRegistry:  buddyRegistry,
+				BuddyService:       buddySvc,
+				ChatSessionManager: chatSessionMgr,
+				Logger:             slog.Default(),
+				TOCConfigStore:     tocCfg,
+				FeedbagService:     fbSvc,
+				FeedbagManager:     fbMgr,
 			}
 			sess, msg := svc.Signon(ctx, tc.givenCmd,
 				func(ctx context.Context, instance *state.SessionInstance) error { return nil },

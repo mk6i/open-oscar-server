@@ -440,9 +440,10 @@ func TOC(deps Container) *toc.Server {
 				deps.inMemorySessionManager,
 				deps.sqLiteUserStore,
 			),
-			CookieBaker:      deps.hmacCookieBaker,
-			DirSearchService: foodgroup.NewODirService(logger, deps.sqLiteUserStore),
-			ICBMService:      deps.icbmSvc,
+			ChatSessionManager: deps.chatSessionManager,
+			CookieBaker:        deps.hmacCookieBaker,
+			DirSearchService:   foodgroup.NewODirService(logger, deps.sqLiteUserStore),
+			ICBMService:        deps.icbmSvc,
 			LocateService: foodgroup.NewLocateService(
 				deps.sqLiteUserStore,
 				deps.inMemorySessionManager,

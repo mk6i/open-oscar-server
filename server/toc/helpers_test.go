@@ -314,6 +314,17 @@ type feedbagServiceDeleteItemParams []struct {
 	err    error
 }
 
+// removeUserFromAllChatsParams is the list of parameters for each expected
+// ChatSessionManager.RemoveUserFromAllChats call.
+type removeUserFromAllChatsParams []struct {
+	user state.IdentScreenName
+}
+
+// chatSessionManagerParams groups mock expectations for ChatSessionManager.
+type chatSessionManagerParams struct {
+	removeUserFromAllChatsParams
+}
+
 type mockParams struct {
 	adminParams
 	authParams
@@ -321,6 +332,7 @@ type mockParams struct {
 	buddyParams
 	chatNavParams
 	chatParams
+	chatSessionManagerParams
 	cookieBakerParams
 	dirSearchParams
 	icbmParams
