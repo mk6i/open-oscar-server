@@ -233,15 +233,11 @@ func (s OSCARProxy) convertICBMInstantMsg(ctx context.Context, me *state.Session
 	}
 
 	if me.SupportsTOC2MsgEnc() {
-		uFlags, hasVal := snac.TLVUserInfo.TLVList.Uint16BE(wire.OServiceUserInfoUserFlags)
-		if !hasVal {
-			s.Logger.DebugContext(ctx, "missing wire.OServiceUserInfoUserFlags in ICBM message")
-			return ""
-		}
-		ucArray := userClassString(uFlags, snac.IsAway())
+		uFlags, _ := snac.TLVUserInfo.TLVList.Uint16BE(wire.OServiceUserInfoUserFlags)
+		classStr := userClassString(uFlags, snac.IsAway())
 		// from a packet dump found in this russian zine: https://xn--lcss68aj21b.xn--w8je.xn--tckwe/books/xakep/spec65.pdf
 		// interesting that "L" is a value, not sure what it's for.
-		return fmt.Sprintf("IM_IN_ENC2:%s:%s:F:T:%s:F:L:en:%s", snac.ScreenName, autoResp, ucArray, txt)
+		return fmt.Sprintf("IM_IN_ENC2:%s:%s:F:T:%s:F:L:en:%s", snac.ScreenName, autoResp, classStr, txt)
 	}
 
 	if me.IsTOC2() {

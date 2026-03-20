@@ -431,7 +431,7 @@ func TestOSCARProxy_RecvBOS_IMIn(t *testing.T) {
 					},
 				},
 			},
-			wantCmd: []string{""},
+			wantCmd: []string{"IM_IN_ENC2:them:F:F:T:   :F:L:en:hello world!"},
 		},
 		{
 			name: "send chat invitation",
