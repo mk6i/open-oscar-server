@@ -522,15 +522,13 @@ func (s oscarServer) processBUCPAuth(ctx context.Context, flapc *wire.FlapClient
 				}
 				outSNAC.Frame.RequestID = fr.RequestID
 
-				loginResp := outSNAC.Body.(wire.SNAC_0x17_0x03_BUCPLoginResponse)
-
 				// Clients expect login response as SNAC on FLAP
 				// channel 2 followed by a FLAP signoff frame to properly close the auth
 				// connection
-				if err := flapc.SendSNAC(outSNAC.Frame, loginResp); err != nil {
+				if err := flapc.SendSNAC(outSNAC.Frame, outSNAC.Body); err != nil {
 					return err
 				}
-				return flapc.NewSignoff(loginResp.TLVRestBlock)
+				return flapc.OldSignoff()
 			default:
 				s.Logger.Debug("unexpected SNAC received during login",
 					"foodgroup", wire.FoodGroupName(fr.FoodGroup),
