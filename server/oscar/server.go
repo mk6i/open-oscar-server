@@ -528,7 +528,7 @@ func (s oscarServer) processBUCPAuth(ctx context.Context, flapc *wire.FlapClient
 				if err := flapc.SendSNAC(outSNAC.Frame, outSNAC.Body); err != nil {
 					return err
 				}
-				return flapc.OldSignoff()
+				return flapc.NewSignoff(wire.TLVRestBlock{})
 			default:
 				s.Logger.Debug("unexpected SNAC received during login",
 					"foodgroup", wire.FoodGroupName(fr.FoodGroup),
