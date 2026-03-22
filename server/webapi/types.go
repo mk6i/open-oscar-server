@@ -48,10 +48,10 @@ type AuthService interface {
 	BUCPLogin(ctx context.Context, inBody wire.SNAC_0x17_0x02_BUCPLoginRequest, advertisedHost string) (wire.SNACMessage, error)
 	CrackCookie(authCookie []byte) (state.ServerCookie, error)
 	FLAPLogin(ctx context.Context, inFrame wire.FLAPSignonFrame, advertisedHost string) (wire.TLVRestBlock, error)
-	RegisterBOSSession(ctx context.Context, authCookie state.ServerCookie) (*state.SessionInstance, error)
+	RegisterBOSSession(ctx context.Context, authCookie state.ServerCookie, conf func(sess *state.Session)) (*state.SessionInstance, error)
 	RegisterChatSession(ctx context.Context, authCookie state.ServerCookie) (*state.SessionInstance, error)
 	RetrieveBOSSession(ctx context.Context, authCookie state.ServerCookie) (*state.SessionInstance, error)
-	Signout(ctx context.Context, instance *state.SessionInstance)
+	Signout(ctx context.Context, session *state.Session)
 	SignoutChat(ctx context.Context, instance *state.SessionInstance)
 }
 

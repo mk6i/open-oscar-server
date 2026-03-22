@@ -1963,7 +1963,7 @@ func TestAuthService_RegisterBOSSession(t *testing.T) {
 
 			svc := NewAuthService(config.Config{}, sessionRegistry, nil, nil, userManager, nil, nil, accountManager, bartItemManager, wire.DefaultRateLimitClasses(), nil, slog.Default())
 
-			have, err := svc.RegisterBOSSession(context.Background(), tc.cookie)
+			have, err := svc.RegisterBOSSession(context.Background(), tc.cookie, nil)
 			assert.NoError(t, err)
 
 			if tc.wantSess != nil {
