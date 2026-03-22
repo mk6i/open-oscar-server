@@ -30,11 +30,11 @@ type OSCARBridgeHandler struct {
 // OSCARAuthService defines methods needed for OSCAR authentication and session management.
 type OSCARAuthService interface {
 	// RegisterBOSSession creates a new BOS (Basic OSCAR Service) session
-	RegisterBOSSession(ctx context.Context, authCookie state.ServerCookie) (*state.SessionInstance, error)
+	RegisterBOSSession(ctx context.Context, authCookie state.ServerCookie, conf func(sess *state.Session)) (*state.SessionInstance, error)
 	// RetrieveBOSSession retrieves an existing BOS session
 	RetrieveBOSSession(ctx context.Context, authCookie state.ServerCookie) (*state.SessionInstance, error)
 	// Signout ends an OSCAR session
-	Signout(ctx context.Context, instance *state.SessionInstance)
+	Signout(ctx context.Context, session *state.Session)
 }
 
 // CookieBaker issues and validates authentication cookies for OSCAR services.

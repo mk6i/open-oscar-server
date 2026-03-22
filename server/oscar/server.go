@@ -249,7 +249,34 @@ func (s oscarServer) connectToOSCARService(
 	var instance *state.SessionInstance
 	switch cookie.Service {
 	case wire.BOS:
-		instance, err = s.AuthService.RegisterBOSSession(ctx, cookie)
+
+		fnCfg := func(sess *state.Session) {
+			sess.OnSessionClose(func() {
+				fmt.Println("CLOSING SESSION")
+				if !shuttingDown(ctx) {
+					instances := sess.Instances()
+					if len(instances) > 0 {
+						if err := s.DepartureNotifier.BroadcastBuddyDeparted(ctx, instances[0]); err != nil {
+							s.Logger.ErrorContext(ctx, "error sending buddy departure notifications", "err", err.Error())
+						}
+					}
+				}
+
+				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+				defer cancel()
+
+				// buddy list must be cleared before session is closed, otherwise
+				// there will be a race condition that could cause the buddy list
+				// be prematurely deleted.
+				if err := s.BuddyListRegistry.UnregisterBuddyList(ctx, instance.IdentScreenName()); err != nil {
+					s.Logger.ErrorContext(ctx, "error removing buddy list entry", "err", err.Error())
+				}
+				s.ChatSessionManager.RemoveUserFromAllChats(instance.IdentScreenName())
+				s.AuthService.Signout(ctx, sess)
+			})
+		}
+
+		instance, err = s.AuthService.RegisterBOSSession(ctx, cookie, fnCfg)
 		if err != nil {
 			if errors.Is(err, state.ErrMaxConcurrentSessionsReached) {
 				s.Logger.Debug("session registration failed", "err", err.Error())
@@ -303,26 +330,6 @@ func (s oscarServer) connectToOSCARService(
 					s.Logger.ErrorContext(ctx, "error sending buddy arrival notifications", "err", err.Error())
 				}
 			}
-		})
-
-		instance.Session().OnSessionClose(func() {
-			if !shuttingDown(ctx) {
-				if err := s.DepartureNotifier.BroadcastBuddyDeparted(ctx, instance); err != nil {
-					s.Logger.ErrorContext(ctx, "error sending buddy departure notifications", "err", err.Error())
-				}
-			}
-
-			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-			defer cancel()
-
-			// buddy list must be cleared before session is closed, otherwise
-			// there will be a race condition that could cause the buddy list
-			// be prematurely deleted.
-			if err := s.BuddyListRegistry.UnregisterBuddyList(ctx, instance.IdentScreenName()); err != nil {
-				s.Logger.ErrorContext(ctx, "error removing buddy list entry", "err", err.Error())
-			}
-			s.ChatSessionManager.RemoveUserFromAllChats(instance.IdentScreenName())
-			s.AuthService.Signout(ctx, instance)
 		})
 
 		if remoteAddr, ok := ctx.Value("ip").(string); ok {

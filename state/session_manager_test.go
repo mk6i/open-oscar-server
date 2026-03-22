@@ -19,7 +19,7 @@ func TestInMemorySessionManager_AddSession(t *testing.T) {
 	sm := NewInMemorySessionManager(slog.Default())
 
 	ctx := context.Background()
-	sess1, err := sm.AddSession(ctx, "user-screen-name", false)
+	sess1, err := sm.AddSession(ctx, "user-screen-name", false, nil)
 	assert.NoError(t, err)
 	sess1.SetSignonComplete()
 
@@ -28,7 +28,7 @@ func TestInMemorySessionManager_AddSession(t *testing.T) {
 		sm.RemoveSession(sess1)
 	}()
 
-	sess2, err := sm.AddSession(ctx, "user-screen-name", false)
+	sess2, err := sm.AddSession(ctx, "user-screen-name", false, nil)
 	assert.NoError(t, err)
 	sess2.SetSignonComplete()
 
@@ -40,7 +40,7 @@ func TestInMemorySessionManager_AddSession_Timeout(t *testing.T) {
 	sm := NewInMemorySessionManager(slog.Default())
 
 	ctx, cancel := context.WithCancel(context.Background())
-	sess1, err := sm.AddSession(ctx, "user-screen-name", false)
+	sess1, err := sm.AddSession(ctx, "user-screen-name", false, nil)
 	assert.NoError(t, err)
 	sess1.SetSignonComplete()
 
@@ -49,7 +49,7 @@ func TestInMemorySessionManager_AddSession_Timeout(t *testing.T) {
 		cancel()
 	}()
 
-	sess2, err := sm.AddSession(ctx, "user-screen-name", false)
+	sess2, err := sm.AddSession(ctx, "user-screen-name", false, nil)
 	assert.Nil(t, sess2)
 	assert.ErrorIs(t, err, context.Canceled)
 }
@@ -57,7 +57,7 @@ func TestInMemorySessionManager_AddSession_Timeout(t *testing.T) {
 func TestInMemorySessionManager_Remove_Existing(t *testing.T) {
 	sm := NewInMemorySessionManager(slog.Default())
 
-	user1Old, err := sm.AddSession(context.Background(), "user-screen-name-1", false)
+	user1Old, err := sm.AddSession(context.Background(), "user-screen-name-1", false, nil)
 	assert.NoError(t, err)
 
 	// Verify the old session is in the store
@@ -80,11 +80,11 @@ func TestInMemorySessionManager_Remove_Existing(t *testing.T) {
 		assert.Fail(t, "removed channel should be closed")
 	}
 
-	user1New, err := sm.AddSession(context.Background(), "user-screen-name-1", false)
+	user1New, err := sm.AddSession(context.Background(), "user-screen-name-1", false, nil)
 	assert.NoError(t, err)
 	user1New.SetSignonComplete()
 
-	user2, err := sm.AddSession(context.Background(), "user-screen-name-2", false)
+	user2, err := sm.AddSession(context.Background(), "user-screen-name-2", false, nil)
 	assert.NoError(t, err)
 	user2.SetSignonComplete()
 
@@ -103,7 +103,7 @@ func TestInMemorySessionManager_Remove_Existing(t *testing.T) {
 func TestInMemorySessionManager_Remove_MissingSameScreenName(t *testing.T) {
 	sm := NewInMemorySessionManager(slog.Default())
 
-	user1Old, err := sm.AddSession(context.Background(), "user-screen-name-1", false)
+	user1Old, err := sm.AddSession(context.Background(), "user-screen-name-1", false, nil)
 	assert.NoError(t, err)
 
 	// Verify the old session is in the store
@@ -117,7 +117,7 @@ func TestInMemorySessionManager_Remove_MissingSameScreenName(t *testing.T) {
 	assert.False(t, ok)
 
 	// Create a new session with the same screen name but different Session
-	user1New, err := sm.AddSession(context.Background(), "user-screen-name-1", false)
+	user1New, err := sm.AddSession(context.Background(), "user-screen-name-1", false, nil)
 	assert.NoError(t, err)
 	user1New.SetSignonComplete()
 
@@ -127,7 +127,7 @@ func TestInMemorySessionManager_Remove_MissingSameScreenName(t *testing.T) {
 	assert.Equal(t, user1New.Session(), recNew.session)
 	assert.NotEqual(t, user1Old.Session(), user1New.Session())
 
-	user2, err := sm.AddSession(context.Background(), "user-screen-name-2", false)
+	user2, err := sm.AddSession(context.Background(), "user-screen-name-2", false, nil)
 	assert.NoError(t, err)
 	user2.SetSignonComplete()
 
@@ -170,7 +170,7 @@ func TestInMemorySessionManager_Empty(t *testing.T) {
 			sm := NewInMemorySessionManager(slog.Default())
 
 			for _, screenName := range tt.given {
-				sess, err := sm.AddSession(context.Background(), screenName, false)
+				sess, err := sm.AddSession(context.Background(), screenName, false, nil)
 				assert.NoError(t, err)
 				sess.SetSignonComplete()
 			}
@@ -209,7 +209,7 @@ func TestInMemorySessionManager_Retrieve(t *testing.T) {
 			sm := NewInMemorySessionManager(slog.Default())
 
 			for _, screenName := range tt.given {
-				sess, err := sm.AddSession(context.Background(), screenName, false)
+				sess, err := sm.AddSession(context.Background(), screenName, false, nil)
 				assert.NoError(t, err)
 				sess.SetSignonComplete()
 			}
@@ -227,13 +227,13 @@ func TestInMemorySessionManager_Retrieve(t *testing.T) {
 func TestInMemorySessionManager_RelayToScreenNames(t *testing.T) {
 	sm := NewInMemorySessionManager(slog.Default())
 
-	user1, err := sm.AddSession(context.Background(), "user-screen-name-1", false)
+	user1, err := sm.AddSession(context.Background(), "user-screen-name-1", false, nil)
 	assert.NoError(t, err)
 	user1.SetSignonComplete()
-	user2, err := sm.AddSession(context.Background(), "user-screen-name-2", false)
+	user2, err := sm.AddSession(context.Background(), "user-screen-name-2", false, nil)
 	assert.NoError(t, err)
 	user2.SetSignonComplete()
-	user3, err := sm.AddSession(context.Background(), "user-screen-name-3", false)
+	user3, err := sm.AddSession(context.Background(), "user-screen-name-3", false, nil)
 	assert.NoError(t, err)
 	user3.SetSignonComplete()
 
@@ -265,10 +265,10 @@ func TestInMemorySessionManager_RelayToScreenNames(t *testing.T) {
 func TestInMemorySessionManager_Broadcast(t *testing.T) {
 	sm := NewInMemorySessionManager(slog.Default())
 
-	user1, err := sm.AddSession(context.Background(), "user-screen-name-1", false)
+	user1, err := sm.AddSession(context.Background(), "user-screen-name-1", false, nil)
 	assert.NoError(t, err)
 	user1.SetSignonComplete()
-	user2, err := sm.AddSession(context.Background(), "user-screen-name-2", false)
+	user2, err := sm.AddSession(context.Background(), "user-screen-name-2", false, nil)
 	assert.NoError(t, err)
 	user2.SetSignonComplete()
 
@@ -290,10 +290,10 @@ func TestInMemorySessionManager_Broadcast(t *testing.T) {
 func TestInMemorySessionManager_Broadcast_SkipClosedSession(t *testing.T) {
 	sm := NewInMemorySessionManager(slog.Default())
 
-	user1, err := sm.AddSession(context.Background(), "user-screen-name-1", false)
+	user1, err := sm.AddSession(context.Background(), "user-screen-name-1", false, nil)
 	assert.NoError(t, err)
 	user1.SetSignonComplete()
-	user2, err := sm.AddSession(context.Background(), "user-screen-name-2", false)
+	user2, err := sm.AddSession(context.Background(), "user-screen-name-2", false, nil)
 	assert.NoError(t, err)
 	user2.SetSignonComplete()
 	user2.CloseInstance()
@@ -317,10 +317,10 @@ func TestInMemorySessionManager_Broadcast_SkipClosedSession(t *testing.T) {
 func TestInMemorySessionManager_RelayToScreenName_SessionExists(t *testing.T) {
 	sm := NewInMemorySessionManager(slog.Default())
 
-	user1, err := sm.AddSession(context.Background(), "user-screen-name-1", false)
+	user1, err := sm.AddSession(context.Background(), "user-screen-name-1", false, nil)
 	assert.NoError(t, err)
 	user1.SetSignonComplete()
-	user2, err := sm.AddSession(context.Background(), "user-screen-name-2", false)
+	user2, err := sm.AddSession(context.Background(), "user-screen-name-2", false, nil)
 	assert.NoError(t, err)
 	user2.SetSignonComplete()
 
@@ -344,7 +344,7 @@ func TestInMemorySessionManager_RelayToScreenName_SessionExists(t *testing.T) {
 func TestInMemorySessionManager_RelayToScreenName_SessionNotExist(t *testing.T) {
 	sm := NewInMemorySessionManager(slog.Default())
 
-	user1, err := sm.AddSession(context.Background(), "user-screen-name-1", false)
+	user1, err := sm.AddSession(context.Background(), "user-screen-name-1", false, nil)
 	assert.NoError(t, err)
 	user1.SetSignonComplete()
 
@@ -363,7 +363,7 @@ func TestInMemorySessionManager_RelayToScreenName_SessionNotExist(t *testing.T) 
 func TestInMemorySessionManager_RelayToScreenName_SkipFullSession(t *testing.T) {
 	sm := NewInMemorySessionManager(slog.Default())
 
-	user1, err := sm.AddSession(context.Background(), "user-screen-name-1", false)
+	user1, err := sm.AddSession(context.Background(), "user-screen-name-1", false, nil)
 	assert.NoError(t, err)
 	user1.SetSignonComplete()
 	msg := wire.SNACMessage{Frame: wire.SNACFrame{FoodGroup: wire.ICBM}}
@@ -397,7 +397,7 @@ func TestInMemorySessionManager_SessionReplacement_NoMultiSess_NoMultiSess(t *te
 	synctest.Test(t, func(t *testing.T) {
 		sm := NewInMemorySessionManager(slog.Default())
 
-		sess1, err := sm.AddSession(context.Background(), "user-screen-name-1", false)
+		sess1, err := sm.AddSession(context.Background(), "user-screen-name-1", false, nil)
 		assert.NoError(t, err)
 		sess1.SetSignonComplete()
 
@@ -408,7 +408,7 @@ func TestInMemorySessionManager_SessionReplacement_NoMultiSess_NoMultiSess(t *te
 			defer wg.Done()
 			// add the session again. this call blocks until RemoveSession makes
 			// room for the new session
-			sess2, err := sm.AddSession(context.Background(), "user-screen-name-1", false)
+			sess2, err := sm.AddSession(context.Background(), "user-screen-name-1", false, nil)
 			assert.NoError(t, err)
 			if assert.NotNil(t, sess2) {
 				sess2.SetSignonComplete()
@@ -438,7 +438,7 @@ func TestInMemorySessionManager_SessionReplacement_MultiSess_NoMultiSess(t *test
 
 		var sessList []*SessionInstance
 		for i := 0; i < sm.maxConcurrentSessions; i++ {
-			sess, err := sm.AddSession(context.Background(), "user-screen-name-1", true)
+			sess, err := sm.AddSession(context.Background(), "user-screen-name-1", true, nil)
 			assert.NoError(t, err)
 			sess.SetSignonComplete()
 			sessList = append(sessList, sess)
@@ -453,7 +453,7 @@ func TestInMemorySessionManager_SessionReplacement_MultiSess_NoMultiSess(t *test
 			defer wg.Done()
 			// add the session again. this call blocks until RemoveSession makes
 			// room for the new session
-			sess, err := sm.AddSession(context.Background(), "user-screen-name-1", false)
+			sess, err := sm.AddSession(context.Background(), "user-screen-name-1", false, nil)
 			assert.NoError(t, err)
 			assert.NotNil(t, sess)
 			sess.SetSignonComplete()
@@ -484,7 +484,7 @@ func TestInMemorySessionManager_SessionReplacement_NoMultiSess_MultiSess(t *test
 	synctest.Test(t, func(t *testing.T) {
 		sm := NewInMemorySessionManager(slog.Default())
 
-		sess1, err := sm.AddSession(context.Background(), "user-screen-name-1", false)
+		sess1, err := sm.AddSession(context.Background(), "user-screen-name-1", false, nil)
 		assert.NoError(t, err)
 		sess1.SetSignonComplete()
 
@@ -495,7 +495,7 @@ func TestInMemorySessionManager_SessionReplacement_NoMultiSess_MultiSess(t *test
 			defer wg.Done()
 			// add the session again. this call blocks until RemoveSession makes
 			// room for the new session
-			sess2, err := sm.AddSession(context.Background(), "user-screen-name-1", true)
+			sess2, err := sm.AddSession(context.Background(), "user-screen-name-1", true, nil)
 			assert.NoError(t, err)
 			assert.NotNil(t, sess2)
 			assert.Equal(t, sess1.DisplayScreenName(), sess2.DisplayScreenName())
@@ -529,7 +529,7 @@ func TestInMemorySessionManager_RemoveSession_DoubleLogin_NoMultiSess_Chaos(t *t
 		time.Sleep(time.Duration(rand.Intn(1000)) * time.Microsecond)
 		go func() {
 			defer wg.Done()
-			sess1, err := sm.AddSession(context.Background(), "user-screen-name-1", false)
+			sess1, err := sm.AddSession(context.Background(), "user-screen-name-1", false, nil)
 			assert.NoError(t, err)
 			time.Sleep(time.Duration(rand.Intn(1000)) * time.Microsecond)
 			sm.RemoveSession(sess1)
@@ -725,7 +725,7 @@ func TestInMemoryChatSessionManager_NoDeadlockOnCloseHookReentry(t *testing.T) {
 	bosSM := NewInMemorySessionManager(slog.Default())
 	chatSM := NewInMemoryChatSessionManager(slog.Default())
 
-	bosSess, err := bosSM.AddSession(context.Background(), user, false)
+	bosSess, err := bosSM.AddSession(context.Background(), user, false, nil)
 	require.NoError(t, err)
 	bosSess.Session().SetIdentScreenName(user.IdentScreenName())
 	bosSess.SetSignonComplete()
@@ -762,11 +762,11 @@ func TestInMemoryChatSessionManager_NoDeadlockOnCloseHookReentry(t *testing.T) {
 func TestInMemorySessionManager_RelayToAll_SkipIncompleteSignon(t *testing.T) {
 	sm := NewInMemorySessionManager(slog.Default())
 
-	user1, err := sm.AddSession(context.Background(), "user-screen-name-1", false)
+	user1, err := sm.AddSession(context.Background(), "user-screen-name-1", false, nil)
 	assert.NoError(t, err)
 	user1.SetSignonComplete()
 
-	user2, err := sm.AddSession(context.Background(), "user-screen-name-2", false)
+	user2, err := sm.AddSession(context.Background(), "user-screen-name-2", false, nil)
 	assert.NoError(t, err)
 	// user2 has not completed signon
 
@@ -789,7 +789,7 @@ func TestInMemorySessionManager_RelayToAll_SkipIncompleteSignon(t *testing.T) {
 func TestInMemorySessionManager_RetrieveSession_IncompleteSignon(t *testing.T) {
 	sm := NewInMemorySessionManager(slog.Default())
 
-	user1, err := sm.AddSession(context.Background(), "user-screen-name-1", false)
+	user1, err := sm.AddSession(context.Background(), "user-screen-name-1", false, nil)
 	assert.NoError(t, err)
 	// user1 has not completed signon
 
@@ -805,7 +805,7 @@ func TestInMemorySessionManager_RetrieveSession_IncompleteSignon(t *testing.T) {
 func TestInMemorySessionManager_RetrieveSession_CompleteSignon(t *testing.T) {
 	sm := NewInMemorySessionManager(slog.Default())
 
-	user1, err := sm.AddSession(context.Background(), "user-screen-name-1", false)
+	user1, err := sm.AddSession(context.Background(), "user-screen-name-1", false, nil)
 	assert.NoError(t, err)
 	user1.SetSignonComplete()
 
@@ -817,15 +817,15 @@ func TestInMemorySessionManager_RetrieveSession_CompleteSignon(t *testing.T) {
 func TestInMemorySessionManager_RelayToScreenNames_SkipIncompleteSignon(t *testing.T) {
 	sm := NewInMemorySessionManager(slog.Default())
 
-	user1, err := sm.AddSession(context.Background(), "user-screen-name-1", false)
+	user1, err := sm.AddSession(context.Background(), "user-screen-name-1", false, nil)
 	assert.NoError(t, err)
 	user1.SetSignonComplete()
 
-	user2, err := sm.AddSession(context.Background(), "user-screen-name-2", false)
+	user2, err := sm.AddSession(context.Background(), "user-screen-name-2", false, nil)
 	assert.NoError(t, err)
 	// user2 has not completed signon
 
-	user3, err := sm.AddSession(context.Background(), "user-screen-name-3", false)
+	user3, err := sm.AddSession(context.Background(), "user-screen-name-3", false, nil)
 	assert.NoError(t, err)
 	user3.SetSignonComplete()
 
@@ -858,15 +858,15 @@ func TestInMemorySessionManager_RelayToScreenNames_SkipIncompleteSignon(t *testi
 func TestInMemorySessionManager_AllSessions_SkipIncompleteSignon(t *testing.T) {
 	sm := NewInMemorySessionManager(slog.Default())
 
-	user1, err := sm.AddSession(context.Background(), "user-screen-name-1", false)
+	user1, err := sm.AddSession(context.Background(), "user-screen-name-1", false, nil)
 	assert.NoError(t, err)
 	user1.SetSignonComplete()
 
-	user2, err := sm.AddSession(context.Background(), "user-screen-name-2", false)
+	user2, err := sm.AddSession(context.Background(), "user-screen-name-2", false, nil)
 	assert.NoError(t, err)
 	// user2 has not completed signon
 
-	user3, err := sm.AddSession(context.Background(), "user-screen-name-3", false)
+	user3, err := sm.AddSession(context.Background(), "user-screen-name-3", false, nil)
 	assert.NoError(t, err)
 	user3.SetSignonComplete()
 
@@ -898,7 +898,7 @@ func TestInMemorySessionManager_AllSessions_SkipIncompleteSignon(t *testing.T) {
 func TestInMemorySessionManager_RelayToScreenName_IncompleteSignon(t *testing.T) {
 	sm := NewInMemorySessionManager(slog.Default())
 
-	user1, err := sm.AddSession(context.Background(), "user-screen-name-1", false)
+	user1, err := sm.AddSession(context.Background(), "user-screen-name-1", false, nil)
 	assert.NoError(t, err)
 	// user1 has not completed signon
 
@@ -918,17 +918,17 @@ func TestInMemorySessionManager_RelayToOtherInstances_SkipsNonLiveInstances(t *t
 	sm := NewInMemorySessionManager(slog.Default())
 
 	// Create a session with multiple instances
-	user1, err := sm.AddSession(context.Background(), "user-screen-name-1", true)
+	user1, err := sm.AddSession(context.Background(), "user-screen-name-1", true, nil)
 	assert.NoError(t, err)
 	user1.SetSignonComplete()
 
 	// Add a second instance that hasn't completed signon
-	user1Instance2, err := sm.AddSession(context.Background(), "user-screen-name-1", true)
+	user1Instance2, err := sm.AddSession(context.Background(), "user-screen-name-1", true, nil)
 	assert.NoError(t, err)
 	// user1Instance2 has not completed signon, so this instance is not live
 
 	// Add a third instance that has completed signon
-	user1Instance3, err := sm.AddSession(context.Background(), "user-screen-name-1", true)
+	user1Instance3, err := sm.AddSession(context.Background(), "user-screen-name-1", true, nil)
 	assert.NoError(t, err)
 	user1Instance3.SetSignonComplete()
 
@@ -969,17 +969,17 @@ func TestInMemorySessionManager_MaybeRelayMessage_SkipsNonLiveInstances(t *testi
 	sm := NewInMemorySessionManager(slog.Default())
 
 	// Create a session with multiple instances
-	user1, err := sm.AddSession(context.Background(), "user-screen-name-1", true)
+	user1, err := sm.AddSession(context.Background(), "user-screen-name-1", true, nil)
 	assert.NoError(t, err)
 	user1.SetSignonComplete()
 
 	// Add a third instance that has completed signon
-	user1Instance3, err := sm.AddSession(context.Background(), "user-screen-name-1", true)
+	user1Instance3, err := sm.AddSession(context.Background(), "user-screen-name-1", true, nil)
 	assert.NoError(t, err)
 	user1Instance3.SetSignonComplete()
 
 	// Create a separate session with incomplete signon to test that non-live instances are skipped
-	user2, err := sm.AddSession(context.Background(), "user-screen-name-2", false)
+	user2, err := sm.AddSession(context.Background(), "user-screen-name-2", false, nil)
 	assert.NoError(t, err)
 	// user2 has not completed signon, so this instance is not live
 	assert.False(t, user2.live(), "instance should not be live when signon is incomplete")
@@ -1025,7 +1025,7 @@ func TestInMemorySessionManager_AddSession_MaxConcurrentSessions(t *testing.T) {
 		// Create sessions up to the limit (5)
 		var sessList []*SessionInstance
 		for i := 0; i < sm.maxConcurrentSessions; i++ {
-			sess, err := sm.AddSession(context.Background(), "user-screen-name-1", true)
+			sess, err := sm.AddSession(context.Background(), "user-screen-name-1", true, nil)
 			assert.NoError(t, err)
 			sess.SetSignonComplete()
 			sessList = append(sessList, sess)
@@ -1035,7 +1035,7 @@ func TestInMemorySessionManager_AddSession_MaxConcurrentSessions(t *testing.T) {
 		assert.Equal(t, sm.maxConcurrentSessions, sessList[0].Session().InstanceCount())
 
 		// Try to add one more session - should fail with ErrMaxConcurrentSessionsReached
-		sess, err := sm.AddSession(context.Background(), "user-screen-name-1", true)
+		sess, err := sm.AddSession(context.Background(), "user-screen-name-1", true, nil)
 		assert.Nil(t, sess)
 		assert.ErrorIs(t, err, ErrMaxConcurrentSessionsReached)
 
@@ -1050,7 +1050,7 @@ func TestInMemorySessionManager_AddSession_MaxConcurrentSessions(t *testing.T) {
 		// Create sessions up to the limit (5)
 		var sessList []*SessionInstance
 		for i := 0; i < sm.maxConcurrentSessions; i++ {
-			sess, err := sm.AddSession(context.Background(), "user-screen-name-1", true)
+			sess, err := sm.AddSession(context.Background(), "user-screen-name-1", true, nil)
 			assert.NoError(t, err)
 			sess.SetSignonComplete()
 			sessList = append(sessList, sess)
@@ -1060,7 +1060,7 @@ func TestInMemorySessionManager_AddSession_MaxConcurrentSessions(t *testing.T) {
 		assert.Equal(t, sm.maxConcurrentSessions, sessList[0].Session().InstanceCount())
 
 		// Try to add one more session - should fail
-		sess, err := sm.AddSession(context.Background(), "user-screen-name-1", true)
+		sess, err := sm.AddSession(context.Background(), "user-screen-name-1", true, nil)
 		assert.Nil(t, sess)
 		assert.ErrorIs(t, err, ErrMaxConcurrentSessionsReached)
 
@@ -1068,7 +1068,7 @@ func TestInMemorySessionManager_AddSession_MaxConcurrentSessions(t *testing.T) {
 		sessList[0].CloseInstance()
 
 		// Now we should be able to add a new instance to the same session
-		newSess, err := sm.AddSession(context.Background(), "user-screen-name-1", true)
+		newSess, err := sm.AddSession(context.Background(), "user-screen-name-1", true, nil)
 		assert.NoError(t, err)
 		assert.NotNil(t, newSess)
 		newSess.SetSignonComplete()
@@ -1082,7 +1082,7 @@ func TestInMemorySessionManager_AddSession_MaxConcurrentSessions(t *testing.T) {
 
 		// Create multiple non-multi-session sessions - should not be limited
 		// (though they will replace each other, but that's expected behavior)
-		sess1, err := sm.AddSession(context.Background(), "user-screen-name-1", false)
+		sess1, err := sm.AddSession(context.Background(), "user-screen-name-1", false, nil)
 		assert.NoError(t, err)
 		sess1.SetSignonComplete()
 
@@ -1092,7 +1092,7 @@ func TestInMemorySessionManager_AddSession_MaxConcurrentSessions(t *testing.T) {
 			sm.RemoveSession(sess1)
 		}()
 
-		sess2, err := sm.AddSession(context.Background(), "user-screen-name-1", false)
+		sess2, err := sm.AddSession(context.Background(), "user-screen-name-1", false, nil)
 		assert.NoError(t, err)
 		sess2.SetSignonComplete()
 

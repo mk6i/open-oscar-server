@@ -1102,7 +1102,7 @@ func (s *SessionInstance) CloseInstance() {
 		s.session.mutex.RLock()
 		onSessCloseFn := s.session.onSessCloseFn
 		s.session.mutex.RUnlock()
-		onSessCloseFn()
+		onSessCloseFn() // todo move this up so we can send notif
 	} else {
 		onInstanceCloseFn()
 	}

@@ -389,7 +389,7 @@ func (_c *mockAuthService_KerberosLogin_Call) RunAndReturn(run func(ctx context.
 }
 
 // RegisterBOSSession provides a mock function for the type mockAuthService
-func (_mock *mockAuthService) RegisterBOSSession(ctx context.Context, authCookie state.ServerCookie) (*state.SessionInstance, error) {
+func (_mock *mockAuthService) RegisterBOSSession(ctx context.Context, authCookie state.ServerCookie, conf func(sess *state.Session)) (*state.SessionInstance, error) {
 	ret := _mock.Called(ctx, authCookie)
 
 	if len(ret) == 0 {
@@ -593,8 +593,8 @@ func (_c *mockAuthService_RetrieveBOSSession_Call) RunAndReturn(run func(ctx con
 }
 
 // Signout provides a mock function for the type mockAuthService
-func (_mock *mockAuthService) Signout(ctx context.Context, instance *state.SessionInstance) {
-	_mock.Called(ctx, instance)
+func (_mock *mockAuthService) Signout(ctx context.Context, session *state.Session) {
+	_mock.Called(ctx, session)
 	return
 }
 

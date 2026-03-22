@@ -39,7 +39,7 @@ func (_m *mockSessionRegistry) EXPECT() *mockSessionRegistry_Expecter {
 }
 
 // AddSession provides a mock function for the type mockSessionRegistry
-func (_mock *mockSessionRegistry) AddSession(ctx context.Context, screenName state.DisplayScreenName, doMultiSess bool) (*state.SessionInstance, error) {
+func (_mock *mockSessionRegistry) AddSession(ctx context.Context, screenName state.DisplayScreenName, doMultiSess bool, cfg ...func(sess *state.Session)) (*state.SessionInstance, error) {
 	ret := _mock.Called(ctx, screenName, doMultiSess)
 
 	if len(ret) == 0 {
@@ -113,8 +113,8 @@ func (_c *mockSessionRegistry_AddSession_Call) RunAndReturn(run func(ctx context
 }
 
 // RemoveSession provides a mock function for the type mockSessionRegistry
-func (_mock *mockSessionRegistry) RemoveSession(instance *state.SessionInstance) {
-	_mock.Called(instance)
+func (_mock *mockSessionRegistry) RemoveSession(session *state.Session) {
+	_mock.Called(session)
 	return
 }
 

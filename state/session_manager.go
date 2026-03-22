@@ -177,7 +177,7 @@ func (s *InMemorySessionManager) maybeRelayMessageActiveOnly(ctx context.Context
 	}
 }
 
-func (s *InMemorySessionManager) AddSession(ctx context.Context, screenName DisplayScreenName, doMultiSess bool) (*SessionInstance, error) {
+func (s *InMemorySessionManager) AddSession(ctx context.Context, screenName DisplayScreenName, doMultiSess bool, cfg ...func(sess *Session)) (*SessionInstance, error) {
 	s.lockUser(screenName.IdentScreenName())
 	defer s.unlockUser(screenName.IdentScreenName())
 
@@ -189,7 +189,7 @@ func (s *InMemorySessionManager) AddSession(ctx context.Context, screenName Disp
 		if doMultiSess {
 			if !active.multiSession {
 				active.session.CloseSession()
-				return s.newSession(screenName, doMultiSess)
+				return s.newSession(screenName, doMultiSess, cfg)
 			}
 
 			// Check if we've reached the maximum number of concurrent sessions
@@ -212,13 +212,17 @@ func (s *InMemorySessionManager) AddSession(ctx context.Context, screenName Disp
 		}
 	}
 
-	return s.newSession(screenName, doMultiSess)
+	return s.newSession(screenName, doMultiSess, cfg)
 }
 
-func (s *InMemorySessionManager) newSession(screenName DisplayScreenName, doMultiSess bool) (*SessionInstance, error) {
+func (s *InMemorySessionManager) newSession(screenName DisplayScreenName, doMultiSess bool, cfg []func(sess *Session)) (*SessionInstance, error) {
 	sess := NewSession()
 	sess.SetIdentScreenName(screenName.IdentScreenName())
 	sess.SetDisplayScreenName(screenName)
+
+	for _, f := range cfg {
+		f(sess)
+	}
 
 	// Create a new instance within the session group
 	instance := sess.AddInstance()
@@ -244,11 +248,11 @@ func (s *InMemorySessionManager) findRec(identScreenName IdentScreenName) *sessi
 }
 
 // RemoveSession takes a session out of the session pool.
-func (s *InMemorySessionManager) RemoveSession(instance *SessionInstance) {
+func (s *InMemorySessionManager) RemoveSession(session *Session) {
 	s.mapMutex.Lock()
 	defer s.mapMutex.Unlock()
-	if rec, ok := s.store[instance.IdentScreenName()]; ok && rec.session == instance.Session() {
-		delete(s.store, instance.IdentScreenName())
+	if rec, ok := s.store[session.IdentScreenName()]; ok && rec.session == session {
+		delete(s.store, session.IdentScreenName())
 		close(rec.removed)
 	}
 }
@@ -333,7 +337,7 @@ func (s *InMemoryChatSessionManager) AddSession(ctx context.Context, chatCookie 
 	ctx, cancel := context.WithTimeout(ctx, time.Second*5)
 	defer cancel()
 
-	sess, err := sessionManager.AddSession(ctx, screenName, false)
+	sess, err := sessionManager.AddSession(ctx, screenName, false, nil)
 	if err != nil {
 		return nil, fmt.Errorf("AddSession: %w", err)
 	}
@@ -370,7 +374,7 @@ func (s *InMemoryChatSessionManager) RemoveSession(instance *SessionInstance) {
 	if !ok {
 		panic("attempting to remove a session after its room has been deleted")
 	}
-	sessionManager.RemoveSession(instance)
+	sessionManager.RemoveSession(instance.Session())
 
 	if sessionManager.Empty() {
 		delete(s.store, instance.ChatRoomCookie())

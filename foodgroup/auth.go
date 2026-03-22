@@ -108,7 +108,8 @@ func (s AuthService) CrackCookie(authCookie []byte) (state.ServerCookie, error) 
 }
 
 // RegisterBOSSession adds a new session to the session registry.
-func (s AuthService) RegisterBOSSession(ctx context.Context, serverCookie state.ServerCookie) (*state.SessionInstance, error) {
+func (s AuthService) RegisterBOSSession(ctx context.Context, serverCookie state.ServerCookie, conf func(sess *state.Session)) (*state.SessionInstance, error) {
+
 	u, err := s.userManager.User(ctx, serverCookie.ScreenName.IdentScreenName())
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve user: %w", err)
@@ -127,7 +128,13 @@ func (s AuthService) RegisterBOSSession(ctx context.Context, serverCookie state.
 		doMultiSess = true
 	}
 
-	sess, err := s.sessionManager.AddSession(ctx, u.DisplayScreenName, doMultiSess)
+	conf2 := func(sess *state.Session) {
+		sess.SetSignonTime(time.Now())
+		sess.SetRateClasses(time.Now(), s.rateLimitClasses)
+		sess.SetMemberSince(time.Now())
+	}
+
+	sess, err := s.sessionManager.AddSession(ctx, u.DisplayScreenName, doMultiSess, conf, conf2)
 	if err != nil {
 		return nil, fmt.Errorf("AddSession: %w", err)
 	}
@@ -144,11 +151,9 @@ func (s AuthService) RegisterBOSSession(ctx context.Context, serverCookie state.
 	}
 
 	sess.SetKerberosAuth(serverCookie.KerberosAuth == 1)
-	sess.Session().SetSignonTime(time.Now())
-	sess.Session().SetRateClasses(time.Now(), s.rateLimitClasses)
+
 	// set string containing OSCAR client name and version
 	sess.SetClientID(serverCookie.ClientID)
-	sess.Session().SetMemberSince(time.Now())
 	sess.Session().SetOfflineMsgCount(u.OfflineMsgCount)
 
 	if _, alreadySet := sess.Session().BuddyIcon(); !alreadySet {
@@ -196,8 +201,8 @@ func (s AuthService) RetrieveBOSSession(ctx context.Context, serverCookie state.
 }
 
 // Signout removes this user's session.
-func (s AuthService) Signout(ctx context.Context, instance *state.SessionInstance) {
-	s.sessionManager.RemoveSession(instance)
+func (s AuthService) Signout(ctx context.Context, session *state.Session) {
+	s.sessionManager.RemoveSession(session)
 }
 
 // SignoutChat removes user from chat room and notifies remaining participants

@@ -364,11 +364,11 @@ type SessionRegistry interface {
 	// When multiple concurrent calls are made for the same screen name, only one will succeed;
 	// the others will return an error once the context is done.
 	// If doMultiSess is true, allows multiple sessions for the same screen name.
-	AddSession(ctx context.Context, screenName state.DisplayScreenName, doMultiSess bool) (*state.SessionInstance, error)
+	AddSession(ctx context.Context, screenName state.DisplayScreenName, doMultiSess bool, cfg ...func(sess *state.Session)) (*state.SessionInstance, error)
 
 	// RemoveSession removes the given session from the registry, allowing future sessions
 	// to be created for the same screen name.
-	RemoveSession(instance *state.SessionInstance)
+	RemoveSession(session *state.Session)
 }
 
 // SessionRetriever defines a method for retrieving an active session
