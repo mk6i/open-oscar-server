@@ -527,16 +527,17 @@ func (s OSCARProxy) ChatAccept(
 		return 0, s.runtimeErr(ctx, fmt.Errorf("AuthService.CrackCookie: %w", err))
 	}
 
-	chatSess, err := s.AuthService.RegisterChatSession(ctx, serverCookie)
+	fnCfg := func(sess *state.Session) {
+		sess.OnSessionClose(func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			s.AuthService.SignoutChat(ctx, sess)
+		})
+	}
+	chatSess, err := s.AuthService.RegisterChatSession(ctx, serverCookie, fnCfg)
 	if err != nil {
 		return 0, s.runtimeErr(ctx, fmt.Errorf("AuthService.RegisterChatSession: %w", err))
 	}
-
-	chatSess.Session().OnSessionClose(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer cancel()
-		s.AuthService.SignoutChat(ctx, chatSess)
-	})
 
 	if msg, isLimited := s.checkRateLimit(ctx, me, wire.OService, wire.OServiceClientOnline); isLimited {
 		return 0, msg
@@ -722,16 +723,17 @@ func (s OSCARProxy) ChatJoin(
 		return 0, s.runtimeErr(ctx, fmt.Errorf("AuthService.CrackCookie: %w", err))
 	}
 
-	chatSess, err := s.AuthService.RegisterChatSession(ctx, serverCookie)
+	fnCfg := func(sess *state.Session) {
+		sess.OnSessionClose(func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			s.AuthService.SignoutChat(ctx, sess)
+		})
+	}
+	chatSess, err := s.AuthService.RegisterChatSession(ctx, serverCookie, fnCfg)
 	if err != nil {
 		return 0, s.runtimeErr(ctx, fmt.Errorf("AuthService.RegisterChatSession: %w", err))
 	}
-
-	chatSess.Session().OnSessionClose(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer cancel()
-		s.AuthService.SignoutChat(ctx, chatSess)
-	})
 
 	if msg, isLimited := s.checkRateLimit(ctx, me, wire.OService, wire.OServiceClientOnline); isLimited {
 		return 0, msg
@@ -2351,7 +2353,6 @@ func (s OSCARProxy) Signon(ctx context.Context, args []byte, recalcWarning func(
 
 	fnCfg := func(sess *state.Session) {
 		sess.OnSessionClose(func() {
-			fmt.Println("closing session!")
 			if !shuttingDown(ctx) {
 				instances := sess.Instances()
 				if len(instances) > 0 {

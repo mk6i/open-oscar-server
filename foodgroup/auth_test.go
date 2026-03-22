@@ -1745,7 +1745,7 @@ func TestAuthService_RegisterChatSession_HappyPath(t *testing.T) {
 
 	chatSessionRegistry := newMockChatSessionRegistry(t)
 	chatSessionRegistry.EXPECT().
-		AddSession(mock.Anything, serverCookie.ChatCookie, instance.DisplayScreenName()).
+		AddSession(mock.Anything, serverCookie.ChatCookie, instance.DisplayScreenName(), mock.Anything).
 		Return(instance, nil)
 
 	chatCookieBuf := &bytes.Buffer{}
@@ -1753,7 +1753,7 @@ func TestAuthService_RegisterChatSession_HappyPath(t *testing.T) {
 
 	svc := NewAuthService(config.Config{}, nil, nil, chatSessionRegistry, nil, nil, nil, nil, nil, wire.DefaultRateLimitClasses(), nil, slog.Default())
 
-	have, err := svc.RegisterChatSession(context.Background(), serverCookie)
+	have, err := svc.RegisterChatSession(context.Background(), serverCookie, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, instance, have)
 }
@@ -2107,11 +2107,11 @@ func TestAuthService_SignoutChat(t *testing.T) {
 			sessionManager := newMockChatSessionRegistry(t)
 			for _, params := range tt.mockParams.removeSessionParams {
 				sessionManager.EXPECT().
-					RemoveSession(matchSession(params.screenName))
+					RemoveSession(matchUserSession(params.screenName))
 			}
 
 			svc := NewAuthService(config.Config{}, nil, nil, sessionManager, nil, nil, chatMessageRelayer, nil, nil, wire.DefaultRateLimitClasses(), nil, slog.Default())
-			svc.SignoutChat(context.Background(), tt.instance)
+			svc.SignoutChat(context.Background(), tt.instance.Session())
 		})
 	}
 }

@@ -326,7 +326,7 @@ type InMemoryChatSessionManager struct {
 
 // AddSession adds a user to a chat room. If screenName already exists, the old
 // session is replaced by a new one.
-func (s *InMemoryChatSessionManager) AddSession(ctx context.Context, chatCookie string, screenName DisplayScreenName) (*SessionInstance, error) {
+func (s *InMemoryChatSessionManager) AddSession(ctx context.Context, chatCookie string, screenName DisplayScreenName, cfg ...func(sess *Session)) (*SessionInstance, error) {
 	s.mapMutex.Lock()
 	if _, ok := s.store[chatCookie]; !ok {
 		s.store[chatCookie] = NewInMemorySessionManager(s.logger)
@@ -337,7 +337,7 @@ func (s *InMemoryChatSessionManager) AddSession(ctx context.Context, chatCookie 
 	ctx, cancel := context.WithTimeout(ctx, time.Second*5)
 	defer cancel()
 
-	sess, err := sessionManager.AddSession(ctx, screenName, false)
+	sess, err := sessionManager.AddSession(ctx, screenName, false, cfg...)
 	if err != nil {
 		return nil, fmt.Errorf("AddSession: %w", err)
 	}
@@ -366,18 +366,18 @@ func (s *InMemoryChatSessionManager) AddSession(ctx context.Context, chatCookie 
 
 // RemoveSession removes a user session from a chat room. It panics if you
 // attempt to remove the session twice.
-func (s *InMemoryChatSessionManager) RemoveSession(instance *SessionInstance) {
+func (s *InMemoryChatSessionManager) RemoveSession(sess *Session) {
 	s.mapMutex.Lock()
 	defer s.mapMutex.Unlock()
 
-	sessionManager, ok := s.store[instance.ChatRoomCookie()]
+	sessionManager, ok := s.store[sess.ChatRoomCookie()]
 	if !ok {
 		panic("attempting to remove a session after its room has been deleted")
 	}
-	sessionManager.RemoveSession(instance.Session())
+	sessionManager.RemoveSession(sess)
 
 	if sessionManager.Empty() {
-		delete(s.store, instance.ChatRoomCookie())
+		delete(s.store, sess.ChatRoomCookie())
 	}
 }
 

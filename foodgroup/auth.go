@@ -81,8 +81,8 @@ type AuthService struct {
 // This method does not verify that the user and chat room exist because it
 // implicitly trusts the contents of the token signed by
 // {{OServiceService.ServiceRequest}}.
-func (s AuthService) RegisterChatSession(ctx context.Context, serverCookie state.ServerCookie) (*state.SessionInstance, error) {
-	sess, err := s.chatSessionRegistry.AddSession(ctx, serverCookie.ChatCookie, serverCookie.ScreenName)
+func (s AuthService) RegisterChatSession(ctx context.Context, serverCookie state.ServerCookie, cfg func(sess *state.Session)) (*state.SessionInstance, error) {
+	sess, err := s.chatSessionRegistry.AddSession(ctx, serverCookie.ChatCookie, serverCookie.ScreenName, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("AddSession: %w", err)
 	}
@@ -207,9 +207,12 @@ func (s AuthService) Signout(ctx context.Context, session *state.Session) {
 
 // SignoutChat removes user from chat room and notifies remaining participants
 // of their departure.
-func (s AuthService) SignoutChat(ctx context.Context, instance *state.SessionInstance) {
-	alertUserLeft(ctx, instance, s.chatMessageRelayer)
-	s.chatSessionRegistry.RemoveSession(instance)
+func (s AuthService) SignoutChat(ctx context.Context, sess *state.Session) {
+	instances := sess.Instances()
+	for _, instance := range instances {
+		alertUserLeft(ctx, instance, s.chatMessageRelayer)
+	}
+	s.chatSessionRegistry.RemoveSession(sess)
 }
 
 // BUCPChallenge processes a BUCP authentication challenge request. It

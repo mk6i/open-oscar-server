@@ -170,10 +170,10 @@ type ChatSessionRegistry interface {
 	// param identifies the chat room to which screenName is added. It returns
 	// the newly created session instance registered in the chat session
 	// manager.
-	AddSession(ctx context.Context, chatCookie string, screenName state.DisplayScreenName) (*state.SessionInstance, error)
+	AddSession(ctx context.Context, chatCookie string, screenName state.DisplayScreenName, cfg ...func(sess *state.Session)) (*state.SessionInstance, error)
 
 	// RemoveSession removes a session from the chat session manager.
-	RemoveSession(instance *state.SessionInstance)
+	RemoveSession(sess *state.Session)
 }
 
 // ClientSideBuddyListManager defines operations for managing a user's buddy list,

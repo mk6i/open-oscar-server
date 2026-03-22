@@ -252,7 +252,6 @@ func (s oscarServer) connectToOSCARService(
 
 		fnCfg := func(sess *state.Session) {
 			sess.OnSessionClose(func() {
-				fmt.Println("CLOSING SESSION")
 				if !shuttingDown(ctx) {
 					instances := sess.Instances()
 					if len(instances) > 0 {
@@ -342,7 +341,14 @@ func (s oscarServer) connectToOSCARService(
 
 		go s.receiveSessMessages(ctx, instance, flapc)
 	case wire.Chat:
-		instance, err = s.AuthService.RegisterChatSession(ctx, cookie)
+		fnCfg := func(sess *state.Session) {
+			sess.OnSessionClose(func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+				defer cancel()
+				s.SignoutChat(ctx, sess)
+			})
+		}
+		instance, err = s.AuthService.RegisterChatSession(ctx, cookie, fnCfg)
 		if err != nil {
 			return err
 		}
@@ -352,12 +358,6 @@ func (s oscarServer) connectToOSCARService(
 		defer func() {
 			instance.CloseInstance()
 		}()
-
-		instance.Session().OnSessionClose(func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-			defer cancel()
-			s.SignoutChat(ctx, instance)
-		})
 
 		go s.receiveSessMessages(ctx, instance, flapc)
 	default:

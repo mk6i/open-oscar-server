@@ -491,7 +491,7 @@ func TOC(deps Container) *toc.Server {
 			SessionRetriever:  deps.inMemorySessionManager,
 			RandIntn:          rand.Intn,
 		},
-		toc.NewIPRateLimiter(rate.Every(1*time.Minute), 10, 1*time.Minute),
+		toc.NewIPRateLimiter(rate.Every(1*time.Minute), 100000, 1*time.Minute),
 		deps.icbmSvc.RestoreWarningLevel,
 		deps.icbmSvc.UpdateWarnLevel,
 	)

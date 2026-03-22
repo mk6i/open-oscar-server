@@ -635,8 +635,8 @@ func TestInMemoryChatSessionManager_RemoveSession(t *testing.T) {
 
 	assert.Len(t, sm.AllSessions("chat-room-1"), 2)
 
-	sm.RemoveSession(user1)
-	sm.RemoveSession(user2)
+	sm.RemoveSession(user1.Session())
+	sm.RemoveSession(user2.Session())
 
 	assert.Empty(t, sm.AllSessions("chat-room-1"))
 }
@@ -669,7 +669,7 @@ func TestInMemoryChatSessionManager_RemoveSession_DoubleLogin(t *testing.T) {
 			synctest.Wait()
 
 			// AddSession() is blocked waiting for the lock, now unblock it
-			sm.RemoveSession(chatSess1)
+			sm.RemoveSession(chatSess1.Session())
 
 			wg.Wait()
 		})
