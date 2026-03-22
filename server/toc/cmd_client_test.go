@@ -6915,7 +6915,7 @@ func TestOSCARProxy_Signon(t *testing.T) {
 			}
 			for _, params := range tc.mockParams.registerBOSSessionParams {
 				authSvc.EXPECT().
-					RegisterBOSSession(matchContext(), params.authCookie).
+					RegisterBOSSession(matchContext(), params.authCookie, mock.Anything).
 					Return(params.instance, params.err)
 			}
 			buddyRegistry := newMockBuddyListRegistry(t)

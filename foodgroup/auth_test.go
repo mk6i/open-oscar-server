@@ -1939,7 +1939,7 @@ func TestAuthService_RegisterBOSSession(t *testing.T) {
 			sessionRegistry := newMockSessionRegistry(t)
 			for _, params := range tc.mockParams.addSessionParams {
 				sessionRegistry.EXPECT().
-					AddSession(mock.Anything, params.screenName, params.doMultiSess).
+					AddSession(mock.Anything, params.screenName, params.doMultiSess, mock.Anything, mock.Anything).
 					Return(params.result, params.err)
 			}
 			userManager := newMockUserManager(t)
@@ -2153,11 +2153,11 @@ func TestAuthService_Signout(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			sessionManager := newMockSessionRegistry(t)
 			for _, params := range tt.mockParams.removeSessionParams {
-				sessionManager.EXPECT().RemoveSession(matchSession(params.screenName))
+				sessionManager.EXPECT().RemoveSession(matchUserSession(params.screenName))
 			}
 			svc := NewAuthService(config.Config{}, sessionManager, nil, nil, nil, nil, nil, nil, nil, wire.DefaultRateLimitClasses(), nil, slog.Default())
 
-			svc.Signout(context.Background(), tt.instance)
+			svc.Signout(context.Background(), tt.instance.Session())
 		})
 	}
 }
