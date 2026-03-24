@@ -46,8 +46,8 @@ func (m *MockBuddyBroadcaster) BroadcastBuddyArrived(ctx context.Context, screen
 	return args.Error(0)
 }
 
-func (m *MockBuddyBroadcaster) BroadcastBuddyDeparted(ctx context.Context, instance *state.SessionInstance) error {
-	args := m.Called(ctx, instance)
+func (m *MockBuddyBroadcaster) BroadcastBuddyDeparted(ctx context.Context, screenName state.IdentScreenName) error {
+	args := m.Called(ctx, screenName)
 	return args.Error(0)
 }
 

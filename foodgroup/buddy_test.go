@@ -557,15 +557,15 @@ func TestBuddyService_BroadcastDeparture(t *testing.T) {
 	cases := []struct {
 		// name is the unit test name
 		name string
-		// instance is the session of the user
-		instance *state.SessionInstance
+		// screenName is the user that departed
+		screenName state.IdentScreenName
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
 	}{
 		{
-			name:     "happy path",
-			instance: newTestInstance("me"),
+			name:       "happy path",
+			screenName: state.NewIdentScreenName("me"),
 			mockParams: mockParams{
 				relationshipFetcherParams: relationshipFetcherParams{
 					allRelationshipsParams: allRelationshipsParams{
@@ -662,7 +662,7 @@ func TestBuddyService_BroadcastDeparture(t *testing.T) {
 				messageRelayer:      messageRelayer,
 			}
 
-			err := svc.BroadcastBuddyDeparted(context.Background(), tc.instance)
+			err := svc.BroadcastBuddyDeparted(context.Background(), tc.screenName)
 			assert.NoError(t, err)
 		})
 	}

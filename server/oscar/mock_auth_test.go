@@ -424,12 +424,12 @@ type mockAuthService_RegisterBOSSession_Call struct {
 // RegisterBOSSession is a helper method to define mock.On call
 //   - ctx context.Context
 //   - authCookie state.ServerCookie
-//   - conf func(sess *state.Session)
-func (_e *mockAuthService_Expecter) RegisterBOSSession(ctx interface{}, authCookie interface{}, conf interface{}) *mockAuthService_RegisterBOSSession_Call {
-	return &mockAuthService_RegisterBOSSession_Call{Call: _e.mock.On("RegisterBOSSession", ctx, authCookie, conf)}
+//   - sessCfg func(sess *state.Session)
+func (_e *mockAuthService_Expecter) RegisterBOSSession(ctx interface{}, authCookie interface{}, sessCfg interface{}) *mockAuthService_RegisterBOSSession_Call {
+	return &mockAuthService_RegisterBOSSession_Call{Call: _e.mock.On("RegisterBOSSession", ctx, authCookie, sessCfg)}
 }
 
-func (_c *mockAuthService_RegisterBOSSession_Call) Run(run func(ctx context.Context, authCookie state.ServerCookie, conf func(sess *state.Session))) *mockAuthService_RegisterBOSSession_Call {
+func (_c *mockAuthService_RegisterBOSSession_Call) Run(run func(ctx context.Context, authCookie state.ServerCookie, sessCfg func(sess *state.Session))) *mockAuthService_RegisterBOSSession_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -457,7 +457,7 @@ func (_c *mockAuthService_RegisterBOSSession_Call) Return(sessionInstance *state
 	return _c
 }
 
-func (_c *mockAuthService_RegisterBOSSession_Call) RunAndReturn(run func(ctx context.Context, authCookie state.ServerCookie, conf func(sess *state.Session)) (*state.SessionInstance, error)) *mockAuthService_RegisterBOSSession_Call {
+func (_c *mockAuthService_RegisterBOSSession_Call) RunAndReturn(run func(ctx context.Context, authCookie state.ServerCookie, sessCfg func(sess *state.Session)) (*state.SessionInstance, error)) *mockAuthService_RegisterBOSSession_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -498,12 +498,12 @@ type mockAuthService_RegisterChatSession_Call struct {
 // RegisterChatSession is a helper method to define mock.On call
 //   - ctx context.Context
 //   - authCookie state.ServerCookie
-//   - cfg func(sess *state.Session)
-func (_e *mockAuthService_Expecter) RegisterChatSession(ctx interface{}, authCookie interface{}, cfg interface{}) *mockAuthService_RegisterChatSession_Call {
-	return &mockAuthService_RegisterChatSession_Call{Call: _e.mock.On("RegisterChatSession", ctx, authCookie, cfg)}
+//   - sessCfg func(sess *state.Session)
+func (_e *mockAuthService_Expecter) RegisterChatSession(ctx interface{}, authCookie interface{}, sessCfg interface{}) *mockAuthService_RegisterChatSession_Call {
+	return &mockAuthService_RegisterChatSession_Call{Call: _e.mock.On("RegisterChatSession", ctx, authCookie, sessCfg)}
 }
 
-func (_c *mockAuthService_RegisterChatSession_Call) Run(run func(ctx context.Context, authCookie state.ServerCookie, cfg func(sess *state.Session))) *mockAuthService_RegisterChatSession_Call {
+func (_c *mockAuthService_RegisterChatSession_Call) Run(run func(ctx context.Context, authCookie state.ServerCookie, sessCfg func(sess *state.Session))) *mockAuthService_RegisterChatSession_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -531,7 +531,7 @@ func (_c *mockAuthService_RegisterChatSession_Call) Return(sessionInstance *stat
 	return _c
 }
 
-func (_c *mockAuthService_RegisterChatSession_Call) RunAndReturn(run func(ctx context.Context, authCookie state.ServerCookie, cfg func(sess *state.Session)) (*state.SessionInstance, error)) *mockAuthService_RegisterChatSession_Call {
+func (_c *mockAuthService_RegisterChatSession_Call) RunAndReturn(run func(ctx context.Context, authCookie state.ServerCookie, sessCfg func(sess *state.Session)) (*state.SessionInstance, error)) *mockAuthService_RegisterChatSession_Call {
 	_c.Call.Return(run)
 	return _c
 }

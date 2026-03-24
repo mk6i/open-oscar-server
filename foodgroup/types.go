@@ -90,7 +90,7 @@ type buddyBroadcaster interface {
 	BroadcastBuddyArrived(ctx context.Context, screenName state.IdentScreenName, userInfo wire.TLVUserInfo) error
 
 	// BroadcastBuddyDeparted notifies all relevant users that the given user has gone offline.
-	BroadcastBuddyDeparted(ctx context.Context, instance *state.SessionInstance) error
+	BroadcastBuddyDeparted(ctx context.Context, screenName state.IdentScreenName) error
 
 	// BroadcastVisibility sends presence updates to the specified filter list.
 	// If sendDepartures is true, departure events are sent as well.

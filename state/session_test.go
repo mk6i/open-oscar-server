@@ -1744,9 +1744,12 @@ func TestSession_CloseInstance(t *testing.T) {
 	instance3 := s.AddInstance()
 
 	instance1.OnClose(func() {
+		// ensure instance is removed from the session before calling this func
+		assert.Equal(t, 2, s.InstanceCount())
 		instance1CloseCount++
 	})
 	instance2.OnClose(func() {
+		assert.Equal(t, 1, s.InstanceCount())
 		instance2CloseCount++
 	})
 	instance3.OnClose(func() {

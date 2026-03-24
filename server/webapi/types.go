@@ -13,7 +13,7 @@ import (
 
 type BuddyService interface {
 	AddBuddies(ctx context.Context, instance *state.SessionInstance, inBody wire.SNAC_0x03_0x04_BuddyAddBuddies) error
-	BroadcastBuddyDeparted(ctx context.Context, instance *state.SessionInstance) error
+	BroadcastBuddyDeparted(ctx context.Context, screenName state.IdentScreenName) error
 	DelBuddies(ctx context.Context, instance *state.SessionInstance, inBody wire.SNAC_0x03_0x05_BuddyDelBuddies) error
 	RightsQuery(ctx context.Context, inFrame wire.SNACFrame) wire.SNACMessage
 }
@@ -143,7 +143,7 @@ type OfflineMessageManager interface {
 // BuddyBroadcaster broadcasts buddy presence updates
 type BuddyBroadcaster interface {
 	BroadcastBuddyArrived(ctx context.Context, screenName state.IdentScreenName, userInfo wire.TLVUserInfo) error
-	BroadcastBuddyDeparted(ctx context.Context, instance *state.SessionInstance) error
+	BroadcastBuddyDeparted(ctx context.Context, screenName state.IdentScreenName) error
 }
 
 // ProfileManager manages user profiles

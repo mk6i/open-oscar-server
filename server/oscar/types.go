@@ -31,7 +31,7 @@ type BuddyListRegistry interface {
 // when a client disconnects.
 type DepartureNotifier interface {
 	BroadcastBuddyArrived(ctx context.Context, screenName state.IdentScreenName, userInfo wire.TLVUserInfo) error
-	BroadcastBuddyDeparted(ctx context.Context, instance *state.SessionInstance) error
+	BroadcastBuddyDeparted(ctx context.Context, screenName state.IdentScreenName) error
 }
 
 // ChatSessionManager is the interface for closing chat sessions

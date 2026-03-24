@@ -1067,7 +1067,7 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 			}
 			for _, params := range tc.mockParams.broadcastBuddyDepartedParams {
 				buddyUpdateBroadcaster.EXPECT().
-					BroadcastBuddyDeparted(mock.Anything, matchSession(params.screenName)).
+					BroadcastBuddyDeparted(mock.Anything, params.screenName).
 					Return(params.err)
 			}
 			svc := OServiceService{

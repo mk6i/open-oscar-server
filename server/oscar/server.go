@@ -253,11 +253,8 @@ func (s oscarServer) connectToOSCARService(
 		sessCfg := func(sess *state.Session) {
 			sess.OnSessionClose(func() {
 				if !shuttingDown(ctx) {
-					instances := sess.Instances()
-					if len(instances) > 0 {
-						if err := s.DepartureNotifier.BroadcastBuddyDeparted(ctx, instances[0]); err != nil {
-							s.Logger.ErrorContext(ctx, "error sending buddy departure notifications", "err", err.Error())
-						}
+					if err := s.DepartureNotifier.BroadcastBuddyDeparted(ctx, sess.IdentScreenName()); err != nil {
+						s.Logger.ErrorContext(ctx, "error sending buddy departure notifications", "err", err.Error())
 					}
 				}
 
@@ -321,7 +318,7 @@ func (s oscarServer) connectToOSCARService(
 				return
 			}
 			if instance.Session().Invisible() {
-				if err := s.DepartureNotifier.BroadcastBuddyDeparted(ctx, instance); err != nil {
+				if err := s.DepartureNotifier.BroadcastBuddyDeparted(ctx, instance.IdentScreenName()); err != nil {
 					s.Logger.ErrorContext(ctx, "error sending buddy departure notifications", "err", err.Error())
 				}
 			} else {

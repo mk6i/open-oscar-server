@@ -250,7 +250,7 @@ func (s OServiceService) SetUserInfoFields(ctx context.Context, instance *state.
 		instance.SetUserStatusBitmask(status)
 
 		if instance.Session().Invisible() {
-			if err := s.buddyBroadcaster.BroadcastBuddyDeparted(ctx, instance); err != nil {
+			if err := s.buddyBroadcaster.BroadcastBuddyDeparted(ctx, instance.IdentScreenName()); err != nil {
 				return wire.SNACMessage{}, err
 			}
 		} else {
