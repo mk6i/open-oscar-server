@@ -1095,8 +1095,11 @@ func (s *SessionInstance) CloseInstance() {
 	onInstanceCloseFn := s.onInstanceCloseFn
 	s.mutex.Unlock()
 
+	// remove the instance now so that the function has an updated view of the world
+	s.session.RemoveInstance(s)
+
 	count := s.session.InstanceCount()
-	if count == 1 {
+	if count == 0 {
 		s.session.mutex.RLock()
 		onSessCloseFn := s.session.onSessCloseFn
 		s.session.mutex.RUnlock()
@@ -1104,9 +1107,6 @@ func (s *SessionInstance) CloseInstance() {
 	} else {
 		onInstanceCloseFn()
 	}
-
-	s.session.RemoveInstance(s)
-
 }
 
 // OnClose registers a function to be called when the instance closes,
