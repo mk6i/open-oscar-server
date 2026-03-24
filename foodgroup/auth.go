@@ -81,8 +81,8 @@ type AuthService struct {
 // This method does not verify that the user and chat room exist because it
 // implicitly trusts the contents of the token signed by
 // {{OServiceService.ServiceRequest}}.
-func (s AuthService) RegisterChatSession(ctx context.Context, serverCookie state.ServerCookie) (*state.SessionInstance, error) {
-	sess, err := s.chatSessionRegistry.AddSession(ctx, serverCookie.ChatCookie, serverCookie.ScreenName)
+func (s AuthService) RegisterChatSession(ctx context.Context, authCookie state.ServerCookie, sessCfg func(sess *state.Session)) (*state.SessionInstance, error) {
+	sess, err := s.chatSessionRegistry.AddSession(ctx, authCookie.ChatCookie, authCookie.ScreenName, sessCfg)
 	if err != nil {
 		return nil, fmt.Errorf("AddSession: %w", err)
 	}
@@ -108,8 +108,9 @@ func (s AuthService) CrackCookie(authCookie []byte) (state.ServerCookie, error) 
 }
 
 // RegisterBOSSession adds a new session to the session registry.
-func (s AuthService) RegisterBOSSession(ctx context.Context, serverCookie state.ServerCookie) (*state.SessionInstance, error) {
-	u, err := s.userManager.User(ctx, serverCookie.ScreenName.IdentScreenName())
+func (s AuthService) RegisterBOSSession(ctx context.Context, authCookie state.ServerCookie, sessCfg func(sess *state.Session)) (*state.SessionInstance, error) {
+
+	u, err := s.userManager.User(ctx, authCookie.ScreenName.IdentScreenName())
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve user: %w", err)
 	}
@@ -120,14 +121,20 @@ func (s AuthService) RegisterBOSSession(ctx context.Context, serverCookie state.
 	ctx, cancel := context.WithTimeout(ctx, time.Second*5)
 	defer cancel()
 
-	flag := wire.MultiConnFlag(serverCookie.MultiConnFlag)
+	flag := wire.MultiConnFlag(authCookie.MultiConnFlag)
 
 	doMultiSess := false
 	if flag == wire.MultiConnFlagsRecentClient {
 		doMultiSess = true
 	}
 
-	sess, err := s.sessionManager.AddSession(ctx, u.DisplayScreenName, doMultiSess)
+	cfg := func(sess *state.Session) {
+		sess.SetSignonTime(time.Now())
+		sess.SetRateClasses(time.Now(), s.rateLimitClasses)
+		sess.SetMemberSince(time.Now())
+	}
+
+	sess, err := s.sessionManager.AddSession(ctx, u.DisplayScreenName, doMultiSess, sessCfg, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("AddSession: %w", err)
 	}
@@ -143,12 +150,10 @@ func (s AuthService) RegisterBOSSession(ctx context.Context, serverCookie state.
 		sess.SetUserInfoFlag(wire.OServiceUserFlagBot)
 	}
 
-	sess.SetKerberosAuth(serverCookie.KerberosAuth == 1)
-	sess.Session().SetSignonTime(time.Now())
-	sess.Session().SetRateClasses(time.Now(), s.rateLimitClasses)
+	sess.SetKerberosAuth(authCookie.KerberosAuth == 1)
+
 	// set string containing OSCAR client name and version
-	sess.SetClientID(serverCookie.ClientID)
-	sess.Session().SetMemberSince(time.Now())
+	sess.SetClientID(authCookie.ClientID)
 	sess.Session().SetOfflineMsgCount(u.OfflineMsgCount)
 
 	if _, alreadySet := sess.Session().BuddyIcon(); !alreadySet {
@@ -196,15 +201,18 @@ func (s AuthService) RetrieveBOSSession(ctx context.Context, serverCookie state.
 }
 
 // Signout removes this user's session.
-func (s AuthService) Signout(ctx context.Context, instance *state.SessionInstance) {
-	s.sessionManager.RemoveSession(instance)
+func (s AuthService) Signout(ctx context.Context, session *state.Session) {
+	s.sessionManager.RemoveSession(session)
 }
 
 // SignoutChat removes user from chat room and notifies remaining participants
 // of their departure.
-func (s AuthService) SignoutChat(ctx context.Context, instance *state.SessionInstance) {
-	alertUserLeft(ctx, instance, s.chatMessageRelayer)
-	s.chatSessionRegistry.RemoveSession(instance)
+func (s AuthService) SignoutChat(ctx context.Context, sess *state.Session) {
+	instances := sess.Instances()
+	for _, instance := range instances {
+		alertUserLeft(ctx, instance, s.chatMessageRelayer)
+	}
+	s.chatSessionRegistry.RemoveSession(sess)
 }
 
 // BUCPChallenge processes a BUCP authentication challenge request. It

@@ -249,7 +249,33 @@ func (s oscarServer) connectToOSCARService(
 	var instance *state.SessionInstance
 	switch cookie.Service {
 	case wire.BOS:
-		instance, err = s.AuthService.RegisterBOSSession(ctx, cookie)
+
+		sessCfg := func(sess *state.Session) {
+			sess.OnSessionClose(func() {
+				if !shuttingDown(ctx) {
+					instances := sess.Instances()
+					if len(instances) > 0 {
+						if err := s.DepartureNotifier.BroadcastBuddyDeparted(ctx, instances[0]); err != nil {
+							s.Logger.ErrorContext(ctx, "error sending buddy departure notifications", "err", err.Error())
+						}
+					}
+				}
+
+				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+				defer cancel()
+
+				// buddy list must be cleared before session is closed, otherwise
+				// there will be a race condition that could cause the buddy list
+				// be prematurely deleted.
+				if err := s.BuddyListRegistry.UnregisterBuddyList(ctx, instance.IdentScreenName()); err != nil {
+					s.Logger.ErrorContext(ctx, "error removing buddy list entry", "err", err.Error())
+				}
+				s.ChatSessionManager.RemoveUserFromAllChats(instance.IdentScreenName())
+				s.AuthService.Signout(ctx, sess)
+			})
+		}
+
+		instance, err = s.AuthService.RegisterBOSSession(ctx, cookie, sessCfg)
 		if err != nil {
 			if errors.Is(err, state.ErrMaxConcurrentSessionsReached) {
 				s.Logger.Debug("session registration failed", "err", err.Error())
@@ -305,26 +331,6 @@ func (s oscarServer) connectToOSCARService(
 			}
 		})
 
-		instance.Session().OnSessionClose(func() {
-			if !shuttingDown(ctx) {
-				if err := s.DepartureNotifier.BroadcastBuddyDeparted(ctx, instance); err != nil {
-					s.Logger.ErrorContext(ctx, "error sending buddy departure notifications", "err", err.Error())
-				}
-			}
-
-			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-			defer cancel()
-
-			// buddy list must be cleared before session is closed, otherwise
-			// there will be a race condition that could cause the buddy list
-			// be prematurely deleted.
-			if err := s.BuddyListRegistry.UnregisterBuddyList(ctx, instance.IdentScreenName()); err != nil {
-				s.Logger.ErrorContext(ctx, "error removing buddy list entry", "err", err.Error())
-			}
-			s.ChatSessionManager.RemoveUserFromAllChats(instance.IdentScreenName())
-			s.AuthService.Signout(ctx, instance)
-		})
-
 		if remoteAddr, ok := ctx.Value("ip").(string); ok {
 			ip, err := netip.ParseAddrPort(remoteAddr)
 			if err != nil {
@@ -335,7 +341,14 @@ func (s oscarServer) connectToOSCARService(
 
 		go s.receiveSessMessages(ctx, instance, flapc)
 	case wire.Chat:
-		instance, err = s.AuthService.RegisterChatSession(ctx, cookie)
+		sessCfg := func(sess *state.Session) {
+			sess.OnSessionClose(func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+				defer cancel()
+				s.SignoutChat(ctx, sess)
+			})
+		}
+		instance, err = s.AuthService.RegisterChatSession(ctx, cookie, sessCfg)
 		if err != nil {
 			return err
 		}
@@ -345,12 +358,6 @@ func (s oscarServer) connectToOSCARService(
 		defer func() {
 			instance.CloseInstance()
 		}()
-
-		instance.Session().OnSessionClose(func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-			defer cancel()
-			s.SignoutChat(ctx, instance)
-		})
 
 		go s.receiveSessMessages(ctx, instance, flapc)
 	default:

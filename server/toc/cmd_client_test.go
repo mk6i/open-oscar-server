@@ -950,7 +950,7 @@ func TestOSCARProxy_RecvClientCmd_ChatAccept(t *testing.T) {
 			authSvc := newMockAuthService(t)
 			for _, params := range tc.mockParams.authParams.registerChatSessionParams {
 				authSvc.EXPECT().
-					RegisterChatSession(ctx, params.authCookie).
+					RegisterChatSession(ctx, params.authCookie, mock.Anything).
 					Return(params.instance, params.err)
 			}
 			for _, params := range tc.mockParams.authParams.crackCookieParams {
@@ -1482,7 +1482,7 @@ func TestOSCARProxy_RecvClientCmd_ChatJoin(t *testing.T) {
 			authSvc := newMockAuthService(t)
 			for _, params := range tc.mockParams.authParams.registerChatSessionParams {
 				authSvc.EXPECT().
-					RegisterChatSession(ctx, params.authCookie).
+					RegisterChatSession(ctx, params.authCookie, mock.Anything).
 					Return(params.instance, params.err)
 			}
 			for _, params := range tc.mockParams.authParams.crackCookieParams {
@@ -6915,7 +6915,7 @@ func TestOSCARProxy_Signon(t *testing.T) {
 			}
 			for _, params := range tc.mockParams.registerBOSSessionParams {
 				authSvc.EXPECT().
-					RegisterBOSSession(matchContext(), params.authCookie).
+					RegisterBOSSession(matchContext(), params.authCookie, mock.Anything).
 					Return(params.instance, params.err)
 			}
 			buddyRegistry := newMockBuddyListRegistry(t)

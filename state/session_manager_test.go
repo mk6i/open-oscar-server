@@ -25,7 +25,7 @@ func TestInMemorySessionManager_AddSession(t *testing.T) {
 
 	go func() {
 		<-sess1.Closed()
-		sm.RemoveSession(sess1)
+		sm.RemoveSession(sess1.Session())
 	}()
 
 	sess2, err := sm.AddSession(ctx, "user-screen-name", false)
@@ -34,6 +34,24 @@ func TestInMemorySessionManager_AddSession(t *testing.T) {
 
 	assert.NotSame(t, sess1, sess2)
 	assert.Contains(t, sm.AllSessions(), sess2.Session())
+}
+
+func TestInMemorySessionManager_AddSession_AppliesCfgToSession(t *testing.T) {
+	sm := NewInMemorySessionManager(slog.Default())
+	wantUIN := uint32(424242)
+	wantCookie := "cfg-test-cookie"
+
+	instance, err := sm.AddSession(context.Background(), "user-screen-name", false,
+		func(sess *Session) {
+			sess.SetUIN(wantUIN)
+			sess.SetChatRoomCookie(wantCookie)
+		},
+	)
+	assert.NoError(t, err)
+
+	s := instance.Session()
+	assert.Equal(t, wantUIN, s.UIN(), "cfg mutates Session before AddInstance / store insert")
+	assert.Equal(t, wantCookie, s.ChatRoomCookie())
 }
 
 func TestInMemorySessionManager_AddSession_Timeout(t *testing.T) {
@@ -66,7 +84,7 @@ func TestInMemorySessionManager_Remove_Existing(t *testing.T) {
 	assert.Equal(t, user1Old.Session(), rec.session)
 
 	// Remove the session
-	sm.RemoveSession(user1Old)
+	sm.RemoveSession(user1Old.Session())
 
 	// Verify the session is no longer in the store
 	_, ok = sm.store[user1Old.IdentScreenName()]
@@ -89,7 +107,7 @@ func TestInMemorySessionManager_Remove_Existing(t *testing.T) {
 	user2.SetSignonComplete()
 
 	// Remove user1New and verify it's gone
-	sm.RemoveSession(user1New)
+	sm.RemoveSession(user1New.Session())
 	_, ok = sm.store[user1New.IdentScreenName()]
 	assert.False(t, ok)
 
@@ -112,7 +130,7 @@ func TestInMemorySessionManager_Remove_MissingSameScreenName(t *testing.T) {
 	assert.Equal(t, user1Old.Session(), recOld.session)
 
 	// Remove the old session
-	sm.RemoveSession(user1Old)
+	sm.RemoveSession(user1Old.Session())
 	_, ok = sm.store[user1Old.IdentScreenName()]
 	assert.False(t, ok)
 
@@ -132,7 +150,7 @@ func TestInMemorySessionManager_Remove_MissingSameScreenName(t *testing.T) {
 	user2.SetSignonComplete()
 
 	// Try to remove the old session again - should do nothing because Session doesn't match
-	sm.RemoveSession(user1Old)
+	sm.RemoveSession(user1Old.Session())
 
 	// Verify the new session is still in the store (not removed)
 	recNewAfter, ok := sm.store[user1New.IdentScreenName()]
@@ -420,7 +438,7 @@ func TestInMemorySessionManager_SessionReplacement_NoMultiSess_NoMultiSess(t *te
 		synctest.Wait()
 
 		// AddSession() is blocked waiting for the lock, now unblock it
-		sm.RemoveSession(sess1)
+		sm.RemoveSession(sess1.Session())
 
 		wg.Wait()
 
@@ -466,7 +484,7 @@ func TestInMemorySessionManager_SessionReplacement_MultiSess_NoMultiSess(t *test
 
 		// AddSession() is blocked waiting for the lock, now unblock it
 		for _, sess := range sessList {
-			sm.RemoveSession(sess)
+			sm.RemoveSession(sess.Session())
 		}
 
 		wg.Wait()
@@ -506,7 +524,7 @@ func TestInMemorySessionManager_SessionReplacement_NoMultiSess_MultiSess(t *test
 		synctest.Wait()
 
 		// AddSession() is blocked waiting for the lock, now unblock it
-		sm.RemoveSession(sess1)
+		sm.RemoveSession(sess1.Session())
 
 		wg.Wait()
 
@@ -532,11 +550,28 @@ func TestInMemorySessionManager_RemoveSession_DoubleLogin_NoMultiSess_Chaos(t *t
 			sess1, err := sm.AddSession(context.Background(), "user-screen-name-1", false)
 			assert.NoError(t, err)
 			time.Sleep(time.Duration(rand.Intn(1000)) * time.Microsecond)
-			sm.RemoveSession(sess1)
+			sm.RemoveSession(sess1.Session())
 		}()
 	}
 
 	wg.Wait()
+}
+
+func TestInMemoryChatSessionManager_AddSession_AppliesCfgToSession(t *testing.T) {
+	sm := NewInMemoryChatSessionManager(slog.Default())
+	chatCookie := "chat-room-cfg"
+	wantUIN := uint32(777001)
+
+	instance, err := sm.AddSession(context.Background(), chatCookie, "user-screen-name",
+		func(sess *Session) {
+			sess.SetUIN(wantUIN)
+		},
+	)
+	assert.NoError(t, err)
+
+	s := instance.Session()
+	assert.Equal(t, wantUIN, s.UIN(), "cfg mutates Session via inner AddSession before instance is returned")
+	assert.Equal(t, chatCookie, s.ChatRoomCookie())
 }
 
 func TestInMemoryChatSessionManager_RelayToAllExcept_HappyPath(t *testing.T) {
@@ -635,8 +670,8 @@ func TestInMemoryChatSessionManager_RemoveSession(t *testing.T) {
 
 	assert.Len(t, sm.AllSessions("chat-room-1"), 2)
 
-	sm.RemoveSession(user1)
-	sm.RemoveSession(user2)
+	sm.RemoveSession(user1.Session())
+	sm.RemoveSession(user2.Session())
 
 	assert.Empty(t, sm.AllSessions("chat-room-1"))
 }
@@ -669,7 +704,7 @@ func TestInMemoryChatSessionManager_RemoveSession_DoubleLogin(t *testing.T) {
 			synctest.Wait()
 
 			// AddSession() is blocked waiting for the lock, now unblock it
-			sm.RemoveSession(chatSess1)
+			sm.RemoveSession(chatSess1.Session())
 
 			wg.Wait()
 		})
@@ -1089,7 +1124,7 @@ func TestInMemorySessionManager_AddSession_MaxConcurrentSessions(t *testing.T) {
 		// Close and remove the first session to allow a new one
 		go func() {
 			<-sess1.Closed()
-			sm.RemoveSession(sess1)
+			sm.RemoveSession(sess1.Session())
 		}()
 
 		sess2, err := sm.AddSession(context.Background(), "user-screen-name-1", false)

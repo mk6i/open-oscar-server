@@ -39,8 +39,16 @@ func (_m *mockChatSessionRegistry) EXPECT() *mockChatSessionRegistry_Expecter {
 }
 
 // AddSession provides a mock function for the type mockChatSessionRegistry
-func (_mock *mockChatSessionRegistry) AddSession(ctx context.Context, chatCookie string, screenName state.DisplayScreenName) (*state.SessionInstance, error) {
-	ret := _mock.Called(ctx, chatCookie, screenName)
+func (_mock *mockChatSessionRegistry) AddSession(ctx context.Context, chatCookie string, screenName state.DisplayScreenName, cfg ...func(sess *state.Session)) (*state.SessionInstance, error) {
+	// func(sess *state.Session)
+	_va := make([]interface{}, len(cfg))
+	for _i := range cfg {
+		_va[_i] = cfg[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, ctx, chatCookie, screenName)
+	_ca = append(_ca, _va...)
+	ret := _mock.Called(_ca...)
 
 	if len(ret) == 0 {
 		panic("no return value specified for AddSession")
@@ -48,18 +56,18 @@ func (_mock *mockChatSessionRegistry) AddSession(ctx context.Context, chatCookie
 
 	var r0 *state.SessionInstance
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, state.DisplayScreenName) (*state.SessionInstance, error)); ok {
-		return returnFunc(ctx, chatCookie, screenName)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, state.DisplayScreenName, ...func(sess *state.Session)) (*state.SessionInstance, error)); ok {
+		return returnFunc(ctx, chatCookie, screenName, cfg...)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, state.DisplayScreenName) *state.SessionInstance); ok {
-		r0 = returnFunc(ctx, chatCookie, screenName)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, state.DisplayScreenName, ...func(sess *state.Session)) *state.SessionInstance); ok {
+		r0 = returnFunc(ctx, chatCookie, screenName, cfg...)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*state.SessionInstance)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, state.DisplayScreenName) error); ok {
-		r1 = returnFunc(ctx, chatCookie, screenName)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, state.DisplayScreenName, ...func(sess *state.Session)) error); ok {
+		r1 = returnFunc(ctx, chatCookie, screenName, cfg...)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -75,11 +83,13 @@ type mockChatSessionRegistry_AddSession_Call struct {
 //   - ctx context.Context
 //   - chatCookie string
 //   - screenName state.DisplayScreenName
-func (_e *mockChatSessionRegistry_Expecter) AddSession(ctx interface{}, chatCookie interface{}, screenName interface{}) *mockChatSessionRegistry_AddSession_Call {
-	return &mockChatSessionRegistry_AddSession_Call{Call: _e.mock.On("AddSession", ctx, chatCookie, screenName)}
+//   - cfg ...func(sess *state.Session)
+func (_e *mockChatSessionRegistry_Expecter) AddSession(ctx interface{}, chatCookie interface{}, screenName interface{}, cfg ...interface{}) *mockChatSessionRegistry_AddSession_Call {
+	return &mockChatSessionRegistry_AddSession_Call{Call: _e.mock.On("AddSession",
+		append([]interface{}{ctx, chatCookie, screenName}, cfg...)...)}
 }
 
-func (_c *mockChatSessionRegistry_AddSession_Call) Run(run func(ctx context.Context, chatCookie string, screenName state.DisplayScreenName)) *mockChatSessionRegistry_AddSession_Call {
+func (_c *mockChatSessionRegistry_AddSession_Call) Run(run func(ctx context.Context, chatCookie string, screenName state.DisplayScreenName, cfg ...func(sess *state.Session))) *mockChatSessionRegistry_AddSession_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -93,10 +103,19 @@ func (_c *mockChatSessionRegistry_AddSession_Call) Run(run func(ctx context.Cont
 		if args[2] != nil {
 			arg2 = args[2].(state.DisplayScreenName)
 		}
+		var arg3 []func(sess *state.Session)
+		variadicArgs := make([]func(sess *state.Session), len(args)-3)
+		for i, a := range args[3:] {
+			if a != nil {
+				variadicArgs[i] = a.(func(sess *state.Session))
+			}
+		}
+		arg3 = variadicArgs
 		run(
 			arg0,
 			arg1,
 			arg2,
+			arg3...,
 		)
 	})
 	return _c
@@ -107,14 +126,14 @@ func (_c *mockChatSessionRegistry_AddSession_Call) Return(sessionInstance *state
 	return _c
 }
 
-func (_c *mockChatSessionRegistry_AddSession_Call) RunAndReturn(run func(ctx context.Context, chatCookie string, screenName state.DisplayScreenName) (*state.SessionInstance, error)) *mockChatSessionRegistry_AddSession_Call {
+func (_c *mockChatSessionRegistry_AddSession_Call) RunAndReturn(run func(ctx context.Context, chatCookie string, screenName state.DisplayScreenName, cfg ...func(sess *state.Session)) (*state.SessionInstance, error)) *mockChatSessionRegistry_AddSession_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // RemoveSession provides a mock function for the type mockChatSessionRegistry
-func (_mock *mockChatSessionRegistry) RemoveSession(instance *state.SessionInstance) {
-	_mock.Called(instance)
+func (_mock *mockChatSessionRegistry) RemoveSession(sess *state.Session) {
+	_mock.Called(sess)
 	return
 }
 
@@ -124,16 +143,16 @@ type mockChatSessionRegistry_RemoveSession_Call struct {
 }
 
 // RemoveSession is a helper method to define mock.On call
-//   - instance *state.SessionInstance
-func (_e *mockChatSessionRegistry_Expecter) RemoveSession(instance interface{}) *mockChatSessionRegistry_RemoveSession_Call {
-	return &mockChatSessionRegistry_RemoveSession_Call{Call: _e.mock.On("RemoveSession", instance)}
+//   - sess *state.Session
+func (_e *mockChatSessionRegistry_Expecter) RemoveSession(sess interface{}) *mockChatSessionRegistry_RemoveSession_Call {
+	return &mockChatSessionRegistry_RemoveSession_Call{Call: _e.mock.On("RemoveSession", sess)}
 }
 
-func (_c *mockChatSessionRegistry_RemoveSession_Call) Run(run func(instance *state.SessionInstance)) *mockChatSessionRegistry_RemoveSession_Call {
+func (_c *mockChatSessionRegistry_RemoveSession_Call) Run(run func(sess *state.Session)) *mockChatSessionRegistry_RemoveSession_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 *state.SessionInstance
+		var arg0 *state.Session
 		if args[0] != nil {
-			arg0 = args[0].(*state.SessionInstance)
+			arg0 = args[0].(*state.Session)
 		}
 		run(
 			arg0,
@@ -147,7 +166,7 @@ func (_c *mockChatSessionRegistry_RemoveSession_Call) Return() *mockChatSessionR
 	return _c
 }
 
-func (_c *mockChatSessionRegistry_RemoveSession_Call) RunAndReturn(run func(instance *state.SessionInstance)) *mockChatSessionRegistry_RemoveSession_Call {
+func (_c *mockChatSessionRegistry_RemoveSession_Call) RunAndReturn(run func(sess *state.Session)) *mockChatSessionRegistry_RemoveSession_Call {
 	_c.Run(run)
 	return _c
 }

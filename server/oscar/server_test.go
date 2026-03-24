@@ -371,12 +371,17 @@ func TestOscarServer_RouteConnection_BOS(t *testing.T) {
 
 	authService := newMockAuthService(t)
 	authService.EXPECT().
-		RegisterBOSSession(mock.Anything, state.ServerCookie{Service: wire.BOS}).
+		RegisterBOSSession(mock.Anything, state.ServerCookie{Service: wire.BOS}, mock.Anything).
+		Run(func(ctx context.Context, cookie state.ServerCookie, conf func(*state.Session)) {
+			if conf != nil {
+				conf(instance.Session())
+			}
+		}).
 		Return(instance, nil)
 	wg.Add(1)
 	authService.EXPECT().
-		Signout(mock.Anything, instance).
-		Run(func(ctx context.Context, s *state.SessionInstance) {
+		Signout(mock.Anything, instance.Session()).
+		Run(func(ctx context.Context, s *state.Session) {
 			defer wg.Done()
 		})
 
@@ -495,7 +500,7 @@ func TestOscarServer_RouteConnection_BOS_MultiSessionSignoff(t *testing.T) {
 
 	authService := newMockAuthService(t)
 	authService.EXPECT().
-		RegisterBOSSession(mock.Anything, state.ServerCookie{Service: wire.BOS}).
+		RegisterBOSSession(mock.Anything, state.ServerCookie{Service: wire.BOS}, mock.Anything).
 		Return(instance, nil)
 
 	authService.EXPECT().
@@ -598,7 +603,7 @@ func TestOscarServer_RouteConnection_BOS_MaxConcurrentSessionsReached(t *testing
 
 	authService := newMockAuthService(t)
 	authService.EXPECT().
-		RegisterBOSSession(mock.Anything, state.ServerCookie{Service: wire.BOS}).
+		RegisterBOSSession(mock.Anything, state.ServerCookie{Service: wire.BOS}, mock.Anything).
 		Return(nil, state.ErrMaxConcurrentSessionsReached)
 
 	authService.EXPECT().
@@ -667,12 +672,17 @@ func TestOscarServer_RouteConnection_Chat(t *testing.T) {
 
 	authService := newMockAuthService(t)
 	authService.EXPECT().
-		RegisterChatSession(mock.Anything, state.ServerCookie{Service: wire.Chat}).
+		RegisterChatSession(mock.Anything, state.ServerCookie{Service: wire.Chat}, mock.Anything).
+		Run(func(_ context.Context, _ state.ServerCookie, cfg func(*state.Session)) {
+			if cfg != nil {
+				cfg(instance.Session())
+			}
+		}).
 		Return(instance, nil)
 	wg.Add(1)
 	authService.EXPECT().
-		SignoutChat(mock.Anything, instance).
-		Run(func(ctx context.Context, s *state.SessionInstance) {
+		SignoutChat(mock.Anything, instance.Session()).
+		Run(func(ctx context.Context, s *state.Session) {
 			defer wg.Done()
 		})
 
@@ -913,14 +923,19 @@ func Test_oscarServer_receiveSessMessages_BOS_integration(t *testing.T) {
 		CrackCookie(mock.Anything).
 		Return(state.ServerCookie{Service: wire.BOS}, nil)
 	authService.EXPECT().
-		RegisterBOSSession(mock.Anything, state.ServerCookie{Service: wire.BOS}).
+		RegisterBOSSession(mock.Anything, state.ServerCookie{Service: wire.BOS}, mock.Anything).
+		Run(func(ctx context.Context, cookie state.ServerCookie, conf func(*state.Session)) {
+			if conf != nil {
+				conf(instance.Session())
+			}
+		}).
 		Return(instance, nil)
 
 	var signoutWG sync.WaitGroup
 	signoutWG.Add(1)
 	authService.EXPECT().
-		Signout(mock.Anything, instance).
-		Run(func(ctx context.Context, s *state.SessionInstance) { signoutWG.Done() })
+		Signout(mock.Anything, instance.Session()).
+		Run(func(ctx context.Context, s *state.Session) { signoutWG.Done() })
 
 	onlineNotifier := newMockOnlineNotifier(t)
 	onlineNotifier.EXPECT().
@@ -1059,14 +1074,19 @@ func Test_oscarServer_receiveSessMessages_Chat_integration(t *testing.T) {
 		CrackCookie(mock.Anything).
 		Return(state.ServerCookie{Service: wire.Chat}, nil)
 	authService.EXPECT().
-		RegisterChatSession(mock.Anything, state.ServerCookie{Service: wire.Chat}).
+		RegisterChatSession(mock.Anything, state.ServerCookie{Service: wire.Chat}, mock.Anything).
+		Run(func(_ context.Context, _ state.ServerCookie, cfg func(*state.Session)) {
+			if cfg != nil {
+				cfg(instance.Session())
+			}
+		}).
 		Return(instance, nil)
 
 	var signoutWG sync.WaitGroup
 	signoutWG.Add(1)
 	authService.EXPECT().
-		SignoutChat(mock.Anything, instance).
-		Run(func(ctx context.Context, s *state.SessionInstance) { signoutWG.Done() })
+		SignoutChat(mock.Anything, instance.Session()).
+		Run(func(ctx context.Context, s *state.Session) { signoutWG.Done() })
 
 	onlineNotifier := newMockOnlineNotifier(t)
 	onlineNotifier.EXPECT().
