@@ -32,7 +32,8 @@ The following features are supported:
 - [x] Privacy (allow or block specific users)
 - [x] Warning
 - [x] User Directory Search
-- [x] TOC Protocol Clients: Quick Buddy, gaim, [TiK](./docs/CLIENT_TIK.md)
+- [x] TOC1 Protocol Clients: Quick Buddy, gaim, [TiK](./docs/CLIENT_TIK.md)
+- [x] TOC2 Protocol Clients: [vAIM](https://www.onlyup.net/vaim/index.html), Miranda ~v0.4.0.3, iEM 1.0.1
 - [x] File Sharing
     - LAN Only: Direct Connect, Get File
     - Lan/Internet: [Send File](./docs/RENDEZVOUS.md)
