@@ -3,9 +3,22 @@
 ################################################################################
 
 DOCKER_IMAGE_TAG_GO_RELEASER := goreleaser/goreleaser:v2.13.1
+# Docker builds cannot load a macOS USB PKCS#11 token. Options: (1) SKIP_CODE_SIGN=1 and skip;
+# (2) SIGN_HTTP_URL=http://host.docker.internal:8765 plus `make sign-server` on the host to
+# sign via HTTP; (3) run release-sign with host goreleaser (no Docker).
+SKIP_CODE_SIGN ?= 1
+# When set (e.g. http://host.docker.internal:8765), GoReleaser in Docker calls the host
+# sign_server to run PKCS#11 signing on the same bind-mounted dist/ tree.
+SIGN_HTTP_URL ?=
+SIGN_SERVER_TOKEN ?=
+GORELEASER ?= goreleaser
+
 DOCKER_RUN_GO_RELEASER := @docker run \
 	--env CGO_ENABLED=0 \
 	--env GITHUB_TOKEN=$(GITHUB_TOKEN) \
+	--env SKIP_CODE_SIGN=$(SKIP_CODE_SIGN) \
+	--env SIGN_HTTP_URL=$(SIGN_HTTP_URL) \
+	--env SIGN_SERVER_TOKEN=$(SIGN_SERVER_TOKEN) \
 	--rm \
 	--volume `pwd`:/go/src/open-oscar-server \
 	--workdir /go/src/open-oscar-server \
@@ -28,6 +41,45 @@ release: ## Run a clean, full GoReleaser run (publish + validate)
 .PHONY: release-dry-run
 release-dry-run: ## GoReleaser dry-run (skips validate & publish)
 	$(DOCKER_RUN_GO_RELEASER) --clean --skip=validate --skip=publish
+
+SIGN_SERVER_PORT ?= 8765
+
+.PHONY: sign-server
+sign-server: ## Local HTTP signer for Windows PE (run before Docker release if using SIGN_HTTP_URL)
+	go run ./cmd/sign_server
+
+.PHONY: sign-server-stop
+sign-server-stop: ## Stop whatever is listening on SIGN_SERVER_PORT (usually a leftover sign_server)
+	-@kill $$(lsof -t -iTCP:$(SIGN_SERVER_PORT) -sTCP:LISTEN) 2>/dev/null || true
+
+# Default URL for GoReleaser-in-Docker → host signing (Docker Desktop Mac/Win).
+# On Linux Docker, use host.docker.internal:8765 only if you add
+# --add-host=host.docker.internal:host-gateway to the docker run (or set SIGN_DOCKER_URL).
+SIGN_DOCKER_URL ?= http://host.docker.internal:8765
+
+.PHONY: release-dry-run-sign-docker
+release-dry-run-sign-docker: ## Dry-run in Docker; Windows Authenticode via host sign_server (run `make sign-server` first)
+	@$(MAKE) release-dry-run SIGN_HTTP_URL=$(SIGN_DOCKER_URL)
+
+.PHONY: release-sign-docker
+release-sign-docker: ## Full release in Docker; Windows Authenticode via host sign_server (run `make sign-server` first)
+	@$(MAKE) release SIGN_HTTP_URL=$(SIGN_DOCKER_URL)
+
+.PHONY: release-dry-run-nosign
+release-dry-run-nosign: ## GoReleaser dry-run on host without Windows Authenticode
+	SKIP_CODE_SIGN=1 $(GORELEASER) --clean --skip=validate --skip=publish
+
+.PHONY: release-nosign
+release-nosign: ## Full GoReleaser on host without Windows Authenticode
+	SKIP_CODE_SIGN=1 $(GORELEASER) --clean
+
+.PHONY: release-dry-run-sign
+release-dry-run-sign: ## GoReleaser dry-run on host with Windows signing (needs $(GORELEASER), PKCS#11 env)
+	SKIP_CODE_SIGN=0 $(GORELEASER) --clean --skip=validate --skip=publish
+
+.PHONY: release-sign
+release-sign: ## Full GoReleaser on host with Windows signing (needs $(GORELEASER), PKCS#11 env)
+	SKIP_CODE_SIGN=0 $(GORELEASER) --clean
 
 .PHONY: docker-image-ras
 docker-image-ras: ## Build Open OSCAR Server image
