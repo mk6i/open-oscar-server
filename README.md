@@ -10,7 +10,8 @@
 **Open OSCAR Server** is an open-source instant messaging server compatible with classic AIM and ICQ clients written in golang.
 
 <p align="center">
-<img width="816" alt="image" src="https://github.com/user-attachments/assets/4d76b06f-fd0c-4f0a-9e9f-d9516653cfb4" />
+<img width="816" alt="image" src="https://github.com/user-attachments/assets/4d76b06f-fd0c-4f0a-9e9f-d9516653cfb4" /><br/>
+<i>Above: <a href="https://www.pidgin.im/">Pidgin</a> IM connected to Open OSCAR Server</i>
 </p>
 
 | Disclaimer                                                                                                                                                                                                                           |
