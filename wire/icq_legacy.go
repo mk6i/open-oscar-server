@@ -269,12 +269,13 @@ func DetectProtocolVersion(data []byte) (uint16, error) {
 
 // LegacyLoginPacket represents login data common across versions
 type LegacyLoginPacket struct {
-	UIN      uint32
-	Password string
-	IP       net.IP
-	Port     uint16
-	Status   uint32
-	Version  uint32 // Client version
+	UIN          uint32
+	Password     string
+	IP           net.IP
+	Port         uint16
+	Status       uint32
+	Version      uint32 // Client version
+	ConnectionID uint16 // Internal connection ID for routing login reply
 }
 
 // LegacyMessagePacket represents a message packet
@@ -447,10 +448,15 @@ func ParseV2LoginPacket(data []byte) (*LegacyLoginPacket, error) {
 	}
 
 	// Read X3 (12 bytes) - m_aUnknown_3
+	// Byte 8-9 of X3 contains the internal connection ID used for routing
+	// the login reply back to the correct wizard page (from sub_46C0B6 disasm).
 	x3 := make([]byte, 12)
 	if _, err := io.ReadFull(r, x3); err != nil {
 		// Optional trailing data
 		return pkt, nil
+	}
+	if len(x3) >= 10 {
+		pkt.ConnectionID = binary.LittleEndian.Uint16(x3[8:10])
 	}
 
 	return pkt, nil
@@ -459,7 +465,7 @@ func ParseV2LoginPacket(data []byte) (*LegacyLoginPacket, error) {
 // BuildV2LoginReply creates a login success response
 // V2 LOGIN_REPLY format (from protocol spec):
 // USER_UIN(4) + USER_IP(4) + LOGIN_SEQ_NUM(2) + X1(4) + X2(4) + X3(4) + X4(4) + X5(6) = 32 bytes
-func BuildV2LoginReply(serverSeqNum uint16, clientLoginSeq uint16, uin uint32, clientIP net.IP) *V2ServerPacket {
+func BuildV2LoginReply(serverSeqNum uint16, clientConnectionID uint16, uin uint32, clientIP net.IP) *V2ServerPacket {
 	data := make([]byte, 32)
 	offset := 0
 
@@ -476,8 +482,8 @@ func BuildV2LoginReply(serverSeqNum uint16, clientLoginSeq uint16, uin uint32, c
 	}
 	offset += 4
 
-	// LOGIN_SEQ_NUM (2 bytes) - echoes back the client's login sequence
-	binary.LittleEndian.PutUint16(data[offset:], clientLoginSeq)
+	// LOGIN_SEQ_NUM (2 bytes) - connection ID for routing to wizard page
+	binary.LittleEndian.PutUint16(data[offset:], clientConnectionID)
 	offset += 2
 
 	// X1 (4 bytes): 01 00 01 00

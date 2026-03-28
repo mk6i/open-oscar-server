@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/mk6i/open-oscar-server/foodgroup"
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
@@ -45,7 +44,7 @@ type V4PacketBuilder interface {
 	BuildOnlineMessage(seqNum uint16, fromUIN uint32, msgType uint16, message string) []byte
 
 	// BuildBasicInfo constructs a basic user info response packet.
-	BuildBasicInfo(seqNum uint16, seq2 uint16, uin uint32, info *foodgroup.UserInfoResult) []byte
+	BuildBasicInfo(seqNum uint16, seq2 uint16, uin uint32, info *UserInfoResult) []byte
 
 	// BuildRegisterInfo constructs a registration info response packet.
 	// Sent to clients starting the registration wizard.
@@ -337,7 +336,7 @@ func (b *V4PacketBuilderImpl) BuildOnlineMessage(seqNum uint16, fromUIN uint32, 
 //
 //	TARGET_UIN(4) + NICK_LEN(2) + NICK + FNAME_LEN(2) + FNAME + LNAME_LEN(2) + LNAME +
 //	EMAIL_LEN(2) + EMAIL + STATUS(1) + AUTH(1)
-func (b *V4PacketBuilderImpl) BuildBasicInfo(seqNum uint16, seq2 uint16, uin uint32, info *foodgroup.UserInfoResult) []byte {
+func (b *V4PacketBuilderImpl) BuildBasicInfo(seqNum uint16, seq2 uint16, uin uint32, info *UserInfoResult) []byte {
 	// Default values if info is nil
 	nick := ""
 	first := ""

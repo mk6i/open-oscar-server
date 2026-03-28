@@ -5,6 +5,7 @@ package wire
 
 // Protocol version identifiers
 const (
+	ICQLegacyVersionV1 uint16 = 0x0001 // Early ICQ clients (same wire format as V2)
 	ICQLegacyVersionV2 uint16 = 0x0002
 	ICQLegacyVersionV3 uint16 = 0x0003
 	ICQLegacyVersionV4 uint16 = 0x0004

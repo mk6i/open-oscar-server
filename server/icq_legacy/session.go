@@ -87,7 +87,7 @@ func (m *LegacySessionManager) CreateSession(uin uint32, addr *net.UDPAddr, vers
 		Addr:         addr,
 		Version:      version,
 		SessionID:    sessionID,
-		SeqNumServer: 0, // V2 spec: server starts counting at 0
+		SeqNumServer: 1, // Start at 1 to avoid seq collision with pre-auth depslist (which uses seq=0 in V3 format)
 		Status:       wire.ICQLegacyStatusOnline,
 		LastActivity: time.Now(),
 		Instance:     instance,

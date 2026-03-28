@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"net"
 
-	"github.com/mk6i/open-oscar-server/foodgroup"
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
@@ -247,7 +246,7 @@ func (h *V3Handler) handleGetDeps(addr *net.UDPAddr, seq1, seq2 uint16, data []b
 	)
 
 	// 2. Call service layer with typed request
-	authReq := foodgroup.AuthRequest{
+	authReq := AuthRequest{
 		UIN:      uin,
 		Password: password,
 		Version:  wire.ICQLegacyVersionV3,
@@ -331,7 +330,7 @@ func (h *V3Handler) handleLogin(session *LegacySession, addr *net.UDPAddr, seq1,
 	)
 
 	// 2. Call service layer with typed request
-	authReq := foodgroup.AuthRequest{
+	authReq := AuthRequest{
 		UIN:      uin,
 		Password: password,
 		Status:   wire.ICQLegacyStatusOnline, // Default status for V3
@@ -482,8 +481,8 @@ func (h *V3Handler) handleContactList(session *LegacySession, seq1, seq2 uint16,
 
 // parseContactListPacket parses a V3 contact list packet into a typed ContactListRequest struct.
 // Format: TIMESTAMP(4) + COUNT(1) + UIN(4)*COUNT
-func (h *V3Handler) parseContactListPacket(data []byte, ownerUIN uint32) (foodgroup.ContactListRequest, error) {
-	req := foodgroup.ContactListRequest{
+func (h *V3Handler) parseContactListPacket(data []byte, ownerUIN uint32) (ContactListRequest, error) {
+	req := ContactListRequest{
 		UIN:      ownerUIN,
 		Contacts: make([]uint32, 0),
 	}
@@ -569,7 +568,7 @@ func (h *V3Handler) handleSetStatus(session *LegacySession, seq1, seq2 uint16, u
 	session.SetStatus(newStatus)
 
 	// 3. Call service layer with typed request
-	statusReq := foodgroup.StatusChangeRequest{
+	statusReq := StatusChangeRequest{
 		UIN:       uin,
 		NewStatus: newStatus,
 		OldStatus: oldStatus,
@@ -681,8 +680,8 @@ func (h *V3Handler) handleMessage(session *LegacySession, seq1, seq2 uint16, uin
 
 // parseMessagePacket parses a V3 message packet into a typed MessageRequest struct.
 // Format: TIMESTAMP(4) + TO_UIN(4) + MSG_TYPE(2) + MSG_LEN(2) + MESSAGE
-func (h *V3Handler) parseMessagePacket(data []byte, fromUIN uint32) (foodgroup.MessageRequest, error) {
-	req := foodgroup.MessageRequest{
+func (h *V3Handler) parseMessagePacket(data []byte, fromUIN uint32) (MessageRequest, error) {
+	req := MessageRequest{
 		FromUIN: fromUIN,
 	}
 
@@ -800,8 +799,8 @@ func (h *V3Handler) handleUserAdd(session *LegacySession, seq1, seq2 uint16, uin
 
 // parseUserAddPacket parses a V3 user add packet into a typed UserAddRequest struct.
 // Format: TIMESTAMP(4) + TARGET_UIN(4)
-func (h *V3Handler) parseUserAddPacket(data []byte, fromUIN uint32) (foodgroup.UserAddRequest, error) {
-	req := foodgroup.UserAddRequest{
+func (h *V3Handler) parseUserAddPacket(data []byte, fromUIN uint32) (UserAddRequest, error) {
+	req := UserAddRequest{
 		FromUIN: fromUIN,
 	}
 
@@ -848,7 +847,7 @@ func (h *V3Handler) handleGetInfo(session *LegacySession, seq1, seq2 uint16, uin
 	if err != nil {
 		h.logger.Error("failed to get user info", "target", targetUIN, "err", err)
 		// Still send minimal info packets even on error
-		info = &foodgroup.UserInfoResult{
+		info = &UserInfoResult{
 			UIN:      targetUIN,
 			Nickname: fmt.Sprintf("%d", targetUIN),
 		}
@@ -1276,7 +1275,7 @@ func (h *V3Handler) sendDeptsList1(session *LegacySession, seq2 uint16) error {
 // sendOfflineMessage sends an offline message to a V3 client
 // From iserverd v3_send_offline_message()
 // Format: header(16) + FROM_UIN(4) + YEAR(2) + MONTH(1) + DAY(1) + HOUR(1) + MINUTE(1) + MSG_TYPE(2) + MSG_LEN(2) + MESSAGE
-func (h *V3Handler) sendOfflineMessage(session *LegacySession, seq2 uint16, msg *foodgroup.LegacyOfflineMessage) error {
+func (h *V3Handler) sendOfflineMessage(session *LegacySession, seq2 uint16, msg *LegacyOfflineMessage) error {
 	// Build message data
 	msgBytes := []byte(msg.Message)
 	pktLen := 16 + 4 + 2 + 1 + 1 + 1 + 1 + 2 + 2 + len(msgBytes) + 1
@@ -1966,7 +1965,7 @@ func (h *V3Handler) handleGetInfo1(session *LegacySession, seq1, seq2 uint16, ui
 	if err != nil {
 		h.logger.Error("failed to get user info", "target", targetUIN, "err", err)
 		// Still send minimal info packet even on error
-		info = &foodgroup.UserInfoResult{
+		info = &UserInfoResult{
 			UIN:      targetUIN,
 			Nickname: fmt.Sprintf("%d", targetUIN),
 		}

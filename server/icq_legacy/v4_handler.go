@@ -8,7 +8,6 @@ import (
 	"net"
 	"strconv"
 
-	"github.com/mk6i/open-oscar-server/foodgroup"
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
@@ -466,7 +465,7 @@ func (h *V4Handler) handleGetDeps(addr *net.UDPAddr, seq1, seq2 uint16, uin uint
 	)
 
 	// 2. Call service layer with typed request
-	authReq := foodgroup.AuthRequest{
+	authReq := AuthRequest{
 		UIN:      dataUIN,
 		Password: password,
 		Version:  wire.ICQLegacyVersionV4,
@@ -586,7 +585,7 @@ func (h *V4Handler) handleLogin(session *LegacySession, addr *net.UDPAddr, seq1,
 	)
 
 	// 3. Call service layer with typed request
-	authReq := foodgroup.AuthRequest{
+	authReq := AuthRequest{
 		UIN:      uin,
 		Password: password,
 		Status:   requestedStatus,
@@ -778,8 +777,8 @@ func (h *V4Handler) handleContactList(session *LegacySession, seq1, seq2 uint16,
 // parseContactListPacket parses a V4 contact list packet into a typed ContactListRequest struct.
 // V4 format (from licq CPU_ContactList): COUNT(1) + UIN(4)*COUNT
 // Note: V4 does NOT have a timestamp prefix - the data starts immediately with the count byte.
-func (h *V4Handler) parseContactListPacket(data []byte, ownerUIN uint32) (foodgroup.ContactListRequest, error) {
-	req := foodgroup.ContactListRequest{
+func (h *V4Handler) parseContactListPacket(data []byte, ownerUIN uint32) (ContactListRequest, error) {
+	req := ContactListRequest{
 		UIN:      ownerUIN,
 		Contacts: make([]uint32, 0),
 	}
@@ -837,7 +836,7 @@ func (h *V4Handler) handleSetStatus(session *LegacySession, seq1, seq2 uint16, u
 	session.SetStatus(newStatus)
 
 	// 3. Call service layer with typed request
-	statusReq := foodgroup.StatusChangeRequest{
+	statusReq := StatusChangeRequest{
 		UIN:       uin,
 		NewStatus: newStatus,
 		OldStatus: oldStatus,
@@ -954,8 +953,8 @@ func (h *V4Handler) handleMessage(session *LegacySession, seq1, seq2 uint16, uin
 // parseMessagePacket parses a V4 message packet into a typed MessageRequest struct.
 // V4 format (from licq CPU_ThroughServer): TO_UIN(4) + MSG_TYPE(2) + MSG_LEN(2) + MESSAGE
 // Note: V4 does NOT have a timestamp prefix - data starts with the destination UIN.
-func (h *V4Handler) parseMessagePacket(data []byte, fromUIN uint32) (foodgroup.MessageRequest, error) {
-	req := foodgroup.MessageRequest{
+func (h *V4Handler) parseMessagePacket(data []byte, fromUIN uint32) (MessageRequest, error) {
+	req := MessageRequest{
 		FromUIN: fromUIN,
 	}
 
@@ -1201,7 +1200,7 @@ func (h *V4Handler) handleSearchByName(session *LegacySession, seq1, seq2 uint16
 // Data format (from licq): UIN(4) + NICK_LEN(2) + NICK + FIRST_LEN(2) + FIRST +
 //
 //	LAST_LEN(2) + LAST + EMAIL_LEN(2) + EMAIL + AUTH(1)
-func (h *V4Handler) sendSearchFound(session *LegacySession, seq2 uint16, result *foodgroup.LegacyUserSearchResult) error {
+func (h *V4Handler) sendSearchFound(session *LegacySession, seq2 uint16, result *LegacyUserSearchResult) error {
 	if result == nil {
 		return nil
 	}
@@ -1423,7 +1422,7 @@ func (h *V4Handler) handleOfflineMsgReq(session *LegacySession, seq1, seq2 uint1
 
 // sendOfflineMessage sends a single offline message (0x00DC) to the session.
 // Format: header(16) + FROM_UIN(4) + YEAR(2) + MONTH(1) + DAY(1) + HOUR(1) + MIN(1) + MSG_TYPE(2) + MSG_LEN(2) + MSG
-func (h *V4Handler) sendOfflineMessage(session *LegacySession, msg foodgroup.LegacyOfflineMessage) error {
+func (h *V4Handler) sendOfflineMessage(session *LegacySession, msg LegacyOfflineMessage) error {
 	msgBytes := []byte(msg.Message)
 
 	pktSize := 16 + 4 + 2 + 1 + 1 + 1 + 1 + 2 + 2 + len(msgBytes) + 1

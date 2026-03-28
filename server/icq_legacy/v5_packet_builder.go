@@ -3,7 +3,6 @@ package icq_legacy
 import (
 	"encoding/binary"
 
-	"github.com/mk6i/open-oscar-server/foodgroup"
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
@@ -52,7 +51,7 @@ type V5PacketBuilder interface {
 
 	// BuildOfflineMessage constructs an offline message packet.
 	// Format: FROM_UIN(4) + YEAR(2) + MONTH(1) + DAY(1) + HOUR(1) + MINUTE(1) + MSG_TYPE(2) + MSG_LEN(2) + MESSAGE
-	BuildOfflineMessage(session *LegacySession, msg *foodgroup.LegacyOfflineMessage) []byte
+	BuildOfflineMessage(session *LegacySession, msg *LegacyOfflineMessage) []byte
 
 	// BuildOfflineMsgDone constructs an end of offline messages packet.
 	BuildOfflineMsgDone(session *LegacySession, seq2 uint16) []byte
@@ -64,12 +63,12 @@ type V5PacketBuilder interface {
 
 	// BuildMetaUserInfo constructs a META_USER info response packet.
 	// seq2 is the client's seq2 from the request, echoed back for correlation.
-	BuildMetaUserInfo(session *LegacySession, seq2 uint16, info *foodgroup.UserInfoResult) []byte
+	BuildMetaUserInfo(session *LegacySession, seq2 uint16, info *UserInfoResult) []byte
 
 	// BuildSearchResult constructs a search result packet.
 	// seq2 is the client's seq2 from the request, echoed back for correlation.
 	// From iserverd: server uses user.servseq for seq1 and echoes client's seq2.
-	BuildSearchResult(session *LegacySession, seq2 uint16, results []foodgroup.UserInfoResult, isLast bool) []byte
+	BuildSearchResult(session *LegacySession, seq2 uint16, results []UserInfoResult, isLast bool) []byte
 
 	// BuildDepsListReply constructs a pre-auth response packet (V3 format).
 	// Historically called "departments list" in iserverd. In V5, this is a deprecated
@@ -407,7 +406,7 @@ func (b *V5PacketBuilderImpl) BuildOnlineMessage(session *LegacySession, fromUIN
 // BuildOfflineMessage constructs an offline message packet.
 // From iserverd v5_send_offline_message()
 // Format: FROM_UIN(4) + YEAR(2) + MONTH(1) + DAY(1) + HOUR(1) + MINUTE(1) + MSG_TYPE(2) + MSG_LEN(2) + MESSAGE
-func (b *V5PacketBuilderImpl) BuildOfflineMessage(session *LegacySession, msg *foodgroup.LegacyOfflineMessage) []byte {
+func (b *V5PacketBuilderImpl) BuildOfflineMessage(session *LegacySession, msg *LegacyOfflineMessage) []byte {
 	msgBytes := []byte(msg.Message)
 	dataLen := 4 + 2 + 1 + 1 + 1 + 1 + 2 + 2 + len(msgBytes) + 1
 	data := make([]byte, dataLen)
@@ -492,7 +491,7 @@ func (b *V5PacketBuilderImpl) BuildMetaAck(session *LegacySession, seq2 uint16, 
 
 // BuildMetaUserInfo constructs a META_USER info response packet.
 // From iserverd v5_send_meta_user_info()
-func (b *V5PacketBuilderImpl) BuildMetaUserInfo(session *LegacySession, seq2 uint16, info *foodgroup.UserInfoResult) []byte {
+func (b *V5PacketBuilderImpl) BuildMetaUserInfo(session *LegacySession, seq2 uint16, info *UserInfoResult) []byte {
 	if info == nil {
 		// Send empty/fail response
 		data := make([]byte, 3)
@@ -596,7 +595,7 @@ func (b *V5PacketBuilderImpl) BuildMetaUserInfo(session *LegacySession, seq2 uin
 //   SUB_COMMAND(2) + RESULT(1) + [PACK_LEN(2) + UIN(4) + NICK_LEN(2) + NICK +
 //   FIRST_LEN(2) + FIRST + LAST_LEN(2) + LAST + EMAIL_LEN(2) + EMAIL +
 //   AUTH(1) + WEBAWARE(1) + 0x00(1)] + [USERS_LEFT(4) if last]
-func (b *V5PacketBuilderImpl) BuildSearchResult(session *LegacySession, seq2 uint16, results []foodgroup.UserInfoResult, isLast bool) []byte {
+func (b *V5PacketBuilderImpl) BuildSearchResult(session *LegacySession, seq2 uint16, results []UserInfoResult, isLast bool) []byte {
 	if len(results) == 0 {
 		// Send empty last result with failure code to indicate no results
 		// From iserverd: sub_cmd + result(0x32=failure)

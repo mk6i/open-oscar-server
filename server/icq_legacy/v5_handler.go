@@ -9,7 +9,6 @@ import (
 	"net"
 	"time"
 
-	"github.com/mk6i/open-oscar-server/foodgroup"
 	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
 )
@@ -409,7 +408,7 @@ func (h *V5Handler) handleGetDeps(session *LegacySession, addr *net.UDPAddr, pkt
 	)
 
 	// 2. Call service layer with typed request
-	authReq := foodgroup.AuthRequest{
+	authReq := AuthRequest{
 		UIN:      uin,
 		Password: password,
 		Version:  wire.ICQLegacyVersionV5,
@@ -501,8 +500,8 @@ func (h *V5Handler) handleContactList(session *LegacySession, pkt *wire.V5Client
 
 // parseContactListPacket parses a V5 contact list packet into a typed ContactListRequest struct.
 // Format: COUNT(1) + UIN(4)*COUNT
-func (h *V5Handler) parseContactListPacket(data []byte, ownerUIN uint32) (foodgroup.ContactListRequest, error) {
-	req := foodgroup.ContactListRequest{
+func (h *V5Handler) parseContactListPacket(data []byte, ownerUIN uint32) (ContactListRequest, error) {
+	req := ContactListRequest{
 		UIN:      ownerUIN,
 		Contacts: make([]uint32, 0),
 	}
@@ -648,8 +647,8 @@ func (h *V5Handler) handleSetStatus(session *LegacySession, pkt *wire.V5ClientPa
 
 // parseStatusChangePacket parses a V5 status change packet into a typed StatusChangeRequest struct.
 // Format: STATUS(4)
-func (h *V5Handler) parseStatusChangePacket(data []byte, session *LegacySession) (foodgroup.StatusChangeRequest, error) {
-	req := foodgroup.StatusChangeRequest{
+func (h *V5Handler) parseStatusChangePacket(data []byte, session *LegacySession) (StatusChangeRequest, error) {
+	req := StatusChangeRequest{
 		UIN:       session.UIN,
 		OldStatus: session.GetStatus(),
 	}
@@ -668,7 +667,7 @@ func (h *V5Handler) parseStatusChangePacket(data []byte, session *LegacySession)
 // that the user's status has changed.
 // Following the OSCAR pattern: the service layer determines WHO to notify,
 // the handler determines HOW to notify (protocol-specific packets).
-func (h *V5Handler) broadcastStatusChangeToTargets(session *LegacySession, newStatus uint32, result *foodgroup.StatusChangeResult) {
+func (h *V5Handler) broadcastStatusChangeToTargets(session *LegacySession, newStatus uint32, result *StatusChangeResult) {
 	if result == nil || len(result.NotifyTargets) == 0 {
 		return
 	}
@@ -766,8 +765,8 @@ func (h *V5Handler) handleMessage(session *LegacySession, pkt *wire.V5ClientPack
 
 // parseMessagePacket parses a V5 message packet into a typed MessageRequest struct.
 // Format: TARGET_UIN(4) + MSG_TYPE(2) + MSG_LEN(2) + MESSAGE
-func (h *V5Handler) parseMessagePacket(data []byte, fromUIN uint32) (foodgroup.MessageRequest, error) {
-	req := foodgroup.MessageRequest{
+func (h *V5Handler) parseMessagePacket(data []byte, fromUIN uint32) (MessageRequest, error) {
+	req := MessageRequest{
 		FromUIN: fromUIN,
 	}
 
@@ -880,8 +879,8 @@ func (h *V5Handler) handleUserAdd(session *LegacySession, pkt *wire.V5ClientPack
 
 // parseUserAddPacket parses a V5 user add packet into a typed UserAddRequest struct.
 // Format: TARGET_UIN(4)
-func (h *V5Handler) parseUserAddPacket(data []byte, fromUIN uint32) (foodgroup.UserAddRequest, error) {
-	req := foodgroup.UserAddRequest{
+func (h *V5Handler) parseUserAddPacket(data []byte, fromUIN uint32) (UserAddRequest, error) {
+	req := UserAddRequest{
 		FromUIN: fromUIN,
 	}
 
@@ -1199,7 +1198,7 @@ func (h *V5Handler) handleLogin(session *LegacySession, addr *net.UDPAddr, pkt *
 	)
 
 	// 3. Call service layer with typed request
-	authReq := foodgroup.AuthRequest{
+	authReq := AuthRequest{
 		UIN:      pkt.UIN,
 		Password: password,
 		Status:   status,
@@ -1455,7 +1454,7 @@ func (h *V5Handler) sendV5UserOnline(session *LegacySession, uin uint32, status 
 // sendV5OfflineMessage sends an offline message to a V5 client
 // From iserverd v5_send_offline_message()
 // Format: FROM_UIN(4) + YEAR(2) + MONTH(1) + DAY(1) + HOUR(1) + MINUTE(1) + MSG_TYPE(2) + MSG_LEN(2) + MESSAGE
-func (h *V5Handler) sendV5OfflineMessage(session *LegacySession, msg *foodgroup.LegacyOfflineMessage) error {
+func (h *V5Handler) sendV5OfflineMessage(session *LegacySession, msg *LegacyOfflineMessage) error {
 	// Build message data
 	msgBytes := []byte(msg.Message)
 	dataLen := 4 + 2 + 1 + 1 + 1 + 1 + 2 + 2 + len(msgBytes) + 1
@@ -1929,9 +1928,9 @@ func (h *V5Handler) handleMetaSearchName(session *LegacySession, pkt *wire.V5Cli
 	)
 
 	// Convert to UserInfoResult and send
-	var infoResults []foodgroup.UserInfoResult
+	var infoResults []UserInfoResult
 	for _, r := range results {
-		infoResults = append(infoResults, foodgroup.UserInfoResult{
+		infoResults = append(infoResults, UserInfoResult{
 			UIN:          r.UIN,
 			Nickname:     r.Nickname,
 			FirstName:    r.FirstName,
@@ -1944,7 +1943,7 @@ func (h *V5Handler) handleMetaSearchName(session *LegacySession, pkt *wire.V5Cli
 	// Send each result, last one with isLast=true
 	for i, info := range infoResults {
 		isLast := i == len(infoResults)-1
-		err := h.sender.SendToSession(session, h.packetBuilder.BuildSearchResult(session, pkt.SeqNum2, []foodgroup.UserInfoResult{info}, isLast))
+		err := h.sender.SendToSession(session, h.packetBuilder.BuildSearchResult(session, pkt.SeqNum2, []UserInfoResult{info}, isLast))
 		if err != nil {
 			return err
 		}
@@ -2001,7 +2000,7 @@ func (h *V5Handler) handleMetaSearchUIN(session *LegacySession, pkt *wire.V5Clie
 	)
 
 	// 3. Build and send response using packet builder
-	results := []foodgroup.UserInfoResult{*result}
+	results := []UserInfoResult{*result}
 	return h.sender.SendToSession(session, h.packetBuilder.BuildSearchResult(session, pkt.SeqNum2, results, true))
 }
 
@@ -2040,9 +2039,9 @@ func (h *V5Handler) handleMetaSearchEmail(session *LegacySession, pkt *wire.V5Cl
 		"count", len(results),
 	)
 
-	var infoResults []foodgroup.UserInfoResult
+	var infoResults []UserInfoResult
 	for _, r := range results {
-		infoResults = append(infoResults, foodgroup.UserInfoResult{
+		infoResults = append(infoResults, UserInfoResult{
 			UIN:          r.UIN,
 			Nickname:     r.Nickname,
 			FirstName:    r.FirstName,
@@ -2054,7 +2053,7 @@ func (h *V5Handler) handleMetaSearchEmail(session *LegacySession, pkt *wire.V5Cl
 
 	for i, info := range infoResults {
 		isLast := i == len(infoResults)-1
-		err := h.sender.SendToSession(session, h.packetBuilder.BuildSearchResult(session, pkt.SeqNum2, []foodgroup.UserInfoResult{info}, isLast))
+		err := h.sender.SendToSession(session, h.packetBuilder.BuildSearchResult(session, pkt.SeqNum2, []UserInfoResult{info}, isLast))
 		if err != nil {
 			return err
 		}
@@ -2224,7 +2223,7 @@ func (h *V5Handler) handleMetaSearchWhite(session *LegacySession, pkt *wire.V5Cl
 	)
 
 	// Build search criteria
-	criteria := foodgroup.WhitePagesSearchCriteria{
+	criteria := WhitePagesSearchCriteria{
 		FirstName:           firstName,
 		LastName:            lastName,
 		Nickname:            nickname,
@@ -2516,7 +2515,7 @@ func (h *V5Handler) handleMetaSearchWhite2(session *LegacySession, pkt *wire.V5C
 
 // sendMetaWhiteSearchResult2 sends a META white pages search result (White2 format)
 // From iserverd v5_send_white_user_found2()
-func (h *V5Handler) sendMetaWhiteSearchResult2(session *LegacySession, seqNum uint16, result *foodgroup.LegacyUserSearchResult, isLast bool, moreAvailable bool) error {
+func (h *V5Handler) sendMetaWhiteSearchResult2(session *LegacySession, seqNum uint16, result *LegacyUserSearchResult, isLast bool, moreAvailable bool) error {
 	if session == nil {
 		return nil
 	}
@@ -2603,7 +2602,7 @@ func (h *V5Handler) sendMetaWhiteSearchResult2(session *LegacySession, seqNum ui
 //     - Users left (4 bytes)
 //
 // Note: Unlike White2 format, this does NOT have a pack_len field.
-func (h *V5Handler) sendMetaWhiteFound(session *LegacySession, seqNum uint16, result *foodgroup.LegacyUserSearchResult, isLast bool, moreAvailable bool) error {
+func (h *V5Handler) sendMetaWhiteFound(session *LegacySession, seqNum uint16, result *LegacyUserSearchResult, isLast bool, moreAvailable bool) error {
 	if session == nil {
 		return nil
 	}
@@ -2946,7 +2945,7 @@ func (h *V5Handler) sendMetaFail(session *LegacySession, seq2 uint16, subCommand
 
 // sendMetaInfo3 sends basic user info (SRV_META_USER_INFO2 = 0x00C8)
 // From iserverd v5_send_meta_info3()
-func (h *V5Handler) sendMetaInfo3(session *LegacySession, seq2 uint16, info *foodgroup.LegacyUserSearchResult) error {
+func (h *V5Handler) sendMetaInfo3(session *LegacySession, seq2 uint16, info *LegacyUserSearchResult) error {
 	if session == nil || info == nil {
 		return nil
 	}
@@ -3008,7 +3007,7 @@ func (h *V5Handler) sendMetaInfo3(session *LegacySession, seq2 uint16, info *foo
 // - lang1(1)
 // - lang2(1)
 // - lang3(1)
-func (h *V5Handler) sendMetaMore(session *LegacySession, seq2 uint16, info *foodgroup.LegacyUserSearchResult) error {
+func (h *V5Handler) sendMetaMore(session *LegacySession, seq2 uint16, info *LegacyUserSearchResult) error {
 	if session == nil || info == nil {
 		return nil
 	}
@@ -3068,7 +3067,7 @@ func (h *V5Handler) sendMetaMore(session *LegacySession, seq2 uint16, info *food
 // - lang1(1)
 // - lang2(1)
 // - lang3(1)
-func (h *V5Handler) sendMetaMore2(session *LegacySession, seq2 uint16, info *foodgroup.LegacyUserSearchResult) error {
+func (h *V5Handler) sendMetaMore2(session *LegacySession, seq2 uint16, info *LegacyUserSearchResult) error {
 	if session == nil || info == nil {
 		return nil
 	}
@@ -3101,7 +3100,7 @@ func (h *V5Handler) sendMetaMore2(session *LegacySession, seq2 uint16, info *foo
 
 // sendMetaHpageCat sends homepage category info (SRV_META_INFO_HPAGE_CAT = 0x010E)
 // From iserverd v5_send_meta_hpage_cat()
-func (h *V5Handler) sendMetaHpageCat(session *LegacySession, seq2 uint16, info *foodgroup.LegacyUserSearchResult) error {
+func (h *V5Handler) sendMetaHpageCat(session *LegacySession, seq2 uint16, info *LegacyUserSearchResult) error {
 	if session == nil || info == nil {
 		return nil
 	}
@@ -3131,7 +3130,7 @@ func (h *V5Handler) sendMetaHpageCat(session *LegacySession, seq2 uint16, info *
 // From iserverd v5_send_meta_work()
 // This is the older format that uses uint32 for ZIP code (vs string in sendMetaWork2)
 // Field order: wcity, wstate, wphone, wfax, waddr, wzip(uint32), wcountry, wcompany, wdepart, wtitle, wocup, wpage
-func (h *V5Handler) sendMetaWork(session *LegacySession, seq2 uint16, info *foodgroup.LegacyUserSearchResult) error {
+func (h *V5Handler) sendMetaWork(session *LegacySession, seq2 uint16, info *LegacyUserSearchResult) error {
 	if session == nil || info == nil {
 		return nil
 	}
@@ -3169,7 +3168,7 @@ func (h *V5Handler) sendMetaWork(session *LegacySession, seq2 uint16, info *food
 // From iserverd v5_send_meta_work2() - used with ICQ99b
 // This is the newer format that uses string for ZIP code (vs uint32 in sendMetaWork)
 // Field order: wcity, wstate, wphone, wfax, waddr, wzip(string), wcountry, wcompany, wdepart, wtitle, wocup, wpage
-func (h *V5Handler) sendMetaWork2(session *LegacySession, seq2 uint16, info *foodgroup.LegacyUserSearchResult) error {
+func (h *V5Handler) sendMetaWork2(session *LegacySession, seq2 uint16, info *LegacyUserSearchResult) error {
 	if session == nil || info == nil {
 		return nil
 	}
@@ -3205,7 +3204,7 @@ func (h *V5Handler) sendMetaWork2(session *LegacySession, seq2 uint16, info *foo
 
 // sendMetaAbout sends about/notes info (SRV_META_INFO_ABOUT = 0x00E6)
 // From iserverd v5_send_meta_about()
-func (h *V5Handler) sendMetaAbout(session *LegacySession, seq2 uint16, info *foodgroup.LegacyUserSearchResult) error {
+func (h *V5Handler) sendMetaAbout(session *LegacySession, seq2 uint16, info *LegacyUserSearchResult) error {
 	if session == nil || info == nil {
 		return nil
 	}
@@ -3230,7 +3229,7 @@ func (h *V5Handler) sendMetaAbout(session *LegacySession, seq2 uint16, info *foo
 
 // sendMetaInterests sends interests info (SRV_META_INFO_INTERESTS = 0x00F0)
 // From iserverd v5_send_meta_interestsinfo()
-func (h *V5Handler) sendMetaInterests(session *LegacySession, seq2 uint16, info *foodgroup.LegacyUserSearchResult) error {
+func (h *V5Handler) sendMetaInterests(session *LegacySession, seq2 uint16, info *LegacyUserSearchResult) error {
 	if session == nil || info == nil {
 		return nil
 	}
@@ -3255,7 +3254,7 @@ func (h *V5Handler) sendMetaInterests(session *LegacySession, seq2 uint16, info 
 
 // sendMetaAffiliations sends affiliations info (SRV_META_INFO_AFFILATIONS = 0x00FA)
 // From iserverd v5_send_meta_affilationsinfo()
-func (h *V5Handler) sendMetaAffiliations(session *LegacySession, seq2 uint16, info *foodgroup.LegacyUserSearchResult) error {
+func (h *V5Handler) sendMetaAffiliations(session *LegacySession, seq2 uint16, info *LegacyUserSearchResult) error {
 	if session == nil || info == nil {
 		return nil
 	}
@@ -3299,7 +3298,7 @@ func (h *V5Handler) sendMetaAffiliations(session *LegacySession, seq2 uint16, in
 
 // sendMetaFullUserInfo sends full user info response (legacy, kept for compatibility)
 // From iserverd v5_reply_metafullinfo_request2()
-func (h *V5Handler) sendMetaFullUserInfo(session *LegacySession, seq2 uint16, info *foodgroup.LegacyUserSearchResult) error {
+func (h *V5Handler) sendMetaFullUserInfo(session *LegacySession, seq2 uint16, info *LegacyUserSearchResult) error {
 	if session == nil || info == nil {
 		return nil
 	}
@@ -3347,7 +3346,7 @@ func (h *V5Handler) sendMetaFullUserInfo(session *LegacySession, seq2 uint16, in
 // - Auth required (1 byte): 0=no auth, 1=auth required
 // - Gender (1 byte): 0=unspecified, 1=female, 2=male
 // - Zero (1 byte): 0x00
-func (h *V5Handler) sendMetaUserInfo(session *LegacySession, seqNum uint16, info *foodgroup.LegacyUserSearchResult) error {
+func (h *V5Handler) sendMetaUserInfo(session *LegacySession, seqNum uint16, info *LegacyUserSearchResult) error {
 	if session == nil {
 		return nil
 	}
@@ -3442,7 +3441,7 @@ func (h *V5Handler) sendMetaUserInfo(session *LegacySession, seqNum uint16, info
 // - IP hide (1 byte): 0=show IP, 1=hide IP
 // - Zero (1 byte): 0x00
 // - Zero (1 byte): 0x00
-func (h *V5Handler) sendMetaUserInfo2(session *LegacySession, seqNum uint16, info *foodgroup.LegacyUserSearchResult) error {
+func (h *V5Handler) sendMetaUserInfo2(session *LegacySession, seqNum uint16, info *LegacyUserSearchResult) error {
 	if session == nil {
 		return nil
 	}
@@ -3578,7 +3577,7 @@ func (h *V5Handler) sendMetaUserInfo2(session *LegacySession, seqNum uint16, inf
 // - Zero (1 byte): 0x00
 // - Zero (1 byte): 0x00
 // - Zero (1 byte): 0x00
-func (h *V5Handler) sendMetaUserInfo3(session *LegacySession, seqNum uint16, info *foodgroup.LegacyUserSearchResult) error {
+func (h *V5Handler) sendMetaUserInfo3(session *LegacySession, seqNum uint16, info *LegacyUserSearchResult) error {
 	if session == nil {
 		return nil
 	}
@@ -3688,7 +3687,7 @@ func (h *V5Handler) sendMetaUserInfo3(session *LegacySession, seqNum uint16, inf
 
 // sendMetaSearchResult sends a META search result
 // From iserverd v5_send_user_found2()
-func (h *V5Handler) sendMetaSearchResult(session *LegacySession, seqNum uint16, result *foodgroup.LegacyUserSearchResult, isLast bool) error {
+func (h *V5Handler) sendMetaSearchResult(session *LegacySession, seqNum uint16, result *LegacyUserSearchResult, isLast bool) error {
 	if session == nil {
 		return nil
 	}
@@ -3775,7 +3774,7 @@ func (h *V5Handler) sendMetaSearchEnd(session *LegacySession, seqNum uint16) err
 // - EMAIL_LEN(2) + EMAIL: Email address (length-prefixed, null-terminated) - uses email2 in iserverd
 // - AUTH(1): Authorization required flag (tuser.auth: 0=no, 1=yes)
 // - 0x00(1): Unknown trailing byte
-func (h *V5Handler) sendV5OldSearchFound(session *LegacySession, seq2 uint16, result *foodgroup.LegacyUserSearchResult) error {
+func (h *V5Handler) sendV5OldSearchFound(session *LegacySession, seq2 uint16, result *LegacyUserSearchResult) error {
 	if session == nil || result == nil {
 		return nil
 	}
@@ -3850,7 +3849,7 @@ func (h *V5Handler) sendV5OldSearchEnd(session *LegacySession, seq2 uint16, more
 // - AUTH(1): Authorization required flag (0=no, 1=yes)
 //
 // Note: iserverd uses email2 field, we use primary Email field (functionally equivalent)
-func (h *V5Handler) sendV5OldStyleInfo(session *LegacySession, info *foodgroup.LegacyUserSearchResult) error {
+func (h *V5Handler) sendV5OldStyleInfo(session *LegacySession, info *LegacyUserSearchResult) error {
 	if session == nil || info == nil {
 		return nil
 	}

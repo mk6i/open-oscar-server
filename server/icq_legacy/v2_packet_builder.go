@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"net"
 
-	"github.com/mk6i/open-oscar-server/foodgroup"
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
@@ -18,7 +17,7 @@ import (
 type V2PacketBuilder interface {
 	// BuildLoginReply constructs a login success response packet.
 	// The packet contains the user's UIN, IP address, and session info.
-	BuildLoginReply(session *LegacySession, clientSeqNum uint16) []byte
+	BuildLoginReply(session *LegacySession, clientConnectionID uint16) []byte
 
 	// BuildBadPassword constructs a bad password/authentication failure response.
 	BuildBadPassword(seqNum uint16, version uint16) []byte
@@ -44,7 +43,7 @@ type V2PacketBuilder interface {
 
 	// BuildSearchResult constructs a user search result packet.
 	// If isLast is true, uses the "search done" command; otherwise "search found".
-	BuildSearchResult(seqNum uint16, info *foodgroup.UserInfoResult, isLast bool) []byte
+	BuildSearchResult(seqNum uint16, info *UserInfoResult, isLast bool) []byte
 
 	// BuildStatusUpdate constructs a status change notification packet.
 	// Sent to notify contacts when a user changes their status.
@@ -73,14 +72,14 @@ func NewV2PacketBuilder() V2PacketBuilder {
 // BuildLoginReply constructs a login success response packet.
 // V2 LOGIN_REPLY format (from protocol spec):
 // USER_UIN(4) + USER_IP(4) + LOGIN_SEQ_NUM(2) + X1(4) + X2(4) + X3(4) + X4(4) + X5(6) = 32 bytes
-func (b *V2PacketBuilderImpl) BuildLoginReply(session *LegacySession, clientSeqNum uint16) []byte {
+func (b *V2PacketBuilderImpl) BuildLoginReply(session *LegacySession, clientConnectionID uint16) []byte {
 	var clientIP net.IP
 	if session.Addr != nil {
 		clientIP = session.Addr.IP
 	}
 
 	serverSeq := session.NextServerSeqNum()
-	pkt := wire.BuildV2LoginReply(serverSeq, clientSeqNum, session.UIN, clientIP)
+	pkt := wire.BuildV2LoginReply(serverSeq, clientConnectionID, session.UIN, clientIP)
 	pkt.Version = session.Version
 
 	return wire.MarshalV2ServerPacket(pkt)
@@ -129,7 +128,7 @@ func (b *V2PacketBuilderImpl) BuildMessage(seqNum uint16, fromUIN uint32, msgTyp
 
 // BuildSearchResult constructs a user search result packet.
 // Format: SEQ(2) + UIN(4) + NICK_LEN(2) + NICK + FNAME_LEN(2) + FNAME + LNAME_LEN(2) + LNAME + EMAIL_LEN(2) + EMAIL + AUTH(1)
-func (b *V2PacketBuilderImpl) BuildSearchResult(seqNum uint16, info *foodgroup.UserInfoResult, isLast bool) []byte {
+func (b *V2PacketBuilderImpl) BuildSearchResult(seqNum uint16, info *UserInfoResult, isLast bool) []byte {
 	// Convert UserInfoResult to wire.LegacyUserInfo
 	wireInfo := &wire.LegacyUserInfo{
 		UIN:       info.UIN,
@@ -166,25 +165,35 @@ func (b *V2PacketBuilderImpl) BuildOfflineMsgDone(seqNum uint16) []byte {
 // Used in the pre-login flow: client sends 0x03F2 with credentials, server validates
 // and sends this response, then the client proceeds with the real login (0x03E8).
 //
-// IMPORTANT: The depslist is ALWAYS sent in V3 packet format, even to V2
-// clients. This matches iserverd's v3_send_depslist() which always uses
-// V3_PROTO header. The V2 client that sends 0x03F2 expects a V3-format
-// response.
-//
-// V3 format: VERSION(2) + COMMAND(2) + SEQ1(2) + SEQ2(2) + UIN(4) + RESERVED(4)
-//            + DEPLIST_VERSION(4) + COUNT(4) + [deps...] + TRAILER(4)
+// V2 format: VERSION(2) + COMMAND(2) + SEQ(2) + DATA
+// Data: UIN(4) + DEPLIST_VERSION(4) + COUNT(4) + TRAILER(4)
 func (b *V2PacketBuilderImpl) BuildDepsList(seqNum uint16, uin uint32) []byte {
-	pkt := make([]byte, 28)
-	binary.LittleEndian.PutUint16(pkt[0:2], wire.ICQLegacyVersionV3)          // V3 format always
-	binary.LittleEndian.PutUint16(pkt[2:4], wire.ICQLegacySrvUserDepsList)    // 0x0032
-	binary.LittleEndian.PutUint16(pkt[4:6], 0)                                // servseq
-	binary.LittleEndian.PutUint16(pkt[6:8], seqNum)                           // seq2 = client's seq
-	binary.LittleEndian.PutUint32(pkt[8:12], uin)                             // UIN
-	binary.LittleEndian.PutUint32(pkt[12:16], 0)                              // reserved
-	binary.LittleEndian.PutUint32(pkt[16:20], 1)                              // deplist version
-	binary.LittleEndian.PutUint32(pkt[20:24], 0)                              // count = 0
-	binary.LittleEndian.PutUint16(pkt[24:26], 0x0002)                         // trailer
-	binary.LittleEndian.PutUint16(pkt[26:28], 0x002a)                         // trailer
+	data := make([]byte, 16)
+	offset := 0
 
-	return pkt
+	// UIN (4 bytes)
+	binary.LittleEndian.PutUint32(data[offset:], uin)
+	offset += 4
+
+	// Deplist version (4 bytes)
+	binary.LittleEndian.PutUint32(data[offset:], 1)
+	offset += 4
+
+	// Count = 0 (empty list) (4 bytes)
+	binary.LittleEndian.PutUint32(data[offset:], 0)
+	offset += 4
+
+	// Trailer (from iserverd)
+	binary.LittleEndian.PutUint16(data[offset:], 0x0002)
+	offset += 2
+	binary.LittleEndian.PutUint16(data[offset:], 0x002A)
+	offset += 2
+
+	pkt := &wire.V2ServerPacket{
+		Version: wire.ICQLegacyVersionV2,
+		Command: wire.ICQLegacySrvUserDepsList,
+		SeqNum:  seqNum,
+		Data:    data[:offset],
+	}
+	return wire.MarshalV2ServerPacket(pkt)
 }

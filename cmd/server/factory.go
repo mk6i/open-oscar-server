@@ -620,7 +620,7 @@ func ICQLegacy(deps Container) *icq_legacy.LegacyServer {
 	)
 
 	// Create the ICQ legacy service
-	icqLegacyService := foodgroup.NewICQLegacyService(
+	icqLegacyService := icq_legacy.NewICQLegacyService(
 		deps.sqLiteUserStore,        // userManager
 		deps.sqLiteUserStore,        // accountManager
 		deps.inMemorySessionManager, // sessionRetriever
@@ -645,6 +645,7 @@ func ICQLegacy(deps Container) *icq_legacy.LegacyServer {
 	v3PacketBuilder := icq_legacy.NewV3PacketBuilder()
 	v4PacketBuilder := icq_legacy.NewV4PacketBuilder()
 	v5PacketBuilder := icq_legacy.NewV5PacketBuilder(sessionManager)
+	v1Handler := icq_legacy.NewV1Handler(sessionManager, icqLegacyService, nil, logger)
 	v2Handler := icq_legacy.NewV2Handler(sessionManager, icqLegacyService, nil, v2PacketBuilder, logger)
 	v3Handler := icq_legacy.NewV3Handler(sessionManager, icqLegacyService, nil, v3PacketBuilder, logger)
 	v4Handler := icq_legacy.NewV4Handler(sessionManager, icqLegacyService, nil, v4PacketBuilder, logger)
@@ -652,6 +653,7 @@ func ICQLegacy(deps Container) *icq_legacy.LegacyServer {
 
 	// Create protocol dispatcher
 	dispatcher := icq_legacy.NewProtocolDispatcher(
+		v1Handler,
 		v2Handler,
 		v3Handler,
 		v4Handler,
@@ -669,19 +671,21 @@ func ICQLegacy(deps Container) *icq_legacy.LegacyServer {
 	)
 
 	// Set the packet sender on handlers (circular dependency resolution)
+	v1Handler.SetSender(server)
 	v2Handler.SetSender(server)
 	v3Handler.SetSender(server)
 	v4Handler.SetSender(server)
 	v5Handler.SetSender(server)
 
 	// Set the dispatcher on handlers for cross-protocol messaging
+	v1Handler.SetDispatcher(dispatcher)
 	v2Handler.SetDispatcher(dispatcher)
 	v3Handler.SetDispatcher(dispatcher)
 	v4Handler.SetDispatcher(dispatcher)
 	v5Handler.SetDispatcher(dispatcher)
 
-	// Set the legacy session manager on the service using an adapter
-	icqLegacyService.SetLegacySessionManager(&legacySessionManagerAdapter{sessionManager})
+	// Set the legacy session manager on the service (same package, no adapter needed)
+	icqLegacyService.SetLegacySessionManager(sessionManager)
 
 	// Wire up OSCAR->legacy message bridge so OSCAR users can message legacy clients
 	// and receive status notifications from OSCAR users
@@ -696,32 +700,4 @@ func ICQLegacy(deps Container) *icq_legacy.LegacyServer {
 	return server
 }
 
-// legacySessionManagerAdapter adapts icq_legacy.LegacySessionManager to foodgroup.LegacySessionManager
-type legacySessionManagerAdapter struct {
-	mgr *icq_legacy.LegacySessionManager
-}
 
-func (a *legacySessionManagerAdapter) GetSession(uin uint32) foodgroup.LegacySessionInstance {
-	session := a.mgr.GetSession(uin)
-	if session == nil {
-		return nil
-	}
-	return session
-}
-
-func (a *legacySessionManagerAdapter) GetAllSessions() []foodgroup.LegacySessionInstance {
-	sessions := a.mgr.GetAllSessions()
-	result := make([]foodgroup.LegacySessionInstance, len(sessions))
-	for i, s := range sessions {
-		result[i] = s
-	}
-	return result
-}
-
-func (a *legacySessionManagerAdapter) NotifyContactsOfStatus(session foodgroup.LegacySessionInstance) []uint32 {
-	legacySession, ok := session.(*icq_legacy.LegacySession)
-	if !ok {
-		return nil
-	}
-	return a.mgr.NotifyContactsOfStatus(legacySession)
-}

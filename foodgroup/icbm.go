@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"strings"
 	"sync"
 	"time"
@@ -72,6 +73,23 @@ type ICBMService struct {
 	interval              time.Duration
 	offlineMessageManager OfflineMessageManager
 	legacyMessageSender   LegacyMessageSender
+}
+
+// LegacyMessageSender is the interface for sending messages to legacy ICQ clients.
+// It provides methods for delivering messages and status notifications to
+// connected legacy sessions.
+type LegacyMessageSender interface {
+	// SendMessage delivers a message to a legacy client identified by UIN.
+	SendMessage(uin uint32, fromUIN uint32, msgType uint16, message string) error
+
+	// SendStatusUpdate sends a status change notification to a legacy client.
+	SendStatusUpdate(uin uint32, targetUIN uint32, status uint32) error
+
+	// SendUserOnline sends a user online notification to a legacy client.
+	SendUserOnline(uin uint32, targetUIN uint32, status uint32, ip net.IP, port uint16) error
+
+	// SendUserOffline sends a user offline notification to a legacy client.
+	SendUserOffline(uin uint32, targetUIN uint32) error
 }
 
 // SetLegacyMessageSender sets the legacy message sender for delivering messages

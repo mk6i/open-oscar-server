@@ -1,11 +1,10 @@
-package foodgroup
+package icq_legacy
 
 import (
 	"context"
 	"errors"
 	"fmt"
 	"log/slog"
-	"net"
 	"strconv"
 	"strings"
 	"time"
@@ -32,7 +31,7 @@ type ICQLegacyService struct {
 	accountManager        AccountManager
 	sessionRetriever      SessionRetriever
 	messageRelayer        MessageRelayer
-	buddyBroadcaster      buddyBroadcaster
+	buddyBroadcaster      BuddyBroadcaster
 	offlineMessageManager OfflineMessageManager
 	userFinder            ICQUserFinder
 	userUpdater           ICQUserUpdater
@@ -42,243 +41,7 @@ type ICQLegacyService struct {
 	timeNow               func() time.Time
 
 	// legacySessionManager is set by the server package
-	legacySessionManager LegacySessionManager
-}
-
-// LegacySessionManager is the interface for managing legacy ICQ sessions.
-// It provides session lookup and contact notification capabilities used by
-// the service layer to check online status and determine notification targets.
-type LegacySessionManager interface {
-	// GetSession retrieves a legacy session by UIN, or nil if not online.
-	GetSession(uin uint32) LegacySessionInstance
-
-	// GetAllSessions returns all currently active legacy sessions.
-	GetAllSessions() []LegacySessionInstance
-
-	// NotifyContactsOfStatus returns the UINs of users who should be notified
-	// when the given session's status changes (i.e., users who have this user
-	// in their contact list and are currently online).
-	NotifyContactsOfStatus(session LegacySessionInstance) []uint32
-}
-
-// LegacySessionInstance represents a legacy session as seen by the service layer.
-// This interface abstracts the session to avoid circular dependencies between
-// the foodgroup and server/icq_legacy packages.
-type LegacySessionInstance interface {
-	// GetUIN returns the session's ICQ identification number.
-	GetUIN() uint32
-
-	// GetStatus returns the session's current online status value.
-	GetStatus() uint32
-
-	// GetContactList returns a copy of the session's contact list (buddy UINs).
-	GetContactList() []uint32
-
-	// IsOnVisibleList checks if the given UIN is on this session's visible list.
-	IsOnVisibleList(uin uint32) bool
-
-	// IsOnInvisibleList checks if the given UIN is on this session's invisible list.
-	IsOnInvisibleList(uin uint32) bool
-}
-
-// LegacyMessageSender is the interface for sending messages to legacy ICQ clients.
-// It provides methods for delivering messages and status notifications to
-// connected legacy sessions.
-type LegacyMessageSender interface {
-	// SendMessage delivers a message to a legacy client identified by UIN.
-	SendMessage(uin uint32, fromUIN uint32, msgType uint16, message string) error
-
-	// SendStatusUpdate sends a status change notification to a legacy client.
-	SendStatusUpdate(uin uint32, targetUIN uint32, status uint32) error
-
-	// SendUserOnline sends a user online notification to a legacy client.
-	SendUserOnline(uin uint32, targetUIN uint32, status uint32, ip net.IP, port uint16) error
-
-	// SendUserOffline sends a user offline notification to a legacy client.
-	SendUserOffline(uin uint32, targetUIN uint32) error
-}
-
-// LegacyOfflineMessage represents an offline message stored for later delivery.
-// Messages are stored when the target user is offline and delivered when they log in.
-type LegacyOfflineMessage struct {
-	// FromUIN is the sender's ICQ identification number.
-	FromUIN uint32
-
-	// ToUIN is the recipient's ICQ identification number.
-	ToUIN uint32
-
-	// MsgType is the ICQ message type (e.g., 0x0001 for text, 0x0004 for URL).
-	MsgType uint16
-
-	// Message is the message text content.
-	Message string
-
-	// URL is the URL content for URL-type messages.
-	URL string
-
-	// Desc is the description for URL-type messages.
-	Desc string
-
-	// Timestamp is when the message was originally sent.
-	Timestamp time.Time
-}
-
-// LegacyUserSearchResult represents a user search result in legacy ICQ format.
-// Used by search operations (by UIN, name, email, white pages) to return
-// user profile information to protocol handlers.
-type LegacyUserSearchResult struct {
-	// UIN is the user's ICQ identification number.
-	UIN uint32
-
-	// Nickname is the user's display name.
-	Nickname string
-
-	// FirstName is the user's first name.
-	FirstName string
-
-	// LastName is the user's last name.
-	LastName string
-
-	// Email is the user's email address.
-	Email string
-
-	// Gender is the user's gender (0=not specified, 1=female, 2=male).
-	Gender uint8
-
-	// Age is the user's age in years.
-	Age uint8
-
-	// Status is the user's current online status value.
-	Status uint32
-
-	// Online indicates whether the user is currently online.
-	Online bool
-
-	// AuthRequired indicates whether authorization is needed to add this user (0=no, 1=yes).
-	AuthRequired uint8
-
-	// WebAware indicates whether the user's online status is visible on the web (0=no, 1=yes).
-	WebAware uint8
-
-	// Extended fields (from V5 META_USER_MORE response)
-
-	// Homepage is the user's personal website URL.
-	Homepage string
-
-	// BirthYear is the user's birth year (full year, e.g., 1985).
-	BirthYear uint16
-
-	// BirthMonth is the user's birth month (1-12).
-	BirthMonth uint8
-
-	// BirthDay is the user's birth day (1-31).
-	BirthDay uint8
-
-	// Lang1 is the user's primary language code.
-	Lang1 uint8
-
-	// Lang2 is the user's secondary language code.
-	Lang2 uint8
-
-	// Lang3 is the user's tertiary language code.
-	Lang3 uint8
-}
-
-// WhitePagesSearchCriteria contains all the search criteria for white pages search.
-// This is used by the V5 META_SEARCH_WHITE (0x0532) and META_SEARCH_WHITE2 (0x0533) commands.
-// From iserverd v5_search_by_white() and v5_search_by_white2() in search.cpp.
-type WhitePagesSearchCriteria struct {
-	// Personal information
-
-	// FirstName filters by user's first name (partial match).
-	FirstName string
-
-	// LastName filters by user's last name (partial match).
-	LastName string
-
-	// Nickname filters by user's nickname (partial match).
-	Nickname string
-
-	// Email filters by user's email address (exact match).
-	Email string
-
-	// Age range
-
-	// MinAge is the minimum age for the search range (0 = no minimum).
-	MinAge uint16
-
-	// MaxAge is the maximum age for the search range (0 = no maximum).
-	MaxAge uint16
-
-	// Demographics
-
-	// Gender filters by gender (0=unspecified, 1=female, 2=male).
-	Gender uint8
-
-	// Language filters by language code (1-127, 0=unspecified).
-	Language uint8
-
-	// Location
-
-	// City filters by city name (case-insensitive partial match).
-	City string
-
-	// State filters by state/province name (case-insensitive partial match).
-	State string
-
-	// Country filters by country code (0=unspecified).
-	Country uint16
-
-	// Work information
-
-	// Company filters by company name (case-insensitive partial match).
-	Company string
-
-	// Department filters by department name.
-	Department string
-
-	// Position filters by job title (case-insensitive partial match).
-	Position string
-
-	// WorkCode filters by occupation code (0=unspecified).
-	WorkCode uint8
-
-	// Past affiliations
-
-	// PastCode is the past affiliation category code.
-	PastCode uint16
-
-	// PastKeywords contains keywords for past affiliation search.
-	PastKeywords string
-
-	// Interests
-
-	// InterestIndex is the interest category index for filtering.
-	InterestIndex uint16
-
-	// InterestKeywords contains keywords for interest-based search.
-	InterestKeywords string
-
-	// Current affiliations
-
-	// AffiliationIndex is the affiliation category index for filtering.
-	AffiliationIndex uint16
-
-	// AffiliationKeywords contains keywords for affiliation-based search.
-	AffiliationKeywords string
-
-	// Homepage category (White2 only)
-
-	// HomepageIndex is the homepage category index for filtering.
-	HomepageIndex uint16
-
-	// HomepageKeywords contains keywords for homepage category search.
-	HomepageKeywords string
-
-	// Search options
-
-	// OnlineOnly restricts results to currently online users when true.
-	OnlineOnly bool
+	legacySessionManager *LegacySessionManager
 }
 
 // NewICQLegacyService creates a new ICQLegacyService with the given dependencies.
@@ -289,7 +52,7 @@ func NewICQLegacyService(
 	accountManager AccountManager,
 	sessionRetriever SessionRetriever,
 	messageRelayer MessageRelayer,
-	buddyBroadcaster buddyBroadcaster,
+	buddyBroadcaster BuddyBroadcaster,
 	offlineMessageManager OfflineMessageManager,
 	userFinder ICQUserFinder,
 	userUpdater ICQUserUpdater,
@@ -317,7 +80,7 @@ func NewICQLegacyService(
 // online status and determining notification targets. This is called by the
 // server package after initialization to break the circular dependency between
 // the foodgroup and server/icq_legacy packages.
-func (s *ICQLegacyService) SetLegacySessionManager(mgr LegacySessionManager) {
+func (s *ICQLegacyService) SetLegacySessionManager(mgr *LegacySessionManager) {
 	s.legacySessionManager = mgr
 }
 
@@ -366,7 +129,6 @@ func (s *ICQLegacyService) ValidateCredentials(ctx context.Context, uin uint32, 
 // The method does NOT contain any protocol-specific packet building logic.
 // Handlers are responsible for building protocol-specific responses based on
 // the returned AuthResult.
-//
 func (s *ICQLegacyService) AuthenticateUser(ctx context.Context, req AuthRequest) (*AuthResult, error) {
 	result := &AuthResult{
 		Success:   false,
@@ -438,7 +200,6 @@ func (s *ICQLegacyService) AuthenticateUser(ctx context.Context, req AuthRequest
 // - Parsing protocol-specific contact list packets into ContactListRequest
 // - Using the returned ContactListResult to send online/offline notifications
 // - Building protocol-specific response packets
-//
 func (s *ICQLegacyService) ProcessContactList(ctx context.Context, req ContactListRequest) (*ContactListResult, error) {
 	result := &ContactListResult{
 		OnlineContacts: make([]ContactStatus, 0, len(req.Contacts)),
@@ -533,7 +294,6 @@ func countOnlineContacts(contacts []ContactStatus) int {
 // From iserverd v3_process_useradd() and v5_process_useradd() - when a user adds
 // someone to their contact list, the server checks if the target is online and
 // optionally sends a "you were added" notification to the target.
-//
 func (s *ICQLegacyService) ProcessUserAdd(ctx context.Context, req UserAddRequest) (*UserAddResult, error) {
 	result := &UserAddResult{
 		TargetOnline:     false,
@@ -609,7 +369,6 @@ func (s *ICQLegacyService) ProcessUserAdd(ctx context.Context, req UserAddReques
 // - Parsing protocol-specific message packets into MessageRequest
 // - Using the returned MessageResult to route messages or confirm storage
 // - Building protocol-specific responses
-//
 func (s *ICQLegacyService) ProcessMessage(ctx context.Context, req MessageRequest) (*MessageResult, error) {
 	result := &MessageResult{
 		Delivered:     false,
@@ -1018,7 +777,6 @@ func (s *ICQLegacyService) GetFullUserInfo(ctx context.Context, uin uint32) (*st
 // Handlers are responsible for:
 // - Parsing protocol-specific info request packets
 // - Using the returned UserInfoResult to build protocol-specific response packets
-//
 func (s *ICQLegacyService) GetUserInfoForProtocol(ctx context.Context, targetUIN uint32) (*UserInfoResult, error) {
 	if targetUIN == 0 {
 		s.logger.Debug("GetUserInfoForProtocol: invalid target UIN")
@@ -1401,7 +1159,6 @@ func (s *ICQLegacyService) ChangeStatus(ctx context.Context, uin uint32, status 
 // - Parsing protocol-specific status change packets into StatusChangeRequest
 // - Using the returned StatusChangeResult to send notifications to each target
 // - Building protocol-specific notification packets
-//
 func (s *ICQLegacyService) ProcessStatusChange(ctx context.Context, req StatusChangeRequest) (*StatusChangeResult, error) {
 	result := &StatusChangeResult{
 		NotifyTargets: make([]NotifyTarget, 0),

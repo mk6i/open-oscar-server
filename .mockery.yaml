@@ -212,3 +212,44 @@ packages:
       AuthService:
         config:
           filename: "mock_auth_test.go"
+  github.com/mk6i/open-oscar-server/server/icq_legacy:
+    interfaces:
+      UserManager:
+        config:
+          filename: "mock_user_manager_test.go"
+      AccountManager:
+        config:
+          filename: "mock_account_manager_test.go"
+      SessionRetriever:
+        config:
+          filename: "mock_session_retriever_test.go"
+      MessageRelayer:
+        config:
+          filename: "mock_message_relayer_test.go"
+      BuddyBroadcaster:
+        config:
+          filename: "mock_buddy_broadcaster_test.go"
+      OfflineMessageManager:
+        config:
+          filename: "mock_offline_message_manager_test.go"
+      ICQUserFinder:
+        config:
+          filename: "mock_icq_user_finder_test.go"
+      ICQUserUpdater:
+        config:
+          filename: "mock_icq_user_updater_test.go"
+      FeedbagManager:
+        config:
+          filename: "mock_feedbag_manager_test.go"
+      RelationshipFetcher:
+        config:
+          filename: "mock_relationship_fetcher_test.go"
+      PacketSender:
+        config:
+          filename: "mock_packet_sender_test.go"
+      MessageDispatcher:
+        config:
+          filename: "mock_message_dispatcher_test.go"
+      LegacyService:
+        config:
+          filename: "mock_legacy_service_test.go"

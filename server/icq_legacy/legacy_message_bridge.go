@@ -10,11 +10,10 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/mk6i/open-oscar-server/foodgroup"
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
-// LegacyMessageBridge implements foodgroup.LegacyMessageSender by routing
+// LegacyMessageBridge implements LegacyMessageSender by routing
 // messages through the ProtocolDispatcher to the appropriate legacy handler.
 // This bridges the OSCAR->legacy gap: when an OSCAR/AIM user sends a message
 // to a UIN connected via legacy protocol, the ICBM service uses this bridge
@@ -439,4 +438,4 @@ func stripHTMLSimple(s string) string {
 }
 
 // Compile-time check that LegacyMessageBridge implements LegacyMessageSender.
-var _ foodgroup.LegacyMessageSender = (*LegacyMessageBridge)(nil)
+var _ LegacyMessageSender = (*LegacyMessageBridge)(nil)

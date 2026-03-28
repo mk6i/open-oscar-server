@@ -202,6 +202,8 @@ func (s *LegacyServer) handlePacket(addr *net.UDPAddr, packet []byte) {
 		s.logger.Debug("unsupported protocol version",
 			"version", version,
 			"addr", addr,
+			"size", len(packet),
+			"hex", fmt.Sprintf("%X", packet),
 		)
 		return
 	}

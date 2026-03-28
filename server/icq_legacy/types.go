@@ -1,12 +1,14 @@
 package icq_legacy
 
 import (
+	"context"
 	"log/slog"
 	"net"
 	"sync"
 	"time"
 
 	"github.com/mk6i/open-oscar-server/state"
+	"github.com/mk6i/open-oscar-server/wire"
 )
 
 // truncateField truncates a string field to maxLen if it exceeds the limit,
@@ -194,7 +196,7 @@ func (s *LegacySession) IsContact(uin uint32) bool {
 	return false
 }
 
-// GetUIN returns the session's UIN (implements foodgroup.LegacySessionInstance)
+// GetUIN returns the session's UIN (implements LegacySessionInstance)
 func (s *LegacySession) GetUIN() uint32 {
 	return s.UIN
 }
@@ -242,3 +244,109 @@ func (s *LegacySession) SetDirectConnectionInfo(tcpPort, internalIP uint32, tcpV
 	s.TCPVersion = tcpVersion
 	s.DCType = dcType
 }
+
+// UserManager provides user lookup and management for legacy ICQ operations.
+type UserManager interface {
+	User(ctx context.Context, screenName state.IdentScreenName) (*state.User, error)
+	InsertUser(ctx context.Context, u state.User) error
+	DeleteUser(ctx context.Context, screenName state.IdentScreenName) error
+}
+
+// AccountManager provides password management for legacy ICQ operations.
+type AccountManager interface {
+	SetUserPassword(ctx context.Context, screenName state.IdentScreenName, newPassword string) error
+}
+
+// SessionRetriever provides OSCAR session lookup for cross-protocol routing.
+type SessionRetriever interface {
+	RetrieveSession(screenName state.IdentScreenName) *state.Session
+}
+
+// MessageRelayer provides SNAC message delivery for legacy→OSCAR routing.
+type MessageRelayer interface {
+	RelayToScreenName(ctx context.Context, screenName state.IdentScreenName, msg wire.SNACMessage)
+}
+
+// BuddyBroadcaster provides presence broadcast for OSCAR buddy notifications.
+type BuddyBroadcaster interface {
+	BroadcastBuddyArrived(ctx context.Context, screenName state.IdentScreenName, userInfo wire.TLVUserInfo) error
+	BroadcastBuddyDeparted(ctx context.Context, instance *state.SessionInstance) error
+}
+
+// OfflineMessageManager provides offline message storage and retrieval.
+type OfflineMessageManager interface {
+	DeleteMessages(ctx context.Context, recip state.IdentScreenName) error
+	RetrieveMessages(ctx context.Context, recip state.IdentScreenName) ([]state.OfflineMessage, error)
+	SaveMessage(ctx context.Context, offlineMessage state.OfflineMessage) (int, error)
+}
+
+// ICQUserFinder provides user search capabilities for legacy ICQ operations.
+type ICQUserFinder interface {
+	FindByUIN(ctx context.Context, UIN uint32) (state.User, error)
+	FindByICQEmail(ctx context.Context, email string) (state.User, error)
+	FindByICQName(ctx context.Context, firstName, lastName, nickName string) ([]state.User, error)
+	FindByICQInterests(ctx context.Context, code uint16, keywords []string) ([]state.User, error)
+	FindByICQKeyword(ctx context.Context, keyword string) ([]state.User, error)
+}
+
+// ICQUserUpdater provides profile update capabilities for legacy ICQ operations.
+type ICQUserUpdater interface {
+	SetBasicInfo(ctx context.Context, name state.IdentScreenName, data state.ICQBasicInfo) error
+	SetWorkInfo(ctx context.Context, name state.IdentScreenName, data state.ICQWorkInfo) error
+	SetMoreInfo(ctx context.Context, name state.IdentScreenName, data state.ICQMoreInfo) error
+	SetInterests(ctx context.Context, name state.IdentScreenName, data state.ICQInterests) error
+	SetAffiliations(ctx context.Context, name state.IdentScreenName, data state.ICQAffiliations) error
+	SetUserNotes(ctx context.Context, name state.IdentScreenName, data state.ICQUserNotes) error
+	SetPermissions(ctx context.Context, name state.IdentScreenName, data state.ICQPermissions) error
+	SetHomepageCategory(ctx context.Context, name state.IdentScreenName, data state.ICQHomepageCategory) error
+}
+
+// FeedbagManager provides server-side buddy list access.
+type FeedbagManager interface {
+	Feedbag(ctx context.Context, screenName state.IdentScreenName) ([]wire.FeedbagItem, error)
+}
+
+// RelationshipFetcher provides buddy relationship lookup.
+type RelationshipFetcher interface {
+	AllRelationships(ctx context.Context, me state.IdentScreenName, filter []state.IdentScreenName) ([]state.Relationship, error)
+	Relationship(ctx context.Context, me state.IdentScreenName, them state.IdentScreenName) (state.Relationship, error)
+}
+
+// LegacySessionInstance represents a legacy session as seen by the service layer.
+// This interface abstracts the session to avoid circular dependencies between
+// the foodgroup and server/icq_legacy packages.
+type LegacySessionInstance interface {
+	// GetUIN returns the session's ICQ identification number.
+	GetUIN() uint32
+
+	// GetStatus returns the session's current online status value.
+	GetStatus() uint32
+
+	// GetContactList returns a copy of the session's contact list (buddy UINs).
+	GetContactList() []uint32
+
+	// IsOnVisibleList checks if the given UIN is on this session's visible list.
+	IsOnVisibleList(uin uint32) bool
+
+	// IsOnInvisibleList checks if the given UIN is on this session's invisible list.
+	IsOnInvisibleList(uin uint32) bool
+}
+
+// LegacyMessageSender is the interface for sending messages to legacy ICQ clients.
+// It provides methods for delivering messages and status notifications to
+// connected legacy sessions.
+type LegacyMessageSender interface {
+	// SendMessage delivers a message to a legacy client identified by UIN.
+	SendMessage(uin uint32, fromUIN uint32, msgType uint16, message string) error
+
+	// SendStatusUpdate sends a status change notification to a legacy client.
+	SendStatusUpdate(uin uint32, targetUIN uint32, status uint32) error
+
+	// SendUserOnline sends a user online notification to a legacy client.
+	SendUserOnline(uin uint32, targetUIN uint32, status uint32, ip net.IP, port uint16) error
+
+	// SendUserOffline sends a user offline notification to a legacy client.
+	SendUserOffline(uin uint32, targetUIN uint32) error
+}
+
+

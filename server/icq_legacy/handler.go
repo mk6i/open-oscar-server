@@ -7,13 +7,13 @@ import (
 	"net"
 
 	"github.com/mk6i/open-oscar-server/config"
-	"github.com/mk6i/open-oscar-server/foodgroup"
 	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
 // ProtocolDispatcher routes packets to the appropriate version handler
 type ProtocolDispatcher struct {
+	v1Handler *V1Handler
 	v2Handler *V2Handler
 	v3Handler *V3Handler
 	v4Handler *V4Handler
@@ -24,6 +24,7 @@ type ProtocolDispatcher struct {
 
 // NewProtocolDispatcher creates a new protocol dispatcher
 func NewProtocolDispatcher(
+	v1Handler *V1Handler,
 	v2Handler *V2Handler,
 	v3Handler *V3Handler,
 	v4Handler *V4Handler,
@@ -32,6 +33,7 @@ func NewProtocolDispatcher(
 	logger *slog.Logger,
 ) *ProtocolDispatcher {
 	return &ProtocolDispatcher{
+		v1Handler: v1Handler,
 		v2Handler: v2Handler,
 		v3Handler: v3Handler,
 		v4Handler: v4Handler,
@@ -60,6 +62,8 @@ func (d *ProtocolDispatcher) Dispatch(session *LegacySession, addr *net.UDPAddr,
 	)
 
 	switch version {
+	case wire.ICQLegacyVersionV1:
+		return d.v1Handler.Handle(session, addr, packet)
 	case wire.ICQLegacyVersionV2:
 		return d.v2Handler.Handle(session, addr, packet)
 	case wire.ICQLegacyVersionV3:
@@ -89,6 +93,8 @@ func (d *ProtocolDispatcher) SendUserOnline(toSession *LegacySession, onlineUIN 
 	)
 
 	switch toSession.Version {
+	case wire.ICQLegacyVersionV1:
+		return d.v1Handler.sendUserOnline(toSession, onlineUIN, status, nil, 0)
 	case wire.ICQLegacyVersionV2:
 		return d.v2Handler.sendUserOnline(toSession, onlineUIN, status, nil, 0)
 	case wire.ICQLegacyVersionV3:
@@ -118,6 +124,8 @@ func (d *ProtocolDispatcher) SendOnlineMessage(toSession *LegacySession, fromUIN
 	)
 
 	switch toSession.Version {
+	case wire.ICQLegacyVersionV1:
+		return d.v1Handler.sendMessage(toSession, fromUIN, msgType, message)
 	case wire.ICQLegacyVersionV2:
 		return d.v2Handler.sendMessage(toSession, fromUIN, msgType, message)
 	case wire.ICQLegacyVersionV3:
@@ -146,6 +154,8 @@ func (d *ProtocolDispatcher) SendUserOffline(toSession *LegacySession, offlineUI
 	)
 
 	switch toSession.Version {
+	case wire.ICQLegacyVersionV1:
+		return d.v1Handler.sendUserOffline(toSession, offlineUIN)
 	case wire.ICQLegacyVersionV2:
 		return d.v2Handler.sendUserOffline(toSession, offlineUIN)
 	case wire.ICQLegacyVersionV3:
@@ -177,6 +187,8 @@ func (d *ProtocolDispatcher) SendStatusChange(toSession *LegacySession, changedU
 	)
 
 	switch toSession.Version {
+	case wire.ICQLegacyVersionV1:
+		return d.v1Handler.sendStatusUpdate(toSession, changedUIN, newStatus)
 	case wire.ICQLegacyVersionV2:
 		return d.v2Handler.sendStatusUpdate(toSession, changedUIN, newStatus)
 	case wire.ICQLegacyVersionV3:
@@ -246,7 +258,7 @@ type LegacyService interface {
 	// The method does NOT contain any protocol-specific packet building logic.
 	// Handlers are responsible for building protocol-specific responses based on
 	// the returned AuthResult.
-	AuthenticateUser(ctx context.Context, req foodgroup.AuthRequest) (*foodgroup.AuthResult, error)
+	AuthenticateUser(ctx context.Context, req AuthRequest) (*AuthResult, error)
 
 	// RegisterNewUser creates a new user account for legacy ICQ registration.
 	// Returns the newly assigned UIN on success.
@@ -257,7 +269,7 @@ type LegacyService interface {
 	SendMessage(ctx context.Context, fromUIN, toUIN uint32, msgType uint16, message string) error
 
 	// GetOfflineMessages retrieves stored offline messages for the given UIN.
-	GetOfflineMessages(ctx context.Context, uin uint32) ([]foodgroup.LegacyOfflineMessage, error)
+	GetOfflineMessages(ctx context.Context, uin uint32) ([]LegacyOfflineMessage, error)
 
 	// AckOfflineMessages acknowledges and deletes offline messages for the given UIN.
 	AckOfflineMessages(ctx context.Context, uin uint32) error
@@ -274,7 +286,7 @@ type LegacyService interface {
 	// The method does NOT contain any protocol-specific packet building logic.
 	// Handlers are responsible for building protocol-specific responses based on
 	// the returned MessageResult.
-	ProcessMessage(ctx context.Context, req foodgroup.MessageRequest) (*foodgroup.MessageResult, error)
+	ProcessMessage(ctx context.Context, req MessageRequest) (*MessageResult, error)
 
 	// ProcessContactList processes a contact list and returns online status for each contact.
 	// This is the service layer method for contact list processing that handlers call after
@@ -283,7 +295,7 @@ type LegacyService interface {
 	// The method does NOT contain any protocol-specific packet building logic.
 	// Handlers are responsible for building protocol-specific responses based on
 	// the returned ContactListResult.
-	ProcessContactList(ctx context.Context, req foodgroup.ContactListRequest) (*foodgroup.ContactListResult, error)
+	ProcessContactList(ctx context.Context, req ContactListRequest) (*ContactListResult, error)
 
 	// ProcessUserAdd processes a user add request and returns information about the target user.
 	// This is the service layer method for user add operations that handlers call after
@@ -292,7 +304,7 @@ type LegacyService interface {
 	// The method does NOT contain any protocol-specific packet building logic.
 	// Handlers are responsible for building protocol-specific responses based on
 	// the returned UserAddResult.
-	ProcessUserAdd(ctx context.Context, req foodgroup.UserAddRequest) (*foodgroup.UserAddResult, error)
+	ProcessUserAdd(ctx context.Context, req UserAddRequest) (*UserAddResult, error)
 
 	// ProcessStatusChange processes a status change and returns notification targets.
 	// This is the service layer method for status changes that handlers call after
@@ -302,10 +314,10 @@ type LegacyService interface {
 	// The method does NOT directly send packets to other sessions.
 	// Handlers are responsible for building protocol-specific responses based on
 	// the returned StatusChangeResult.
-	ProcessStatusChange(ctx context.Context, req foodgroup.StatusChangeRequest) (*foodgroup.StatusChangeResult, error)
+	ProcessStatusChange(ctx context.Context, req StatusChangeRequest) (*StatusChangeResult, error)
 
 	// GetUserInfo retrieves basic user information as a LegacyUserSearchResult.
-	GetUserInfo(ctx context.Context, uin uint32) (*foodgroup.LegacyUserSearchResult, error)
+	GetUserInfo(ctx context.Context, uin uint32) (*LegacyUserSearchResult, error)
 	// GetFullUserInfo returns the complete user record including all ICQ info fields.
 	// This is used by V3 info packets that need home, work, and more info fields.
 	// From iserverd v3_send_home_info(), v3_send_work_info(), etc.
@@ -315,12 +327,12 @@ type LegacyService interface {
 	// parsing info request packets. It consolidates user info retrieval from the database
 	// and returns a typed result struct containing all user profile fields.
 	// The method does NOT contain any protocol-specific packet building logic.
-	GetUserInfoForProtocol(ctx context.Context, targetUIN uint32) (*foodgroup.UserInfoResult, error)
+	GetUserInfoForProtocol(ctx context.Context, targetUIN uint32) (*UserInfoResult, error)
 	// SearchByUIN searches for a user by their UIN and returns their profile info.
-	SearchByUIN(ctx context.Context, uin uint32) (*foodgroup.LegacyUserSearchResult, error)
+	SearchByUIN(ctx context.Context, uin uint32) (*LegacyUserSearchResult, error)
 
 	// SearchByName searches for users by nickname, first name, last name, or email.
-	SearchByName(ctx context.Context, nick, first, last, email string) ([]foodgroup.LegacyUserSearchResult, error)
+	SearchByName(ctx context.Context, nick, first, last, email string) ([]LegacyUserSearchResult, error)
 
 	// ChangeStatus updates a user's status in the service layer.
 	ChangeStatus(ctx context.Context, uin uint32, status uint32) error
@@ -344,7 +356,7 @@ type LegacyService interface {
 	// This is used by the V5 META_SEARCH_WHITE (0x0532) and META_SEARCH_WHITE2 (0x0533) commands.
 	// From iserverd v5_search_by_white() and v5_search_by_white2() in search.cpp
 	// Returns matching users up to a maximum of 40 results.
-	WhitePagesSearch(ctx context.Context, criteria foodgroup.WhitePagesSearchCriteria) ([]foodgroup.LegacyUserSearchResult, error)
+	WhitePagesSearch(ctx context.Context, criteria WhitePagesSearchCriteria) ([]LegacyUserSearchResult, error)
 
 	// Notes Operations
 	// GetNotes retrieves the user's notes from the database.
@@ -483,7 +495,7 @@ func (h *BaseHandler) sendMessage(session *LegacySession, fromUIN uint32, msgTyp
 }
 
 // sendSearchResult sends a search result
-func (h *BaseHandler) sendSearchResult(session *LegacySession, user *foodgroup.LegacyUserSearchResult, isLast bool) error {
+func (h *BaseHandler) sendSearchResult(session *LegacySession, user *LegacyUserSearchResult, isLast bool) error {
 	info := &wire.LegacyUserInfo{
 		UIN:       user.UIN,
 		Nickname:  truncateField(user.Nickname, 20, h.logger, "nickname", user.UIN),

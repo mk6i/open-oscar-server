@@ -3,7 +3,6 @@ package icq_legacy
 import (
 	"encoding/binary"
 
-	"github.com/mk6i/open-oscar-server/foodgroup"
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
@@ -48,19 +47,19 @@ type V3PacketBuilder interface {
 	BuildOnlineMessage(seqNum uint16, fromUIN uint32, msgType uint16, message string) []byte
 
 	// BuildBasicInfo constructs a basic user info response packet.
-	BuildBasicInfo(seqNum uint16, seq2 uint16, uin uint32, info *foodgroup.UserInfoResult) []byte
+	BuildBasicInfo(seqNum uint16, seq2 uint16, uin uint32, info *UserInfoResult) []byte
 
 	// BuildHomeInfo constructs a home info response packet.
-	BuildHomeInfo(seqNum uint16, seq2 uint16, uin uint32, info *foodgroup.UserInfoResult) []byte
+	BuildHomeInfo(seqNum uint16, seq2 uint16, uin uint32, info *UserInfoResult) []byte
 
 	// BuildWorkInfo constructs a work info response packet.
-	BuildWorkInfo(seqNum uint16, seq2 uint16, uin uint32, info *foodgroup.UserInfoResult) []byte
+	BuildWorkInfo(seqNum uint16, seq2 uint16, uin uint32, info *UserInfoResult) []byte
 
 	// BuildHomeWeb constructs a home webpage info response packet.
-	BuildHomeWeb(seqNum uint16, seq2 uint16, uin uint32, info *foodgroup.UserInfoResult) []byte
+	BuildHomeWeb(seqNum uint16, seq2 uint16, uin uint32, info *UserInfoResult) []byte
 
 	// BuildWorkWeb constructs a work webpage info response packet.
-	BuildWorkWeb(seqNum uint16, seq2 uint16, uin uint32, info *foodgroup.UserInfoResult) []byte
+	BuildWorkWeb(seqNum uint16, seq2 uint16, uin uint32, info *UserInfoResult) []byte
 
 	// BuildDeptsList constructs a pre-auth deps list response packet.
 	// Historically called "departments list" in iserverd (from its Users_Deps database table).
@@ -390,7 +389,7 @@ func (b *V3PacketBuilderImpl) BuildOnlineMessage(seqNum uint16, fromUIN uint32, 
 //   Data: TARGET_UIN(4) + NICK_LEN(2) + NICK + FIRST_LEN(2) + FIRST + LAST_LEN(2) + LAST +
 //         EMAIL_LEN(2) + EMAIL + STATUS(1) + AUTH(1)
 // All strings are length-prefixed (2 bytes) and null-terminated
-func (b *V3PacketBuilderImpl) BuildBasicInfo(seqNum uint16, seq2 uint16, uin uint32, info *foodgroup.UserInfoResult) []byte {
+func (b *V3PacketBuilderImpl) BuildBasicInfo(seqNum uint16, seq2 uint16, uin uint32, info *UserInfoResult) []byte {
 	// Default values if info is nil
 	nick := ""
 	first := ""
@@ -486,7 +485,7 @@ func (b *V3PacketBuilderImpl) BuildBasicInfo(seqNum uint16, seq2 uint16, uin uin
 //   Data: HADDR_LEN(2) + HADDR + HCITY_LEN(2) + HCITY + HSTATE_LEN(2) + HSTATE +
 //         HCOUNTRY(2) + HPHONE_LEN(2) + HPHONE + HFAX_LEN(2) + HFAX + HCELL_LEN(2) + HCELL +
 //         HZIP(4) + GENDER(1) + AGE(2) + BDAY(1) + BMONTH(1) + BYEAR(1) + 0x00(1)
-func (b *V3PacketBuilderImpl) BuildHomeInfo(seqNum uint16, seq2 uint16, uin uint32, info *foodgroup.UserInfoResult) []byte {
+func (b *V3PacketBuilderImpl) BuildHomeInfo(seqNum uint16, seq2 uint16, uin uint32, info *UserInfoResult) []byte {
 	// Default values
 	haddr := ""
 	hcity := ""
@@ -619,7 +618,7 @@ func (b *V3PacketBuilderImpl) BuildHomeInfo(seqNum uint16, seq2 uint16, uin uint
 //         WCOUNTRY(2) + WCOMPANY_LEN(2) + WCOMPANY + WTITLE_LEN(2) + WTITLE +
 //         WDEPART(4) + WPHONE_LEN(2) + WPHONE + WFAX_LEN(2) + WFAX +
 //         WPAGER_LEN(2) + WPAGER + WZIP(4)
-func (b *V3PacketBuilderImpl) BuildWorkInfo(seqNum uint16, seq2 uint16, uin uint32, info *foodgroup.UserInfoResult) []byte {
+func (b *V3PacketBuilderImpl) BuildWorkInfo(seqNum uint16, seq2 uint16, uin uint32, info *UserInfoResult) []byte {
 	// Default values
 	waddr := ""
 	wcity := ""
@@ -743,7 +742,7 @@ func (b *V3PacketBuilderImpl) BuildWorkInfo(seqNum uint16, seq2 uint16, uin uint
 // Packet format:
 //   Header: VERSION(2) + COMMAND(2) + SEQ1(2) + SEQ2(2) + UIN(4) + RESERVED(4) = 16 bytes
 //   Data: HPAGE_LEN(2) + HPAGE (null-terminated string)
-func (b *V3PacketBuilderImpl) BuildHomeWeb(seqNum uint16, seq2 uint16, uin uint32, info *foodgroup.UserInfoResult) []byte {
+func (b *V3PacketBuilderImpl) BuildHomeWeb(seqNum uint16, seq2 uint16, uin uint32, info *UserInfoResult) []byte {
 	// Default value
 	hpage := ""
 
@@ -787,7 +786,7 @@ func (b *V3PacketBuilderImpl) BuildHomeWeb(seqNum uint16, seq2 uint16, uin uint3
 // Packet format:
 //   Header: VERSION(2) + COMMAND(2) + SEQ1(2) + SEQ2(2) + UIN(4) + RESERVED(4) = 16 bytes
 //   Data: WPAGE_LEN(2) + WPAGE (null-terminated string)
-func (b *V3PacketBuilderImpl) BuildWorkWeb(seqNum uint16, seq2 uint16, uin uint32, info *foodgroup.UserInfoResult) []byte {
+func (b *V3PacketBuilderImpl) BuildWorkWeb(seqNum uint16, seq2 uint16, uin uint32, info *UserInfoResult) []byte {
 	// Default value - work webpage is not in UserInfoResult, so we use empty string
 	// In the future, this could be added to UserInfoResult if needed
 	wpage := ""

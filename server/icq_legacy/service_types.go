@@ -1,7 +1,9 @@
-// Package foodgroup provides service layer functionality for ICQ legacy protocols.
-package foodgroup
+package icq_legacy
 
-import "net"
+import (
+	"net"
+	"time"
+)
 
 // This file contains typed request and response structs for the ICQ legacy service layer.
 // These types enable clean separation between protocol handlers and business logic,
@@ -257,4 +259,187 @@ type UserAddResult struct {
 
 	// SendYouWereAdded indicates whether to send a "you were added" notification to the target
 	SendYouWereAdded bool
+}
+
+// LegacyOfflineMessage represents an offline message stored for later delivery.
+// Messages are stored when the target user is offline and delivered when they log in.
+type LegacyOfflineMessage struct {
+	// FromUIN is the sender's ICQ identification number.
+	FromUIN uint32
+
+	// ToUIN is the recipient's ICQ identification number.
+	ToUIN uint32
+
+	// MsgType is the ICQ message type (e.g., 0x0001 for text, 0x0004 for URL).
+	MsgType uint16
+
+	// Message is the message text content.
+	Message string
+
+	// URL is the URL content for URL-type messages.
+	URL string
+
+	// Desc is the description for URL-type messages.
+	Desc string
+
+	// Timestamp is when the message was originally sent.
+	Timestamp time.Time
+}
+
+// LegacyUserSearchResult represents a user search result in legacy ICQ format.
+// Used by search operations (by UIN, name, email, white pages) to return
+// user profile information to protocol handlers.
+type LegacyUserSearchResult struct {
+	// UIN is the user's ICQ identification number.
+	UIN uint32
+
+	// Nickname is the user's display name.
+	Nickname string
+
+	// FirstName is the user's first name.
+	FirstName string
+
+	// LastName is the user's last name.
+	LastName string
+
+	// Email is the user's email address.
+	Email string
+
+	// Gender is the user's gender (0=not specified, 1=female, 2=male).
+	Gender uint8
+
+	// Age is the user's age in years.
+	Age uint8
+
+	// Status is the user's current online status value.
+	Status uint32
+
+	// Online indicates whether the user is currently online.
+	Online bool
+
+	// AuthRequired indicates whether authorization is needed to add this user (0=no, 1=yes).
+	AuthRequired uint8
+
+	// WebAware indicates whether the user's online status is visible on the web (0=no, 1=yes).
+	WebAware uint8
+
+	// Extended fields (from V5 META_USER_MORE response)
+
+	// Homepage is the user's personal website URL.
+	Homepage string
+
+	// BirthYear is the user's birth year (full year, e.g., 1985).
+	BirthYear uint16
+
+	// BirthMonth is the user's birth month (1-12).
+	BirthMonth uint8
+
+	// BirthDay is the user's birth day (1-31).
+	BirthDay uint8
+
+	// Lang1 is the user's primary language code.
+	Lang1 uint8
+
+	// Lang2 is the user's secondary language code.
+	Lang2 uint8
+
+	// Lang3 is the user's tertiary language code.
+	Lang3 uint8
+}
+
+// WhitePagesSearchCriteria contains all the search criteria for white pages search.
+// This is used by the V5 META_SEARCH_WHITE (0x0532) and META_SEARCH_WHITE2 (0x0533) commands.
+// From iserverd v5_search_by_white() and v5_search_by_white2() in search.cpp.
+type WhitePagesSearchCriteria struct {
+	// Personal information
+
+	// FirstName filters by user's first name (partial match).
+	FirstName string
+
+	// LastName filters by user's last name (partial match).
+	LastName string
+
+	// Nickname filters by user's nickname (partial match).
+	Nickname string
+
+	// Email filters by user's email address (exact match).
+	Email string
+
+	// Age range
+
+	// MinAge is the minimum age for the search range (0 = no minimum).
+	MinAge uint16
+
+	// MaxAge is the maximum age for the search range (0 = no maximum).
+	MaxAge uint16
+
+	// Demographics
+
+	// Gender filters by gender (0=unspecified, 1=female, 2=male).
+	Gender uint8
+
+	// Language filters by language code (1-127, 0=unspecified).
+	Language uint8
+
+	// Location
+
+	// City filters by city name (case-insensitive partial match).
+	City string
+
+	// State filters by state/province name (case-insensitive partial match).
+	State string
+
+	// Country filters by country code (0=unspecified).
+	Country uint16
+
+	// Work information
+
+	// Company filters by company name (case-insensitive partial match).
+	Company string
+
+	// Department filters by department name.
+	Department string
+
+	// Position filters by job title (case-insensitive partial match).
+	Position string
+
+	// WorkCode filters by occupation code (0=unspecified).
+	WorkCode uint8
+
+	// Past affiliations
+
+	// PastCode is the past affiliation category code.
+	PastCode uint16
+
+	// PastKeywords contains keywords for past affiliation search.
+	PastKeywords string
+
+	// Interests
+
+	// InterestIndex is the interest category index for filtering.
+	InterestIndex uint16
+
+	// InterestKeywords contains keywords for interest-based search.
+	InterestKeywords string
+
+	// Current affiliations
+
+	// AffiliationIndex is the affiliation category index for filtering.
+	AffiliationIndex uint16
+
+	// AffiliationKeywords contains keywords for affiliation-based search.
+	AffiliationKeywords string
+
+	// Homepage category (White2 only)
+
+	// HomepageIndex is the homepage category index for filtering.
+	HomepageIndex uint16
+
+	// HomepageKeywords contains keywords for homepage category search.
+	HomepageKeywords string
+
+	// Search options
+
+	// OnlineOnly restricts results to currently online users when true.
+	OnlineOnly bool
 }
