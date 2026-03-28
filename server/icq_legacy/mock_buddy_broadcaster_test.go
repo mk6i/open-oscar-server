@@ -103,16 +103,16 @@ func (_c *mockBuddyBroadcaster_BroadcastBuddyArrived_Call) RunAndReturn(run func
 }
 
 // BroadcastBuddyDeparted provides a mock function for the type mockBuddyBroadcaster
-func (_mock *mockBuddyBroadcaster) BroadcastBuddyDeparted(ctx context.Context, instance *state.SessionInstance) error {
-	ret := _mock.Called(ctx, instance)
+func (_mock *mockBuddyBroadcaster) BroadcastBuddyDeparted(ctx context.Context, screenName state.IdentScreenName) error {
+	ret := _mock.Called(ctx, screenName)
 
 	if len(ret) == 0 {
 		panic("no return value specified for BroadcastBuddyDeparted")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance) error); ok {
-		r0 = returnFunc(ctx, instance)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, state.IdentScreenName) error); ok {
+		r0 = returnFunc(ctx, screenName)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -126,20 +126,20 @@ type mockBuddyBroadcaster_BroadcastBuddyDeparted_Call struct {
 
 // BroadcastBuddyDeparted is a helper method to define mock.On call
 //   - ctx context.Context
-//   - instance *state.SessionInstance
-func (_e *mockBuddyBroadcaster_Expecter) BroadcastBuddyDeparted(ctx interface{}, instance interface{}) *mockBuddyBroadcaster_BroadcastBuddyDeparted_Call {
-	return &mockBuddyBroadcaster_BroadcastBuddyDeparted_Call{Call: _e.mock.On("BroadcastBuddyDeparted", ctx, instance)}
+//   - screenName state.IdentScreenName
+func (_e *mockBuddyBroadcaster_Expecter) BroadcastBuddyDeparted(ctx interface{}, screenName interface{}) *mockBuddyBroadcaster_BroadcastBuddyDeparted_Call {
+	return &mockBuddyBroadcaster_BroadcastBuddyDeparted_Call{Call: _e.mock.On("BroadcastBuddyDeparted", ctx, screenName)}
 }
 
-func (_c *mockBuddyBroadcaster_BroadcastBuddyDeparted_Call) Run(run func(ctx context.Context, instance *state.SessionInstance)) *mockBuddyBroadcaster_BroadcastBuddyDeparted_Call {
+func (_c *mockBuddyBroadcaster_BroadcastBuddyDeparted_Call) Run(run func(ctx context.Context, screenName state.IdentScreenName)) *mockBuddyBroadcaster_BroadcastBuddyDeparted_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *state.SessionInstance
+		var arg1 state.IdentScreenName
 		if args[1] != nil {
-			arg1 = args[1].(*state.SessionInstance)
+			arg1 = args[1].(state.IdentScreenName)
 		}
 		run(
 			arg0,
@@ -154,7 +154,7 @@ func (_c *mockBuddyBroadcaster_BroadcastBuddyDeparted_Call) Return(err error) *m
 	return _c
 }
 
-func (_c *mockBuddyBroadcaster_BroadcastBuddyDeparted_Call) RunAndReturn(run func(ctx context.Context, instance *state.SessionInstance) error) *mockBuddyBroadcaster_BroadcastBuddyDeparted_Call {
+func (_c *mockBuddyBroadcaster_BroadcastBuddyDeparted_Call) RunAndReturn(run func(ctx context.Context, screenName state.IdentScreenName) error) *mockBuddyBroadcaster_BroadcastBuddyDeparted_Call {
 	_c.Call.Return(run)
 	return _c
 }

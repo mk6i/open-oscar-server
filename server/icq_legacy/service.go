@@ -1251,16 +1251,8 @@ func (s *ICQLegacyService) NotifyStatusChange(ctx context.Context, uin uint32, s
 func (s *ICQLegacyService) NotifyUserOffline(ctx context.Context, uin uint32) error {
 	screenName := state.NewIdentScreenName(strconv.FormatUint(uint64(uin), 10))
 
-	// Get the OSCAR session if it exists
-	session := s.sessionRetriever.RetrieveSession(screenName)
-	if session != nil {
-		// Get any instance to broadcast departure
-		instances := session.Instances()
-		if len(instances) > 0 {
-			if err := s.buddyBroadcaster.BroadcastBuddyDeparted(ctx, instances[0]); err != nil {
-				s.logger.Debug("failed to broadcast departure", "err", err)
-			}
-		}
+	if err := s.buddyBroadcaster.BroadcastBuddyDeparted(ctx, screenName); err != nil {
+		s.logger.Debug("failed to broadcast departure", "err", err)
 	}
 
 	return nil

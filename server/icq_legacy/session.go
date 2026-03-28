@@ -27,8 +27,8 @@ type LegacySessionManager struct {
 
 // SessionRegistry is the interface for the unified session manager
 type SessionRegistry interface {
-	AddSession(ctx context.Context, screenName state.DisplayScreenName, doMultiSess bool) (*state.SessionInstance, error)
-	RemoveSession(instance *state.SessionInstance)
+	AddSession(ctx context.Context, screenName state.DisplayScreenName, doMultiSess bool, cfg ...func(sess *state.Session)) (*state.SessionInstance, error)
+	RemoveSession(session *state.Session)
 	RetrieveSession(screenName state.IdentScreenName) *state.Session
 }
 
@@ -143,7 +143,7 @@ func (m *LegacySessionManager) RemoveSession(uin uint32) {
 func (m *LegacySessionManager) removeSessionLocked(session *LegacySession) {
 	// Remove from unified session manager
 	if session.Instance != nil {
-		m.sessionMgr.RemoveSession(session.Instance)
+		m.sessionMgr.RemoveSession(session.Instance.Session())
 	}
 
 	// Remove from indexes

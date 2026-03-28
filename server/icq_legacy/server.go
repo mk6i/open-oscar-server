@@ -72,13 +72,13 @@ func (s *LegacyServer) Start(ctx context.Context) error {
 	s.mu.Unlock()
 
 	// Parse listen address
-	addr, err := net.ResolveUDPAddr("udp", s.config.UDPListener)
+	addr, err := net.ResolveUDPAddr("udp4", s.config.UDPListener)
 	if err != nil {
 		return fmt.Errorf("invalid UDP listener address: %w", err)
 	}
 
 	// Create UDP socket
-	conn, err := net.ListenUDP("udp", addr)
+	conn, err := net.ListenUDP("udp4", addr)
 	if err != nil {
 		return fmt.Errorf("failed to listen on UDP: %w", err)
 	}

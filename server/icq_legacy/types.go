@@ -270,7 +270,7 @@ type MessageRelayer interface {
 // BuddyBroadcaster provides presence broadcast for OSCAR buddy notifications.
 type BuddyBroadcaster interface {
 	BroadcastBuddyArrived(ctx context.Context, screenName state.IdentScreenName, userInfo wire.TLVUserInfo) error
-	BroadcastBuddyDeparted(ctx context.Context, instance *state.SessionInstance) error
+	BroadcastBuddyDeparted(ctx context.Context, screenName state.IdentScreenName) error
 }
 
 // OfflineMessageManager provides offline message storage and retrieval.
