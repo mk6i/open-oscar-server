@@ -13,7 +13,7 @@ import (
 
 type BuddyService interface {
 	AddBuddies(ctx context.Context, instance *state.SessionInstance, inBody wire.SNAC_0x03_0x04_BuddyAddBuddies) error
-	BroadcastBuddyDeparted(ctx context.Context, instance *state.SessionInstance) error
+	BroadcastBuddyDeparted(ctx context.Context, screenName state.IdentScreenName) error
 	DelBuddies(ctx context.Context, instance *state.SessionInstance, inBody wire.SNAC_0x03_0x05_BuddyDelBuddies) error
 	RightsQuery(ctx context.Context, inFrame wire.SNACFrame) wire.SNACMessage
 }
@@ -48,11 +48,11 @@ type AuthService interface {
 	BUCPLogin(ctx context.Context, inBody wire.SNAC_0x17_0x02_BUCPLoginRequest, advertisedHost string) (wire.SNACMessage, error)
 	CrackCookie(authCookie []byte) (state.ServerCookie, error)
 	FLAPLogin(ctx context.Context, inFrame wire.FLAPSignonFrame, advertisedHost string) (wire.TLVRestBlock, error)
-	RegisterBOSSession(ctx context.Context, authCookie state.ServerCookie) (*state.SessionInstance, error)
-	RegisterChatSession(ctx context.Context, authCookie state.ServerCookie) (*state.SessionInstance, error)
+	RegisterBOSSession(ctx context.Context, authCookie state.ServerCookie, conf func(sess *state.Session)) (*state.SessionInstance, error)
+	RegisterChatSession(ctx context.Context, authCookie state.ServerCookie, cfg func(sess *state.Session)) (*state.SessionInstance, error)
 	RetrieveBOSSession(ctx context.Context, authCookie state.ServerCookie) (*state.SessionInstance, error)
-	Signout(ctx context.Context, instance *state.SessionInstance)
-	SignoutChat(ctx context.Context, instance *state.SessionInstance)
+	Signout(ctx context.Context, session *state.Session)
+	SignoutChat(ctx context.Context, sess *state.Session)
 }
 
 type LocateService interface {
@@ -143,7 +143,7 @@ type OfflineMessageManager interface {
 // BuddyBroadcaster broadcasts buddy presence updates
 type BuddyBroadcaster interface {
 	BroadcastBuddyArrived(ctx context.Context, screenName state.IdentScreenName, userInfo wire.TLVUserInfo) error
-	BroadcastBuddyDeparted(ctx context.Context, instance *state.SessionInstance) error
+	BroadcastBuddyDeparted(ctx context.Context, screenName state.IdentScreenName) error
 }
 
 // ProfileManager manages user profiles

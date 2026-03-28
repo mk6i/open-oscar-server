@@ -1067,7 +1067,7 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 			}
 			for _, params := range tc.mockParams.broadcastBuddyDepartedParams {
 				buddyUpdateBroadcaster.EXPECT().
-					BroadcastBuddyDeparted(mock.Anything, matchSession(params.screenName)).
+					BroadcastBuddyDeparted(mock.Anything, params.screenName).
 					Return(params.err)
 			}
 			svc := OServiceService{
@@ -1984,6 +1984,72 @@ func TestNewOServiceUserInfoUpdate(t *testing.T) {
 		require.True(t, ok)
 		require.Equal(t, []byte{0x02}, primary2Bytes)
 		require.Equal(t, got.UserInfo[0].ScreenName, got.UserInfo[2].ScreenName)
+	})
+
+	t.Run("marks instance user flags unavailable when session is away", func(t *testing.T) {
+		session := newTestInstance("me",
+			sessOptUserInfoFlag(wire.OServiceUserFlagUnavailable),
+			sessOptSetFoodGroupVersion(wire.OService, 4))
+
+		got := newOServiceUserInfoUpdate(session)
+
+		require.Len(t, got.UserInfo, 2)
+		flags, ok := got.UserInfo[1].Uint16BE(wire.OServiceUserInfoUserFlags)
+		require.True(t, ok)
+		require.Equal(t, wire.OServiceUserFlagOSCARFree|wire.OServiceUserFlagUnavailable, flags)
+	})
+
+	t.Run("marks instance status invisible when current instance is invisible", func(t *testing.T) {
+		session := newTestInstance("me",
+			sessOptInvisible,
+			sessOptSetFoodGroupVersion(wire.OService, 4))
+
+		got := newOServiceUserInfoUpdate(session)
+
+		require.Len(t, got.UserInfo, 2)
+		status, ok := got.UserInfo[1].Uint32BE(wire.OServiceUserInfoStatus)
+		require.True(t, ok)
+		require.Equal(t, wire.OServiceUserStatusInvisible, status)
+	})
+
+	t.Run("adds buddy icon and profile sig time only for current instance", func(t *testing.T) {
+		icon := wire.BARTID{
+			Type: 1,
+			BARTInfo: wire.BARTInfo{
+				Flags: 1,
+				Hash:  []byte{0xAA, 0xBB, 0xCC},
+			},
+		}
+		session := newTestInstance("me",
+			sessOptSetFoodGroupVersion(wire.OService, 4),
+			sessOptBuddyIcon(icon),
+			sessOptProfile(state.UserProfile{UpdateTime: profileUpdated}))
+		session.Session().AddInstance()
+
+		got := newOServiceUserInfoUpdate(session)
+
+		require.Len(t, got.UserInfo, 3)
+		require.True(t, got.UserInfo[1].HasTag(wire.OServiceUserInfoBARTInfo))
+		require.True(t, got.UserInfo[1].HasTag(wire.OServiceUserInfoSigTime))
+		require.False(t, got.UserInfo[2].HasTag(wire.OServiceUserInfoBARTInfo))
+		require.False(t, got.UserInfo[2].HasTag(wire.OServiceUserInfoSigTime))
+	})
+
+	t.Run("does not add buddy icon when icon type is zero", func(t *testing.T) {
+		session := newTestInstance("me",
+			sessOptSetFoodGroupVersion(wire.OService, 4),
+			sessOptBuddyIcon(wire.BARTID{
+				Type: 0,
+				BARTInfo: wire.BARTInfo{
+					Flags: 1,
+					Hash:  []byte{0x10, 0x20, 0x30},
+				},
+			}))
+
+		got := newOServiceUserInfoUpdate(session)
+
+		require.Len(t, got.UserInfo, 2)
+		require.False(t, got.UserInfo[1].HasTag(wire.OServiceUserInfoBARTInfo))
 	})
 }
 

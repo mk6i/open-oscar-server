@@ -1708,17 +1708,7 @@ func putFeedbagBuddyHandler(w http.ResponseWriter, r *http.Request, buddyBroadca
 		return
 	}
 
-	if order, hasOrder := group.Bytes(wire.FeedbagAttributesOrder); hasOrder {
-		var memberIDs []uint16
-		if err := wire.UnmarshalBE(&memberIDs, bytes.NewReader(order)); err != nil {
-			logger.Error("error decoding order TLV", "err", err.Error())
-			errorMsg(w, "internal server error", http.StatusInternalServerError)
-			return
-		}
-		group.Replace(wire.NewTLVBE(wire.FeedbagAttributesOrder, append(memberIDs, buddyItem.ItemID)))
-	} else {
-		group.Append(wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{buddyItem.ItemID}))
-	}
+	group.AppendOrderMembers(buddyItem.ItemID)
 
 	updates := []wire.FeedbagItem{
 		buddyItem,
@@ -1832,22 +1822,30 @@ func deleteFeedbagBuddyHandler(w http.ResponseWriter, r *http.Request, buddyBroa
 	}
 
 	var itemToDelete *wire.FeedbagItem
-	var groupFound bool
+	var parentGroup *wire.FeedbagItem
 	for _, item := range items {
 		switch {
 		case item.ClassID == wire.FeedbagClassIdGroup && item.GroupID == groupID:
-			groupFound = true
+			parentGroup = &item
 		case item.ClassID == wire.FeedbagClassIdBuddy && item.Name == buddyScreenName && item.GroupID == groupID:
 			itemToDelete = &item
 		}
 	}
 
 	switch {
-	case !groupFound:
+	case parentGroup == nil:
 		errorMsg(w, "group not found", http.StatusNotFound)
 		return
 	case itemToDelete == nil:
 		errorMsg(w, "buddy not found", http.StatusNotFound)
+		return
+	}
+
+	// Remove the buddy from the parent group's order TLV (same as TOC feedbag_list.DeleteBuddy).
+	parentGroup.RemoveOrderMembers(itemToDelete.ItemID)
+	if err := feedbagManager.FeedbagUpsert(r.Context(), me, []wire.FeedbagItem{*parentGroup}); err != nil {
+		logger.Error("error updating feedbag group order", "err", err.Error())
+		errorMsg(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -1867,6 +1865,16 @@ func deleteFeedbagBuddyHandler(w http.ResponseWriter, r *http.Request, buddyBroa
 			},
 			Body: wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
 				Items: []wire.FeedbagItem{*itemToDelete},
+			},
+		})
+		messageRelayer.RelayToScreenName(r.Context(), me, wire.SNACMessage{
+			Frame: wire.SNACFrame{
+				FoodGroup: wire.Feedbag,
+				SubGroup:  wire.FeedbagUpdateItem,
+				RequestID: wire.ReqIDFromServer,
+			},
+			Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
+				Items: []wire.FeedbagItem{*parentGroup},
 			},
 		})
 		instances := session.Instances()

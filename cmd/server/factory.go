@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math/rand"
 	"os"
 	"strings"
 	"time"
@@ -441,9 +442,10 @@ func TOC(deps Container) *toc.Server {
 				deps.inMemorySessionManager,
 				deps.sqLiteUserStore,
 			),
-			CookieBaker:      deps.hmacCookieBaker,
-			DirSearchService: foodgroup.NewODirService(logger, deps.sqLiteUserStore),
-			ICBMService:      deps.icbmSvc,
+			ChatSessionManager: deps.chatSessionManager,
+			CookieBaker:        deps.hmacCookieBaker,
+			DirSearchService:   foodgroup.NewODirService(logger, deps.sqLiteUserStore),
+			ICBMService:        deps.icbmSvc,
 			LocateService: foodgroup.NewLocateService(
 				deps.sqLiteUserStore,
 				deps.inMemorySessionManager,
@@ -474,12 +476,22 @@ func TOC(deps Container) *toc.Server {
 				deps.inMemorySessionManager,
 				deps.inMemorySessionManager,
 			),
-			TOCConfigStore:    deps.sqLiteUserStore,
-			ChatService:       foodgroup.NewChatService(deps.chatSessionManager),
-			ChatNavService:    foodgroup.NewChatNavService(logger, deps.sqLiteUserStore),
+			TOCConfigStore: deps.sqLiteUserStore,
+			ChatService:    foodgroup.NewChatService(deps.chatSessionManager),
+			ChatNavService: foodgroup.NewChatNavService(logger, deps.sqLiteUserStore),
+			FeedbagManager: deps.sqLiteUserStore,
+			FeedbagService: foodgroup.NewFeedbagService(
+				logger,
+				deps.inMemorySessionManager,
+				deps.sqLiteUserStore,
+				deps.sqLiteUserStore,
+				deps.sqLiteUserStore,
+				deps.inMemorySessionManager,
+			),
 			SNACRateLimits:    deps.snacRateLimits,
 			HTTPIPRateLimiter: toc.NewIPRateLimiter(rate.Every(1*time.Minute), 10, 1*time.Minute),
 			SessionRetriever:  deps.inMemorySessionManager,
+			RandIntn:          rand.Intn,
 		},
 		toc.NewIPRateLimiter(rate.Every(1*time.Minute), 10, 1*time.Minute),
 		deps.icbmSvc.RestoreWarningLevel,

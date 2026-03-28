@@ -249,7 +249,30 @@ func (s oscarServer) connectToOSCARService(
 	var instance *state.SessionInstance
 	switch cookie.Service {
 	case wire.BOS:
-		instance, err = s.AuthService.RegisterBOSSession(ctx, cookie)
+
+		sessCfg := func(sess *state.Session) {
+			sess.OnSessionClose(func() {
+				if !shuttingDown(ctx) {
+					if err := s.DepartureNotifier.BroadcastBuddyDeparted(ctx, sess.IdentScreenName()); err != nil {
+						s.Logger.ErrorContext(ctx, "error sending buddy departure notifications", "err", err.Error())
+					}
+				}
+
+				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+				defer cancel()
+
+				// buddy list must be cleared before session is closed, otherwise
+				// there will be a race condition that could cause the buddy list
+				// be prematurely deleted.
+				if err := s.BuddyListRegistry.UnregisterBuddyList(ctx, instance.IdentScreenName()); err != nil {
+					s.Logger.ErrorContext(ctx, "error removing buddy list entry", "err", err.Error())
+				}
+				s.ChatSessionManager.RemoveUserFromAllChats(instance.IdentScreenName())
+				s.AuthService.Signout(ctx, sess)
+			})
+		}
+
+		instance, err = s.AuthService.RegisterBOSSession(ctx, cookie, sessCfg)
 		if err != nil {
 			if errors.Is(err, state.ErrMaxConcurrentSessionsReached) {
 				s.Logger.Debug("session registration failed", "err", err.Error())
@@ -295,7 +318,7 @@ func (s oscarServer) connectToOSCARService(
 				return
 			}
 			if instance.Session().Invisible() {
-				if err := s.DepartureNotifier.BroadcastBuddyDeparted(ctx, instance); err != nil {
+				if err := s.DepartureNotifier.BroadcastBuddyDeparted(ctx, instance.IdentScreenName()); err != nil {
 					s.Logger.ErrorContext(ctx, "error sending buddy departure notifications", "err", err.Error())
 				}
 			} else {
@@ -303,26 +326,6 @@ func (s oscarServer) connectToOSCARService(
 					s.Logger.ErrorContext(ctx, "error sending buddy arrival notifications", "err", err.Error())
 				}
 			}
-		})
-
-		instance.Session().OnSessionClose(func() {
-			if !shuttingDown(ctx) {
-				if err := s.DepartureNotifier.BroadcastBuddyDeparted(ctx, instance); err != nil {
-					s.Logger.ErrorContext(ctx, "error sending buddy departure notifications", "err", err.Error())
-				}
-			}
-
-			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-			defer cancel()
-
-			// buddy list must be cleared before session is closed, otherwise
-			// there will be a race condition that could cause the buddy list
-			// be prematurely deleted.
-			if err := s.BuddyListRegistry.UnregisterBuddyList(ctx, instance.IdentScreenName()); err != nil {
-				s.Logger.ErrorContext(ctx, "error removing buddy list entry", "err", err.Error())
-			}
-			s.ChatSessionManager.RemoveUserFromAllChats(instance.IdentScreenName())
-			s.AuthService.Signout(ctx, instance)
 		})
 
 		if remoteAddr, ok := ctx.Value("ip").(string); ok {
@@ -335,7 +338,14 @@ func (s oscarServer) connectToOSCARService(
 
 		go s.receiveSessMessages(ctx, instance, flapc)
 	case wire.Chat:
-		instance, err = s.AuthService.RegisterChatSession(ctx, cookie)
+		sessCfg := func(sess *state.Session) {
+			sess.OnSessionClose(func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+				defer cancel()
+				s.SignoutChat(ctx, sess)
+			})
+		}
+		instance, err = s.AuthService.RegisterChatSession(ctx, cookie, sessCfg)
 		if err != nil {
 			return err
 		}
@@ -345,12 +355,6 @@ func (s oscarServer) connectToOSCARService(
 		defer func() {
 			instance.CloseInstance()
 		}()
-
-		instance.Session().OnSessionClose(func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-			defer cancel()
-			s.SignoutChat(ctx, instance)
-		})
 
 		go s.receiveSessMessages(ctx, instance, flapc)
 	default:
@@ -410,7 +414,7 @@ func (s oscarServer) authenticate(
 	advertisedHost string,
 ) error {
 	if ok, isBUCP := s.Allow(ip); !ok {
-		s.Logger.Error("user rate limited at login", "remote", ip)
+		s.Logger.InfoContext(ctx, "user rate limited at login, dropping connection")
 		tlv := wire.TLVRestBlock{
 			TLVList: []wire.TLV{
 				wire.NewTLVBE(wire.LoginTLVTagsErrorSubcode, wire.LoginErrRateLimitExceeded),
@@ -501,6 +505,7 @@ func (s oscarServer) processBUCPAuth(ctx context.Context, flapc *wire.FlapClient
 				if err != nil {
 					return err
 				}
+				outSNAC.Frame.RequestID = fr.RequestID
 				if err := flapc.SendSNAC(outSNAC.Frame, outSNAC.Body); err != nil {
 					return err
 				}
@@ -519,16 +524,15 @@ func (s oscarServer) processBUCPAuth(ctx context.Context, flapc *wire.FlapClient
 				if err != nil {
 					return err
 				}
-
-				loginResp := outSNAC.Body.(wire.SNAC_0x17_0x03_BUCPLoginResponse)
+				outSNAC.Frame.RequestID = fr.RequestID
 
 				// Clients expect login response as SNAC on FLAP
 				// channel 2 followed by a FLAP signoff frame to properly close the auth
 				// connection
-				if err := flapc.SendSNAC(outSNAC.Frame, loginResp); err != nil {
+				if err := flapc.SendSNAC(outSNAC.Frame, outSNAC.Body); err != nil {
 					return err
 				}
-				return flapc.NewSignoff(loginResp.TLVRestBlock)
+				return flapc.NewSignoff(wire.TLVRestBlock{})
 			default:
 				s.Logger.Debug("unexpected SNAC received during login",
 					"foodgroup", wire.FoodGroupName(fr.FoodGroup),

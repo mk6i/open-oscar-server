@@ -81,6 +81,12 @@ type channelMsgToHostParamsICBM []struct {
 	err     error
 }
 
+type clientEventParams []struct {
+	sender state.IdentScreenName
+	inBody wire.SNAC_0x04_0x14_ICBMClientEvent
+	err    error
+}
+
 type evilRequestParams []struct {
 	me     state.IdentScreenName
 	inBody wire.SNAC_0x04_0x08_ICBMEvilRequest
@@ -90,13 +96,15 @@ type evilRequestParams []struct {
 
 type icbmParams struct {
 	channelMsgToHostParamsICBM
+	clientEventParams
 	evilRequestParams
 }
 
 type clientOnlineParams []struct {
-	body wire.SNAC_0x01_0x02_OServiceClientOnline
-	me   state.IdentScreenName
-	err  error
+	body    wire.SNAC_0x01_0x02_OServiceClientOnline
+	me      state.IdentScreenName
+	service uint16
+	err     error
 }
 
 type idleNotificationParams []struct {
@@ -260,6 +268,63 @@ type tocConfigParams struct {
 	userParams
 }
 
+type feedBagParams struct {
+	useFeedbagParams
+	feedbagParams
+	feedbagServiceUseParams
+	feedbagServiceUpsertItemParams
+	feedbagServiceDeleteItemParams
+}
+
+// feedbagServiceUseParams is the list of parameters for each expected
+// FeedbagService.Use call (e.g. for TOC2 Signon).
+type feedbagServiceUseParams []struct {
+	err error
+}
+
+type useFeedbagParams []struct {
+	me  state.IdentScreenName
+	err error
+}
+
+// feedbagParams is the list of parameters passed at the mock
+// FeedbagManager.Feedbag call site (e.g. for NewBuddies).
+type feedbagParams []struct {
+	screenName state.IdentScreenName
+	results    []wire.FeedbagItem
+	err        error
+}
+
+// feedbagServiceUpsertItemParams is the list of parameters for each expected
+// FeedbagService.UpsertItem call. Frame is the expected SNACFrame, items is the
+// exact slice of feedbag items (order of params = order of calls).
+type feedbagServiceUpsertItemParams []struct {
+	frame wire.SNACFrame
+	items []wire.FeedbagItem
+	msg   *wire.SNACMessage
+	err   error
+}
+
+// feedbagServiceDeleteItemParams is the list of parameters for each expected
+// FeedbagService.DeleteItem call.
+type feedbagServiceDeleteItemParams []struct {
+	frame  wire.SNACFrame
+	inBody wire.SNAC_0x13_0x0A_FeedbagDeleteItem
+	msg    *wire.SNACMessage
+	err    error
+}
+
+// removeUserFromAllChatsParams is the list of parameters for each expected
+// ChatSessionManager.RemoveUserFromAllChats call.
+type removeUserFromAllChatsParams []struct {
+	user state.IdentScreenName
+}
+
+// chatSessionManagerParams groups mock expectations for ChatSessionManager.
+type chatSessionManagerParams struct {
+	removeUserFromAllChatsParams
+}
+
 type mockParams struct {
 	adminParams
 	authParams
@@ -267,11 +332,13 @@ type mockParams struct {
 	buddyParams
 	chatNavParams
 	chatParams
+	chatSessionManagerParams
 	cookieBakerParams
 	dirSearchParams
 	icbmParams
 	locateParams
 	oServiceParams
+	feedBagParams
 	permitDenyParams
 	sessionRetrieverParams
 	tocConfigParams

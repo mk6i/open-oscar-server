@@ -5,6 +5,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/google/uuid"
 )
@@ -219,6 +221,27 @@ var (
 	// CapGamesAlt is an alternate games capability with different endianness (AIM)
 	CapGamesAlt = uuid.MustParse("0946134A-4C7F-11D1-2282-444553540000")
 )
+
+// ShortCapHexToUUID converts an OSCAR short capability code (1–4 hex digits, e.g. "1348", "1FF")
+// to the full UUID form 0946XXYY-4C7F-11D1-8222-444553540000. Returns the UUID and true if the
+// input is valid hex that fits in a uint16; otherwise returns zero UUID and false.
+func ShortCapHexToUUID(hexStr string) (uuid.UUID, bool) {
+	hexStr = strings.TrimSpace(hexStr)
+	if hexStr == "" || len(hexStr) > 4 {
+		return uuid.Nil, false
+	}
+	val, err := strconv.ParseUint(hexStr, 16, 16)
+	if err != nil {
+		return uuid.Nil, false
+	}
+	// Format: 0946XXYY-4C7F-11D1-8222-444553540000 (XXYY = 16-bit short cap in big-endian hex)
+	uuidStr := fmt.Sprintf("0946%04X-4C7F-11D1-8222-444553540000", val)
+	uid, err := uuid.Parse(uuidStr)
+	if err != nil {
+		return uuid.Nil, false
+	}
+	return uid, true
+}
 
 //
 // 0x01: OService
@@ -2679,6 +2702,55 @@ type FeedbagItem struct {
 	TLVLBlock
 }
 
+// IsEqual reports whether f and other have identical field values, including
+// the same TLVs in the same order with the same data.
+func (f *FeedbagItem) IsEqual(other FeedbagItem) bool {
+	if f.Name != other.Name || f.GroupID != other.GroupID || f.ClassID != other.ClassID {
+		return false
+	}
+	if len(f.TLVLBlock.TLVList) != len(other.TLVLBlock.TLVList) {
+		return false
+	}
+	for i, tlv := range f.TLVLBlock.TLVList {
+		o := other.TLVLBlock.TLVList[i]
+		if tlv.Tag != o.Tag || !bytes.Equal(tlv.Value, o.Value) {
+			return false
+		}
+	}
+	return true
+}
+
+// AppendOrderMembers adds member IDs to the item's order attribute TLV. If
+// the order TLV already exists, the new IDs are appended to it. Otherwise a
+// new order TLV is created.
+func (f *FeedbagItem) AppendOrderMembers(memberIDs ...uint16) {
+	if existing, ok := f.Uint16SliceBE(FeedbagAttributesOrder); ok {
+		f.Replace(NewTLVBE(FeedbagAttributesOrder, append(existing, memberIDs...)))
+	} else {
+		f.Append(NewTLVBE(FeedbagAttributesOrder, memberIDs))
+	}
+}
+
+// RemoveOrderMembers removes the specified member IDs from the item's order
+// attribute TLV. IDs not present in the order are ignored.
+func (f *FeedbagItem) RemoveOrderMembers(memberIDs ...uint16) {
+	existing, ok := f.Uint16SliceBE(FeedbagAttributesOrder)
+	if !ok {
+		return
+	}
+	remove := make(map[uint16]struct{}, len(memberIDs))
+	for _, id := range memberIDs {
+		remove[id] = struct{}{}
+	}
+	filtered := make([]uint16, 0, len(existing))
+	for _, id := range existing {
+		if _, found := remove[id]; !found {
+			filtered = append(filtered, id)
+		}
+	}
+	f.Replace(NewTLVBE(FeedbagAttributesOrder, filtered))
+}
+
 // ICQDCInfo represents ICQ direct connect settings.
 type ICQDCInfo struct {
 	IP                      uint32
@@ -2693,3 +2765,58 @@ type ICQDCInfo struct {
 	LastExtStatusUpdateTime uint32
 	Unknown                 uint16
 }
+
+//
+// TOC Error Codes
+//
+
+const (
+	// General Errors
+	TOCErrorGeneralUserNotAvailable        = "901" // followed by screenname
+	TOCErrorGeneralWarningUserNotAvailable = "902" // followed by screenname
+	TOCErrorGeneralRateLimitHit            = "903"
+	// Admin Errors
+	TOCErrorAdminInvalidInput       = "911"
+	TOCErrorAdminInvalidAccount     = "912"
+	TOCErrorAdminProcessingRequest  = "913"
+	TOCErrorAdminServiceUnavailable = "914"
+	// Chat Errors
+	TOCErrorChatInChatroomUnavailble = "950" // followed by chatroom
+	// IM & Info Errors
+	TOCErrorIMSendingMessagesTooFast = "960" // followed by screenname
+	TOCErrorIMMissedMessageTooBig    = "961" // followed by screenname
+	TOCErrorIMMissedMessageTooFast   = "962" // followed by screenname
+	// DirErrors
+	TOCErrorDirFailure               = "970"
+	TOCErrorDirTooManyMatches        = "971"
+	TOCErrorDirNeedMoreQualifiers    = "972"
+	TOCErrorDirServiceUnavailable    = "973"
+	TOCErrorDirEmailLookupRestricted = "974"
+	TOCErrorDirKeywordIgnored        = "975"
+	TOCErrorDirNoKeywords            = "976"
+	TOCErrorDirLanguageNotSupported  = "977"
+	TOCErrorDirCountryNotSupported   = "978"
+	TOCErrorDirFailureUnknown        = "979" // followed by error msg (or a SubErrorCode?)
+	// Auth Errors
+	TOCErrorAuthIncorrectNickOrPassword                    = "980"
+	TOCErrorAuthServiceUnavailable                         = "981"
+	TOCErrorAuthWarningTooHigh                             = "982"
+	TOCErrorAuthRatedFromLogin                             = "983"
+	TOCErrorAuthUnknownError                               = "989" // followed by SubErrorCode
+	TOCErrorAuthUnknownSubErrorSignOnTooSoon               = "0"
+	TOCErrorAuthUnknownSubErrorInvalidScreennameOrPassword = "7"
+	TOCErrorAuthUnknownSubErrorSuspendedAccount            = "17"
+)
+
+//
+// TOC2 Error Codes
+//
+
+const (
+	// Chat Error Codes
+	TO2CErrorChatJoinError            = "951" // followed by chatroom:SubErrorCode
+	TOC2ErrorChatJoinSubErrorReset    = "-1"
+	TOC2ErrorChatJoinSubErrorChatFull = "24"
+	TOC2ErrorChatJoinSubErrorRated    = "48"
+	TOC2ErrorChatJoinSubErrorEjected  = "74"
+)

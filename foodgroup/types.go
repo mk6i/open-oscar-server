@@ -90,7 +90,7 @@ type buddyBroadcaster interface {
 	BroadcastBuddyArrived(ctx context.Context, screenName state.IdentScreenName, userInfo wire.TLVUserInfo) error
 
 	// BroadcastBuddyDeparted notifies all relevant users that the given user has gone offline.
-	BroadcastBuddyDeparted(ctx context.Context, instance *state.SessionInstance) error
+	BroadcastBuddyDeparted(ctx context.Context, screenName state.IdentScreenName) error
 
 	// BroadcastVisibility sends presence updates to the specified filter list.
 	// If sendDepartures is true, departure events are sent as well.
@@ -170,10 +170,10 @@ type ChatSessionRegistry interface {
 	// param identifies the chat room to which screenName is added. It returns
 	// the newly created session instance registered in the chat session
 	// manager.
-	AddSession(ctx context.Context, chatCookie string, screenName state.DisplayScreenName) (*state.SessionInstance, error)
+	AddSession(ctx context.Context, chatCookie string, screenName state.DisplayScreenName, cfg ...func(sess *state.Session)) (*state.SessionInstance, error)
 
 	// RemoveSession removes a session from the chat session manager.
-	RemoveSession(instance *state.SessionInstance)
+	RemoveSession(sess *state.Session)
 }
 
 // ClientSideBuddyListManager defines operations for managing a user's buddy list,
@@ -369,11 +369,11 @@ type SessionRegistry interface {
 	// When multiple concurrent calls are made for the same screen name, only one will succeed;
 	// the others will return an error once the context is done.
 	// If doMultiSess is true, allows multiple sessions for the same screen name.
-	AddSession(ctx context.Context, screenName state.DisplayScreenName, doMultiSess bool) (*state.SessionInstance, error)
+	AddSession(ctx context.Context, screenName state.DisplayScreenName, doMultiSess bool, cfg ...func(sess *state.Session)) (*state.SessionInstance, error)
 
 	// RemoveSession removes the given session from the registry, allowing future sessions
 	// to be created for the same screen name.
-	RemoveSession(instance *state.SessionInstance)
+	RemoveSession(session *state.Session)
 }
 
 // SessionRetriever defines a method for retrieving an active session

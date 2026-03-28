@@ -250,7 +250,7 @@ func (s OServiceService) SetUserInfoFields(ctx context.Context, instance *state.
 		instance.SetUserStatusBitmask(status)
 
 		if instance.Session().Invisible() {
-			if err := s.buddyBroadcaster.BroadcastBuddyDeparted(ctx, instance); err != nil {
+			if err := s.buddyBroadcaster.BroadcastBuddyDeparted(ctx, instance.IdentScreenName()); err != nil {
 				return wire.SNACMessage{}, err
 			}
 		} else {
@@ -837,32 +837,32 @@ func newOServiceUserInfoUpdate(instance *state.SessionInstance) wire.SNAC_0x01_0
 
 		userInfo[0].Append(wire.NewTLVBE(wire.OServiceUserInfoMyInstanceNum, []byte{instance.Num()}))
 
-		for _, instance := range instance.Session().Instances() {
+		for _, cur := range instance.Session().Instances() {
 			instanceInfo := wire.TLVUserInfo{
-				ScreenName:   instance.DisplayScreenName().String(),
-				WarningLevel: instance.Warning(),
+				ScreenName:   cur.DisplayScreenName().String(),
+				WarningLevel: cur.Warning(),
 			}
 
 			// sign-in timestamp
-			instanceInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoSignonTOD, uint32(instance.SignonTime().Unix())))
+			instanceInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoSignonTOD, uint32(cur.SignonTime().Unix())))
 
 			// use the first instance as a template
-			uFlags := instance.UserInfoBitmask()
+			uFlags := cur.UserInfoBitmask()
 
-			if instance.Session().Away() {
+			if cur.Session().Away() {
 				uFlags |= wire.OServiceUserFlagUnavailable
 			}
 			instanceInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoUserFlags, uFlags))
 
 			// user status flags - user-level (shared)
 			var statusBitmask uint32
-			if instance.Invisible() {
+			if cur.Invisible() {
 				statusBitmask |= wire.OServiceUserStatusInvisible
 			}
 			instanceInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoStatus, statusBitmask))
 
-			if instance == instance {
-				if icon, hasIcon := instance.Session().BuddyIcon(); hasIcon {
+			if cur == instance {
+				if icon, hasIcon := cur.Session().BuddyIcon(); hasIcon {
 					// set buddy icon metadata, if user has buddy icon
 					if icon.Type != 0 {
 						instanceInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, icon))
@@ -870,22 +870,18 @@ func newOServiceUserInfoUpdate(instance *state.SessionInstance) wire.SNAC_0x01_0
 				}
 			}
 
-			//Get the best instance for each TLV value
-			//mostCapableCaps := instance.getMostCapableCaps()
-			//capabilities - show most capable instance (union of all capabilities)
-			instanceInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoOscarCaps, instance.Session().Caps()))
-
+			instanceInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoOscarCaps, cur.Session().Caps()))
 			instanceInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoMySubscriptions, uint32(0)))
 
-			if instance == instance {
-				profile := instance.Profile()
+			if cur == instance {
+				profile := cur.Profile()
 				if !profile.UpdateTime.IsZero() {
 					// set profile update time if the profile was set
 					instanceInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoSigTime, uint32(profile.UpdateTime.Unix())))
 				}
 			}
 
-			instanceInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoPrimaryInstance, []byte{instance.Num()}))
+			instanceInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoPrimaryInstance, []byte{cur.Num()}))
 
 			userInfo = append(userInfo, instanceInfo)
 		}

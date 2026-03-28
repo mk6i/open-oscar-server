@@ -34,7 +34,7 @@ type SessionHandler struct {
 type AuthService interface {
 	BUCPChallenge(ctx context.Context, bodyIn wire.SNAC_0x17_0x06_BUCPChallengeRequest, newUUID func() uuid.UUID) (wire.SNACMessage, error)
 	BUCPLogin(ctx context.Context, bodyIn wire.SNAC_0x17_0x02_BUCPLoginRequest, advertisedHost string) (wire.SNACMessage, error)
-	RegisterBOSSession(ctx context.Context, authCookie state.ServerCookie) (*state.SessionInstance, error)
+	RegisterBOSSession(ctx context.Context, authCookie state.ServerCookie, conf func(sess *state.Session)) (*state.SessionInstance, error)
 }
 
 // SessionManager defines methods for OSCAR session management.
@@ -511,7 +511,7 @@ func (h *SessionHandler) EndSession(w http.ResponseWriter, r *http.Request) {
 	if session.OSCARSession != nil && h.OSCARSessionManager != nil {
 		// Broadcast departure to OSCAR clients
 		if h.BuddyBroadcaster != nil {
-			if err := h.BuddyBroadcaster.BroadcastBuddyDeparted(ctx, session.OSCARSession); err != nil {
+			if err := h.BuddyBroadcaster.BroadcastBuddyDeparted(ctx, session.OSCARSession.IdentScreenName()); err != nil {
 				h.Logger.ErrorContext(ctx, "failed to broadcast buddy departure", "err", err.Error())
 			}
 		}

@@ -341,7 +341,7 @@ func (s *Server) dispatchFLAP(ctx context.Context, conn net.Conn) error {
 
 	ctx = context.WithValue(ctx, "ip", conn.RemoteAddr().String())
 
-	clientFlap, err := s.initFLAP(conn)
+	clientFlap, err := s.initFLAP(ctx, conn)
 	if err != nil {
 		return err
 	}
@@ -353,13 +353,16 @@ func (s *Server) dispatchFLAP(ctx context.Context, conn net.Conn) error {
 	}
 
 	if ok := s.loginIPRateLimiter.Allow(ip); !ok {
+		s.logger.InfoContext(ctx, "user rate limited at login, dropping connection")
 		if err := clientFlap.SendDataFrame([]byte("ERROR:983")); err != nil {
 			return fmt.Errorf("clientFlap.SendDataFrame: %w", err)
 		}
 		return nil
 	}
 
-	sessBOS, err := s.login(ctx, clientFlap)
+	chatRegistry := NewChatRegistry()
+
+	sessBOS, err := s.login(ctx, clientFlap, chatRegistry)
 	if err != nil {
 		return fmt.Errorf("s.login: %w", err)
 	}
@@ -377,8 +380,6 @@ func (s *Server) dispatchFLAP(ctx context.Context, conn net.Conn) error {
 		}
 		sessBOS.SetRemoteAddr(&ip)
 	}
-
-	chatRegistry := NewChatRegistry()
 
 	return s.handleTOCRequest(ctx, closeConn, sessBOS, chatRegistry, clientFlap)
 }
@@ -398,12 +399,8 @@ func (s *Server) handleTOCRequest(
 	chatRegistry *ChatRegistry,
 	clientFlap *wire.FlapClient,
 ) error {
-	if err := s.recalcWarning(ctx, sessBOS); err != nil {
-		return fmt.Errorf("failed to recalculate warning level: %w", err)
-	}
-
 	// TOC response queue
-	msgCh := make(chan []byte, 1)
+	msgCh := make(chan []string, 1)
 
 	g, ctx := errgroup.WithContext(ctx)
 
@@ -427,16 +424,10 @@ func (s *Server) handleTOCRequest(
 		return errors.Join(err, errServerWrite)
 	})
 
-	// process warning limits
-	g.Go(func() error {
-		s.lowerWarnLevel(ctx, sessBOS)
-		return nil
-	})
-
 	return g.Wait()
 }
 
-func (s *Server) runClientCommands(ctx context.Context, doAsync func(f func() error), sessBOS *state.SessionInstance, chatRegistry *ChatRegistry, clientFlap *wire.FlapClient, toCh chan<- []byte) error {
+func (s *Server) runClientCommands(ctx context.Context, doAsync func(f func() error), sessBOS *state.SessionInstance, chatRegistry *ChatRegistry, clientFlap *wire.FlapClient, toCh chan<- []string) error {
 	for {
 		clientFrame, err := clientFlap.ReceiveFLAP()
 		if err != nil {
@@ -461,7 +452,7 @@ func (s *Server) runClientCommands(ctx context.Context, doAsync func(f func() er
 			msg := s.bosProxy.RecvClientCmd(ctx, sessBOS, chatRegistry, clientFrame.Payload, toCh, doAsync)
 			if len(msg) > 0 {
 				select {
-				case toCh <- []byte(msg):
+				case toCh <- msg:
 				case <-ctx.Done():
 					return nil
 				}
@@ -472,30 +463,32 @@ func (s *Server) runClientCommands(ctx context.Context, doAsync func(f func() er
 	}
 }
 
-func (s *Server) sendToClient(ctx context.Context, toClient <-chan []byte, clientFlap *wire.FlapClient) error {
+func (s *Server) sendToClient(ctx context.Context, toClient <-chan []string, clientFlap *wire.FlapClient) error {
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
-		case msg := <-toClient:
-			if err := clientFlap.SendDataFrame(msg); err != nil {
-				return fmt.Errorf("clientFlap.SendDataFrame: %w", err)
-			}
-			if s.logger.Enabled(ctx, slog.LevelDebug) {
-				s.logger.DebugContext(ctx, "server response", "command", msg)
-			} else {
-				// just log the command, omit params
-				idx := len(msg)
-				if col := bytes.IndexByte(msg, ':'); col > -1 {
-					idx = col
+		case msgs := <-toClient:
+			for _, m := range msgs {
+				if err := clientFlap.SendDataFrame([]byte(m)); err != nil {
+					return fmt.Errorf("clientFlap.SendDataFrame: %w", err)
 				}
-				s.logger.InfoContext(ctx, "server response", "command", msg[0:idx])
+				if s.logger.Enabled(ctx, slog.LevelDebug) {
+					s.logger.DebugContext(ctx, "server response", "command", m)
+				} else {
+					// just log the command, omit params
+					idx := len(m)
+					if col := bytes.IndexByte([]byte(m), ':'); col > -1 {
+						idx = col
+					}
+					s.logger.InfoContext(ctx, "server response", "command", m[0:idx])
+				}
 			}
 		}
 	}
 }
 
-func (s *Server) login(ctx context.Context, clientFlap *wire.FlapClient) (*state.SessionInstance, error) {
+func (s *Server) login(ctx context.Context, clientFlap *wire.FlapClient, chatRegistry *ChatRegistry) (*state.SessionInstance, error) {
 	clientFrame, err := clientFlap.ReceiveFLAP()
 	if err != nil {
 		if errors.Is(err, io.EOF) {
@@ -504,17 +497,8 @@ func (s *Server) login(ctx context.Context, clientFlap *wire.FlapClient) (*state
 		return nil, fmt.Errorf("clientFlap.ReceiveFLAP: %w", err)
 	}
 
-	cmd := clientFrame.Payload
-	var args []byte
+	sessBOS, reply := s.bosProxy.Signon(ctx, clientFrame.Payload, s.recalcWarning, s.lowerWarnLevel, chatRegistry)
 
-	if idx := bytes.IndexByte(clientFrame.Payload, ' '); idx > -1 {
-		cmd, args = clientFrame.Payload[:idx], clientFrame.Payload[idx:]
-	}
-	if string(cmd) != "toc_signon" {
-		return nil, errors.New("expected toc_signon")
-	}
-
-	sessBOS, reply := s.bosProxy.Signon(ctx, args)
 	for _, m := range reply {
 		if err := clientFlap.SendDataFrame([]byte(m)); err != nil {
 			return nil, fmt.Errorf("clientFlap.SendDataFrame: %w", err)
@@ -525,17 +509,29 @@ func (s *Server) login(ctx context.Context, clientFlap *wire.FlapClient) (*state
 }
 
 // initFLAP sets up a new FLAP connection. It returns a flap client if the
-// connection successfully initialized.
-func (s *Server) initFLAP(rw io.ReadWriter) (*wire.FlapClient, error) {
-	expected := "FLAPON\r\n\r\n"
-	buf := make([]byte, len(expected))
+// connection successfully initialized. It accepts either "FLAPON\n\n" or
+// "FLAPON\r\n\r\n".
+func (s *Server) initFLAP(ctx context.Context, rw io.ReadWriter) (*wire.FlapClient, error) {
+	buf := make([]byte, 8)
 
 	_, err := io.ReadFull(rw, buf)
 	if err != nil {
 		return nil, fmt.Errorf("io.ReadFull: %w", err)
 	}
-	if expected != string(buf) {
+	if string(buf[:6]) != "FLAPON" {
 		return nil, fmt.Errorf("expected FLAPON, got %s", buf)
+	}
+	if buf[6] == '\r' && buf[7] == '\n' {
+		crlf := make([]byte, 2)
+		_, err := io.ReadFull(rw, crlf)
+		if err != nil {
+			return nil, fmt.Errorf("io.ReadFull: %w", err)
+		}
+		if crlf[0] != '\r' || crlf[1] != '\n' {
+			return nil, fmt.Errorf("expected \\r\\n after FLAPON\\r\\n, got %s", crlf)
+		}
+	} else if buf[6] != '\n' || buf[7] != '\n' {
+		return nil, fmt.Errorf("expected FLAPON then \\n\\n or \\r\\n\\r\\n, got %s", buf)
 	}
 
 	clientFlap := wire.NewFlapClient(0, rw, rw)
@@ -543,8 +539,15 @@ func (s *Server) initFLAP(rw io.ReadWriter) (*wire.FlapClient, error) {
 	if err := clientFlap.SendSignonFrame(nil); err != nil {
 		return nil, fmt.Errorf("clientFlap.SendSignonFrame: %w", err)
 	}
-	if _, err := clientFlap.ReceiveSignonFrame(); err != nil {
+
+	frame, err := clientFlap.ReceiveSignonFrame()
+	if err != nil {
 		return nil, fmt.Errorf("clientFlap.ReceiveSignonFrame: %w", err)
+	}
+	if sn, hasSn := frame.String(0x01); hasSn {
+		s.logger.DebugContext(ctx, "new connection", "screen_name", sn)
+	} else {
+		s.logger.DebugContext(ctx, "new connection from unknown screen name")
 	}
 
 	return clientFlap, nil

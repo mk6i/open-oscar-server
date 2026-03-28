@@ -36,6 +36,10 @@ builds:
     main: ./cmd/server
     env:
       - CGO_ENABLED=0
+    hooks:
+      post:
+        - cmd: bash ./scripts/sign_windows.sh "{{ .Path }}"
+          output: true
 
 archives:
   - id: linux

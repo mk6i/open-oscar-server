@@ -953,6 +953,13 @@ func matchSession(mustMatch state.IdentScreenName) interface{} {
 	})
 }
 
+// matchUserSession matches a mock call for *state.Session by ident screen name.
+func matchUserSession(mustMatch state.IdentScreenName) interface{} {
+	return mock.MatchedBy(func(s *state.Session) bool {
+		return mustMatch == s.IdentScreenName()
+	})
+}
+
 // matchContext matches any instance of Context interface.
 func matchContext() interface{} {
 	return mock.MatchedBy(func(ctx any) bool {

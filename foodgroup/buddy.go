@@ -128,8 +128,8 @@ func (s BuddyService) BroadcastBuddyArrived(ctx context.Context, screenName stat
 	return s.buddyBroadcaster.BroadcastBuddyArrived(ctx, screenName, userInfo)
 }
 
-func (s BuddyService) BroadcastBuddyDeparted(ctx context.Context, instance *state.SessionInstance) error {
-	return s.buddyBroadcaster.BroadcastBuddyDeparted(ctx, instance)
+func (s BuddyService) BroadcastBuddyDeparted(ctx context.Context, screenName state.IdentScreenName) error {
+	return s.buddyBroadcaster.BroadcastBuddyDeparted(ctx, screenName)
 }
 
 func (s BuddyService) BroadcastVisibility(ctx context.Context, you *state.SessionInstance, filter []state.IdentScreenName, doSendDepartures bool) error {
@@ -195,8 +195,8 @@ func (s buddyNotifier) BroadcastBuddyArrived(ctx context.Context, screenName sta
 	return nil
 }
 
-func (s buddyNotifier) BroadcastBuddyDeparted(ctx context.Context, instance *state.SessionInstance) error {
-	users, err := s.relationshipFetcher.AllRelationships(ctx, instance.IdentScreenName(), nil)
+func (s buddyNotifier) BroadcastBuddyDeparted(ctx context.Context, screenName state.IdentScreenName) error {
+	users, err := s.relationshipFetcher.AllRelationships(ctx, screenName, nil)
 	if err != nil {
 		return err
 	}
@@ -219,8 +219,8 @@ func (s buddyNotifier) BroadcastBuddyDeparted(ctx context.Context, instance *sta
 			TLVUserInfo: wire.TLVUserInfo{
 				// don't include the TLV block, otherwise the AIM client fails
 				// to process the block event
-				ScreenName:   instance.IdentScreenName().String(),
-				WarningLevel: instance.Warning(),
+				ScreenName:   screenName.String(),
+				WarningLevel: 0,
 				TLVBlock: wire.TLVBlock{
 					TLVList: wire.TLVList{
 						// this TLV needs to be set in order for departure

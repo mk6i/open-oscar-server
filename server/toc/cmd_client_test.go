@@ -3,6 +3,7 @@ package toc
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"io"
 	"log/slog"
 	"testing"
@@ -26,7 +27,7 @@ func TestOSCARProxy_RecvClientCmd_AddBuddy(t *testing.T) {
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
-		wantMsg string
+		wantMsg []string
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
@@ -53,6 +54,7 @@ func TestOSCARProxy_RecvClientCmd_AddBuddy(t *testing.T) {
 					},
 				},
 			},
+			wantMsg: []string{},
 		},
 		{
 			name:     "add buddies with empty list",
@@ -68,6 +70,7 @@ func TestOSCARProxy_RecvClientCmd_AddBuddy(t *testing.T) {
 					},
 				},
 			},
+			wantMsg: []string{},
 		},
 		{
 			name:     "add buddies, receive error from buddy service",
@@ -90,7 +93,7 @@ func TestOSCARProxy_RecvClientCmd_AddBuddy(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: cmdInternalSvcErr,
+			wantMsg: []string{cmdInternalSvcErr},
 		},
 	}
 
@@ -125,7 +128,7 @@ func TestOSCARProxy_RecvClientCmd_AddPermit(t *testing.T) {
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
-		wantMsg string
+		wantMsg []string
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
@@ -152,6 +155,7 @@ func TestOSCARProxy_RecvClientCmd_AddPermit(t *testing.T) {
 					},
 				},
 			},
+			wantMsg: []string{},
 		},
 		{
 			name:     "permit buddies, receive error from buddy service",
@@ -174,7 +178,7 @@ func TestOSCARProxy_RecvClientCmd_AddPermit(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: cmdInternalSvcErr,
+			wantMsg: []string{cmdInternalSvcErr},
 		},
 		{
 			name:     "permit buddies with empty list",
@@ -190,6 +194,7 @@ func TestOSCARProxy_RecvClientCmd_AddPermit(t *testing.T) {
 					},
 				},
 			},
+			wantMsg: []string{},
 		},
 	}
 
@@ -224,7 +229,7 @@ func TestOSCARProxy_RecvClientCmd_AddDeny(t *testing.T) {
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
-		wantMsg string
+		wantMsg []string
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
@@ -251,6 +256,7 @@ func TestOSCARProxy_RecvClientCmd_AddDeny(t *testing.T) {
 					},
 				},
 			},
+			wantMsg: []string{},
 		},
 		{
 			name:     "deny buddies, receive error from buddy service",
@@ -273,7 +279,7 @@ func TestOSCARProxy_RecvClientCmd_AddDeny(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: cmdInternalSvcErr,
+			wantMsg: []string{cmdInternalSvcErr},
 		},
 		{
 			name:     "deny buddies with empty list",
@@ -289,6 +295,7 @@ func TestOSCARProxy_RecvClientCmd_AddDeny(t *testing.T) {
 					},
 				},
 			},
+			wantMsg: []string{},
 		},
 	}
 
@@ -323,7 +330,7 @@ func TestOSCARProxy_RecvClientCmd_FormatNickname(t *testing.T) {
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
-		wantMsg string
+		wantMsg []string
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
@@ -358,7 +365,7 @@ func TestOSCARProxy_RecvClientCmd_FormatNickname(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: "ADMIN_NICK_STATUS:0",
+			wantMsg: []string{"ADMIN_NICK_STATUS:0", "NICK:mYsCrEeNnAmE"},
 		},
 		{
 			name:     "format nickname - invalid length",
@@ -391,7 +398,7 @@ func TestOSCARProxy_RecvClientCmd_FormatNickname(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: "ERROR:911",
+			wantMsg: []string{"ERROR:911"},
 		},
 		{
 			name:     "format nickname - invalid screen name",
@@ -424,7 +431,7 @@ func TestOSCARProxy_RecvClientCmd_FormatNickname(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: "ERROR:911",
+			wantMsg: []string{"ERROR:911"},
 		},
 		{
 			name:     "format nickname - catch-all error",
@@ -457,7 +464,7 @@ func TestOSCARProxy_RecvClientCmd_FormatNickname(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: "ERROR:913",
+			wantMsg: []string{"ERROR:913"},
 		},
 		{
 			name:     "format nickname - runtime error from admin svc",
@@ -480,7 +487,7 @@ func TestOSCARProxy_RecvClientCmd_FormatNickname(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: cmdInternalSvcErr,
+			wantMsg: []string{cmdInternalSvcErr},
 		},
 		{
 			name:     "change password - unexpected response from admin svc",
@@ -505,13 +512,13 @@ func TestOSCARProxy_RecvClientCmd_FormatNickname(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: cmdInternalSvcErr,
+			wantMsg: []string{cmdInternalSvcErr},
 		},
 		{
 			name:     "bad command",
 			me:       newTestSession("me"),
 			givenCmd: []byte(`toc_format_nickname`),
-			wantMsg:  cmdInternalSvcErr,
+			wantMsg:  []string{cmdInternalSvcErr},
 		},
 	}
 
@@ -584,10 +591,12 @@ func TestOSCARProxy_RecvClientCmd_ChatAccept(t *testing.T) {
 		// givenChatRegistry is the chat registry passed to the function
 		givenChatRegistry *ChatRegistry
 		// wantMsg is the expected TOC response
-		wantMsg string
+		wantMsg []string
 		// expectChatSession indicates whether a chat session should be present
 		// in the chat registry
 		expectChatSession bool
+		// checkSession validates the state of the registered chat session (chat ID 0)
+		checkSession func(*testing.T, *state.SessionInstance)
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
@@ -648,8 +657,72 @@ func TestOSCARProxy_RecvClientCmd_ChatAccept(t *testing.T) {
 					},
 				},
 			},
-			wantMsg:           "CHAT_JOIN:0:cool room",
+			wantMsg:           []string{"CHAT_JOIN:0:cool room"},
 			expectChatSession: true,
+		},
+		{
+			name:     "accept chat - TOC2 with encoded messaging propagates to chat session",
+			me:       newTestSession("me", func(i *state.SessionInstance) { i.SetTOC2(true) }),
+			givenCmd: []byte(`toc_chat_accept 0`),
+			givenChatRegistry: func() *ChatRegistry {
+				reg := NewChatRegistry()
+				reg.Add(wire.ICBMRoomInfo{
+					Cookie:   "the-cookie",
+					Exchange: 4,
+					Instance: 0,
+				})
+				return reg
+			}(),
+			mockParams: mockParams{
+				chatNavParams: chatNavParams{
+					requestRoomInfoParams: requestRoomInfoParams{
+						{
+							inBody: wire.SNAC_0x0D_0x04_ChatNavRequestRoomInfo{
+								Cookie:         "the-cookie",
+								Exchange:       4,
+								InstanceNumber: 0,
+							},
+							msg: navInfo,
+						},
+					},
+				},
+				oServiceParams: oServiceParams{
+					serviceRequestParams: serviceRequestParams{
+						{
+							me:     state.NewIdentScreenName("me"),
+							bodyIn: svcReq,
+							msg:    svcResp,
+						},
+					},
+					clientOnlineParams: clientOnlineParams{
+						{
+							body: wire.SNAC_0x01_0x02_OServiceClientOnline{},
+							me:   state.NewIdentScreenName("me"),
+						},
+					},
+				},
+				authParams: authParams{
+					crackCookieParams: crackCookieParams{
+						{
+							cookieIn:  []byte("chat-auth-cookie"),
+							cookieOut: state.ServerCookie{ChatCookie: "chat-auth-cookie"},
+						},
+					},
+					registerChatSessionParams: registerChatSessionParams{
+						{
+							authCookie: state.ServerCookie{ChatCookie: "chat-auth-cookie"},
+							instance:   newTestSession("me"),
+						},
+					},
+				},
+			},
+			wantMsg:           []string{"CHAT_JOIN:0:cool room"},
+			expectChatSession: true,
+			checkSession: func(t *testing.T, sess *state.SessionInstance) {
+				assert.NotNil(t, sess, "chat session should be registered")
+				assert.True(t, sess.IsTOC2(), "chat session should have TOC2 set")
+				assert.True(t, sess.SupportsTOC2MsgEnc(), "chat session should have TOC2 msg enc set")
+			},
 		},
 		{
 			name:     "accept chat, receive error from client online",
@@ -708,7 +781,7 @@ func TestOSCARProxy_RecvClientCmd_ChatAccept(t *testing.T) {
 					},
 				},
 			},
-			wantMsg:           cmdInternalSvcErr,
+			wantMsg:           []string{cmdInternalSvcErr},
 			expectChatSession: false,
 		},
 		{
@@ -762,7 +835,7 @@ func TestOSCARProxy_RecvClientCmd_ChatAccept(t *testing.T) {
 					},
 				},
 			},
-			wantMsg:           cmdInternalSvcErr,
+			wantMsg:           []string{cmdInternalSvcErr},
 			expectChatSession: false,
 		},
 		{
@@ -801,7 +874,7 @@ func TestOSCARProxy_RecvClientCmd_ChatAccept(t *testing.T) {
 					},
 				},
 			},
-			wantMsg:           cmdInternalSvcErr,
+			wantMsg:           []string{cmdInternalSvcErr},
 			expectChatSession: false,
 		},
 		{
@@ -831,7 +904,7 @@ func TestOSCARProxy_RecvClientCmd_ChatAccept(t *testing.T) {
 					},
 				},
 			},
-			wantMsg:           cmdInternalSvcErr,
+			wantMsg:           []string{cmdInternalSvcErr},
 			expectChatSession: false,
 		},
 		{
@@ -839,7 +912,7 @@ func TestOSCARProxy_RecvClientCmd_ChatAccept(t *testing.T) {
 			me:                newTestSession("me"),
 			givenCmd:          []byte(`toc_chat_accept`),
 			givenChatRegistry: NewChatRegistry(),
-			wantMsg:           cmdInternalSvcErr,
+			wantMsg:           []string{cmdInternalSvcErr},
 			expectChatSession: false,
 		},
 		{
@@ -847,7 +920,7 @@ func TestOSCARProxy_RecvClientCmd_ChatAccept(t *testing.T) {
 			me:                newTestSession("me"),
 			givenCmd:          []byte(`toc_chat_accept four`),
 			givenChatRegistry: NewChatRegistry(),
-			wantMsg:           cmdInternalSvcErr,
+			wantMsg:           []string{cmdInternalSvcErr},
 			expectChatSession: false,
 		},
 	}
@@ -877,7 +950,7 @@ func TestOSCARProxy_RecvClientCmd_ChatAccept(t *testing.T) {
 			authSvc := newMockAuthService(t)
 			for _, params := range tc.mockParams.authParams.registerChatSessionParams {
 				authSvc.EXPECT().
-					RegisterChatSession(ctx, params.authCookie).
+					RegisterChatSession(ctx, params.authCookie, mock.Anything).
 					Return(params.instance, params.err)
 			}
 			for _, params := range tc.mockParams.authParams.crackCookieParams {
@@ -901,6 +974,9 @@ func TestOSCARProxy_RecvClientCmd_ChatAccept(t *testing.T) {
 			assert.NoError(t, g.Wait())
 			assert.Equal(t, tc.wantMsg, msg)
 			assert.Equal(t, tc.expectChatSession, len(tc.givenChatRegistry.Sessions()) == 1)
+			if tc.checkSession != nil {
+				tc.checkSession(t, tc.givenChatRegistry.RetrieveSess(0))
+			}
 		})
 	}
 }
@@ -916,7 +992,7 @@ func TestOSCARProxy_RecvClientCmd_ChatInvite(t *testing.T) {
 		// givenChatRegistry is the chat registry passed to the function
 		givenChatRegistry *ChatRegistry
 		// wantMsg is the expected TOC response
-		wantMsg string
+		wantMsg []string
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
@@ -968,6 +1044,7 @@ func TestOSCARProxy_RecvClientCmd_ChatInvite(t *testing.T) {
 					},
 				},
 			},
+			wantMsg: []string{},
 		},
 		{
 			name:     "send chat invitation, receive error from ICBM svc",
@@ -1017,25 +1094,25 @@ func TestOSCARProxy_RecvClientCmd_ChatInvite(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: cmdInternalSvcErr,
+			wantMsg: []string{cmdInternalSvcErr},
 		},
 		{
 			name:              "send chat invitation to non-existent room",
 			me:                newTestSession("me"),
 			givenCmd:          []byte(`toc_chat_invite 0 "join my chat!" friend1`),
 			givenChatRegistry: NewChatRegistry(),
-			wantMsg:           cmdInternalSvcErr,
+			wantMsg:           []string{cmdInternalSvcErr},
 		},
 		{
 			name:     "bad chat room ID",
 			givenCmd: []byte(`toc_chat_invite zero "join my chat!" friend1`),
-			wantMsg:  cmdInternalSvcErr,
+			wantMsg:  []string{cmdInternalSvcErr},
 		},
 		{
 			name:     "bad command",
 			me:       newTestSession("me"),
 			givenCmd: []byte(`toc_chat_invite`),
-			wantMsg:  cmdInternalSvcErr,
+			wantMsg:  []string{cmdInternalSvcErr},
 		},
 	}
 
@@ -1112,10 +1189,12 @@ func TestOSCARProxy_RecvClientCmd_ChatJoin(t *testing.T) {
 		// givenChatRegistry is the chat registry passed to the function
 		givenChatRegistry *ChatRegistry
 		// wantMsg is the expected TOC response
-		wantMsg string
+		wantMsg []string
 		// expectChatSession indicates whether a chat session should be present
 		// in the chat registry
 		expectChatSession bool
+		// checkSession validates the state of the registered chat session (chat ID 0)
+		checkSession func(*testing.T, *state.SessionInstance)
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
@@ -1165,8 +1244,61 @@ func TestOSCARProxy_RecvClientCmd_ChatJoin(t *testing.T) {
 					},
 				},
 			},
-			wantMsg:           "CHAT_JOIN:0:cool room :)",
+			wantMsg:           []string{"CHAT_JOIN:0:cool room :)"},
 			expectChatSession: true,
+		},
+		{
+			name:              "successfully join chat - TOC2 with encoded messaging propagates to chat session",
+			me:                newTestSession("me", func(i *state.SessionInstance) { i.SetTOC2(true) }),
+			givenCmd:          []byte(`toc_chat_join 4 "cool room :\)"`),
+			givenChatRegistry: NewChatRegistry(),
+			mockParams: mockParams{
+				chatNavParams: chatNavParams{
+					createRoomParams: createRoomParams{
+						{
+							me:     state.NewIdentScreenName("me"),
+							inBody: roomInfo,
+							msg:    navInfo,
+						},
+					},
+				},
+				oServiceParams: oServiceParams{
+					serviceRequestParams: serviceRequestParams{
+						{
+							me:     state.NewIdentScreenName("me"),
+							bodyIn: svcReq,
+							msg:    svcResp,
+						},
+					},
+					clientOnlineParams: clientOnlineParams{
+						{
+							body: wire.SNAC_0x01_0x02_OServiceClientOnline{},
+							me:   state.NewIdentScreenName("me"),
+						},
+					},
+				},
+				authParams: authParams{
+					crackCookieParams: crackCookieParams{
+						{
+							cookieIn:  []byte("chat-auth-cookie"),
+							cookieOut: state.ServerCookie{ChatCookie: "chat-auth-cookie"},
+						},
+					},
+					registerChatSessionParams: registerChatSessionParams{
+						{
+							authCookie: state.ServerCookie{ChatCookie: "chat-auth-cookie"},
+							instance:   newTestSession("me"),
+						},
+					},
+				},
+			},
+			wantMsg:           []string{"CHAT_JOIN:0:cool room :)"},
+			expectChatSession: true,
+			checkSession: func(t *testing.T, sess *state.SessionInstance) {
+				assert.NotNil(t, sess, "chat session should be registered")
+				assert.True(t, sess.IsTOC2(), "chat session should have TOC2 set")
+				assert.True(t, sess.SupportsTOC2MsgEnc(), "chat session should have TOC2 msg enc set")
+			},
 		},
 		{
 			name:              "accept chat, receive error from client online",
@@ -1214,7 +1346,7 @@ func TestOSCARProxy_RecvClientCmd_ChatJoin(t *testing.T) {
 					},
 				},
 			},
-			wantMsg:           cmdInternalSvcErr,
+			wantMsg:           []string{cmdInternalSvcErr},
 			expectChatSession: false,
 		},
 		{
@@ -1257,7 +1389,7 @@ func TestOSCARProxy_RecvClientCmd_ChatJoin(t *testing.T) {
 					},
 				},
 			},
-			wantMsg:           cmdInternalSvcErr,
+			wantMsg:           []string{cmdInternalSvcErr},
 			expectChatSession: false,
 		},
 		{
@@ -1285,7 +1417,7 @@ func TestOSCARProxy_RecvClientCmd_ChatJoin(t *testing.T) {
 					},
 				},
 			},
-			wantMsg:           cmdInternalSvcErr,
+			wantMsg:           []string{cmdInternalSvcErr},
 			expectChatSession: false,
 		},
 		{
@@ -1304,7 +1436,7 @@ func TestOSCARProxy_RecvClientCmd_ChatJoin(t *testing.T) {
 					},
 				},
 			},
-			wantMsg:           cmdInternalSvcErr,
+			wantMsg:           []string{cmdInternalSvcErr},
 			expectChatSession: false,
 		},
 		{
@@ -1312,7 +1444,7 @@ func TestOSCARProxy_RecvClientCmd_ChatJoin(t *testing.T) {
 			me:                newTestSession("me"),
 			givenCmd:          []byte(`toc_chat_join`),
 			givenChatRegistry: NewChatRegistry(),
-			wantMsg:           cmdInternalSvcErr,
+			wantMsg:           []string{cmdInternalSvcErr},
 			expectChatSession: false,
 		},
 		{
@@ -1320,7 +1452,7 @@ func TestOSCARProxy_RecvClientCmd_ChatJoin(t *testing.T) {
 			me:                newTestSession("me"),
 			givenCmd:          []byte(`toc_chat_join four "cool room :\)"`),
 			givenChatRegistry: NewChatRegistry(),
-			wantMsg:           cmdInternalSvcErr,
+			wantMsg:           []string{cmdInternalSvcErr},
 			expectChatSession: false,
 		},
 	}
@@ -1350,7 +1482,7 @@ func TestOSCARProxy_RecvClientCmd_ChatJoin(t *testing.T) {
 			authSvc := newMockAuthService(t)
 			for _, params := range tc.mockParams.authParams.registerChatSessionParams {
 				authSvc.EXPECT().
-					RegisterChatSession(ctx, params.authCookie).
+					RegisterChatSession(ctx, params.authCookie, mock.Anything).
 					Return(params.instance, params.err)
 			}
 			for _, params := range tc.mockParams.authParams.crackCookieParams {
@@ -1374,6 +1506,9 @@ func TestOSCARProxy_RecvClientCmd_ChatJoin(t *testing.T) {
 			assert.NoError(t, g.Wait())
 			assert.Equal(t, tc.wantMsg, msg)
 			assert.Equal(t, tc.expectChatSession, len(tc.givenChatRegistry.Sessions()) == 1)
+			if tc.checkSession != nil {
+				tc.checkSession(t, tc.givenChatRegistry.RetrieveSess(0))
+			}
 		})
 	}
 }
@@ -1389,7 +1524,7 @@ func TestOSCARProxy_RecvClientCmd_ChatLeave(t *testing.T) {
 		// givenChatRegistry is the chat registry passed to the function
 		givenChatRegistry *ChatRegistry
 		// wantMsg is the expected TOC response
-		wantMsg string
+		wantMsg []string
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
@@ -1403,33 +1538,24 @@ func TestOSCARProxy_RecvClientCmd_ChatLeave(t *testing.T) {
 				reg.RegisterSess(0, newTestSession("me"))
 				return reg
 			}(),
-			mockParams: mockParams{
-				authParams: authParams{
-					signoutChatParams: signoutChatParams{
-						{
-							me: state.NewIdentScreenName("me"),
-						},
-					},
-				},
-			},
-			wantMsg: "CHAT_LEFT:0",
+			wantMsg: []string{"CHAT_LEFT:0"},
 		},
 		{
 			name:     "chat room ID with invalid format",
 			givenCmd: []byte(`toc_chat_leave zero`),
-			wantMsg:  cmdInternalSvcErr,
+			wantMsg:  []string{cmdInternalSvcErr},
 		},
 		{
 			name:              "missing chat session",
 			givenCmd:          []byte(`toc_chat_leave 0`),
 			givenChatRegistry: NewChatRegistry(),
-			wantMsg:           cmdInternalSvcErr,
+			wantMsg:           []string{cmdInternalSvcErr},
 		},
 		{
 			name:     "bad command",
 			me:       newTestSession("me"),
 			givenCmd: []byte(`toc_chat_leave`),
-			wantMsg:  cmdInternalSvcErr,
+			wantMsg:  []string{cmdInternalSvcErr},
 		},
 	}
 
@@ -1437,14 +1563,8 @@ func TestOSCARProxy_RecvClientCmd_ChatLeave(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := context.Background()
 
-			authSvc := newMockAuthService(t)
-			for _, params := range tc.mockParams.signoutChatParams {
-				authSvc.EXPECT().SignoutChat(ctx, matchSession(params.me))
-			}
-
 			svc := OSCARProxy{
-				Logger:      slog.Default(),
-				AuthService: authSvc,
+				Logger: slog.Default(),
 			}
 			msg := svc.RecvClientCmd(ctx, nil, tc.givenChatRegistry, tc.givenCmd, nil, nil)
 
@@ -1464,7 +1584,7 @@ func TestOSCARProxy_RecvClientCmd_ChatSend(t *testing.T) {
 		// givenChatRegistry is the chat registry passed to the function
 		givenChatRegistry *ChatRegistry
 		// wantMsg is the expected TOC response
-		wantMsg string
+		wantMsg []string
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
@@ -1519,7 +1639,59 @@ func TestOSCARProxy_RecvClientCmd_ChatSend(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: "CHAT_IN:0:me:F:Hello world! :)",
+			wantMsg: []string{"CHAT_IN:0:me:F:Hello world! :)"},
+		},
+		{
+			name:     "successfully send chat message - TOC2 encoded returns CHAT_IN_ENC",
+			me:       newTestSession("me"),
+			givenCmd: []byte(`toc_chat_send 0 "Hello world! :\)"`),
+			givenChatRegistry: func() *ChatRegistry {
+				reg := NewChatRegistry()
+				reg.RegisterSess(0, newTestSession("me", func(i *state.SessionInstance) { i.SetTOC2(true) }))
+				return reg
+			}(),
+			mockParams: mockParams{
+				chatParams: chatParams{
+					channelMsgToHostParamsChat: channelMsgToHostParamsChat{
+						{
+							sender: state.NewIdentScreenName("me"),
+							inBody: wire.SNAC_0x0E_0x05_ChatChannelMsgToHost{
+								Channel: wire.ICBMChannelMIME,
+								TLVRestBlock: wire.TLVRestBlock{
+									TLVList: wire.TLVList{
+										wire.NewTLVBE(wire.ChatTLVEnableReflectionFlag, uint8(1)),
+										wire.NewTLVBE(wire.ChatTLVSenderInformation, newTestSession("me").Session().TLVUserInfo()),
+										wire.NewTLVBE(wire.ChatTLVPublicWhisperFlag, []byte{}),
+										wire.NewTLVBE(wire.ChatTLVMessageInfo, wire.TLVRestBlock{
+											TLVList: wire.TLVList{
+												wire.NewTLVBE(wire.ChatTLVMessageInfoText, "Hello world! :)"),
+											},
+										}),
+									},
+								},
+							},
+							result: &wire.SNACMessage{
+								Body: wire.SNAC_0x0E_0x06_ChatChannelMsgToClient{
+									Channel: wire.ICBMChannelMIME,
+									TLVRestBlock: wire.TLVRestBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.ChatTLVSenderInformation,
+												newTestSession("me").Session().TLVUserInfo()),
+											wire.NewTLVBE(wire.ChatTLVPublicWhisperFlag, []byte{}),
+											wire.NewTLVBE(wire.ChatTLVMessageInfo, wire.TLVRestBlock{
+												TLVList: wire.TLVList{
+													wire.NewTLVBE(wire.ChatTLVMessageInfoText, "Hello world! :)"),
+												},
+											}),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantMsg: []string{"CHAT_IN_ENC:0:me:F:A:en:Hello world! :)"},
 		},
 		{
 			name:     "send chat message, receive error from chat svc",
@@ -1555,7 +1727,7 @@ func TestOSCARProxy_RecvClientCmd_ChatSend(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: cmdInternalSvcErr,
+			wantMsg: []string{cmdInternalSvcErr},
 		},
 		{
 			name:     "send chat message, receive nil response from chat svc",
@@ -1591,7 +1763,7 @@ func TestOSCARProxy_RecvClientCmd_ChatSend(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: cmdInternalSvcErr,
+			wantMsg: []string{cmdInternalSvcErr},
 		},
 		{
 			name:     "send chat message, receive unexpected response from chat svc",
@@ -1629,24 +1801,24 @@ func TestOSCARProxy_RecvClientCmd_ChatSend(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: cmdInternalSvcErr,
+			wantMsg: []string{cmdInternalSvcErr},
 		},
 		{
 			name:     "chat room ID with invalid format",
 			givenCmd: []byte(`toc_chat_send zero "Hello world!"`),
-			wantMsg:  cmdInternalSvcErr,
+			wantMsg:  []string{cmdInternalSvcErr},
 		},
 		{
 			name:              "missing chat session",
 			givenCmd:          []byte(`toc_chat_send 0 "Hello world!"`),
 			givenChatRegistry: NewChatRegistry(),
-			wantMsg:           cmdInternalSvcErr,
+			wantMsg:           []string{cmdInternalSvcErr},
 		},
 		{
 			name:     "bad command",
 			me:       newTestSession("me"),
 			givenCmd: []byte(`toc_chat_send`),
-			wantMsg:  cmdInternalSvcErr,
+			wantMsg:  []string{cmdInternalSvcErr},
 		},
 	}
 
@@ -1683,7 +1855,7 @@ func TestOSCARProxy_RecvClientCmd_ChatWhisper(t *testing.T) {
 		// givenChatRegistry is the chat registry passed to the function
 		givenChatRegistry *ChatRegistry
 		// wantMsg is the expected TOC response
-		wantMsg string
+		wantMsg []string
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
@@ -1721,7 +1893,7 @@ func TestOSCARProxy_RecvClientCmd_ChatWhisper(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: "",
+			wantMsg: []string{},
 		},
 		{
 			name:     "send chat whisper, receive error from chat svc",
@@ -1756,24 +1928,24 @@ func TestOSCARProxy_RecvClientCmd_ChatWhisper(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: cmdInternalSvcErr,
+			wantMsg: []string{cmdInternalSvcErr},
 		},
 		{
 			name:     "chat room ID with invalid format",
 			givenCmd: []byte(`toc_chat_whisper zero them "Hello world!"`),
-			wantMsg:  cmdInternalSvcErr,
+			wantMsg:  []string{cmdInternalSvcErr},
 		},
 		{
 			name:              "missing chat session",
 			givenCmd:          []byte(`toc_chat_whisper 0 them "Hello world!"`),
 			givenChatRegistry: NewChatRegistry(),
-			wantMsg:           cmdInternalSvcErr,
+			wantMsg:           []string{cmdInternalSvcErr},
 		},
 		{
 			name:     "bad command",
 			me:       newTestSession("me"),
 			givenCmd: []byte(`toc_chat_whisper`),
-			wantMsg:  cmdInternalSvcErr,
+			wantMsg:  []string{cmdInternalSvcErr},
 		},
 	}
 
@@ -1808,7 +1980,7 @@ func TestOSCARProxy_RecvClientCmd_Evil(t *testing.T) {
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
-		wantMsg string
+		wantMsg []string
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
@@ -1833,6 +2005,7 @@ func TestOSCARProxy_RecvClientCmd_Evil(t *testing.T) {
 					},
 				},
 			},
+			wantMsg: []string{},
 		},
 		{
 			name:     "successfully warn anonymously",
@@ -1854,6 +2027,7 @@ func TestOSCARProxy_RecvClientCmd_Evil(t *testing.T) {
 					},
 				},
 			},
+			wantMsg: []string{},
 		},
 		{
 			name:     "warn, receive error from ICBM service",
@@ -1873,7 +2047,7 @@ func TestOSCARProxy_RecvClientCmd_Evil(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: cmdInternalSvcErr,
+			wantMsg: []string{cmdInternalSvcErr},
 		},
 		{
 			name:     "warn, receive snac err",
@@ -1895,6 +2069,7 @@ func TestOSCARProxy_RecvClientCmd_Evil(t *testing.T) {
 					},
 				},
 			},
+			wantMsg: []string{"ERROR:902"},
 		},
 		{
 			name:     "warn, ICBM svc returns unexpected snac type",
@@ -1916,19 +2091,19 @@ func TestOSCARProxy_RecvClientCmd_Evil(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: cmdInternalSvcErr,
+			wantMsg: []string{cmdInternalSvcErr},
 		},
 		{
 			name:     "warn with incorrect type",
 			me:       newTestSession("me"),
 			givenCmd: []byte(`toc_evil them blah`),
-			wantMsg:  cmdInternalSvcErr,
+			wantMsg:  []string{cmdInternalSvcErr},
 		},
 		{
 			name:     "bad command",
 			me:       newTestSession("me"),
 			givenCmd: []byte(`toc_evil`),
-			wantMsg:  cmdInternalSvcErr,
+			wantMsg:  []string{cmdInternalSvcErr},
 		},
 	}
 
@@ -1954,6 +2129,147 @@ func TestOSCARProxy_RecvClientCmd_Evil(t *testing.T) {
 	}
 }
 
+func TestOSCARProxy_RecvClientCmd_ClientEvent(t *testing.T) {
+	cases := []struct {
+		name       string
+		me         *state.SessionInstance
+		givenCmd   []byte
+		wantMsg    []string
+		mockParams mockParams
+	}{
+		{
+			name:     "send typing status 0 (no activity)",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_client_event friend 0"),
+			mockParams: mockParams{
+				icbmParams: icbmParams{
+					clientEventParams: clientEventParams{
+						{
+							sender: state.NewIdentScreenName("me"),
+							inBody: wire.SNAC_0x04_0x14_ICBMClientEvent{
+								Cookie:     0,
+								ChannelID:  wire.ICBMChannelIM,
+								ScreenName: "friend",
+								Event:      0,
+							},
+						},
+					},
+				},
+			},
+			wantMsg: []string{},
+		},
+		{
+			name:     "send typing status 1 (typing paused)",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_client_event buddy 1"),
+			mockParams: mockParams{
+				icbmParams: icbmParams{
+					clientEventParams: clientEventParams{
+						{
+							sender: state.NewIdentScreenName("me"),
+							inBody: wire.SNAC_0x04_0x14_ICBMClientEvent{
+								Cookie:     0,
+								ChannelID:  wire.ICBMChannelIM,
+								ScreenName: "buddy",
+								Event:      1,
+							},
+						},
+					},
+				},
+			},
+			wantMsg: []string{},
+		},
+		{
+			name:     "send typing status 2 (currently typing)",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_client_event chatter 2"),
+			mockParams: mockParams{
+				icbmParams: icbmParams{
+					clientEventParams: clientEventParams{
+						{
+							sender: state.NewIdentScreenName("me"),
+							inBody: wire.SNAC_0x04_0x14_ICBMClientEvent{
+								Cookie:     0,
+								ChannelID:  wire.ICBMChannelIM,
+								ScreenName: "chatter",
+								Event:      2,
+							},
+						},
+					},
+				},
+			},
+			wantMsg: []string{},
+		},
+		{
+			name:     "ICBM ClientEvent returns error",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_client_event friend 2"),
+			mockParams: mockParams{
+				icbmParams: icbmParams{
+					clientEventParams: clientEventParams{
+						{
+							sender: state.NewIdentScreenName("me"),
+							inBody: wire.SNAC_0x04_0x14_ICBMClientEvent{
+								Cookie:     0,
+								ChannelID:  wire.ICBMChannelIM,
+								ScreenName: "friend",
+								Event:      2,
+							},
+							err: io.EOF,
+						},
+					},
+				},
+			},
+			wantMsg: []string{cmdInternalSvcErr},
+		},
+		{
+			name:     "missing args",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_client_event"),
+			wantMsg:  []string{cmdInternalSvcErr},
+		},
+		{
+			name:     "missing typing status",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_client_event friend"),
+			wantMsg:  []string{cmdInternalSvcErr},
+		},
+		{
+			name:     "invalid typing status (must be 0, 1, or 2)",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_client_event friend 3"),
+			wantMsg:  []string{cmdInternalSvcErr},
+		},
+		{
+			name:     "invalid typing status non-numeric",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_client_event friend typing"),
+			wantMsg:  []string{cmdInternalSvcErr},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+
+			icbmSvc := newMockICBMService(t)
+			for _, params := range tc.mockParams.clientEventParams {
+				icbmSvc.EXPECT().
+					ClientEvent(ctx, matchSession(params.sender), wire.SNACFrame{}, params.inBody).
+					Return(params.err)
+			}
+
+			svc := OSCARProxy{
+				Logger:      slog.Default(),
+				ICBMService: icbmSvc,
+			}
+			msg := svc.RecvClientCmd(ctx, tc.me, nil, tc.givenCmd, nil, nil)
+
+			assert.Equal(t, tc.wantMsg, msg)
+		})
+	}
+}
+
 func TestOSCARProxy_RecvClientCmd_ChangePassword(t *testing.T) {
 	cases := []struct {
 		// name is the unit test name
@@ -1963,7 +2279,7 @@ func TestOSCARProxy_RecvClientCmd_ChangePassword(t *testing.T) {
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
-		wantMsg string
+		wantMsg []string
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
@@ -1999,7 +2315,7 @@ func TestOSCARProxy_RecvClientCmd_ChangePassword(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: "ADMIN_PASSWD_STATUS:0",
+			wantMsg: []string{"ADMIN_PASSWD_STATUS:0"},
 		},
 		{
 			name:     "change password - invalid password length",
@@ -2033,7 +2349,7 @@ func TestOSCARProxy_RecvClientCmd_ChangePassword(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: "ERROR:911",
+			wantMsg: []string{"ERROR:911"},
 		},
 		{
 			name:     "change password - incorrect password",
@@ -2067,7 +2383,7 @@ func TestOSCARProxy_RecvClientCmd_ChangePassword(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: "ERROR:912",
+			wantMsg: []string{"ERROR:980"},
 		},
 		{
 			name:     "change password - catch-all error response",
@@ -2101,7 +2417,7 @@ func TestOSCARProxy_RecvClientCmd_ChangePassword(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: "ERROR:913",
+			wantMsg: []string{"ERROR:913"},
 		},
 		{
 			name:     "change password - runtime error from admin svc",
@@ -2125,7 +2441,7 @@ func TestOSCARProxy_RecvClientCmd_ChangePassword(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: cmdInternalSvcErr,
+			wantMsg: []string{cmdInternalSvcErr},
 		},
 		{
 			name:     "change password - unexpected response from admin svc",
@@ -2151,13 +2467,13 @@ func TestOSCARProxy_RecvClientCmd_ChangePassword(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: cmdInternalSvcErr,
+			wantMsg: []string{cmdInternalSvcErr},
 		},
 		{
 			name:     "bad command",
 			me:       newTestSession("me"),
 			givenCmd: []byte(`toc_change_passwd`),
-			wantMsg:  cmdInternalSvcErr,
+			wantMsg:  []string{cmdInternalSvcErr},
 		},
 	}
 
@@ -2192,7 +2508,7 @@ func TestOSCARProxy_RecvClientCmd_GetDirSearchURL(t *testing.T) {
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
-		wantMsg string
+		wantMsg []string
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
@@ -2211,7 +2527,7 @@ func TestOSCARProxy_RecvClientCmd_GetDirSearchURL(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: "GOTO_URL:search results:dir_search?city=city&cookie=6d6f6e73746572&country=country&email=email&first_name=first+%5Bname%5D&last_name=last+name&maiden_name=maiden+name&middle_name=middle+name&state=state",
+			wantMsg: []string{"GOTO_URL:search results:dir_search?city=city&cookie=6d6f6e73746572&country=country&email=email&first_name=first+%5Bname%5D&last_name=last+name&maiden_name=maiden+name&middle_name=middle+name&state=state"},
 		},
 		{
 			name:     "successfully request user info by keywords",
@@ -2227,13 +2543,13 @@ func TestOSCARProxy_RecvClientCmd_GetDirSearchURL(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: "GOTO_URL:search results:dir_search?cookie=6d6f6e73746572&keyword=searchkw",
+			wantMsg: []string{"GOTO_URL:search results:dir_search?cookie=6d6f6e73746572&keyword=searchkw"},
 		},
 		{
 			name:     "request user info with too many params",
 			me:       newTestSession("me"),
 			givenCmd: []byte(`toc_dir_search ::::::::::::::::::::"searchkw"`),
-			wantMsg:  cmdInternalSvcErr,
+			wantMsg:  []string{cmdInternalSvcErr},
 		},
 		{
 			name:     "request user info, get cookie issue error",
@@ -2249,13 +2565,13 @@ func TestOSCARProxy_RecvClientCmd_GetDirSearchURL(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: cmdInternalSvcErr,
+			wantMsg: []string{cmdInternalSvcErr},
 		},
 		{
 			name:     "bad command",
 			me:       newTestSession("me"),
 			givenCmd: []byte(`toc_dir_search`),
-			wantMsg:  cmdInternalSvcErr,
+			wantMsg:  []string{cmdInternalSvcErr},
 		},
 	}
 
@@ -2291,7 +2607,7 @@ func TestOSCARProxy_RecvClientCmd_GetDirURL(t *testing.T) {
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
-		wantMsg string
+		wantMsg []string
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
@@ -2310,7 +2626,7 @@ func TestOSCARProxy_RecvClientCmd_GetDirURL(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: "GOTO_URL:directory info:dir_info?cookie=6d6f6e73746572&user=them",
+			wantMsg: []string{"GOTO_URL:directory info:dir_info?cookie=6d6f6e73746572&user=them"},
 		},
 		{
 			name:     "request user info, get cookie issue error",
@@ -2326,13 +2642,13 @@ func TestOSCARProxy_RecvClientCmd_GetDirURL(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: cmdInternalSvcErr,
+			wantMsg: []string{cmdInternalSvcErr},
 		},
 		{
 			name:     "bad command",
 			me:       newTestSession("me"),
 			givenCmd: []byte(`toc_get_dir`),
-			wantMsg:  cmdInternalSvcErr,
+			wantMsg:  []string{cmdInternalSvcErr},
 		},
 	}
 
@@ -2367,7 +2683,7 @@ func TestOSCARProxy_RecvClientCmd_GetInfoURL(t *testing.T) {
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
-		wantMsg string
+		wantMsg []string
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
@@ -2386,7 +2702,7 @@ func TestOSCARProxy_RecvClientCmd_GetInfoURL(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: "GOTO_URL:profile:info?cookie=6d6f6e73746572&from=me&user=them",
+			wantMsg: []string{"GOTO_URL:profile:info?cookie=6d6f6e73746572&from=me&user=them"},
 		},
 		{
 			name:     "request user info, get cookie issue error",
@@ -2402,13 +2718,13 @@ func TestOSCARProxy_RecvClientCmd_GetInfoURL(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: cmdInternalSvcErr,
+			wantMsg: []string{cmdInternalSvcErr},
 		},
 		{
 			name:     "bad command",
 			me:       newTestSession("me"),
 			givenCmd: []byte(`toc_get_info`),
-			wantMsg:  cmdInternalSvcErr,
+			wantMsg:  []string{cmdInternalSvcErr},
 		},
 	}
 
@@ -2443,7 +2759,7 @@ func TestOSCARProxy_RecvClientCmd_GetStatus(t *testing.T) {
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
-		wantMsg string
+		wantMsg []string
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
@@ -2469,6 +2785,7 @@ func TestOSCARProxy_RecvClientCmd_GetStatus(t *testing.T) {
 											TLVList: wire.TLVList{
 												wire.NewTLVBE(wire.OServiceUserInfoSignonTOD, uint32(1234)),
 												wire.NewTLVBE(wire.OServiceUserInfoIdleTime, uint16(5678)),
+												wire.NewTLVBE(wire.OServiceUserInfoUserFlags, wire.OServiceUserFlagOSCARFree),
 											},
 										},
 									},
@@ -2478,7 +2795,7 @@ func TestOSCARProxy_RecvClientCmd_GetStatus(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: "UPDATE_BUDDY:them:T:0:1234:5678: O ",
+			wantMsg: []string{"UPDATE_BUDDY:them:T:0:1234:5678: O "},
 		},
 		{
 			name:     "request status, receive err from locate svc",
@@ -2497,7 +2814,7 @@ func TestOSCARProxy_RecvClientCmd_GetStatus(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: cmdInternalSvcErr,
+			wantMsg: []string{cmdInternalSvcErr},
 		},
 		{
 			name:     "request status, user not online",
@@ -2520,7 +2837,7 @@ func TestOSCARProxy_RecvClientCmd_GetStatus(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: "ERROR:901:them",
+			wantMsg: []string{"ERROR:901:them"},
 		},
 		{
 			name:     "request status, receive unexpected error code",
@@ -2543,7 +2860,7 @@ func TestOSCARProxy_RecvClientCmd_GetStatus(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: cmdInternalSvcErr,
+			wantMsg: []string{cmdInternalSvcErr},
 		},
 		{
 			name:     "request status, unexpected response from locate svc",
@@ -2564,13 +2881,13 @@ func TestOSCARProxy_RecvClientCmd_GetStatus(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: cmdInternalSvcErr,
+			wantMsg: []string{cmdInternalSvcErr},
 		},
 		{
 			name:     "bad command",
 			me:       newTestSession("me"),
 			givenCmd: []byte(`toc_get_status`),
-			wantMsg:  cmdInternalSvcErr,
+			wantMsg:  []string{cmdInternalSvcErr},
 		},
 	}
 
@@ -2605,7 +2922,7 @@ func TestOSCARProxy_RecvClientCmd_InitDone(t *testing.T) {
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
-		wantMsg string
+		wantMsg []string
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
@@ -2618,12 +2935,21 @@ func TestOSCARProxy_RecvClientCmd_InitDone(t *testing.T) {
 				oServiceParams: oServiceParams{
 					clientOnlineParams: clientOnlineParams{
 						{
-							me:   state.NewIdentScreenName("me"),
-							body: wire.SNAC_0x01_0x02_OServiceClientOnline{},
+							me:      state.NewIdentScreenName("me"),
+							body:    wire.SNAC_0x01_0x02_OServiceClientOnline{},
+							service: wire.BOS,
+						},
+					},
+				},
+				feedBagParams: feedBagParams{
+					useFeedbagParams: useFeedbagParams{
+						{
+							me: state.NewIdentScreenName("me"),
 						},
 					},
 				},
 			},
+			wantMsg: []string{},
 		},
 		{
 			name:     "initialize connection, receive err from BOS oservice svc",
@@ -2633,14 +2959,22 @@ func TestOSCARProxy_RecvClientCmd_InitDone(t *testing.T) {
 				oServiceParams: oServiceParams{
 					clientOnlineParams: clientOnlineParams{
 						{
-							me:   state.NewIdentScreenName("me"),
-							body: wire.SNAC_0x01_0x02_OServiceClientOnline{},
-							err:  io.EOF,
+							me:      state.NewIdentScreenName("me"),
+							body:    wire.SNAC_0x01_0x02_OServiceClientOnline{},
+							service: wire.BOS,
+							err:     io.EOF,
+						},
+					},
+				},
+				feedBagParams: feedBagParams{
+					useFeedbagParams: useFeedbagParams{
+						{
+							me: state.NewIdentScreenName("me"),
 						},
 					},
 				},
 			},
-			wantMsg: cmdInternalSvcErr,
+			wantMsg: []string{cmdInternalSvcErr},
 		},
 	}
 
@@ -2651,13 +2985,21 @@ func TestOSCARProxy_RecvClientCmd_InitDone(t *testing.T) {
 			oSvc := newMockOServiceService(t)
 			for _, params := range tc.mockParams.oServiceParams.clientOnlineParams {
 				oSvc.EXPECT().
-					ClientOnline(ctx, wire.BOS, params.body, matchSession(params.me)).
+					ClientOnline(ctx, params.service, params.body, matchSession(params.me)).
+					Return(params.err)
+			}
+
+			fbMgr := newMockFeedbagManager(t)
+			for _, params := range tc.mockParams.feedBagParams.useFeedbagParams {
+				fbMgr.EXPECT().
+					UseFeedbag(ctx, params.me).
 					Return(params.err)
 			}
 
 			svc := OSCARProxy{
 				Logger:          slog.Default(),
 				OServiceService: oSvc,
+				FeedbagManager:  fbMgr,
 			}
 			msg := svc.RecvClientCmd(ctx, tc.me, nil, tc.givenCmd, nil, nil)
 
@@ -2675,7 +3017,7 @@ func TestOSCARProxy_RecvClientCmd_RemoveBuddy(t *testing.T) {
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
-		wantMsg string
+		wantMsg []string
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
@@ -2702,6 +3044,7 @@ func TestOSCARProxy_RecvClientCmd_RemoveBuddy(t *testing.T) {
 					},
 				},
 			},
+			wantMsg: []string{},
 		},
 		{
 			name:     "remove buddies with empty list",
@@ -2717,6 +3060,7 @@ func TestOSCARProxy_RecvClientCmd_RemoveBuddy(t *testing.T) {
 					},
 				},
 			},
+			wantMsg: []string{},
 		},
 		{
 			name:     "remove buddies, receive error from buddy service",
@@ -2739,7 +3083,7 @@ func TestOSCARProxy_RecvClientCmd_RemoveBuddy(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: cmdInternalSvcErr,
+			wantMsg: []string{cmdInternalSvcErr},
 		},
 	}
 
@@ -2765,6 +3109,1948 @@ func TestOSCARProxy_RecvClientCmd_RemoveBuddy(t *testing.T) {
 	}
 }
 
+func TestOSCARProxy_RecvClientCmd_NewBuddies(t *testing.T) {
+	cases := []struct {
+		name       string
+		me         *state.SessionInstance
+		givenCmd   []byte
+		wantMsg    []string
+		mockParams mockParams
+	}{
+		{
+			name:     "add new users to existing group",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_new_buddies {g:Buddies\nb:mike\nb:mk6i\ng:Family\nb:alice\nb:bob\n}"),
+			wantMsg:  []string{"NEW_BUDDY_REPLY2:mike:added", "NEW_BUDDY_REPLY2:mk6i:added", "NEW_BUDDY_REPLY2:alice:added", "NEW_BUDDY_REPLY2:bob:added"},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results: []wire.FeedbagItem{
+								{
+									Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{17724, 21827, 29709})}},
+								},
+								{Name: "Buddies", GroupID: 17724, ItemID: 0, ClassID: wire.FeedbagClassIdGroup},
+								{Name: "Co-Workers", GroupID: 21827, ItemID: 0, ClassID: wire.FeedbagClassIdGroup},
+								{Name: "Family", GroupID: 29709, ItemID: 0, ClassID: wire.FeedbagClassIdGroup},
+							},
+							err: nil,
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem},
+							items: []wire.FeedbagItem{
+								{ItemID: 1, ClassID: wire.FeedbagClassIdBuddy, GroupID: 17724, Name: "mike", TLVLBlock: wire.TLVLBlock{}},
+								{ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, GroupID: 17724, Name: "mk6i", TLVLBlock: wire.TLVLBlock{}},
+							},
+							msg: nil, err: nil,
+						},
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagUpdateItem},
+							items: []wire.FeedbagItem{
+								{
+									Name: "Buddies", GroupID: 17724, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1, 2})}},
+								},
+							},
+							msg: nil, err: nil,
+						},
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem},
+							items: []wire.FeedbagItem{
+								{ItemID: 3, ClassID: wire.FeedbagClassIdBuddy, GroupID: 29709, Name: "alice", TLVLBlock: wire.TLVLBlock{}},
+								{ItemID: 4, ClassID: wire.FeedbagClassIdBuddy, GroupID: 29709, Name: "bob", TLVLBlock: wire.TLVLBlock{}},
+							},
+							msg: nil, err: nil,
+						},
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagUpdateItem},
+							items: []wire.FeedbagItem{
+								{
+									Name: "Family", GroupID: 29709, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{3, 4})}},
+								},
+							},
+							msg: nil, err: nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "empty feedbag: add new group and buddies",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_new_buddies {g:Buddies\nb:mike\nb:mk6i\n}"),
+			wantMsg:  []string{"NEW_BUDDY_REPLY2:mike:added", "NEW_BUDDY_REPLY2:mk6i:added"},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results:    []wire.FeedbagItem{},
+							err:        nil,
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{
+						// First: insert the two buddy items (deterministic randIntn gives GroupID 1, ItemIDs 2 and 3)
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem},
+							items: []wire.FeedbagItem{
+								{ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, GroupID: 1, Name: "mike", TLVLBlock: wire.TLVLBlock{}},
+								{ItemID: 3, ClassID: wire.FeedbagClassIdBuddy, GroupID: 1, Name: "mk6i", TLVLBlock: wire.TLVLBlock{}},
+							},
+							msg: nil, err: nil,
+						},
+						// Second: insert the new Buddies group with Order listing the buddy item IDs
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagUpdateItem},
+							items: []wire.FeedbagItem{
+								{
+									Name: "Buddies", GroupID: 1, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{2, 3})}},
+								},
+							},
+							msg: nil, err: nil,
+						},
+						// Third: insert the root group so its Order lists the new group ID
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagUpdateItem},
+							items: []wire.FeedbagItem{
+								{
+									Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1})}},
+								},
+							},
+							msg: nil, err: nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "add new group and buddies",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_new_buddies {g:Co-Workers\nb:carol\nb:dan\ng:Family\nb:alice\nb:bob\n}"),
+			wantMsg:  []string{"NEW_BUDDY_REPLY2:carol:added", "NEW_BUDDY_REPLY2:dan:added", "NEW_BUDDY_REPLY2:alice:added", "NEW_BUDDY_REPLY2:bob:added"},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results: []wire.FeedbagItem{
+								{
+									Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{17724})}},
+								},
+								{Name: "Buddies", GroupID: 17724, ItemID: 0, ClassID: wire.FeedbagClassIdGroup},
+							},
+							err: nil,
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem},
+							items: []wire.FeedbagItem{
+								{ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, GroupID: 1, Name: "carol", TLVLBlock: wire.TLVLBlock{}},
+								{ItemID: 3, ClassID: wire.FeedbagClassIdBuddy, GroupID: 1, Name: "dan", TLVLBlock: wire.TLVLBlock{}},
+							},
+							msg: nil, err: nil,
+						},
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagUpdateItem},
+							items: []wire.FeedbagItem{
+								{
+									Name: "Co-Workers", GroupID: 1, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{2, 3})}},
+								},
+							},
+							msg: nil, err: nil,
+						},
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem},
+							items: []wire.FeedbagItem{
+								{ItemID: 5, ClassID: wire.FeedbagClassIdBuddy, GroupID: 4, Name: "alice", TLVLBlock: wire.TLVLBlock{}},
+								{ItemID: 6, ClassID: wire.FeedbagClassIdBuddy, GroupID: 4, Name: "bob", TLVLBlock: wire.TLVLBlock{}},
+							},
+							msg: nil, err: nil,
+						},
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagUpdateItem},
+							items: []wire.FeedbagItem{
+								{
+									Name: "Family", GroupID: 4, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{5, 6})}},
+								},
+							},
+							msg: nil, err: nil,
+						},
+						// Root updated once at end
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagUpdateItem},
+							items: []wire.FeedbagItem{
+								{
+									Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{17724, 1, 4})}},
+								},
+							},
+							msg: nil, err: nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:       "empty config returns error",
+			me:         newTestSession("me"),
+			givenCmd:   []byte("toc2_new_buddies "),
+			wantMsg:    []string{cmdInternalSvcErr},
+			mockParams: mockParams{},
+		},
+		{
+			name:       "whitespace-only config returns error",
+			me:         newTestSession("me"),
+			givenCmd:   []byte("toc2_new_buddies   "),
+			wantMsg:    []string{cmdInternalSvcErr},
+			mockParams: mockParams{},
+		},
+		{
+			name:       "buddy without group returns parse error",
+			me:         newTestSession("me"),
+			givenCmd:   []byte("toc2_new_buddies {b:alice\n}"),
+			wantMsg:    []string{cmdInternalSvcErr},
+			mockParams: mockParams{},
+		},
+		{
+			name:       "empty group name returns parse error",
+			me:         newTestSession("me"),
+			givenCmd:   []byte("toc2_new_buddies {g:\nb:alice\n}"),
+			wantMsg:    []string{cmdInternalSvcErr},
+			mockParams: mockParams{},
+		},
+		{
+			name:       "empty buddy name returns parse error",
+			me:         newTestSession("me"),
+			givenCmd:   []byte("toc2_new_buddies {g:Buddies\nb:\n}"),
+			wantMsg:    []string{cmdInternalSvcErr},
+			mockParams: mockParams{},
+		},
+		{
+			name:     "group with no buddies does not call UpsertItem",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_new_buddies {g:EmptyGroup\n}"),
+			wantMsg:  nil,
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results: []wire.FeedbagItem{
+								{
+									Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{17724})}},
+								},
+								{Name: "Buddies", GroupID: 17724, ItemID: 0, ClassID: wire.FeedbagClassIdGroup},
+							},
+							err: nil,
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{},
+				},
+			},
+		},
+		{
+			name:     "FeedbagManager.Feedbag error returns internal error",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_new_buddies {g:Buddies\nb:alice\n}"),
+			wantMsg:  []string{cmdInternalSvcErr},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results:    nil,
+							err:        errors.New("EOF"),
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{},
+				},
+			},
+		},
+		{
+			name:     "FeedbagService.UpsertItem error on first insert returns internal error",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_new_buddies {g:Buddies\nb:alice\n}"),
+			wantMsg:  []string{cmdInternalSvcErr},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results: []wire.FeedbagItem{
+								{
+									Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{100})}},
+								},
+								{
+									Name: "Buddies", GroupID: 100, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{})}},
+								},
+							},
+							err: nil,
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagUpdateItem},
+							items: []wire.FeedbagItem{
+								{
+									Name: "Buddies", GroupID: 100, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1})}},
+								},
+							},
+							msg: nil, err: nil,
+						},
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem},
+							items: []wire.FeedbagItem{
+								{ItemID: 1, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "alice", TLVLBlock: wire.TLVLBlock{}},
+							},
+							msg: nil, err: errors.New("EOF"),
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "buddy already in group skips and adds only new buddy",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_new_buddies {g:Buddies\nb:mike\nb:mk6i\n}"),
+			wantMsg:  []string{"NEW_BUDDY_REPLY2:mk6i:added"},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results: []wire.FeedbagItem{
+								{
+									Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{17724})}},
+								},
+								{Name: "Buddies", GroupID: 17724, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1})}}},
+								{ItemID: 1, ClassID: wire.FeedbagClassIdBuddy, GroupID: 17724, Name: "mike", TLVLBlock: wire.TLVLBlock{}},
+							},
+							err: nil,
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem},
+							items: []wire.FeedbagItem{
+								{ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, GroupID: 17724, Name: "mk6i", TLVLBlock: wire.TLVLBlock{}},
+							},
+							msg: nil, err: nil,
+						},
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagUpdateItem},
+							items: []wire.FeedbagItem{
+								{
+									Name: "Buddies", GroupID: 17724, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1, 2})}},
+								},
+							},
+							msg: nil, err: nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "all buddies already in group returns no replies and no UpsertItem",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_new_buddies {g:Buddies\nb:mike\nb:mk6i\n}"),
+			wantMsg:  nil,
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results: []wire.FeedbagItem{
+								{
+									Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{17724})}},
+								},
+								{Name: "Buddies", GroupID: 17724, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1, 2})}}},
+								{ItemID: 1, ClassID: wire.FeedbagClassIdBuddy, GroupID: 17724, Name: "mike", TLVLBlock: wire.TLVLBlock{}},
+								{ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, GroupID: 17724, Name: "mk6i", TLVLBlock: wire.TLVLBlock{}},
+							},
+							err: nil,
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{},
+				},
+			},
+		},
+		{
+			name:     "single buddy in new group",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_new_buddies {g:Buddies\nb:alice\n}"),
+			wantMsg:  []string{"NEW_BUDDY_REPLY2:alice:added"},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results:    []wire.FeedbagItem{},
+							err:        nil,
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem},
+							items: []wire.FeedbagItem{
+								{ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, GroupID: 1, Name: "alice", TLVLBlock: wire.TLVLBlock{}},
+							},
+							msg: nil, err: nil,
+						},
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagUpdateItem},
+							items: []wire.FeedbagItem{
+								{
+									Name: "Buddies", GroupID: 1, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{2})}},
+								},
+							},
+							msg: nil, err: nil,
+						},
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagUpdateItem},
+							items: []wire.FeedbagItem{
+								{
+									Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1})}},
+								},
+							},
+							msg: nil, err: nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "buddy with alias and note",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_new_buddies {g:Buddies\nb:bob:Bob Smith:::::Friend from work\n}"),
+			wantMsg:  []string{"NEW_BUDDY_REPLY2:bob:added"},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results: []wire.FeedbagItem{
+								{
+									Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{100})}},
+								},
+								{Name: "Buddies", GroupID: 100, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{})}}},
+							},
+							err: nil,
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem},
+							items: []wire.FeedbagItem{
+								{
+									ItemID: 1, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "bob",
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.FeedbagAttributesAlias, "Bob Smith"),
+											wire.NewTLVBE(wire.FeedbagAttributesNote, "Friend from work"),
+										},
+									},
+								},
+							},
+							msg: nil, err: nil,
+						},
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagUpdateItem},
+							items: []wire.FeedbagItem{
+								{
+									Name: "Buddies", GroupID: 100, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1})}},
+								},
+							},
+							msg: nil, err: nil,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+
+			fbMgr := newMockFeedbagManager(t)
+			for _, params := range tc.mockParams.feedBagParams.feedbagParams {
+				fbMgr.EXPECT().
+					Feedbag(ctx, params.screenName).
+					Return(params.results, params.err)
+			}
+			fbSvc := newMockFeedbagService(t)
+			for _, params := range tc.mockParams.feedBagParams.feedbagServiceUpsertItemParams {
+				fbSvc.EXPECT().
+					UpsertItem(ctx, matchSession(tc.me.IdentScreenName()), params.frame, params.items).
+					Return(params.msg, params.err)
+			}
+
+			// Deterministic item ID: increment by 1 per call so IDs are unique and predictable per test.
+			var randCall int
+			randIntn := func(n int) int {
+				randCall++
+				return randCall
+			}
+			svc := OSCARProxy{
+				Logger:         slog.Default(),
+				FeedbagManager: fbMgr,
+				FeedbagService: fbSvc,
+				RandIntn:       randIntn,
+			}
+			msg := svc.RecvClientCmd(ctx, tc.me, nil, tc.givenCmd, nil, nil)
+			assert.Equal(t, tc.wantMsg, msg)
+		})
+	}
+}
+
+func TestOSCARProxy_RecvClientCmd_NewGroup(t *testing.T) {
+	cases := []struct {
+		name       string
+		me         *state.SessionInstance
+		givenCmd   []byte
+		wantMsg    []string
+		mockParams mockParams
+	}{
+		{
+			name:     "add new group when feedbag has root and existing groups",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_new_group Family"),
+			wantMsg:  []string{},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results: []wire.FeedbagItem{
+								{
+									Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{17724})}},
+								},
+								{Name: "Buddies", GroupID: 17724, ItemID: 0, ClassID: wire.FeedbagClassIdGroup},
+							},
+							err: nil,
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem},
+							items: []wire.FeedbagItem{
+								{
+									Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{17724, 1})}},
+								},
+								{ClassID: wire.FeedbagClassIdGroup, GroupID: 1, Name: "Family"},
+							},
+							msg: nil, err: nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "add new group when feedbag is empty creates root and group",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_new_group Buddies"),
+			wantMsg:  []string{},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results:    []wire.FeedbagItem{},
+							err:        nil,
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem},
+							items: []wire.FeedbagItem{
+								{
+									ClassID: wire.FeedbagClassIdGroup,
+									GroupID: 0,
+									Name:    "",
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1})},
+									},
+								},
+								{ClassID: wire.FeedbagClassIdGroup, GroupID: 1, Name: "Buddies"},
+							},
+							msg: nil, err: nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "group already exists returns success idempotently",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_new_group Buddies"),
+			wantMsg:  []string{},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results: []wire.FeedbagItem{
+								{
+									Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{17724})}},
+								},
+								{Name: "Buddies", GroupID: 17724, ItemID: 0, ClassID: wire.FeedbagClassIdGroup},
+							},
+							err: nil,
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{},
+				},
+			},
+		},
+		{
+			name:     "empty group name returns error",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_new_group"),
+			wantMsg:  []string{cmdInternalSvcErr},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams:                  feedbagParams{},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{},
+				},
+			},
+		},
+		{
+			name:     "FeedbagManager.Feedbag error returns error",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_new_group Family"),
+			wantMsg:  []string{cmdInternalSvcErr},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results:    nil,
+							err:        assert.AnError,
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{},
+				},
+			},
+		},
+		{
+			name:     "FeedbagService.UpsertItem error returns error",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_new_group Family"),
+			wantMsg:  []string{cmdInternalSvcErr},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results: []wire.FeedbagItem{
+								{
+									Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{17724})}},
+								},
+								{Name: "Buddies", GroupID: 17724, ItemID: 0, ClassID: wire.FeedbagClassIdGroup},
+							},
+							err: nil,
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem},
+							items: []wire.FeedbagItem{
+								{
+									Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{17724, 1})}},
+								},
+								{ClassID: wire.FeedbagClassIdGroup, GroupID: 1, Name: "Family"},
+							},
+							msg: nil, err: assert.AnError,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+
+			fbMgr := newMockFeedbagManager(t)
+			for _, params := range tc.mockParams.feedBagParams.feedbagParams {
+				fbMgr.EXPECT().
+					Feedbag(ctx, params.screenName).
+					Return(params.results, params.err)
+			}
+			fbSvc := newMockFeedbagService(t)
+			for _, params := range tc.mockParams.feedBagParams.feedbagServiceUpsertItemParams {
+				fbSvc.EXPECT().
+					UpsertItem(ctx, matchSession(tc.me.IdentScreenName()), params.frame, params.items).
+					Return(params.msg, params.err)
+			}
+
+			var randCall int
+			randIntn := func(n int) int {
+				randCall++
+				return randCall
+			}
+			svc := OSCARProxy{
+				Logger:         slog.Default(),
+				FeedbagManager: fbMgr,
+				FeedbagService: fbSvc,
+				RandIntn:       randIntn,
+			}
+			msg := svc.RecvClientCmd(ctx, tc.me, nil, tc.givenCmd, nil, nil)
+			assert.Equal(t, tc.wantMsg, msg)
+		})
+	}
+}
+
+func TestOSCARProxy_RecvClientCmd_DelGroup(t *testing.T) {
+	cases := []struct {
+		name       string
+		me         *state.SessionInstance
+		givenCmd   []byte
+		wantMsg    []string
+		mockParams mockParams
+	}{
+		{
+			name:     "delete existing group",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_del_group Family"),
+			wantMsg:  []string{},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results: []wire.FeedbagItem{
+								{
+									Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{17724, 29709})}},
+								},
+								{Name: "Buddies", GroupID: 17724, ItemID: 0, ClassID: wire.FeedbagClassIdGroup},
+								{Name: "Family", GroupID: 29709, ItemID: 0, ClassID: wire.FeedbagClassIdGroup},
+							},
+							err: nil,
+						},
+					},
+					feedbagServiceDeleteItemParams: feedbagServiceDeleteItemParams{
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagDeleteItem},
+							inBody: wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
+								Items: []wire.FeedbagItem{
+									{Name: "Family", GroupID: 29709, ItemID: 0, ClassID: wire.FeedbagClassIdGroup},
+								},
+							},
+							msg: nil, err: nil,
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem},
+							items: []wire.FeedbagItem{
+								{
+									Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{17724})}},
+								},
+							},
+							msg: nil, err: nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "empty group name returns error",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_del_group"),
+			wantMsg:  []string{cmdInternalSvcErr},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams:                  feedbagParams{},
+					feedbagServiceDeleteItemParams: feedbagServiceDeleteItemParams{},
+				},
+			},
+		},
+		{
+			name:     "group not found returns error",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_del_group Nonexistent"),
+			wantMsg:  []string{cmdInternalSvcErr},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results: []wire.FeedbagItem{
+								{
+									Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{17724})}},
+								},
+								{Name: "Buddies", GroupID: 17724, ItemID: 0, ClassID: wire.FeedbagClassIdGroup},
+							},
+							err: nil,
+						},
+					},
+					feedbagServiceDeleteItemParams: feedbagServiceDeleteItemParams{},
+				},
+			},
+		},
+		{
+			name:     "FeedbagManager.Feedbag error returns error",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_del_group Family"),
+			wantMsg:  []string{cmdInternalSvcErr},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results:    nil,
+							err:        assert.AnError,
+						},
+					},
+					feedbagServiceDeleteItemParams: feedbagServiceDeleteItemParams{},
+				},
+			},
+		},
+		{
+			name:     "FeedbagService.DeleteItem error returns error",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_del_group Family"),
+			wantMsg:  []string{cmdInternalSvcErr},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results: []wire.FeedbagItem{
+								{
+									Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{17724, 29709})}},
+								},
+								{Name: "Buddies", GroupID: 17724, ItemID: 0, ClassID: wire.FeedbagClassIdGroup},
+								{Name: "Family", GroupID: 29709, ItemID: 0, ClassID: wire.FeedbagClassIdGroup},
+							},
+							err: nil,
+						},
+					},
+					feedbagServiceDeleteItemParams: feedbagServiceDeleteItemParams{
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagDeleteItem},
+							inBody: wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
+								Items: []wire.FeedbagItem{
+									{Name: "Family", GroupID: 29709, ItemID: 0, ClassID: wire.FeedbagClassIdGroup},
+								},
+							},
+							msg: nil, err: assert.AnError,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+
+			fbMgr := newMockFeedbagManager(t)
+			for _, params := range tc.mockParams.feedBagParams.feedbagParams {
+				fbMgr.EXPECT().
+					Feedbag(ctx, params.screenName).
+					Return(params.results, params.err)
+			}
+			fbSvc := newMockFeedbagService(t)
+			for _, params := range tc.mockParams.feedBagParams.feedbagServiceDeleteItemParams {
+				fbSvc.EXPECT().
+					DeleteItem(ctx, matchSession(tc.me.IdentScreenName()), params.frame, params.inBody).
+					Return(params.msg, params.err)
+			}
+			for _, params := range tc.mockParams.feedBagParams.feedbagServiceUpsertItemParams {
+				fbSvc.EXPECT().
+					UpsertItem(ctx, matchSession(tc.me.IdentScreenName()), params.frame, params.items).
+					Return(params.msg, params.err)
+			}
+
+			svc := OSCARProxy{
+				Logger:         slog.Default(),
+				FeedbagManager: fbMgr,
+				FeedbagService: fbSvc,
+			}
+			msg := svc.RecvClientCmd(ctx, tc.me, nil, tc.givenCmd, nil, nil)
+			assert.Equal(t, tc.wantMsg, msg)
+		})
+	}
+}
+
+func TestOSCARProxy_RecvClientCmd_SetPDMode(t *testing.T) {
+	cases := []struct {
+		name       string
+		me         *state.SessionInstance
+		givenCmd   []byte
+		wantMsg    []string
+		mockParams mockParams
+	}{
+		{
+			name:     "empty feedbag creates new Pdinfo with mode 4",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_set_pdmode 4"),
+			wantMsg:  []string{},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results:    []wire.FeedbagItem{},
+							err:        nil,
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem},
+							items: []wire.FeedbagItem{
+								{
+									ClassID: wire.FeedbagClassIdPdinfo,
+									GroupID: 0,
+									ItemID:  1,
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.FeedbagAttributesPdMode, uint8(4)),
+										},
+									},
+								},
+							},
+							msg: nil, err: nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "pdinfo already exists but does not have FeedbagAttributesPdMode",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_set_pdmode 2"),
+			wantMsg:  []string{},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results: []wire.FeedbagItem{
+								{
+									ClassID: wire.FeedbagClassIdPdinfo,
+									GroupID: 0,
+									ItemID:  99,
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{},
+									},
+								},
+							},
+							err: nil,
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem},
+							items: []wire.FeedbagItem{
+								{
+									ClassID: wire.FeedbagClassIdPdinfo,
+									GroupID: 0,
+									ItemID:  99,
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.FeedbagAttributesPdMode, uint8(2)),
+										},
+									},
+								},
+							},
+							msg: nil, err: nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "pdinfo already exists and already has FeedbagAttributesPdMode with same mode",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_set_pdmode 3"),
+			wantMsg:  []string{},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results: []wire.FeedbagItem{
+								{
+									ClassID: wire.FeedbagClassIdPdinfo,
+									GroupID: 0,
+									ItemID:  99,
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.FeedbagAttributesPdMode, uint8(3)),
+										},
+									},
+								},
+							},
+							err: nil,
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{},
+				},
+			},
+		},
+		{
+			name:     "pdinfo already exists and already has FeedbagAttributesPdMode with different mode",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_set_pdmode 3"),
+			wantMsg:  []string{},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results: []wire.FeedbagItem{
+								{
+									ClassID: wire.FeedbagClassIdPdinfo,
+									GroupID: 0,
+									ItemID:  99,
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.FeedbagAttributesPdMode, uint8(1)),
+										},
+									},
+								},
+							},
+							err: nil,
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem},
+							items: []wire.FeedbagItem{
+								{
+									ClassID: wire.FeedbagClassIdPdinfo,
+									GroupID: 0,
+									ItemID:  99,
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.FeedbagAttributesPdMode, uint8(3)),
+										},
+									},
+								},
+							},
+							msg: nil, err: nil,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+
+			fbMgr := newMockFeedbagManager(t)
+			for _, params := range tc.mockParams.feedBagParams.feedbagParams {
+				fbMgr.EXPECT().
+					Feedbag(ctx, params.screenName).
+					Return(params.results, params.err)
+			}
+			fbSvc := newMockFeedbagService(t)
+			for _, params := range tc.mockParams.feedBagParams.feedbagServiceUpsertItemParams {
+				fbSvc.EXPECT().
+					UpsertItem(ctx, matchSession(tc.me.IdentScreenName()), params.frame, params.items).
+					Return(params.msg, params.err)
+			}
+
+			var randCall int
+			randIntn := func(n int) int {
+				randCall++
+				return randCall
+			}
+			svc := OSCARProxy{
+				Logger:         slog.Default(),
+				FeedbagManager: fbMgr,
+				FeedbagService: fbSvc,
+				RandIntn:       randIntn,
+			}
+			msg := svc.RecvClientCmd(ctx, tc.me, nil, tc.givenCmd, nil, nil)
+			assert.Equal(t, tc.wantMsg, msg)
+		})
+	}
+}
+
+func TestOSCARProxy_RecvClientCmd_AddPermit2(t *testing.T) {
+	cases := []struct {
+		name       string
+		me         *state.SessionInstance
+		givenCmd   []byte
+		wantMsg    []string
+		mockParams mockParams
+	}{
+		{
+			name:       "no screennames provided returns internal error",
+			me:         newTestSession("me"),
+			givenCmd:   []byte("toc2_add_permit"),
+			wantMsg:    []string{cmdInternalSvcErr},
+			mockParams: mockParams{},
+		},
+		{
+			name:     "FeedbagManager.Feedbag error returns internal error",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_add_permit alice"),
+			wantMsg:  []string{cmdInternalSvcErr},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results:    nil,
+							err:        errors.New("EOF"),
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{},
+				},
+			},
+		},
+		{
+			name:     "FeedbagService.UpsertItem error returns internal error",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_add_permit alice"),
+			wantMsg:  []string{cmdInternalSvcErr},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results:    []wire.FeedbagItem{},
+							err:        nil,
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem},
+							items: []wire.FeedbagItem{
+								{ItemID: 1, ClassID: wire.FeedbagClassIDPermit, GroupID: 0, Name: "alice", TLVLBlock: wire.TLVLBlock{}},
+							},
+							msg: nil, err: errors.New("EOF"),
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "add permits to empty feedbag",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_add_permit alice bob"),
+			wantMsg:  []string{},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results:    []wire.FeedbagItem{},
+							err:        nil,
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem},
+							items: []wire.FeedbagItem{
+								{ItemID: 1, ClassID: wire.FeedbagClassIDPermit, GroupID: 0, Name: "alice", TLVLBlock: wire.TLVLBlock{}},
+								{ItemID: 2, ClassID: wire.FeedbagClassIDPermit, GroupID: 0, Name: "bob", TLVLBlock: wire.TLVLBlock{}},
+							},
+							msg: nil, err: nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "skip existing permit, add only new",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_add_permit alice bob"),
+			wantMsg:  []string{},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results: []wire.FeedbagItem{
+								{ItemID: 1, ClassID: wire.FeedbagClassIDPermit, GroupID: 0, Name: "alice", TLVLBlock: wire.TLVLBlock{}},
+							},
+							err: nil,
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem},
+							items: []wire.FeedbagItem{
+								{ItemID: 2, ClassID: wire.FeedbagClassIDPermit, GroupID: 0, Name: "bob", TLVLBlock: wire.TLVLBlock{}},
+							},
+							msg: nil, err: nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "no-op when permit already in feedbag",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_add_permit alice"),
+			wantMsg:  []string{},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results: []wire.FeedbagItem{
+								{ItemID: 1, ClassID: wire.FeedbagClassIDPermit, GroupID: 0, Name: "alice", TLVLBlock: wire.TLVLBlock{}},
+							},
+							err: nil,
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{},
+				},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			fbMgr := newMockFeedbagManager(t)
+			for _, params := range tc.mockParams.feedBagParams.feedbagParams {
+				fbMgr.EXPECT().
+					Feedbag(ctx, params.screenName).
+					Return(params.results, params.err)
+			}
+			fbSvc := newMockFeedbagService(t)
+			for _, params := range tc.mockParams.feedBagParams.feedbagServiceUpsertItemParams {
+				fbSvc.EXPECT().
+					UpsertItem(ctx, matchSession(tc.me.IdentScreenName()), params.frame, params.items).
+					Return(params.msg, params.err)
+			}
+			var randCall int
+			randIntn := func(n int) int {
+				randCall++
+				return randCall
+			}
+			svc := OSCARProxy{
+				Logger:         slog.Default(),
+				FeedbagManager: fbMgr,
+				FeedbagService: fbSvc,
+				RandIntn:       randIntn,
+			}
+			msg := svc.RecvClientCmd(ctx, tc.me, nil, tc.givenCmd, nil, nil)
+			assert.Equal(t, tc.wantMsg, msg)
+		})
+	}
+}
+
+func TestOSCARProxy_RecvClientCmd_AddDeny2(t *testing.T) {
+	cases := []struct {
+		name       string
+		me         *state.SessionInstance
+		givenCmd   []byte
+		wantMsg    []string
+		mockParams mockParams
+	}{
+		{
+			name:       "no screennames provided returns internal error",
+			me:         newTestSession("me"),
+			givenCmd:   []byte("toc2_add_deny"),
+			wantMsg:    []string{cmdInternalSvcErr},
+			mockParams: mockParams{},
+		},
+		{
+			name:     "FeedbagManager.Feedbag error returns internal error",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_add_deny alice"),
+			wantMsg:  []string{cmdInternalSvcErr},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results:    nil,
+							err:        errors.New("EOF"),
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{},
+				},
+			},
+		},
+		{
+			name:     "FeedbagService.UpsertItem error returns internal error",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_add_deny alice"),
+			wantMsg:  []string{cmdInternalSvcErr},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results:    []wire.FeedbagItem{},
+							err:        nil,
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem},
+							items: []wire.FeedbagItem{
+								{ItemID: 1, ClassID: wire.FeedbagClassIDDeny, GroupID: 0, Name: "alice", TLVLBlock: wire.TLVLBlock{}},
+							},
+							msg: nil, err: errors.New("EOF"),
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "add deny to empty feedbag",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_add_deny alice"),
+			wantMsg:  []string{},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results:    []wire.FeedbagItem{},
+							err:        nil,
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem},
+							items: []wire.FeedbagItem{
+								{ItemID: 1, ClassID: wire.FeedbagClassIDDeny, GroupID: 0, Name: "alice", TLVLBlock: wire.TLVLBlock{}},
+							},
+							msg: nil, err: nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "skip existing deny, add only new",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_add_deny alice bob"),
+			wantMsg:  []string{},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results: []wire.FeedbagItem{
+								{ItemID: 1, ClassID: wire.FeedbagClassIDDeny, GroupID: 0, Name: "alice", TLVLBlock: wire.TLVLBlock{}},
+							},
+							err: nil,
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem},
+							items: []wire.FeedbagItem{
+								{ItemID: 2, ClassID: wire.FeedbagClassIDDeny, GroupID: 0, Name: "bob", TLVLBlock: wire.TLVLBlock{}},
+							},
+							msg: nil, err: nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "no-op when deny already in feedbag",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_add_deny alice"),
+			wantMsg:  []string{},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results: []wire.FeedbagItem{
+								{ItemID: 1, ClassID: wire.FeedbagClassIDDeny, GroupID: 0, Name: "alice", TLVLBlock: wire.TLVLBlock{}},
+							},
+							err: nil,
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{},
+				},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			fbMgr := newMockFeedbagManager(t)
+			for _, params := range tc.mockParams.feedBagParams.feedbagParams {
+				fbMgr.EXPECT().
+					Feedbag(ctx, params.screenName).
+					Return(params.results, params.err)
+			}
+			fbSvc := newMockFeedbagService(t)
+			for _, params := range tc.mockParams.feedBagParams.feedbagServiceUpsertItemParams {
+				fbSvc.EXPECT().
+					UpsertItem(ctx, matchSession(tc.me.IdentScreenName()), params.frame, params.items).
+					Return(params.msg, params.err)
+			}
+			var randCall int
+			randIntn := func(n int) int {
+				randCall++
+				return randCall
+			}
+			svc := OSCARProxy{
+				Logger:         slog.Default(),
+				FeedbagManager: fbMgr,
+				FeedbagService: fbSvc,
+				RandIntn:       randIntn,
+			}
+			msg := svc.RecvClientCmd(ctx, tc.me, nil, tc.givenCmd, nil, nil)
+			assert.Equal(t, tc.wantMsg, msg)
+		})
+	}
+}
+
+func TestOSCARProxy_RecvClientCmd_RemoveBuddy2(t *testing.T) {
+	cases := []struct {
+		name       string
+		me         *state.SessionInstance
+		givenCmd   []byte
+		wantMsg    []string
+		mockParams mockParams
+	}{
+		{
+			name:     "removes buddy from group order TLV and upserts group",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_remove_buddy friend2 Buddies"),
+			wantMsg:  []string{},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results: []wire.FeedbagItem{
+								{
+									Name: "Buddies", GroupID: 100, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1, 2, 3})}},
+								},
+								{ItemID: 1, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "friend1", TLVLBlock: wire.TLVLBlock{}},
+								{ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "friend2", TLVLBlock: wire.TLVLBlock{}},
+								{ItemID: 3, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "friend3", TLVLBlock: wire.TLVLBlock{}},
+							},
+							err: nil,
+						},
+					},
+					feedbagServiceDeleteItemParams: feedbagServiceDeleteItemParams{
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagDeleteItem},
+							inBody: wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
+								Items: []wire.FeedbagItem{
+									{ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "friend2", TLVLBlock: wire.TLVLBlock{}},
+								},
+							},
+							msg: nil, err: nil,
+						},
+					},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagUpdateItem},
+							items: []wire.FeedbagItem{
+								{
+									Name: "Buddies", GroupID: 100, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1, 3})}},
+								},
+							},
+							msg: nil, err: nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:       "parseArgs error returns internal error",
+			me:         newTestSession("me"),
+			givenCmd:   []byte("toc2_remove_buddy \"unclosed"),
+			wantMsg:    []string{cmdInternalSvcErr},
+			mockParams: mockParams{},
+		},
+		{
+			name:       "missing params returns internal error",
+			me:         newTestSession("me"),
+			givenCmd:   []byte("toc2_remove_buddy friend1"),
+			wantMsg:    []string{cmdInternalSvcErr},
+			mockParams: mockParams{},
+		},
+		{
+			name:     "group not found returns internal error",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_remove_buddy friend1 NoSuchGroup"),
+			wantMsg:  []string{cmdInternalSvcErr},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results: []wire.FeedbagItem{
+								{Name: "Buddies", GroupID: 100, ItemID: 0, ClassID: wire.FeedbagClassIdGroup},
+							},
+							err: nil,
+						},
+					},
+					feedbagServiceDeleteItemParams: feedbagServiceDeleteItemParams{},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{},
+				},
+			},
+		},
+		{
+			name:     "FeedbagManager.Feedbag error returns internal error",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_remove_buddy friend1 Buddies"),
+			wantMsg:  []string{cmdInternalSvcErr},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results:    nil,
+							err:        errors.New("EOF"),
+						},
+					},
+					feedbagServiceDeleteItemParams: feedbagServiceDeleteItemParams{},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{},
+				},
+			},
+		},
+		{
+			name:     "no-op when buddy not in group",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_remove_buddy stranger Buddies"),
+			wantMsg:  []string{},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results: []wire.FeedbagItem{
+								{Name: "Buddies", GroupID: 100, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1})}}},
+								{ItemID: 1, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "friend1", TLVLBlock: wire.TLVLBlock{}},
+							},
+							err: nil,
+						},
+					},
+					feedbagServiceDeleteItemParams: feedbagServiceDeleteItemParams{},
+					feedbagServiceUpsertItemParams: feedbagServiceUpsertItemParams{},
+				},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+
+			fbMgr := newMockFeedbagManager(t)
+			for _, params := range tc.mockParams.feedBagParams.feedbagParams {
+				fbMgr.EXPECT().
+					Feedbag(ctx, params.screenName).
+					Return(params.results, params.err)
+			}
+			fbSvc := newMockFeedbagService(t)
+			for _, params := range tc.mockParams.feedBagParams.feedbagServiceDeleteItemParams {
+				fbSvc.EXPECT().
+					DeleteItem(ctx, matchSession(tc.me.IdentScreenName()), params.frame, params.inBody).
+					Return(params.msg, params.err)
+			}
+			for _, params := range tc.mockParams.feedBagParams.feedbagServiceUpsertItemParams {
+				fbSvc.EXPECT().
+					UpsertItem(ctx, matchSession(tc.me.IdentScreenName()), params.frame, params.items).
+					Return(params.msg, params.err)
+			}
+
+			svc := OSCARProxy{
+				Logger:         slog.Default(),
+				FeedbagManager: fbMgr,
+				FeedbagService: fbSvc,
+			}
+			msg := svc.RecvClientCmd(ctx, tc.me, nil, tc.givenCmd, nil, nil)
+			assert.Equal(t, tc.wantMsg, msg)
+		})
+	}
+}
+
+func TestOSCARProxy_RecvClientCmd_RemovePermit2(t *testing.T) {
+	cases := []struct {
+		name       string
+		me         *state.SessionInstance
+		givenCmd   []byte
+		wantMsg    []string
+		mockParams mockParams
+	}{
+		{
+			name:       "no screennames provided returns internal error",
+			me:         newTestSession("me"),
+			givenCmd:   []byte("toc2_remove_permit"),
+			wantMsg:    []string{cmdInternalSvcErr},
+			mockParams: mockParams{},
+		},
+		{
+			name:     "FeedbagManager.Feedbag error returns internal error",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_remove_permit alice"),
+			wantMsg:  []string{cmdInternalSvcErr},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results:    nil,
+							err:        errors.New("EOF"),
+						},
+					},
+					feedbagServiceDeleteItemParams: feedbagServiceDeleteItemParams{},
+				},
+			},
+		},
+		{
+			name:     "FeedbagService.DeleteItem error returns internal error",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_remove_permit alice"),
+			wantMsg:  []string{cmdInternalSvcErr},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results: []wire.FeedbagItem{
+								{ItemID: 1, ClassID: wire.FeedbagClassIDPermit, GroupID: 0, Name: "alice", TLVLBlock: wire.TLVLBlock{}},
+							},
+							err: nil,
+						},
+					},
+					feedbagServiceDeleteItemParams: feedbagServiceDeleteItemParams{
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagDeleteItem},
+							inBody: wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
+								Items: []wire.FeedbagItem{
+									{ItemID: 1, ClassID: wire.FeedbagClassIDPermit, GroupID: 0, Name: "alice", TLVLBlock: wire.TLVLBlock{}},
+								},
+							},
+							msg: nil, err: errors.New("EOF"),
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "remove permits from feedbag",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_remove_permit alice bob"),
+			wantMsg:  []string{},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results: []wire.FeedbagItem{
+								{ItemID: 1, ClassID: wire.FeedbagClassIDPermit, GroupID: 0, Name: "alice", TLVLBlock: wire.TLVLBlock{}},
+								{ItemID: 2, ClassID: wire.FeedbagClassIDPermit, GroupID: 0, Name: "bob", TLVLBlock: wire.TLVLBlock{}},
+							},
+							err: nil,
+						},
+					},
+					feedbagServiceDeleteItemParams: feedbagServiceDeleteItemParams{
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagDeleteItem},
+							inBody: wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
+								Items: []wire.FeedbagItem{
+									{ItemID: 1, ClassID: wire.FeedbagClassIDPermit, GroupID: 0, Name: "alice", TLVLBlock: wire.TLVLBlock{}},
+									{ItemID: 2, ClassID: wire.FeedbagClassIDPermit, GroupID: 0, Name: "bob", TLVLBlock: wire.TLVLBlock{}},
+								},
+							},
+							msg: nil, err: nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "remove only existing permits",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_remove_permit alice bob"),
+			wantMsg:  []string{},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results: []wire.FeedbagItem{
+								{ItemID: 1, ClassID: wire.FeedbagClassIDPermit, GroupID: 0, Name: "alice", TLVLBlock: wire.TLVLBlock{}},
+							},
+							err: nil,
+						},
+					},
+					feedbagServiceDeleteItemParams: feedbagServiceDeleteItemParams{
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagDeleteItem},
+							inBody: wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
+								Items: []wire.FeedbagItem{
+									{ItemID: 1, ClassID: wire.FeedbagClassIDPermit, GroupID: 0, Name: "alice", TLVLBlock: wire.TLVLBlock{}},
+								},
+							},
+							msg: nil, err: nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "no-op when no permits in feedbag",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_remove_permit alice"),
+			wantMsg:  []string{},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results:    []wire.FeedbagItem{},
+							err:        nil,
+						},
+					},
+					feedbagServiceDeleteItemParams: feedbagServiceDeleteItemParams{},
+				},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			fbMgr := newMockFeedbagManager(t)
+			for _, params := range tc.mockParams.feedBagParams.feedbagParams {
+				fbMgr.EXPECT().
+					Feedbag(ctx, params.screenName).
+					Return(params.results, params.err)
+			}
+			fbSvc := newMockFeedbagService(t)
+			for _, params := range tc.mockParams.feedBagParams.feedbagServiceDeleteItemParams {
+				fbSvc.EXPECT().
+					DeleteItem(ctx, matchSession(tc.me.IdentScreenName()), params.frame, params.inBody).
+					Return(params.msg, params.err)
+			}
+			svc := OSCARProxy{
+				Logger:         slog.Default(),
+				FeedbagManager: fbMgr,
+				FeedbagService: fbSvc,
+			}
+			msg := svc.RecvClientCmd(ctx, tc.me, nil, tc.givenCmd, nil, nil)
+			assert.Equal(t, tc.wantMsg, msg)
+		})
+	}
+}
+
+func TestOSCARProxy_RecvClientCmd_RemoveDeny2(t *testing.T) {
+	cases := []struct {
+		name       string
+		me         *state.SessionInstance
+		givenCmd   []byte
+		wantMsg    []string
+		mockParams mockParams
+	}{
+		{
+			name:       "no screennames provided returns internal error",
+			me:         newTestSession("me"),
+			givenCmd:   []byte("toc2_remove_deny"),
+			wantMsg:    []string{cmdInternalSvcErr},
+			mockParams: mockParams{},
+		},
+		{
+			name:     "FeedbagManager.Feedbag error returns internal error",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_remove_deny alice"),
+			wantMsg:  []string{cmdInternalSvcErr},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results:    nil,
+							err:        errors.New("EOF"),
+						},
+					},
+					feedbagServiceDeleteItemParams: feedbagServiceDeleteItemParams{},
+				},
+			},
+		},
+		{
+			name:     "FeedbagService.DeleteItem error returns internal error",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_remove_deny alice"),
+			wantMsg:  []string{cmdInternalSvcErr},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results: []wire.FeedbagItem{
+								{ItemID: 1, ClassID: wire.FeedbagClassIDDeny, GroupID: 0, Name: "alice", TLVLBlock: wire.TLVLBlock{}},
+							},
+							err: nil,
+						},
+					},
+					feedbagServiceDeleteItemParams: feedbagServiceDeleteItemParams{
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagDeleteItem},
+							inBody: wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
+								Items: []wire.FeedbagItem{
+									{ItemID: 1, ClassID: wire.FeedbagClassIDDeny, GroupID: 0, Name: "alice", TLVLBlock: wire.TLVLBlock{}},
+								},
+							},
+							msg: nil, err: errors.New("EOF"),
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "remove denies from feedbag",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_remove_deny alice bob"),
+			wantMsg:  []string{},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results: []wire.FeedbagItem{
+								{ItemID: 1, ClassID: wire.FeedbagClassIDDeny, GroupID: 0, Name: "alice", TLVLBlock: wire.TLVLBlock{}},
+								{ItemID: 2, ClassID: wire.FeedbagClassIDDeny, GroupID: 0, Name: "bob", TLVLBlock: wire.TLVLBlock{}},
+							},
+							err: nil,
+						},
+					},
+					feedbagServiceDeleteItemParams: feedbagServiceDeleteItemParams{
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagDeleteItem},
+							inBody: wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
+								Items: []wire.FeedbagItem{
+									{ItemID: 1, ClassID: wire.FeedbagClassIDDeny, GroupID: 0, Name: "alice", TLVLBlock: wire.TLVLBlock{}},
+									{ItemID: 2, ClassID: wire.FeedbagClassIDDeny, GroupID: 0, Name: "bob", TLVLBlock: wire.TLVLBlock{}},
+								},
+							},
+							msg: nil, err: nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "remove only existing denies",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_remove_deny alice bob"),
+			wantMsg:  []string{},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results: []wire.FeedbagItem{
+								{ItemID: 1, ClassID: wire.FeedbagClassIDDeny, GroupID: 0, Name: "alice", TLVLBlock: wire.TLVLBlock{}},
+							},
+							err: nil,
+						},
+					},
+					feedbagServiceDeleteItemParams: feedbagServiceDeleteItemParams{
+						{
+							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagDeleteItem},
+							inBody: wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
+								Items: []wire.FeedbagItem{
+									{ItemID: 1, ClassID: wire.FeedbagClassIDDeny, GroupID: 0, Name: "alice", TLVLBlock: wire.TLVLBlock{}},
+								},
+							},
+							msg: nil, err: nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "no-op when no denies in feedbag",
+			me:       newTestSession("me"),
+			givenCmd: []byte("toc2_remove_deny alice"),
+			wantMsg:  []string{},
+			mockParams: mockParams{
+				feedBagParams: feedBagParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results:    []wire.FeedbagItem{},
+							err:        nil,
+						},
+					},
+					feedbagServiceDeleteItemParams: feedbagServiceDeleteItemParams{},
+				},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			fbMgr := newMockFeedbagManager(t)
+			for _, params := range tc.mockParams.feedBagParams.feedbagParams {
+				fbMgr.EXPECT().
+					Feedbag(ctx, params.screenName).
+					Return(params.results, params.err)
+			}
+			fbSvc := newMockFeedbagService(t)
+			for _, params := range tc.mockParams.feedBagParams.feedbagServiceDeleteItemParams {
+				fbSvc.EXPECT().
+					DeleteItem(ctx, matchSession(tc.me.IdentScreenName()), params.frame, params.inBody).
+					Return(params.msg, params.err)
+			}
+			svc := OSCARProxy{
+				Logger:         slog.Default(),
+				FeedbagManager: fbMgr,
+				FeedbagService: fbSvc,
+			}
+			msg := svc.RecvClientCmd(ctx, tc.me, nil, tc.givenCmd, nil, nil)
+			assert.Equal(t, tc.wantMsg, msg)
+		})
+	}
+}
+
 func TestOSCARProxy_RecvClientCmd_RvousAccept(t *testing.T) {
 	cases := []struct {
 		// name is the unit test name
@@ -2774,7 +5060,7 @@ func TestOSCARProxy_RecvClientCmd_RvousAccept(t *testing.T) {
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
-		wantMsg string
+		wantMsg []string
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
@@ -2805,6 +5091,7 @@ func TestOSCARProxy_RecvClientCmd_RvousAccept(t *testing.T) {
 					},
 				},
 			},
+			wantMsg: []string{},
 		},
 		{
 			name:     "send rendezvous request, receive error from ICBM service",
@@ -2833,13 +5120,13 @@ func TestOSCARProxy_RecvClientCmd_RvousAccept(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: cmdInternalSvcErr,
+			wantMsg: []string{cmdInternalSvcErr},
 		},
 		{
 			name:     "bad command",
 			me:       newTestSession("me"),
 			givenCmd: []byte(`toc_rvous_accept`),
-			wantMsg:  cmdInternalSvcErr,
+			wantMsg:  []string{cmdInternalSvcErr},
 		},
 	}
 
@@ -2874,7 +5161,7 @@ func TestOSCARProxy_RecvClientCmd_RvousCancel(t *testing.T) {
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
-		wantMsg string
+		wantMsg []string
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
@@ -2910,6 +5197,7 @@ func TestOSCARProxy_RecvClientCmd_RvousCancel(t *testing.T) {
 					},
 				},
 			},
+			wantMsg: []string{},
 		},
 		{
 			name:     "send rendezvous cancellation, receive error from ICBM service",
@@ -2943,13 +5231,13 @@ func TestOSCARProxy_RecvClientCmd_RvousCancel(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: cmdInternalSvcErr,
+			wantMsg: []string{cmdInternalSvcErr},
 		},
 		{
 			name:     "bad command",
 			me:       newTestSession("me"),
 			givenCmd: []byte(`toc_rvous_cancel`),
-			wantMsg:  cmdInternalSvcErr,
+			wantMsg:  []string{cmdInternalSvcErr},
 		},
 	}
 
@@ -2984,7 +5272,7 @@ func TestOSCARProxy_RecvClientCmd_SendIM(t *testing.T) {
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
-		wantMsg string
+		wantMsg []string
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
@@ -3026,6 +5314,7 @@ func TestOSCARProxy_RecvClientCmd_SendIM(t *testing.T) {
 					},
 				},
 			},
+			wantMsg: []string{},
 		},
 		{
 			name:     "successfully auto-reply send instant message",
@@ -3065,6 +5354,7 @@ func TestOSCARProxy_RecvClientCmd_SendIM(t *testing.T) {
 					},
 				},
 			},
+			wantMsg: []string{},
 		},
 		{
 			name:     "send instant message, receive error from ICBM service",
@@ -3104,13 +5394,178 @@ func TestOSCARProxy_RecvClientCmd_SendIM(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: cmdInternalSvcErr,
+			wantMsg: []string{cmdInternalSvcErr},
 		},
 		{
 			name:     "bad command",
 			me:       newTestSession("me"),
 			givenCmd: []byte(`toc_send_im`),
-			wantMsg:  cmdInternalSvcErr,
+			wantMsg:  []string{cmdInternalSvcErr},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+
+			icbmSvc := newMockICBMService(t)
+			for _, params := range tc.mockParams.channelMsgToHostParamsICBM {
+				icbmSvc.EXPECT().
+					ChannelMsgToHost(ctx, matchSession(params.sender), params.inFrame, params.inBody).
+					Return(params.result, params.err)
+			}
+
+			svc := OSCARProxy{
+				Logger:      slog.Default(),
+				ICBMService: icbmSvc,
+			}
+			msg := svc.RecvClientCmd(ctx, tc.me, nil, tc.givenCmd, nil, nil)
+
+			assert.Equal(t, tc.wantMsg, msg)
+		})
+	}
+}
+
+func TestOSCARProxy_RecvClientCmd_SendIMEnc(t *testing.T) {
+	cases := []struct {
+		name       string
+		me         *state.SessionInstance
+		givenCmd   []byte
+		wantMsg    []string
+		mockParams mockParams
+	}{
+		{
+			name:     "successfully send encoded instant message",
+			me:       newTestSession("me"),
+			givenCmd: []byte(`toc2_send_im_enc chattingChuck "F" utf-8 en "hello"`),
+			mockParams: mockParams{
+				icbmParams: icbmParams{
+					channelMsgToHostParamsICBM: channelMsgToHostParamsICBM{
+						{
+							sender:  state.NewIdentScreenName("me"),
+							inFrame: wire.SNACFrame{},
+							inBody: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
+								ChannelID:  wire.ICBMChannelIM,
+								ScreenName: "chattingChuck",
+								TLVRestBlock: wire.TLVRestBlock{
+									TLVList: wire.TLVList{
+										wire.NewTLVBE(wire.ICBMTLVAOLIMData, []wire.ICBMCh1Fragment{
+											{
+												ID:      5,
+												Version: 1,
+												Payload: []byte{1, 1, 2},
+											},
+											{
+												ID:      1,
+												Version: 1,
+												Payload: []byte{
+													0x00, 0x00,
+													0x00, 0x00,
+													'h', 'e', 'l', 'l', 'o',
+												},
+											},
+										}),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantMsg: []string{},
+		},
+		{
+			name:     "successfully send encoded instant message with auto",
+			me:       newTestSession("me"),
+			givenCmd: []byte(`toc2_send_im_enc chattingChuck "F" utf-8 en "hello" auto`),
+			mockParams: mockParams{
+				icbmParams: icbmParams{
+					channelMsgToHostParamsICBM: channelMsgToHostParamsICBM{
+						{
+							sender:  state.NewIdentScreenName("me"),
+							inFrame: wire.SNACFrame{},
+							inBody: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
+								ChannelID:  wire.ICBMChannelIM,
+								ScreenName: "chattingChuck",
+								TLVRestBlock: wire.TLVRestBlock{
+									TLVList: wire.TLVList{
+										wire.NewTLVBE(wire.ICBMTLVAOLIMData, []wire.ICBMCh1Fragment{
+											{
+												ID:      5,
+												Version: 1,
+												Payload: []byte{1, 1, 2},
+											},
+											{
+												ID:      1,
+												Version: 1,
+												Payload: []byte{
+													0x00, 0x00,
+													0x00, 0x00,
+													'h', 'e', 'l', 'l', 'o',
+												},
+											},
+										}),
+										wire.NewTLVBE(wire.ICBMTLVAutoResponse, []byte{}),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantMsg: []string{},
+		},
+		{
+			name:     "send encoded instant message, receive error from ICBM service",
+			me:       newTestSession("me"),
+			givenCmd: []byte(`toc2_send_im_enc chattingChuck "F" utf-8 en "hello"`),
+			mockParams: mockParams{
+				icbmParams: icbmParams{
+					channelMsgToHostParamsICBM: channelMsgToHostParamsICBM{
+						{
+							sender:  state.NewIdentScreenName("me"),
+							inFrame: wire.SNACFrame{},
+							inBody: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
+								ChannelID:  wire.ICBMChannelIM,
+								ScreenName: "chattingChuck",
+								TLVRestBlock: wire.TLVRestBlock{
+									TLVList: wire.TLVList{
+										wire.NewTLVBE(wire.ICBMTLVAOLIMData, []wire.ICBMCh1Fragment{
+											{
+												ID:      5,
+												Version: 1,
+												Payload: []byte{1, 1, 2},
+											},
+											{
+												ID:      1,
+												Version: 1,
+												Payload: []byte{
+													0x00, 0x00,
+													0x00, 0x00,
+													'h', 'e', 'l', 'l', 'o',
+												},
+											},
+										}),
+									},
+								},
+							},
+							err: io.EOF,
+						},
+					},
+				},
+			},
+			wantMsg: []string{cmdInternalSvcErr},
+		},
+		{
+			name:     "invalid args too few",
+			me:       newTestSession("me"),
+			givenCmd: []byte(`toc2_send_im_enc`),
+			mockParams: mockParams{
+				icbmParams: icbmParams{
+					channelMsgToHostParamsICBM: channelMsgToHostParamsICBM{},
+				},
+			},
+			wantMsg: []string{cmdInternalSvcErr},
 		},
 	}
 
@@ -3145,7 +5600,7 @@ func TestOSCARProxy_RecvClientCmd_SetAway(t *testing.T) {
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
-		wantMsg string
+		wantMsg []string
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
@@ -3170,6 +5625,7 @@ func TestOSCARProxy_RecvClientCmd_SetAway(t *testing.T) {
 					},
 				},
 			},
+			wantMsg: []string{},
 		},
 		{
 			name:     "successfully set away without message",
@@ -3191,6 +5647,7 @@ func TestOSCARProxy_RecvClientCmd_SetAway(t *testing.T) {
 					},
 				},
 			},
+			wantMsg: []string{},
 		},
 		{
 			name:     "set away message, receive error from locate service",
@@ -3213,7 +5670,7 @@ func TestOSCARProxy_RecvClientCmd_SetAway(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: cmdInternalSvcErr,
+			wantMsg: []string{cmdInternalSvcErr},
 		},
 	}
 
@@ -3248,7 +5705,7 @@ func TestOSCARProxy_RecvClientCmd_SetCaps(t *testing.T) {
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
-		wantMsg string
+		wantMsg []string
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
@@ -3277,6 +5734,7 @@ func TestOSCARProxy_RecvClientCmd_SetCaps(t *testing.T) {
 					},
 				},
 			},
+			wantMsg: []string{},
 		},
 		{
 			name:     "set capabilities with empty list",
@@ -3300,6 +5758,7 @@ func TestOSCARProxy_RecvClientCmd_SetCaps(t *testing.T) {
 					},
 				},
 			},
+			wantMsg: []string{},
 		},
 		{
 			name:     "set capability, receive error from locate service",
@@ -3325,13 +5784,64 @@ func TestOSCARProxy_RecvClientCmd_SetCaps(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: cmdInternalSvcErr,
+			wantMsg: []string{cmdInternalSvcErr},
 		},
 		{
-			name:     "set malformed capability UUID",
+			name:     "set malformed capability UUID is skipped",
 			me:       newTestSession("me"),
 			givenCmd: []byte(`toc_set_caps 09460000-`),
-			wantMsg:  cmdInternalSvcErr,
+			mockParams: mockParams{
+				locateParams: locateParams{
+					setInfoParams: setInfoParams{
+						{
+							me: state.NewIdentScreenName("me"),
+							inBody: wire.SNAC_0x02_0x04_LocateSetInfo{
+								TLVRestBlock: wire.TLVRestBlock{
+									TLVList: wire.TLVList{
+										wire.NewTLVBE(wire.LocateTLVTagsInfoCapabilities, []uuid.UUID{
+											wire.CapChat,
+										}),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantMsg: []string{},
+		},
+		{
+			name:     "set capabilities with comma-separated list (TameClone format)",
+			me:       newTestSession("me"),
+			givenCmd: []byte(`toc_set_caps 748F2420-6287-11D1-8222-444553540000,1348,134B,1341,1343,1FF,1345,1346,1347,`),
+			mockParams: mockParams{
+				locateParams: locateParams{
+					setInfoParams: setInfoParams{
+						{
+							me: state.NewIdentScreenName("me"),
+							inBody: wire.SNAC_0x02_0x04_LocateSetInfo{
+								TLVRestBlock: wire.TLVRestBlock{
+									TLVList: wire.TLVList{
+										wire.NewTLVBE(wire.LocateTLVTagsInfoCapabilities, []uuid.UUID{
+											wire.CapChat,              // 748F... from client
+											wire.CapFileSharing,       // 1348
+											wire.CapBuddyListTransfer, // 134B
+											wire.CapVoiceChat,         // 1341
+											wire.CapFileTransfer,      // 1343
+											wire.CapSmartCaps,         // 1FF
+											wire.CapDirectICBM,        // 1345
+											wire.CapAvatarService,     // 1346
+											wire.CapStocksAddins,      // 1347
+											wire.CapChat,              // auto-appended
+										}),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantMsg: []string{},
 		},
 	}
 
@@ -3366,7 +5876,7 @@ func TestOSCARProxy_RecvClientCmd_SetConfig(t *testing.T) {
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
-		wantMsg string
+		wantMsg []string
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
@@ -3385,6 +5895,7 @@ func TestOSCARProxy_RecvClientCmd_SetConfig(t *testing.T) {
 					},
 				},
 			},
+			wantMsg: []string{},
 		},
 		{
 			name:     "successfully set permit all config (double-quoted)",
@@ -3400,6 +5911,7 @@ func TestOSCARProxy_RecvClientCmd_SetConfig(t *testing.T) {
 					},
 				},
 			},
+			wantMsg: []string{},
 		},
 		{
 			name:     "successfully set permit all config (single-quoted)",
@@ -3415,6 +5927,7 @@ func TestOSCARProxy_RecvClientCmd_SetConfig(t *testing.T) {
 					},
 				},
 			},
+			wantMsg: []string{},
 		},
 		{
 			name:     "successfully set permit all config (double-quoted with spaces)",
@@ -3430,6 +5943,7 @@ func TestOSCARProxy_RecvClientCmd_SetConfig(t *testing.T) {
 					},
 				},
 			},
+			wantMsg: []string{},
 		},
 		{
 			name:     "set config, receive error from toc config store",
@@ -3446,13 +5960,13 @@ func TestOSCARProxy_RecvClientCmd_SetConfig(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: cmdInternalSvcErr,
+			wantMsg: []string{cmdInternalSvcErr},
 		},
 		{
 			name:     "bad command",
 			me:       newTestSession("me"),
 			givenCmd: []byte(`toc_set_config`),
-			wantMsg:  cmdInternalSvcErr,
+			wantMsg:  []string{cmdInternalSvcErr},
 		},
 	}
 
@@ -3506,7 +6020,7 @@ func TestOSCARProxy_RecvClientCmd_SetDir(t *testing.T) {
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
-		wantMsg string
+		wantMsg []string
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
@@ -3537,6 +6051,7 @@ func TestOSCARProxy_RecvClientCmd_SetDir(t *testing.T) {
 					},
 				},
 			},
+			wantMsg: []string{},
 		},
 		{
 			name:     "successfully set directory info with some blank fields",
@@ -3564,6 +6079,7 @@ func TestOSCARProxy_RecvClientCmd_SetDir(t *testing.T) {
 					},
 				},
 			},
+			wantMsg: []string{},
 		},
 		{
 			name:     "successfully set directory info with last two fields absent",
@@ -3591,6 +6107,7 @@ func TestOSCARProxy_RecvClientCmd_SetDir(t *testing.T) {
 					},
 				},
 			},
+			wantMsg: []string{},
 		},
 		{
 			name:     "set directory info, receive error from locate svc",
@@ -3619,19 +6136,19 @@ func TestOSCARProxy_RecvClientCmd_SetDir(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: cmdInternalSvcErr,
+			wantMsg: []string{cmdInternalSvcErr},
 		},
 		{
 			name:     "set directory with too many fields present",
 			me:       newTestSession("me"),
 			givenCmd: []byte(`toc_set_dir "first name"::"last name"::"city":"state":"country":"email":"allow web searches":"extra":"extra"`),
-			wantMsg:  cmdInternalSvcErr,
+			wantMsg:  []string{cmdInternalSvcErr},
 		},
 		{
 			name:     "bad command",
 			me:       newTestSession("me"),
 			givenCmd: []byte(`toc_set_dir`),
-			wantMsg:  cmdInternalSvcErr,
+			wantMsg:  []string{cmdInternalSvcErr},
 		},
 	}
 
@@ -3666,7 +6183,7 @@ func TestOSCARProxy_RecvClientCmd_SetIdle(t *testing.T) {
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
-		wantMsg string
+		wantMsg []string
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
@@ -3687,6 +6204,7 @@ func TestOSCARProxy_RecvClientCmd_SetIdle(t *testing.T) {
 					},
 				},
 			},
+			wantMsg: []string{},
 		},
 		{
 			name:     "set idle status, receive err from BOS oservice svc",
@@ -3705,18 +6223,18 @@ func TestOSCARProxy_RecvClientCmd_SetIdle(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: cmdInternalSvcErr,
+			wantMsg: []string{cmdInternalSvcErr},
 		},
 		{
 			name:     "bad secs param",
 			givenCmd: []byte(`toc_set_idle zero`),
-			wantMsg:  cmdInternalSvcErr,
+			wantMsg:  []string{cmdInternalSvcErr},
 		},
 		{
 			name:     "bad command",
 			me:       newTestSession("me"),
 			givenCmd: []byte(`toc_set_idle`),
-			wantMsg:  cmdInternalSvcErr,
+			wantMsg:  []string{cmdInternalSvcErr},
 		},
 	}
 
@@ -3751,7 +6269,7 @@ func TestOSCARProxy_RecvClientCmd_SetInfo(t *testing.T) {
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
-		wantMsg string
+		wantMsg []string
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
@@ -3776,6 +6294,7 @@ func TestOSCARProxy_RecvClientCmd_SetInfo(t *testing.T) {
 					},
 				},
 			},
+			wantMsg: []string{},
 		},
 		{
 			name:     "set profile, receive error from locate svc",
@@ -3798,13 +6317,13 @@ func TestOSCARProxy_RecvClientCmd_SetInfo(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: cmdInternalSvcErr,
+			wantMsg: []string{cmdInternalSvcErr},
 		},
 		{
 			name:     "bad command",
 			me:       newTestSession("me"),
 			givenCmd: []byte(`toc_set_info`),
-			wantMsg:  cmdInternalSvcErr,
+			wantMsg:  []string{cmdInternalSvcErr},
 		},
 	}
 
@@ -3836,8 +6355,8 @@ func TestOSCARProxy_Signon(t *testing.T) {
 	cases := []struct {
 		// name is the unit test name
 		name string
-		// me is the TOC user session
-		me *state.SessionInstance
+		// checkSession validates the session returned from Signon when non-nil; leave nil for error cases
+		checkSession func(*testing.T, *state.SessionInstance)
 		// givenCmd is the TOC command
 		givenCmd []byte
 		// wantMsg is the expected TOC response
@@ -3847,11 +6366,13 @@ func TestOSCARProxy_Signon(t *testing.T) {
 		mockParams mockParams
 	}{
 		{
-			name: "successfully login",
-			me: newTestSession("me", func(instance *state.SessionInstance) {
-				instance.SetCaps([][16]byte{wire.CapChat})
-			}),
-			givenCmd: []byte(`"" "" me "xx` + hex.EncodeToString(roastedPass) + `"`),
+			name: "successfully login TOC1",
+			checkSession: func(t *testing.T, s *state.SessionInstance) {
+				assert.Equal(t, state.NewIdentScreenName("me"), s.IdentScreenName())
+				assert.Equal(t, [][16]byte{wire.CapChat}, s.Session().Caps())
+				assert.False(t, s.IsTOC2())
+			},
+			givenCmd: []byte(`toc_signon "" "" me "0x` + hex.EncodeToString(roastedPass) + `"`),
 			mockParams: mockParams{
 				authParams: authParams{
 					flapLoginParams: flapLoginParams{
@@ -3902,11 +6423,239 @@ func TestOSCARProxy_Signon(t *testing.T) {
 					},
 				},
 			},
-			wantMsg: []string{"SIGN_ON:TOC1.0", "CONFIG:my-toc-config"},
+			wantMsg: []string{"SIGN_ON:TOC1.0", "CONFIG:my-toc-config", "NICK:me"},
+		},
+		{
+			name: "successfully login TOC2",
+			checkSession: func(t *testing.T, s *state.SessionInstance) {
+				assert.Equal(t, state.NewIdentScreenName("me"), s.IdentScreenName())
+				assert.Equal(t, [][16]byte{wire.CapChat}, s.Session().Caps())
+				assert.True(t, s.IsTOC2())
+			},
+			givenCmd: []byte(`toc2_signon "" "" me "0x` + hex.EncodeToString(roastedPass) + `"`),
+			mockParams: mockParams{
+				authParams: authParams{
+					flapLoginParams: flapLoginParams{
+						{
+							frame: wire.FLAPSignonFrame{
+								TLVRestBlock: wire.TLVRestBlock{
+									TLVList: wire.TLVList{
+										wire.NewTLVBE(wire.LoginTLVTagsScreenName, "me"),
+										wire.NewTLVBE(wire.LoginTLVTagsRoastedTOCPassword, roastedPass),
+										wire.NewTLVBE(wire.LoginTLVTagsMultiConnFlags, wire.MultiConnFlagsRecentClient),
+									},
+								},
+							},
+							tlv: wire.TLVRestBlock{
+								TLVList: wire.TLVList{
+									wire.NewTLVBE(wire.OServiceTLVTagsLoginCookie, []byte("thecookie")),
+								},
+							},
+						},
+					},
+					crackCookieParams: crackCookieParams{
+						{
+							cookieIn:  []byte("thecookie"),
+							cookieOut: state.ServerCookie{Service: wire.BOS},
+						},
+					},
+					registerBOSSessionParams: registerBOSSessionParams{
+						{
+							authCookie: state.ServerCookie{Service: wire.BOS},
+							instance:   newTestSession("me"),
+						},
+					},
+				},
+				buddyListRegistryParams: buddyListRegistryParams{
+					registerBuddyListParams: registerBuddyListParams{
+						{
+							user: state.NewIdentScreenName("me"),
+						},
+					},
+				},
+				feedBagParams: feedBagParams{
+					feedbagServiceUseParams: feedbagServiceUseParams{{err: nil}},
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results:    nil,
+							err:        nil,
+						},
+					},
+				},
+			},
+			wantMsg: []string{"SIGN_ON:TOC2.0", "NICK:me", "CONFIG2:done:\n"},
+		},
+		{
+			name: "successfully login toc2_login (TOC2 with encoded messaging)",
+			checkSession: func(t *testing.T, s *state.SessionInstance) {
+				assert.Equal(t, state.NewIdentScreenName("me"), s.IdentScreenName())
+				assert.Equal(t, [][16]byte{wire.CapChat}, s.Session().Caps())
+				assert.True(t, s.IsTOC2())
+				assert.True(t, s.SupportsTOC2MsgEnc())
+			},
+			givenCmd: []byte(`toc2_login "" "" me "0x` + hex.EncodeToString(roastedPass) + `"`),
+			mockParams: mockParams{
+				authParams: authParams{
+					flapLoginParams: flapLoginParams{
+						{
+							frame: wire.FLAPSignonFrame{
+								TLVRestBlock: wire.TLVRestBlock{
+									TLVList: wire.TLVList{
+										wire.NewTLVBE(wire.LoginTLVTagsScreenName, "me"),
+										wire.NewTLVBE(wire.LoginTLVTagsRoastedTOCPassword, roastedPass),
+										wire.NewTLVBE(wire.LoginTLVTagsMultiConnFlags, wire.MultiConnFlagsRecentClient),
+									},
+								},
+							},
+							tlv: wire.TLVRestBlock{
+								TLVList: wire.TLVList{
+									wire.NewTLVBE(wire.OServiceTLVTagsLoginCookie, []byte("thecookie")),
+								},
+							},
+						},
+					},
+					crackCookieParams: crackCookieParams{
+						{
+							cookieIn:  []byte("thecookie"),
+							cookieOut: state.ServerCookie{Service: wire.BOS},
+						},
+					},
+					registerBOSSessionParams: registerBOSSessionParams{
+						{
+							authCookie: state.ServerCookie{Service: wire.BOS},
+							instance:   newTestSession("me"),
+						},
+					},
+				},
+				buddyListRegistryParams: buddyListRegistryParams{
+					registerBuddyListParams: registerBuddyListParams{
+						{
+							user: state.NewIdentScreenName("me"),
+						},
+					},
+				},
+				feedBagParams: feedBagParams{
+					feedbagServiceUseParams: feedbagServiceUseParams{{err: nil}},
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results:    nil,
+							err:        nil,
+						},
+					},
+				},
+			},
+			wantMsg: []string{"SIGN_ON:TOC2.0", "NICK:me", "CONFIG2:done:\n"},
+		},
+		{
+			name: "login TOC2, receive error from FeedbagService.Use",
+			// Signon returns (sess, err) on feedbag errors, so session is non-nil; use no-op check
+			checkSession: func(*testing.T, *state.SessionInstance) {},
+			givenCmd:     []byte(`toc2_signon "" "" me "0x` + hex.EncodeToString(roastedPass) + `"`),
+			mockParams: mockParams{
+				authParams: authParams{
+					flapLoginParams: flapLoginParams{
+						{
+							frame: wire.FLAPSignonFrame{
+								TLVRestBlock: wire.TLVRestBlock{
+									TLVList: wire.TLVList{
+										wire.NewTLVBE(wire.LoginTLVTagsScreenName, "me"),
+										wire.NewTLVBE(wire.LoginTLVTagsRoastedTOCPassword, roastedPass),
+										wire.NewTLVBE(wire.LoginTLVTagsMultiConnFlags, wire.MultiConnFlagsRecentClient),
+									},
+								},
+							},
+							tlv: wire.TLVRestBlock{
+								TLVList: wire.TLVList{
+									wire.NewTLVBE(wire.OServiceTLVTagsLoginCookie, []byte("thecookie")),
+								},
+							},
+						},
+					},
+					crackCookieParams: crackCookieParams{
+						{
+							cookieIn:  []byte("thecookie"),
+							cookieOut: state.ServerCookie{Service: wire.BOS},
+						},
+					},
+					registerBOSSessionParams: registerBOSSessionParams{
+						{
+							authCookie: state.ServerCookie{Service: wire.BOS},
+							instance:   newTestSession("me"),
+						},
+					},
+				},
+				buddyListRegistryParams: buddyListRegistryParams{
+					registerBuddyListParams: registerBuddyListParams{
+						{user: state.NewIdentScreenName("me")},
+					},
+				},
+				feedBagParams: feedBagParams{
+					feedbagServiceUseParams: feedbagServiceUseParams{{err: io.EOF}},
+				},
+			},
+			wantMsg: []string{cmdInternalSvcErr},
+		},
+		{
+			name: "login TOC2, receive error from FeedbagManager.Feedbag",
+			// Signon returns (sess, err) on feedbag errors, so session is non-nil; use no-op check
+			checkSession: func(*testing.T, *state.SessionInstance) {},
+			givenCmd:     []byte(`toc2_signon "" "" me "0x` + hex.EncodeToString(roastedPass) + `"`),
+			mockParams: mockParams{
+				authParams: authParams{
+					flapLoginParams: flapLoginParams{
+						{
+							frame: wire.FLAPSignonFrame{
+								TLVRestBlock: wire.TLVRestBlock{
+									TLVList: wire.TLVList{
+										wire.NewTLVBE(wire.LoginTLVTagsScreenName, "me"),
+										wire.NewTLVBE(wire.LoginTLVTagsRoastedTOCPassword, roastedPass),
+										wire.NewTLVBE(wire.LoginTLVTagsMultiConnFlags, wire.MultiConnFlagsRecentClient),
+									},
+								},
+							},
+							tlv: wire.TLVRestBlock{
+								TLVList: wire.TLVList{
+									wire.NewTLVBE(wire.OServiceTLVTagsLoginCookie, []byte("thecookie")),
+								},
+							},
+						},
+					},
+					crackCookieParams: crackCookieParams{
+						{
+							cookieIn:  []byte("thecookie"),
+							cookieOut: state.ServerCookie{Service: wire.BOS},
+						},
+					},
+					registerBOSSessionParams: registerBOSSessionParams{
+						{
+							authCookie: state.ServerCookie{Service: wire.BOS},
+							instance:   newTestSession("me"),
+						},
+					},
+				},
+				buddyListRegistryParams: buddyListRegistryParams{
+					registerBuddyListParams: registerBuddyListParams{
+						{user: state.NewIdentScreenName("me")},
+					},
+				},
+				feedBagParams: feedBagParams{
+					feedbagServiceUseParams: feedbagServiceUseParams{{err: nil}},
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							results:    nil,
+							err:        io.EOF,
+						},
+					},
+				},
+			},
+			wantMsg: []string{cmdInternalSvcErr},
 		},
 		{
 			name:     "login, receive error from auth svc FLAP login",
-			givenCmd: []byte(`"" "" me "xx` + hex.EncodeToString(roastedPass) + `"`),
+			givenCmd: []byte(`toc_signon "" "" me "0x` + hex.EncodeToString(roastedPass) + `"`),
 			mockParams: mockParams{
 				authParams: authParams{
 					flapLoginParams: flapLoginParams{
@@ -3928,7 +6677,7 @@ func TestOSCARProxy_Signon(t *testing.T) {
 		},
 		{
 			name:     "login, receive error from auth svc registration",
-			givenCmd: []byte(`"" "" me "xx` + hex.EncodeToString(roastedPass) + `"`),
+			givenCmd: []byte(`toc_signon "" "" me "0x` + hex.EncodeToString(roastedPass) + `"`),
 			mockParams: mockParams{
 				authParams: authParams{
 					flapLoginParams: flapLoginParams{
@@ -3966,7 +6715,7 @@ func TestOSCARProxy_Signon(t *testing.T) {
 		},
 		{
 			name:     "login, receive error from buddy list registry",
-			givenCmd: []byte(`"" "" me "xx` + hex.EncodeToString(roastedPass) + `"`),
+			givenCmd: []byte(`toc_signon "" "" me "0x` + hex.EncodeToString(roastedPass) + `"`),
 			mockParams: mockParams{
 				authParams: authParams{
 					flapLoginParams: flapLoginParams{
@@ -4012,7 +6761,7 @@ func TestOSCARProxy_Signon(t *testing.T) {
 		},
 		{
 			name:     "login, receive error from TOC config store",
-			givenCmd: []byte(`"" "" me "xx` + hex.EncodeToString(roastedPass) + `"`),
+			givenCmd: []byte(`toc_signon "" "" me "0x` + hex.EncodeToString(roastedPass) + `"`),
 			mockParams: mockParams{
 				authParams: authParams{
 					flapLoginParams: flapLoginParams{
@@ -4065,7 +6814,7 @@ func TestOSCARProxy_Signon(t *testing.T) {
 		},
 		{
 			name:     "login, user not found after login",
-			givenCmd: []byte(`"" "" me "xx` + hex.EncodeToString(roastedPass) + `"`),
+			givenCmd: []byte(`toc_signon "" "" me "0x` + hex.EncodeToString(roastedPass) + `"`),
 			mockParams: mockParams{
 				authParams: authParams{
 					flapLoginParams: flapLoginParams{
@@ -4118,7 +6867,7 @@ func TestOSCARProxy_Signon(t *testing.T) {
 		},
 		{
 			name:     "login with bad credentials",
-			givenCmd: []byte(`"" "" me "xx` + hex.EncodeToString(roastedPass) + `"`),
+			givenCmd: []byte(`toc_signon "" "" me "0x` + hex.EncodeToString(roastedPass) + `"`),
 			mockParams: mockParams{
 				authParams: authParams{
 					flapLoginParams: flapLoginParams{
@@ -4144,7 +6893,7 @@ func TestOSCARProxy_Signon(t *testing.T) {
 		},
 		{
 			name:     "bad command",
-			givenCmd: []byte(`"" ""`),
+			givenCmd: []byte(`toc_bad "" "" me "0x` + hex.EncodeToString(roastedPass) + `"`),
 			wantMsg:  []string{cmdInternalSvcErr},
 		},
 	}
@@ -4166,7 +6915,7 @@ func TestOSCARProxy_Signon(t *testing.T) {
 			}
 			for _, params := range tc.mockParams.registerBOSSessionParams {
 				authSvc.EXPECT().
-					RegisterBOSSession(matchContext(), params.authCookie).
+					RegisterBOSSession(matchContext(), params.authCookie, mock.Anything).
 					Return(params.instance, params.err)
 			}
 			buddyRegistry := newMockBuddyListRegistry(t)
@@ -4181,183 +6930,49 @@ func TestOSCARProxy_Signon(t *testing.T) {
 					User(matchContext(), params.screenName).
 					Return(params.returnedUser, params.err)
 			}
-
-			svc := OSCARProxy{
-				AuthService:       authSvc,
-				BuddyListRegistry: buddyRegistry,
-				Logger:            slog.Default(),
-				TOCConfigStore:    tocCfg,
+			fbSvc := newMockFeedbagService(t)
+			for _, params := range tc.mockParams.feedBagParams.feedbagServiceUseParams {
+				fbSvc.EXPECT().
+					Use(matchContext(), mock.Anything).
+					Return(params.err)
 			}
-			sess, msg := svc.Signon(ctx, tc.givenCmd)
-
-			assert.Equal(t, tc.wantMsg, msg)
-			if tc.me == nil {
-				assert.Nil(t, sess)
-			} else if assert.NotNil(t, sess) {
-				assert.Equal(t, tc.me.IdentScreenName(), sess.IdentScreenName())
-				assert.Equal(t, tc.me.Session().Caps(), sess.Session().Caps())
+			fbMgr := newMockFeedbagManager(t)
+			for _, params := range tc.mockParams.feedBagParams.feedbagParams {
+				fbMgr.EXPECT().
+					Feedbag(matchContext(), params.screenName).
+					Return(params.results, params.err)
 			}
-		})
-	}
-}
-
-func TestOSCARProxy_Signout(t *testing.T) {
-	cases := []struct {
-		// name is the unit test name
-		name string
-		// me is the TOC user session
-		me *state.SessionInstance
-		// givenChatRegistry is the chat registry passed to the function
-		chatRegistry *ChatRegistry
-		// mockParams is the list of params sent to mocks that satisfy this
-		// method's dependencies
-		mockParams mockParams
-	}{
-		{
-			name: "successfully sign out",
-			me:   newTestSession("me"),
-			chatRegistry: func() *ChatRegistry {
-				cr := NewChatRegistry()
-
-				s1 := state.NewSession().AddInstance()
-				s1.Session().SetIdentScreenName(state.NewIdentScreenName("me1"))
-				cr.RegisterSess(0, s1)
-
-				s2 := state.NewSession().AddInstance()
-				s2.Session().SetIdentScreenName(state.NewIdentScreenName("me2"))
-				cr.RegisterSess(1, s2)
-
-				return cr
-			}(),
-			mockParams: mockParams{
-				buddyParams: buddyParams{
-					broadcastBuddyDepartedParams: broadcastBuddyDepartedParams{
-						{
-							me: state.NewIdentScreenName("me"),
-						},
-					},
-				},
-				buddyListRegistryParams: buddyListRegistryParams{
-					unregisterBuddyListParams: unregisterBuddyListParams{
-						{
-							user: state.NewIdentScreenName("me"),
-						},
-					},
-				},
-				authParams: authParams{
-					signoutParams: signoutParams{
-						{
-							me: state.NewIdentScreenName("me"),
-						},
-					},
-					signoutChatParams: signoutChatParams{
-						{
-							me: state.NewIdentScreenName("me1"),
-						},
-						{
-							me: state.NewIdentScreenName("me2"),
-						},
-					},
-				},
-			},
-		},
-		{
-			name: "sign out, receive error from buddy service",
-			me:   newTestSession("me"),
-			chatRegistry: func() *ChatRegistry {
-				return NewChatRegistry()
-			}(),
-			mockParams: mockParams{
-				buddyParams: buddyParams{
-					broadcastBuddyDepartedParams: broadcastBuddyDepartedParams{
-						{
-							me:  state.NewIdentScreenName("me"),
-							err: io.EOF,
-						},
-					},
-				},
-				buddyListRegistryParams: buddyListRegistryParams{
-					unregisterBuddyListParams: unregisterBuddyListParams{
-						{
-							user: state.NewIdentScreenName("me"),
-						},
-					},
-				},
-				authParams: authParams{
-					signoutParams: signoutParams{
-						{
-							me: state.NewIdentScreenName("me"),
-						},
-					},
-				},
-			},
-		},
-		{
-			name: "sign out, receive error from buddy list registry",
-			me:   newTestSession("me"),
-			chatRegistry: func() *ChatRegistry {
-				return NewChatRegistry()
-			}(),
-			mockParams: mockParams{
-				buddyParams: buddyParams{
-					broadcastBuddyDepartedParams: broadcastBuddyDepartedParams{
-						{
-							me: state.NewIdentScreenName("me"),
-						},
-					},
-				},
-				buddyListRegistryParams: buddyListRegistryParams{
-					unregisterBuddyListParams: unregisterBuddyListParams{
-						{
-							user: state.NewIdentScreenName("me"),
-							err:  io.EOF,
-						},
-					},
-				},
-				authParams: authParams{
-					signoutParams: signoutParams{
-						{
-							me: state.NewIdentScreenName("me"),
-						},
-					},
-				},
-			},
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			ctx := context.Background()
 
 			buddySvc := newMockBuddyService(t)
-			for _, params := range tc.mockParams.broadcastBuddyDepartedParams {
-				buddySvc.EXPECT().
-					BroadcastBuddyDeparted(ctx, matchSession(params.me)).
-					Return(params.err)
-			}
 
-			buddyListSvc := newMockBuddyListRegistry(t)
-			for _, params := range tc.mockParams.unregisterBuddyListParams {
-				buddyListSvc.EXPECT().
-					UnregisterBuddyList(matchContext(), params.user).
-					Return(params.err)
-			}
-
-			authSvc := newMockAuthService(t)
-			for _, params := range tc.mockParams.signoutParams {
-				authSvc.EXPECT().Signout(ctx, matchSession(params.me))
-			}
-			for _, params := range tc.mockParams.signoutChatParams {
-				authSvc.EXPECT().SignoutChat(ctx, matchSession(params.me))
+			chatSessionMgr := newMockChatSessionManager(t)
+			for _, params := range tc.mockParams.removeUserFromAllChatsParams {
+				chatSessionMgr.EXPECT().
+					RemoveUserFromAllChats(params.user)
 			}
 
 			svc := OSCARProxy{
-				AuthService:       authSvc,
-				BuddyListRegistry: buddyListSvc,
-				BuddyService:      buddySvc,
-				Logger:            slog.Default(),
+				AuthService:        authSvc,
+				BuddyListRegistry:  buddyRegistry,
+				BuddyService:       buddySvc,
+				ChatSessionManager: chatSessionMgr,
+				Logger:             slog.Default(),
+				TOCConfigStore:     tocCfg,
+				FeedbagService:     fbSvc,
+				FeedbagManager:     fbMgr,
 			}
-			svc.Signout(ctx, tc.me, tc.chatRegistry)
+			sess, msg := svc.Signon(ctx, tc.givenCmd,
+				func(ctx context.Context, instance *state.SessionInstance) error { return nil },
+				func(ctx context.Context, instance *state.SessionInstance) {},
+				NewChatRegistry(),
+			)
+
+			assert.Equal(t, tc.wantMsg, msg)
+			if tc.checkSession != nil {
+				tc.checkSession(t, sess)
+			} else {
+				assert.Nil(t, sess)
+			}
 		})
 	}
 }
@@ -4371,7 +6986,7 @@ func TestOSCARProxy_RecvClientCmd_UnknownCmd(t *testing.T) {
 	cmd := []byte("toc_unknown_cmd")
 	msg := svc.RecvClientCmd(ctx, nil, nil, cmd, nil, nil)
 
-	assert.Equal(t, cmdInternalSvcErr, msg)
+	assert.Equal(t, cmdInternalSvcErr, msg[0])
 }
 
 func Test_parseArgs(t *testing.T) {
@@ -4459,6 +7074,133 @@ func Test_parseArgs(t *testing.T) {
 			assert.Equal(t, tt.wantVarArgs, varArgs)
 			assert.Equal(t, len(tt.wantArgs), len(tt.givenArgs))
 
+		})
+	}
+}
+
+func TestBuildToc2Config(t *testing.T) {
+	tests := []struct {
+		name    string
+		fb      []wire.FeedbagItem
+		want    []string // CONFIG2 command string(s), each starts with "CONFIG2:"
+		wantErr string
+	}{
+		{
+			name: "root group missing order attribute returns error",
+			fb: []wire.FeedbagItem{
+				{Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup, TLVLBlock: wire.TLVLBlock{}},
+			},
+			wantErr: "root group missing order attribute",
+		},
+		{
+			name: "empty buddylist yields only done",
+			fb: []wire.FeedbagItem{
+				{
+					Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+					TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{})}},
+				},
+			},
+			want: []string{"CONFIG2:done:\n"},
+		},
+		{
+			name: "single group with buddies",
+			fb: []wire.FeedbagItem{
+				{
+					Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+					TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{100})}},
+				},
+				{Name: "Buddies", GroupID: 100, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+					TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1, 2})}}},
+				{ItemID: 1, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "user1", TLVLBlock: wire.TLVLBlock{}},
+				{ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "user2", TLVLBlock: wire.TLVLBlock{}},
+			},
+			want: []string{"CONFIG2:g:Buddies\nb:user1\nb:user2\ndone:\n"},
+		},
+		{
+			name: "blocked user (d:) and private user (p:)",
+			fb: []wire.FeedbagItem{
+				{
+					Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+					TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{})}},
+				},
+				{ClassID: wire.FeedbagClassIDDeny, Name: "blockeduser"},
+				{ClassID: wire.FeedbagClassIDPermit, Name: "allowuser"},
+			},
+			want: []string{"CONFIG2:d:blockeduser\np:allowuser\ndone:\n"},
+		},
+		{
+			name: "privacy level (m:) from pdinfo",
+			fb: []wire.FeedbagItem{
+				{
+					Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+					TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{})}},
+				},
+				{
+					ClassID:   wire.FeedbagClassIdPdinfo,
+					TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesPdMode, uint8(3))}},
+				},
+			},
+			want: []string{"CONFIG2:m:3\ndone:\n"},
+		},
+		{
+			name: "buddy with alias",
+			fb: []wire.FeedbagItem{
+				{
+					Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+					TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{100})}},
+				},
+				{Name: "Buddies", GroupID: 100, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+					TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1})}}},
+				{
+					ItemID: 1, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "bob",
+					TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesAlias, "Bob Smith")}},
+				},
+			},
+			want: []string{"CONFIG2:g:Buddies\nb:bob:Bob Smith\ndone:\n"},
+		},
+		{
+			name: "buddy with note (comment) uses five colons before note",
+			fb: []wire.FeedbagItem{
+				{
+					Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+					TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{100})}},
+				},
+				{Name: "Buddies", GroupID: 100, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+					TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1})}}},
+				{
+					ItemID: 1, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "alice",
+					TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesNote, "Friend from work")}},
+				},
+			},
+			want: []string{"CONFIG2:g:Buddies\nb:alice:::::Friend from work\ndone:\n"},
+		},
+		{
+			name: "multiple groups in root order",
+			fb: []wire.FeedbagItem{
+				{
+					Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+					TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{100, 200})}},
+				},
+				{Name: "Buddies", GroupID: 100, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+					TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1})}}},
+				{Name: "Family", GroupID: 200, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+					TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{2})}}},
+				{ItemID: 1, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "friend1", TLVLBlock: wire.TLVLBlock{}},
+				{ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, GroupID: 200, Name: "mom", TLVLBlock: wire.TLVLBlock{}},
+			},
+			want: []string{"CONFIG2:g:Buddies\nb:friend1\ng:Family\nb:mom\ndone:\n"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := buildToc2Config(tt.fb)
+			if tt.wantErr != "" {
+				assert.ErrorContains(t, err, tt.wantErr)
+				assert.Empty(t, got)
+				return
+			}
+			assert.NoError(t, err)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }

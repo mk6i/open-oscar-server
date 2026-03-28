@@ -6,7 +6,7 @@ This guide explains how to set up an SSL-enabled instance of Open OSCAR Server u
 
 - Git
 - [Docker Desktop](https://docs.docker.com/get-started/get-docker/)
-- Unix-like terminal with Makefile installed (use WSL2 for Windows)
+- Unix-like terminal with Make installed (use WSL2 for Windows)
 
 ## Getting Started
 

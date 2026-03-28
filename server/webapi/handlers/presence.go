@@ -26,7 +26,7 @@ type PresenceHandler struct {
 // BuddyBroadcaster broadcasts buddy presence updates
 type BuddyBroadcaster interface {
 	BroadcastBuddyArrived(ctx context.Context, screenName state.IdentScreenName, userInfo wire.TLVUserInfo) error
-	BroadcastBuddyDeparted(ctx context.Context, instance *state.SessionInstance) error
+	BroadcastBuddyDeparted(ctx context.Context, screenName state.IdentScreenName) error
 }
 
 // ProfileManager manages user profiles (uses types.ProfileManager)
@@ -403,7 +403,7 @@ func (h *PresenceHandler) SetState(w http.ResponseWriter, r *http.Request) {
 	// Broadcast presence update
 	if statusBitmask&wire.OServiceUserStatusInvisible != 0 {
 		// User going invisible - broadcast departure
-		if err := h.BuddyBroadcaster.BroadcastBuddyDeparted(ctx, oscarSession); err != nil {
+		if err := h.BuddyBroadcaster.BroadcastBuddyDeparted(ctx, oscarSession.IdentScreenName()); err != nil {
 			h.Logger.ErrorContext(ctx, "failed to broadcast buddy departed", "err", err.Error())
 		}
 	} else {

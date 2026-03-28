@@ -6,7 +6,7 @@
 set -e
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-DEFAULT_ENV_FILE="$SCRIPT_DIR/../config/ssl/settings.env"
+DEFAULT_ENV_FILE="$SCRIPT_DIR/../config/settings.env"
 
 if [ "$#" -gt 1 ]; then
   echo "Usage: $0 [path/to/settings.env]"

@@ -51,14 +51,12 @@ The following is the procedure that builds Open OSCAR Server and uploads the bui
    Now run the release process. Once its complete, a private draft [release](https://github.com/mk6i/open-oscar-server/releases)
    should appear with attached build artifacts.
 
-    ```shell
-   make release
-    ```
+   Run the following two commands in separate terminals.
 
-5. **Sign It!**
+   ```shell
+   make sign-server    # terminal 1, with SIGN_* env for your token
+   make release-sign-docker   # terminal 2
+   ```
 
-   Download the Windows release, sign it, and re-upload the `.zip` to the draft release created in the previous step.
-
-6. **Publish It**
-
+5. **Publish It**
    Publish the draft release.

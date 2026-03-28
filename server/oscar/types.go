@@ -31,7 +31,7 @@ type BuddyListRegistry interface {
 // when a client disconnects.
 type DepartureNotifier interface {
 	BroadcastBuddyArrived(ctx context.Context, screenName state.IdentScreenName, userInfo wire.TLVUserInfo) error
-	BroadcastBuddyDeparted(ctx context.Context, instance *state.SessionInstance) error
+	BroadcastBuddyDeparted(ctx context.Context, screenName state.IdentScreenName) error
 }
 
 // ChatSessionManager is the interface for closing chat sessions
@@ -51,11 +51,11 @@ type AuthService interface {
 	CrackCookie(authCookie []byte) (state.ServerCookie, error)
 	FLAPLogin(ctx context.Context, inFrame wire.FLAPSignonFrame, advertisedHost string) (wire.TLVRestBlock, error)
 	KerberosLogin(ctx context.Context, inBody wire.SNAC_0x050C_0x0002_KerberosLoginRequest, advertisedHost string) (wire.SNACMessage, error)
-	RegisterBOSSession(ctx context.Context, authCookie state.ServerCookie) (*state.SessionInstance, error)
-	RegisterChatSession(ctx context.Context, authCookie state.ServerCookie) (*state.SessionInstance, error)
+	RegisterBOSSession(ctx context.Context, authCookie state.ServerCookie, sessCfg func(sess *state.Session)) (*state.SessionInstance, error)
+	RegisterChatSession(ctx context.Context, authCookie state.ServerCookie, sessCfg func(sess *state.Session)) (*state.SessionInstance, error)
 	RetrieveBOSSession(ctx context.Context, authCookie state.ServerCookie) (*state.SessionInstance, error)
-	Signout(ctx context.Context, instance *state.SessionInstance)
-	SignoutChat(ctx context.Context, instance *state.SessionInstance)
+	Signout(ctx context.Context, session *state.Session)
+	SignoutChat(ctx context.Context, instance *state.Session)
 }
 
 type AdminService interface {

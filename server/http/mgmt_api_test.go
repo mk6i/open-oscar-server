@@ -3056,12 +3056,22 @@ func TestFeedbagBuddyHandler_GET(t *testing.T) {
 									ClassID: wire.FeedbagClassIdGroup,
 									Name:    "Friends",
 									GroupID: 1,
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{10, 11}),
+										},
+									},
 								},
 								{
 									ItemID:  2,
 									ClassID: wire.FeedbagClassIdGroup,
 									Name:    "Work",
 									GroupID: 2,
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{20}),
+										},
+									},
 								},
 								{
 									ItemID:  10,
@@ -3672,11 +3682,20 @@ func TestFeedbagBuddyHandler_PUT(t *testing.T) {
 						{
 							screenName: state.NewIdentScreenName("userA"),
 							result: func() []wire.FeedbagItem {
+								order := make([]uint16, 30)
+								for i := 1; i <= 30; i++ {
+									order[i-1] = uint16(i)
+								}
 								items := []wire.FeedbagItem{
 									{
 										ClassID: wire.FeedbagClassIdGroup,
 										Name:    "Friends",
 										GroupID: 1,
+										TLVLBlock: wire.TLVLBlock{
+											TLVList: wire.TLVList{
+												wire.NewTLVBE(wire.FeedbagAttributesOrder, order),
+											},
+										},
 									},
 								}
 								// Add 30 buddies to the group
@@ -3873,12 +3892,36 @@ func TestFeedbagBuddyHandler_DELETE(t *testing.T) {
 									ClassID: wire.FeedbagClassIdGroup,
 									Name:    "Friends",
 									GroupID: 1,
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{10}),
+										},
+									},
 								},
 								{
 									ItemID:  10,
 									ClassID: wire.FeedbagClassIdBuddy,
 									Name:    "buddy1",
 									GroupID: 1,
+								},
+							},
+							err: nil,
+						},
+					},
+					feedbagUpsertParams: feedbagUpsertParams{
+						{
+							screenName: state.NewIdentScreenName("userA"),
+							items: []wire.FeedbagItem{
+								{
+									ItemID:  1,
+									ClassID: wire.FeedbagClassIdGroup,
+									Name:    "Friends",
+									GroupID: 1,
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{}),
+										},
+									},
 								},
 							},
 							err: nil,
@@ -3909,6 +3952,31 @@ func TestFeedbagBuddyHandler_DELETE(t *testing.T) {
 				},
 				messageRelayerParams: messageRelayerParams{
 					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("userA"),
+							msg: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagUpdateItem,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
+									Items: []wire.FeedbagItem{
+										{
+											ItemID:  1,
+											ClassID: wire.FeedbagClassIdGroup,
+											Name:    "Friends",
+											GroupID: 1,
+											TLVLBlock: wire.TLVLBlock{
+												TLVList: wire.TLVList{
+													wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{}),
+												},
+											},
+										},
+									},
+								},
+							},
+						},
 						{
 							screenName: state.NewIdentScreenName("userA"),
 							msg: wire.SNACMessage{
@@ -3950,12 +4018,36 @@ func TestFeedbagBuddyHandler_DELETE(t *testing.T) {
 									ClassID: wire.FeedbagClassIdGroup,
 									Name:    "Friends",
 									GroupID: 1,
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{10}),
+										},
+									},
 								},
 								{
 									ItemID:  10,
 									ClassID: wire.FeedbagClassIdBuddy,
 									Name:    "buddy1",
 									GroupID: 1,
+								},
+							},
+							err: nil,
+						},
+					},
+					feedbagUpsertParams: feedbagUpsertParams{
+						{
+							screenName: state.NewIdentScreenName("userA"),
+							items: []wire.FeedbagItem{
+								{
+									ItemID:  1,
+									ClassID: wire.FeedbagClassIdGroup,
+									Name:    "Friends",
+									GroupID: 1,
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{}),
+										},
+									},
 								},
 							},
 							err: nil,
@@ -3992,6 +4084,31 @@ func TestFeedbagBuddyHandler_DELETE(t *testing.T) {
 				},
 				messageRelayerParams: messageRelayerParams{
 					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("userA"),
+							msg: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagUpdateItem,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
+									Items: []wire.FeedbagItem{
+										{
+											ItemID:  1,
+											ClassID: wire.FeedbagClassIdGroup,
+											Name:    "Friends",
+											GroupID: 1,
+											TLVLBlock: wire.TLVLBlock{
+												TLVList: wire.TLVList{
+													wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{}),
+												},
+											},
+										},
+									},
+								},
+							},
+						},
 						{
 							screenName: state.NewIdentScreenName("userA"),
 							msg: wire.SNACMessage{
@@ -4065,6 +4182,25 @@ func TestFeedbagBuddyHandler_DELETE(t *testing.T) {
 							err: nil,
 						},
 					},
+					feedbagUpsertParams: feedbagUpsertParams{
+						{
+							screenName: state.NewIdentScreenName("userA"),
+							items: []wire.FeedbagItem{
+								{
+									ItemID:  1,
+									ClassID: wire.FeedbagClassIdGroup,
+									Name:    "Friends",
+									GroupID: 1,
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{20}),
+										},
+									},
+								},
+							},
+							err: nil,
+						},
+					},
 					feedbagDeleteParams: feedbagDeleteParams{
 						{
 							screenName: state.NewIdentScreenName("userA"),
@@ -4090,6 +4226,31 @@ func TestFeedbagBuddyHandler_DELETE(t *testing.T) {
 				},
 				messageRelayerParams: messageRelayerParams{
 					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("userA"),
+							msg: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagUpdateItem,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
+									Items: []wire.FeedbagItem{
+										{
+											ItemID:  1,
+											ClassID: wire.FeedbagClassIdGroup,
+											Name:    "Friends",
+											GroupID: 1,
+											TLVLBlock: wire.TLVLBlock{
+												TLVList: wire.TLVList{
+													wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{20}),
+												},
+											},
+										},
+									},
+								},
+							},
+						},
 						{
 							screenName: state.NewIdentScreenName("userA"),
 							msg: wire.SNACMessage{
@@ -4232,6 +4393,62 @@ func TestFeedbagBuddyHandler_DELETE(t *testing.T) {
 			},
 		},
 		{
+			name:           "internal server error on group order upsert",
+			screenName:     "userA",
+			groupID:        "1",
+			requestBody:    `{"name":"buddy1"}`,
+			wantStatusCode: http.StatusInternalServerError,
+			wantResponse:   `{"message":"internal server error"}`,
+			mockParams: mockParams{
+				feedbagManagerParams: feedbagManagerParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("userA"),
+							result: []wire.FeedbagItem{
+								{
+									ItemID:  1,
+									ClassID: wire.FeedbagClassIdGroup,
+									Name:    "Friends",
+									GroupID: 1,
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{10}),
+										},
+									},
+								},
+								{
+									ItemID:  10,
+									ClassID: wire.FeedbagClassIdBuddy,
+									Name:    "buddy1",
+									GroupID: 1,
+								},
+							},
+							err: nil,
+						},
+					},
+					feedbagUpsertParams: feedbagUpsertParams{
+						{
+							screenName: state.NewIdentScreenName("userA"),
+							items: []wire.FeedbagItem{
+								{
+									ItemID:  1,
+									ClassID: wire.FeedbagClassIdGroup,
+									Name:    "Friends",
+									GroupID: 1,
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{}),
+										},
+									},
+								},
+							},
+							err: errors.New("database error"),
+						},
+					},
+				},
+			},
+		},
+		{
 			name:           "internal server error on delete",
 			screenName:     "userA",
 			groupID:        "1",
@@ -4249,12 +4466,36 @@ func TestFeedbagBuddyHandler_DELETE(t *testing.T) {
 									ClassID: wire.FeedbagClassIdGroup,
 									Name:    "Friends",
 									GroupID: 1,
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{10}),
+										},
+									},
 								},
 								{
 									ItemID:  10,
 									ClassID: wire.FeedbagClassIdBuddy,
 									Name:    "buddy1",
 									GroupID: 1,
+								},
+							},
+							err: nil,
+						},
+					},
+					feedbagUpsertParams: feedbagUpsertParams{
+						{
+							screenName: state.NewIdentScreenName("userA"),
+							items: []wire.FeedbagItem{
+								{
+									ItemID:  1,
+									ClassID: wire.FeedbagClassIdGroup,
+									Name:    "Friends",
+									GroupID: 1,
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{}),
+										},
+									},
 								},
 							},
 							err: nil,
@@ -4310,6 +4551,11 @@ func TestFeedbagBuddyHandler_DELETE(t *testing.T) {
 				feedbagManager.EXPECT().
 					Feedbag(matchContext(), params.screenName).
 					Return(params.result, params.err)
+			}
+			for _, params := range tc.mockParams.feedbagManagerParams.feedbagUpsertParams {
+				feedbagManager.EXPECT().
+					FeedbagUpsert(matchContext(), params.screenName, params.items).
+					Return(params.err)
 			}
 			for _, params := range tc.mockParams.feedbagManagerParams.feedbagDeleteParams {
 				feedbagManager.EXPECT().

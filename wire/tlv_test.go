@@ -292,6 +292,28 @@ func TestTLVList_Getters(t *testing.T) {
 			},
 			panic: true,
 		},
+		{
+			name: "given a TLV of big-endian uint16 slice, expect found value",
+			given: []TLV{
+				NewTLVBE(200, []uint16{12, 34, 56}),
+			},
+			lookup: func(l TLVList) (any, bool) {
+				return l.Uint16SliceBE(200)
+			},
+			expect: []uint16{12, 34, 56},
+			found:  true,
+		},
+		{
+			name: "given a TLV of big-endian uint16 slice, expect not found value",
+			given: []TLV{
+				NewTLVBE(200, []uint16{12, 34, 56}),
+			},
+			lookup: func(l TLVList) (any, bool) {
+				return l.Uint16SliceBE(50)
+			},
+			expect: []uint16{},
+			found:  false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
