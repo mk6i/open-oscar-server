@@ -168,9 +168,11 @@ type Server struct {
 	recalcWarning      func(ctx context.Context, instance *state.SessionInstance) error
 	lowerWarnLevel     func(ctx context.Context, instance *state.SessionInstance)
 
-	listenerCfg []string
-	listeners   []net.Listener
-	servers     []*http.Server
+	listenerCfg   []string
+	listeners     []net.Listener
+	listenerMu    sync.Mutex
+	listenersDone bool
+	servers       []*http.Server
 
 	connMu sync.Mutex
 	conns  map[net.Conn]struct{}
@@ -193,9 +195,13 @@ func (s *Server) ListenAndServe() error {
 			return fmt.Errorf("unable to start TOC server: %w", err)
 		}
 
+		// Atomically append the listener, or bail out if Shutdown already ran.
+		if !s.tryAddListener(ln) {
+			break
+		}
+
 		s.logger.InfoContext(ctx, "starting server", "listen_host", cfg)
 
-		s.listeners = append(s.listeners, ln)
 		s.listenWg.Add(1)
 
 		httpCh := make(chan net.Conn)
@@ -248,7 +254,23 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	return nil
 }
 
+// tryAddListener atomically appends ln to s.listeners if shutdown has not yet
+// started. If cleanup has already run, ln is closed and false is returned.
+func (s *Server) tryAddListener(ln net.Listener) bool {
+	s.listenerMu.Lock()
+	defer s.listenerMu.Unlock()
+	if s.listenersDone {
+		_ = ln.Close()
+		return false
+	}
+	s.listeners = append(s.listeners, ln)
+	return true
+}
+
 func (s *Server) cleanupListeners() {
+	s.listenerMu.Lock()
+	defer s.listenerMu.Unlock()
+	s.listenersDone = true
 	for _, ln := range s.listeners {
 		_ = ln.Close()
 	}
