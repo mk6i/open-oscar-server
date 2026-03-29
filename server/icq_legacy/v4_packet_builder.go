@@ -18,7 +18,6 @@ import (
 //
 // Note: Server sends V3 format packets to V4 clients, but with a valid checkcode
 // that the client validates using the V4 checkcode algorithm.
-//
 type V4PacketBuilder interface {
 	// BuildLoginReply constructs a login success (HELLO) response packet.
 	// The packet contains timing parameters and client IP information.

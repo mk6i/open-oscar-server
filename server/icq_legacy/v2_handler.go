@@ -957,9 +957,12 @@ func (h *V2Handler) sendRegisterInfo(addr *net.UDPAddr, seqNum uint16, uin uint3
 // the response regardless of the client's declared version.
 //
 // Raw packet layout (V3 header):
-//   VERSION(2) + COMMAND(2) + SEQ1(2) + SEQ2(2) + UIN(4) + DATA...
+//
+//	VERSION(2) + COMMAND(2) + SEQ1(2) + SEQ2(2) + UIN(4) + DATA...
+//
 // Data layout:
-//   PWD_LEN(2) + PASSWORD(pwdLen) + STATUS(4)
+//
+//	PWD_LEN(2) + PASSWORD(pwdLen) + STATUS(4)
 func (h *V2Handler) handleGetDeps(addr *net.UDPAddr, packet []byte) error {
 	ctx := context.Background()
 
@@ -1034,7 +1037,7 @@ func (h *V2Handler) handleGetDeps(addr *net.UDPAddr, packet []byte) error {
 	// The UIN must match g_saved_uin + 0x9C.
 	depsData := make([]byte, 6)
 	binary.LittleEndian.PutUint16(depsData[0:2], seq2) // connection ID
-	binary.LittleEndian.PutUint32(depsData[2:6], uin)   // UIN
+	binary.LittleEndian.PutUint32(depsData[2:6], uin)  // UIN
 	depsPkt := &wire.V2ServerPacket{
 		Version: wire.ICQLegacyVersionV2,
 		Command: wire.ICQLegacySrvUserDepsList, // 0x0032
@@ -1081,7 +1084,9 @@ func (h *V2Handler) handleAuthorize(session *LegacySession, pkt *wire.V2ClientPa
 
 // handleUpdateBasic processes a basic profile update (CMD_UPDATExBASIC 0x04A6)
 // Client sends: SEQ(2) + ALIAS_LEN(2) + ALIAS + FIRST_LEN(2) + FIRST +
-//               LAST_LEN(2) + LAST + EMAIL_LEN(2) + EMAIL + AUTH(1)
+//
+//	LAST_LEN(2) + LAST + EMAIL_LEN(2) + EMAIL + AUTH(1)
+//
 // Server responds with SRV_UPDATEDxBASIC (0x00B4) containing SEQ(2) on success,
 // or SRV_UPDATExBASICxFAIL (0x00BE) on failure.
 //
@@ -1153,8 +1158,10 @@ func (h *V2Handler) sendUpdateBasicFail(session *LegacySession, updateSeq uint16
 
 // handleUpdateDetail processes an extended profile update (CMD_UPDATExDETAIL 0x04B0)
 // Client sends: SEQ(2) + CITY_LEN(2) + CITY + COUNTRY(2) + COUNTRY_STAT(1) +
-//               STATE_LEN(2) + STATE + AGE(2) + SEX(1) + PHONE_LEN(2) + PHONE +
-//               HP_LEN(2) + HP + ABOUT_LEN(2) + ABOUT
+//
+//	STATE_LEN(2) + STATE + AGE(2) + SEX(1) + PHONE_LEN(2) + PHONE +
+//	HP_LEN(2) + HP + ABOUT_LEN(2) + ABOUT
+//
 // Server responds with SRV_UPDATEDxDETAIL (0x00C8) containing SEQ(2) on success,
 // or SRV_UPDATExDETAILxFAIL (0x00D2) on failure.
 //
@@ -1236,7 +1243,9 @@ func (h *V2Handler) sendUpdateDetailFail(session *LegacySession, updateSeq uint1
 // handleRegNewUser processes a CMD_REG_NEW_USER (0x03FC) registration packet.
 // This uses the srv_net_icq_pak format (6-byte header, no UIN).
 // Data format from center icq_RegNewUser():
-//   CONST(2) + PWD_LEN(2) + PASSWORD(variable, null-terminated) + TRAILING(8)
+//
+//	CONST(2) + PWD_LEN(2) + PASSWORD(variable, null-terminated) + TRAILING(8)
+//
 // Server responds with SRV_NEW_UIN (0x0046) containing the new UIN.
 func (h *V2Handler) handleRegNewUser(addr *net.UDPAddr, pkt *wire.V2ClientPacket) error {
 	ctx := context.Background()
@@ -1297,5 +1306,3 @@ func (h *V2Handler) handleRegNewUser(addr *net.UDPAddr, pkt *wire.V2ClientPacket
 	)
 	return h.sender.SendPacket(addr, replyBytes)
 }
-
-

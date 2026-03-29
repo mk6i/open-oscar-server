@@ -880,8 +880,6 @@ func (h *V3Handler) sendAck(addr *net.UDPAddr, seq1, seq2 uint16, uin uint32) er
 	return h.sender.SendPacket(addr, pkt)
 }
 
-
-
 // sendNotConnected sends not connected error
 func (h *V3Handler) sendNotConnected(addr *net.UDPAddr, seq2 uint16, uin uint32) error {
 	pkt := make([]byte, 16)
@@ -894,9 +892,6 @@ func (h *V3Handler) sendNotConnected(addr *net.UDPAddr, seq2 uint16, uin uint32)
 
 	return h.sender.SendPacket(addr, pkt)
 }
-
-
-
 
 // sendUserOnline sends user online notification
 // From iserverd v3_send_user_online()
@@ -966,8 +961,6 @@ func (h *V3Handler) sendUserOnline(session *LegacySession, uin uint32, status ui
 
 	return h.sender.SendToSession(session, pkt[:offset])
 }
-
-
 
 // handleOfflineMsgReq processes offline message request (0x044C)
 // From iserverd v3_process_sysmsg_req()
@@ -1364,9 +1357,12 @@ func (h *V3Handler) sendReplyOK(session *LegacySession, seq2 uint16, command uin
 // sendSearchDone sends search complete response
 // From iserverd v3_send_search_finished()
 // Packet format (17 bytes total):
-//   VERSION(2) + COMMAND(2) + SEQ1(2) + SEQ2(2) + UIN(4) + RESERVED(4) + MORE(1)
+//
+//	VERSION(2) + COMMAND(2) + SEQ1(2) + SEQ2(2) + UIN(4) + RESERVED(4) + MORE(1)
+//
 // The 'more' parameter indicates if there are more search results available:
-//   0 = no more results, 1 = more results available (pagination)
+//
+//	0 = no more results, 1 = more results available (pagination)
 func (h *V3Handler) sendSearchDone(session *LegacySession, seq2 uint16, more ...bool) error {
 	pkt := make([]byte, 17)
 	binary.LittleEndian.PutUint16(pkt[0:2], wire.ICQLegacyVersionV3)
@@ -1389,7 +1385,8 @@ func (h *V3Handler) sendSearchDone(session *LegacySession, seq2 uint16, more ...
 // sendSearchFound sends a search result
 // From iserverd v3_send_found_info()
 // Format: header(16) + UIN(4) + NICK_LEN(2) + NICK + FIRST_LEN(2) + FIRST +
-//         LAST_LEN(2) + LAST + EMAIL_LEN(2) + EMAIL + AUTH(1)
+//
+//	LAST_LEN(2) + LAST + EMAIL_LEN(2) + EMAIL + AUTH(1)
 func (h *V3Handler) sendSearchFound(session *LegacySession, seq2 uint16, foundUIN uint32, nick, first, last, email string, auth uint8) error {
 	// Calculate packet size
 	pktSize := 16 + 4 + 2 + len(nick) + 1 + 2 + len(first) + 1 + 2 + len(last) + 1 + 2 + len(email) + 1 + 1
@@ -1600,7 +1597,6 @@ func (h *V3Handler) sendUserStatus(session *LegacySession, uin uint32, status ui
 
 	return h.sender.SendToSession(session, pkt[:offset])
 }
-
 
 // handleGetNotes processes get notes request (0x05AA)
 // From iserverd v3_process_notes() - returns user's notes

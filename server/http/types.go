@@ -323,14 +323,14 @@ type webAPIKeyResponse struct {
 
 // icqProfileHandle is the JSON representation of a full ICQ user profile.
 type icqProfileHandle struct {
-	UIN         uint32                `json:"uin"`
-	BasicInfo   icqBasicInfoHandle    `json:"basic_info"`
-	MoreInfo    icqMoreInfoHandle     `json:"more_info"`
-	WorkInfo    icqWorkInfoHandle     `json:"work_info"`
-	Notes       string                `json:"notes"`
-	Interests   icqInterestsHandle    `json:"interests"`
+	UIN          uint32                `json:"uin"`
+	BasicInfo    icqBasicInfoHandle    `json:"basic_info"`
+	MoreInfo     icqMoreInfoHandle     `json:"more_info"`
+	WorkInfo     icqWorkInfoHandle     `json:"work_info"`
+	Notes        string                `json:"notes"`
+	Interests    icqInterestsHandle    `json:"interests"`
 	Affiliations icqAffiliationsHandle `json:"affiliations"`
-	Permissions icqPermissionsHandle  `json:"permissions"`
+	Permissions  icqPermissionsHandle  `json:"permissions"`
 }
 
 type icqBasicInfoHandle struct {

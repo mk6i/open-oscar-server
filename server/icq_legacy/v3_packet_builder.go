@@ -13,7 +13,6 @@ import (
 // V3 packet format (from iserverd source):
 // VERSION(2) + COMMAND(2) + SEQ1(2) + SEQ2(2) + UIN(4) + DATA...
 // Total header: 12 bytes (NO checksum in V3, unlike V5!)
-//
 type V3PacketBuilder interface {
 	// BuildLoginReply constructs a login success (HELLO) response packet.
 	// The packet contains timing parameters and client IP information.
@@ -385,9 +384,11 @@ func (b *V3PacketBuilderImpl) BuildOnlineMessage(seqNum uint16, fromUIN uint32, 
 // BuildBasicInfo constructs a basic user info response packet.
 // From iserverd v3_send_basic_info()
 // Packet format (verified via Ghidra RE of ICQ98a client handler):
-//   Header: VERSION(2) + COMMAND(2) + SEQ1(2) + SEQ2(2) + UIN(4) + RESERVED(4) = 16 bytes
-//   Data: TARGET_UIN(4) + NICK_LEN(2) + NICK + FIRST_LEN(2) + FIRST + LAST_LEN(2) + LAST +
-//         EMAIL_LEN(2) + EMAIL + STATUS(1) + AUTH(1)
+//
+//	Header: VERSION(2) + COMMAND(2) + SEQ1(2) + SEQ2(2) + UIN(4) + RESERVED(4) = 16 bytes
+//	Data: TARGET_UIN(4) + NICK_LEN(2) + NICK + FIRST_LEN(2) + FIRST + LAST_LEN(2) + LAST +
+//	      EMAIL_LEN(2) + EMAIL + STATUS(1) + AUTH(1)
+//
 // All strings are length-prefixed (2 bytes) and null-terminated
 func (b *V3PacketBuilderImpl) BuildBasicInfo(seqNum uint16, seq2 uint16, uin uint32, info *UserInfoResult) []byte {
 	// Default values if info is nil
@@ -481,10 +482,11 @@ func (b *V3PacketBuilderImpl) BuildBasicInfo(seqNum uint16, seq2 uint16, uin uin
 // BuildHomeInfo constructs a home info response packet.
 // From iserverd v3_send_home_info()
 // Packet format:
-//   Header: VERSION(2) + COMMAND(2) + SEQ1(2) + SEQ2(2) + UIN(4) + RESERVED(4) = 16 bytes
-//   Data: HADDR_LEN(2) + HADDR + HCITY_LEN(2) + HCITY + HSTATE_LEN(2) + HSTATE +
-//         HCOUNTRY(2) + HPHONE_LEN(2) + HPHONE + HFAX_LEN(2) + HFAX + HCELL_LEN(2) + HCELL +
-//         HZIP(4) + GENDER(1) + AGE(2) + BDAY(1) + BMONTH(1) + BYEAR(1) + 0x00(1)
+//
+//	Header: VERSION(2) + COMMAND(2) + SEQ1(2) + SEQ2(2) + UIN(4) + RESERVED(4) = 16 bytes
+//	Data: HADDR_LEN(2) + HADDR + HCITY_LEN(2) + HCITY + HSTATE_LEN(2) + HSTATE +
+//	      HCOUNTRY(2) + HPHONE_LEN(2) + HPHONE + HFAX_LEN(2) + HFAX + HCELL_LEN(2) + HCELL +
+//	      HZIP(4) + GENDER(1) + AGE(2) + BDAY(1) + BMONTH(1) + BYEAR(1) + 0x00(1)
 func (b *V3PacketBuilderImpl) BuildHomeInfo(seqNum uint16, seq2 uint16, uin uint32, info *UserInfoResult) []byte {
 	// Default values
 	haddr := ""
@@ -613,11 +615,12 @@ func (b *V3PacketBuilderImpl) BuildHomeInfo(seqNum uint16, seq2 uint16, uin uint
 // BuildWorkInfo constructs a work info response packet.
 // From iserverd v3_send_work_info()
 // Packet format:
-//   Header: VERSION(2) + COMMAND(2) + SEQ1(2) + SEQ2(2) + UIN(4) + RESERVED(4) = 16 bytes
-//   Data: WADDR_LEN(2) + WADDR + WCITY_LEN(2) + WCITY + WSTATE_LEN(2) + WSTATE +
-//         WCOUNTRY(2) + WCOMPANY_LEN(2) + WCOMPANY + WTITLE_LEN(2) + WTITLE +
-//         WDEPART(4) + WPHONE_LEN(2) + WPHONE + WFAX_LEN(2) + WFAX +
-//         WPAGER_LEN(2) + WPAGER + WZIP(4)
+//
+//	Header: VERSION(2) + COMMAND(2) + SEQ1(2) + SEQ2(2) + UIN(4) + RESERVED(4) = 16 bytes
+//	Data: WADDR_LEN(2) + WADDR + WCITY_LEN(2) + WCITY + WSTATE_LEN(2) + WSTATE +
+//	      WCOUNTRY(2) + WCOMPANY_LEN(2) + WCOMPANY + WTITLE_LEN(2) + WTITLE +
+//	      WDEPART(4) + WPHONE_LEN(2) + WPHONE + WFAX_LEN(2) + WFAX +
+//	      WPAGER_LEN(2) + WPAGER + WZIP(4)
 func (b *V3PacketBuilderImpl) BuildWorkInfo(seqNum uint16, seq2 uint16, uin uint32, info *UserInfoResult) []byte {
 	// Default values
 	waddr := ""
@@ -740,8 +743,9 @@ func (b *V3PacketBuilderImpl) BuildWorkInfo(seqNum uint16, seq2 uint16, uin uint
 // BuildHomeWeb constructs a home webpage info response packet.
 // From iserverd v3_send_home_web()
 // Packet format:
-//   Header: VERSION(2) + COMMAND(2) + SEQ1(2) + SEQ2(2) + UIN(4) + RESERVED(4) = 16 bytes
-//   Data: HPAGE_LEN(2) + HPAGE (null-terminated string)
+//
+//	Header: VERSION(2) + COMMAND(2) + SEQ1(2) + SEQ2(2) + UIN(4) + RESERVED(4) = 16 bytes
+//	Data: HPAGE_LEN(2) + HPAGE (null-terminated string)
 func (b *V3PacketBuilderImpl) BuildHomeWeb(seqNum uint16, seq2 uint16, uin uint32, info *UserInfoResult) []byte {
 	// Default value
 	hpage := ""
@@ -784,8 +788,9 @@ func (b *V3PacketBuilderImpl) BuildHomeWeb(seqNum uint16, seq2 uint16, uin uint3
 // BuildWorkWeb constructs a work webpage info response packet.
 // From iserverd v3_send_work_web()
 // Packet format:
-//   Header: VERSION(2) + COMMAND(2) + SEQ1(2) + SEQ2(2) + UIN(4) + RESERVED(4) = 16 bytes
-//   Data: WPAGE_LEN(2) + WPAGE (null-terminated string)
+//
+//	Header: VERSION(2) + COMMAND(2) + SEQ1(2) + SEQ2(2) + UIN(4) + RESERVED(4) = 16 bytes
+//	Data: WPAGE_LEN(2) + WPAGE (null-terminated string)
 func (b *V3PacketBuilderImpl) BuildWorkWeb(seqNum uint16, seq2 uint16, uin uint32, info *UserInfoResult) []byte {
 	// Default value - work webpage is not in UserInfoResult, so we use empty string
 	// In the future, this could be added to UserInfoResult if needed

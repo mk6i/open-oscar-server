@@ -386,8 +386,9 @@ func WriteLegacyString(w io.Writer, s string) error {
 // V2 LOGIN format (verified against licq V2 client icqpacket.cpp CPU_Logon):
 //
 // After the 10-byte header (VER+CMD+SEQ+UIN), the data payload is:
-//   PORT(4) + PWD_LEN(2) + PASSWORD + X1(4) + USER_IP(4) + X2(1) +
-//   STATUS(2) + TCP_VERSION(2) + X3(12)
+//
+//	PORT(4) + PWD_LEN(2) + PASSWORD + X1(4) + USER_IP(4) + X2(1) +
+//	STATUS(2) + TCP_VERSION(2) + X3(12)
 //
 // Note: STATUS is 2 bytes (unsigned short), NOT 4 bytes. The client's
 // m_nLogonStatus is declared as unsigned short in icqpacket.h.
@@ -543,12 +544,15 @@ func BuildV2BadPassword(seqNum uint16) *V2ServerPacket {
 // V2 USER_ONLINE format (verified against licq V2 client icq-udp.h):
 //
 // The client reads:
-//   UIN(4) + IP(4) + PORT(2) + JUNK(4+2+1) + STATUS(2) + TRAILING(4+2)
+//
+//	UIN(4) + IP(4) + PORT(2) + JUNK(4+2+1) + STATUS(2) + TRAILING(4+2)
+//
 // Total = 25 bytes
 //
 // Field breakdown matching the client's read order:
-//   REMOTE_UIN(4) + REMOTE_IP(4) + REMOTE_PORT(2) + REMOTE_REAL_IP(4) +
-//   TCP_VERSION(2) + X1(1) + STATUS(2) + X2(4) + X3(2) = 25 bytes
+//
+//	REMOTE_UIN(4) + REMOTE_IP(4) + REMOTE_PORT(2) + REMOTE_REAL_IP(4) +
+//	TCP_VERSION(2) + X1(1) + STATUS(2) + X2(4) + X3(2) = 25 bytes
 //
 // The client treats bytes 10-16 as "junk" (it reads them into junkLong,
 // junkShort, junkChar but discards the values). STATUS must be at offset 17
@@ -643,7 +647,9 @@ func BuildV2Ack(seqNum uint16) *V2ServerPacket {
 
 // BuildV2OfflineMessage creates an offline message delivery packet (SRV_SYS_MSG_OFFLINE 0x00DC).
 // The client (licq icq-udp.h case ICQ_CMDxRCV_SYSxMSGxOFFLINE) expects:
-//   UIN(4) + YEAR(2) + MONTH(1) + DAY(1) + HOUR(1) + MIN(1) + MSG_TYPE(2) + MSG_LEN(2) + MESSAGE
+//
+//	UIN(4) + YEAR(2) + MONTH(1) + DAY(1) + HOUR(1) + MIN(1) + MSG_TYPE(2) + MSG_LEN(2) + MESSAGE
+//
 // This preserves the original message timestamp, unlike SRV_SYS_MSG_ONLINE (0x0104)
 // which the client treats as "received now".
 func BuildV2OfflineMessage(seqNum uint16, fromUIN uint32, msgType uint16, message string, timestamp time.Time) *V2ServerPacket {
@@ -794,7 +800,9 @@ func BuildV2ExtInfoReply(seqNum uint16, user *LegacyUserInfo) *V2ServerPacket {
 
 // BuildV2NewUIN creates a SRV_NEW_UIN (0x0046) response for registration.
 // The client (center icq_InitNewUser) reads the new UIN from pak.data[2]:
-//   icq_Uin = Chars_2_DW(&pak.data[2])
+//
+//	icq_Uin = Chars_2_DW(&pak.data[2])
+//
 // So the data format is: SEQ(2) + UIN(4)
 // The server packet uses the srv_net_icq_pak 6-byte header (ver+cmd+seq).
 func BuildV2NewUIN(seqNum uint16, newUIN uint32) *V2ServerPacket {

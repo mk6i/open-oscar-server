@@ -227,7 +227,7 @@ func (h *V4Handler) decryptV4Packet(packet []byte) error {
 
 	// Calculate number of DWORDs to decrypt using wumpus formula:
 	// count = ((length + 3) / 4 + 3) / 4
-	count := ((packetLen + 3) / 4 + 3) / 4
+	count := ((packetLen+3)/4 + 3) / 4
 
 	// Decrypt each DWORD, but skip DWORD 4 (checkcode at offset 16)
 	for i := 0; i < count; i++ {
@@ -1323,7 +1323,9 @@ func (h *V4Handler) sendSearchEnd(session *LegacySession, seq2 uint16, more bool
 
 // handleUpdateBasic processes V4 update basic info (0x050A)
 // V4 format (from licq CPU_UpdatePersonalBasicInfo, no subsequence prefix):
-//   NICK_LEN(2) + NICK + FNAME_LEN(2) + FNAME + LNAME_LEN(2) + LNAME + EMAIL_LEN(2) + EMAIL + AUTH(1)
+//
+//	NICK_LEN(2) + NICK + FNAME_LEN(2) + FNAME + LNAME_LEN(2) + LNAME + EMAIL_LEN(2) + EMAIL + AUTH(1)
+//
 // Response: 0x01E0 (ICQLegacySrvUpdatedBasicV4) on success, 0x01EA on failure
 func (h *V4Handler) handleUpdateBasic(session *LegacySession, seq1, seq2 uint16, uin uint32, data []byte) error {
 	if session == nil {
@@ -1352,9 +1354,11 @@ func (h *V4Handler) handleUpdateBasic(session *LegacySession, seq1, seq2 uint16,
 
 // handleUpdateDetail processes V4 update extended info (0x04B0)
 // V4 format (from licq CPU_UpdatePersonalExtInfo, no subsequence prefix):
-//   CITY_LEN(2) + CITY + COUNTRY(2) + TIMEZONE(1) + STATE_LEN(2) + STATE +
-//   AGE(2) + SEX(1) + PHONE_LEN(2) + PHONE + HOMEPAGE_LEN(2) + HOMEPAGE +
-//   ABOUT_LEN(2) + ABOUT + ZIPCODE(4)
+//
+//	CITY_LEN(2) + CITY + COUNTRY(2) + TIMEZONE(1) + STATE_LEN(2) + STATE +
+//	AGE(2) + SEX(1) + PHONE_LEN(2) + PHONE + HOMEPAGE_LEN(2) + HOMEPAGE +
+//	ABOUT_LEN(2) + ABOUT + ZIPCODE(4)
+//
 // Response: 0x00C8 on success, 0x00D2 on failure
 func (h *V4Handler) handleUpdateDetail(session *LegacySession, seq1, seq2 uint16, uin uint32, data []byte) error {
 	if session == nil {
@@ -1385,7 +1389,8 @@ func (h *V4Handler) handleUpdateDetail(session *LegacySession, seq1, seq2 uint16
 // From licq: client sends 0x044C, server responds with 0x00DC for each
 // offline message, then 0x00E6 (SYS_MSG_DONE).
 // Offline message format (from licq ProcessUdpPacket case ICQ_CMDxRCV_SYSxMSGxOFFLINE):
-//   UIN(4) + YEAR(2) + MONTH(1) + DAY(1) + HOUR(1) + MIN(1) + MSG_TYPE(2) + MSG_LEN(2) + MSG
+//
+//	UIN(4) + YEAR(2) + MONTH(1) + DAY(1) + HOUR(1) + MIN(1) + MSG_TYPE(2) + MSG_LEN(2) + MSG
 func (h *V4Handler) handleOfflineMsgReq(session *LegacySession, seq1, seq2 uint16, uin uint32) error {
 	if session == nil {
 		return nil
@@ -1493,16 +1498,18 @@ func (h *V4Handler) sendOfflineMessage(session *LegacySession, msg LegacyOffline
 // Based on reverse engineering of ICQ 98a client (encrypt_v4_packet and validate_v4_checkcode)
 //
 // The client validates checkcode as follows:
-//   checkA = (byte[8] << 24) | (byte[4] << 16) | (byte[2] << 8) | byte[6]
-//   result = checkA ^ checkcode
-//   valid if: (result >> 16) & 0xFF == ~packet[result >> 24]
-//         and: result & 0xFF == ~table[(result >> 8) & 0xFF]
+//
+//	checkA = (byte[8] << 24) | (byte[4] << 16) | (byte[2] << 8) | byte[6]
+//	result = checkA ^ checkcode
+//	valid if: (result >> 16) & 0xFF == ~packet[result >> 24]
+//	      and: result & 0xFF == ~table[(result >> 8) & 0xFF]
 //
 // So we construct checkcode such that after XOR with checkA, the result contains:
-//   byte 3 (bits 24-31): packetOfs - offset into packet
-//   byte 2 (bits 16-23): ~packet[packetOfs] - inverted byte at that offset
-//   byte 1 (bits 8-15):  tableOfs - offset into table
-//   byte 0 (bits 0-7):   ~table[tableOfs] - inverted byte at that table offset
+//
+//	byte 3 (bits 24-31): packetOfs - offset into packet
+//	byte 2 (bits 16-23): ~packet[packetOfs] - inverted byte at that offset
+//	byte 1 (bits 8-15):  tableOfs - offset into table
+//	byte 0 (bits 0-7):   ~table[tableOfs] - inverted byte at that table offset
 func (h *V4Handler) calculateV4Checkcode(packet []byte) uint32 {
 	if len(packet) < 12 {
 		return 0
@@ -1517,8 +1524,8 @@ func (h *V4Handler) calculateV4Checkcode(packet []byte) uint32 {
 	tableOfs := byte(0)
 
 	// Get values and INVERT them (this is what the client expects)
-	packetVal := ^packet[packetOfs]           // inverted
-	tableVal := ^wire.V4Table[tableOfs]       // inverted
+	packetVal := ^packet[packetOfs]     // inverted
+	tableVal := ^wire.V4Table[tableOfs] // inverted
 
 	// Build checkB with inverted values
 	checkB := uint32(packetOfs)<<24 | uint32(packetVal)<<16 | uint32(tableOfs)<<8 | uint32(tableVal)
@@ -2055,6 +2062,7 @@ func (h *V4Handler) sendRegisterInfoForLogin(session *LegacySession, seq2 uint16
 
 	return h.sender.SendToSession(session, pkt[:offset])
 }
+
 // sendRegistrationOK sends registration success with the new UIN
 // V4 client (licq) expects ICQ_CMDxRCV_NEWxUIN (0x0046) - NOT 0x0384.
 // The client reads the new UIN from the header's UIN field (offset 8-11),
@@ -2157,7 +2165,9 @@ func (h *V4Handler) sendBasicInfo(session *LegacySession, seq2 uint16, targetUIN
 // sendBasicInfoResponse sends basic user info response (0x0118) with checkcode
 // V3 server packet format: VERSION(2) + COMMAND(2) + SEQ1(2) + SEQ2(2) + UIN(4) + CHECKCODE(4) + DATA
 // Data format (verified via Ghidra RE of ICQ98a client handler FUN_00429b22):
-//   TARGET_UIN(4) + NICK_LEN(2) + NICK + FNAME_LEN(2) + FNAME + LNAME_LEN(2) + LNAME + EMAIL_LEN(2) + EMAIL + STATUS(1) + AUTH(1)
+//
+//	TARGET_UIN(4) + NICK_LEN(2) + NICK + FNAME_LEN(2) + FNAME + LNAME_LEN(2) + LNAME + EMAIL_LEN(2) + EMAIL + STATUS(1) + AUTH(1)
+//
 // NOTE: Client expects 0x0118 (ICQLegacySrvInfoReply), NOT 0x02E4 - verified via Ghidra RE
 // NOTE: There are TWO bytes at the end - STATUS and AUTH - verified via Ghidra RE of FUN_00429b22
 func (h *V4Handler) sendBasicInfoResponse(session *LegacySession, seq2 uint16, targetUIN uint32) error {
@@ -2267,9 +2277,10 @@ func (h *V4Handler) sendBasicInfoResponse(session *LegacySession, seq2 uint16, t
 // sendExtInfoResponse sends extended user info response (0x0122) with checkcode
 // V3 server packet format: VERSION(2) + COMMAND(2) + SEQ1(2) + SEQ2(2) + UIN(4) + CHECKCODE(4) + DATA
 // Data format (verified via Ghidra RE of ICQ98a client handler FUN_00429c84):
-//   TARGET_UIN(4) + CITY_LEN(2) + CITY + COUNTRY(2) + TIMEZONE(1) +
-//   STATE_LEN(2) + STATE + AGE(2) + GENDER(1) +
-//   PHONE_LEN(2) + PHONE + HOMEPAGE_LEN(2) + HOMEPAGE + ABOUT_LEN(2) + ABOUT + ZIPCODE(4)
+//
+//	TARGET_UIN(4) + CITY_LEN(2) + CITY + COUNTRY(2) + TIMEZONE(1) +
+//	STATE_LEN(2) + STATE + AGE(2) + GENDER(1) +
+//	PHONE_LEN(2) + PHONE + HOMEPAGE_LEN(2) + HOMEPAGE + ABOUT_LEN(2) + ABOUT + ZIPCODE(4)
 func (h *V4Handler) sendExtInfoResponse(session *LegacySession, seq2 uint16, targetUIN uint32) error {
 	ctx := context.Background()
 

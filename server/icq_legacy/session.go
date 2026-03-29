@@ -16,10 +16,10 @@ import (
 
 // LegacySessionManager manages sessions for legacy ICQ clients
 type LegacySessionManager struct {
-	sessions   map[uint32]*LegacySession  // Indexed by UIN
-	addrIndex  map[string]*LegacySession  // Indexed by UDP address string
-	sessionMgr SessionRegistry            // Unified session manager
-	bridge     *LegacyMessageBridge       // OSCAR->legacy bridge for message pump
+	sessions   map[uint32]*LegacySession // Indexed by UIN
+	addrIndex  map[string]*LegacySession // Indexed by UDP address string
+	sessionMgr SessionRegistry           // Unified session manager
+	bridge     *LegacyMessageBridge      // OSCAR->legacy bridge for message pump
 	config     config.ICQLegacyConfig
 	logger     *slog.Logger
 	mu         sync.RWMutex

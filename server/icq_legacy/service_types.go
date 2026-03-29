@@ -14,7 +14,6 @@ import (
 
 // AuthRequest contains authentication parameters for legacy ICQ login.
 // Used by handlers when processing login packets (CMD_LOGIN) from v2-v5 protocols.
-//
 type AuthRequest struct {
 	// UIN is the user's ICQ identification number
 	UIN uint32
@@ -34,7 +33,6 @@ type AuthRequest struct {
 
 // MessageRequest contains message parameters for sending messages between users.
 // Used by handlers when processing through-server message packets (CMD_SEND_MESSAGE).
-//
 type MessageRequest struct {
 	// FromUIN is the sender's UIN
 	FromUIN uint32
@@ -51,7 +49,6 @@ type MessageRequest struct {
 
 // ContactListRequest contains contact list data for processing buddy lists.
 // Used by handlers when processing contact list packets (CMD_CONTACT_LIST).
-//
 type ContactListRequest struct {
 	// UIN is the user's UIN who owns this contact list
 	UIN uint32
@@ -62,7 +59,6 @@ type ContactListRequest struct {
 
 // StatusChangeRequest contains status change data for presence updates.
 // Used by handlers when processing status change packets (CMD_SET_STATUS).
-//
 type StatusChangeRequest struct {
 	// UIN is the user's UIN whose status is changing
 	UIN uint32
@@ -76,7 +72,6 @@ type StatusChangeRequest struct {
 
 // UserAddRequest contains user add parameters for contact list additions.
 // Used by handlers when processing user add packets (CMD_USER_ADD).
-//
 type UserAddRequest struct {
 	// FromUIN is the UIN of the user adding someone to their contact list
 	FromUIN uint32
@@ -94,7 +89,6 @@ type UserAddRequest struct {
 
 // AuthResult contains authentication outcome from the service layer.
 // Returned by AuthenticateUser method after validating credentials.
-//
 type AuthResult struct {
 	// Success indicates whether authentication was successful
 	Success bool
@@ -115,7 +109,6 @@ type AuthResult struct {
 
 // MessageResult contains message routing info from the service layer.
 // Returned by ProcessMessage method after handling a message send request.
-//
 type MessageResult struct {
 	// Delivered indicates whether the message was delivered to an online user
 	Delivered bool
@@ -132,7 +125,6 @@ type MessageResult struct {
 
 // ContactListResult contains online status for contacts from the service layer.
 // Returned by ProcessContactList method after processing a contact list.
-//
 type ContactListResult struct {
 	// OnlineContacts contains the status of each contact in the submitted list
 	OnlineContacts []ContactStatus
@@ -140,7 +132,6 @@ type ContactListResult struct {
 
 // ContactStatus represents a contact's online status.
 // Used within ContactListResult to report individual contact states.
-//
 type ContactStatus struct {
 	// UIN is the contact's ICQ identification number
 	UIN uint32
@@ -157,7 +148,6 @@ type ContactStatus struct {
 
 // StatusChangeResult contains notification targets from the service layer.
 // Returned by ProcessStatusChange method after processing a status update.
-//
 type StatusChangeResult struct {
 	// NotifyTargets contains the list of users who should be notified of the status change
 	NotifyTargets []NotifyTarget
@@ -165,7 +155,6 @@ type StatusChangeResult struct {
 
 // NotifyTarget represents a user to notify about a status change.
 // Used within StatusChangeResult to identify notification recipients.
-//
 type NotifyTarget struct {
 	// UIN is the user's ICQ identification number
 	UIN uint32
@@ -178,7 +167,6 @@ type NotifyTarget struct {
 // Returned by GetUserInfoForProtocol method when retrieving user profile data.
 // Contains both basic fields (available in all protocol versions) and extended
 // fields (available in V3/V5 protocols).
-//
 type UserInfoResult struct {
 	// Basic fields (all protocol versions)
 
@@ -246,7 +234,6 @@ type UserInfoResult struct {
 
 // UserAddResult contains user add outcome from the service layer.
 // Returned by ProcessUserAdd method after processing a contact addition.
-//
 type UserAddResult struct {
 	// TargetOnline indicates whether the added user is currently online
 	TargetOnline bool

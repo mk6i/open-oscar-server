@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net"
 	"strings"
 	"sync"
 	"time"
@@ -72,33 +71,6 @@ type ICBMService struct {
 	logger                *slog.Logger
 	interval              time.Duration
 	offlineMessageManager OfflineMessageManager
-	legacyMessageSender   LegacyMessageSender
-}
-
-// LegacyMessageSender is the interface for sending messages to legacy ICQ clients.
-// It provides methods for delivering messages and status notifications to
-// connected legacy sessions.
-type LegacyMessageSender interface {
-	// SendMessage delivers a message to a legacy client identified by UIN.
-	SendMessage(uin uint32, fromUIN uint32, msgType uint16, message string) error
-
-	// SendStatusUpdate sends a status change notification to a legacy client.
-	SendStatusUpdate(uin uint32, targetUIN uint32, status uint32) error
-
-	// SendUserOnline sends a user online notification to a legacy client.
-	SendUserOnline(uin uint32, targetUIN uint32, status uint32, ip net.IP, port uint16) error
-
-	// SendUserOffline sends a user offline notification to a legacy client.
-	SendUserOffline(uin uint32, targetUIN uint32) error
-}
-
-// SetLegacyMessageSender sets the legacy message sender for delivering messages
-// to legacy ICQ clients (V2-V5) that don't have OSCAR sessions.
-// This bridges the OSCAR->legacy gap: when an OSCAR/AIM user sends a message
-// to a UIN that's connected via legacy protocol, the message is delivered
-// through this sender instead of going to offline storage.
-func (s *ICBMService) SetLegacyMessageSender(sender LegacyMessageSender) {
-	s.legacyMessageSender = sender
 }
 
 // ParameterQuery returns ICBM service parameters.
@@ -141,32 +113,6 @@ func (s ICBMService) ChannelMsgToHost(ctx context.Context, instance *state.Sessi
 
 	recipSess := s.sessionRetriever.RetrieveSession(recip)
 	if recipSess == nil {
-		// Check if recipient is online via legacy ICQ protocol (V2-V5).
-		// Legacy clients don't have OSCAR sessions, so sessionRetriever won't find them.
-		if s.legacyMessageSender != nil {
-			msgText := extractICBMText(inBody)
-			if msgText != "" {
-				if err := s.legacyMessageSender.SendMessage(recip.UIN(), instance.IdentScreenName().UIN(), wire.ICQLegacyMsgText, msgText); err == nil {
-					// Message delivered to legacy client - send host ack if requested
-					if _, requestedConfirmation := inBody.TLVRestBlock.Bytes(wire.ICBMTLVRequestHostAck); requestedConfirmation {
-						return &wire.SNACMessage{
-							Frame: wire.SNACFrame{
-								FoodGroup: wire.ICBM,
-								SubGroup:  wire.ICBMHostAck,
-								RequestID: inFrame.RequestID,
-							},
-							Body: wire.SNAC_0x04_0x0C_ICBMHostAck{
-								Cookie:    inBody.Cookie,
-								ChannelID: inBody.ChannelID,
-							},
-						}, nil
-					}
-					return nil, nil
-				}
-				// SendMessage returned error - fall through to offline storage
-			}
-		}
-
 		// check for TLV that indicates that the message should be saved offline.
 		// For AIM 6/7, this is only set if the sender has the recipient on
 		// their buddy list and they've seen them online at least once.
@@ -438,25 +384,6 @@ func stripHTMLFromICBMTLV(tlv wire.TLV) (wire.TLV, error) {
 	}
 
 	return wire.NewTLVBE(tlv.Tag, newValue), nil
-}
-
-// extractICBMText extracts plaintext from an ICBM message body.
-// Used to convert OSCAR messages to legacy ICQ format for delivery to V2-V5 clients.
-func extractICBMText(inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) string {
-	payload, hasPayload := inBody.Bytes(wire.ICBMTLVAOLIMData)
-	if !hasPayload {
-		return ""
-	}
-	text, err := wire.UnmarshalICBMMessageText(payload)
-	if err != nil {
-		return ""
-	}
-	// Strip HTML tags if present (AIM clients send HTML-formatted messages)
-	if strings.Contains(text, "<") {
-		stripped := stripHTML([]byte(text))
-		return string(stripped)
-	}
-	return text
 }
 
 // ClientEvent relays SNAC wire.ICBMClientEvent typing events from the

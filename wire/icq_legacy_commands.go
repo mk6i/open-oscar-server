@@ -54,50 +54,50 @@ const (
 	ICQLegacyCmdRegNewUserInfo uint16 = 0x05E6 // Send registration form (V3/V4)
 
 	// V5-specific commands
-	ICQLegacyCmdMetaUser       uint16 = 0x064A // Meta user commands
-	ICQLegacyCmdChangeVILists  uint16 = 0x06B8 // Change visible/invisible lists
+	ICQLegacyCmdMetaUser      uint16 = 0x064A // Meta user commands
+	ICQLegacyCmdChangeVILists uint16 = 0x06B8 // Change visible/invisible lists
 )
 
 // Server Responses (sent to client)
 const (
-	ICQLegacySrvAck            uint16 = 0x000A // Acknowledgment
-	ICQLegacySrvUserLMeta      uint16 = 0x001E // User last meta
-	ICQLegacySrvSetOffline     uint16 = 0x0028 // Force offline
-	ICQLegacySrvUserDepsList   uint16 = 0x0032 // Pre-auth response (historically "departments list")
-	ICQLegacySrvUserDepsList1  uint16 = 0x0082 // Pre-auth response (session) - from v3_send_depslist1()
-	ICQLegacySrvNewUIN         uint16 = 0x0046 // New UIN assigned
-	ICQLegacySrvHello          uint16 = 0x005A // Login successful
-	ICQLegacySrvWrongPasswd    uint16 = 0x0064 // Invalid password
-	ICQLegacySrvUserOnline     uint16 = 0x006E // Contact came online
-	ICQLegacySrvUserOffline    uint16 = 0x0078 // Contact went offline
-	ICQLegacySrvSearchFound    uint16 = 0x008C // Search result (old)
-	ICQLegacySrvSearchDone     uint16 = 0x00A0 // Search complete (old)
-	ICQLegacySrvUpdatedBasic   uint16 = 0x00B4 // Basic info updated successfully (V2)
-	ICQLegacySrvUpdateBasicFail uint16 = 0x00BE // Basic info update failed (V2)
-	ICQLegacySrvUpdatedDetail  uint16 = 0x00C8 // Detail info updated successfully (V2)
-	ICQLegacySrvUpdateDetailFail uint16 = 0x00D2 // Detail info update failed (V2)
-	ICQLegacySrvUpdatedBasicV4   uint16 = 0x01E0 // Basic info updated successfully (V4)
+	ICQLegacySrvAck               uint16 = 0x000A // Acknowledgment
+	ICQLegacySrvUserLMeta         uint16 = 0x001E // User last meta
+	ICQLegacySrvSetOffline        uint16 = 0x0028 // Force offline
+	ICQLegacySrvUserDepsList      uint16 = 0x0032 // Pre-auth response (historically "departments list")
+	ICQLegacySrvUserDepsList1     uint16 = 0x0082 // Pre-auth response (session) - from v3_send_depslist1()
+	ICQLegacySrvNewUIN            uint16 = 0x0046 // New UIN assigned
+	ICQLegacySrvHello             uint16 = 0x005A // Login successful
+	ICQLegacySrvWrongPasswd       uint16 = 0x0064 // Invalid password
+	ICQLegacySrvUserOnline        uint16 = 0x006E // Contact came online
+	ICQLegacySrvUserOffline       uint16 = 0x0078 // Contact went offline
+	ICQLegacySrvSearchFound       uint16 = 0x008C // Search result (old)
+	ICQLegacySrvSearchDone        uint16 = 0x00A0 // Search complete (old)
+	ICQLegacySrvUpdatedBasic      uint16 = 0x00B4 // Basic info updated successfully (V2)
+	ICQLegacySrvUpdateBasicFail   uint16 = 0x00BE // Basic info update failed (V2)
+	ICQLegacySrvUpdatedDetail     uint16 = 0x00C8 // Detail info updated successfully (V2)
+	ICQLegacySrvUpdateDetailFail  uint16 = 0x00D2 // Detail info update failed (V2)
+	ICQLegacySrvUpdatedBasicV4    uint16 = 0x01E0 // Basic info updated successfully (V4)
 	ICQLegacySrvUpdateBasicFailV4 uint16 = 0x01EA // Basic info update failed (V4)
-	ICQLegacySrvSysMsgOffline  uint16 = 0x00DC // Offline message
-	ICQLegacySrvSysMsgDone     uint16 = 0x00E6 // End of offline messages
-	ICQLegacySrvNotConnected   uint16 = 0x00F0 // Not connected error
-	ICQLegacySrvBusy           uint16 = 0x00FA // Server busy
-	ICQLegacySrvSysMsgOnline   uint16 = 0x0104 // Online message
-	ICQLegacySrvInfoReply      uint16 = 0x0118 // User info response (single)
-	ICQLegacySrvExtInfoReply   uint16 = 0x0122 // Extended info response
-	ICQLegacySrvInvalidUIN     uint16 = 0x012C // Invalid UIN
-	ICQLegacySrvUserStatus     uint16 = 0x01A4 // Status changed
-	ICQLegacySrvUserListDone   uint16 = 0x021C // Contact list processed
-	ICQLegacySrvUserInfoBasic  uint16 = 0x02E4 // Basic user info (nick, first, last, email, auth) - from v3_defines.h ICQ_CMDxSND_USERxINFO_BASIC
-	ICQLegacySrvUserInfoWork   uint16 = 0x02F8 // Work info - from v3_defines.h ICQ_CMDxSND_USERxINFO_WORK
-	ICQLegacySrvUserInfoWWeb   uint16 = 0x030C // Work web page - from v3_defines.h ICQ_CMDxSND_USERxINFO_WWEB
-	ICQLegacySrvUserInfoHome   uint16 = 0x0320 // Home info - from v3_defines.h ICQ_CMDxSND_USERxINFO_HOME
-	ICQLegacySrvUserInfoHWeb   uint16 = 0x0334 // Home web page - from v3_defines.h ICQ_CMDxSND_USERxINFO_HWEB
-	ICQLegacySrvRegisterInfo   uint16 = 0x037A // Registration info (admin notes)
-	ICQLegacySrvLoginErr       uint16 = 0x0370 // Login error
-	ICQLegacySrvRegistrationOK uint16 = 0x0384 // Registration successful with new UIN
-	ICQLegacySrvMetaUser       uint16 = 0x03DE // Meta user response
-	ICQLegacySrvAckNewUIN      uint16 = 0x03FC // Registration successful
+	ICQLegacySrvSysMsgOffline     uint16 = 0x00DC // Offline message
+	ICQLegacySrvSysMsgDone        uint16 = 0x00E6 // End of offline messages
+	ICQLegacySrvNotConnected      uint16 = 0x00F0 // Not connected error
+	ICQLegacySrvBusy              uint16 = 0x00FA // Server busy
+	ICQLegacySrvSysMsgOnline      uint16 = 0x0104 // Online message
+	ICQLegacySrvInfoReply         uint16 = 0x0118 // User info response (single)
+	ICQLegacySrvExtInfoReply      uint16 = 0x0122 // Extended info response
+	ICQLegacySrvInvalidUIN        uint16 = 0x012C // Invalid UIN
+	ICQLegacySrvUserStatus        uint16 = 0x01A4 // Status changed
+	ICQLegacySrvUserListDone      uint16 = 0x021C // Contact list processed
+	ICQLegacySrvUserInfoBasic     uint16 = 0x02E4 // Basic user info (nick, first, last, email, auth) - from v3_defines.h ICQ_CMDxSND_USERxINFO_BASIC
+	ICQLegacySrvUserInfoWork      uint16 = 0x02F8 // Work info - from v3_defines.h ICQ_CMDxSND_USERxINFO_WORK
+	ICQLegacySrvUserInfoWWeb      uint16 = 0x030C // Work web page - from v3_defines.h ICQ_CMDxSND_USERxINFO_WWEB
+	ICQLegacySrvUserInfoHome      uint16 = 0x0320 // Home info - from v3_defines.h ICQ_CMDxSND_USERxINFO_HOME
+	ICQLegacySrvUserInfoHWeb      uint16 = 0x0334 // Home web page - from v3_defines.h ICQ_CMDxSND_USERxINFO_HWEB
+	ICQLegacySrvRegisterInfo      uint16 = 0x037A // Registration info (admin notes)
+	ICQLegacySrvLoginErr          uint16 = 0x0370 // Login error
+	ICQLegacySrvRegistrationOK    uint16 = 0x0384 // Registration successful with new UIN
+	ICQLegacySrvMetaUser          uint16 = 0x03DE // Meta user response
+	ICQLegacySrvAckNewUIN         uint16 = 0x03FC // Registration successful
 )
 
 // META_USER Sub-Commands (V5)
@@ -223,10 +223,10 @@ const (
 
 // Search Result Codes
 const (
-	ICQLegacySearchSuccess   uint8 = 0x00 // Search successful
-	ICQLegacySearchNotFound  uint8 = 0x01 // No results found
-	ICQLegacySearchTooMany   uint8 = 0x02 // Too many results
-	ICQLegacySearchError     uint8 = 0x03 // Search error
+	ICQLegacySearchSuccess  uint8 = 0x00 // Search successful
+	ICQLegacySearchNotFound uint8 = 0x01 // No results found
+	ICQLegacySearchTooMany  uint8 = 0x02 // Too many results
+	ICQLegacySearchError    uint8 = 0x03 // Search error
 )
 
 // Authorization Modes

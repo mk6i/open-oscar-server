@@ -13,7 +13,6 @@ import (
 //
 // V2 is the simplest ICQ protocol version with no encryption.
 // Packet format: VERSION(2) + COMMAND(2) + SEQNUM(2) + DATA
-//
 type V2PacketBuilder interface {
 	// BuildLoginReply constructs a login success response packet.
 	// The packet contains the user's UIN, IP address, and session info.

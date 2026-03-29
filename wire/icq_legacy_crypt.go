@@ -304,7 +304,6 @@ func V5EncryptionKey(sessionID uint32, checkCode uint32) uint32 {
 	return 0
 }
 
-
 // V4 Protocol Encryption/Decryption
 // V4 uses a simpler encryption scheme than V5
 
@@ -367,7 +366,6 @@ func EncryptV4Packet(packet []byte, key uint32) {
 func DecryptV4Packet(packet []byte, key uint32) {
 	EncryptV4Packet(packet, key)
 }
-
 
 // AddV5ServerCheckcode calculates and adds the checkcode to a V5 server packet
 // Server packets are NOT encrypted, but have a checkcode at offset 0x11 (17)

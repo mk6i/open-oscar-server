@@ -348,5 +348,3 @@ type LegacyMessageSender interface {
 	// SendUserOffline sends a user offline notification to a legacy client.
 	SendUserOffline(uin uint32, targetUIN uint32) error
 }
-
-

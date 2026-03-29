@@ -1344,13 +1344,15 @@ func (h *V5Handler) sendV5ContactListDone(session *LegacySession, seq2 uint16) e
 //
 // Verified against licq.5 client (icqd-udp.cpp ICQ_CMDxRCV_USERxONLINE):
 // Client reads: UIN(4) + IP(4) + PORT(2) + JUNK_SHORT(2) + REAL_IP(4) +
-//               MODE(1) + STATUS(4) + TCP_VERSION(4)
+//
+//	MODE(1) + STATUS(4) + TCP_VERSION(4)
+//
 // Total client reads: 25 bytes. Extra bytes after that are ignored.
 //
 // Our packet format (49 bytes data, iserverd-compatible):
-// - UIN(4) + IP(4) + TCP_PORT(4) + INT_IP(4) + DC_TYPE(1) +
-//   STATUS(2)+ESTAT(2) + TCPVER(4) + DC_COOKIE(4) + WEB_PORT(4) +
-//   CLI_FUTURES(4) + INFO_UTIME(4) + MORE_UTIME(4) + STAT_UTIME(4)
+//   - UIN(4) + IP(4) + TCP_PORT(4) + INT_IP(4) + DC_TYPE(1) +
+//     STATUS(2)+ESTAT(2) + TCPVER(4) + DC_COOKIE(4) + WEB_PORT(4) +
+//     CLI_FUTURES(4) + INFO_UTIME(4) + MORE_UTIME(4) + STAT_UTIME(4)
 func (h *V5Handler) sendV5UserOnline(session *LegacySession, uin uint32, status uint32) error {
 	data := make([]byte, 49)
 	offset := 0
@@ -1576,12 +1578,12 @@ func (h *V5Handler) handleMetaLoginInfo(session *LegacySession, pkt *wire.V5Clie
 	)
 
 	// Send all 7 info packets as per iserverd v5_reply_metafullinfo_request2()
-	h.sendMetaInfo3(session, pkt.SeqNum2, info)      // Basic info (0x00C8)
-	h.sendMetaMore2(session, pkt.SeqNum2, info)      // More info (0x00DC)
-	h.sendMetaHpageCat(session, pkt.SeqNum2, info)   // Homepage category (0x010E)
-	h.sendMetaWork2(session, pkt.SeqNum2, info)      // Work info (0x00D2)
-	h.sendMetaAbout(session, pkt.SeqNum2, info)      // About/notes (0x00E6)
-	h.sendMetaInterests(session, pkt.SeqNum2, info)  // Interests (0x00F0)
+	h.sendMetaInfo3(session, pkt.SeqNum2, info)        // Basic info (0x00C8)
+	h.sendMetaMore2(session, pkt.SeqNum2, info)        // More info (0x00DC)
+	h.sendMetaHpageCat(session, pkt.SeqNum2, info)     // Homepage category (0x010E)
+	h.sendMetaWork2(session, pkt.SeqNum2, info)        // Work info (0x00D2)
+	h.sendMetaAbout(session, pkt.SeqNum2, info)        // About/notes (0x00E6)
+	h.sendMetaInterests(session, pkt.SeqNum2, info)    // Interests (0x00F0)
 	h.sendMetaAffiliations(session, pkt.SeqNum2, info) // Affiliations (0x00FA)
 
 	h.logger.Info("META login info - all packets sent", "target_uin", targetUIN)
@@ -1786,10 +1788,10 @@ func (h *V5Handler) handleMetaUserFullInfo(session *LegacySession, pkt *wire.V5C
 	h.sendMetaFullUserInfo(session, pkt.SeqNum2, info) // Basic info (0x00C8) - older format
 	h.sendMetaMore(session, pkt.SeqNum2, info)         // More info (0x00DC)
 	h.sendMetaHpageCat(session, pkt.SeqNum2, info)     // Homepage category (0x010E)
-	h.sendMetaWork(session, pkt.SeqNum2, info)          // Work info (0x00D2) - older format
-	h.sendMetaAbout(session, pkt.SeqNum2, info)         // About/notes (0x00E6)
-	h.sendMetaInterests(session, pkt.SeqNum2, info)     // Interests (0x00F0)
-	h.sendMetaAffiliations(session, pkt.SeqNum2, info)  // Affiliations (0x00FA)
+	h.sendMetaWork(session, pkt.SeqNum2, info)         // Work info (0x00D2) - older format
+	h.sendMetaAbout(session, pkt.SeqNum2, info)        // About/notes (0x00E6)
+	h.sendMetaInterests(session, pkt.SeqNum2, info)    // Interests (0x00F0)
+	h.sendMetaAffiliations(session, pkt.SeqNum2, info) // Affiliations (0x00FA)
 
 	return nil
 }
@@ -1833,10 +1835,10 @@ func (h *V5Handler) handleMetaUserFullInfo2(session *LegacySession, pkt *wire.V5
 	h.sendMetaInfo3(session, pkt.SeqNum2, info)        // Basic info (0x00C8) - newer format
 	h.sendMetaMore2(session, pkt.SeqNum2, info)        // More info (0x00DC)
 	h.sendMetaHpageCat(session, pkt.SeqNum2, info)     // Homepage category (0x010E)
-	h.sendMetaWork2(session, pkt.SeqNum2, info)         // Work info (0x00D2) - newer format
-	h.sendMetaAbout(session, pkt.SeqNum2, info)         // About/notes (0x00E6)
-	h.sendMetaInterests(session, pkt.SeqNum2, info)     // Interests (0x00F0)
-	h.sendMetaAffiliations(session, pkt.SeqNum2, info)  // Affiliations (0x00FA)
+	h.sendMetaWork2(session, pkt.SeqNum2, info)        // Work info (0x00D2) - newer format
+	h.sendMetaAbout(session, pkt.SeqNum2, info)        // About/notes (0x00E6)
+	h.sendMetaInterests(session, pkt.SeqNum2, info)    // Interests (0x00F0)
+	h.sendMetaAffiliations(session, pkt.SeqNum2, info) // Affiliations (0x00FA)
 
 	return nil
 }
@@ -2552,7 +2554,7 @@ func (h *V5Handler) sendMetaWhiteSearchResult2(session *LegacySession, seqNum ui
 		}
 		binary.Write(buf, binary.LittleEndian, usersLeft)
 	} else {
-		buf.WriteByte(0x32) // fail - no results
+		buf.WriteByte(0x32)                               // fail - no results
 		binary.Write(buf, binary.LittleEndian, uint32(0)) // users_left
 	}
 
@@ -2591,15 +2593,15 @@ func (h *V5Handler) sendMetaWhiteSearchResult2(session *LegacySession, seqNum ui
 //   - SubCommand (2 bytes): 0x01A4 (found) or 0x01AE (last found)
 //   - Success (1 byte): 0x0A (success) or 0x32 (fail)
 //   - If success:
-//     - UIN (4 bytes)
-//     - Nickname (length-prefixed string)
-//     - First name (length-prefixed string)
-//     - Last name (length-prefixed string)
-//     - Email (length-prefixed string)
-//     - Auth flag (1 byte)
-//     - Webaware flag (1 byte)
+//   - UIN (4 bytes)
+//   - Nickname (length-prefixed string)
+//   - First name (length-prefixed string)
+//   - Last name (length-prefixed string)
+//   - Email (length-prefixed string)
+//   - Auth flag (1 byte)
+//   - Webaware flag (1 byte)
 //   - If last:
-//     - Users left (4 bytes)
+//   - Users left (4 bytes)
 //
 // Note: Unlike White2 format, this does NOT have a pack_len field.
 func (h *V5Handler) sendMetaWhiteFound(session *LegacySession, seqNum uint16, result *LegacyUserSearchResult, isLast bool, moreAvailable bool) error {
@@ -2952,27 +2954,27 @@ func (h *V5Handler) sendMetaInfo3(session *LegacySession, seq2 uint16, info *Leg
 
 	buf := new(bytes.Buffer)
 	binary.Write(buf, binary.LittleEndian, uint16(0x00C8)) // SRV_META_USER_INFO2
-	buf.WriteByte(0x0A) // success
+	buf.WriteByte(0x0A)                                    // success
 	writeLegacyString(buf, info.Nickname)
 	writeLegacyString(buf, info.FirstName)
 	writeLegacyString(buf, info.LastName)
-	writeLegacyString(buf, info.Email)  // email1
-	writeLegacyString(buf, "")          // email2
-	writeLegacyString(buf, "")          // email3
-	writeLegacyString(buf, "")          // hcity
-	writeLegacyString(buf, "")          // hstate
-	writeLegacyString(buf, "")          // hphone
-	writeLegacyString(buf, "")          // hfax
-	writeLegacyString(buf, "")          // haddr
-	writeLegacyString(buf, "")          // hcell
-	writeLegacyString(buf, "")          // hzip (string in info3)
-	binary.Write(buf, binary.LittleEndian, uint16(0))  // hcountry
-	binary.Write(buf, binary.LittleEndian, uint16(0))  // gmt_offset
-	buf.WriteByte(0x01) // auth
-	buf.WriteByte(0x00) // e1publ
-	buf.WriteByte(0x00) // unknown
-	buf.WriteByte(0x00) // unknown
-	buf.WriteByte(0x00) // unknown
+	writeLegacyString(buf, info.Email)                // email1
+	writeLegacyString(buf, "")                        // email2
+	writeLegacyString(buf, "")                        // email3
+	writeLegacyString(buf, "")                        // hcity
+	writeLegacyString(buf, "")                        // hstate
+	writeLegacyString(buf, "")                        // hphone
+	writeLegacyString(buf, "")                        // hfax
+	writeLegacyString(buf, "")                        // haddr
+	writeLegacyString(buf, "")                        // hcell
+	writeLegacyString(buf, "")                        // hzip (string in info3)
+	binary.Write(buf, binary.LittleEndian, uint16(0)) // hcountry
+	binary.Write(buf, binary.LittleEndian, uint16(0)) // gmt_offset
+	buf.WriteByte(0x01)                               // auth
+	buf.WriteByte(0x00)                               // e1publ
+	buf.WriteByte(0x00)                               // unknown
+	buf.WriteByte(0x00)                               // unknown
+	buf.WriteByte(0x00)                               // unknown
 
 	pkt := &wire.V5ServerPacket{
 		Version:   wire.ICQLegacyVersionV5,
@@ -3107,11 +3109,11 @@ func (h *V5Handler) sendMetaHpageCat(session *LegacySession, seq2 uint16, info *
 
 	buf := new(bytes.Buffer)
 	binary.Write(buf, binary.LittleEndian, uint16(0x010E)) // SRV_META_INFO_HPAGE_CAT
-	buf.WriteByte(0x0A) // success
-	buf.WriteByte(0x00) // hpage_cf (enabled)
-	binary.Write(buf, binary.LittleEndian, uint16(0)) // hpage_cat
-	writeLegacyString(buf, "") // hpage_txt
-	buf.WriteByte(0x00) // unknown
+	buf.WriteByte(0x0A)                                    // success
+	buf.WriteByte(0x00)                                    // hpage_cf (enabled)
+	binary.Write(buf, binary.LittleEndian, uint16(0))      // hpage_cat
+	writeLegacyString(buf, "")                             // hpage_txt
+	buf.WriteByte(0x00)                                    // unknown
 
 	pkt := &wire.V5ServerPacket{
 		Version:   wire.ICQLegacyVersionV5,
@@ -3211,8 +3213,8 @@ func (h *V5Handler) sendMetaAbout(session *LegacySession, seq2 uint16, info *Leg
 
 	buf := new(bytes.Buffer)
 	binary.Write(buf, binary.LittleEndian, uint16(0x00E6)) // SRV_META_INFO_ABOUT
-	buf.WriteByte(0x0A) // success
-	writeLegacyString(buf, "") // notes
+	buf.WriteByte(0x0A)                                    // success
+	writeLegacyString(buf, "")                             // notes
 
 	pkt := &wire.V5ServerPacket{
 		Version:   wire.ICQLegacyVersionV5,
@@ -3236,8 +3238,8 @@ func (h *V5Handler) sendMetaInterests(session *LegacySession, seq2 uint16, info 
 
 	buf := new(bytes.Buffer)
 	binary.Write(buf, binary.LittleEndian, uint16(0x00F0)) // SRV_META_INFO_INTERESTS
-	buf.WriteByte(0x0A) // success
-	buf.WriteByte(0x00) // int_num (0 interests)
+	buf.WriteByte(0x0A)                                    // success
+	buf.WriteByte(0x00)                                    // int_num (0 interests)
 
 	pkt := &wire.V5ServerPacket{
 		Version:   wire.ICQLegacyVersionV5,
@@ -3261,23 +3263,23 @@ func (h *V5Handler) sendMetaAffiliations(session *LegacySession, seq2 uint16, in
 
 	buf := new(bytes.Buffer)
 	binary.Write(buf, binary.LittleEndian, uint16(0x00FA)) // SRV_META_INFO_AFFILATIONS
-	buf.WriteByte(0x0A) // success
+	buf.WriteByte(0x0A)                                    // success
 	// Past backgrounds (3 empty entries)
-	buf.WriteByte(0x03) // past_num
+	buf.WriteByte(0x03)                               // past_num
 	binary.Write(buf, binary.LittleEndian, uint16(0)) // past_ind1
-	writeLegacyString(buf, "") // past_key1
+	writeLegacyString(buf, "")                        // past_key1
 	binary.Write(buf, binary.LittleEndian, uint16(0)) // past_ind2
-	writeLegacyString(buf, "") // past_key2
+	writeLegacyString(buf, "")                        // past_key2
 	binary.Write(buf, binary.LittleEndian, uint16(0)) // past_ind3
-	writeLegacyString(buf, "") // past_key3
+	writeLegacyString(buf, "")                        // past_key3
 	// Affiliations (3 empty entries)
-	buf.WriteByte(0x03) // aff_num
+	buf.WriteByte(0x03)                               // aff_num
 	binary.Write(buf, binary.LittleEndian, uint16(0)) // aff_ind1
-	writeLegacyString(buf, "") // aff_key1
+	writeLegacyString(buf, "")                        // aff_key1
 	binary.Write(buf, binary.LittleEndian, uint16(0)) // aff_ind2
-	writeLegacyString(buf, "") // aff_key2
+	writeLegacyString(buf, "")                        // aff_key2
 	binary.Write(buf, binary.LittleEndian, uint16(0)) // aff_ind3
-	writeLegacyString(buf, "") // aff_key3
+	writeLegacyString(buf, "")                        // aff_key3
 	// Trailing bytes
 	binary.Write(buf, binary.LittleEndian, uint16(0x0000))
 	binary.Write(buf, binary.LittleEndian, uint16(0x0001))
@@ -3307,7 +3309,7 @@ func (h *V5Handler) sendMetaFullUserInfo(session *LegacySession, seq2 uint16, in
 	// Format: SUB_CMD(2) + SUCCESS(1) + UIN(4) + NICK_LEN(2) + NICK + FIRST_LEN(2) + FIRST + LAST_LEN(2) + LAST + EMAIL_LEN(2) + EMAIL + AUTH(1)
 	buf := new(bytes.Buffer)
 	binary.Write(buf, binary.LittleEndian, uint16(0x00C8)) // SRV_META_USER_INFO2
-	buf.WriteByte(0x0A) // success
+	buf.WriteByte(0x0A)                                    // success
 	binary.Write(buf, binary.LittleEndian, info.UIN)
 	writeLegacyString(buf, info.Nickname)
 	writeLegacyString(buf, info.FirstName)
@@ -3894,7 +3896,8 @@ func (h *V5Handler) sendV5OldStyleInfo(session *LegacySession, info *LegacyUserS
 //
 // Verified against licq.5 client (icqd-udp.cpp ICQ_CMDxRCV_USERxDETAILS):
 // Client reads: UIN(4) + CITY(string) + COUNTRY(2) + TIMEZONE(1) + STATE(string) +
-//               AGE(2) + GENDER(1) + PHONE(string) + HOMEPAGE(string) + ABOUT(string) + ZIPCODE(4)
+//
+//	AGE(2) + GENDER(1) + PHONE(string) + HOMEPAGE(string) + ABOUT(string) + ZIPCODE(4)
 //
 // Note: iserverd comments the byte after COUNTRY as "I don't know what is it" but
 // the licq.5 client reads it as SetTimezone(packet.UnpackChar()). We send the user's
@@ -3929,16 +3932,16 @@ func (h *V5Handler) sendV5OldStyleInfoExt(session *LegacySession, targetUIN uint
 	// AGE(2) + GENDER(1) + PHONE(string) + HOMEPAGE(string) + ABOUT(string) + ZIPCODE(4)
 	buf := new(bytes.Buffer)
 	binary.Write(buf, binary.LittleEndian, targetUIN)
-	writeLegacyString(buf, hcity)                       // city (length-prefixed with null terminator)
-	binary.Write(buf, binary.LittleEndian, hcountry)    // country code
-	buf.WriteByte(gmtOffset)                            // timezone / GMT offset (client reads as SetTimezone)
-	writeLegacyString(buf, hstate)                      // state (length-prefixed with null terminator)
-	binary.Write(buf, binary.LittleEndian, age)         // age
-	buf.WriteByte(gender)                               // gender
-	writeLegacyString(buf, hphone)                      // phone (length-prefixed with null terminator)
-	writeLegacyString(buf, hpage)                       // homepage (length-prefixed with null terminator)
-	writeLegacyString(buf, notes)                       // about/notes (length-prefixed with null terminator)
-	binary.Write(buf, binary.LittleEndian, zipCode)     // zip code (uint32, client reads as UnpackUnsignedLong)
+	writeLegacyString(buf, hcity)                    // city (length-prefixed with null terminator)
+	binary.Write(buf, binary.LittleEndian, hcountry) // country code
+	buf.WriteByte(gmtOffset)                         // timezone / GMT offset (client reads as SetTimezone)
+	writeLegacyString(buf, hstate)                   // state (length-prefixed with null terminator)
+	binary.Write(buf, binary.LittleEndian, age)      // age
+	buf.WriteByte(gender)                            // gender
+	writeLegacyString(buf, hphone)                   // phone (length-prefixed with null terminator)
+	writeLegacyString(buf, hpage)                    // homepage (length-prefixed with null terminator)
+	writeLegacyString(buf, notes)                    // about/notes (length-prefixed with null terminator)
+	binary.Write(buf, binary.LittleEndian, zipCode)  // zip code (uint32, client reads as UnpackUnsignedLong)
 
 	pkt := &wire.V5ServerPacket{
 		Version:   wire.ICQLegacyVersionV5,

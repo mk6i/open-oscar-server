@@ -16,7 +16,6 @@ import (
 //
 // V5 uses full packet encryption via AddV5ServerCheckcode() which computes
 // and inserts the checkcode at offset 0x11 (17).
-//
 type V5PacketBuilder interface {
 	// BuildLoginReply constructs a login success (HELLO) response packet.
 	// The packet contains timing parameters and client IP information.
@@ -198,7 +197,9 @@ func (b *V5PacketBuilderImpl) BuildAckWithSeq2(session *LegacySession, seq1, seq
 //
 // Verified against licq.5 client (icqd-udp.cpp ICQ_CMDxRCV_USERxONLINE):
 // Client reads: UIN(4) + IP(4) + PORT(2) + JUNK_SHORT(2) + REAL_IP(4) +
-//               MODE(1) + STATUS(4) + TCP_VERSION(4)
+//
+//	MODE(1) + STATUS(4) + TCP_VERSION(4)
+//
 // Total client reads: 25 bytes. Extra bytes after that are ignored.
 //
 // Our packet format (49 bytes data, iserverd-compatible):
@@ -497,7 +498,7 @@ func (b *V5PacketBuilderImpl) BuildMetaUserInfo(session *LegacySession, seq2 uin
 		data := make([]byte, 3)
 		binary.LittleEndian.PutUint16(data[0:2], wire.ICQLegacySrvMetaUserInfo)
 		data[2] = 0x32 // Fail code
-		
+
 		pkt := &wire.V5ServerPacket{
 			Version:   wire.ICQLegacyVersionV5,
 			SessionID: session.SessionID,
@@ -592,9 +593,10 @@ func (b *V5PacketBuilderImpl) BuildMetaUserInfo(session *LegacySession, seq2 uin
 // From iserverd v5_send_user_found2()
 //
 // Format matches iserverd exactly:
-//   SUB_COMMAND(2) + RESULT(1) + [PACK_LEN(2) + UIN(4) + NICK_LEN(2) + NICK +
-//   FIRST_LEN(2) + FIRST + LAST_LEN(2) + LAST + EMAIL_LEN(2) + EMAIL +
-//   AUTH(1) + WEBAWARE(1) + 0x00(1)] + [USERS_LEFT(4) if last]
+//
+//	SUB_COMMAND(2) + RESULT(1) + [PACK_LEN(2) + UIN(4) + NICK_LEN(2) + NICK +
+//	FIRST_LEN(2) + FIRST + LAST_LEN(2) + LAST + EMAIL_LEN(2) + EMAIL +
+//	AUTH(1) + WEBAWARE(1) + 0x00(1)] + [USERS_LEFT(4) if last]
 func (b *V5PacketBuilderImpl) BuildSearchResult(session *LegacySession, seq2 uint16, results []UserInfoResult, isLast bool) []byte {
 	if len(results) == 0 {
 		// Send empty last result with failure code to indicate no results
