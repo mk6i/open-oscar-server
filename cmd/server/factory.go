@@ -16,6 +16,7 @@ import (
 	"github.com/mk6i/open-oscar-server/config"
 	"github.com/mk6i/open-oscar-server/foodgroup"
 	"github.com/mk6i/open-oscar-server/server/http"
+	"github.com/mk6i/open-oscar-server/server/icq_legacy"
 	"github.com/mk6i/open-oscar-server/server/kerberos"
 	"github.com/mk6i/open-oscar-server/server/oscar"
 	oscarmiddleware "github.com/mk6i/open-oscar-server/server/oscar/middleware"
@@ -397,6 +398,7 @@ func MgmtAPI(deps Container) *http.Server {
 		deps.sqLiteUserStore,        // accountManager
 		deps.sqLiteUserStore,        // profileRetriever
 		deps.sqLiteUserStore,        // webAPIKeyManager
+		deps.sqLiteUserStore,        // icqProfileManager
 		state.NewAccountCreator(deps.sqLiteUserStore.InsertUser),
 		logger,
 	)
@@ -616,4 +618,95 @@ func WebAPI(deps Container) *webapi.Server {
 	}
 	// Pass SQLiteUserStore as the API key validator (it implements middleware.APIKeyValidator)
 	return webapi.NewServer([]string{"0.0.0.0:9000"}, logger, handler, deps.sqLiteUserStore, deps.webAPISessionManager)
+}
+
+// ICQLegacy creates a legacy ICQ server for v2-v5 protocols.
+func ICQLegacy(deps Container) *icq_legacy.LegacyServer {
+	logger := deps.logger.With("svc", "ICQLegacy")
+
+	// Create session manager
+	sessionManager := icq_legacy.NewLegacySessionManager(
+		deps.inMemorySessionManager,
+		deps.cfg.ICQLegacy,
+		logger,
+	)
+
+	// Create the ICQ legacy service
+	icqLegacyService := icq_legacy.NewICQLegacyService(
+		deps.sqLiteUserStore,        // userManager
+		deps.sqLiteUserStore,        // accountManager
+		deps.inMemorySessionManager, // sessionRetriever
+		deps.inMemorySessionManager, // messageRelayer
+		foodgroup.NewBuddyService( // buddyBroadcaster
+			deps.inMemorySessionManager,
+			deps.sqLiteUserStore,
+			deps.sqLiteUserStore,
+			deps.inMemorySessionManager,
+			deps.sqLiteUserStore,
+		),
+		deps.sqLiteUserStore, // offlineMessageManager
+		deps.sqLiteUserStore, // userFinder
+		deps.sqLiteUserStore, // userUpdater
+		deps.sqLiteUserStore, // feedbagManager
+		deps.sqLiteUserStore, // relationshipFetcher
+		logger,
+	)
+
+	// Create handlers (sender will be set after server creation)
+	v2PacketBuilder := icq_legacy.NewV2PacketBuilder()
+	v3PacketBuilder := icq_legacy.NewV3PacketBuilder()
+	v4PacketBuilder := icq_legacy.NewV4PacketBuilder()
+	v5PacketBuilder := icq_legacy.NewV5PacketBuilder(sessionManager)
+	v1Handler := icq_legacy.NewV1Handler(sessionManager, icqLegacyService, nil, logger)
+	v2Handler := icq_legacy.NewV2Handler(sessionManager, icqLegacyService, nil, v2PacketBuilder, logger)
+	v3Handler := icq_legacy.NewV3Handler(sessionManager, icqLegacyService, nil, v3PacketBuilder, logger)
+	v4Handler := icq_legacy.NewV4Handler(sessionManager, icqLegacyService, nil, v4PacketBuilder, logger)
+	v5Handler := icq_legacy.NewV5Handler(sessionManager, icqLegacyService, nil, v5PacketBuilder, logger)
+
+	// Create protocol dispatcher
+	dispatcher := icq_legacy.NewProtocolDispatcher(
+		v1Handler,
+		v2Handler,
+		v3Handler,
+		v4Handler,
+		v5Handler,
+		deps.cfg.ICQLegacy,
+		logger,
+	)
+
+	// Create server
+	server := icq_legacy.NewLegacyServer(
+		deps.cfg.ICQLegacy,
+		sessionManager,
+		dispatcher,
+		logger,
+	)
+
+	// Set the packet sender on handlers (circular dependency resolution)
+	v1Handler.SetSender(server)
+	v2Handler.SetSender(server)
+	v3Handler.SetSender(server)
+	v4Handler.SetSender(server)
+	v5Handler.SetSender(server)
+
+	// Set the dispatcher on handlers for cross-protocol messaging
+	v1Handler.SetDispatcher(dispatcher)
+	v2Handler.SetDispatcher(dispatcher)
+	v3Handler.SetDispatcher(dispatcher)
+	v4Handler.SetDispatcher(dispatcher)
+	v5Handler.SetDispatcher(dispatcher)
+
+	// Set the legacy session manager on the service (same package, no adapter needed)
+	icqLegacyService.SetLegacySessionManager(sessionManager)
+
+	// Wire up OSCAR->legacy message bridge so OSCAR status notifications
+	// reach legacy clients via the session message pump
+	legacyBridge := icq_legacy.NewLegacyMessageBridge(sessionManager, dispatcher, logger)
+
+	// Set the bridge on the session manager so it can start the OSCAR message
+	// pump for each new legacy session (converts BuddyArrived/Departed SNACs
+	// into legacy protocol packets)
+	sessionManager.SetBridge(legacyBridge)
+
+	return server
 }

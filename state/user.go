@@ -176,8 +176,11 @@ type User struct {
 	ICQNotes ICQUserNotes
 	// ICQWorkInfo contains the user's professional information, including
 	// their workplace address and job-related details.
-	ICQWorkInfo      ICQWorkInfo
-	AIMDirectoryInfo AIMNameAndAddr
+	ICQWorkInfo ICQWorkInfo
+	// ICQHomepageCategory contains homepage category information for the user.
+	// Used by V5 META_SET_HPCAT (0x0442) command.
+	ICQHomepageCategory ICQHomepageCategory
+	AIMDirectoryInfo    AIMNameAndAddr
 	// TOCConfig is the user's saved server-side info (buddy list, etc) for
 	// on the TOC service.
 	TOCConfig string
@@ -268,51 +271,82 @@ type ICQBasicInfo struct {
 }
 
 // ICQAffiliations contains information about the user's affiliations, both past and present.
+// From iserverd: past_num, past_ind1-3, past_key1-3, aff_num, aff_ind1-3, aff_key1-3
 type ICQAffiliations struct {
+	// PastCount is the number of past affiliations set (0-3).
+	// From iserverd: past_num
+	PastCount uint8
 	// PastCode1 is the code representing the user's first past affiliation.
+	// From iserverd: past_ind1
 	PastCode1 uint16
 	// PastKeyword1 is the keyword associated with the user's first past affiliation.
+	// From iserverd: past_key1
 	PastKeyword1 string
 	// PastCode2 is the code representing the user's second past affiliation.
+	// From iserverd: past_ind2
 	PastCode2 uint16
 	// PastKeyword2 is the keyword associated with the user's second past affiliation.
+	// From iserverd: past_key2
 	PastKeyword2 string
 	// PastCode3 is the code representing the user's third past affiliation.
+	// From iserverd: past_ind3
 	PastCode3 uint16
 	// PastKeyword3 is the keyword associated with the user's third past affiliation.
+	// From iserverd: past_key3
 	PastKeyword3 string
+	// CurrentCount is the number of current affiliations set (0-3).
+	// From iserverd: aff_num
+	CurrentCount uint8
 	// CurrentCode1 is the code representing the user's current first affiliation.
+	// From iserverd: aff_ind1
 	CurrentCode1 uint16
 	// CurrentKeyword1 is the keyword associated with the user's current first affiliation.
+	// From iserverd: aff_key1
 	CurrentKeyword1 string
 	// CurrentCode2 is the code representing the user's current second affiliation.
+	// From iserverd: aff_ind2
 	CurrentCode2 uint16
 	// CurrentKeyword2 is the keyword associated with the user's current second affiliation.
+	// From iserverd: aff_key2
 	CurrentKeyword2 string
 	// CurrentCode3 is the code representing the user's current third affiliation.
+	// From iserverd: aff_ind3
 	CurrentCode3 uint16
 	// CurrentKeyword3 is the keyword associated with the user's current third affiliation.
+	// From iserverd: aff_key3
 	CurrentKeyword3 string
 }
 
 // ICQInterests holds information about the user's interests, categorized by
 // interest code and associated keyword.
+// From iserverd: int_num, int_ind1-4, int_key1-4
 type ICQInterests struct {
+	// Count is the number of interests set (0-4).
+	// From iserverd: int_num
+	Count uint8
 	// Code1 is the code representing the user's first interest.
+	// From iserverd: int_ind1
 	Code1 uint16
 	// Keyword1 is the keyword associated with the user's first interest.
+	// From iserverd: int_key1
 	Keyword1 string
 	// Code2 is the code representing the user's second interest.
+	// From iserverd: int_ind2
 	Code2 uint16
 	// Keyword2 is the keyword associated with the user's second interest.
+	// From iserverd: int_key2
 	Keyword2 string
 	// Code3 is the code representing the user's third interest.
+	// From iserverd: int_ind3
 	Code3 uint16
 	// Keyword3 is the keyword associated with the user's third interest.
+	// From iserverd: int_key3
 	Keyword3 string
 	// Code4 is the code representing the user's fourth interest.
+	// From iserverd: int_ind4
 	Code4 uint16
 	// Keyword4 is the keyword associated with the user's fourth interest.
+	// From iserverd: int_key4
 	Keyword4 string
 }
 
@@ -383,6 +417,21 @@ type ICQPermissions struct {
 	WebAware bool
 	// AllowSpam indicates whether to allow messages from users not on the contact list.
 	AllowSpam bool
+}
+
+// ICQHomepageCategory contains homepage category information for an ICQ user.
+// This is used by the V5 META_SET_HPCAT (0x0442) command.
+// From iserverd: hpage_cf, hpage_cat, hpage_txt
+type ICQHomepageCategory struct {
+	// Enabled indicates whether the homepage category is enabled.
+	// From iserverd: hpage_cf (0 = disabled, 1 = enabled)
+	Enabled bool
+	// Index is the homepage category index/code.
+	// From iserverd: hpage_cat
+	Index uint16
+	// Description is the homepage category description/keyword.
+	// From iserverd: hpage_txt (max 127 chars)
+	Description string
 }
 
 // Age returns the user's age relative to their birthday and timeNow.

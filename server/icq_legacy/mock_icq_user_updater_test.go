@@ -2,7 +2,7 @@
 // github.com/vektra/mockery
 // template: testify
 
-package foodgroup
+package icq_legacy
 
 import (
 	"context"
