@@ -25,6 +25,8 @@ type SessionHandler struct {
 	BuddyListService    BuddyListService
 	BuddyListRegistry   BuddyListRegistry
 	BuddyBroadcaster    BuddyBroadcaster
+	FeedbagRetriever    FeedbagRetriever
+	OSCARBuddyService   OSCARBuddyService
 	BuddyListManager    *BuddyListManager
 	TokenStore          TokenStore
 	Logger              *slog.Logger
@@ -53,6 +55,11 @@ type BuddyListRegistry interface {
 // BuddyListService defines methods for buddy list operations.
 type BuddyListService interface {
 	GetBuddyList(ctx context.Context, screenName state.IdentScreenName) ([]BuddyGroup, error)
+}
+
+// OSCARBuddyService defines the OSCAR buddy-list operations we need to emulate an OSCAR client.
+type OSCARBuddyService interface {
+	AddBuddies(ctx context.Context, instance *state.SessionInstance, inBody wire.SNAC_0x03_0x04_BuddyAddBuddies) error
 }
 
 // BuddyGroup represents a group of buddies.
@@ -228,6 +235,31 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 			if h.BuddyListRegistry != nil {
 				if err := h.BuddyListRegistry.RegisterBuddyList(ctx, screenName.IdentScreenName()); err != nil {
 					h.Logger.ErrorContext(ctx, "failed to register buddy list", "err", err.Error())
+				}
+			}
+
+			// Emulate an OSCAR client buddy watch list.
+			if h.FeedbagRetriever != nil && h.OSCARBuddyService != nil {
+				if items, err := h.FeedbagRetriever.RetrieveFeedbag(ctx, screenName.IdentScreenName()); err != nil {
+					h.Logger.ErrorContext(ctx, "failed to retrieve feedbag for buddy watch list", "err", err.Error())
+				} else {
+					var b wire.SNAC_0x03_0x04_BuddyAddBuddies
+					for _, item := range items {
+						if item.ClassID != wire.FeedbagClassIdBuddy {
+							continue
+						}
+						if strings.TrimSpace(item.Name) == "" {
+							continue
+						}
+						b.Buddies = append(b.Buddies, struct {
+							ScreenName string `oscar:"len_prefix=uint8"`
+						}{ScreenName: item.Name})
+					}
+					if len(b.Buddies) > 0 {
+						if err := h.OSCARBuddyService.AddBuddies(ctx, oscarInstance, b); err != nil {
+							h.Logger.ErrorContext(ctx, "failed to add OSCAR buddy watch list", "err", err.Error())
+						}
+					}
 				}
 			}
 

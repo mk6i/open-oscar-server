@@ -365,9 +365,14 @@ func (h *PresenceHandler) SetState(w http.ResponseWriter, r *http.Request) {
 		h.Logger.WarnContext(ctx, "failed to touch session", "aimsid", aimsid, "error", err)
 	}
 
-	// Get the requested state
 	stateParam := r.URL.Query().Get("state")
+	if stateParam == "" {
+		stateParam = r.URL.Query().Get("view")
+	}
 	awayMsg := r.URL.Query().Get("awayMsg")
+	if awayMsg == "" {
+		awayMsg = r.URL.Query().Get("away")
+	}
 
 	// Get OSCAR session if available
 	oscarSession := session.OSCARSession
@@ -390,8 +395,10 @@ func (h *PresenceHandler) SetState(w http.ResponseWriter, r *http.Request) {
 	case "online":
 		statusBitmask = 0x0000 // Clear all status bits
 		oscarSession.SetAwayMessage("")
+		oscarSession.ClearUserInfoFlag(wire.OServiceUserFlagUnavailable)
 	case "away":
 		statusBitmask = wire.OServiceUserStatusAway
+		oscarSession.SetUserInfoFlag(wire.OServiceUserFlagUnavailable)
 		if awayMsg != "" {
 			oscarSession.SetAwayMessage(awayMsg)
 		}
@@ -433,6 +440,15 @@ func (h *PresenceHandler) SetState(w http.ResponseWriter, r *http.Request) {
 	response := BaseResponse{}
 	response.Response.StatusCode = 200
 	response.Response.StatusText = "OK"
+	response.Response.Data = map[string]interface{}{
+		"aimId":      session.ScreenName.String(),
+		"displayId":  session.ScreenName.String(),
+		"state":      stateParam,
+		"awayMsg":    awayMsg,
+		"statusMsg":  "",
+		"userType":   "aim",
+		"onlineTime": time.Now().Unix(),
+	}
 	SendResponse(w, r, response, h.Logger)
 }
 

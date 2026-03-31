@@ -35,6 +35,8 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 		BuddyListService:    nil,
 		BuddyListRegistry:   handler.BuddyListRegistry,
 		BuddyBroadcaster:    handler.BuddyBroadcaster,
+		FeedbagRetriever:    handler.FeedbagRetriever,
+		OSCARBuddyService:   handler.BuddyService,
 		BuddyListManager:    handler.BuddyListManager.(*handlers.BuddyListManager),
 		TokenStore:          handler.TokenStore,
 		Logger:              logger,
