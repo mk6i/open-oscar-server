@@ -29,7 +29,7 @@ type Event struct {
 	Type      EventType   `json:"type"`
 	SeqNum    uint64      `json:"seqNum"`
 	Timestamp int64       `json:"timestamp"`
-	Data      interface{} `json:"data"`
+	Data      interface{} `json:"eventData"`
 }
 
 // PresenceEvent represents a presence change event.
@@ -45,10 +45,10 @@ type PresenceEvent struct {
 
 // IMEvent represents an instant message event.
 type IMEvent struct {
-	From      string  `json:"from"`
-	Message   string  `json:"message"`
-	Timestamp float64 `json:"timestamp"` // float64 for AMF3 encoding
-	AutoResp  bool    `json:"autoResponse,omitempty"`
+	Source    UserInfo `json:"source"`
+	Message   string   `json:"message"`
+	Timestamp float64  `json:"timestamp"` // float64 for AMF3 encoding
+	AutoResp  bool     `json:"autoresponse,omitempty"`
 }
 
 // SentIMEvent represents a sent instant message event.

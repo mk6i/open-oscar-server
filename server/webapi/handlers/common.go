@@ -188,10 +188,18 @@ func SendXMLError(w http.ResponseWriter, statusCode int, message string) {
 // SendJSON sends a JSON response.
 func SendJSON(w http.ResponseWriter, data interface{}, logger *slog.Logger) {
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(data); err != nil {
+	body, err := json.Marshal(data)
+	if err != nil {
 		if logger != nil {
 			logger.Error("failed to encode JSON response", "err", err.Error())
 		}
+		return
+	}
+	if logger != nil {
+		logger.Debug("JSON response", "body", string(body))
+	}
+	if _, err := w.Write(body); err != nil && logger != nil {
+		logger.Error("failed to write JSON response", "err", err.Error())
 	}
 }
 

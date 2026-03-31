@@ -18,7 +18,10 @@ func ConvertEventForAMF3(event types.Event) map[string]interface{} {
 			// Gromit expects 'source' as a user object and 'autoresponse' (lowercase)
 			result["eventData"] = map[string]interface{}{
 				"source": map[string]interface{}{
-					"aimId": imEvent.From,
+					"aimId":     imEvent.Source.AimID,
+					"displayId": imEvent.Source.DisplayID,
+					"userType":  imEvent.Source.UserType,
+					"state":     imEvent.Source.State,
 				},
 				"message":      imEvent.Message,
 				"timestamp":    imEvent.Timestamp, // Already float64
@@ -39,7 +42,7 @@ func ConvertEventForAMF3(event types.Event) map[string]interface{} {
 	case types.EventTypeOfflineIM:
 		if imEvent, ok := event.Data.(types.IMEvent); ok {
 			result["eventData"] = map[string]interface{}{
-				"aimId":     imEvent.From,
+				"aimId":     imEvent.Source.AimID,
 				"message":   imEvent.Message,
 				"timestamp": float64(imEvent.Timestamp), // Convert to float64
 			}

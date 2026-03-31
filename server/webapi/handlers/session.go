@@ -80,6 +80,7 @@ type StartSessionResponse struct {
 			FetchTimeout    int                    `json:"fetchTimeout"`
 			TimeToNextFetch int                    `json:"timeToNextFetch"`
 			FetchBaseURL    string                 `json:"fetchBaseURL"` // Gromit expects this directly in data!
+			MyInfo          map[string]interface{} `json:"myInfo,omitempty"`
 			Events          map[string]interface{} `json:"events,omitempty"`
 			WellKnownUrls   map[string]string      `json:"wellKnownUrls,omitempty"`
 		} `json:"data"`
@@ -97,8 +98,9 @@ type StartSessionXMLResponse struct {
 		TimeToNextFetch int    `xml:"timeToNextFetch"`
 		FetchBaseURL    string `xml:"fetchBaseURL"` // Gromit expects this directly!
 		WellKnownUrls   *struct {
-			WebApiBase   string `xml:"webApiBase"`
-			FetchBaseURL string `xml:"fetchBaseURL"`
+			WebApiBase        string `xml:"webApiBase"`
+			FetchBaseURL      string `xml:"fetchBaseURL"`
+			LifestreamApiBase string `xml:"lifestreamApiBase"`
 		} `xml:"wellKnownUrls,omitempty"`
 		MyInfo *struct {
 			AimID     string `xml:"aimId"`
@@ -287,18 +289,16 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 	// Gromit expects fetchBaseURL directly in data, not in wellKnownUrls
 	resp.Response.Data.FetchBaseURL = fmt.Sprintf("http://%s/aim/fetchEvents?aimsid=%s&seqNum=0", r.Host, session.AimSID)
 
-	// Add wellKnownUrls for other clients that might use it
+	// Add wellKnownUrls for other clients that might use it.
+	webBase := fmt.Sprintf("http://%s/", r.Host)
 	resp.Response.Data.WellKnownUrls = map[string]string{
-		"webApiBase":   fmt.Sprintf("http://%s/", r.Host),
-		"fetchBaseURL": fmt.Sprintf("http://%s/aim/fetchEvents", r.Host),
+		"webApiBase":        webBase,
+		"fetchBaseURL":      fmt.Sprintf("http://%s/aim/fetchEvents", r.Host),
+		"lifestreamApiBase": webBase,
 	}
 
-	// Add myInfo data if authenticated
 	if authToken != "" {
-		if resp.Response.Data.Events == nil {
-			resp.Response.Data.Events = make(map[string]interface{})
-		}
-		resp.Response.Data.Events["myInfo"] = map[string]interface{}{
+		myInfoPayload := map[string]interface{}{
 			"aimId":        screenName.String(),
 			"displayId":    screenName.String(),
 			"state":        "online",
@@ -327,39 +327,38 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 				},
 			},
 		}
+		resp.Response.Data.MyInfo = myInfoPayload
+		if resp.Response.Data.Events == nil {
+			resp.Response.Data.Events = make(map[string]interface{})
+		}
+		resp.Response.Data.Events["myInfo"] = myInfoPayload
 	}
 
-	// If buddy list event is subscribed, include initial buddy list
 	for _, event := range events {
-		if event == "buddylist" {
-			if authToken != "" && h.BuddyListManager != nil {
-				// Fetch actual buddy list from service
-				buddyGroups, err := h.BuddyListManager.GetBuddyListForUser(ctx, session.ScreenName.IdentScreenName())
-				if err != nil {
-					h.Logger.ErrorContext(ctx, "failed to get buddy list", "err", err.Error())
-					// Continue with empty buddy list
-					buddyGroups = []WebAPIBuddyGroup{}
-				}
-
-				// Convert to handler format and include in response
-				if resp.Response.Data.Events == nil {
-					resp.Response.Data.Events = make(map[string]interface{})
-				}
-				resp.Response.Data.Events["buddylist"] = map[string]interface{}{
-					"groups": buddyGroups,
-				}
-
-			} else {
-				// No auth token, return empty buddy list
-				if resp.Response.Data.Events == nil {
-					resp.Response.Data.Events = make(map[string]interface{})
-				}
-				resp.Response.Data.Events["buddylist"] = map[string]interface{}{
-					"groups": []WebAPIBuddyGroup{},
-				}
-			}
-			break
+		if event != "buddylist" {
+			continue
 		}
+		buddyGroups := []WebAPIBuddyGroup{}
+		if authToken != "" && h.BuddyListManager != nil {
+			var err error
+			buddyGroups, err = h.BuddyListManager.GetBuddyListForUser(ctx, session.ScreenName.IdentScreenName())
+			if err != nil {
+				h.Logger.ErrorContext(ctx, "failed to get buddy list", "err", err.Error())
+				buddyGroups = []WebAPIBuddyGroup{}
+			}
+		}
+		if buddyGroups == nil {
+			buddyGroups = []WebAPIBuddyGroup{}
+		}
+		blPayload := map[string]interface{}{"groups": buddyGroups}
+		if resp.Response.Data.Events == nil {
+			resp.Response.Data.Events = make(map[string]interface{})
+		}
+		resp.Response.Data.Events["buddylist"] = blPayload
+		if authToken != "" {
+			session.EventQueue.Push(types.EventTypeBuddyList, blPayload)
+		}
+		break
 	}
 
 	// Check response format
@@ -381,12 +380,15 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 		xmlResp.Data.FetchBaseURL = fmt.Sprintf("http://%s/aim/fetchEvents?aimsid=%s&seqNum=0", r.Host, session.AimSID)
 
 		// Add wellKnownUrls for other clients
+		xmlBase := fmt.Sprintf("http://%s/", r.Host)
 		xmlResp.Data.WellKnownUrls = &struct {
-			WebApiBase   string `xml:"webApiBase"`
-			FetchBaseURL string `xml:"fetchBaseURL"`
+			WebApiBase        string `xml:"webApiBase"`
+			FetchBaseURL      string `xml:"fetchBaseURL"`
+			LifestreamApiBase string `xml:"lifestreamApiBase"`
 		}{
-			WebApiBase:   fmt.Sprintf("http://%s/", r.Host),
-			FetchBaseURL: fmt.Sprintf("http://%s/aim/fetchEvents", r.Host),
+			WebApiBase:        xmlBase,
+			FetchBaseURL:      fmt.Sprintf("http://%s/aim/fetchEvents", r.Host),
+			LifestreamApiBase: xmlBase,
 		}
 
 		// Add myInfo with user data

@@ -99,8 +99,9 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 	for _, l := range listeners {
 		mux := http.NewServeMux()
 
-		// Public endpoint (no auth required for hello world)
-		mux.HandleFunc("GET /", handler.GetHelloWorldHandler)
+		// Exact root only. Pattern "GET /" matches every GET path in Go 1.22+ (prefix /), which
+		// would steal /getAggregated and other lifestream URLs before stubs/404.
+		mux.HandleFunc("GET /{$}", handler.GetHelloWorldHandler)
 
 		// Authentication endpoint (public - no API key required for user login)
 		// Using pattern with explicit method for Go 1.22+ routing
@@ -214,6 +215,23 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 			authMiddleware.CORSMiddleware(
 				http.HandlerFunc(expressionsHandler.Get))))
 
+		lifestreamStub := &handlers.UserInfoStubHandler{Logger: logger}
+		mux.Handle("GET /getLocationsFollowing", authMiddleware.AuthenticateFlexible(
+			authMiddleware.CORSMiddleware(
+				http.HandlerFunc(lifestreamStub.GetLocationsFollowing))))
+		for _, p := range []string{
+			"/getAggregated",
+			"/getNotifications",
+			"/getSingle",
+		} {
+			mux.Handle("GET "+p, authMiddleware.AuthenticateFlexible(
+				authMiddleware.CORSMiddleware(
+					http.HandlerFunc(lifestreamStub.EmptyOK))))
+		}
+		mux.Handle("GET /getUserDetails", authMiddleware.AuthenticateFlexible(
+			authMiddleware.CORSMiddleware(
+				http.HandlerFunc(lifestreamStub.GetUserDetails))))
+
 		// Phase 5: Chat room endpoints
 		// All chat endpoints use aimsid for authentication
 		mux.Handle("GET /chat/createAndJoinChat", authMiddleware.AuthenticateFlexible(
@@ -231,6 +249,12 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 		mux.Handle("GET /chat/leaveChat", authMiddleware.AuthenticateFlexible(
 			authMiddleware.CORSMiddleware(
 				http.HandlerFunc(chatHandler.LeaveChat))))
+
+		// Unmatched paths (pattern "/" matches anything not covered by routes above).
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			logger.Debug("webapi 404", "method", r.Method, "path", r.URL.Path)
+			handlers.SendError(w, http.StatusNotFound, "not found")
+		})
 
 		servers = append(servers, &http.Server{
 			Addr:    l,

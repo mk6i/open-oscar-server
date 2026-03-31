@@ -170,7 +170,7 @@ func (h *AuthHandler) ClientLogin(w http.ResponseWriter, r *http.Request) {
 	resp.Response.Data = map[string]interface{}{
 		"token": map[string]interface{}{
 			"a":         token,
-			"expiresIn": 86400, // 24 hours in seconds
+			"expiresIn": "86400", // 24 hours in seconds
 		},
 		"loginId":        string(user.DisplayScreenName),
 		"screenName":     string(user.DisplayScreenName),

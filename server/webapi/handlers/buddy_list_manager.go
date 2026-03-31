@@ -81,8 +81,7 @@ func (m *BuddyListManager) GetBuddyListForUser(ctx context.Context, screenName s
 		}
 	}
 
-	// Convert to WebAPI format
-	var groups []WebAPIBuddyGroup
+	groups := make([]WebAPIBuddyGroup, 0)
 
 	// Add online group (virtual group for online buddies)
 	onlineGroup := WebAPIBuddyGroup{

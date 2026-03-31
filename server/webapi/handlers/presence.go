@@ -53,6 +53,7 @@ type BuddyPresenceInfo struct {
 	State      string `json:"state" xml:"state"` // "online", "offline", "away", "idle"
 	StatusMsg  string `json:"statusMsg,omitempty" xml:"statusMsg,omitempty"`
 	AwayMsg    string `json:"awayMsg,omitempty" xml:"awayMsg,omitempty"`
+	ProfileMsg string `json:"profileMsg,omitempty" xml:"profileMsg,omitempty"`
 	IdleTime   int    `json:"idleTime,omitempty" xml:"idleTime,omitempty"`
 	OnlineTime int64  `json:"onlineTime,omitempty" xml:"onlineTime,omitempty"`
 	UserType   string `json:"userType" xml:"userType"` // "aim", "icq", "admin"
@@ -89,6 +90,7 @@ func (h *PresenceHandler) GetPresence(w http.ResponseWriter, r *http.Request) {
 
 	// Check if buddy list is requested
 	getBuddyList := r.URL.Query().Get("bl") == "1"
+	wantProfileMsg := r.URL.Query().Get("profileMsg") == "1"
 
 	// Get target users if specified
 	targetUsers := r.URL.Query().Get("t")
@@ -147,6 +149,11 @@ func (h *PresenceHandler) GetPresence(w http.ResponseWriter, r *http.Request) {
 				presenceList = append(presenceList, presence)
 			} else {
 				presence := h.getUserPresence(userScreenName)
+				if wantProfileMsg && presence.ProfileMsg == "" && h.SessionRetriever != nil {
+					if oscarSess := h.SessionRetriever.RetrieveSession(userScreenName); oscarSess != nil {
+						presence.ProfileMsg = oscarSess.Profile().ProfileText
+					}
+				}
 				presenceList = append(presenceList, presence)
 			}
 		}
