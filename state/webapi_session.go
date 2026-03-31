@@ -201,9 +201,25 @@ func (s *WebAPISession) handleBuddyArrived(msg wire.SNACMessage) {
 		return
 	}
 
+	stateStr := "online"
+	// For BuddyArrived updates, infer presence state from the TLVUserInfo.
+	// Away and invisible transitions are typically broadcast using BuddyArrived
+	// with updated user flags/status bits, not BuddyDeparted.
+	if body.TLVUserInfo.IsInvisible() {
+		stateStr = "offline"
+	} else if body.TLVUserInfo.IsAway() {
+		stateStr = "away"
+	} else if mask, ok := body.TLVUserInfo.Uint32BE(wire.OServiceUserInfoStatus); ok {
+		if mask&wire.OServiceUserStatusDND == wire.OServiceUserStatusDND {
+			stateStr = "dnd"
+		} else if mask&wire.OServiceUserStatusAway == wire.OServiceUserStatusAway {
+			stateStr = "away"
+		}
+	}
+
 	presenceEvent := types.PresenceEvent{
 		AimID:    body.ScreenName,
-		State:    "online",
+		State:    stateStr,
 		UserType: "aim",
 	}
 
