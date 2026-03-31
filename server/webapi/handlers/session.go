@@ -39,8 +39,8 @@ type AuthService interface {
 
 // SessionManager defines methods for OSCAR session management.
 type SessionManager interface {
-	AddSession(ctx context.Context, screenName state.DisplayScreenName) (*state.SessionInstance, error)
-	RemoveSession(instance *state.SessionInstance)
+	AddSession(ctx context.Context, screenName state.DisplayScreenName, doMultiSess bool, cfg ...func(sess *state.Session)) (*state.SessionInstance, error)
+	RemoveSession(session *state.Session)
 	RelayToScreenName(ctx context.Context, screenName state.IdentScreenName, msg wire.SNACMessage)
 }
 
@@ -214,7 +214,7 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 	var err error
 	if authToken != "" && h.OSCARSessionManager != nil {
 		// Create OSCAR session
-		oscarInstance, err = h.OSCARSessionManager.AddSession(ctx, screenName)
+		oscarInstance, err = h.OSCARSessionManager.AddSession(ctx, screenName, true)
 		if err != nil {
 			h.Logger.ErrorContext(ctx, "failed to create OSCAR session", "err", err.Error())
 			// Continue without OSCAR session - WebAPI can work standalone
@@ -524,7 +524,7 @@ func (h *SessionHandler) EndSession(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Remove OSCAR session
-		h.OSCARSessionManager.RemoveSession(session.OSCARSession)
+		h.OSCARSessionManager.RemoveSession(session.OSCARSession.Session())
 		session.OSCARSession = nil
 	}
 
