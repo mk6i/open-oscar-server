@@ -626,7 +626,7 @@ func WebAPI(deps Container) *webapi.Server {
 		ChatManager: deps.sqLiteUserStore.NewWebAPIChatManager(logger, deps.webAPISessionManager),
 	}
 	// Pass SQLiteUserStore as the API key validator (it implements middleware.APIKeyValidator)
-	return webapi.NewServer([]string{"0.0.0.0:9000"}, logger, handler, deps.sqLiteUserStore, deps.webAPISessionManager)
+	return webapi.NewServer([]string{"0.0.0.0:80"}, logger, handler, deps.sqLiteUserStore, deps.webAPISessionManager)
 }
 
 // ICQLegacy creates a legacy ICQ server for v2-v5 protocols.

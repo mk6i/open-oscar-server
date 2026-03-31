@@ -2,6 +2,7 @@ package webapi
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -56,4 +57,15 @@ type Handler struct {
 func (h Handler) GetHelloWorldHandler(w http.ResponseWriter, r *http.Request) {
 	h.Logger.Info("got a request to the root endpoint", "method", r.Method, "path", r.URL.Path)
 	_, _ = fmt.Fprintf(w, "WebAPI Server Running\n")
+	// Must return the same JSON envelope as other Web AIM APIs.
+	h.Logger.Info("webapi root GET", "remote", r.RemoteAddr, "host", r.Host, "path", r.URL.Path)
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	resp := map[string]interface{}{
+		"response": map[string]interface{}{
+			"statusCode": 200,
+			"statusText": "OK",
+			"data":       map[string]interface{}{},
+		},
+	}
+	_ = json.NewEncoder(w).Encode(resp)
 }

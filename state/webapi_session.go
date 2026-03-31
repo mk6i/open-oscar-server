@@ -144,7 +144,12 @@ func (s *WebAPISession) handleIncomingIM(msg wire.SNACMessage) {
 
 	// Create IM event
 	imEvent := types.IMEvent{
-		From:      body.ScreenName,
+		Source: types.UserInfo{
+			AimID:     body.ScreenName,
+			DisplayID: body.ScreenName,
+			UserType:  "aim",
+			State:     "online",
+		},
 		Message:   messageText,
 		Timestamp: float64(time.Now().Unix()),
 		AutoResp:  autoResponse,

@@ -219,8 +219,14 @@ func (h *MessagingHandler) SendIM(w http.ResponseWriter, r *http.Request) {
 
 		// Queue IM event for the recipient's WebAPI session if they have one
 		if recipientWebSession, err := h.SessionManager.GetSessionByUser(r.Context(), recipientIdent); err == nil && recipientWebSession != nil {
+			sn := sess.ScreenName.String()
 			eventData := types.IMEvent{
-				From:      sess.ScreenName.String(),
+				Source: types.UserInfo{
+					AimID:     sn,
+					DisplayID: sn,
+					UserType:  "aim",
+					State:     "online",
+				},
 				Message:   message,
 				Timestamp: float64(time.Now().Unix()),
 				AutoResp:  autoResponse,

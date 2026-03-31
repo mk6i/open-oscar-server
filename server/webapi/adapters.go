@@ -140,7 +140,12 @@ func ICBMToWebAPIEvent(icbm wire.SNAC_0x04_0x07_ICBMChannelMsgToClient) (types.E
 		Type:      types.EventTypeIM,
 		Timestamp: time.Now().Unix(),
 		Data: types.IMEvent{
-			From:      senderScreenName,
+			Source: types.UserInfo{
+				AimID:     senderScreenName,
+				DisplayID: senderScreenName,
+				UserType:  "aim",
+				State:     "online",
+			},
 			Message:   messageText,
 			Timestamp: float64(time.Now().Unix()),
 			AutoResp:  autoResponse,
