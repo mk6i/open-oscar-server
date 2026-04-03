@@ -39,8 +39,6 @@ type Handler struct {
 	RelationshipFetcher   interface {
 		Relationship(ctx context.Context, me state.IdentScreenName, them state.IdentScreenName) (state.Relationship, error)
 	}
-	// Authentication support
-	UserManager UserManager
 	// Phase 3 additions
 	PreferenceManager PreferenceManager
 	PermitDenyManager PermitDenyManager

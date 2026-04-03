@@ -23,9 +23,7 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 	// Create handlers
 	authHandler := &handlers.AuthHandler{
 		AuthService: handler.AuthService,
-		UserManager: handler.UserManager,
 		Logger:      logger,
-		DisableAuth: handler.OSCARConfig.IsAuthDisabled(),
 	}
 
 	sessionHandler := &handlers.SessionHandler{

@@ -151,16 +151,6 @@ type ProfileManager interface {
 	Profile(ctx context.Context, screenName state.IdentScreenName) (state.UserProfile, error)
 }
 
-// UserManager defines methods for user authentication.
-type UserManager interface {
-	// AuthenticateUser verifies username and password
-	AuthenticateUser(ctx context.Context, username, password string) (*state.User, error)
-	// FindUserByScreenName finds a user by their screen name
-	FindUserByScreenName(ctx context.Context, screenName state.IdentScreenName) (*state.User, error)
-	// InsertUser creates a new user (for DISABLE_AUTH mode)
-	InsertUser(ctx context.Context, u state.User) error
-}
-
 // Phase 3: Preference interfaces
 
 // PreferenceManager provides methods to manage user preferences.

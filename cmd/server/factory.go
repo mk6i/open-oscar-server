@@ -600,8 +600,6 @@ func WebAPI(deps Container) *webapi.Server {
 		BuddyBroadcaster:      oscarBuddyBroadcaster,
 		ProfileManager:        deps.sqLiteUserStore,
 		RelationshipFetcher:   deps.sqLiteUserStore,
-		// Authentication support
-		UserManager: deps.sqLiteUserStore,
 		// Phase 3 additions
 		PreferenceManager: deps.sqLiteUserStore.NewWebPreferenceManager(),
 		PermitDenyManager: deps.sqLiteUserStore.NewWebPermitDenyManager(),
