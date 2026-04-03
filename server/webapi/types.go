@@ -209,3 +209,7 @@ type OSCARConfig interface {
 	IsSSLAvailable() bool
 	IsAuthDisabled() bool
 }
+
+type ChatSessionManager interface {
+	RemoveUserFromAllChats(user state.IdentScreenName)
+}

@@ -51,7 +51,10 @@ type Handler struct {
 	// Phase 5 additions for buddy list and messaging
 	BuddyListManager interface{}
 	// Phase 5 additions for chat rooms
-	ChatManager *state.WebAPIChatManager
+	ChatManager        *state.WebAPIChatManager
+	RecalcWarning      func(ctx context.Context, instance *state.SessionInstance) error
+	LowerWarnLevel     func(ctx context.Context, instance *state.SessionInstance)
+	ChatSessionManager ChatSessionManager
 }
 
 func (h Handler) GetHelloWorldHandler(w http.ResponseWriter, r *http.Request) {
