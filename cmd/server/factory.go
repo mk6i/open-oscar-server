@@ -612,7 +612,10 @@ func WebAPI(deps Container) *webapi.Server {
 		// Phase 5 additions for buddy list and messaging
 		BuddyListManager: buddyListManager,
 		// Phase 5 additions for chat rooms
-		ChatManager: deps.sqLiteUserStore.NewWebAPIChatManager(logger, deps.webAPISessionManager),
+		ChatManager:        deps.sqLiteUserStore.NewWebAPIChatManager(logger, deps.webAPISessionManager),
+		ChatSessionManager: deps.chatSessionManager,
+		RecalcWarning:      deps.icbmSvc.RestoreWarningLevel,
+		LowerWarnLevel:     deps.icbmSvc.UpdateWarnLevel,
 	}
 	// Pass SQLiteUserStore as the API key validator (it implements middleware.APIKeyValidator)
 	return webapi.NewServer([]string{"0.0.0.0:80"}, logger, handler, deps.sqLiteUserStore, deps.webAPISessionManager)

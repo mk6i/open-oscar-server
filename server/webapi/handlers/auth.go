@@ -10,10 +10,12 @@ import (
 	"time"
 
 	"github.com/mk6i/open-oscar-server/state"
+	"github.com/mk6i/open-oscar-server/wire"
 )
 
 // AuthHandler handles Web AIM API authentication endpoints.
 type AuthHandler struct {
+	AuthService AuthService
 	UserManager UserManager
 	TokenStore  TokenStore
 	Logger      *slog.Logger
@@ -38,6 +40,10 @@ type TokenStore interface {
 	ValidateToken(ctx context.Context, token string) (state.IdentScreenName, error)
 	// DeleteToken removes a token
 	DeleteToken(ctx context.Context, token string) error
+}
+
+type OServiceService interface {
+	ClientOnline(ctx context.Context, service uint16, inBody wire.SNAC_0x01_0x02_OServiceClientOnline, instance *state.SessionInstance) error
 }
 
 // ClientLoginRequest represents the request body for clientLogin.
@@ -98,59 +104,27 @@ func (h *AuthHandler) ClientLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Authenticate user
-	user, err := h.UserManager.AuthenticateUser(r.Context(), username, password)
+	signonFrame := wire.FLAPSignonFrame{}
+	signonFrame.Append(wire.NewTLVBE(wire.LoginTLVTagsScreenName, username))
+	signonFrame.Append(wire.NewTLVBE(wire.LoginTLVTagsPlaintextPassword, password))
+	signonFrame.Append(wire.NewTLVBE(wire.LoginTLVTagsMultiConnFlags, wire.MultiConnFlagsRecentClient))
+
+	block, err := h.AuthService.FLAPLogin(r.Context(), signonFrame, "")
 	if err != nil {
-		// If DISABLE_AUTH is enabled and user doesn't exist, create the user
-		if h.DisableAuth && err.Error() == "user not found" {
-			h.Logger.Info("DISABLE_AUTH: Creating new user",
-				"username", username)
-
-			// Create new user with the provided username
-			newUser := state.User{
-				IdentScreenName:   state.NewIdentScreenName(username),
-				DisplayScreenName: state.DisplayScreenName(username),
-			}
-
-			// Insert the new user
-			if err := h.UserManager.InsertUser(r.Context(), newUser); err != nil {
-				h.Logger.Error("failed to create user",
-					"username", username,
-					"error", err)
-				SendError(w, http.StatusInternalServerError, "failed to create user")
-				return
-			}
-
-			// Try to authenticate again after creating the user
-			user, err = h.UserManager.AuthenticateUser(r.Context(), username, password)
-			if err != nil {
-				h.Logger.Error("failed to authenticate after creating user",
-					"username", username,
-					"error", err)
-				SendError(w, http.StatusInternalServerError, "internal server error")
-				return
-			}
-		} else {
-			h.Logger.Warn("authentication failed",
-				"username", username,
-				"error", err)
-			SendError(w, http.StatusUnauthorized, "authentication failed")
-			return
-		}
-	}
-
-	// Generate authentication token
-	token, err := h.generateToken()
-	if err != nil {
-		h.Logger.Error("failed to generate token", "error", err)
+		h.Logger.DebugContext(r.Context(), err.Error())
 		SendError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
-	// Store token with 24 hour expiry
-	expiresAt := time.Now().Add(24 * time.Hour)
-	if err := h.TokenStore.StoreToken(r.Context(), token, user.IdentScreenName, expiresAt); err != nil {
-		h.Logger.Error("failed to store token", "error", err)
+	if block.HasTag(wire.LoginTLVTagsErrorSubcode) {
+		h.Logger.DebugContext(r.Context(), "login failed")
+		SendError(w, http.StatusUnauthorized, "username and password required")
+		return
+	}
+
+	authCookie, ok := block.Bytes(wire.OServiceTLVTagsLoginCookie)
+	if !ok {
+		h.Logger.DebugContext(r.Context(), "login cookie not found")
 		SendError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -169,11 +143,11 @@ func (h *AuthHandler) ClientLogin(w http.ResponseWriter, r *http.Request) {
 	resp.Response.StatusText = "OK"
 	resp.Response.Data = map[string]interface{}{
 		"token": map[string]interface{}{
-			"a":         token,
+			"a":         base64.StdEncoding.EncodeToString(authCookie),
 			"expiresIn": "86400", // 24 hours in seconds
 		},
-		"loginId":        string(user.DisplayScreenName),
-		"screenName":     string(user.DisplayScreenName),
+		"loginId":        username,
+		"screenName":     username,
 		"sessionSecret":  sessionSecret,
 		"hostTime":       time.Now().Unix(),
 		"tokenExpiresIn": 86400, // 24 hours in seconds
@@ -184,7 +158,7 @@ func (h *AuthHandler) ClientLogin(w http.ResponseWriter, r *http.Request) {
 
 	h.Logger.Info("user authenticated successfully",
 		"username", username,
-		"screenName", user.DisplayScreenName)
+		"screenName", username)
 }
 
 // generateToken generates a secure random token.

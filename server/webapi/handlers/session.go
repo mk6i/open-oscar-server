@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/xml"
 	"fmt"
 	"log/slog"
@@ -30,13 +31,21 @@ type SessionHandler struct {
 	BuddyListManager    *BuddyListManager
 	TokenStore          TokenStore
 	Logger              *slog.Logger
+	OServiceService     OServiceService
+	RecalcWarning       func(ctx context.Context, instance *state.SessionInstance) error
+	LowerWarnLevel      func(ctx context.Context, instance *state.SessionInstance)
+	ChatSessionManager  ChatSessionManager
 }
 
 // AuthService defines methods needed for authentication.
 type AuthService interface {
 	BUCPChallenge(ctx context.Context, bodyIn wire.SNAC_0x17_0x06_BUCPChallengeRequest, newUUID func() uuid.UUID) (wire.SNACMessage, error)
 	BUCPLogin(ctx context.Context, bodyIn wire.SNAC_0x17_0x02_BUCPLoginRequest, advertisedHost string) (wire.SNACMessage, error)
+	CrackCookie(authCookie []byte) (state.ServerCookie, error)
 	RegisterBOSSession(ctx context.Context, authCookie state.ServerCookie, conf func(sess *state.Session)) (*state.SessionInstance, error)
+	FLAPLogin(ctx context.Context, inFrame wire.FLAPSignonFrame, advertisedHost string) (wire.TLVRestBlock, error)
+	Signout(ctx context.Context, session *state.Session)
+	SignoutChat(ctx context.Context, sess *state.Session)
 }
 
 // SessionManager defines methods for OSCAR session management.
@@ -60,6 +69,10 @@ type BuddyListService interface {
 // OSCARBuddyService defines the OSCAR buddy-list operations we need to emulate an OSCAR client.
 type OSCARBuddyService interface {
 	AddBuddies(ctx context.Context, instance *state.SessionInstance, inBody wire.SNAC_0x03_0x04_BuddyAddBuddies) error
+}
+
+type ChatSessionManager interface {
+	RemoveUserFromAllChats(user state.IdentScreenName)
 }
 
 // BuddyGroup represents a group of buddies.
@@ -187,23 +200,22 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 	// Determine screen name from auth token or anonymous
 	var screenName state.DisplayScreenName
 
+	var cookie state.ServerCookie
 	if authToken != "" {
-		// Validate auth token and get screen name
-		if h.TokenStore == nil {
-			h.Logger.Error("TokenStore not configured")
-			h.sendError(w, http.StatusInternalServerError, "authentication not configured")
+		rawCookie, err := base64.StdEncoding.DecodeString(authToken)
+		if err != nil {
+			h.Logger.Warn("invalid authentication token (base64)", "error", err)
+			h.sendError(w, http.StatusUnauthorized, "invalid or expired token")
 			return
 		}
-		identScreenName, err := h.TokenStore.ValidateToken(r.Context(), authToken)
+		cookie, err = h.OSCARAuthService.CrackCookie(rawCookie)
 		if err != nil {
 			h.Logger.Warn("invalid authentication token",
 				"error", err)
 			h.sendError(w, http.StatusUnauthorized, "invalid or expired token")
 			return
 		}
-		// For WebAPI sessions, we can use the IdentScreenName directly as DisplayScreenName
-		// since WRAITH handles the display formatting
-		screenName = state.DisplayScreenName(identScreenName.String())
+		screenName = cookie.ScreenName
 		tokenPreview := authToken
 		if len(tokenPreview) > 8 {
 			tokenPreview = tokenPreview[:8] + "..."
@@ -222,21 +234,74 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 	var oscarInstance *state.SessionInstance
 	var err error
 	if authToken != "" && h.OSCARSessionManager != nil {
+		fnCfg := func(sess *state.Session) {
+			sess.OnSessionClose(func() {
+				if !shuttingDown(ctx) {
+					if err := h.BuddyBroadcaster.BroadcastBuddyDeparted(ctx, sess.IdentScreenName()); err != nil {
+						h.Logger.ErrorContext(ctx, "error sending buddy departure notifications", "err", err.Error())
+					}
+				}
+
+				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+				defer cancel()
+
+				// buddy list must be cleared before session is closed, otherwise
+				// there will be a race condition that could cause the buddy list
+				// be prematurely deleted.
+				if err := h.BuddyListRegistry.UnregisterBuddyList(ctx, sess.IdentScreenName()); err != nil {
+					h.Logger.ErrorContext(ctx, "error removing buddy list entry", "err", err.Error())
+				}
+				h.ChatSessionManager.RemoveUserFromAllChats(sess.IdentScreenName())
+				h.OSCARAuthService.Signout(ctx, sess)
+			})
+		}
+
 		// Create OSCAR session
-		oscarInstance, err = h.OSCARSessionManager.AddSession(ctx, screenName, true)
+		oscarInstance, err = h.OSCARAuthService.RegisterBOSSession(ctx, cookie, fnCfg)
+
 		if err != nil {
 			h.Logger.ErrorContext(ctx, "failed to create OSCAR session", "err", err.Error())
 			// Continue without OSCAR session - WebAPI can work standalone
+			// todo wat
 			oscarInstance = nil
 		} else {
-			oscarInstance.SetSignonComplete()
-
-			// Register buddy list
-			if h.BuddyListRegistry != nil {
-				if err := h.BuddyListRegistry.RegisterBuddyList(ctx, screenName.IdentScreenName()); err != nil {
-					h.Logger.ErrorContext(ctx, "failed to register buddy list", "err", err.Error())
+			if err = oscarInstance.Session().RunOnce(func() error {
+				// make buddy list visible to other users
+				if err := h.BuddyListRegistry.RegisterBuddyList(ctx, oscarInstance.IdentScreenName()); err != nil {
+					return fmt.Errorf("unable to init buddy list: %w", err)
 				}
+				// restore warning level from last session
+				if err := h.RecalcWarning(ctx, oscarInstance); err != nil {
+					return fmt.Errorf("failed to recalculate warning level: %w", err)
+				}
+				// periodically decay warning level
+				go h.LowerWarnLevel(ctx, oscarInstance)
+				return nil
+			}); err != nil {
+				h.Logger.ErrorContext(ctx, "failed to init session", "err", err.Error())
+				h.sendError(w, http.StatusInternalServerError, "internal server error")
+				return
 			}
+
+			// Update user visibility when an instance closes, as the user's overall status may change.
+			// Example: With 1 away and 1 non-away instance, the user appears available. If the non-away
+			// instance closes, the user should appear away.
+			oscarInstance.OnClose(func() {
+				if shuttingDown(ctx) {
+					return
+				}
+				if oscarInstance.Session().Invisible() {
+					if err := h.BuddyBroadcaster.BroadcastBuddyDeparted(ctx, oscarInstance.IdentScreenName()); err != nil {
+						h.Logger.ErrorContext(ctx, "error sending buddy departure notifications", "err", err.Error())
+					}
+				} else {
+					if err := h.BuddyBroadcaster.BroadcastBuddyArrived(ctx, oscarInstance.IdentScreenName(), oscarInstance.Session().TLVUserInfo()); err != nil {
+						h.Logger.ErrorContext(ctx, "error sending buddy arrival notifications", "err", err.Error())
+					}
+				}
+			})
+
+			oscarInstance.SetSignonComplete()
 
 			// Emulate an OSCAR client buddy watch list.
 			if h.FeedbagRetriever != nil && h.OSCARBuddyService != nil {
@@ -263,11 +328,10 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			// Broadcast buddy arrival to OSCAR clients
-			if h.BuddyBroadcaster != nil {
-				if err := h.BuddyBroadcaster.BroadcastBuddyArrived(ctx, oscarInstance.IdentScreenName(), oscarInstance.Session().TLVUserInfo()); err != nil {
-					h.Logger.ErrorContext(ctx, "failed to broadcast buddy arrival", "err", err.Error())
-				}
+			if err := h.OServiceService.ClientOnline(ctx, wire.BOS, wire.SNAC_0x01_0x02_OServiceClientOnline{}, oscarInstance); err != nil {
+				h.Logger.ErrorContext(ctx, "failed to set client online", "err", err.Error())
+				h.sendError(w, http.StatusInternalServerError, "internal server error")
+				return
 			}
 		}
 	}
@@ -586,4 +650,14 @@ func (h *SessionHandler) EndSession(w http.ResponseWriter, r *http.Request) {
 // sendError is a convenience method that wraps the common SendError function.
 func (h *SessionHandler) sendError(w http.ResponseWriter, statusCode int, message string) {
 	SendError(w, statusCode, message)
+}
+
+func shuttingDown(ctx context.Context) bool {
+	select {
+	case <-ctx.Done():
+		// server is shutting down, don't send buddy notifications
+		return true
+	default:
+	}
+	return false
 }

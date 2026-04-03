@@ -22,6 +22,7 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 
 	// Create handlers
 	authHandler := &handlers.AuthHandler{
+		AuthService: handler.AuthService,
 		UserManager: handler.UserManager,
 		TokenStore:  handler.TokenStore,
 		Logger:      logger,
@@ -40,6 +41,10 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 		BuddyListManager:    handler.BuddyListManager.(*handlers.BuddyListManager),
 		TokenStore:          handler.TokenStore,
 		Logger:              logger,
+		OServiceService:     handler.OServiceService,
+		RecalcWarning:       handler.RecalcWarning,
+		LowerWarnLevel:      handler.LowerWarnLevel,
+		ChatSessionManager:  handler.ChatSessionManager,
 	}
 
 	eventsHandler := &handlers.EventsHandler{
