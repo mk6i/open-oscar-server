@@ -41,7 +41,6 @@ type Handler struct {
 	}
 	// Authentication support
 	UserManager UserManager
-	TokenStore  TokenStore
 	// Phase 3 additions
 	PreferenceManager PreferenceManager
 	PermitDenyManager PermitDenyManager

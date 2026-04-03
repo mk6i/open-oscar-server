@@ -602,7 +602,6 @@ func WebAPI(deps Container) *webapi.Server {
 		RelationshipFetcher:   deps.sqLiteUserStore,
 		// Authentication support
 		UserManager: deps.sqLiteUserStore,
-		TokenStore:  deps.sqLiteUserStore.NewWebAPITokenStore(),
 		// Phase 3 additions
 		PreferenceManager: deps.sqLiteUserStore.NewWebPreferenceManager(),
 		PermitDenyManager: deps.sqLiteUserStore.NewWebPermitDenyManager(),
