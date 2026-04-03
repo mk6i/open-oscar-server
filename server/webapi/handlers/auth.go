@@ -17,7 +17,6 @@ import (
 type AuthHandler struct {
 	AuthService AuthService
 	UserManager UserManager
-	TokenStore  TokenStore
 	Logger      *slog.Logger
 	DisableAuth bool
 }
@@ -30,16 +29,6 @@ type UserManager interface {
 	FindUserByScreenName(ctx context.Context, screenName state.IdentScreenName) (*state.User, error)
 	// InsertUser creates a new user (for DISABLE_AUTH mode)
 	InsertUser(ctx context.Context, u state.User) error
-}
-
-// TokenStore manages authentication tokens.
-type TokenStore interface {
-	// StoreToken saves an authentication token for a user
-	StoreToken(ctx context.Context, token string, screenName state.IdentScreenName, expiresAt time.Time) error
-	// ValidateToken checks if a token is valid and returns the associated screen name
-	ValidateToken(ctx context.Context, token string) (state.IdentScreenName, error)
-	// DeleteToken removes a token
-	DeleteToken(ctx context.Context, token string) error
 }
 
 type OServiceService interface {

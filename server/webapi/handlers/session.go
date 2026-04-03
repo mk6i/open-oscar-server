@@ -29,7 +29,6 @@ type SessionHandler struct {
 	FeedbagRetriever    FeedbagRetriever
 	OSCARBuddyService   OSCARBuddyService
 	BuddyListManager    *BuddyListManager
-	TokenStore          TokenStore
 	Logger              *slog.Logger
 	OServiceService     OServiceService
 	RecalcWarning       func(ctx context.Context, instance *state.SessionInstance) error

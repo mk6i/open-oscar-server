@@ -24,7 +24,6 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 	authHandler := &handlers.AuthHandler{
 		AuthService: handler.AuthService,
 		UserManager: handler.UserManager,
-		TokenStore:  handler.TokenStore,
 		Logger:      logger,
 		DisableAuth: handler.OSCARConfig.IsAuthDisabled(),
 	}
@@ -39,7 +38,6 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 		FeedbagRetriever:    handler.FeedbagRetriever,
 		OSCARBuddyService:   handler.BuddyService,
 		BuddyListManager:    handler.BuddyListManager.(*handlers.BuddyListManager),
-		TokenStore:          handler.TokenStore,
 		Logger:              logger,
 		OServiceService:     handler.OServiceService,
 		RecalcWarning:       handler.RecalcWarning,
