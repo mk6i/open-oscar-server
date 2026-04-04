@@ -201,7 +201,7 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 
 	var cookie state.ServerCookie
 	if authToken != "" {
-		rawCookie, err := base64.StdEncoding.DecodeString(authToken)
+		rawCookie, err := base64.URLEncoding.DecodeString(strings.TrimSpace(authToken))
 		if err != nil {
 			h.Logger.Warn("invalid authentication token (base64)", "error", err)
 			h.sendError(w, http.StatusUnauthorized, "invalid or expired token")

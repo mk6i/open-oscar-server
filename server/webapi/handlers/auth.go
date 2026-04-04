@@ -120,7 +120,7 @@ func (h *AuthHandler) ClientLogin(w http.ResponseWriter, r *http.Request) {
 	resp.Response.StatusText = "OK"
 	resp.Response.Data = map[string]interface{}{
 		"token": map[string]interface{}{
-			"a":         base64.StdEncoding.EncodeToString(authCookie),
+			"a":         base64.URLEncoding.EncodeToString(authCookie),
 			"expiresIn": "86400", // 24 hours in seconds
 		},
 		"loginId":        username,
