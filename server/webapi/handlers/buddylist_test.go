@@ -255,7 +255,6 @@ func TestBuddyListHandler_AddTempBuddy(t *testing.T) {
 
 			handler := &BuddyListHandler{
 				SessionManager: sessionManager,
-				FeedbagManager: feedbagManager,
 				Logger:         logger,
 			}
 
@@ -316,12 +315,10 @@ func TestBuddyListHandler_AddTempBuddy(t *testing.T) {
 func TestBuddyListHandler_AddTempBuddy_EventQueueBehavior(t *testing.T) {
 	// Test that events are properly added to the event queue
 	sessionManager := &MockWebAPISessionManager{}
-	feedbagManager := &MockFeedbagManager{}
 	logger := slog.Default()
 
 	handler := &BuddyListHandler{
 		SessionManager: sessionManager,
-		FeedbagManager: feedbagManager,
 		Logger:         logger,
 	}
 
@@ -369,6 +366,28 @@ func TestBuddyListHandler_AddTempBuddy_EventQueueBehavior(t *testing.T) {
 	sessionManager.AssertExpectations(t)
 }
 
+func TestFeedbagGroupMatchesRequested(t *testing.T) {
+	assert.True(t, feedbagGroupMatchesRequested("Buddies", "Buddies"))
+	assert.True(t, feedbagGroupMatchesRequested("", "Buddies"))
+	assert.True(t, feedbagGroupMatchesRequested("  ", "Buddies"))
+	assert.True(t, feedbagGroupMatchesRequested("Friends", "friends"))
+	assert.False(t, feedbagGroupMatchesRequested("", "Friends"))
+}
+
+func TestFindFeedbagGroupID(t *testing.T) {
+	items := []wire.FeedbagItem{
+		{ItemID: 1, ClassID: wire.FeedbagClassIdGroup, Name: "", GroupID: 0},
+		{ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, Name: "jon", GroupID: 1},
+	}
+	id, ok := findFeedbagGroupID(items, "Buddies")
+	assert.True(t, ok)
+	assert.Equal(t, uint16(1), id)
+
+	id, ok = findFeedbagGroupID(items, "Friends")
+	assert.False(t, ok)
+	assert.Equal(t, uint16(0), id)
+}
+
 func TestBuddyListHandler_AddBuddy(t *testing.T) {
 	tests := []struct {
 		name               string
@@ -407,6 +426,39 @@ func TestBuddyListHandler_AddBuddy(t *testing.T) {
 					Return(existingItems, nil)
 
 				// Mock buddy insertion
+				fm.On("InsertItem", mock.Anything, state.NewIdentScreenName("testuser"), mock.MatchedBy(func(item wire.FeedbagItem) bool {
+					return item.ClassID == wire.FeedbagClassIdBuddy &&
+						item.Name == "newbuddy" &&
+						item.GroupID == 1
+				})).Return(nil)
+			},
+			expectedStatusCode: http.StatusOK,
+			expectedResponse:   `{"response":{"statusCode":200,"statusText":"OK","data":{"buddyInfo":{"aimId":"newbuddy","state":"offline","userType":"aim"},"resultCode":"success"}}}`,
+		},
+		{
+			name: "Success_AddBuddyToUnnamedDefaultGroup",
+			queryParams: map[string][]string{
+				"aimsid": {"test-session"},
+				"buddy":  {"newbuddy"},
+				"group":  {"Buddies"},
+			},
+			setupMocks: func(sm *MockWebAPISessionManager, fm *MockFeedbagManager, aimsid string) {
+				session := &state.WebAPISession{
+					AimSID:       aimsid,
+					ScreenName:   state.DisplayScreenName("testuser"),
+					EventQueue:   types.NewEventQueue(100),
+					LastAccessed: time.Now(),
+				}
+				sm.On("GetSession", mock.Anything, aimsid).Return(session, nil)
+				sm.On("TouchSession", mock.Anything, aimsid).Return(nil)
+
+				existingItems := []wire.FeedbagItem{
+					{ItemID: 1, ClassID: wire.FeedbagClassIdGroup, Name: "", GroupID: 0},
+					{ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, Name: "jon", GroupID: 1},
+				}
+				fm.On("RetrieveFeedbag", mock.Anything, state.NewIdentScreenName("testuser")).
+					Return(existingItems, nil)
+
 				fm.On("InsertItem", mock.Anything, state.NewIdentScreenName("testuser"), mock.MatchedBy(func(item wire.FeedbagItem) bool {
 					return item.ClassID == wire.FeedbagClassIdBuddy &&
 						item.Name == "newbuddy" &&
@@ -516,7 +568,6 @@ func TestBuddyListHandler_AddBuddy(t *testing.T) {
 
 			handler := &BuddyListHandler{
 				SessionManager: sessionManager,
-				FeedbagManager: feedbagManager,
 				Logger:         logger,
 			}
 
