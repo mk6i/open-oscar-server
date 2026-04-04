@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"log/slog"
+	"math/rand"
 	"net/http"
 	"strings"
 
@@ -19,9 +20,22 @@ type WebAPISessionManager interface {
 
 // BuddyListHandler handles Web AIM API buddy list management endpoints.
 type BuddyListHandler struct {
-	SessionManager WebAPISessionManager
-	FeedbagManager FeedbagManager
-	Logger         *slog.Logger
+	SessionManager   WebAPISessionManager
+	BuddyListManager *BuddyListManager
+	Logger           *slog.Logger
+	FeedbagService   FeedbagService
+}
+
+type FeedbagService interface {
+	DeleteItem(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x0A_FeedbagDeleteItem) (*wire.SNACMessage, error)
+	Query(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame) (wire.SNACMessage, error)
+	QueryIfModified(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x05_FeedbagQueryIfModified) (wire.SNACMessage, error)
+	RespondAuthorizeToHost(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost) error
+	RightsQuery(ctx context.Context, inFrame wire.SNACFrame) wire.SNACMessage
+	StartCluster(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x11_FeedbagStartCluster)
+	EndCluster(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame)
+	UpsertItem(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, items []wire.FeedbagItem) (*wire.SNACMessage, error)
+	Use(ctx context.Context, instance *state.SessionInstance) error
 }
 
 // FeedbagManager provides methods to manage buddy lists.
@@ -73,7 +87,7 @@ func (h *BuddyListHandler) AddBuddy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Add buddy to feedbag
-	resultCode, buddyInfo := h.addBuddyToFeedbag(ctx, session.ScreenName.IdentScreenName(), buddyName, groupName)
+	resultCode, buddyInfo := h.addBuddyToFeedbag(ctx, session, buddyName, groupName)
 
 	// Prepare response
 	responseData := map[string]interface{}{
@@ -89,14 +103,14 @@ func (h *BuddyListHandler) AddBuddy(w http.ResponseWriter, r *http.Request) {
 	resp.Response.Data = responseData
 	SendResponse(w, r, resp, h.Logger)
 
-	if resultCode == "success" && session.EventQueue != nil {
-		// Push buddy list update event to the session's event queue
-		event := types.BuddyListEvent{
-			Action: "add",
-			Buddy:  buddyInfo,
-			Group:  groupName,
+	if resultCode == "success" && session.EventQueue != nil && h.BuddyListManager != nil {
+		groups, err := h.BuddyListManager.GetBuddyListForUser(ctx, session.ScreenName.IdentScreenName())
+		if err != nil {
+			h.Logger.ErrorContext(ctx, "failed to get buddy list for event", "err", err.Error())
+		} else {
+			blPayload := map[string]interface{}{"groups": groups}
+			session.EventQueue.Push(types.EventTypeBuddyList, blPayload)
 		}
-		session.EventQueue.Push(types.EventTypeBuddyList, event)
 	}
 
 	h.Logger.InfoContext(ctx, "buddy added",
@@ -107,80 +121,104 @@ func (h *BuddyListHandler) AddBuddy(w http.ResponseWriter, r *http.Request) {
 	)
 }
 
+// feedbagGroupMatchesRequested returns true if a feedbag group row matches the
+// group the Web client asked for. OSCAR often stores the default group with an
+// empty name; GetBuddyListForUser labels that as "Buddies", so addBuddy must
+// treat "" and "Buddies" as the same bucket when the client sends group=Buddies.
+func feedbagGroupMatchesRequested(storedName, requested string) bool {
+	req := strings.TrimSpace(requested)
+	st := strings.TrimSpace(storedName)
+	if strings.EqualFold(st, req) {
+		return true
+	}
+	if strings.EqualFold(strings.TrimSpace(req), "Buddies") && st == "" {
+		return true
+	}
+	return false
+}
+
+// findFeedbagGroupID returns the ItemID of a group matching requested, or false if none.
+func findFeedbagGroupID(items []wire.FeedbagItem, requested string) (uint16, bool) {
+	for _, item := range items {
+		if item.ClassID != wire.FeedbagClassIdGroup {
+			continue
+		}
+		if feedbagGroupMatchesRequested(item.Name, requested) {
+			return item.ItemID, true
+		}
+	}
+	return 0, false
+}
+
 // addBuddyToFeedbag adds a buddy to the user's feedbag.
-func (h *BuddyListHandler) addBuddyToFeedbag(ctx context.Context, screenName state.IdentScreenName, buddyName, groupName string) (string, *BuddyPresenceInfo) {
+func (h *BuddyListHandler) addBuddyToFeedbag(ctx context.Context, sess *state.WebAPISession, buddyName, groupName string) (string, *BuddyPresenceInfo) {
 	// Retrieve current feedbag
-	items, err := h.FeedbagManager.RetrieveFeedbag(ctx, screenName)
+	frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
+	snac, err := h.FeedbagService.Query(ctx, sess.OSCARSession, frame)
 	if err != nil {
 		h.Logger.ErrorContext(ctx, "failed to retrieve feedbag", "err", err.Error())
 		return "error", nil
 	}
 
-	// Check if buddy already exists
-	for _, item := range items {
-		if item.ClassID == wire.FeedbagClassIdBuddy && item.Name == buddyName {
-			// Buddy already exists
-			return "alreadyExists", nil
-		}
-	}
-
-	// Find or create the group
-	var groupID uint16
-	groupFound := false
-	maxGroupID := uint16(0)
-
-	for _, item := range items {
-		if item.ClassID == wire.FeedbagClassIdGroup {
-			if item.ItemID > maxGroupID {
-				maxGroupID = item.ItemID
-			}
-
-			// Check group name
-			if item.Name == groupName {
-				groupID = item.ItemID
-				groupFound = true
-			}
-		}
-	}
-
-	// If group doesn't exist, create it
-	if !groupFound {
-		groupID = maxGroupID + 1
-		groupItem := wire.FeedbagItem{
-			ItemID:    groupID,
-			ClassID:   wire.FeedbagClassIdGroup,
-			Name:      groupName,
-			GroupID:   0,
-			TLVLBlock: wire.TLVLBlock{},
-		}
-
-		if err := h.FeedbagManager.InsertItem(ctx, screenName, groupItem); err != nil {
-			h.Logger.ErrorContext(ctx, "failed to create group", "err", err.Error())
-			return "error", nil
-		}
-	}
-
-	// Find next available item ID for buddy
-	maxBuddyID := uint16(0)
-	for _, item := range items {
-		if item.ClassID == wire.FeedbagClassIdBuddy && item.ItemID > maxBuddyID {
-			maxBuddyID = item.ItemID
-		}
-	}
-
-	// Create buddy item
-	buddyItem := wire.FeedbagItem{
-		ItemID:    maxBuddyID + 1,
-		ClassID:   wire.FeedbagClassIdBuddy,
-		Name:      buddyName,
-		GroupID:   groupID,
-		TLVLBlock: wire.TLVLBlock{},
-	}
-
-	// Insert buddy into feedbag
-	if err := h.FeedbagManager.InsertItem(ctx, screenName, buddyItem); err != nil {
-		h.Logger.ErrorContext(ctx, "failed to add buddy", "err", err.Error())
+	reply, ok := snac.Body.(wire.SNAC_0x13_0x06_FeedbagReply)
+	if !ok {
+		// todo what
 		return "error", nil
+	}
+
+	fl := state.NewFeedbagList(reply.Items, rand.Intn)
+
+	added, err := fl.AddBuddy(groupName, buddyName, "", "")
+	if err != nil {
+		h.Logger.ErrorContext(ctx, "failed to add buddy to feedbag", "err", err.Error())
+		return "error", nil
+	}
+	if !added {
+		return "alreadyExists", nil
+	}
+
+	if pending := fl.PendingUpdates(); len(pending) > 0 {
+
+		buddyItems := make(map[uint16][]wire.FeedbagItem)
+		for _, item := range pending {
+			if item.ClassID == wire.FeedbagClassIdBuddy {
+				if _, ok := buddyItems[item.GroupID]; !ok {
+					buddyItems[item.GroupID] = nil
+				}
+				buddyItems[item.GroupID] = append(buddyItems[item.GroupID], item)
+			}
+		}
+
+		if len(buddyItems) == 0 {
+			// Get current presence for the buddy
+			buddyInfo := &BuddyPresenceInfo{
+				AimID:    buddyName,
+				State:    "offline", // Default to offline
+				UserType: "aim",
+			}
+
+			// TODO: Check actual presence status and update buddyInfo accordingly
+
+			return "success", buddyInfo
+		}
+
+		for _, item := range pending {
+			if item.ClassID == wire.FeedbagClassIdGroup {
+				frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagUpdateItem}
+				if _, err := h.FeedbagService.UpsertItem(ctx, sess.OSCARSession, frame, []wire.FeedbagItem{item}); err != nil {
+					h.Logger.ErrorContext(ctx, "failed to add buddy", "err", err.Error())
+					return "error", nil
+				}
+			}
+		}
+
+		for _, buddies := range buddyItems {
+			frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem}
+			if _, err := h.FeedbagService.UpsertItem(ctx, sess.OSCARSession, frame, buddies); err != nil {
+				h.Logger.ErrorContext(ctx, "failed to add buddy", "err", err.Error())
+				return "error", nil
+			}
+		}
 	}
 
 	// Get current presence for the buddy

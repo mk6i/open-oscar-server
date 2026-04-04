@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 	"time"
 
 	"github.com/mk6i/open-oscar-server/state"
@@ -55,76 +56,105 @@ type WebAPIBuddyInfo struct {
 
 // GetBuddyListForUser retrieves and converts the buddy list for a user.
 func (m *BuddyListManager) GetBuddyListForUser(ctx context.Context, screenName state.IdentScreenName) ([]WebAPIBuddyGroup, error) {
-	// Retrieve feedbag items
 	items, err := m.feedbagRetriever.RetrieveFeedbag(ctx, screenName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve feedbag: %w", err)
 	}
 
-	// Build group map
-	groupMap := make(map[uint16]string)
-	buddyGroupMap := make(map[uint16][]wire.FeedbagItem)
+	type buddy struct {
+		name  string
+		alias string
+	}
+	type group struct {
+		name    string
+		buddies map[uint16]buddy
+		order   []uint16
+	}
+	type feedbagBL struct {
+		order  []uint16
+		groups map[uint16]group
+	}
+	bl := feedbagBL{groups: make(map[uint16]group)}
 
 	for _, item := range items {
-		switch item.ClassID {
-		case wire.FeedbagClassIdGroup:
-			// Store group name
-			groupMap[item.ItemID] = item.Name
-			buddyGroupMap[item.ItemID] = []wire.FeedbagItem{}
-		case wire.FeedbagClassIdBuddy:
-			// Add buddy to its group
-			if _, exists := buddyGroupMap[item.GroupID]; !exists {
-				// Create implicit group if it doesn't exist
-				buddyGroupMap[item.GroupID] = []wire.FeedbagItem{}
-			}
-			buddyGroupMap[item.GroupID] = append(buddyGroupMap[item.GroupID], item)
+		if item.ClassID != wire.FeedbagClassIdGroup {
+			continue
 		}
+		if item.GroupID == 0 {
+			val, hasVal := item.Uint16SliceBE(wire.FeedbagAttributesOrder)
+			if hasVal {
+				bl.order = val
+			}
+			continue
+		}
+		name := item.Name
+		if name == "" {
+			name = "Buddies"
+		}
+		g := group{
+			name:    name,
+			buddies: make(map[uint16]buddy),
+		}
+		val, _ := item.Uint16SliceBE(wire.FeedbagAttributesOrder)
+		g.order = val
+		bl.groups[item.GroupID] = g
 	}
 
-	groups := make([]WebAPIBuddyGroup, 0)
-
-	// Add online group (virtual group for online buddies)
-	onlineGroup := WebAPIBuddyGroup{
-		Name:    "Online",
-		Buddies: []WebAPIBuddyInfo{},
+	for _, item := range items {
+		if item.ClassID != wire.FeedbagClassIdBuddy || item.Name == "" {
+			continue
+		}
+		if _, exists := bl.groups[item.GroupID]; !exists {
+			bl.groups[item.GroupID] = group{
+				name:    "Buddies",
+				buddies: make(map[uint16]buddy),
+				order:   nil,
+			}
+		}
+		b := buddy{name: item.Name}
+		if val, hasVal := item.String(wire.FeedbagAttributesAlias); hasVal {
+			b.alias = val
+		}
+		g := bl.groups[item.GroupID]
+		g.buddies[item.ItemID] = b
+		bl.groups[item.GroupID] = g
 	}
 
-	// Process each group
-	for groupID, buddyItems := range buddyGroupMap {
-		groupName := groupMap[groupID]
+	groupOrder := bl.order
+	if len(groupOrder) == 0 && len(bl.groups) > 0 {
+		groupOrder = make([]uint16, 0, len(bl.groups))
+		for gid := range bl.groups {
+			groupOrder = append(groupOrder, gid)
+		}
+		slices.Sort(groupOrder)
+	}
+
+	var out []WebAPIBuddyGroup
+	for _, gid := range groupOrder {
+		g, ok := bl.groups[gid]
+		if !ok {
+			continue
+		}
+		groupName := g.name
 		if groupName == "" {
-			groupName = "Buddies" // Default group name
+			groupName = "Buddies"
 		}
-
-		group := WebAPIBuddyGroup{
-			Name:    groupName,
-			Buddies: []WebAPIBuddyInfo{},
-		}
-
-		// Process buddies in this group
-		for _, buddyItem := range buddyItems {
-			buddyInfo := m.getBuddyInfo(buddyItem.Name)
-
-			// Add to online group if buddy is online
-			if buddyInfo.State == "online" || buddyInfo.State == "away" || buddyInfo.State == "idle" {
-				onlineGroup.Buddies = append(onlineGroup.Buddies, buddyInfo)
+		wg := WebAPIBuddyGroup{Name: groupName}
+		for _, bid := range g.order {
+			b, ok := g.buddies[bid]
+			if !ok {
+				continue
 			}
-
-			group.Buddies = append(group.Buddies, buddyInfo)
+			info := m.getBuddyInfo(b.name)
+			if b.alias != "" {
+				info.DisplayID = b.alias
+			}
+			wg.Buddies = append(wg.Buddies, info)
 		}
-
-		// Only add group if it has buddies
-		if len(group.Buddies) > 0 {
-			groups = append(groups, group)
-		}
+		out = append(out, wg)
 	}
 
-	// Add online group at the beginning if it has buddies
-	if len(onlineGroup.Buddies) > 0 {
-		groups = append([]WebAPIBuddyGroup{onlineGroup}, groups...)
-	}
-
-	return groups, nil
+	return out, nil
 }
 
 // getBuddyInfo retrieves the current presence information for a buddy.

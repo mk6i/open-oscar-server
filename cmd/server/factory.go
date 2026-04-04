@@ -613,6 +613,14 @@ func WebAPI(deps Container) *webapi.Server {
 		ChatSessionManager: deps.chatSessionManager,
 		RecalcWarning:      deps.icbmSvc.RestoreWarningLevel,
 		LowerWarnLevel:     deps.icbmSvc.UpdateWarnLevel,
+		FeedbagService: foodgroup.NewFeedbagService(
+			logger,
+			deps.inMemorySessionManager,
+			deps.sqLiteUserStore,
+			deps.sqLiteUserStore,
+			deps.sqLiteUserStore,
+			deps.inMemorySessionManager,
+		),
 	}
 	// Pass SQLiteUserStore as the API key validator (it implements middleware.APIKeyValidator)
 	return webapi.NewServer([]string{"0.0.0.0:80"}, logger, handler, deps.sqLiteUserStore, deps.webAPISessionManager)

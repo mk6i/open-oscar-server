@@ -59,9 +59,10 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 	}
 
 	buddyListHandler := &handlers.BuddyListHandler{
-		SessionManager: sessionManager,
-		FeedbagManager: handler.FeedbagManager,
-		Logger:         logger,
+		SessionManager:   sessionManager,
+		BuddyListManager: handler.BuddyListManager.(*handlers.BuddyListManager),
+		Logger:           logger,
+		FeedbagService:   handler.FeedbagService,
 	}
 
 	// Phase 2: Messaging handler
@@ -152,7 +153,7 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 			authMiddleware.CORSMiddleware(
 				http.HandlerFunc(presenceHandler.GetPresence))))
 
-		mux.Handle("GET /buddylist/addBuddy", authMiddleware.Authenticate(
+		mux.Handle("GET /buddylist/addBuddy", authMiddleware.AuthenticateFlexible(
 			authMiddleware.CORSMiddleware(
 				http.HandlerFunc(buddyListHandler.AddBuddy))))
 

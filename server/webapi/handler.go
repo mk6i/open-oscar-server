@@ -52,6 +52,7 @@ type Handler struct {
 	RecalcWarning      func(ctx context.Context, instance *state.SessionInstance) error
 	LowerWarnLevel     func(ctx context.Context, instance *state.SessionInstance)
 	ChatSessionManager ChatSessionManager
+	FeedbagService     FeedbagService
 }
 
 func (h Handler) GetHelloWorldHandler(w http.ResponseWriter, r *http.Request) {
