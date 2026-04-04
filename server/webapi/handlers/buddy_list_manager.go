@@ -124,27 +124,6 @@ func (m *BuddyListManager) GetBuddyListForUser(ctx context.Context, screenName s
 		groups = append([]WebAPIBuddyGroup{onlineGroup}, groups...)
 	}
 
-	// Always add an "Offline" group at the end for offline buddies
-	offlineGroup := WebAPIBuddyGroup{
-		Name:    "Offline",
-		Buddies: []WebAPIBuddyInfo{},
-	}
-
-	// Collect all offline buddies
-	for _, group := range groups {
-		if group.Name != "Online" {
-			for _, buddy := range group.Buddies {
-				if buddy.State == "offline" {
-					offlineGroup.Buddies = append(offlineGroup.Buddies, buddy)
-				}
-			}
-		}
-	}
-
-	if len(offlineGroup.Buddies) > 0 {
-		groups = append(groups, offlineGroup)
-	}
-
 	return groups, nil
 }
 
