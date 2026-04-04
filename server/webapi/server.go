@@ -261,7 +261,7 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 
 		servers = append(servers, &http.Server{
 			Addr:    l,
-			Handler: mux,
+			Handler: middleware.RequestLogger(logger, mux),
 		})
 	}
 
