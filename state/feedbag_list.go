@@ -1,40 +1,39 @@
-package toc
+package state
 
 import (
 	"fmt"
 	"math"
 	"slices"
 
-	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
-// feedbagList provides operations for manipulating a collection of feedbag
+// FeedbagList provides operations for manipulating a collection of feedbag
 // items. It supports lookups by class/name/group, item insertion with
 // automatic ID generation, and transparent root group management.
-type feedbagList struct {
+type FeedbagList struct {
 	items          []*wire.FeedbagItem
 	randInt        func(int) int
 	pendingUpdates []*wire.FeedbagItem
 	pendingDeletes []*wire.FeedbagItem
 }
 
-// newFeedbagList creates a feedbagList from the given items. The randInt
+// NewFeedbagList creates a FeedbagList from the given items. The randInt
 // function is used for generating unique item/group IDs; inject a
 // deterministic function in tests to assert exact feedbag item slices.
-func newFeedbagList(items []wire.FeedbagItem, randInt func(int) int) *feedbagList {
+func NewFeedbagList(items []wire.FeedbagItem, randInt func(int) int) *FeedbagList {
 	ptrs := make([]*wire.FeedbagItem, len(items))
 	for i := range items {
 		ptrs[i] = &items[i]
 	}
-	return &feedbagList{
+	return &FeedbagList{
 		items:   ptrs,
 		randInt: randInt,
 	}
 }
 
 // SetMode upserts the permit/deny mode item.
-func (f *feedbagList) SetMode(mode uint8) {
+func (f *FeedbagList) SetMode(mode uint8) {
 	f.upsertItem(wire.FeedbagItem{
 		ClassID: wire.FeedbagClassIdPdinfo,
 		TLVLBlock: wire.TLVLBlock{
@@ -49,7 +48,7 @@ func (f *feedbagList) SetMode(mode uint8) {
 // one with an auto-generated GroupID. When a new group is created, the root
 // group's order TLV is updated to include it. Call PendingUpdates to retrieve
 // new or modified items for persistence. Returns the group item.
-func (f *feedbagList) AddGroup(name string) wire.FeedbagItem {
+func (f *FeedbagList) AddGroup(name string) wire.FeedbagItem {
 	if g := f.groupByName(name); g != nil {
 		return *g
 	}
@@ -83,7 +82,7 @@ func (f *feedbagList) AddGroup(name string) wire.FeedbagItem {
 
 // DeleteGroup marks a group item for deletion by name. If the group exists
 // and is not the root group, the root group's order TLV is updated.
-func (f *feedbagList) DeleteGroup(groupName string) {
+func (f *FeedbagList) DeleteGroup(groupName string) {
 	deleted, found := f.deleteItem(wire.FeedbagItem{
 		Name:    groupName,
 		ClassID: wire.FeedbagClassIdGroup,
@@ -100,7 +99,7 @@ func (f *feedbagList) DeleteGroup(groupName string) {
 
 // AddBuddy upserts a buddy item in the given group (by name), optionally
 // attaching alias and note attributes. Returns true if a new buddy was inserted.
-func (f *feedbagList) AddBuddy(groupName, screenName, alias, note string) (bool, error) {
+func (f *FeedbagList) AddBuddy(groupName, screenName, alias, note string) (bool, error) {
 	group := f.groupByName(groupName)
 	if group == nil {
 		return false, fmt.Errorf("group %q not found", groupName)
@@ -126,7 +125,7 @@ func (f *feedbagList) AddBuddy(groupName, screenName, alias, note string) (bool,
 
 // DeleteBuddy marks a buddy item for deletion in the given group (by name).
 // The parent group's order TLV is updated to remove the buddy.
-func (f *feedbagList) DeleteBuddy(groupName, buddyName string) error {
+func (f *FeedbagList) DeleteBuddy(groupName, buddyName string) error {
 	group := f.groupByName(groupName)
 	if group == nil {
 		return fmt.Errorf("group %q not found", groupName)
@@ -144,7 +143,7 @@ func (f *feedbagList) DeleteBuddy(groupName, buddyName string) error {
 }
 
 // PermitUser upserts a permit-list entry for the given screen name.
-func (f *feedbagList) PermitUser(screenName string) {
+func (f *FeedbagList) PermitUser(screenName string) {
 	f.upsertItem(wire.FeedbagItem{
 		ClassID: wire.FeedbagClassIDPermit,
 		Name:    screenName,
@@ -152,7 +151,7 @@ func (f *feedbagList) PermitUser(screenName string) {
 }
 
 // DenyUser upserts a deny-list entry for the given screen name.
-func (f *feedbagList) DenyUser(screenName string) {
+func (f *FeedbagList) DenyUser(screenName string) {
 	f.upsertItem(wire.FeedbagItem{
 		ClassID: wire.FeedbagClassIDDeny,
 		Name:    screenName,
@@ -160,7 +159,7 @@ func (f *feedbagList) DenyUser(screenName string) {
 }
 
 // DeletePermit marks a permit-list entry for deletion.
-func (f *feedbagList) DeletePermit(screenName string) {
+func (f *FeedbagList) DeletePermit(screenName string) {
 	f.deleteItem(wire.FeedbagItem{
 		ClassID: wire.FeedbagClassIDPermit,
 		Name:    screenName,
@@ -168,7 +167,7 @@ func (f *feedbagList) DeletePermit(screenName string) {
 }
 
 // DeleteDeny marks a deny-list entry for deletion.
-func (f *feedbagList) DeleteDeny(screenName string) {
+func (f *FeedbagList) DeleteDeny(screenName string) {
 	f.deleteItem(wire.FeedbagItem{
 		ClassID: wire.FeedbagClassIDDeny,
 		Name:    screenName,
@@ -179,7 +178,7 @@ func (f *feedbagList) DeleteDeny(screenName string) {
 // and items that were implicitly created or modified as side effects of other
 // operations (e.g., group order updates from upsertItem, root group updates
 // from AddGroup). The pending list is cleared after each call.
-func (f *feedbagList) PendingUpdates() []wire.FeedbagItem {
+func (f *FeedbagList) PendingUpdates() []wire.FeedbagItem {
 	var result []wire.FeedbagItem
 	for _, p := range f.pendingUpdates {
 		result = append(result, *p)
@@ -193,7 +192,7 @@ func (f *feedbagList) PendingUpdates() []wire.FeedbagItem {
 
 // PendingDeletes returns items marked for deletion via deleteItem.
 // The pending list is cleared after each call.
-func (f *feedbagList) PendingDeletes() []wire.FeedbagItem {
+func (f *FeedbagList) PendingDeletes() []wire.FeedbagItem {
 	var result []wire.FeedbagItem
 	for _, p := range f.pendingDeletes {
 		result = append(result, *p)
@@ -203,7 +202,7 @@ func (f *feedbagList) PendingDeletes() []wire.FeedbagItem {
 }
 
 // groupByName returns the group item with the given name, or nil if not found.
-func (f *feedbagList) groupByName(name string) *wire.FeedbagItem {
+func (f *FeedbagList) groupByName(name string) *wire.FeedbagItem {
 	for _, item := range f.items {
 		if item.ClassID == wire.FeedbagClassIdGroup && item.Name == name {
 			return item
@@ -213,7 +212,7 @@ func (f *feedbagList) groupByName(name string) *wire.FeedbagItem {
 }
 
 // trackUpdate adds item to the pending-updates list if not already present.
-func (f *feedbagList) trackUpdate(item *wire.FeedbagItem) {
+func (f *FeedbagList) trackUpdate(item *wire.FeedbagItem) {
 	if slices.Contains(f.pendingUpdates, item) {
 		return // already tracked
 	}
@@ -224,13 +223,13 @@ func (f *feedbagList) trackUpdate(item *wire.FeedbagItem) {
 // upsert/delete (buddy: ClassID, Name, GroupID; others: ClassID and Name).
 // Stored items are assumed to have normalized names; the input (b) name is
 // normalized for comparison when the class is buddy, permit, or deny.
-func (f *feedbagList) itemsMatch(a, b *wire.FeedbagItem) bool {
+func (f *FeedbagList) itemsMatch(a, b *wire.FeedbagItem) bool {
 	if a.ClassID != b.ClassID {
 		return false
 	}
 	var nameMatch bool
 	if hasScreenName(a.ClassID) {
-		nameMatch = a.Name == state.NewIdentScreenName(b.Name).String()
+		nameMatch = a.Name == NewIdentScreenName(b.Name).String()
 	} else {
 		nameMatch = a.Name == b.Name
 	}
@@ -246,7 +245,7 @@ func (f *feedbagList) itemsMatch(a, b *wire.FeedbagItem) bool {
 // deleteItem removes the first item matching the same criteria as upsertItem:
 // buddy items by ClassID, Name, and GroupID; other items by ClassID and Name.
 // Returns the deleted item and true if found, or a zero item and false otherwise.
-func (f *feedbagList) deleteItem(item wire.FeedbagItem) (wire.FeedbagItem, bool) {
+func (f *FeedbagList) deleteItem(item wire.FeedbagItem) (wire.FeedbagItem, bool) {
 	for i, existing := range f.items {
 		if f.itemsMatch(existing, &item) {
 			f.pendingDeletes = append(f.pendingDeletes, existing)
@@ -264,9 +263,9 @@ func (f *feedbagList) deleteItem(item wire.FeedbagItem) (wire.FeedbagItem, bool)
 // an auto-generated ItemID. Names for buddy, permit, and deny items are
 // normalized before storage. Returns the stored item and true if a new item
 // was inserted, or the existing item and false if it was updated/unchanged.
-func (f *feedbagList) upsertItem(item wire.FeedbagItem) (wire.FeedbagItem, bool) {
+func (f *FeedbagList) upsertItem(item wire.FeedbagItem) (wire.FeedbagItem, bool) {
 	if hasScreenName(item.ClassID) {
-		item.Name = state.NewIdentScreenName(item.Name).String() // normalize name
+		item.Name = NewIdentScreenName(item.Name).String() // normalize name
 	}
 	for _, existing := range f.items {
 		if f.itemsMatch(existing, &item) {
@@ -287,7 +286,7 @@ func (f *feedbagList) upsertItem(item wire.FeedbagItem) (wire.FeedbagItem, bool)
 
 // genID generates a unique ID that does not conflict with any existing ItemID
 // or GroupID in the list.
-func (f *feedbagList) genID() uint16 {
+func (f *FeedbagList) genID() uint16 {
 	num := uint16(f.randInt(math.MaxUint16))
 	for itemID := num; itemID != num-1; itemID++ {
 		if itemID == 0 {

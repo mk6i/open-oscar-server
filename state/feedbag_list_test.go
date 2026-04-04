@@ -1,4 +1,4 @@
-package toc
+package state
 
 import (
 	"math"
@@ -10,7 +10,7 @@ import (
 
 func TestFeedbagList_upsertItem(t *testing.T) {
 	t.Run("generates unique ItemID", func(t *testing.T) {
-		fl := newFeedbagList([]wire.FeedbagItem{
+		fl := NewFeedbagList([]wire.FeedbagItem{
 			{Name: "Buddies", ClassID: wire.FeedbagClassIdGroup, GroupID: 1},
 		}, func(n int) int { return 42 })
 
@@ -27,7 +27,7 @@ func TestFeedbagList_upsertItem(t *testing.T) {
 	})
 
 	t.Run("subsequent insert avoids collision", func(t *testing.T) {
-		fl := newFeedbagList([]wire.FeedbagItem{
+		fl := NewFeedbagList([]wire.FeedbagItem{
 			{Name: "Buddies", ClassID: wire.FeedbagClassIdGroup, GroupID: 1},
 		}, func(n int) int { return 42 })
 
@@ -46,7 +46,7 @@ func TestFeedbagList_upsertItem(t *testing.T) {
 	})
 
 	t.Run("non-buddy item does not update group order", func(t *testing.T) {
-		fl := newFeedbagList(nil, func(n int) int { return 5 })
+		fl := NewFeedbagList(nil, func(n int) int { return 5 })
 		fl.upsertItem(wire.FeedbagItem{
 			Name:    "alice",
 			ClassID: wire.FeedbagClassIDPermit,
@@ -57,7 +57,7 @@ func TestFeedbagList_upsertItem(t *testing.T) {
 	})
 
 	t.Run("updates existing non-buddy item in place", func(t *testing.T) {
-		fl := newFeedbagList([]wire.FeedbagItem{
+		fl := NewFeedbagList([]wire.FeedbagItem{
 			{
 				Name:    "alice",
 				ClassID: wire.FeedbagClassIDPermit,
@@ -90,7 +90,7 @@ func TestFeedbagList_upsertItem(t *testing.T) {
 	})
 
 	t.Run("updates existing buddy item matched by group", func(t *testing.T) {
-		fl := newFeedbagList([]wire.FeedbagItem{
+		fl := NewFeedbagList([]wire.FeedbagItem{
 			{Name: "Group1", ClassID: wire.FeedbagClassIdGroup, GroupID: 1},
 			{Name: "Group2", ClassID: wire.FeedbagClassIdGroup, GroupID: 2},
 			{Name: "alice", ClassID: wire.FeedbagClassIdBuddy, GroupID: 1, ItemID: 10},
@@ -120,7 +120,7 @@ func TestFeedbagList_upsertItem(t *testing.T) {
 	})
 
 	t.Run("skips update when existing item is identical", func(t *testing.T) {
-		fl := newFeedbagList([]wire.FeedbagItem{
+		fl := NewFeedbagList([]wire.FeedbagItem{
 			{
 				Name:    "alice",
 				ClassID: wire.FeedbagClassIDPermit,
@@ -149,7 +149,7 @@ func TestFeedbagList_upsertItem(t *testing.T) {
 	})
 
 	t.Run("normalized screen name: buddy stored with lowercase name", func(t *testing.T) {
-		fl := newFeedbagList([]wire.FeedbagItem{
+		fl := NewFeedbagList([]wire.FeedbagItem{
 			{Name: "Buddies", ClassID: wire.FeedbagClassIdGroup, GroupID: 1},
 		}, func(n int) int { return 10 })
 
@@ -163,7 +163,7 @@ func TestFeedbagList_upsertItem(t *testing.T) {
 	})
 
 	t.Run("normalized screen name: buddy upsert with different case matches existing", func(t *testing.T) {
-		fl := newFeedbagList([]wire.FeedbagItem{
+		fl := NewFeedbagList([]wire.FeedbagItem{
 			{Name: "Buddies", ClassID: wire.FeedbagClassIdGroup, GroupID: 1},
 			{Name: "alice", ClassID: wire.FeedbagClassIdBuddy, GroupID: 1, ItemID: 99},
 		}, nil)
@@ -179,7 +179,7 @@ func TestFeedbagList_upsertItem(t *testing.T) {
 	})
 
 	t.Run("normalized screen name: permit stored with lowercase name and spaces stripped", func(t *testing.T) {
-		fl := newFeedbagList(nil, func(n int) int { return 1 })
+		fl := NewFeedbagList(nil, func(n int) int { return 1 })
 
 		result, _ := fl.upsertItem(wire.FeedbagItem{
 			Name:    " Bob Smith ",
@@ -189,7 +189,7 @@ func TestFeedbagList_upsertItem(t *testing.T) {
 	})
 
 	t.Run("normalized screen name: permit upsert with different case matches existing", func(t *testing.T) {
-		fl := newFeedbagList([]wire.FeedbagItem{
+		fl := NewFeedbagList([]wire.FeedbagItem{
 			{Name: "bob", ClassID: wire.FeedbagClassIDPermit, ItemID: 5},
 		}, nil)
 
@@ -203,7 +203,7 @@ func TestFeedbagList_upsertItem(t *testing.T) {
 	})
 
 	t.Run("normalized screen name: deny upsert with different case matches existing", func(t *testing.T) {
-		fl := newFeedbagList([]wire.FeedbagItem{
+		fl := NewFeedbagList([]wire.FeedbagItem{
 			{Name: "charlie", ClassID: wire.FeedbagClassIDDeny, ItemID: 3},
 		}, nil)
 
@@ -219,7 +219,7 @@ func TestFeedbagList_upsertItem(t *testing.T) {
 
 func TestFeedbagList_deleteItem(t *testing.T) {
 	t.Run("non-buddy item does not update group order", func(t *testing.T) {
-		fl := newFeedbagList([]wire.FeedbagItem{
+		fl := NewFeedbagList([]wire.FeedbagItem{
 			{Name: "alice", ClassID: wire.FeedbagClassIDPermit, ItemID: 5},
 		}, nil)
 
@@ -231,7 +231,7 @@ func TestFeedbagList_deleteItem(t *testing.T) {
 	})
 
 	t.Run("removes item from items list", func(t *testing.T) {
-		fl := newFeedbagList([]wire.FeedbagItem{
+		fl := NewFeedbagList([]wire.FeedbagItem{
 			{Name: "alice", ClassID: wire.FeedbagClassIDPermit, ItemID: 1},
 			{Name: "bob", ClassID: wire.FeedbagClassIDPermit, ItemID: 2},
 			{Name: "charlie", ClassID: wire.FeedbagClassIDPermit, ItemID: 3},
@@ -246,7 +246,7 @@ func TestFeedbagList_deleteItem(t *testing.T) {
 	})
 
 	t.Run("multiple deletes accumulate", func(t *testing.T) {
-		fl := newFeedbagList([]wire.FeedbagItem{
+		fl := NewFeedbagList([]wire.FeedbagItem{
 			{Name: "alice", ClassID: wire.FeedbagClassIDDeny, ItemID: 1},
 			{Name: "bob", ClassID: wire.FeedbagClassIDDeny, ItemID: 2},
 		}, nil)
@@ -259,7 +259,7 @@ func TestFeedbagList_deleteItem(t *testing.T) {
 	})
 
 	t.Run("normalized screen name: delete buddy by different case", func(t *testing.T) {
-		fl := newFeedbagList([]wire.FeedbagItem{
+		fl := NewFeedbagList([]wire.FeedbagItem{
 			{Name: "Buddies", ClassID: wire.FeedbagClassIdGroup, GroupID: 1},
 			{Name: "alice", ClassID: wire.FeedbagClassIdBuddy, GroupID: 1, ItemID: 50},
 		}, nil)
@@ -275,7 +275,7 @@ func TestFeedbagList_deleteItem(t *testing.T) {
 	})
 
 	t.Run("normalized screen name: delete permit by different case", func(t *testing.T) {
-		fl := newFeedbagList([]wire.FeedbagItem{
+		fl := NewFeedbagList([]wire.FeedbagItem{
 			{Name: "bob", ClassID: wire.FeedbagClassIDPermit, ItemID: 7},
 		}, nil)
 
@@ -285,7 +285,7 @@ func TestFeedbagList_deleteItem(t *testing.T) {
 	})
 
 	t.Run("normalized screen name: delete deny by different case", func(t *testing.T) {
-		fl := newFeedbagList([]wire.FeedbagItem{
+		fl := NewFeedbagList([]wire.FeedbagItem{
 			{Name: "charlie", ClassID: wire.FeedbagClassIDDeny, ItemID: 8},
 		}, nil)
 
@@ -398,7 +398,7 @@ func TestFeedbagList_genID(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			fl := newFeedbagList(tc.items, tc.randInt)
+			fl := NewFeedbagList(tc.items, tc.randInt)
 			got := fl.genID()
 			assert.Equal(t, tc.want, got)
 		})
@@ -407,7 +407,7 @@ func TestFeedbagList_genID(t *testing.T) {
 
 func TestFeedbagList_AddGroup(t *testing.T) {
 	t.Run("creates group and root group when none exists", func(t *testing.T) {
-		fl := newFeedbagList(nil, func(n int) int { return 5 })
+		fl := NewFeedbagList(nil, func(n int) int { return 5 })
 
 		group := fl.AddGroup("Buddies")
 
@@ -439,7 +439,7 @@ func TestFeedbagList_AddGroup(t *testing.T) {
 			{Name: "Buddies", ClassID: wire.FeedbagClassIdGroup, GroupID: 1},
 		}
 		callCount := 0
-		fl := newFeedbagList(existing, func(n int) int {
+		fl := NewFeedbagList(existing, func(n int) int {
 			callCount++
 			return callCount + 1
 		})
@@ -455,7 +455,7 @@ func TestFeedbagList_AddGroup(t *testing.T) {
 
 	t.Run("multiple AddGroup calls accumulate in root order", func(t *testing.T) {
 		callCount := 0
-		fl := newFeedbagList(nil, func(n int) int {
+		fl := NewFeedbagList(nil, func(n int) int {
 			callCount++
 			return callCount * 10
 		})
@@ -473,7 +473,7 @@ func TestFeedbagList_AddGroup(t *testing.T) {
 
 func TestFeedbagList_DeleteGroup(t *testing.T) {
 	t.Run("updates root group order", func(t *testing.T) {
-		fl := newFeedbagList([]wire.FeedbagItem{
+		fl := NewFeedbagList([]wire.FeedbagItem{
 			{
 				Name:    "",
 				ClassID: wire.FeedbagClassIdGroup,
@@ -507,7 +507,7 @@ func TestFeedbagList_DeleteGroup(t *testing.T) {
 
 func TestFeedbagList_AddBuddy(t *testing.T) {
 	t.Run("updates parent group order", func(t *testing.T) {
-		fl := newFeedbagList([]wire.FeedbagItem{
+		fl := NewFeedbagList([]wire.FeedbagItem{
 			{Name: "Buddies", ClassID: wire.FeedbagClassIdGroup, GroupID: 1},
 		}, func(n int) int { return 50 })
 
@@ -524,7 +524,7 @@ func TestFeedbagList_AddBuddy(t *testing.T) {
 	})
 
 	t.Run("multiple buddies accumulate in parent group order", func(t *testing.T) {
-		fl := newFeedbagList([]wire.FeedbagItem{
+		fl := NewFeedbagList([]wire.FeedbagItem{
 			{
 				Name:    "Buddies",
 				ClassID: wire.FeedbagClassIdGroup,
@@ -550,13 +550,13 @@ func TestFeedbagList_AddBuddy(t *testing.T) {
 	})
 
 	t.Run("returns error when parent group does not exist", func(t *testing.T) {
-		fl := newFeedbagList(nil, func(n int) int { return 5 })
+		fl := NewFeedbagList(nil, func(n int) int { return 5 })
 		_, err := fl.AddBuddy("Nonexistent", "alice", "", "")
 		assert.ErrorContains(t, err, "group \"Nonexistent\" not found")
 	})
 
 	t.Run("normalized screen name: stores buddy with lowercase name", func(t *testing.T) {
-		fl := newFeedbagList([]wire.FeedbagItem{
+		fl := NewFeedbagList([]wire.FeedbagItem{
 			{Name: "Buddies", ClassID: wire.FeedbagClassIdGroup, GroupID: 1},
 		}, func(n int) int { return 1 })
 
@@ -577,7 +577,7 @@ func TestFeedbagList_AddBuddy(t *testing.T) {
 	})
 
 	t.Run("normalized screen name: second AddBuddy with different case does not insert duplicate", func(t *testing.T) {
-		fl := newFeedbagList([]wire.FeedbagItem{
+		fl := NewFeedbagList([]wire.FeedbagItem{
 			{Name: "Buddies", ClassID: wire.FeedbagClassIdGroup, GroupID: 1},
 		}, func(n int) int { return 1 })
 
@@ -591,7 +591,7 @@ func TestFeedbagList_AddBuddy(t *testing.T) {
 	})
 
 	t.Run("normalized screen name: DeleteBuddy finds buddy by different case", func(t *testing.T) {
-		fl := newFeedbagList([]wire.FeedbagItem{
+		fl := NewFeedbagList([]wire.FeedbagItem{
 			{Name: "Buddies", ClassID: wire.FeedbagClassIdGroup, GroupID: 1},
 		}, func(n int) int { return 1 })
 		_, err := fl.AddBuddy("Buddies", "alice", "", "")
@@ -608,7 +608,7 @@ func TestFeedbagList_AddBuddy(t *testing.T) {
 
 func TestFeedbagList_DeleteBuddy(t *testing.T) {
 	t.Run("updates parent group order", func(t *testing.T) {
-		fl := newFeedbagList([]wire.FeedbagItem{
+		fl := NewFeedbagList([]wire.FeedbagItem{
 			{
 				Name:    "Buddies",
 				ClassID: wire.FeedbagClassIdGroup,
@@ -640,7 +640,7 @@ func TestFeedbagList_DeleteBuddy(t *testing.T) {
 	})
 
 	t.Run("removes only buddy in specified group when same screen name in two groups", func(t *testing.T) {
-		fl := newFeedbagList([]wire.FeedbagItem{
+		fl := NewFeedbagList([]wire.FeedbagItem{
 			{
 				Name:    "Buddies",
 				ClassID: wire.FeedbagClassIdGroup,
@@ -678,11 +678,11 @@ func TestFeedbagList_DeleteBuddy(t *testing.T) {
 
 func TestFeedbagList_PendingUpdates(t *testing.T) {
 	t.Run("empty when nothing inserted", func(t *testing.T) {
-		fl := newFeedbagList(nil, func(n int) int { return 1 })
+		fl := NewFeedbagList(nil, func(n int) int { return 1 })
 		assert.Nil(t, fl.PendingUpdates())
 	})
 	t.Run("includes inserts and updates", func(t *testing.T) {
-		fl := newFeedbagList([]wire.FeedbagItem{
+		fl := NewFeedbagList([]wire.FeedbagItem{
 			{Name: "Buddies", ClassID: wire.FeedbagClassIdGroup, GroupID: 1},
 		}, func(n int) int { return 50 })
 		_, err := fl.AddBuddy("Buddies", "alice", "", "")
@@ -696,7 +696,7 @@ func TestFeedbagList_PendingUpdates(t *testing.T) {
 		assert.Equal(t, wire.FeedbagClassIdBuddy, upserts[2].ClassID)
 	})
 	t.Run("clears after retrieval", func(t *testing.T) {
-		fl := newFeedbagList(nil, func(n int) int { return 5 })
+		fl := NewFeedbagList(nil, func(n int) int { return 5 })
 		fl.AddGroup("Buddies")
 		assert.Len(t, fl.PendingUpdates(), 2)
 		assert.Nil(t, fl.PendingUpdates())
@@ -705,12 +705,12 @@ func TestFeedbagList_PendingUpdates(t *testing.T) {
 
 func TestFeedbagList_PendingDeletes(t *testing.T) {
 	t.Run("empty when nothing deleted", func(t *testing.T) {
-		fl := newFeedbagList(nil, nil)
+		fl := NewFeedbagList(nil, nil)
 		assert.Nil(t, fl.PendingDeletes())
 	})
 
 	t.Run("clears after retrieval", func(t *testing.T) {
-		fl := newFeedbagList([]wire.FeedbagItem{
+		fl := NewFeedbagList([]wire.FeedbagItem{
 			{Name: "alice", ClassID: wire.FeedbagClassIDPermit, ItemID: 1},
 		}, nil)
 		fl.deleteItem(wire.FeedbagItem{Name: "alice", ClassID: wire.FeedbagClassIDPermit, ItemID: 1})
@@ -721,7 +721,7 @@ func TestFeedbagList_PendingDeletes(t *testing.T) {
 
 func TestFeedbagList_PendingUpdates_upsertsOnly(t *testing.T) {
 	t.Run("tracks upserted items", func(t *testing.T) {
-		fl := newFeedbagList(nil, func(n int) int { return 5 })
+		fl := NewFeedbagList(nil, func(n int) int { return 5 })
 		result, inserted := fl.upsertItem(wire.FeedbagItem{ClassID: wire.FeedbagClassIDPermit, Name: "alice"})
 		assert.True(t, inserted)
 
@@ -732,14 +732,14 @@ func TestFeedbagList_PendingUpdates_upsertsOnly(t *testing.T) {
 	})
 
 	t.Run("clears after retrieval", func(t *testing.T) {
-		fl := newFeedbagList(nil, func(n int) int { return 5 })
+		fl := NewFeedbagList(nil, func(n int) int { return 5 })
 		fl.upsertItem(wire.FeedbagItem{ClassID: wire.FeedbagClassIDPermit})
 		assert.Len(t, fl.PendingUpdates(), 1)
 		assert.Nil(t, fl.PendingUpdates())
 	})
 
 	t.Run("multiple inserts accumulate", func(t *testing.T) {
-		fl := newFeedbagList(nil, func(n int) int { return 10 })
+		fl := NewFeedbagList(nil, func(n int) int { return 10 })
 		fl.upsertItem(wire.FeedbagItem{ClassID: wire.FeedbagClassIDPermit, Name: "alice"})
 		fl.upsertItem(wire.FeedbagItem{ClassID: wire.FeedbagClassIDPermit, Name: "bob"})
 

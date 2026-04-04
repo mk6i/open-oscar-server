@@ -1426,7 +1426,7 @@ func (s OSCARProxy) SetPDMode(ctx context.Context, me *state.SessionInstance, ar
 		return s.runtimeErr(ctx, fmt.Errorf("FeedbagManager.Feedbag: %w", err))
 	}
 
-	fl := newFeedbagList(fb, s.RandIntn)
+	fl := state.NewFeedbagList(fb, s.RandIntn)
 	fl.SetMode(uint8(mode))
 
 	if pending := fl.PendingUpdates(); len(pending) > 0 {
@@ -1467,7 +1467,7 @@ func (s OSCARProxy) NewGroup(ctx context.Context, me *state.SessionInstance, arg
 		return s.runtimeErr(ctx, fmt.Errorf("FeedbagManager.Feedbag: %w", err))
 	}
 
-	fl := newFeedbagList(fb, s.RandIntn)
+	fl := state.NewFeedbagList(fb, s.RandIntn)
 	fl.AddGroup(groupName)
 
 	if pending := fl.PendingUpdates(); len(pending) > 0 {
@@ -1507,7 +1507,7 @@ func (s OSCARProxy) DelGroup(ctx context.Context, me *state.SessionInstance, arg
 		return s.runtimeErr(ctx, fmt.Errorf("FeedbagManager.Feedbag: %w", err))
 	}
 
-	fl := newFeedbagList(fb, s.RandIntn)
+	fl := state.NewFeedbagList(fb, s.RandIntn)
 	fl.DeleteGroup(groupName)
 
 	if pending := fl.PendingDeletes(); len(pending) > 0 {
@@ -1569,7 +1569,7 @@ func (s OSCARProxy) NewBuddies(ctx context.Context, me *state.SessionInstance, a
 		return s.runtimeErr(ctx, fmt.Errorf("FeedbagManager.Feedbag: %w", err))
 	}
 
-	fl := newFeedbagList(fb, s.RandIntn)
+	fl := state.NewFeedbagList(fb, s.RandIntn)
 
 	var replies []string
 
@@ -1671,7 +1671,7 @@ func (s OSCARProxy) RemoveBuddy2(ctx context.Context, me *state.SessionInstance,
 		return s.runtimeErr(ctx, fmt.Errorf("FeedbagManager.Feedbag: %w", err))
 	}
 
-	fl := newFeedbagList(fb, s.RandIntn)
+	fl := state.NewFeedbagList(fb, s.RandIntn)
 
 	groupName := params[len(params)-1]
 	screenNames := params[:len(params)-1]
@@ -1730,7 +1730,7 @@ func (s OSCARProxy) AddPermit2(ctx context.Context, me *state.SessionInstance, a
 		return s.runtimeErr(ctx, fmt.Errorf("FeedbagManager.Feedbag: %w", err))
 	}
 
-	fl := newFeedbagList(fb, s.RandIntn)
+	fl := state.NewFeedbagList(fb, s.RandIntn)
 
 	for _, sn := range screenNames {
 		fl.PermitUser(sn)
@@ -1773,7 +1773,7 @@ func (s OSCARProxy) RemovePermit2(ctx context.Context, me *state.SessionInstance
 		return s.runtimeErr(ctx, fmt.Errorf("FeedbagManager.Feedbag: %w", err))
 	}
 
-	fl := newFeedbagList(fb, s.RandIntn)
+	fl := state.NewFeedbagList(fb, s.RandIntn)
 
 	for _, sn := range screenNames {
 		fl.DeletePermit(sn)
@@ -1818,7 +1818,7 @@ func (s OSCARProxy) AddDeny2(ctx context.Context, me *state.SessionInstance, arg
 		return s.runtimeErr(ctx, fmt.Errorf("FeedbagManager.Feedbag: %w", err))
 	}
 
-	fl := newFeedbagList(fb, s.RandIntn)
+	fl := state.NewFeedbagList(fb, s.RandIntn)
 
 	for _, sn := range screenNames {
 		fl.DenyUser(sn)
@@ -1861,7 +1861,7 @@ func (s OSCARProxy) RemoveDeny2(ctx context.Context, me *state.SessionInstance, 
 		return s.runtimeErr(ctx, fmt.Errorf("FeedbagManager.Feedbag: %w", err))
 	}
 
-	fl := newFeedbagList(fb, s.RandIntn)
+	fl := state.NewFeedbagList(fb, s.RandIntn)
 
 	for _, sn := range screenNames {
 		fl.DeleteDeny(sn)
