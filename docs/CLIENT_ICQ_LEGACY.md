@@ -16,15 +16,15 @@ UDP).
 | V5 | ICQ 99a, ICQ 99b | Supported (default) |
 | V4 | ICQ 98a (some builds; later builds use V5) | Supported (default) |
 | V3 | ICQ Groupware | Supported (default) |
-| V2 | ICQ 1.111 Beta (1997, Win95/NT4 only), ICQ 1.111 Beta for Windows 3.11, open-source center client (early centericq/centerim) | Disabled by default (first-login flow incomplete) |
+| V2 | ICQ 1.111 Beta (1997, Win95/NT4 only), ICQ 1.111 Beta for Windows 3.11, open-source center client (early centericq/centerim) | Supported (default) |
 | V1 | ICQ 1.02 Beta (1996) | Unsupported (logging only) |
 
-V1 and V2 clients (ICQ 1.02 Beta, ICQ 1.111 Beta) require Windows 95 or NT 4.0
-and will not install on later versions. The 1997 ICQ for Windows 3.11 (1.111
-Beta) also appears to use V2. The V2 protocol is mostly implemented based on
-open-source clients of the era (center, later centericq/centerim), but the
-first-login flow after fresh installation is not yet complete. V2 can be enabled
-for development by adding `2` to `ICQ_LEGACY_VERSIONS`.
+V1 clients (ICQ 1.02 Beta) require Windows 95 or NT 4.0 and will not install on
+later versions. V2 clients (ICQ 1.111 Beta, 1997) also require Windows 95/NT4
+or Windows 3.11. The V2 protocol supports login, messaging, authorization,
+presence, status changes, contact list, search, and profile updates. V2 clients
+see advanced statuses (N/A, Occupied, DND) from later clients mapped to the
+closest V2 equivalent (Away or DND).
 
 ## Download
 
@@ -101,8 +101,8 @@ ICQ_LEGACY_ENABLED=true
 # UDP listener address
 ICQ_LEGACY_UDP_LISTENER=0.0.0.0:4000
 
-# Supported protocol versions (V3, V4, V5 are production-ready)
-ICQ_LEGACY_VERSIONS=3,4,5
+# Supported protocol versions (V2, V3, V4, V5 are production-ready)
+ICQ_LEGACY_VERSIONS=2,3,4,5
 
 # Enable direct connections for following protocol versions for peer-to-peer
 # communication (file transfer, direct chat). Will leak client IP address

@@ -62,7 +62,7 @@ type Config struct {
 type ICQLegacyConfig struct {
 	Enabled            bool          `envconfig:"ICQ_LEGACY_ENABLED" required:"false" basic:"true" ssl:"true" description:"Enable legacy ICQ protocol support (v2-v5). Allows vintage ICQ clients to connect."`
 	UDPListener        string        `envconfig:"ICQ_LEGACY_UDP_LISTENER" required:"false" basic:"0.0.0.0:4000" ssl:"0.0.0.0:4000" description:"UDP listener address for legacy ICQ protocols.\n\nFormat: HOST:PORT\n\nExamples:\n\t// All interfaces\n\t0.0.0.0:4000\n\t// Specific interface\n\t192.168.1.10:4000"`
-	SupportedVersions  []int         `envconfig:"ICQ_LEGACY_VERSIONS" required:"false" basic:"3,4,5" ssl:"3,4,5" description:"Comma-separated list of supported ICQ protocol versions. Valid values: 1, 2, 3, 4, 5. V1 is logging only (not implemented). V2 is partial (login sequence incomplete)."`
+	SupportedVersions  []int         `envconfig:"ICQ_LEGACY_VERSIONS" required:"false" basic:"2,3,4,5" ssl:"2,3,4,5" description:"Comma-separated list of supported ICQ protocol versions. Valid values: 1, 2, 3, 4, 5. V1 is logging only (not implemented)."`
 	SessionTimeout     time.Duration `envconfig:"ICQ_LEGACY_SESSION_TIMEOUT" required:"false" basic:"120s" ssl:"120s" description:"Session timeout for legacy ICQ connections. Sessions are cleaned up after this duration of inactivity."`
 	KeepAliveInterval  time.Duration `envconfig:"ICQ_LEGACY_KEEPALIVE_INTERVAL" required:"false" basic:"120s" ssl:"120s" description:"Expected keep-alive interval from clients. Used for timeout calculations."`
 	AutoRegistration   bool          `envconfig:"ICQ_LEGACY_AUTO_REGISTRATION" required:"false" basic:"false" ssl:"false" description:"Allow automatic user registration from legacy clients. When enabled, new UINs can be created via the legacy protocol."`
@@ -77,7 +77,7 @@ func DefaultICQLegacyConfig() ICQLegacyConfig {
 	return ICQLegacyConfig{
 		Enabled:            true,
 		UDPListener:        "0.0.0.0:4000",
-		SupportedVersions:  []int{3, 4, 5},
+		SupportedVersions:  []int{2, 3, 4, 5},
 		SessionTimeout:     120 * time.Second,
 		KeepAliveInterval:  120 * time.Second,
 		AutoRegistration:   false,

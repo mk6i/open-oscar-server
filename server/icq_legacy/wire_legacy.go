@@ -467,9 +467,11 @@ func ParseV2LoginPacket(data []byte) (*LegacyLoginPacket, error) {
 
 // BuildV2LoginReply creates a login success response
 // V2 LOGIN_REPLY format (from protocol spec):
-// USER_UIN(4) + USER_IP(4) + LOGIN_SEQ_NUM(2) + X1(4) + X2(4) + X3(4) + X4(4) + X5(6) = 32 bytes
+// USER_UIN(4) + USER_IP(4) + LOGIN_SEQ_NUM(2) + X1(4) + X2(4) + X3(4) + X4(4) + X5(7) = 33 bytes
+// Format from real ICQ server capture (licq source):
+// 8F 76 20 00 CD CD 76 10 02 00 01 00 05 00 00 00 00 00 8C 00 00 00 F0 00 0A 00 0A 00 05 00 0A 00 01
 func BuildV2LoginReply(serverSeqNum uint16, clientConnectionID uint16, uin uint32, clientIP net.IP) *V2ServerPacket {
-	data := make([]byte, 32)
+	data := make([]byte, 33)
 	offset := 0
 
 	// USER_UIN (4 bytes)
@@ -485,45 +487,39 @@ func BuildV2LoginReply(serverSeqNum uint16, clientConnectionID uint16, uin uint3
 	}
 	offset += 4
 
-	// LOGIN_SEQ_NUM (2 bytes) - connection ID for routing to wizard page
+	// LOGIN_SEQ_NUM (2 bytes)
 	binary.LittleEndian.PutUint16(data[offset:], clientConnectionID)
 	offset += 2
 
-	// X1 (4 bytes): 01 00 01 00
+	// X1 (4 bytes): 01 00 05 00
 	data[offset] = 0x01
 	data[offset+1] = 0x00
-	data[offset+2] = 0x01
+	data[offset+2] = 0x05
 	data[offset+3] = 0x00
 	offset += 4
 
-	// X2 (4 bytes): 19 00 16 00 (or 18 00 16 00)
-	data[offset] = 0x19
-	data[offset+1] = 0x00
-	data[offset+2] = 0x16
-	data[offset+3] = 0x00
+	// X2 (4 bytes): 00 00 00 00
 	offset += 4
 
 	// X3 (4 bytes): 8C 00 00 00
 	data[offset] = 0x8C
+	offset += 4
+
+	// X4 (4 bytes): F0 00 0A 00
+	data[offset] = 0xF0
 	data[offset+1] = 0x00
-	data[offset+2] = 0x00
+	data[offset+2] = 0x0A
 	data[offset+3] = 0x00
 	offset += 4
 
-	// X4 (4 bytes): 78 00 05 00
-	data[offset] = 0x78
-	data[offset+1] = 0x00
-	data[offset+2] = 0x05
-	data[offset+3] = 0x00
-	offset += 4
-
-	// X5 (6 bytes): 0A 00 05 00 01 00
+	// X5 (7 bytes): 0A 00 05 00 0A 00 01
 	data[offset] = 0x0A
 	data[offset+1] = 0x00
 	data[offset+2] = 0x05
 	data[offset+3] = 0x00
-	data[offset+4] = 0x01
+	data[offset+4] = 0x0A
 	data[offset+5] = 0x00
+	data[offset+6] = 0x01
 
 	return &V2ServerPacket{
 		Version: ICQLegacyVersionV2,
@@ -703,37 +699,49 @@ func BuildV2StatusUpdate(seqNum uint16, uin uint32, status uint32) *V2ServerPack
 }
 
 // BuildV2ContactListDone creates a contact list processed response
-func BuildV2ContactListDone(seqNum uint16) *V2ServerPacket {
+// V2 format: UIN(4) — from licq example: 02 00 1C 02 05 00 8F 76 20 00
+func BuildV2ContactListDone(seqNum uint16, uin uint32) *V2ServerPacket {
+	data := make([]byte, 4)
+	binary.LittleEndian.PutUint32(data[0:4], uin)
 	return &V2ServerPacket{
 		Version: ICQLegacyVersionV2,
 		Command: ICQLegacySrvUserListDone,
 		SeqNum:  seqNum,
+		Data:    data,
 	}
 }
 
 // BuildV2SearchResult creates a search result packet
 // V2 format (from center-1.10.7 icq_HandleSearchReply / icq_HandleInfoReply):
+// V2 search found format (from licq):
 // SEQ(2) + UIN(4) + NICK_LEN(2) + NICK + FIRST_LEN(2) + FIRST + LAST_LEN(2) + LAST + EMAIL_LEN(2) + EMAIL + AUTH(1)
+// V2 search done format (from licq): SEQ(2) + MORE(1)
 func BuildV2SearchResult(seqNum uint16, user *LegacyUserInfo, isLast bool) *V2ServerPacket {
 	buf := new(bytes.Buffer)
-	// SEQ prefix - the client reads this first before UIN
 	binary.Write(buf, binary.LittleEndian, seqNum)
+
+	if user.UIN == 0 && isLast {
+		// No results — just send search done with more=0
+		buf.WriteByte(0x00)
+		return &V2ServerPacket{
+			Version: ICQLegacyVersionV2,
+			Command: ICQLegacySrvSearchDone,
+			SeqNum:  seqNum,
+			Data:    buf.Bytes(),
+		}
+	}
+
+	// Send search found with user data
 	binary.Write(buf, binary.LittleEndian, user.UIN)
 	WriteLegacyString(buf, user.Nickname)
 	WriteLegacyString(buf, user.FirstName)
 	WriteLegacyString(buf, user.LastName)
 	WriteLegacyString(buf, user.Email)
-	// AUTH byte (0 = auth not required, 1 = auth required)
 	buf.WriteByte(user.Auth)
-
-	cmd := ICQLegacySrvSearchFound
-	if isLast {
-		cmd = ICQLegacySrvSearchDone
-	}
 
 	return &V2ServerPacket{
 		Version: ICQLegacyVersionV2,
-		Command: cmd,
+		Command: ICQLegacySrvSearchFound,
 		SeqNum:  seqNum,
 		Data:    buf.Bytes(),
 	}

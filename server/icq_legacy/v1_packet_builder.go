@@ -45,8 +45,8 @@ func (b *V1PacketBuilder) BuildUserOffline(seqNum uint16, uin uint32) []byte {
 	return patchVersion(b.v2.BuildUserOffline(seqNum, uin))
 }
 
-func (b *V1PacketBuilder) BuildContactListDone(seqNum uint16) []byte {
-	return patchVersion(b.v2.BuildContactListDone(seqNum))
+func (b *V1PacketBuilder) BuildContactListDone(seqNum uint16, uin uint32) []byte {
+	return patchVersion(b.v2.BuildContactListDone(seqNum, uin))
 }
 
 func (b *V1PacketBuilder) BuildMessage(seqNum uint16, fromUIN uint32, msgType uint16, message string) []byte {

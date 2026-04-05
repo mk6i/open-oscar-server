@@ -128,7 +128,7 @@ func (h *V2Handler) Handle(session *LegacySession, addr *net.UDPAddr, packet []b
 		return h.handleInvisibleList(session, pkt)
 	case ICQLegacyCmdUserAdd:
 		return h.handleUserAdd(session, pkt)
-	case ICQLegacyCmdUpdateBasic:
+	case ICQLegacyCmdUpdateBasic, ICQLegacyCmdSetBasicInfo:
 		return h.handleUpdateBasic(session, pkt)
 	case ICQLegacyCmdUpdateDetail:
 		return h.handleUpdateDetail(session, pkt)
@@ -342,17 +342,19 @@ func (h *V2Handler) handleContactList(session *LegacySession, pkt *V2ClientPacke
 	if err != nil {
 		h.logger.Debug("failed to process contact list", "err", err)
 		// Still send contact list done even on error
-		return h.sender.SendToSession(session, h.packetBuilder.BuildContactListDone(session.NextServerSeqNum()))
+		return h.sender.SendToSession(session, h.packetBuilder.BuildContactListDone(session.NextServerSeqNum(), session.UIN))
 	}
 
 	// 3. Build and send responses using packet builder
-	// Send online status for each contact that is online
+	// Send online status for each contact that is online.
+	// Apply downgradeStatusForV2 so V2 clients see correct icons
+	// for statuses they don't natively support (N/A→Away, Occupied→DND, FFC→Online).
 	for _, contact := range contactResult.OnlineContacts {
 		if contact.Online {
 			onlinePkt := h.packetBuilder.BuildUserOnline(
 				session.NextServerSeqNum(),
 				contact.UIN,
-				contact.Status,
+				downgradeStatusForV2(contact.Status),
 				nil, // IP not available from service layer
 				0,   // Port not available from service layer
 			)
@@ -366,7 +368,7 @@ func (h *V2Handler) handleContactList(session *LegacySession, pkt *V2ClientPacke
 	}
 
 	// 4. Send contact list done using packet builder
-	return h.sender.SendToSession(session, h.packetBuilder.BuildContactListDone(session.NextServerSeqNum()))
+	return h.sender.SendToSession(session, h.packetBuilder.BuildContactListDone(session.NextServerSeqNum(), session.UIN))
 }
 
 // handleSendMessage processes a message send request
@@ -490,17 +492,23 @@ func (h *V2Handler) handleSetStatus(session *LegacySession, pkt *V2ClientPacket)
 			"notify_count", len(statusResult.NotifyTargets),
 		)
 
-		// 3. Send status notifications to contacts using packet builder
-		// The service layer returns the list of users to notify
+		// 3. Send status notifications to contacts using dispatcher
+		// The service layer returns the list of users to notify.
+		// We must go through the dispatcher so each target gets the
+		// correct packet format for its protocol version.
 		for _, target := range statusResult.NotifyTargets {
 			targetSession := h.sessions.GetSession(target.UIN)
 			if targetSession != nil {
-				statusPkt := h.packetBuilder.BuildStatusUpdate(
-					targetSession.NextServerSeqNum(),
-					session.UIN,
-					newStatus,
-				)
-				h.sender.SendToSession(targetSession, statusPkt)
+				if h.dispatcher != nil {
+					h.dispatcher.SendStatusChange(targetSession, session.UIN, newStatus)
+				} else {
+					statusPkt := h.packetBuilder.BuildStatusUpdate(
+						targetSession.NextServerSeqNum(),
+						session.UIN,
+						newStatus,
+					)
+					h.sender.SendToSession(targetSession, statusPkt)
+				}
 			}
 		}
 	}
@@ -565,6 +573,67 @@ func (h *V2Handler) handleInfoReq(session *LegacySession, pkt *V2ClientPacket) e
 	replyPkt := BuildV2InfoReply(session.NextServerSeqNum(), infoSeq, wireInfo)
 	replyPkt.Version = session.Version
 	return h.sender.SendToSession(session, MarshalV2ServerPacket(replyPkt))
+}
+
+// handleLoginInfoReq processes a login info request (0x04CE)
+// The V2 client sends this after login to get its own profile data.
+// We respond with both SRV_INFO_REPLY (0x0118) and SRV_EXT_INFO_REPLY (0x0122).
+func (h *V2Handler) handleLoginInfoReq(session *LegacySession, pkt *V2ClientPacket) error {
+	if session == nil {
+		return nil
+	}
+
+	ctx := context.Background()
+
+	if err := h.sendAck(session, pkt.SeqNum); err != nil {
+		return err
+	}
+
+	targetUIN := session.UIN
+	if len(pkt.Data) >= 4 {
+		targetUIN = binary.LittleEndian.Uint32(pkt.Data[0:4])
+	}
+	if targetUIN == 0 {
+		targetUIN = session.UIN
+	}
+
+	info, err := h.service.GetUserInfo(ctx, targetUIN)
+	if err != nil || info == nil {
+		return nil
+	}
+
+	// Send basic info (0x0118)
+	wireInfo := &LegacyUserInfo{
+		UIN:       info.UIN,
+		Nickname:  truncateField(info.Nickname, 20, h.logger, "nickname", info.UIN),
+		FirstName: truncateField(info.FirstName, 64, h.logger, "first_name", info.UIN),
+		LastName:  truncateField(info.LastName, 64, h.logger, "last_name", info.UIN),
+		Email:     truncateField(info.Email, 64, h.logger, "email", info.UIN),
+		Auth:      info.AuthRequired,
+	}
+	replyPkt := BuildV2InfoReply(session.NextServerSeqNum(), pkt.SeqNum, wireInfo)
+	replyPkt.Version = session.Version
+	h.sender.SendToSession(session, MarshalV2ServerPacket(replyPkt))
+
+	// Send extended info (0x0122)
+	user, err := h.service.GetFullUserInfo(ctx, targetUIN)
+	if err != nil || user == nil {
+		return nil
+	}
+	extInfo := &LegacyUserInfo{
+		UIN:      targetUIN,
+		City:     truncateField(user.ICQBasicInfo.City, 64, h.logger, "city", targetUIN),
+		State:    truncateField(user.ICQBasicInfo.State, 64, h.logger, "state", targetUIN),
+		Country:  user.ICQBasicInfo.CountryCode,
+		Phone:    truncateField(user.ICQBasicInfo.CellPhone, 30, h.logger, "phone", targetUIN),
+		Homepage: truncateField(user.ICQMoreInfo.HomePageAddr, 127, h.logger, "homepage", targetUIN),
+		About:    truncateField(user.ICQNotes.Notes, 450, h.logger, "about", targetUIN),
+		Age:      user.Age(time.Now),
+		Gender:   uint8(user.ICQMoreInfo.Gender),
+	}
+	extReplyPkt := BuildV2ExtInfoReply(session.NextServerSeqNum(), pkt.SeqNum, extInfo)
+	extReplyPkt.Version = session.Version
+	return h.sender.SendToSession(session, MarshalV2ServerPacket(extReplyPkt))
 }
 
 // handleExtInfoReq processes an extended user info request
@@ -653,10 +722,11 @@ func (h *V2Handler) handleSearchUIN(session *LegacySession, pkt *V2ClientPacket)
 
 	// Client sends SEQ(2) + UIN(4) = 6 bytes minimum
 	if len(pkt.Data) < 6 {
-		return h.sendSearchResult(session, &LegacyUserSearchResult{}, true)
+		return h.sendSearchResult(session, &LegacyUserSearchResult{}, true, 0)
 	}
 
-	// Skip SEQ prefix (2 bytes), read UIN at offset 2
+	// Read client sub-sequence (2 bytes) and UIN (4 bytes)
+	clientSubSeq := binary.LittleEndian.Uint16(pkt.Data[0:2])
 	targetUIN := binary.LittleEndian.Uint32(pkt.Data[2:6])
 
 	h.logger.Debug("search by UIN",
@@ -669,10 +739,10 @@ func (h *V2Handler) handleSearchUIN(session *LegacySession, pkt *V2ClientPacket)
 	if err != nil {
 		h.logger.Debug("search failed", "err", err)
 		// Send empty search result
-		return h.sendSearchResult(session, &LegacyUserSearchResult{}, true)
+		return h.sendSearchResult(session, &LegacyUserSearchResult{}, true, clientSubSeq)
 	}
 
-	return h.sendSearchResult(session, result, true)
+	return h.sendSearchResult(session, result, true, clientSubSeq)
 }
 
 // handleSearchUser processes a search by name/email request
@@ -697,8 +767,11 @@ func (h *V2Handler) handleSearchUser(session *LegacySession, pkt *V2ClientPacket
 
 	// Need at least SEQ(2) + one length-prefixed string
 	if len(pkt.Data) < 4 {
-		return h.sendSearchResult(session, &LegacyUserSearchResult{}, true)
+		return h.sendSearchResult(session, &LegacyUserSearchResult{}, true, 0)
 	}
+
+	// Read client sub-sequence
+	clientSubSeq := binary.LittleEndian.Uint16(pkt.Data[0:2])
 
 	// Skip SEQ prefix (2 bytes)
 	r := bytes.NewReader(pkt.Data[2:])
@@ -718,21 +791,21 @@ func (h *V2Handler) handleSearchUser(session *LegacySession, pkt *V2ClientPacket
 	results, err := h.service.SearchByName(ctx, nick, first, last, email)
 	if err != nil {
 		h.logger.Debug("search failed", "err", err)
-		return h.sendSearchResult(session, &LegacyUserSearchResult{}, true)
+		return h.sendSearchResult(session, &LegacyUserSearchResult{}, true, clientSubSeq)
 	}
 
 	// Send each result
 	for i, result := range results {
 		isLast := i == len(results)-1
 		r := result // copy for pointer
-		if err := h.sendSearchResult(session, &r, isLast); err != nil {
+		if err := h.sendSearchResult(session, &r, isLast, clientSubSeq); err != nil {
 			return err
 		}
 	}
 
 	// If no results, send empty done
 	if len(results) == 0 {
-		return h.sendSearchResult(session, &LegacyUserSearchResult{}, true)
+		return h.sendSearchResult(session, &LegacyUserSearchResult{}, true, clientSubSeq)
 	}
 
 	return nil
@@ -779,10 +852,14 @@ func (h *V2Handler) handleOfflineMsgReq(session *LegacySession, pkt *V2ClientPac
 	}
 
 	// Send end of offline messages (SRV_SYS_MSG_DONE 0x00E6)
+	// V2 format includes UIN(4) — from licq: 02 00 E6 00 04 00 50 A5 82 00
+	uinData := make([]byte, 4)
+	binary.LittleEndian.PutUint32(uinData[0:4], session.UIN)
 	endPkt := &V2ServerPacket{
 		Version: session.Version,
 		Command: ICQLegacySrvSysMsgDone,
 		SeqNum:  session.NextServerSeqNum(),
+		Data:    uinData,
 	}
 	return h.sender.SendToSession(session, MarshalV2ServerPacket(endPkt))
 }
@@ -887,10 +964,25 @@ func (h *V2Handler) handleUserAdd(session *LegacySession, pkt *V2ClientPacket) e
 	contacts = append(contacts, targetUIN)
 	session.SetContactList(contacts)
 
-	// Check if target is online and send notification
+	ctx := context.Background()
+
+	// Sync to clientSideBuddyList so OSCAR's BuddyArrived reaches this user
+	// for the newly added contact (mirrors ProcessContactList sync logic)
+	if _, err := h.service.ProcessUserAdd(ctx, UserAddRequest{
+		FromUIN:   session.UIN,
+		TargetUIN: targetUIN,
+	}); err != nil {
+		h.logger.Debug("user add service call failed", "err", err)
+	}
+
+	// Check if target is online via legacy session and send notification
 	targetSession := h.sessions.GetSession(targetUIN)
 	if targetSession != nil {
-		h.sendUserOnline(session, targetUIN, targetSession.GetStatus(), nil, 0)
+		if h.dispatcher != nil {
+			h.dispatcher.SendUserOnline(session, targetUIN, targetSession.GetStatus())
+		} else {
+			h.sendUserOnline(session, targetUIN, targetSession.GetStatus(), nil, 0)
+		}
 
 		// Also send the adder's online status to the target.
 		// The target won't see the adder as online unless we tell them.
@@ -898,6 +990,13 @@ func (h *V2Handler) handleUserAdd(session *LegacySession, pkt *V2ClientPacket) e
 			h.dispatcher.SendUserOnline(targetSession, session.UIN, session.GetStatus())
 		} else {
 			h.sendUserOnline(targetSession, session.UIN, session.GetStatus(), nil, 0)
+		}
+	} else {
+		// Check if target is online via OSCAR session
+		info, err := h.service.GetUserInfoForProtocol(ctx, targetUIN)
+		if err == nil && info != nil && info.Online {
+			status := downgradeStatusForV2(info.Status)
+			h.sendUserOnline(session, targetUIN, status, nil, 0)
 		}
 	}
 
@@ -1062,39 +1161,12 @@ func (h *V2Handler) handleGetDeps(addr *net.UDPAddr, packet []byte) error {
 	return h.sender.SendPacket(addr, MarshalV2ServerPacket(depsPkt))
 }
 
-// handleAuthorize processes an authorization grant (CMD_AUTHORIZE 0x0456)
-// Client sends: UIN(4) + X1(5) as data (from licq CPU_Authorize)
-// The server ACKs and the authorized user is notified.
-//
-// IMPORTANT: In V2, 0x0456 is AUTHORIZE, not "send message through server".
-// The V3/V4/V5 handlers route this to handleMessage which is also acceptable
-// since the authorize packet structure is similar to a message, but for V2
-// we handle it explicitly.
+// handleAuthorize processes CMD_AUTHORIZE (0x0456) which is a thru-server
+// message in V2. The packet format is identical to CMD_THRUxSERVER (0x010E):
+// TO_UIN(4) + MSG_TYPE(2) + MSG_LEN(2) + MESSAGE
+// iserverd routes both 0x010E and 0x0456 through the same v3_process_sysmsg.
 func (h *V2Handler) handleAuthorize(session *LegacySession, pkt *V2ClientPacket) error {
-	if session == nil {
-		return nil
-	}
-
-	// Send ACK first to stop client retransmission
-	if err := h.sendAck(session, pkt.SeqNum); err != nil {
-		return err
-	}
-
-	if len(pkt.Data) < 4 {
-		return nil
-	}
-
-	targetUIN := binary.LittleEndian.Uint32(pkt.Data[0:4])
-
-	h.logger.Debug("authorize user",
-		"from", session.UIN,
-		"target", targetUIN,
-	)
-
-	// TODO: Implement authorization grant via service layer
-	// For now, just ACK - the authorization system is not yet implemented
-
-	return nil
+	return h.handleSendMessage(session, pkt)
 }
 
 // handleUpdateBasic processes a basic profile update (CMD_UPDATExBASIC 0x04A6)
@@ -1132,7 +1204,7 @@ func (h *V2Handler) handleUpdateBasic(session *LegacySession, pkt *V2ClientPacke
 	email, _ := ParseLegacyString(r, true)
 
 	var auth uint8
-	binary.Read(r, binary.LittleEndian, &auth)
+	hasAuth := binary.Read(r, binary.LittleEndian, &auth) == nil && r.Len() >= 0
 
 	h.logger.Debug("update basic info",
 		"uin", session.UIN,
@@ -1141,31 +1213,44 @@ func (h *V2Handler) handleUpdateBasic(session *LegacySession, pkt *V2ClientPacke
 		"last", lastName,
 		"email", email,
 		"auth", auth,
+		"has_auth", hasAuth,
 	)
 
-	// Persist basic info via service layer
+	// Persist basic info via service layer using read-merge-write
+	// to avoid overwriting fields not present in the V2 packet
+	// (city, state, country, phone, etc.)
 	ctx := context.Background()
-	info := state.ICQBasicInfo{
-		Nickname:     alias,
-		FirstName:    firstName,
-		LastName:     lastName,
-		EmailAddress: email,
+	existing, err := h.service.GetFullUserInfo(ctx, session.UIN)
+	var info state.ICQBasicInfo
+	if err == nil && existing != nil {
+		info = existing.ICQBasicInfo
 	}
+	info.Nickname = alias
+	info.FirstName = firstName
+	info.LastName = lastName
+	info.EmailAddress = email
 	if err := h.service.UpdateBasicInfo(ctx, session.UIN, info); err != nil {
 		h.logger.Error("V2 update basic info failed", "uin", session.UIN, "err", err)
 	}
 
-	// Update auth mode
-	if err := h.service.SetAuthMode(ctx, session.UIN, auth == 1); err != nil {
-		h.logger.Error("V2 set auth mode failed", "uin", session.UIN, "err", err)
+	// Update auth mode only if the auth byte was present in the packet.
+	// V2 format (0x04A6) includes AUTH(1), V4 format (0x050A) does not.
+	if hasAuth && pkt.Command == ICQLegacyCmdUpdateBasic {
+		if err := h.service.SetAuthMode(ctx, session.UIN, auth == 1); err != nil {
+			h.logger.Error("V2 set auth mode failed", "uin", session.UIN, "err", err)
+		}
 	}
 
-	// Send SRV_UPDATEDxBASIC (0x00B4) with the update sequence
+	// Send SRV_UPDATEDxBASIC — V2 uses 0x00B4, V4 uses 0x01E0
+	replyCmd := ICQLegacySrvUpdatedBasic // 0x00B4
+	if pkt.Command == ICQLegacyCmdSetBasicInfo {
+		replyCmd = ICQLegacySrvUpdatedBasicV4 // 0x01E0
+	}
 	data := make([]byte, 2)
 	binary.LittleEndian.PutUint16(data[0:2], updateSeq)
 	replyPkt := &V2ServerPacket{
 		Version: session.Version,
-		Command: ICQLegacySrvUpdatedBasic,
+		Command: replyCmd,
 		SeqNum:  session.NextServerSeqNum(),
 		Data:    data,
 	}

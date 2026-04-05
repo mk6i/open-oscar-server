@@ -93,9 +93,9 @@ func (d *ProtocolDispatcher) SendUserOnline(toSession *LegacySession, onlineUIN 
 
 	switch toSession.Version {
 	case ICQLegacyVersionV1:
-		return d.v1Handler.sendUserOnline(toSession, onlineUIN, status, nil, 0)
+		return d.v1Handler.sendUserOnline(toSession, onlineUIN, downgradeStatusForV2(status), nil, 0)
 	case ICQLegacyVersionV2:
-		return d.v2Handler.sendUserOnline(toSession, onlineUIN, status, nil, 0)
+		return d.v2Handler.sendUserOnline(toSession, onlineUIN, downgradeStatusForV2(status), nil, 0)
 	case ICQLegacyVersionV3:
 		return d.v3Handler.sendUserOnline(toSession, onlineUIN, status)
 	case ICQLegacyVersionV4:
@@ -187,9 +187,9 @@ func (d *ProtocolDispatcher) SendStatusChange(toSession *LegacySession, changedU
 
 	switch toSession.Version {
 	case ICQLegacyVersionV1:
-		return d.v1Handler.sendStatusUpdate(toSession, changedUIN, newStatus)
+		return d.v1Handler.sendStatusUpdate(toSession, changedUIN, downgradeStatusForV2(newStatus))
 	case ICQLegacyVersionV2:
-		return d.v2Handler.sendStatusUpdate(toSession, changedUIN, newStatus)
+		return d.v2Handler.sendStatusUpdate(toSession, changedUIN, downgradeStatusForV2(newStatus))
 	case ICQLegacyVersionV3:
 		return d.v3Handler.sendUserStatus(toSession, changedUIN, newStatus)
 	case ICQLegacyVersionV4:
@@ -199,6 +199,45 @@ func (d *ProtocolDispatcher) SendStatusChange(toSession *LegacySession, changedU
 	default:
 		return nil
 	}
+}
+
+// downgradeStatusForV2 maps advanced legacy statuses (N/A, Occupied, FFC)
+// to the subset that V2 clients display for remote contacts.
+//
+// The real ICQ V2 client uses combined status bits just like V5:
+//
+//	DND = 0x11 (Away|Occupied), not 0x02
+//
+// So we map to the combined values the V2 client actually understands.
+//
+//	DND (0x02)      -> 0x11           — V2 uses 0x11 for DND, not 0x02
+//	N/A (0x04)      -> Away (0x01)    — extended away maps to away
+//	N/A (0x05)      -> Away (0x01)    — Away|N/A maps to away
+//	Occupied (0x10) -> 0x11           — V2 uses 0x11 for DND (closest busy state)
+//	Occupied (0x11) -> 0x11           — already correct
+//	DND (0x13)      -> 0x11           — V2 uses 0x11 for DND
+//	FFC (0x20)      -> Online (0x00)  — free-for-chat maps to online
+//
+// Flags in the upper word (invisible, web-aware, etc.) are preserved.
+func downgradeStatusForV2(status uint32) uint32 {
+	base := status & 0xFF
+	flags := status & 0xFFFFFF00
+
+	switch base {
+	case 0x02: // DND (pure)
+		base = 0x11
+	case 0x04, 0x05: // N/A, Away|N/A
+		base = 0x01 // Away
+	case 0x10: // Occupied (pure)
+		base = 0x11
+	case 0x13: // Away|DND|Occupied
+		base = 0x11
+	case 0x20: // FFC
+		base = 0x00 // Online
+		// 0x01 (Away) and 0x11 (Occupied/DND) pass through unchanged
+	}
+
+	return flags | base
 }
 
 // PacketSender is the interface for sending packets
@@ -494,7 +533,7 @@ func (h *BaseHandler) sendStatusUpdate(session *LegacySession, uin uint32, statu
 
 // sendContactListDone sends a contact list processed response
 func (h *BaseHandler) sendContactListDone(session *LegacySession, seqNum uint16) error {
-	pkt := BuildV2ContactListDone(seqNum)
+	pkt := BuildV2ContactListDone(seqNum, session.UIN)
 	pkt.Version = session.Version
 	return h.sender.SendToSession(session, MarshalV2ServerPacket(pkt))
 }
@@ -507,7 +546,7 @@ func (h *BaseHandler) sendMessage(session *LegacySession, fromUIN uint32, msgTyp
 }
 
 // sendSearchResult sends a search result
-func (h *BaseHandler) sendSearchResult(session *LegacySession, user *LegacyUserSearchResult, isLast bool) error {
+func (h *BaseHandler) sendSearchResult(session *LegacySession, user *LegacyUserSearchResult, isLast bool, clientSubSeq uint16) error {
 	info := &LegacyUserInfo{
 		UIN:       user.UIN,
 		Nickname:  truncateField(user.Nickname, 20, h.logger, "nickname", user.UIN),
@@ -516,7 +555,24 @@ func (h *BaseHandler) sendSearchResult(session *LegacySession, user *LegacyUserS
 		Email:     truncateField(user.Email, 64, h.logger, "email", user.UIN),
 		Auth:      user.AuthRequired,
 	}
-	pkt := BuildV2SearchResult(session.NextServerSeqNum(), info, isLast)
-	pkt.Version = session.Version
-	return h.sender.SendToSession(session, MarshalV2ServerPacket(pkt))
+
+	if user.UIN != 0 {
+		// Send search found with user data — subseq must echo client's sub-sequence
+		pkt := BuildV2SearchResult(clientSubSeq, info, false)
+		pkt.SeqNum = session.NextServerSeqNum()
+		pkt.Version = session.Version
+		if err := h.sender.SendToSession(session, MarshalV2ServerPacket(pkt)); err != nil {
+			return err
+		}
+	}
+
+	if isLast {
+		// Send search done with its own server seq — subseq must echo client's sub-sequence
+		pkt := BuildV2SearchResult(clientSubSeq, &LegacyUserInfo{}, true)
+		pkt.SeqNum = session.NextServerSeqNum()
+		pkt.Version = session.Version
+		return h.sender.SendToSession(session, MarshalV2ServerPacket(pkt))
+	}
+
+	return nil
 }

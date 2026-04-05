@@ -32,7 +32,7 @@ type V2PacketBuilder interface {
 
 	// BuildContactListDone constructs a contact list processing complete response.
 	// Sent after processing a user's contact list to indicate completion.
-	BuildContactListDone(seqNum uint16) []byte
+	BuildContactListDone(seqNum uint16, uin uint32) []byte
 
 	// BuildMessage constructs a message delivery packet.
 	// Used for both online messages and offline message delivery.
@@ -111,8 +111,8 @@ func (b *V2PacketBuilderImpl) BuildUserOffline(seqNum uint16, uin uint32) []byte
 }
 
 // BuildContactListDone constructs a contact list processing complete response.
-func (b *V2PacketBuilderImpl) BuildContactListDone(seqNum uint16) []byte {
-	pkt := BuildV2ContactListDone(seqNum)
+func (b *V2PacketBuilderImpl) BuildContactListDone(seqNum uint16, uin uint32) []byte {
+	pkt := BuildV2ContactListDone(seqNum, uin)
 	return MarshalV2ServerPacket(pkt)
 }
 

@@ -16,13 +16,14 @@ import (
 
 // LegacySessionManager manages sessions for legacy ICQ clients
 type LegacySessionManager struct {
-	sessions   map[uint32]*LegacySession // Indexed by UIN
-	addrIndex  map[string]*LegacySession // Indexed by UDP address string
-	sessionMgr SessionRegistry           // Unified session manager
-	bridge     *LegacyMessageBridge      // OSCAR->legacy bridge for message pump
-	config     config.ICQLegacyConfig
-	logger     *slog.Logger
-	mu         sync.RWMutex
+	sessions         map[uint32]*LegacySession    // Indexed by UIN
+	addrIndex        map[string]*LegacySession    // Indexed by UDP address string
+	sessionMgr       SessionRegistry              // Unified session manager
+	bridge           *LegacyMessageBridge         // OSCAR->legacy bridge for message pump
+	onSessionExpired func(session *LegacySession) // Called before removing expired sessions
+	config           config.ICQLegacyConfig
+	logger           *slog.Logger
+	mu               sync.RWMutex
 }
 
 // SessionRegistry is the interface for the unified session manager
@@ -47,6 +48,13 @@ func NewLegacySessionManager(sessionMgr SessionRegistry, cfg config.ICQLegacyCon
 // sessions. Must be called before any sessions are created.
 func (m *LegacySessionManager) SetBridge(bridge *LegacyMessageBridge) {
 	m.bridge = bridge
+}
+
+// SetOnSessionExpired sets a callback invoked before an expired session is
+// removed. The callback should notify contacts and OSCAR clients that the
+// user went offline — mirroring what handleLogoff does for graceful logouts.
+func (m *LegacySessionManager) SetOnSessionExpired(fn func(session *LegacySession)) {
+	m.onSessionExpired = fn
 }
 
 // CreateSession creates a new legacy session
@@ -186,18 +194,36 @@ func (m *LegacySessionManager) UpdateSessionAddr(uin uint32, newAddr *net.UDPAdd
 // CleanupExpired removes sessions that have timed out
 func (m *LegacySessionManager) CleanupExpired() int {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	timeout := m.config.SessionTimeout
 	now := time.Now()
-	removed := 0
 
-	for uin, session := range m.sessions {
+	// Collect expired sessions while holding the lock
+	var expired []*LegacySession
+	for _, session := range m.sessions {
 		if now.Sub(session.GetLastActivity()) > timeout {
-			m.logger.Info("cleaning up expired session",
-				"uin", uin,
-				"last_activity", session.GetLastActivity(),
-			)
+			expired = append(expired, session)
+		}
+	}
+	m.mu.Unlock()
+
+	// Notify contacts outside the lock to avoid deadlock
+	for _, session := range expired {
+		m.logger.Info("cleaning up expired session",
+			"uin", session.UIN,
+			"last_activity", session.GetLastActivity(),
+		)
+		if m.onSessionExpired != nil {
+			m.onSessionExpired(session)
+		}
+	}
+
+	// Re-acquire lock and remove the sessions
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	removed := 0
+	for _, session := range expired {
+		if _, ok := m.sessions[session.UIN]; ok {
 			m.removeSessionLocked(session)
 			removed++
 		}

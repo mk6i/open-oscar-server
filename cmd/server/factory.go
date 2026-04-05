@@ -712,5 +712,20 @@ func ICQLegacy(deps Container) *icq_legacy.LegacyServer {
 	// into legacy protocol packets)
 	sessionManager.SetBridge(legacyBridge)
 
+	// Set the expired session callback so timed-out sessions notify contacts
+	// and OSCAR clients — same as a graceful logoff.
+	sessionManager.SetOnSessionExpired(func(session *icq_legacy.LegacySession) {
+		logger.Info("session expired, notifying contacts",
+			"uin", session.UIN,
+		)
+		// Notify legacy contacts
+		sessionManager.BroadcastToContacts(session, func(contact *icq_legacy.LegacySession) {
+			dispatcher.SendUserOffline(contact, session.UIN)
+		})
+		// Notify OSCAR clients
+		ctx := context.Background()
+		icqLegacyService.NotifyUserOffline(ctx, session.UIN)
+	})
+
 	return server
 }

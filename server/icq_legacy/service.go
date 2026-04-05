@@ -276,12 +276,21 @@ func (s *ICQLegacyService) ProcessContactList(ctx context.Context, req ContactLi
 		if s.legacySessionManager != nil {
 			legacySession := s.legacySessionManager.GetSession(contactUIN)
 			if legacySession != nil {
-				status.Online = true
-				status.Status = legacySession.GetStatus()
-				s.logger.Debug("ProcessContactList: contact online (legacy)",
-					"contact_uin", contactUIN,
-					"status", fmt.Sprintf("0x%08X", status.Status),
-				)
+				// Check visibility — invisible users should not appear online
+				// unless the viewer is on their visible list
+				contactStatus := legacySession.GetStatus()
+				visible := true
+				if contactStatus&ICQLegacyStatusInvisible != 0 {
+					visible = legacySession.IsOnVisibleList(req.UIN)
+				}
+				if visible {
+					status.Online = true
+					status.Status = contactStatus
+					s.logger.Debug("ProcessContactList: contact online (legacy)",
+						"contact_uin", contactUIN,
+						"status", fmt.Sprintf("0x%08X", status.Status),
+					)
+				}
 			}
 		}
 
@@ -362,6 +371,18 @@ func (s *ICQLegacyService) ProcessUserAdd(ctx context.Context, req UserAddReques
 		"from_uin", req.FromUIN,
 		"target_uin", req.TargetUIN,
 	)
+
+	// Sync to clientSideBuddyList so OSCAR's BuddyArrived/Departed
+	// notifications reach this legacy user for the newly added contact.
+	ownerScreenName := state.NewIdentScreenName(strconv.FormatUint(uint64(req.FromUIN), 10))
+	contactName := state.NewIdentScreenName(strconv.FormatUint(uint64(req.TargetUIN), 10))
+	if err := s.clientSideBuddyListManager.AddBuddy(ctx, ownerScreenName, contactName); err != nil {
+		s.logger.Error("ProcessUserAdd: failed to add buddy to client-side list",
+			"from_uin", req.FromUIN,
+			"target_uin", req.TargetUIN,
+			"err", err,
+		)
+	}
 
 	// Check if target user is online via legacy session manager
 	if s.legacySessionManager != nil {
@@ -1463,8 +1484,44 @@ func (s *ICQLegacyService) ProcessStatusChange(ctx context.Context, req StatusCh
 func (s *ICQLegacyService) NotifyStatusChange(ctx context.Context, uin uint32, status uint32) error {
 	screenName := state.NewIdentScreenName(strconv.FormatUint(uint64(uin), 10))
 
-	// Build user info for OSCAR clients with all required TLVs for ICQ clients
 	oscarStatus := mapLegacyStatusToOSCAR(status)
+
+	// Update the OSCAR instance so session.TLVUserInfo() is correct
+	if s.legacySessionManager != nil {
+		session := s.legacySessionManager.GetSession(uin)
+		if session != nil && session.Instance != nil {
+			session.Instance.SetUserStatusBitmask(oscarStatus)
+			if oscarStatus != wire.OServiceUserStatusAvailable {
+				session.Instance.SetUserInfoFlag(wire.OServiceUserFlagUnavailable)
+			} else {
+				session.Instance.ClearUserInfoFlag(wire.OServiceUserFlagUnavailable)
+			}
+
+			// Invisible: send departure so OSCAR clients see user as offline
+			if status&ICQLegacyStatusInvisible != 0 {
+				if err := s.buddyBroadcaster.BroadcastBuddyDeparted(ctx, screenName); err != nil {
+					s.logger.Debug("NotifyStatusChange: failed to broadcast departure", "err", err)
+				}
+				return nil
+			}
+
+			userInfo := session.Instance.Session().TLVUserInfo()
+			if err := s.buddyBroadcaster.BroadcastBuddyArrived(ctx, screenName, userInfo); err != nil {
+				s.logger.Debug("NotifyStatusChange: failed to broadcast arrival", "err", err)
+			}
+			return nil
+		}
+	}
+
+	// Fallback if no session/instance — invisible should not broadcast arrival
+	if status&ICQLegacyStatusInvisible != 0 {
+		if err := s.buddyBroadcaster.BroadcastBuddyDeparted(ctx, screenName); err != nil {
+			s.logger.Debug("NotifyStatusChange: failed to broadcast departure", "err", err)
+		}
+		return nil
+	}
+
+	// Build minimal user info for OSCAR clients
 	userFlags := uint16(wire.OServiceUserFlagICQ | wire.OServiceUserFlagOSCARFree)
 	if oscarStatus != wire.OServiceUserStatusAvailable {
 		userFlags |= wire.OServiceUserFlagUnavailable
@@ -1481,9 +1538,8 @@ func (s *ICQLegacyService) NotifyStatusChange(ctx context.Context, uin uint32, s
 		},
 	}
 
-	// Broadcast to OSCAR clients
 	if err := s.buddyBroadcaster.BroadcastBuddyArrived(ctx, screenName, userInfo); err != nil {
-		s.logger.Debug("failed to broadcast to OSCAR clients", "err", err)
+		s.logger.Debug("NotifyStatusChange: failed to broadcast arrival", "err", err)
 	}
 
 	return nil
@@ -1511,6 +1567,11 @@ func (s *ICQLegacyService) NotifyUserOnline(ctx context.Context, uin uint32, sta
 				session.Instance.SetUserInfoFlag(wire.OServiceUserFlagUnavailable)
 			} else {
 				session.Instance.ClearUserInfoFlag(wire.OServiceUserFlagUnavailable)
+			}
+
+			// Invisible: don't broadcast arrival — user should appear offline
+			if status&ICQLegacyStatusInvisible != 0 {
+				return nil
 			}
 
 			// Use the session's TLVUserInfo — same as OSCAR's SetUserInfoFields
