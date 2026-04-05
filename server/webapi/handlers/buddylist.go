@@ -121,6 +121,93 @@ func (h *BuddyListHandler) AddBuddy(w http.ResponseWriter, r *http.Request) {
 	)
 }
 
+// AddGroup handles GET /buddylist/addGroup requests.
+func (h *BuddyListHandler) AddGroup(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	aimsid := r.URL.Query().Get("aimsid")
+	if aimsid == "" {
+		h.sendError(w, http.StatusBadRequest, "missing aimsid parameter")
+		return
+	}
+
+	session, err := h.SessionManager.GetSession(ctx, aimsid)
+	if err != nil {
+		if err == state.ErrNoWebAPISession {
+			h.sendError(w, http.StatusNotFound, "session not found")
+		} else if err == state.ErrWebAPISessionExpired {
+			h.sendError(w, http.StatusGone, "session expired")
+		} else {
+			h.sendError(w, http.StatusInternalServerError, "internal server error")
+		}
+		return
+	}
+
+	h.SessionManager.TouchSession(ctx, aimsid)
+
+	groupName := strings.TrimSpace(r.URL.Query().Get("group"))
+	if groupName == "" {
+		h.sendError(w, http.StatusBadRequest, "missing group parameter")
+		return
+	}
+
+	resultCode := h.addGroupToFeedbag(ctx, session, groupName)
+
+	resp := BaseResponse{}
+	resp.Response.StatusCode = 200
+	resp.Response.StatusText = "OK"
+	resp.Response.Data = map[string]interface{}{
+		"resultCode": resultCode,
+	}
+	SendResponse(w, r, resp, h.Logger)
+
+	if resultCode == "success" && session.EventQueue != nil && h.BuddyListManager != nil {
+		groups, err := h.BuddyListManager.GetBuddyListForUser(ctx, session.ScreenName.IdentScreenName())
+		if err != nil {
+			h.Logger.ErrorContext(ctx, "failed to get buddy list for event", "err", err.Error())
+		} else {
+			blPayload := map[string]interface{}{"groups": groups}
+			session.EventQueue.Push(types.EventTypeBuddyList, blPayload)
+		}
+	}
+
+	h.Logger.InfoContext(ctx, "buddy list group added",
+		"aimsid", aimsid,
+		"group", groupName,
+		"result", resultCode,
+	)
+}
+
+func (h *BuddyListHandler) addGroupToFeedbag(ctx context.Context, sess *state.WebAPISession, groupName string) string {
+	frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
+	snac, err := h.FeedbagService.Query(ctx, sess.OSCARSession, frame)
+	if err != nil {
+		h.Logger.ErrorContext(ctx, "failed to retrieve feedbag", "err", err.Error())
+		return "error"
+	}
+
+	reply, ok := snac.Body.(wire.SNAC_0x13_0x06_FeedbagReply)
+	if !ok {
+		return "error"
+	}
+
+	fl := state.NewFeedbagList(reply.Items, rand.Intn)
+	fl.AddGroup(groupName)
+
+	pending := fl.PendingUpdates()
+	if len(pending) == 0 {
+		return "alreadyExists"
+	}
+
+	insertFrame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem}
+	if _, err := h.FeedbagService.UpsertItem(ctx, sess.OSCARSession, insertFrame, pending); err != nil {
+		h.Logger.ErrorContext(ctx, "failed to add group", "err", err.Error())
+		return "error"
+	}
+
+	return "success"
+}
+
 // feedbagGroupMatchesRequested returns true if a feedbag group row matches the
 // group the Web client asked for. OSCAR often stores the default group with an
 // empty name; GetBuddyListForUser labels that as "Buddies", so addBuddy must
