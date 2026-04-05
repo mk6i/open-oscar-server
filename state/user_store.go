@@ -700,10 +700,10 @@ func (f SQLiteUserStore) FeedbagLastModified(ctx context.Context, screenName Ide
 
 func (f SQLiteUserStore) FeedbagDelete(ctx context.Context, screenName IdentScreenName, items []wire.FeedbagItem) error {
 	// todo add transaction
-	q := `DELETE FROM feedbag WHERE screenName = ? AND itemID = ?`
+	q := `DELETE FROM feedbag WHERE screenName = ? AND itemID = ? AND groupID = ?`
 
 	for _, item := range items {
-		if _, err := f.db.ExecContext(ctx, q, screenName.String(), item.ItemID); err != nil {
+		if _, err := f.db.ExecContext(ctx, q, screenName.String(), item.ItemID, item.GroupID); err != nil {
 			return err
 		}
 	}

@@ -131,59 +131,115 @@ func TestSQLiteUserStore_FeedbagUpsert(t *testing.T) {
 
 func TestFeedbagDelete(t *testing.T) {
 
-	screenName := NewIdentScreenName("sn2day")
+	t.Run("happy path", func(t *testing.T) {
+		screenName := NewIdentScreenName("sn2day")
 
-	defer func() {
-		assert.NoError(t, os.Remove(testFile))
-	}()
+		defer func() {
+			assert.NoError(t, os.Remove(testFile))
+		}()
 
-	f, err := NewSQLiteUserStore(testFile)
-	assert.NoError(t, err)
+		f, err := NewSQLiteUserStore(testFile)
+		assert.NoError(t, err)
 
-	itemsIn := []wire.FeedbagItem{
-		{
-			GroupID: 0,
-			ItemID:  1805,
-			ClassID: 3,
-			Name:    "spimmer1234",
-			TLVLBlock: wire.TLVLBlock{
-				TLVList: wire.TLVList{
-					wire.NewTLVBE(0x01, uint16(1000)),
+		itemsIn := []wire.FeedbagItem{
+			{
+				GroupID: 0,
+				ItemID:  1805,
+				ClassID: 3,
+				Name:    "spimmer1234",
+				TLVLBlock: wire.TLVLBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVBE(0x01, uint16(1000)),
+					},
 				},
 			},
-		},
-		{
-			GroupID: 0x0A,
-			ItemID:  0,
-			ClassID: 1,
-			Name:    "Friends",
-		},
-		{
-			GroupID: 0x0B,
-			ItemID:  100,
-			ClassID: 1,
-			Name:    "co-workers",
-		},
-	}
+			{
+				GroupID: 0x0A,
+				ClassID: 1,
+				Name:    "Friends",
+			},
+			{
+				GroupID: 0x0B,
+				ClassID: 1,
+				Name:    "co-workers",
+			},
+		}
 
-	if err := f.FeedbagUpsert(context.Background(), screenName, itemsIn); err != nil {
-		t.Fatalf("failed to upsert: %s", err.Error())
-	}
+		if err := f.FeedbagUpsert(context.Background(), screenName, itemsIn); err != nil {
+			t.Fatalf("failed to upsert: %s", err.Error())
+		}
 
-	if err := f.FeedbagDelete(context.Background(), screenName, []wire.FeedbagItem{itemsIn[0]}); err != nil {
-		t.Fatalf("failed to delete: %s", err.Error())
-	}
+		if err := f.FeedbagDelete(context.Background(), screenName, []wire.FeedbagItem{itemsIn[0]}); err != nil {
+			t.Fatalf("failed to delete: %s", err.Error())
+		}
 
-	itemsOut, err := f.Feedbag(context.Background(), screenName)
-	if err != nil {
-		t.Fatalf("failed to retrieve: %s", err.Error())
-	}
+		itemsOut, err := f.Feedbag(context.Background(), screenName)
+		if err != nil {
+			t.Fatalf("failed to retrieve: %s", err.Error())
+		}
 
-	expect := itemsIn[1:]
+		expect := itemsIn[1:]
 
-	if !reflect.DeepEqual(expect, itemsOut) {
-		t.Fatalf("items did not match:\n in: %v\n out: %v", expect, itemsOut)
-	}
+		if !reflect.DeepEqual(expect, itemsOut) {
+			t.Fatalf("items did not match:\n in: %v\n out: %v", expect, itemsOut)
+		}
+	})
+
+	t.Run("delete group", func(t *testing.T) {
+		screenName := NewIdentScreenName("sn2day")
+
+		defer func() {
+			assert.NoError(t, os.Remove(testFile))
+		}()
+
+		f, err := NewSQLiteUserStore(testFile)
+		assert.NoError(t, err)
+
+		itemsIn := []wire.FeedbagItem{
+			{
+				GroupID: 0x0A,
+				ClassID: 1,
+				Name:    "Friends",
+			},
+			{
+				GroupID: 0x0B,
+				ClassID: 1,
+				Name:    "co-workers",
+			},
+		}
+
+		if err := f.FeedbagUpsert(context.Background(), screenName, itemsIn); err != nil {
+			t.Fatalf("failed to upsert: %s", err.Error())
+		}
+
+		toDelete := []wire.FeedbagItem{
+			{
+				GroupID: 0x0A,
+				ClassID: 1,
+				Name:    "Friends",
+			},
+		}
+		if err := f.FeedbagDelete(context.Background(), screenName, toDelete); err != nil {
+			t.Fatalf("failed to delete: %s", err.Error())
+		}
+
+		itemsOut, err := f.Feedbag(context.Background(), screenName)
+		if err != nil {
+			t.Fatalf("failed to retrieve: %s", err.Error())
+		}
+
+		expect := []wire.FeedbagItem{
+			{
+				GroupID: 0x0B,
+				ClassID: 1,
+				Name:    "co-workers",
+			},
+		}
+
+		if !reflect.DeepEqual(expect, itemsOut) {
+			t.Fatalf("items did not match:\n in: %v\n out: %v", expect, itemsOut)
+		}
+	})
 }
 
 func TestLastModifiedEmpty(t *testing.T) {
