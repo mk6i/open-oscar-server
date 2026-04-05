@@ -321,6 +321,75 @@ func (_c *mockFeedbagService_QueryIfModified_Call) RunAndReturn(run func(ctx con
 	return _c
 }
 
+// RequestAuthorizeToHost provides a mock function for the type mockFeedbagService
+func (_mock *mockFeedbagService) RequestAuthorizeToHost(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x18_FeedbagRequestAuthorizationToHost) error {
+	ret := _mock.Called(ctx, instance, inFrame, inBody)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RequestAuthorizeToHost")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x13_0x18_FeedbagRequestAuthorizationToHost) error); ok {
+		r0 = returnFunc(ctx, instance, inFrame, inBody)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// mockFeedbagService_RequestAuthorizeToHost_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RequestAuthorizeToHost'
+type mockFeedbagService_RequestAuthorizeToHost_Call struct {
+	*mock.Call
+}
+
+// RequestAuthorizeToHost is a helper method to define mock.On call
+//   - ctx context.Context
+//   - instance *state.SessionInstance
+//   - inFrame wire.SNACFrame
+//   - inBody wire.SNAC_0x13_0x18_FeedbagRequestAuthorizationToHost
+func (_e *mockFeedbagService_Expecter) RequestAuthorizeToHost(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}) *mockFeedbagService_RequestAuthorizeToHost_Call {
+	return &mockFeedbagService_RequestAuthorizeToHost_Call{Call: _e.mock.On("RequestAuthorizeToHost", ctx, instance, inFrame, inBody)}
+}
+
+func (_c *mockFeedbagService_RequestAuthorizeToHost_Call) Run(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x18_FeedbagRequestAuthorizationToHost)) *mockFeedbagService_RequestAuthorizeToHost_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 *state.SessionInstance
+		if args[1] != nil {
+			arg1 = args[1].(*state.SessionInstance)
+		}
+		var arg2 wire.SNACFrame
+		if args[2] != nil {
+			arg2 = args[2].(wire.SNACFrame)
+		}
+		var arg3 wire.SNAC_0x13_0x18_FeedbagRequestAuthorizationToHost
+		if args[3] != nil {
+			arg3 = args[3].(wire.SNAC_0x13_0x18_FeedbagRequestAuthorizationToHost)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *mockFeedbagService_RequestAuthorizeToHost_Call) Return(err error) *mockFeedbagService_RequestAuthorizeToHost_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *mockFeedbagService_RequestAuthorizeToHost_Call) RunAndReturn(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x18_FeedbagRequestAuthorizationToHost) error) *mockFeedbagService_RequestAuthorizeToHost_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // RespondAuthorizeToHost provides a mock function for the type mockFeedbagService
 func (_mock *mockFeedbagService) RespondAuthorizeToHost(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost) error {
 	ret := _mock.Called(ctx, instance, inFrame, inBody)

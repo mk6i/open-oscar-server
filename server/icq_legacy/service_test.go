@@ -426,14 +426,16 @@ func TestICQLegacyService_ProcessContactList(t *testing.T) {
 			}
 
 			clientSideBuddyListMgr := newMockClientSideBuddyListManager(t)
-			// Expect AddBuddy for each contact in the request
-			for _, contactUIN := range tc.req.Contacts {
-				contactName := state.NewIdentScreenName(strconv.FormatUint(uint64(contactUIN), 10))
-				ownerName := state.NewIdentScreenName(strconv.FormatUint(uint64(tc.req.UIN), 10))
-				clientSideBuddyListMgr.EXPECT().
-					AddBuddy(mock.Anything, ownerName, contactName).
-					Return(nil)
-			}
+			userFinder := newMockICQUserFinder(t)
+			// ProcessContactList adds both forward and reverse buddy entries
+			clientSideBuddyListMgr.EXPECT().
+				AddBuddy(mock.Anything, mock.Anything, mock.Anything).
+				Return(nil).
+				Maybe()
+			userFinder.EXPECT().
+				FindByUIN(mock.Anything, mock.Anything).
+				Return(state.User{}, nil).
+				Maybe()
 
 			svc := NewICQLegacyService(
 				newMockUserManager(t),
@@ -442,7 +444,7 @@ func TestICQLegacyService_ProcessContactList(t *testing.T) {
 				newMockMessageRelayer(t),
 				newMockBuddyBroadcaster(t),
 				newMockOfflineMessageManager(t),
-				newMockICQUserFinder(t),
+				userFinder,
 				newMockICQUserUpdater(t),
 				newMockFeedbagManager(t),
 				newMockRelationshipFetcher(t),
@@ -485,16 +487,6 @@ func TestICQLegacyService_ProcessStatusChange(t *testing.T) {
 				OldStatus: ICQLegacyStatusOnline,
 				NewStatus: ICQLegacyStatusAway,
 			},
-			mockParams: mockParams{
-				buddyBroadcasterParams: buddyBroadcasterParams{
-					broadcastBuddyArrivedParams: broadcastBuddyArrivedParams{
-						{
-							screenName: state.NewIdentScreenName("11111"),
-							err:        nil,
-						},
-					},
-				},
-			},
 			setupLegacyMgr: func(t *testing.T, svc *ICQLegacyService) {
 				sess := newTestLegacySession(11111, legacySessionOptContactList([]uint32{22222}))
 				contactSess := newTestLegacySession(22222, legacySessionOptContactList([]uint32{11111}))
@@ -515,35 +507,18 @@ func TestICQLegacyService_ProcessStatusChange(t *testing.T) {
 				OldStatus: ICQLegacyStatusOnline,
 				NewStatus: ICQLegacyStatusAway,
 			},
-			mockParams: mockParams{
-				buddyBroadcasterParams: buddyBroadcasterParams{
-					broadcastBuddyArrivedParams: broadcastBuddyArrivedParams{
-						{
-							screenName: state.NewIdentScreenName("99999"),
-							err:        nil,
-						},
-					},
-				},
-			},
 			wantTargets: 0,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			buddyBroadcaster := newMockBuddyBroadcaster(t)
-			for _, p := range tc.mockParams.broadcastBuddyArrivedParams {
-				buddyBroadcaster.EXPECT().
-					BroadcastBuddyArrived(matchContext(), p.screenName, mock.Anything).
-					Return(p.err)
-			}
-
 			svc := NewICQLegacyService(
 				newMockUserManager(t),
 				newMockAccountManager(t),
 				newMockSessionRetriever(t),
 				newMockMessageRelayer(t),
-				buddyBroadcaster,
+				newMockBuddyBroadcaster(t),
 				newMockOfflineMessageManager(t),
 				newMockICQUserFinder(t),
 				newMockICQUserUpdater(t),

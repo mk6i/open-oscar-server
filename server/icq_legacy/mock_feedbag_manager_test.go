@@ -106,3 +106,66 @@ func (_c *mockFeedbagManager_Feedbag_Call) RunAndReturn(run func(ctx context.Con
 	_c.Call.Return(run)
 	return _c
 }
+
+// FeedbagUpsert provides a mock function for the type mockFeedbagManager
+func (_mock *mockFeedbagManager) FeedbagUpsert(ctx context.Context, screenName state.IdentScreenName, items []wire.FeedbagItem) error {
+	ret := _mock.Called(ctx, screenName, items)
+
+	if len(ret) == 0 {
+		panic("no return value specified for FeedbagUpsert")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, state.IdentScreenName, []wire.FeedbagItem) error); ok {
+		r0 = returnFunc(ctx, screenName, items)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// mockFeedbagManager_FeedbagUpsert_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'FeedbagUpsert'
+type mockFeedbagManager_FeedbagUpsert_Call struct {
+	*mock.Call
+}
+
+// FeedbagUpsert is a helper method to define mock.On call
+//   - ctx context.Context
+//   - screenName state.IdentScreenName
+//   - items []wire.FeedbagItem
+func (_e *mockFeedbagManager_Expecter) FeedbagUpsert(ctx interface{}, screenName interface{}, items interface{}) *mockFeedbagManager_FeedbagUpsert_Call {
+	return &mockFeedbagManager_FeedbagUpsert_Call{Call: _e.mock.On("FeedbagUpsert", ctx, screenName, items)}
+}
+
+func (_c *mockFeedbagManager_FeedbagUpsert_Call) Run(run func(ctx context.Context, screenName state.IdentScreenName, items []wire.FeedbagItem)) *mockFeedbagManager_FeedbagUpsert_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 state.IdentScreenName
+		if args[1] != nil {
+			arg1 = args[1].(state.IdentScreenName)
+		}
+		var arg2 []wire.FeedbagItem
+		if args[2] != nil {
+			arg2 = args[2].([]wire.FeedbagItem)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *mockFeedbagManager_FeedbagUpsert_Call) Return(err error) *mockFeedbagManager_FeedbagUpsert_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *mockFeedbagManager_FeedbagUpsert_Call) RunAndReturn(run func(ctx context.Context, screenName state.IdentScreenName, items []wire.FeedbagItem) error) *mockFeedbagManager_FeedbagUpsert_Call {
+	_c.Call.Return(run)
+	return _c
+}
