@@ -951,6 +951,69 @@ func (_c *mockLegacyService_NotifyUserOffline_Call) RunAndReturn(run func(ctx co
 	return _c
 }
 
+// NotifyUserOnline provides a mock function for the type mockLegacyService
+func (_mock *mockLegacyService) NotifyUserOnline(ctx context.Context, uin uint32, status uint32) error {
+	ret := _mock.Called(ctx, uin, status)
+
+	if len(ret) == 0 {
+		panic("no return value specified for NotifyUserOnline")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint32, uint32) error); ok {
+		r0 = returnFunc(ctx, uin, status)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// mockLegacyService_NotifyUserOnline_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'NotifyUserOnline'
+type mockLegacyService_NotifyUserOnline_Call struct {
+	*mock.Call
+}
+
+// NotifyUserOnline is a helper method to define mock.On call
+//   - ctx context.Context
+//   - uin uint32
+//   - status uint32
+func (_e *mockLegacyService_Expecter) NotifyUserOnline(ctx interface{}, uin interface{}, status interface{}) *mockLegacyService_NotifyUserOnline_Call {
+	return &mockLegacyService_NotifyUserOnline_Call{Call: _e.mock.On("NotifyUserOnline", ctx, uin, status)}
+}
+
+func (_c *mockLegacyService_NotifyUserOnline_Call) Run(run func(ctx context.Context, uin uint32, status uint32)) *mockLegacyService_NotifyUserOnline_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 uint32
+		if args[1] != nil {
+			arg1 = args[1].(uint32)
+		}
+		var arg2 uint32
+		if args[2] != nil {
+			arg2 = args[2].(uint32)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *mockLegacyService_NotifyUserOnline_Call) Return(err error) *mockLegacyService_NotifyUserOnline_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *mockLegacyService_NotifyUserOnline_Call) RunAndReturn(run func(ctx context.Context, uin uint32, status uint32) error) *mockLegacyService_NotifyUserOnline_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ProcessContactList provides a mock function for the type mockLegacyService
 func (_mock *mockLegacyService) ProcessContactList(ctx context.Context, req ContactListRequest) (*ContactListResult, error) {
 	ret := _mock.Called(ctx, req)
@@ -2001,6 +2064,258 @@ func (_c *mockLegacyService_SetPassword_Call) RunAndReturn(run func(ctx context.
 	return _c
 }
 
+// UpdateBasicInfo provides a mock function for the type mockLegacyService
+func (_mock *mockLegacyService) UpdateBasicInfo(ctx context.Context, uin uint32, info state.ICQBasicInfo) error {
+	ret := _mock.Called(ctx, uin, info)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateBasicInfo")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint32, state.ICQBasicInfo) error); ok {
+		r0 = returnFunc(ctx, uin, info)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// mockLegacyService_UpdateBasicInfo_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateBasicInfo'
+type mockLegacyService_UpdateBasicInfo_Call struct {
+	*mock.Call
+}
+
+// UpdateBasicInfo is a helper method to define mock.On call
+//   - ctx context.Context
+//   - uin uint32
+//   - info state.ICQBasicInfo
+func (_e *mockLegacyService_Expecter) UpdateBasicInfo(ctx interface{}, uin interface{}, info interface{}) *mockLegacyService_UpdateBasicInfo_Call {
+	return &mockLegacyService_UpdateBasicInfo_Call{Call: _e.mock.On("UpdateBasicInfo", ctx, uin, info)}
+}
+
+func (_c *mockLegacyService_UpdateBasicInfo_Call) Run(run func(ctx context.Context, uin uint32, info state.ICQBasicInfo)) *mockLegacyService_UpdateBasicInfo_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 uint32
+		if args[1] != nil {
+			arg1 = args[1].(uint32)
+		}
+		var arg2 state.ICQBasicInfo
+		if args[2] != nil {
+			arg2 = args[2].(state.ICQBasicInfo)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *mockLegacyService_UpdateBasicInfo_Call) Return(err error) *mockLegacyService_UpdateBasicInfo_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *mockLegacyService_UpdateBasicInfo_Call) RunAndReturn(run func(ctx context.Context, uin uint32, info state.ICQBasicInfo) error) *mockLegacyService_UpdateBasicInfo_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// UpdateMoreInfo provides a mock function for the type mockLegacyService
+func (_mock *mockLegacyService) UpdateMoreInfo(ctx context.Context, uin uint32, info state.ICQMoreInfo) error {
+	ret := _mock.Called(ctx, uin, info)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateMoreInfo")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint32, state.ICQMoreInfo) error); ok {
+		r0 = returnFunc(ctx, uin, info)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// mockLegacyService_UpdateMoreInfo_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateMoreInfo'
+type mockLegacyService_UpdateMoreInfo_Call struct {
+	*mock.Call
+}
+
+// UpdateMoreInfo is a helper method to define mock.On call
+//   - ctx context.Context
+//   - uin uint32
+//   - info state.ICQMoreInfo
+func (_e *mockLegacyService_Expecter) UpdateMoreInfo(ctx interface{}, uin interface{}, info interface{}) *mockLegacyService_UpdateMoreInfo_Call {
+	return &mockLegacyService_UpdateMoreInfo_Call{Call: _e.mock.On("UpdateMoreInfo", ctx, uin, info)}
+}
+
+func (_c *mockLegacyService_UpdateMoreInfo_Call) Run(run func(ctx context.Context, uin uint32, info state.ICQMoreInfo)) *mockLegacyService_UpdateMoreInfo_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 uint32
+		if args[1] != nil {
+			arg1 = args[1].(uint32)
+		}
+		var arg2 state.ICQMoreInfo
+		if args[2] != nil {
+			arg2 = args[2].(state.ICQMoreInfo)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *mockLegacyService_UpdateMoreInfo_Call) Return(err error) *mockLegacyService_UpdateMoreInfo_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *mockLegacyService_UpdateMoreInfo_Call) RunAndReturn(run func(ctx context.Context, uin uint32, info state.ICQMoreInfo) error) *mockLegacyService_UpdateMoreInfo_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// UpdatePermissions provides a mock function for the type mockLegacyService
+func (_mock *mockLegacyService) UpdatePermissions(ctx context.Context, uin uint32, info state.ICQPermissions) error {
+	ret := _mock.Called(ctx, uin, info)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdatePermissions")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint32, state.ICQPermissions) error); ok {
+		r0 = returnFunc(ctx, uin, info)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// mockLegacyService_UpdatePermissions_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdatePermissions'
+type mockLegacyService_UpdatePermissions_Call struct {
+	*mock.Call
+}
+
+// UpdatePermissions is a helper method to define mock.On call
+//   - ctx context.Context
+//   - uin uint32
+//   - info state.ICQPermissions
+func (_e *mockLegacyService_Expecter) UpdatePermissions(ctx interface{}, uin interface{}, info interface{}) *mockLegacyService_UpdatePermissions_Call {
+	return &mockLegacyService_UpdatePermissions_Call{Call: _e.mock.On("UpdatePermissions", ctx, uin, info)}
+}
+
+func (_c *mockLegacyService_UpdatePermissions_Call) Run(run func(ctx context.Context, uin uint32, info state.ICQPermissions)) *mockLegacyService_UpdatePermissions_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 uint32
+		if args[1] != nil {
+			arg1 = args[1].(uint32)
+		}
+		var arg2 state.ICQPermissions
+		if args[2] != nil {
+			arg2 = args[2].(state.ICQPermissions)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *mockLegacyService_UpdatePermissions_Call) Return(err error) *mockLegacyService_UpdatePermissions_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *mockLegacyService_UpdatePermissions_Call) RunAndReturn(run func(ctx context.Context, uin uint32, info state.ICQPermissions) error) *mockLegacyService_UpdatePermissions_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// UpdateWorkInfo provides a mock function for the type mockLegacyService
+func (_mock *mockLegacyService) UpdateWorkInfo(ctx context.Context, uin uint32, info state.ICQWorkInfo) error {
+	ret := _mock.Called(ctx, uin, info)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateWorkInfo")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint32, state.ICQWorkInfo) error); ok {
+		r0 = returnFunc(ctx, uin, info)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// mockLegacyService_UpdateWorkInfo_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateWorkInfo'
+type mockLegacyService_UpdateWorkInfo_Call struct {
+	*mock.Call
+}
+
+// UpdateWorkInfo is a helper method to define mock.On call
+//   - ctx context.Context
+//   - uin uint32
+//   - info state.ICQWorkInfo
+func (_e *mockLegacyService_Expecter) UpdateWorkInfo(ctx interface{}, uin interface{}, info interface{}) *mockLegacyService_UpdateWorkInfo_Call {
+	return &mockLegacyService_UpdateWorkInfo_Call{Call: _e.mock.On("UpdateWorkInfo", ctx, uin, info)}
+}
+
+func (_c *mockLegacyService_UpdateWorkInfo_Call) Run(run func(ctx context.Context, uin uint32, info state.ICQWorkInfo)) *mockLegacyService_UpdateWorkInfo_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 uint32
+		if args[1] != nil {
+			arg1 = args[1].(uint32)
+		}
+		var arg2 state.ICQWorkInfo
+		if args[2] != nil {
+			arg2 = args[2].(state.ICQWorkInfo)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *mockLegacyService_UpdateWorkInfo_Call) Return(err error) *mockLegacyService_UpdateWorkInfo_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *mockLegacyService_UpdateWorkInfo_Call) RunAndReturn(run func(ctx context.Context, uin uint32, info state.ICQWorkInfo) error) *mockLegacyService_UpdateWorkInfo_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ValidateCredentials provides a mock function for the type mockLegacyService
 func (_mock *mockLegacyService) ValidateCredentials(ctx context.Context, uin uint32, password string) (bool, error) {
 	ret := _mock.Called(ctx, uin, password)
@@ -2139,64 +2454,4 @@ func (_c *mockLegacyService_WhitePagesSearch_Call) Return(legacyUserSearchResult
 func (_c *mockLegacyService_WhitePagesSearch_Call) RunAndReturn(run func(ctx context.Context, criteria WhitePagesSearchCriteria) ([]LegacyUserSearchResult, error)) *mockLegacyService_WhitePagesSearch_Call {
 	_c.Call.Return(run)
 	return _c
-}
-
-// UpdateBasicInfo provides a mock function for the type mockLegacyService
-func (_mock *mockLegacyService) UpdateBasicInfo(ctx context.Context, uin uint32, info state.ICQBasicInfo) error {
-	ret := _mock.Called(ctx, uin, info)
-	if len(ret) == 0 {
-		panic("no return value specified for UpdateBasicInfo")
-	}
-	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uint32, state.ICQBasicInfo) error); ok {
-		r0 = returnFunc(ctx, uin, info)
-	} else {
-		r0 = ret.Error(0)
-	}
-	return r0
-}
-
-// UpdateWorkInfo provides a mock function for the type mockLegacyService
-func (_mock *mockLegacyService) UpdateWorkInfo(ctx context.Context, uin uint32, info state.ICQWorkInfo) error {
-	ret := _mock.Called(ctx, uin, info)
-	if len(ret) == 0 {
-		panic("no return value specified for UpdateWorkInfo")
-	}
-	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uint32, state.ICQWorkInfo) error); ok {
-		r0 = returnFunc(ctx, uin, info)
-	} else {
-		r0 = ret.Error(0)
-	}
-	return r0
-}
-
-// UpdateMoreInfo provides a mock function for the type mockLegacyService
-func (_mock *mockLegacyService) UpdateMoreInfo(ctx context.Context, uin uint32, info state.ICQMoreInfo) error {
-	ret := _mock.Called(ctx, uin, info)
-	if len(ret) == 0 {
-		panic("no return value specified for UpdateMoreInfo")
-	}
-	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uint32, state.ICQMoreInfo) error); ok {
-		r0 = returnFunc(ctx, uin, info)
-	} else {
-		r0 = ret.Error(0)
-	}
-	return r0
-}
-
-// UpdatePermissions provides a mock function for the type mockLegacyService
-func (_mock *mockLegacyService) UpdatePermissions(ctx context.Context, uin uint32, info state.ICQPermissions) error {
-	ret := _mock.Called(ctx, uin, info)
-	if len(ret) == 0 {
-		panic("no return value specified for UpdatePermissions")
-	}
-	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uint32, state.ICQPermissions) error); ok {
-		r0 = returnFunc(ctx, uin, info)
-	} else {
-		r0 = ret.Error(0)
-	}
-	return r0
 }
