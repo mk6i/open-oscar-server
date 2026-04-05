@@ -165,6 +165,10 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 			authMiddleware.CORSMiddleware(
 				http.HandlerFunc(buddyListHandler.RemoveBuddy))))
 
+		mux.Handle("GET /buddylist/removeGroup", authMiddleware.AuthenticateFlexible(
+			authMiddleware.CORSMiddleware(
+				http.HandlerFunc(buddyListHandler.RemoveGroup))))
+
 		// Phase 2: Messaging endpoints
 		// sendIM supports aimsid-based auth, so we use flexible auth
 		mux.Handle("GET /im/sendIM", authMiddleware.AuthenticateFlexible(

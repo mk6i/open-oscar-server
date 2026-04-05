@@ -390,7 +390,7 @@ func TestFindFeedbagGroupID(t *testing.T) {
 
 func TestStoredGroupNameForRequest(t *testing.T) {
 	items := []wire.FeedbagItem{
-		{ItemID: 1, ClassID: wire.FeedbagClassIdGroup, Name: "", GroupID: 0},
+		{ItemID: 1, ClassID: wire.FeedbagClassIdGroup, Name: "", GroupID: 1},
 		{ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, Name: "jon", GroupID: 1},
 	}
 	st, ok := storedGroupNameForRequest(items, "Buddies")
@@ -398,7 +398,7 @@ func TestStoredGroupNameForRequest(t *testing.T) {
 	assert.Equal(t, "", st)
 
 	items2 := []wire.FeedbagItem{
-		{ItemID: 1, ClassID: wire.FeedbagClassIdGroup, Name: "Friends", GroupID: 0},
+		{ItemID: 1, ClassID: wire.FeedbagClassIdGroup, Name: "Friends", GroupID: 2},
 	}
 	st2, ok2 := storedGroupNameForRequest(items2, "Friends")
 	assert.True(t, ok2)
