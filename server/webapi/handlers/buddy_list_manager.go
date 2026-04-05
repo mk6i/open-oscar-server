@@ -291,6 +291,57 @@ func (m *BuddyListManager) RemoveBuddyFromFeedbag(ctx context.Context, sess *sta
 	return "success", nil
 }
 
+// RemoveGroupFromFeedbag deletes a buddy group and updates the root order (TOC DelGroup).
+func (m *BuddyListManager) RemoveGroupFromFeedbag(ctx context.Context, sess *state.WebAPISession, requestedGroup string, fb FeedbagService) (resultCode string, err error) {
+	req := strings.TrimSpace(requestedGroup)
+	if req == "" {
+		return "error", fmt.Errorf("empty group")
+	}
+	if sess.OSCARSession == nil {
+		return "error", fmt.Errorf("no OSCAR session")
+	}
+
+	frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
+	snac, err := fb.Query(ctx, sess.OSCARSession, frame)
+	if err != nil {
+		m.logger.ErrorContext(ctx, "remove group: feedbag query failed", "err", err.Error())
+		return "error", err
+	}
+	reply, ok := snac.Body.(wire.SNAC_0x13_0x06_FeedbagReply)
+	if !ok {
+		return "error", fmt.Errorf("unexpected feedbag reply type")
+	}
+
+	storedName, found := storedGroupNameForRequest(reply.Items, req)
+	if !found {
+		return "notFound", nil
+	}
+
+	fl := state.NewFeedbagList(reply.Items, rand.Intn)
+	fl.DeleteGroup(storedName)
+
+	if pending := fl.PendingDeletes(); len(pending) > 0 {
+		delFrame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagDeleteItem}
+		delBody := wire.SNAC_0x13_0x0A_FeedbagDeleteItem{Items: pending}
+		if _, err := fb.DeleteItem(ctx, sess.OSCARSession, delFrame, delBody); err != nil {
+			m.logger.ErrorContext(ctx, "remove group: Feedbag DeleteItem failed", "err", err.Error())
+			return "error", err
+		}
+	} else {
+		return "notFound", nil
+	}
+
+	if pending := fl.PendingUpdates(); len(pending) > 0 {
+		upFrame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem}
+		if _, err := fb.UpsertItem(ctx, sess.OSCARSession, upFrame, pending); err != nil {
+			m.logger.ErrorContext(ctx, "remove group: Feedbag UpsertItem failed", "err", err.Error())
+			return "error", err
+		}
+	}
+
+	return "success", nil
+}
+
 // FormatBuddyListEvent formats a buddy list for an event.
 func (m *BuddyListManager) FormatBuddyListEvent(groups []WebAPIBuddyGroup) map[string]interface{} {
 	// Convert groups to a format that AMF3 can properly encode
