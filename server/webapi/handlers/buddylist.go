@@ -237,6 +237,84 @@ func findFeedbagGroupID(items []wire.FeedbagItem, requested string) (uint16, boo
 	return 0, false
 }
 
+// storedGroupNameForRequest returns the feedbag group row Name for a Web client group label.
+func storedGroupNameForRequest(items []wire.FeedbagItem, requested string) (string, bool) {
+	for _, item := range items {
+		if item.ClassID != wire.FeedbagClassIdGroup {
+			continue
+		}
+		if feedbagGroupMatchesRequested(item.Name, requested) {
+			return item.Name, true
+		}
+	}
+	return "", false
+}
+
+// RemoveBuddy handles GET /buddylist/removeBuddy requests.
+func (h *BuddyListHandler) RemoveBuddy(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	aimsid := r.URL.Query().Get("aimsid")
+	if aimsid == "" {
+		h.sendError(w, http.StatusBadRequest, "missing aimsid parameter")
+		return
+	}
+
+	session, err := h.SessionManager.GetSession(ctx, aimsid)
+	if err != nil {
+		if err == state.ErrNoWebAPISession {
+			h.sendError(w, http.StatusNotFound, "session not found")
+		} else if err == state.ErrWebAPISessionExpired {
+			h.sendError(w, http.StatusGone, "session expired")
+		} else {
+			h.sendError(w, http.StatusInternalServerError, "internal server error")
+		}
+		return
+	}
+
+	h.SessionManager.TouchSession(ctx, aimsid)
+
+	buddyName := strings.TrimSpace(r.URL.Query().Get("buddy"))
+	groupName := strings.TrimSpace(r.URL.Query().Get("group"))
+	if buddyName == "" {
+		h.sendError(w, http.StatusBadRequest, "missing buddy parameter")
+		return
+	}
+	if groupName == "" {
+		groupName = "Buddies"
+	}
+
+	resultCode, rmErr := h.BuddyListManager.RemoveBuddyFromFeedbag(ctx, session, buddyName, groupName, h.FeedbagService)
+	if rmErr != nil {
+		h.Logger.ErrorContext(ctx, "remove buddy failed", "err", rmErr.Error())
+	}
+
+	resp := BaseResponse{}
+	resp.Response.StatusCode = 200
+	resp.Response.StatusText = "OK"
+	resp.Response.Data = map[string]interface{}{
+		"resultCode": resultCode,
+	}
+	SendResponse(w, r, resp, h.Logger)
+
+	if resultCode == "success" && session.EventQueue != nil && h.BuddyListManager != nil {
+		groups, err := h.BuddyListManager.GetBuddyListForUser(ctx, session.ScreenName.IdentScreenName())
+		if err != nil {
+			h.Logger.ErrorContext(ctx, "failed to get buddy list for event", "err", err.Error())
+		} else {
+			blPayload := map[string]interface{}{"groups": groups}
+			session.EventQueue.Push(types.EventTypeBuddyList, blPayload)
+		}
+	}
+
+	h.Logger.InfoContext(ctx, "buddy removed",
+		"aimsid", aimsid,
+		"buddy", buddyName,
+		"group", groupName,
+		"result", resultCode,
+	)
+}
+
 // addBuddyToFeedbag adds a buddy to the user's feedbag.
 func (h *BuddyListHandler) addBuddyToFeedbag(ctx context.Context, sess *state.WebAPISession, buddyName, groupName string) (string, *BuddyPresenceInfo) {
 	// Retrieve current feedbag

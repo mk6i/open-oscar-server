@@ -44,8 +44,8 @@ func TestBuddyListManager_GetBuddyListForUser(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name: "retrieve feedbag error",
-			fbErr: errors.New("db unavailable"),
+			name:    "retrieve feedbag error",
+			fbErr:   errors.New("db unavailable"),
 			wantErr: "failed to retrieve feedbag",
 		},
 		{
