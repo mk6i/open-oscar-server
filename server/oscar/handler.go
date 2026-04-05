@@ -367,6 +367,18 @@ func (rt Handler) FeedbagEndCluster(ctx context.Context, instance *state.Session
 	return nil
 }
 
+func (rt Handler) FeedbagRequestAuthorizeToHost(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+	inBody := wire.SNAC_0x13_0x18_FeedbagRequestAuthorizationToHost{}
+	if err := wire.UnmarshalBE(&inBody, r); err != nil {
+		return err
+	}
+	if err := rt.FeedbagService.RequestAuthorizeToHost(ctx, instance, inFrame, inBody); err != nil {
+		return err
+	}
+	rt.LogRequest(ctx, inFrame, inBody)
+	return nil
+}
+
 func (rt Handler) FeedbagRespondAuthorizeToHost(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inBody := wire.SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
@@ -1074,6 +1086,8 @@ func (rt Handler) Handle(ctx context.Context, server uint16, instance *state.Ses
 			return rt.FeedbagQuery(ctx, instance, inFrame, r, rw)
 		case wire.FeedbagQueryIfModified:
 			return rt.FeedbagQueryIfModified(ctx, instance, inFrame, r, rw)
+		case wire.FeedbagRequestAuthorizeToHost:
+			return rt.FeedbagRequestAuthorizeToHost(ctx, instance, inFrame, r, rw)
 		case wire.FeedbagRespondAuthorizeToHost:
 			return rt.FeedbagRespondAuthorizeToHost(ctx, instance, inFrame, r, rw)
 		case wire.FeedbagRightsQuery:

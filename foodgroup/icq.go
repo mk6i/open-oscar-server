@@ -909,9 +909,18 @@ func (s ICQService) userInfo(ctx context.Context, instance *state.SessionInstanc
 		ZIP:         user.ICQBasicInfo.ZIPCode,
 		CountryCode: user.ICQBasicInfo.CountryCode,
 		GMTOffset:   user.ICQBasicInfo.GMTOffset,
-		AuthFlag:    0, // todo figure these out
-		WebAware:    1, // todo figure these out
-		DCPerms:     0, // todo figure these out
+		AuthFlag:    0,
+		WebAware:    1,
+		DCPerms:     0,
+	}
+
+	if user.ICQPermissions.AuthRequired {
+		userInfo.AuthFlag = 1
+	}
+	if user.ICQPermissions.WebAware {
+		userInfo.WebAware = 1
+	} else {
+		userInfo.WebAware = 0
 	}
 
 	if user.ICQBasicInfo.PublishEmail {

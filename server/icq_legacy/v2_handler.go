@@ -1,0 +1,1363 @@
+package icq_legacy
+
+import (
+	"bytes"
+	"context"
+	"encoding/binary"
+	"fmt"
+	"log/slog"
+	"net"
+	"time"
+
+	"github.com/mk6i/open-oscar-server/state"
+)
+
+// V2Handler handles ICQ V2 protocol packets
+type V2Handler struct {
+	BaseHandler
+	packetBuilder V2PacketBuilder
+	dispatcher    MessageDispatcher
+}
+
+// NewV2Handler creates a new V2 protocol handler
+func NewV2Handler(
+	sessions *LegacySessionManager,
+	service LegacyService,
+	sender PacketSender,
+	packetBuilder V2PacketBuilder,
+	logger *slog.Logger,
+) *V2Handler {
+	return &V2Handler{
+		BaseHandler: BaseHandler{
+			sessions: sessions,
+			service:  service,
+			sender:   sender,
+			logger:   logger,
+		},
+		packetBuilder: packetBuilder,
+	}
+}
+
+// SetSender sets the packet sender (for circular dependency resolution)
+func (h *V2Handler) SetSender(sender PacketSender) {
+	h.sender = sender
+}
+
+// SetDispatcher sets the message dispatcher for cross-protocol message routing
+func (h *V2Handler) SetDispatcher(dispatcher MessageDispatcher) {
+	h.dispatcher = dispatcher
+}
+
+// Handle processes a V2 protocol packet
+func (h *V2Handler) Handle(session *LegacySession, addr *net.UDPAddr, packet []byte) error {
+	// Debug: dump raw packet
+	h.logger.Debug("raw V2 packet",
+		"hex", fmt.Sprintf("%X", packet),
+		"len", len(packet),
+	)
+
+	pkt, err := UnmarshalV2ClientPacket(packet)
+	if err != nil {
+		return fmt.Errorf("parsing V2 packet: %w", err)
+	}
+
+	h.logger.Debug("V2 packet received",
+		"command", fmt.Sprintf("0x%04X", pkt.Command),
+		"uin", pkt.UIN,
+		"seq", pkt.SeqNum,
+		"addr", addr.String(),
+		"data_hex", fmt.Sprintf("%X", pkt.Data),
+	)
+
+	// Update session activity if we have one
+	if session != nil {
+		session.UpdateActivity()
+		session.SeqNumClient = pkt.SeqNum
+	}
+
+	// If no session exists and this is not a login/registration/ack command,
+	// send NOT_CONNECTED to force the client to reconnect.
+	if session == nil {
+		switch pkt.Command {
+		case ICQLegacyCmdAck, ICQLegacyCmdLogin,
+			ICQLegacyCmdFirstLogin, ICQLegacyCmdGetDeps,
+			ICQLegacyCmdRegNewUser, ICQLegacyCmdExtInfoReq:
+			// Allow these through - they don't require a session
+		default:
+			h.logger.Info("V2 packet from unknown session, sending NOT_CONNECTED",
+				"command", fmt.Sprintf("0x%04X", pkt.Command),
+				"uin", pkt.UIN,
+				"addr", addr.String(),
+			)
+			return h.sendNotConnectedToAddr(addr, pkt.SeqNum)
+		}
+	}
+
+	switch pkt.Command {
+	case ICQLegacyCmdAck:
+		return h.handleAck(session, pkt)
+	case ICQLegacyCmdLogin:
+		return h.handleLogin(session, addr, pkt)
+	case ICQLegacyCmdLogoff:
+		return h.handleLogoff(session, pkt)
+	case ICQLegacyCmdKeepAlive, ICQLegacyCmdKeepAlive2:
+		return h.handleKeepAlive(session, pkt)
+	case ICQLegacyCmdContactList:
+		return h.handleContactList(session, pkt)
+	case ICQLegacyCmdThruServer:
+		return h.handleSendMessage(session, pkt)
+	case ICQLegacyCmdAuthorize:
+		return h.handleAuthorize(session, pkt)
+	case ICQLegacyCmdSetStatus:
+		return h.handleSetStatus(session, pkt)
+	case ICQLegacyCmdInfoReq:
+		return h.handleInfoReq(session, pkt)
+	case ICQLegacyCmdExtInfoReq:
+		return h.handleExtInfoReq(session, addr, pkt)
+	case ICQLegacyCmdSearchUIN:
+		return h.handleSearchUIN(session, pkt)
+	case ICQLegacyCmdSearchUser:
+		return h.handleSearchUser(session, pkt)
+	case ICQLegacyCmdSysMsgReq:
+		return h.handleOfflineMsgReq(session, pkt)
+	case ICQLegacyCmdSysMsgDoneAck:
+		return h.handleOfflineMsgAck(session, pkt)
+	case ICQLegacyCmdVisibleList:
+		return h.handleVisibleList(session, pkt)
+	case ICQLegacyCmdInvisibleList:
+		return h.handleInvisibleList(session, pkt)
+	case ICQLegacyCmdUserAdd:
+		return h.handleUserAdd(session, pkt)
+	case ICQLegacyCmdUpdateBasic:
+		return h.handleUpdateBasic(session, pkt)
+	case ICQLegacyCmdUpdateDetail:
+		return h.handleUpdateDetail(session, pkt)
+	case ICQLegacyCmdGetDeps:
+		// 0x03F2 - Pre-auth pseudo-login (historically "get departments list" in iserverd).
+		// Some clients send version=2 in the header but use V3 packet structure.
+		// We re-parse the raw packet as V3 format (12-byte header) inline.
+		return h.handleGetDeps(addr, packet)
+	case ICQLegacyCmdFirstLogin:
+		return h.handleFirstLogin(session, addr, pkt)
+	case ICQLegacyCmdRegNewUser:
+		return h.handleRegNewUser(addr, pkt)
+	default:
+		h.logger.Debug("unhandled V2 command",
+			"command", fmt.Sprintf("0x%04X", pkt.Command),
+			"uin", pkt.UIN,
+		)
+		// Send ACK for unknown commands to keep client happy
+		if session != nil {
+			return h.sendAck(session, pkt.SeqNum)
+		}
+		return nil
+	}
+}
+
+// handleAck processes an acknowledgment packet
+func (h *V2Handler) handleAck(session *LegacySession, pkt *V2ClientPacket) error {
+	// ACKs don't require a response
+	h.logger.Debug("received ACK", "seq", pkt.SeqNum)
+	return nil
+}
+
+// handleLogin processes a login request
+// Refactored to use service layer (AuthenticateUser) and packet builder.
+// Following the OSCAR pattern: unmarshal -> call service -> build response
+func (h *V2Handler) handleLogin(session *LegacySession, addr *net.UDPAddr, pkt *V2ClientPacket) error {
+	ctx := context.Background()
+
+	// 1. Unmarshal packet to typed struct
+	loginData, err := ParseV2LoginPacket(pkt.Data)
+	if err != nil {
+		h.logger.Debug("failed to parse login packet", "err", err)
+		return h.sender.SendPacket(addr, h.packetBuilder.BuildBadPassword(pkt.SeqNum, pkt.Version))
+	}
+
+	loginData.UIN = pkt.UIN
+
+	// Extract LOGIN_SEQ_NUM from payload.
+	// From protocol doc and center-1.10.7 source: after PORT(4) + PASSWORD(2+len),
+	// the login_2 struct has: X1(4) + IP(4) + X2(1) + STATUS(4) + X3(4) + SEQ(2)
+	// = 17 bytes to reach SEQ. Total offset = 4 + 2 + pwdLen + 17
+	var loginSeqNum uint16
+	if len(pkt.Data) >= 6 {
+		pwdLen := binary.LittleEndian.Uint16(pkt.Data[4:6])
+		seqOffset := 4 + 2 + int(pwdLen) + 17
+		if seqOffset+2 <= len(pkt.Data) {
+			loginSeqNum = binary.LittleEndian.Uint16(pkt.Data[seqOffset : seqOffset+2])
+		}
+	}
+
+	h.logger.Info("login attempt",
+		"uin", pkt.UIN,
+		"ip", loginData.IP,
+		"port", loginData.Port,
+		"status", loginData.Status,
+	)
+
+	// 2. Call service layer with typed request
+	authReq := AuthRequest{
+		UIN:      pkt.UIN,
+		Password: loginData.Password,
+		Status:   loginData.Status,
+		TCPPort:  uint32(loginData.Port),
+		Version:  pkt.Version,
+	}
+
+	authResult, err := h.service.AuthenticateUser(ctx, authReq)
+	if err != nil {
+		h.logger.Error("authentication error", "err", err, "uin", pkt.UIN)
+		return h.sender.SendPacket(addr, h.packetBuilder.BuildBadPassword(pkt.SeqNum, pkt.Version))
+	}
+
+	if !authResult.Success {
+		h.logger.Info("login failed - invalid credentials", "uin", pkt.UIN, "error_code", authResult.ErrorCode)
+		return h.sender.SendPacket(addr, h.packetBuilder.BuildBadPassword(pkt.SeqNum, pkt.Version))
+	}
+
+	// 3. Create session
+	newSession, err := h.sessions.CreateSession(pkt.UIN, addr, pkt.Version)
+	if err != nil {
+		h.logger.Error("failed to create session", "err", err, "uin", pkt.UIN)
+		return h.sender.SendPacket(addr, h.packetBuilder.BuildBadPassword(pkt.SeqNum, pkt.Version))
+	}
+
+	newSession.SetStatus(loginData.Status)
+	newSession.Password = loginData.Password
+
+	// 4. Send ACK first, then login reply
+	ackPkt := h.packetBuilder.BuildAck(pkt.SeqNum, pkt.Version)
+	if err := h.sender.SendToSession(newSession, ackPkt); err != nil {
+		return err
+	}
+
+	// 5. Build and send login reply — echo back LOGIN_SEQ_NUM from payload
+	loginReplyPkt := h.packetBuilder.BuildLoginReply(newSession, loginSeqNum)
+	if err := h.sender.SendToSession(newSession, loginReplyPkt); err != nil {
+		return err
+	}
+
+	h.logger.Info("login successful",
+		"uin", pkt.UIN,
+		"session_id", newSession.SessionID,
+	)
+
+	// 6. Notify contacts that user is online (via service layer)
+	if err := h.service.NotifyStatusChange(ctx, pkt.UIN, loginData.Status); err != nil {
+		h.logger.Debug("failed to notify status change", "err", err)
+	}
+
+	return nil
+}
+
+// handleLogoff processes a logout request
+func (h *V2Handler) handleLogoff(session *LegacySession, pkt *V2ClientPacket) error {
+	if session == nil {
+		return nil
+	}
+
+	h.logger.Info("logout", "uin", session.UIN)
+
+	// Notify contacts that user is offline
+	h.sessions.BroadcastToContacts(session, func(contact *LegacySession) {
+		h.sendUserOffline(contact, session.UIN)
+	})
+
+	// Notify OSCAR clients that this user went offline
+	ctx := context.Background()
+	if err := h.service.NotifyUserOffline(ctx, session.UIN); err != nil {
+		h.logger.Debug("V2 failed to notify OSCAR clients of offline", "uin", session.UIN, "err", err)
+	}
+
+	// Remove session
+	h.sessions.RemoveSession(session.UIN)
+
+	return nil
+}
+
+// sendNotConnectedToAddr sends a NOT_CONNECTED (0x00F0) response to a V2 client
+// address that has no session. This forces the client to reconnect.
+// Uses V2 server packet format: VERSION(2) + COMMAND(2) + SEQ(2)
+func (h *V2Handler) sendNotConnectedToAddr(addr *net.UDPAddr, seqNum uint16) error {
+	pkt := MarshalV2ServerPacket(&V2ServerPacket{
+		Version: ICQLegacyVersionV2,
+		Command: ICQLegacySrvNotConnected,
+		SeqNum:  seqNum,
+	})
+	return h.sender.SendPacket(addr, pkt)
+}
+
+// handleKeepAlive processes a keep-alive ping
+func (h *V2Handler) handleKeepAlive(session *LegacySession, pkt *V2ClientPacket) error {
+	if session == nil {
+		return nil // Already handled by the session-nil guard above
+	}
+
+	// Session activity already updated, just send ACK
+	return h.sendAck(session, pkt.SeqNum)
+}
+
+// handleContactList processes a contact list update
+// Refactored to use service layer (ProcessContactList) and packet builder.
+// Following the OSCAR pattern: unmarshal -> call service -> build response
+//
+// IMPORTANT: The client uses SendExpectEvent() which retransmits until it
+// receives SRV_ACK with the matching sequence number. We must send ACK first,
+// then the data responses. Without the ACK, the client retransmits in a loop.
+func (h *V2Handler) handleContactList(session *LegacySession, pkt *V2ClientPacket) error {
+	if session == nil {
+		return nil
+	}
+
+	ctx := context.Background()
+
+	// Send ACK first to stop client retransmission
+	if err := h.sendAck(session, pkt.SeqNum); err != nil {
+		return err
+	}
+
+	// 1. Unmarshal packet to typed struct
+	contactList, err := ParseV2ContactList(pkt.Data)
+	if err != nil {
+		h.logger.Debug("failed to parse contact list", "err", err)
+		return nil
+	}
+
+	h.logger.Debug("contact list received",
+		"uin", session.UIN,
+		"contacts", len(contactList.UINs),
+	)
+
+	// Update session contact list (handler responsibility - session management)
+	session.SetContactList(contactList.UINs)
+
+	// 2. Call service layer with typed request
+	contactReq := ContactListRequest{
+		UIN:      session.UIN,
+		Contacts: contactList.UINs,
+	}
+
+	contactResult, err := h.service.ProcessContactList(ctx, contactReq)
+	if err != nil {
+		h.logger.Debug("failed to process contact list", "err", err)
+		// Still send contact list done even on error
+		return h.sender.SendToSession(session, h.packetBuilder.BuildContactListDone(session.NextServerSeqNum()))
+	}
+
+	// 3. Build and send responses using packet builder
+	// Send online status for each contact that is online
+	for _, contact := range contactResult.OnlineContacts {
+		if contact.Online {
+			onlinePkt := h.packetBuilder.BuildUserOnline(
+				session.NextServerSeqNum(),
+				contact.UIN,
+				contact.Status,
+				nil, // IP not available from service layer
+				0,   // Port not available from service layer
+			)
+			h.sender.SendToSession(session, onlinePkt)
+		}
+	}
+
+	// Notify OSCAR clients that this legacy user is online
+	if err := h.service.NotifyUserOnline(ctx, session.UIN, session.GetStatus()); err != nil {
+		h.logger.Debug("V2 failed to notify OSCAR clients of online", "uin", session.UIN, "err", err)
+	}
+
+	// 4. Send contact list done using packet builder
+	return h.sender.SendToSession(session, h.packetBuilder.BuildContactListDone(session.NextServerSeqNum()))
+}
+
+// handleSendMessage processes a message send request
+// Refactored to use service layer (ProcessMessage) and packet builder.
+// Following the OSCAR pattern: unmarshal -> call service -> build response
+//
+// IMPORTANT: The client uses SendExpectEvent() which retransmits until it
+// receives SRV_ACK with the matching sequence number. We must send ACK
+// to stop the retransmission loop.
+func (h *V2Handler) handleSendMessage(session *LegacySession, pkt *V2ClientPacket) error {
+	if session == nil {
+		return nil
+	}
+
+	ctx := context.Background()
+
+	// Send ACK first to stop client retransmission
+	if err := h.sendAck(session, pkt.SeqNum); err != nil {
+		return err
+	}
+
+	// 1. Unmarshal packet to typed struct
+	msg, err := ParseV2Message(pkt.Data)
+	if err != nil {
+		h.logger.Debug("failed to parse message", "err", err)
+		return nil
+	}
+
+	msg.FromUIN = session.UIN
+
+	h.logger.Debug("message received",
+		"from", msg.FromUIN,
+		"to", msg.ToUIN,
+		"type", msg.MsgType,
+	)
+
+	// 2. Call service layer with typed request
+	msgReq := MessageRequest{
+		FromUIN: msg.FromUIN,
+		ToUIN:   msg.ToUIN,
+		MsgType: msg.MsgType,
+		Message: msg.Message,
+	}
+
+	msgResult, err := h.service.ProcessMessage(ctx, msgReq)
+	if err != nil {
+		h.logger.Debug("failed to process message", "err", err)
+	} else {
+		h.logger.Debug("message processed",
+			"from", msg.FromUIN,
+			"to", msg.ToUIN,
+			"delivered", msgResult.Delivered,
+			"stored_offline", msgResult.StoredOffline,
+			"target_online", msgResult.TargetOnline,
+		)
+
+		// Deliver message to target if online via legacy protocol
+		if msgResult.TargetOnline {
+			targetSession := h.sessions.GetSession(msg.ToUIN)
+			if targetSession != nil {
+				if h.dispatcher != nil {
+					h.dispatcher.SendOnlineMessage(targetSession, msg.FromUIN, msg.MsgType, msg.Message)
+				} else {
+					h.sendMessage(targetSession, msg.FromUIN, msg.MsgType, msg.Message)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// handleSetStatus processes a status change request
+// Refactored to use service layer (ProcessStatusChange) and packet builder.
+// Following the OSCAR pattern: unmarshal -> call service -> build response
+//
+// IMPORTANT: The client uses SendExpectEvent() which retransmits until it
+// receives SRV_ACK with the matching sequence number. We must send ACK first.
+func (h *V2Handler) handleSetStatus(session *LegacySession, pkt *V2ClientPacket) error {
+	if session == nil {
+		return nil
+	}
+
+	ctx := context.Background()
+
+	// Send ACK first to stop client retransmission
+	if err := h.sendAck(session, pkt.SeqNum); err != nil {
+		return err
+	}
+
+	// 1. Unmarshal packet to typed struct
+	if len(pkt.Data) < 4 {
+		return nil
+	}
+
+	newStatus := binary.LittleEndian.Uint32(pkt.Data[0:4])
+	oldStatus := session.GetStatus()
+
+	h.logger.Debug("status change",
+		"uin", session.UIN,
+		"old_status", fmt.Sprintf("0x%08X", oldStatus),
+		"new_status", fmt.Sprintf("0x%08X", newStatus),
+	)
+
+	// Update session status (handler responsibility - session management)
+	session.SetStatus(newStatus)
+
+	// 2. Call service layer with typed request
+	statusReq := StatusChangeRequest{
+		UIN:       session.UIN,
+		NewStatus: newStatus,
+		OldStatus: oldStatus,
+	}
+
+	statusResult, err := h.service.ProcessStatusChange(ctx, statusReq)
+	if err != nil {
+		h.logger.Debug("failed to process status change", "err", err)
+	} else {
+		h.logger.Debug("status change processed",
+			"uin", session.UIN,
+			"notify_count", len(statusResult.NotifyTargets),
+		)
+
+		// 3. Send status notifications to contacts using packet builder
+		// The service layer returns the list of users to notify
+		for _, target := range statusResult.NotifyTargets {
+			targetSession := h.sessions.GetSession(target.UIN)
+			if targetSession != nil {
+				statusPkt := h.packetBuilder.BuildStatusUpdate(
+					targetSession.NextServerSeqNum(),
+					session.UIN,
+					newStatus,
+				)
+				h.sender.SendToSession(targetSession, statusPkt)
+			}
+		}
+	}
+
+	return nil
+}
+
+// handleInfoReq processes a user info request
+// Client sends: SEQ(2) + UIN(4) as data (from center-1.10.7 icq_SendInfoReq)
+// Server responds with SRV_INFO_REPLY (0x0118)
+//
+// IMPORTANT: This is an "extended event" in the client. The client's retry
+// thread is cancelled by SRV_ACK, which moves the event to the extended event
+// list. Then SRV_INFO_REPLY calls DoneExtendedEvent() to complete it.
+// Without the ACK, the client retransmits AND DoneExtendedEvent can't find
+// the event (it was never moved from running to extended).
+func (h *V2Handler) handleInfoReq(session *LegacySession, pkt *V2ClientPacket) error {
+	if session == nil {
+		return nil
+	}
+
+	ctx := context.Background()
+
+	// Send ACK first - required for extended events
+	if err := h.sendAck(session, pkt.SeqNum); err != nil {
+		return err
+	}
+
+	// Client sends SEQ(2) + UIN(4) = 6 bytes minimum
+	if len(pkt.Data) < 6 {
+		return nil
+	}
+
+	// Skip SEQ prefix (2 bytes), read UIN at offset 2
+	infoSeq := binary.LittleEndian.Uint16(pkt.Data[0:2])
+	targetUIN := binary.LittleEndian.Uint32(pkt.Data[2:6])
+
+	h.logger.Debug("info request",
+		"from", session.UIN,
+		"target", targetUIN,
+		"info_seq", infoSeq,
+	)
+
+	// Get user info
+	info, err := h.service.GetUserInfo(ctx, targetUIN)
+	if err != nil {
+		h.logger.Debug("failed to get user info", "err", err)
+		return nil
+	}
+
+	// Build and send SRV_INFO_REPLY (0x0118)
+	// The checkSequence in the data payload must echo the client's info sub-sequence
+	// so DoneExtendedEvent() can match the response to the pending request.
+	wireInfo := &LegacyUserInfo{
+		UIN:       info.UIN,
+		Nickname:  truncateField(info.Nickname, 20, h.logger, "nickname", info.UIN),
+		FirstName: truncateField(info.FirstName, 64, h.logger, "first_name", info.UIN),
+		LastName:  truncateField(info.LastName, 64, h.logger, "last_name", info.UIN),
+		Email:     truncateField(info.Email, 64, h.logger, "email", info.UIN),
+		Auth:      info.AuthRequired,
+	}
+	replyPkt := BuildV2InfoReply(session.NextServerSeqNum(), infoSeq, wireInfo)
+	replyPkt.Version = session.Version
+	return h.sender.SendToSession(session, MarshalV2ServerPacket(replyPkt))
+}
+
+// handleExtInfoReq processes an extended user info request
+// Client sends: SEQ(2) + UIN(4) as data (from center-1.10.7 icq_SendExtInfoReq)
+// Server responds with SRV_EXT_INFO_REPLY (0x0122)
+//
+// IMPORTANT: This is an "extended event" in the client - ACK must be sent
+// first to move the event from running to extended list, then the data reply
+// completes it via DoneExtendedEvent().
+func (h *V2Handler) handleExtInfoReq(session *LegacySession, addr *net.UDPAddr, pkt *V2ClientPacket) error {
+	ctx := context.Background()
+
+	// Client sends SEQ(2) + UIN(4) = 6 bytes minimum
+	if len(pkt.Data) < 6 {
+		return nil
+	}
+
+	// Skip SEQ prefix (2 bytes), read UIN at offset 2
+	seqPrefix := binary.LittleEndian.Uint16(pkt.Data[0:2])
+	targetUIN := binary.LittleEndian.Uint32(pkt.Data[2:6])
+
+	h.logger.Debug("ext info request",
+		"from", pkt.UIN,
+		"target", targetUIN,
+		"has_session", session != nil,
+	)
+
+	// Send ACK
+	if session != nil {
+		if err := h.sendAck(session, pkt.SeqNum); err != nil {
+			return err
+		}
+	} else {
+		ackPkt := h.packetBuilder.BuildAck(pkt.SeqNum, pkt.Version)
+		if err := h.sender.SendPacket(addr, ackPkt); err != nil {
+			return err
+		}
+	}
+
+	// Get full user info for extended fields
+	user, err := h.service.GetFullUserInfo(ctx, targetUIN)
+	if err != nil {
+		h.logger.Debug("failed to get full user info", "err", err)
+		return nil
+	}
+
+	// Build and send SRV_EXT_INFO_REPLY (0x0122)
+	wireInfo := &LegacyUserInfo{
+		UIN:      targetUIN,
+		City:     truncateField(user.ICQBasicInfo.City, 64, h.logger, "city", targetUIN),
+		State:    truncateField(user.ICQBasicInfo.State, 64, h.logger, "state", targetUIN),
+		Country:  user.ICQBasicInfo.CountryCode,
+		Phone:    truncateField(user.ICQBasicInfo.CellPhone, 30, h.logger, "phone", targetUIN),
+		Homepage: truncateField(user.ICQMoreInfo.HomePageAddr, 127, h.logger, "homepage", targetUIN),
+		About:    truncateField(user.ICQNotes.Notes, 450, h.logger, "about", targetUIN),
+		Age:      user.Age(time.Now),
+		Gender:   uint8(user.ICQMoreInfo.Gender),
+	}
+
+	if session != nil {
+		replyPkt := BuildV2ExtInfoReply(session.NextServerSeqNum(), seqPrefix, wireInfo)
+		replyPkt.Version = session.Version
+		return h.sender.SendToSession(session, MarshalV2ServerPacket(replyPkt))
+	}
+	// No session (first-login flow) — use seqPrefix as connection ID and send to addr
+	replyPkt := BuildV2ExtInfoReply(seqPrefix, seqPrefix, wireInfo)
+	return h.sender.SendPacket(addr, MarshalV2ServerPacket(replyPkt))
+}
+
+// handleSearchUIN processes a search by UIN request
+// Client sends: SEQ(2) + UIN(4) as data (from center-1.10.7 icq_SendSearchUINReq)
+//
+// IMPORTANT: This is an "extended event" in the client - ACK must be sent
+// first to move the event from running to extended list.
+func (h *V2Handler) handleSearchUIN(session *LegacySession, pkt *V2ClientPacket) error {
+	if session == nil {
+		return nil
+	}
+
+	ctx := context.Background()
+
+	// Send ACK first - required for extended events
+	if err := h.sendAck(session, pkt.SeqNum); err != nil {
+		return err
+	}
+
+	// Client sends SEQ(2) + UIN(4) = 6 bytes minimum
+	if len(pkt.Data) < 6 {
+		return h.sendSearchResult(session, &LegacyUserSearchResult{}, true)
+	}
+
+	// Skip SEQ prefix (2 bytes), read UIN at offset 2
+	targetUIN := binary.LittleEndian.Uint32(pkt.Data[2:6])
+
+	h.logger.Debug("search by UIN",
+		"from", session.UIN,
+		"target", targetUIN,
+	)
+
+	// Search for user
+	result, err := h.service.SearchByUIN(ctx, targetUIN)
+	if err != nil {
+		h.logger.Debug("search failed", "err", err)
+		// Send empty search result
+		return h.sendSearchResult(session, &LegacyUserSearchResult{}, true)
+	}
+
+	return h.sendSearchResult(session, result, true)
+}
+
+// handleSearchUser processes a search by name/email request
+// Client sends: SEQ(2) + NICK_LEN(2) + NICK + FIRST_LEN(2) + FIRST + LAST_LEN(2) + LAST + EMAIL_LEN(2) + EMAIL
+// (from center-1.10.7 icq_SendSearchReq)
+//
+// IMPORTANT: This is an "extended event" in the client - ACK must be sent
+// first to move the event from running to extended list.
+func (h *V2Handler) handleSearchUser(session *LegacySession, pkt *V2ClientPacket) error {
+	if session == nil {
+		return nil
+	}
+
+	ctx := context.Background()
+
+	// Send ACK first - required for extended events
+	if err := h.sendAck(session, pkt.SeqNum); err != nil {
+		return err
+	}
+
+	h.logger.Debug("search by name/email", "from", session.UIN)
+
+	// Need at least SEQ(2) + one length-prefixed string
+	if len(pkt.Data) < 4 {
+		return h.sendSearchResult(session, &LegacyUserSearchResult{}, true)
+	}
+
+	// Skip SEQ prefix (2 bytes)
+	r := bytes.NewReader(pkt.Data[2:])
+
+	nick, _ := ParseLegacyString(r, true)
+	first, _ := ParseLegacyString(r, true)
+	last, _ := ParseLegacyString(r, true)
+	email, _ := ParseLegacyString(r, true)
+
+	h.logger.Debug("search params",
+		"nick", nick,
+		"first", first,
+		"last", last,
+		"email", email,
+	)
+
+	results, err := h.service.SearchByName(ctx, nick, first, last, email)
+	if err != nil {
+		h.logger.Debug("search failed", "err", err)
+		return h.sendSearchResult(session, &LegacyUserSearchResult{}, true)
+	}
+
+	// Send each result
+	for i, result := range results {
+		isLast := i == len(results)-1
+		r := result // copy for pointer
+		if err := h.sendSearchResult(session, &r, isLast); err != nil {
+			return err
+		}
+	}
+
+	// If no results, send empty done
+	if len(results) == 0 {
+		return h.sendSearchResult(session, &LegacyUserSearchResult{}, true)
+	}
+
+	return nil
+}
+
+// handleOfflineMsgReq processes an offline message request
+//
+// IMPORTANT: The client uses SendExpectEvent() which retransmits until it
+// receives SRV_ACK with the matching sequence number. We must send ACK first.
+// Then offline messages must use SRV_SYS_MSG_OFFLINE (0x00DC) with timestamp
+// fields, NOT SRV_SYS_MSG_ONLINE (0x0104). The client parses the timestamp
+// from 0x00DC packets to show when the message was originally sent.
+func (h *V2Handler) handleOfflineMsgReq(session *LegacySession, pkt *V2ClientPacket) error {
+	if session == nil {
+		return nil
+	}
+
+	ctx := context.Background()
+
+	// Send ACK first to stop client retransmission
+	if err := h.sendAck(session, pkt.SeqNum); err != nil {
+		return err
+	}
+
+	h.logger.Debug("offline message request", "uin", session.UIN)
+
+	// Get offline messages
+	messages, err := h.service.GetOfflineMessages(ctx, session.UIN)
+	if err != nil {
+		h.logger.Debug("failed to get offline messages", "err", err)
+	}
+
+	// Send each offline message using SRV_SYS_MSG_OFFLINE (0x00DC) with timestamp
+	for _, msg := range messages {
+		ts := msg.Timestamp
+		if ts.IsZero() {
+			ts = time.Now()
+		}
+		offlinePkt := BuildV2OfflineMessage(session.NextServerSeqNum(), msg.FromUIN, msg.MsgType, msg.Message, ts)
+		offlinePkt.Version = session.Version
+		if err := h.sender.SendToSession(session, MarshalV2ServerPacket(offlinePkt)); err != nil {
+			h.logger.Debug("failed to send offline message", "err", err)
+		}
+	}
+
+	// Send end of offline messages (SRV_SYS_MSG_DONE 0x00E6)
+	endPkt := &V2ServerPacket{
+		Version: session.Version,
+		Command: ICQLegacySrvSysMsgDone,
+		SeqNum:  session.NextServerSeqNum(),
+	}
+	return h.sender.SendToSession(session, MarshalV2ServerPacket(endPkt))
+}
+
+// handleOfflineMsgAck processes an offline message acknowledgment
+//
+// IMPORTANT: The client uses SendExpectEvent() which retransmits until it
+// receives SRV_ACK with the matching sequence number. We must send ACK first,
+// then do the work (delete offline messages).
+func (h *V2Handler) handleOfflineMsgAck(session *LegacySession, pkt *V2ClientPacket) error {
+	if session == nil {
+		return nil
+	}
+
+	ctx := context.Background()
+
+	// Send ACK first to stop client retransmission
+	if err := h.sendAck(session, pkt.SeqNum); err != nil {
+		return err
+	}
+
+	h.logger.Debug("offline message ack", "uin", session.UIN)
+
+	// Delete offline messages
+	if err := h.service.AckOfflineMessages(ctx, session.UIN); err != nil {
+		h.logger.Debug("failed to ack offline messages", "err", err)
+	}
+
+	return nil
+}
+
+// handleVisibleList processes a visible list update
+func (h *V2Handler) handleVisibleList(session *LegacySession, pkt *V2ClientPacket) error {
+	if session == nil {
+		return nil
+	}
+
+	contactList, err := ParseV2ContactList(pkt.Data)
+	if err != nil {
+		h.logger.Debug("failed to parse visible list", "err", err)
+		return h.sendAck(session, pkt.SeqNum)
+	}
+
+	h.logger.Debug("visible list received",
+		"uin", session.UIN,
+		"count", len(contactList.UINs),
+	)
+
+	session.SetVisibleList(contactList.UINs)
+	return h.sendAck(session, pkt.SeqNum)
+}
+
+// handleInvisibleList processes an invisible list update
+func (h *V2Handler) handleInvisibleList(session *LegacySession, pkt *V2ClientPacket) error {
+	if session == nil {
+		return nil
+	}
+
+	contactList, err := ParseV2ContactList(pkt.Data)
+	if err != nil {
+		h.logger.Debug("failed to parse invisible list", "err", err)
+		return h.sendAck(session, pkt.SeqNum)
+	}
+
+	h.logger.Debug("invisible list received",
+		"uin", session.UIN,
+		"count", len(contactList.UINs),
+	)
+
+	session.SetInvisibleList(contactList.UINs)
+	return h.sendAck(session, pkt.SeqNum)
+}
+
+// handleUserAdd processes a user add request
+//
+// IMPORTANT: The client uses SendExpectEvent() which retransmits until it
+// receives SRV_ACK with the matching sequence number. We must send ACK first,
+// then do the work (add to contact list, check online status, send notification).
+func (h *V2Handler) handleUserAdd(session *LegacySession, pkt *V2ClientPacket) error {
+	if session == nil {
+		return nil
+	}
+
+	// Send ACK first to stop client retransmission
+	if err := h.sendAck(session, pkt.SeqNum); err != nil {
+		return err
+	}
+
+	if len(pkt.Data) < 4 {
+		return nil
+	}
+
+	targetUIN := binary.LittleEndian.Uint32(pkt.Data[0:4])
+
+	h.logger.Debug("user add",
+		"from", session.UIN,
+		"target", targetUIN,
+	)
+
+	// Add to contact list
+	contacts := session.GetContactList()
+	contacts = append(contacts, targetUIN)
+	session.SetContactList(contacts)
+
+	// Check if target is online and send notification
+	targetSession := h.sessions.GetSession(targetUIN)
+	if targetSession != nil {
+		h.sendUserOnline(session, targetUIN, targetSession.GetStatus(), nil, 0)
+
+		// Also send the adder's online status to the target.
+		// The target won't see the adder as online unless we tell them.
+		if h.dispatcher != nil {
+			h.dispatcher.SendUserOnline(targetSession, session.UIN, session.GetStatus())
+		} else {
+			h.sendUserOnline(targetSession, session.UIN, session.GetStatus(), nil, 0)
+		}
+	}
+
+	return nil
+}
+
+// handleFirstLogin processes the initial login setup packet (0x04EC)
+// This is sent before the actual login to set up the connection.
+// From iserverd v3_process_firstlog(): just send ACK, nothing else.
+// The client then proceeds with getdeps (0x03F2).
+func (h *V2Handler) handleFirstLogin(session *LegacySession, addr *net.UDPAddr, pkt *V2ClientPacket) error {
+	h.logger.Debug("first login packet received",
+		"uin", pkt.UIN,
+		"addr", addr.String(),
+	)
+
+	// Send V2-format ACK only. Do NOT send cmd 370 (server info reply).
+	// The client's connection list is preserved, allowing the subsequent
+	// cmd 1010 ACK to trigger message 0x455 via sub_430097, which advances
+	// the wizard to the next step.
+	ackPkt := &V2ServerPacket{
+		Version: pkt.Version,
+		Command: ICQLegacySrvAck,
+		SeqNum:  pkt.SeqNum,
+	}
+	return h.sender.SendPacket(addr, MarshalV2ServerPacket(ackPkt))
+}
+
+// sendRegisterInfo sends registration info (admin notes) to the client.
+// V2 server packet format: VERSION(2) + COMMAND(2) + SEQ(2) + DATA
+// Following V4's sendRegisterInfo but using V2 packet format.
+func (h *V2Handler) sendRegisterInfo(addr *net.UDPAddr, seqNum uint16, uin uint32) error {
+	adminNotes := "Welcome to Open OSCAR Server!\x00"
+
+	buf := make([]byte, 2+len(adminNotes)+1+4)
+	offset := 0
+
+	// NOTES_LEN(2) + NOTES
+	binary.LittleEndian.PutUint16(buf[offset:], uint16(len(adminNotes)))
+	offset += 2
+	copy(buf[offset:], adminNotes)
+	offset += len(adminNotes)
+
+	// Registration enabled flag
+	buf[offset] = 0x01
+	offset++
+
+	// Trailer (from iserverd)
+	binary.LittleEndian.PutUint16(buf[offset:], 0x0002)
+	offset += 2
+	binary.LittleEndian.PutUint16(buf[offset:], 0x002A)
+	offset += 2
+
+	pkt := &V2ServerPacket{
+		Version: ICQLegacyVersionV2,
+		Command: ICQLegacySrvRegisterInfo,
+		SeqNum:  seqNum,
+		Data:    buf[:offset],
+	}
+	return h.sender.SendPacket(addr, MarshalV2ServerPacket(pkt))
+}
+
+// handleGetDeps processes the pre-auth pseudo-login packet (0x03F2).
+// Historically called "get departments list" in iserverd (from its Users_Deps database table).
+// The server validates credentials, sends V3-format ACK, then sends the pre-auth response (0x0032).
+// The client then proceeds with the actual login (0x03E8).
+//
+// IMPORTANT: Even though the client sends version=2 in the header, this packet
+// uses V3 packet structure (12-byte header with seq1, seq2, UIN). The response
+// packets (ACK and depslist) MUST also be V3 format, matching iserverd behavior.
+// iserverd's v3_send_ack and v3_send_depslist always use V3_PROTO (0x0003) in
+// the response regardless of the client's declared version.
+//
+// Raw packet layout (V3 header):
+//
+//	VERSION(2) + COMMAND(2) + SEQ1(2) + SEQ2(2) + UIN(4) + DATA...
+//
+// Data layout:
+//
+//	PWD_LEN(2) + PASSWORD(pwdLen) + STATUS(4)
+func (h *V2Handler) handleGetDeps(addr *net.UDPAddr, packet []byte) error {
+	ctx := context.Background()
+
+	if len(packet) < 14 { // 12-byte V3 header + at least 2 bytes for pwd_len
+		h.logger.Debug("getdeps packet too short", "len", len(packet))
+		return nil
+	}
+
+	// Parse as V3 header (12 bytes)
+	seq1 := binary.LittleEndian.Uint16(packet[4:6])
+	seq2 := binary.LittleEndian.Uint16(packet[6:8])
+	uin := binary.LittleEndian.Uint32(packet[8:12])
+	data := packet[12:]
+
+	h.logger.Debug("getdeps packet (0x03F2)",
+		"addr", addr.String(),
+		"seq1", seq1,
+		"seq2", seq2,
+		"uin", uin,
+		"data_len", len(data),
+		"data_hex", fmt.Sprintf("%X", data),
+	)
+
+	// Parse password from data
+	offset := 0
+	if len(data) < 2 {
+		return nil
+	}
+	pwdLen := binary.LittleEndian.Uint16(data[offset : offset+2])
+	offset += 2
+
+	if pwdLen == 0 || pwdLen > 20 || offset+int(pwdLen) > len(data) {
+		h.logger.Debug("invalid password in getdeps", "pwd_len", pwdLen)
+		return h.sendBadPassword(addr, seq1, 2)
+	}
+
+	password := string(data[offset : offset+int(pwdLen)])
+	if len(password) > 0 && password[len(password)-1] == 0 {
+		password = password[:len(password)-1]
+	}
+
+	h.logger.Info("getdeps (pseudo-login)",
+		"uin", uin,
+		"password_len", len(password),
+	)
+
+	// Validate credentials using service layer
+	authReq := AuthRequest{
+		UIN:      uin,
+		Password: password,
+		Version:  ICQLegacyVersionV2,
+	}
+
+	authResult, err := h.service.AuthenticateUser(ctx, authReq)
+	if err != nil || !authResult.Success {
+		h.logger.Info("getdeps failed - invalid credentials", "uin", uin)
+		return h.sendBadPassword(addr, seq1, 2)
+	}
+
+	h.logger.Debug("credentials validated successfully", "uin", uin)
+
+	// Send V2-format ACK for cmd 1010.
+	ackPkt := h.packetBuilder.BuildAck(seq1, ICQLegacyVersionV2)
+	if err := h.sender.SendPacket(addr, ackPkt); err != nil {
+		return err
+	}
+
+	// Send V2-format DeptsList (cmd 0x0032 = 50).
+	// From disassembly: the client's cmd 50 handler reads:
+	//   connection_id (word) + UIN (dword)
+	// The connection_id must match the one used by cmd 1010 (= seq2).
+	// The UIN must match g_saved_uin + 0x9C.
+	depsData := make([]byte, 6)
+	binary.LittleEndian.PutUint16(depsData[0:2], seq2) // connection ID
+	binary.LittleEndian.PutUint32(depsData[2:6], uin)  // UIN
+	depsPkt := &V2ServerPacket{
+		Version: ICQLegacyVersionV2,
+		Command: ICQLegacySrvUserDepsList, // 0x0032
+		SeqNum:  seq1,
+		Data:    depsData,
+	}
+	return h.sender.SendPacket(addr, MarshalV2ServerPacket(depsPkt))
+}
+
+// handleAuthorize processes an authorization grant (CMD_AUTHORIZE 0x0456)
+// Client sends: UIN(4) + X1(5) as data (from licq CPU_Authorize)
+// The server ACKs and the authorized user is notified.
+//
+// IMPORTANT: In V2, 0x0456 is AUTHORIZE, not "send message through server".
+// The V3/V4/V5 handlers route this to handleMessage which is also acceptable
+// since the authorize packet structure is similar to a message, but for V2
+// we handle it explicitly.
+func (h *V2Handler) handleAuthorize(session *LegacySession, pkt *V2ClientPacket) error {
+	if session == nil {
+		return nil
+	}
+
+	// Send ACK first to stop client retransmission
+	if err := h.sendAck(session, pkt.SeqNum); err != nil {
+		return err
+	}
+
+	if len(pkt.Data) < 4 {
+		return nil
+	}
+
+	targetUIN := binary.LittleEndian.Uint32(pkt.Data[0:4])
+
+	h.logger.Debug("authorize user",
+		"from", session.UIN,
+		"target", targetUIN,
+	)
+
+	// TODO: Implement authorization grant via service layer
+	// For now, just ACK - the authorization system is not yet implemented
+
+	return nil
+}
+
+// handleUpdateBasic processes a basic profile update (CMD_UPDATExBASIC 0x04A6)
+// Client sends: SEQ(2) + ALIAS_LEN(2) + ALIAS + FIRST_LEN(2) + FIRST +
+//
+//	LAST_LEN(2) + LAST + EMAIL_LEN(2) + EMAIL + AUTH(1)
+//
+// Server responds with SRV_UPDATEDxBASIC (0x00B4) containing SEQ(2) on success,
+// or SRV_UPDATExBASICxFAIL (0x00BE) on failure.
+//
+// IMPORTANT: This is an "extended event" - ACK moves it from running to
+// extended list, then the response completes it via DoneExtendedEvent().
+func (h *V2Handler) handleUpdateBasic(session *LegacySession, pkt *V2ClientPacket) error {
+	if session == nil {
+		return nil
+	}
+
+	// Send ACK first - required for extended events
+	if err := h.sendAck(session, pkt.SeqNum); err != nil {
+		return err
+	}
+
+	// Need at least SEQ(2) + one length-prefixed string
+	if len(pkt.Data) < 4 {
+		return h.sendUpdateBasicFail(session, 0)
+	}
+
+	// Read the update sequence (2 bytes)
+	updateSeq := binary.LittleEndian.Uint16(pkt.Data[0:2])
+	r := bytes.NewReader(pkt.Data[2:])
+
+	alias, _ := ParseLegacyString(r, true)
+	firstName, _ := ParseLegacyString(r, true)
+	lastName, _ := ParseLegacyString(r, true)
+	email, _ := ParseLegacyString(r, true)
+
+	var auth uint8
+	binary.Read(r, binary.LittleEndian, &auth)
+
+	h.logger.Debug("update basic info",
+		"uin", session.UIN,
+		"alias", alias,
+		"first", firstName,
+		"last", lastName,
+		"email", email,
+		"auth", auth,
+	)
+
+	// Persist basic info via service layer
+	ctx := context.Background()
+	info := state.ICQBasicInfo{
+		Nickname:     alias,
+		FirstName:    firstName,
+		LastName:     lastName,
+		EmailAddress: email,
+	}
+	if err := h.service.UpdateBasicInfo(ctx, session.UIN, info); err != nil {
+		h.logger.Error("V2 update basic info failed", "uin", session.UIN, "err", err)
+	}
+
+	// Update auth mode
+	if err := h.service.SetAuthMode(ctx, session.UIN, auth == 1); err != nil {
+		h.logger.Error("V2 set auth mode failed", "uin", session.UIN, "err", err)
+	}
+
+	// Send SRV_UPDATEDxBASIC (0x00B4) with the update sequence
+	data := make([]byte, 2)
+	binary.LittleEndian.PutUint16(data[0:2], updateSeq)
+	replyPkt := &V2ServerPacket{
+		Version: session.Version,
+		Command: ICQLegacySrvUpdatedBasic,
+		SeqNum:  session.NextServerSeqNum(),
+		Data:    data,
+	}
+	return h.sender.SendToSession(session, MarshalV2ServerPacket(replyPkt))
+}
+
+// sendUpdateBasicFail sends SRV_UPDATExBASICxFAIL (0x00BE)
+func (h *V2Handler) sendUpdateBasicFail(session *LegacySession, updateSeq uint16) error {
+	data := make([]byte, 2)
+	binary.LittleEndian.PutUint16(data[0:2], updateSeq)
+	pkt := &V2ServerPacket{
+		Version: session.Version,
+		Command: ICQLegacySrvUpdateBasicFail,
+		SeqNum:  session.NextServerSeqNum(),
+		Data:    data,
+	}
+	return h.sender.SendToSession(session, MarshalV2ServerPacket(pkt))
+}
+
+// handleUpdateDetail processes an extended profile update (CMD_UPDATExDETAIL 0x04B0)
+// Client sends: SEQ(2) + CITY_LEN(2) + CITY + COUNTRY(2) + COUNTRY_STAT(1) +
+//
+//	STATE_LEN(2) + STATE + AGE(2) + SEX(1) + PHONE_LEN(2) + PHONE +
+//	HP_LEN(2) + HP + ABOUT_LEN(2) + ABOUT
+//
+// Server responds with SRV_UPDATEDxDETAIL (0x00C8) containing SEQ(2) on success,
+// or SRV_UPDATExDETAILxFAIL (0x00D2) on failure.
+//
+// IMPORTANT: This is an "extended event" - ACK moves it from running to
+// extended list, then the response completes it via DoneExtendedEvent().
+func (h *V2Handler) handleUpdateDetail(session *LegacySession, pkt *V2ClientPacket) error {
+	if session == nil {
+		return nil
+	}
+
+	// Send ACK first - required for extended events
+	if err := h.sendAck(session, pkt.SeqNum); err != nil {
+		return err
+	}
+
+	// Need at least SEQ(2) + one length-prefixed string
+	if len(pkt.Data) < 4 {
+		return h.sendUpdateDetailFail(session, 0)
+	}
+
+	// Read the update sequence (2 bytes)
+	updateSeq := binary.LittleEndian.Uint16(pkt.Data[0:2])
+	r := bytes.NewReader(pkt.Data[2:])
+
+	city, _ := ParseLegacyString(r, true)
+	var country uint16
+	binary.Read(r, binary.LittleEndian, &country)
+	var countryStat uint8
+	binary.Read(r, binary.LittleEndian, &countryStat)
+	st, _ := ParseLegacyString(r, true)
+	var age uint16
+	binary.Read(r, binary.LittleEndian, &age)
+	var sex uint8
+	binary.Read(r, binary.LittleEndian, &sex)
+	phone, _ := ParseLegacyString(r, true)
+	homepage, _ := ParseLegacyString(r, true)
+	about, _ := ParseLegacyString(r, true)
+
+	h.logger.Debug("update detail info",
+		"uin", session.UIN,
+		"city", city,
+		"country", country,
+		"state", st,
+		"age", age,
+		"sex", sex,
+		"phone", phone,
+		"homepage", homepage,
+		"about", about,
+	)
+
+	// Persist detail info via service layer
+	// Read existing basic info to avoid overwriting nick/first/last/email
+	ctx := context.Background()
+	existing, err := h.service.GetFullUserInfo(ctx, session.UIN)
+	if err == nil && existing != nil {
+		existing.ICQBasicInfo.City = city
+		existing.ICQBasicInfo.CountryCode = country
+		existing.ICQBasicInfo.State = st
+		existing.ICQBasicInfo.Phone = phone
+		if err := h.service.UpdateBasicInfo(ctx, session.UIN, existing.ICQBasicInfo); err != nil {
+			h.logger.Error("V2 update detail basic failed", "uin", session.UIN, "err", err)
+		}
+	}
+
+	// Read existing more info to avoid overwriting birthday/languages
+	if existing != nil {
+		existing.ICQMoreInfo.Gender = uint16(sex)
+		existing.ICQMoreInfo.HomePageAddr = homepage
+		if err := h.service.UpdateMoreInfo(ctx, session.UIN, existing.ICQMoreInfo); err != nil {
+			h.logger.Error("V2 update detail more failed", "uin", session.UIN, "err", err)
+		}
+	}
+
+	if about != "" {
+		if err := h.service.SetNotes(ctx, session.UIN, about); err != nil {
+			h.logger.Error("V2 update detail about failed", "uin", session.UIN, "err", err)
+		}
+	}
+
+	// Send SRV_UPDATEDxDETAIL (0x00C8) with the update sequence
+	data := make([]byte, 2)
+	binary.LittleEndian.PutUint16(data[0:2], updateSeq)
+	replyPkt := &V2ServerPacket{
+		Version: session.Version,
+		Command: ICQLegacySrvUpdatedDetail,
+		SeqNum:  session.NextServerSeqNum(),
+		Data:    data,
+	}
+	return h.sender.SendToSession(session, MarshalV2ServerPacket(replyPkt))
+}
+
+// sendUpdateDetailFail sends SRV_UPDATExDETAILxFAIL (0x00D2)
+func (h *V2Handler) sendUpdateDetailFail(session *LegacySession, updateSeq uint16) error {
+	data := make([]byte, 2)
+	binary.LittleEndian.PutUint16(data[0:2], updateSeq)
+	pkt := &V2ServerPacket{
+		Version: session.Version,
+		Command: ICQLegacySrvUpdateDetailFail,
+		SeqNum:  session.NextServerSeqNum(),
+		Data:    data,
+	}
+	return h.sender.SendToSession(session, MarshalV2ServerPacket(pkt))
+}
+
+// handleRegNewUser processes a CMD_REG_NEW_USER (0x03FC) registration packet.
+// This uses the srv_net_icq_pak format (6-byte header, no UIN).
+// Data format from center icq_RegNewUser():
+//
+//	CONST(2) + PWD_LEN(2) + PASSWORD(variable, null-terminated) + TRAILING(8)
+//
+// Server responds with SRV_NEW_UIN (0x0046) containing the new UIN.
+func (h *V2Handler) handleRegNewUser(addr *net.UDPAddr, pkt *V2ClientPacket) error {
+	ctx := context.Background()
+
+	h.logger.Debug("registration packet (0x03FC)",
+		"addr", addr.String(),
+		"data_len", len(pkt.Data),
+		"data_hex", fmt.Sprintf("%X", pkt.Data),
+	)
+
+	// Need at least: CONST(2) + PWD_LEN(2) + 1 byte password + null
+	if len(pkt.Data) < 6 {
+		h.logger.Debug("registration packet too short")
+		return nil
+	}
+
+	offset := 2 // skip 2-byte constant
+
+	// Read password length (2 bytes)
+	pwdLen := binary.LittleEndian.Uint16(pkt.Data[offset : offset+2])
+	offset += 2
+
+	if pwdLen == 0 || len(pkt.Data) < offset+int(pwdLen) {
+		h.logger.Debug("invalid password length in registration", "pwd_len", pwdLen)
+		return nil
+	}
+
+	// Read password, strip null terminator
+	password := string(pkt.Data[offset : offset+int(pwdLen)])
+	if len(password) > 0 && password[len(password)-1] == 0 {
+		password = password[:len(password)-1]
+	}
+
+	h.logger.Info("registration attempt",
+		"addr", addr.String(),
+		"password_len", len(password),
+	)
+
+	// Call service layer to create the new user
+	newUIN, err := h.service.RegisterNewUser(ctx, "", "", "", "", password)
+	if err != nil {
+		h.logger.Error("registration failed", "err", err)
+		return nil
+	}
+
+	h.logger.Info("registration successful",
+		"new_uin", newUIN,
+		"addr", addr.String(),
+	)
+
+	// Send SRV_NEW_UIN (0x0046) response
+	replyPkt := BuildV2NewUIN(pkt.SeqNum, newUIN)
+	replyBytes := MarshalV2ServerPacket(replyPkt)
+	h.logger.Debug("sending SRV_NEW_UIN",
+		"new_uin", newUIN,
+		"seq", pkt.SeqNum,
+		"raw_hex", fmt.Sprintf("%X", replyBytes),
+	)
+	return h.sender.SendPacket(addr, replyBytes)
+}

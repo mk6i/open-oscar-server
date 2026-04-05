@@ -328,7 +328,7 @@ func TestFeedbagService_QueryIfModified(t *testing.T) {
 }
 
 func TestFeedbagService_RightsQuery(t *testing.T) {
-	svc := NewFeedbagService(nil, nil, nil, nil, nil, nil)
+	svc := NewFeedbagService(nil, nil, nil, nil, nil, nil, nil)
 
 	outputSNAC := svc.RightsQuery(context.Background(), wire.SNACFrame{RequestID: 1234})
 	expectSNAC := wire.SNACMessage{
@@ -1601,7 +1601,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					BroadcastVisibility(mock.Anything, matchSession(params.from), params.filter, true).
 					Return(params.err)
 			}
-			svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, bartItemManager, nil, nil)
+			svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, bartItemManager, nil, nil, nil)
 			svc.buddyBroadcaster = buddyUpdateBroadcaster
 			output, err := svc.UpsertItem(context.Background(), tc.instance, tc.inputSNAC.Frame,
 				tc.inputSNAC.Body.(wire.SNAC_0x13_0x08_FeedbagInsertItem).Items)
@@ -1888,7 +1888,7 @@ func TestFeedbagService_Use(t *testing.T) {
 					Return(params.results, nil)
 			}
 
-			svc := NewFeedbagService(slog.Default(), nil, feedbagManager, nil, nil, nil)
+			svc := NewFeedbagService(slog.Default(), nil, feedbagManager, nil, nil, nil, nil)
 
 			haveErr := svc.Use(context.Background(), tt.instance)
 			assert.ErrorIs(t, tt.wantErr, haveErr)
@@ -1989,7 +1989,7 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 					RelayToScreenName(matchContext(), params.screenName, params.message)
 			}
 
-			svc := NewFeedbagService(slog.Default(), messageRelayer, nil, nil, nil, nil)
+			svc := NewFeedbagService(slog.Default(), messageRelayer, nil, nil, nil, nil, nil)
 			haveErr := svc.RespondAuthorizeToHost(context.Background(), tt.instance, wire.SNACFrame{}, tt.bodyIn)
 			assert.ErrorIs(t, tt.wantErr, haveErr)
 		})
@@ -2181,7 +2181,7 @@ func TestFeedbagService_StartCluster(t *testing.T) {
 			Body:  inBody,
 		})
 
-	svc := NewFeedbagService(slog.Default(), messageRelayer, nil, nil, nil, nil)
+	svc := NewFeedbagService(slog.Default(), messageRelayer, nil, nil, nil, nil, nil)
 	svc.StartCluster(context.Background(), instance, inFrame, inBody)
 }
 
@@ -2200,6 +2200,6 @@ func TestFeedbagService_EndCluster(t *testing.T) {
 			Body:  wire.SNAC_0x13_0x12_FeedbagEndCluster{},
 		})
 
-	svc := NewFeedbagService(slog.Default(), messageRelayer, nil, nil, nil, nil)
+	svc := NewFeedbagService(slog.Default(), messageRelayer, nil, nil, nil, nil, nil)
 	svc.EndCluster(context.Background(), instance, inFrame)
 }

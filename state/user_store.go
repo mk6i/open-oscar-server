@@ -408,6 +408,9 @@ func (f SQLiteUserStore) queryUsers(ctx context.Context, whereClause string, que
 			icq_workInfo_state,
 			icq_workInfo_webPage,
 			icq_workInfo_zipCode,
+			icq_homepageCategory_enabled,
+			icq_homepageCategory_index,
+			icq_homepageCategory_description,
 			aim_firstName,
 			aim_lastName,
 			aim_middleName,
@@ -507,6 +510,9 @@ func (f SQLiteUserStore) queryUsers(ctx context.Context, whereClause string, que
 			&u.ICQWorkInfo.State,
 			&u.ICQWorkInfo.WebPage,
 			&u.ICQWorkInfo.ZIPCode,
+			&u.ICQHomepageCategory.Enabled,
+			&u.ICQHomepageCategory.Index,
+			&u.ICQHomepageCategory.Description,
 			&u.AIMDirectoryInfo.FirstName,
 			&u.AIMDirectoryInfo.LastName,
 			&u.AIMDirectoryInfo.MiddleName,
@@ -1430,6 +1436,37 @@ func (f SQLiteUserStore) SetPermissions(ctx context.Context, name IdentScreenNam
 		data.AuthRequired,
 		data.WebAware,
 		data.AllowSpam,
+		name.String(),
+	)
+	if err != nil {
+		return fmt.Errorf("exec: %w", err)
+	}
+	c, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("rows affected: %w", err)
+	}
+	if c == 0 {
+		return ErrNoUser
+	}
+	return nil
+}
+
+// SetHomepageCategory updates the user's homepage category information.
+// This is used by the V5 META_SET_HPCAT (0x0442) command.
+// From iserverd db_users_sethpagecat_info() - updates user's homepage category.
+func (f SQLiteUserStore) SetHomepageCategory(ctx context.Context, name IdentScreenName, data ICQHomepageCategory) error {
+	q := `
+		UPDATE users SET
+			icq_homepageCategory_enabled = ?,
+			icq_homepageCategory_index = ?,
+			icq_homepageCategory_description = ?
+		WHERE identScreenName = ?
+	`
+	res, err := f.db.ExecContext(ctx,
+		q,
+		data.Enabled,
+		data.Index,
+		data.Description,
 		name.String(),
 	)
 	if err != nil {

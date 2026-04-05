@@ -21,6 +21,7 @@ func NewFeedbagService(
 	bartItemManager BARTItemManager,
 	relationshipFetcher RelationshipFetcher,
 	sessionRetriever SessionRetriever,
+	userFinder ICQUserFinder,
 ) FeedbagService {
 	return FeedbagService{
 		bartItemManager:  bartItemManager,
@@ -28,6 +29,7 @@ func NewFeedbagService(
 		feedbagManager:   feedbagManager,
 		logger:           logger,
 		messageRelayer:   messageRelayer,
+		userFinder:       userFinder,
 	}
 }
 
@@ -39,6 +41,7 @@ type FeedbagService struct {
 	feedbagManager   FeedbagManager
 	logger           *slog.Logger
 	messageRelayer   MessageRelayer
+	userFinder       ICQUserFinder
 }
 
 // RightsQuery returns SNAC wire.FeedbagRightsReply, which contains Feedbag
@@ -193,15 +196,44 @@ func (s FeedbagService) UpsertItem(ctx context.Context, instance *state.SessionI
 		}
 	}
 
-	if err := s.feedbagManager.FeedbagUpsert(ctx, instance.IdentScreenName(), items); err != nil {
-		return nil, err
+	// Check which buddy items require authorization. Items that need auth
+	// are NOT inserted into the feedbag — the client must retry with the
+	// FeedbagAttributesPending flag after receiving error 0x000E.
+	authRequired := make(map[int]bool)
+	if s.userFinder != nil {
+		for i, item := range items {
+			if item.ClassID == wire.FeedbagClassIdBuddy && !item.HasTag(wire.FeedbagAttributesPending) {
+				uin, err := strconv.ParseUint(item.Name, 10, 32)
+				if err == nil {
+					if user, findErr := s.userFinder.FindByUIN(ctx, uint32(uin)); findErr == nil && user.ICQPermissions.AuthRequired {
+						authRequired[i] = true
+					}
+				}
+			}
+		}
+	}
+
+	// Only upsert items that don't require auth
+	var itemsToUpsert []wire.FeedbagItem
+	for i, item := range items {
+		if !authRequired[i] {
+			itemsToUpsert = append(itemsToUpsert, item)
+		}
+	}
+	if len(itemsToUpsert) > 0 {
+		if err := s.feedbagManager.FeedbagUpsert(ctx, instance.IdentScreenName(), itemsToUpsert); err != nil {
+			return nil, err
+		}
 	}
 
 	setSessionBuddyPrefs(items, instance)
 
 	var filter []state.IdentScreenName
 	var alertAll bool
-	for _, item := range items {
+	for i, item := range items {
+		if authRequired[i] {
+			continue
+		}
 		switch item.ClassID {
 		case wire.FeedbagClassIdBuddy, wire.FeedbagClassIDPermit, wire.FeedbagClassIDDeny:
 			filter = append(filter, state.NewIdentScreenName(item.Name))
@@ -215,8 +247,12 @@ func (s FeedbagService) UpsertItem(ctx context.Context, instance *state.SessionI
 	}
 
 	snacPayloadOut := wire.SNAC_0x13_0x0E_FeedbagStatus{}
-	for range items {
-		snacPayloadOut.Results = append(snacPayloadOut.Results, 0x0000)
+	for i := range items {
+		if authRequired[i] {
+			snacPayloadOut.Results = append(snacPayloadOut.Results, 0x000E)
+		} else {
+			snacPayloadOut.Results = append(snacPayloadOut.Results, 0x0000)
+		}
 	}
 
 	s.messageRelayer.RelayToSelf(ctx, instance, wire.SNACMessage{
@@ -405,6 +441,23 @@ func (s FeedbagService) Use(ctx context.Context, instance *state.SessionInstance
 		return fmt.Errorf("feedbagManager.Feedbag: %w", err)
 	}
 	setSessionBuddyPrefs(items, instance)
+	return nil
+}
+
+// RequestAuthorizeToHost forwards an authorization request from the user who
+// wants to add a contact to the contact being added. The target user receives
+// SNAC(0x13,0x19) with the requester's screen name and reason text.
+func (s FeedbagService) RequestAuthorizeToHost(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x18_FeedbagRequestAuthorizationToHost) error {
+	s.messageRelayer.RelayToScreenName(ctx, state.NewIdentScreenName(inBody.ScreenName), wire.SNACMessage{
+		Frame: wire.SNACFrame{
+			FoodGroup: wire.Feedbag,
+			SubGroup:  wire.FeedbagRequestAuthorizeToClient,
+		},
+		Body: wire.SNAC_0x13_0x18_FeedbagRequestAuthorizationToHost{
+			ScreenName: instance.IdentScreenName().String(),
+			Reason:     inBody.Reason,
+		},
+	})
 	return nil
 }
 
