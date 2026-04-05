@@ -3856,8 +3856,23 @@ func TestOSCARProxy_RecvClientCmd_DelGroup(t *testing.T) {
 									Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
 									TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{17724, 29709})}},
 								},
-								{Name: "Buddies", GroupID: 17724, ItemID: 0, ClassID: wire.FeedbagClassIdGroup},
-								{Name: "Family", GroupID: 29709, ItemID: 0, ClassID: wire.FeedbagClassIdGroup},
+								{Name: "Buddies", GroupID: 17724, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1}),
+										},
+									},
+								},
+								{Name: "Jane", GroupID: 17724, ItemID: 1, ClassID: wire.FeedbagClassIdBuddy},
+								{Name: "Family", GroupID: 29709, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{2, 3}),
+										},
+									},
+								},
+								{Name: "Joe", GroupID: 29709, ItemID: 2, ClassID: wire.FeedbagClassIdBuddy},
+								{Name: "Fred", GroupID: 29709, ItemID: 3, ClassID: wire.FeedbagClassIdBuddy},
 							},
 							err: nil,
 						},
@@ -3867,7 +3882,15 @@ func TestOSCARProxy_RecvClientCmd_DelGroup(t *testing.T) {
 							frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagDeleteItem},
 							inBody: wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
 								Items: []wire.FeedbagItem{
-									{Name: "Family", GroupID: 29709, ItemID: 0, ClassID: wire.FeedbagClassIdGroup},
+									{Name: "Family", GroupID: 29709, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+										TLVLBlock: wire.TLVLBlock{
+											TLVList: wire.TLVList{
+												wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{2, 3}),
+											},
+										},
+									},
+									{Name: "Joe", GroupID: 29709, ItemID: 2, ClassID: wire.FeedbagClassIdBuddy},
+									{Name: "Fred", GroupID: 29709, ItemID: 3, ClassID: wire.FeedbagClassIdBuddy},
 								},
 							},
 							msg: nil, err: nil,

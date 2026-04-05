@@ -83,14 +83,27 @@ func (f *FeedbagList) AddGroup(name string) wire.FeedbagItem {
 // DeleteGroup marks a group item for deletion by name. If the group exists
 // and is not the root group, the root group's order TLV is updated.
 func (f *FeedbagList) DeleteGroup(groupName string) {
-	deleted, found := f.deleteItem(wire.FeedbagItem{
-		Name:    groupName,
-		ClassID: wire.FeedbagClassIdGroup,
-	})
-	if found && deleted.GroupID > 0 {
+	groupItem := f.groupByName(groupName)
+	if groupItem == nil {
+		return
+	}
+
+	var toDelete []*wire.FeedbagItem
+
+	for _, item := range f.items {
+		if item.GroupID == groupItem.GroupID {
+			toDelete = append(toDelete, item)
+		}
+	}
+
+	for _, item := range toDelete {
+		f.deleteItem(*item)
+	}
+
+	if len(toDelete) > 0 && groupItem.GroupID != 0 {
 		for _, item := range f.items {
 			if item.ClassID == wire.FeedbagClassIdGroup && item.GroupID == 0 {
-				item.RemoveOrderMembers(deleted.GroupID)
+				item.RemoveOrderMembers(groupItem.GroupID)
 				f.trackUpdate(item)
 			}
 		}
@@ -229,7 +242,7 @@ func (f *FeedbagList) itemsMatch(a, b *wire.FeedbagItem) bool {
 	}
 	var nameMatch bool
 	if hasScreenName(a.ClassID) {
-		nameMatch = a.Name == NewIdentScreenName(b.Name).String()
+		nameMatch = NewIdentScreenName(a.Name).String() == NewIdentScreenName(b.Name).String()
 	} else {
 		nameMatch = a.Name == b.Name
 	}

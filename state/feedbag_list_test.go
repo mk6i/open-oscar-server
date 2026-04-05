@@ -475,26 +475,52 @@ func TestFeedbagList_DeleteGroup(t *testing.T) {
 	t.Run("updates root group order", func(t *testing.T) {
 		fl := NewFeedbagList([]wire.FeedbagItem{
 			{
-				Name:    "",
-				ClassID: wire.FeedbagClassIdGroup,
-				GroupID: 0,
+				Name: "", ClassID: wire.FeedbagClassIdGroup, GroupID: 0,
 				TLVLBlock: wire.TLVLBlock{
 					TLVList: wire.TLVList{
 						wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1, 2, 3}),
 					},
 				},
 			},
-			{Name: "Buddies", ClassID: wire.FeedbagClassIdGroup, GroupID: 1},
-			{Name: "Coworkers", ClassID: wire.FeedbagClassIdGroup, GroupID: 2},
-			{Name: "Family", ClassID: wire.FeedbagClassIdGroup, GroupID: 3},
+			{
+				Name: "Buddies", ClassID: wire.FeedbagClassIdGroup, GroupID: 1,
+				TLVLBlock: wire.TLVLBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1}),
+					},
+				},
+			},
+			{Name: "Jane", ClassID: wire.FeedbagClassIdBuddy, GroupID: 1, ItemID: 1},
+			{
+				Name: "Coworkers", ClassID: wire.FeedbagClassIdGroup, GroupID: 2,
+				TLVLBlock: wire.TLVLBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{2, 3}),
+					},
+				},
+			},
+			{Name: "Joe", ClassID: wire.FeedbagClassIdBuddy, GroupID: 2, ItemID: 2},
+			{Name: "Fred", ClassID: wire.FeedbagClassIdBuddy, GroupID: 2, ItemID: 3},
+			{Name: "Family", ClassID: wire.FeedbagClassIdGroup, GroupID: 3,
+				TLVLBlock: wire.TLVLBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{4}),
+					},
+				},
+			},
+			{Name: "Alice", ClassID: wire.FeedbagClassIdBuddy, GroupID: 3, ItemID: 4},
 		}, nil)
 
 		fl.DeleteGroup("Coworkers")
 
 		deletes := fl.PendingDeletes()
-		assert.Len(t, deletes, 1)
+		assert.Len(t, deletes, 3)
 		assert.Equal(t, "Coworkers", deletes[0].Name)
 		assert.Equal(t, uint16(2), deletes[0].GroupID)
+		assert.Equal(t, "Joe", deletes[1].Name)
+		assert.Equal(t, uint16(2), deletes[1].GroupID)
+		assert.Equal(t, "Fred", deletes[2].Name)
+		assert.Equal(t, uint16(2), deletes[2].GroupID)
 
 		upserts := fl.PendingUpdates()
 		assert.Len(t, upserts, 1)
