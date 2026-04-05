@@ -55,12 +55,25 @@ func main() {
 	defer f.Close()
 
 	configType := reflect.TypeOf(config.Config{})
-	for i := 0; i < configType.NumField(); i++ {
-		field := configType.Field(i)
+	writeFields(f, configType, valueTag, keywords)
+}
+
+func writeFields(f *os.File, t reflect.Type, valueTag string, keywords struct {
+	comment    string
+	assignment string
+}) {
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+
+		// Recurse into nested structs
+		if field.Type.Kind() == reflect.Struct && field.Tag.Get("envconfig") == "" {
+			writeFields(f, field.Type, valueTag, keywords)
+			continue
+		}
 
 		// Check if field is optional and has empty value
 		required := field.Tag.Get("required")
-		val := field.Tag.Get(valueTag) // Use the specified value tag
+		val := field.Tag.Get(valueTag)
 
 		// Skip optional fields with empty values
 		if required == "false" && val == "" {

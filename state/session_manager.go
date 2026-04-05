@@ -100,9 +100,10 @@ func (s *InMemorySessionManager) RelayToAll(ctx context.Context, msg wire.SNACMe
 func (s *InMemorySessionManager) RelayToScreenName(ctx context.Context, screenName IdentScreenName, msg wire.SNACMessage) {
 	sess := s.RetrieveSession(screenName)
 	if sess == nil {
-		s.logger.WarnContext(ctx, "can't send notification because user is not online", "recipient", screenName, "message", msg)
+		s.logger.WarnContext(ctx, "RelayToScreenName: session not found", "recipient", screenName, "food_group", msg.Frame.FoodGroup, "sub_group", msg.Frame.SubGroup)
 		return
 	}
+	s.logger.DebugContext(ctx, "RelayToScreenName: found session, relaying", "recipient", screenName, "food_group", msg.Frame.FoodGroup, "sub_group", msg.Frame.SubGroup, "instances", len(sess.Instances()))
 	s.maybeRelayMessage(ctx, msg, sess)
 }
 
@@ -141,15 +142,21 @@ func (s *InMemorySessionManager) RelayToOtherInstances(ctx context.Context, inst
 func (s *InMemorySessionManager) RelayToScreenNameActiveOnly(ctx context.Context, screenName IdentScreenName, msg wire.SNACMessage) {
 	sess := s.RetrieveSession(screenName)
 	if sess == nil {
-		s.logger.WarnContext(ctx, "can't send notification because user is not online", "recipient", screenName, "message", msg)
+		s.logger.WarnContext(ctx, "RelayToScreenNameActiveOnly: session not found", "recipient", screenName, "food_group", msg.Frame.FoodGroup, "sub_group", msg.Frame.SubGroup)
 		return
 	}
+	s.logger.DebugContext(ctx, "RelayToScreenNameActiveOnly: found session, relaying", "recipient", screenName, "food_group", msg.Frame.FoodGroup, "sub_group", msg.Frame.SubGroup, "instances", len(sess.Instances()), "inactive", sess.Inactive())
 	s.maybeRelayMessageActiveOnly(ctx, msg, sess)
 }
 
 func (s *InMemorySessionManager) maybeRelayMessage(ctx context.Context, msg wire.SNACMessage, sess *Session) {
 	for _, instance := range sess.Instances() {
 		if !instance.live() {
+			s.logger.DebugContext(ctx, "maybeRelayMessage: skipping non-live instance",
+				"recipient", sess.IdentScreenName(),
+				"food_group", msg.Frame.FoodGroup,
+				"sub_group", msg.Frame.SubGroup,
+			)
 			continue
 		}
 		switch instance.RelayMessageToInstance(msg) {
@@ -158,6 +165,12 @@ func (s *InMemorySessionManager) maybeRelayMessage(ctx context.Context, msg wire
 		case SessQueueFull:
 			s.logger.WarnContext(ctx, "can't send notification because queue is full", "recipient", sess.IdentScreenName(), "message", msg)
 			instance.CloseInstance()
+		default:
+			s.logger.DebugContext(ctx, "maybeRelayMessage: relayed to instance",
+				"recipient", sess.IdentScreenName(),
+				"food_group", msg.Frame.FoodGroup,
+				"sub_group", msg.Frame.SubGroup,
+			)
 		}
 	}
 }
