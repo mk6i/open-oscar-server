@@ -2662,7 +2662,7 @@ func TestICQService_SetPermissions(t *testing.T) {
 			},
 		},
 		{
-			name:     "authorization required",
+			name:     "authorization NOT required (1 == false)",
 			seq:      1,
 			instance: newTestInstance("100003", sessOptUIN(100003)),
 			req: wire.ICQ_0x07D0_0x0424_DBQueryMetaReqSetPermissions{

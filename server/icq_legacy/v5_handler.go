@@ -1828,7 +1828,7 @@ func (h *V5Handler) handleMetaSetSecurity(session *LegacySession, pkt *V5ClientP
 	}
 
 	info := state.ICQPermissions{
-		AuthRequired: body.Authorization == 1,
+		AuthRequired: body.Authorization == 0, // 0 is true
 		WebAware:     body.WebAware == 1,
 	}
 
