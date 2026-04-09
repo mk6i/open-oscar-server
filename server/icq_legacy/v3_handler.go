@@ -1095,7 +1095,7 @@ func (h *V3Handler) handleSetHomeInfo(session *LegacySession, seq1, seq2 uint16,
 			h.logger.Error("V3 set home info failed", "uin", uin, "err", err)
 		}
 	}
-	if err := h.service.SetAuthMode(ctx, uin, auth == 1); err != nil {
+	if err := h.service.SetAuthMode(ctx, uin, auth == 0); err != nil {
 		h.logger.Error("V3 set home auth failed", "uin", uin, "err", err)
 	}
 

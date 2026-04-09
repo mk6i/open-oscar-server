@@ -566,7 +566,7 @@ func (s ICQService) SetMoreInfo(ctx context.Context, instance *state.SessionInst
 
 func (s ICQService) SetPermissions(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x0424_DBQueryMetaReqSetPermissions, seq uint16) error {
 	u := state.ICQPermissions{
-		AuthRequired: inBody.Authorization == 1,
+		AuthRequired: inBody.Authorization == 0,
 		WebAware:     inBody.WebAware == 1,
 	}
 

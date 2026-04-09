@@ -2610,7 +2610,59 @@ func TestICQService_SetPermissions(t *testing.T) {
 		wantErr    error
 	}{
 		{
-			name:     "happy path",
+			name:     "authorization required",
+			seq:      1,
+			instance: newTestInstance("100003", sessOptUIN(100003)),
+			req: wire.ICQ_0x07D0_0x0424_DBQueryMetaReqSetPermissions{
+				Authorization: 0,
+				WebAware:      1,
+			},
+			mockParams: mockParams{
+				icqUserUpdaterParams: icqUserUpdaterParams{
+					setPermissionsParams: setPermissionsParams{
+						{
+							name: state.NewIdentScreenName("100003"),
+							data: state.ICQPermissions{
+								AuthRequired: true,
+								WebAware:     true,
+							},
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("100003"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.ICQ,
+									SubGroup:  wire.ICQDBReply,
+								},
+								Body: wire.SNAC_0x15_0x02_DBReply{
+									TLVRestBlock: wire.TLVRestBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.ICQTLVTagsMetadata, wire.ICQMessageReplyEnvelope{
+												Message: wire.ICQ_0x07DA_0x00DC_DBQueryMetaReplyMoreInfo{
+													ICQMetadata: wire.ICQMetadata{
+														UIN:     100003,
+														ReqType: wire.ICQDBQueryMetaReply,
+														Seq:     1,
+													},
+													ReqSubType: wire.ICQDBQueryMetaReplySetPermissions,
+													Success:    wire.ICQStatusCodeOK,
+												},
+											}),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "authorization required",
 			seq:      1,
 			instance: newTestInstance("100003", sessOptUIN(100003)),
 			req: wire.ICQ_0x07D0_0x0424_DBQueryMetaReqSetPermissions{
@@ -2623,7 +2675,7 @@ func TestICQService_SetPermissions(t *testing.T) {
 						{
 							name: state.NewIdentScreenName("100003"),
 							data: state.ICQPermissions{
-								AuthRequired: true,
+								AuthRequired: false,
 								WebAware:     true,
 							},
 						},
