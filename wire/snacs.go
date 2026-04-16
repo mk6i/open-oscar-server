@@ -1849,6 +1849,13 @@ type SNAC_0x13_0x18_FeedbagRequestAuthorizationToHost struct {
 	Unknown    uint16
 }
 
+type SNAC_0x13_0x19_FeedbagRequestAuthorizeToClient struct {
+	TLV
+	ScreenName string `oscar:"len_prefix=uint8"`
+	Reason     string `oscar:"len_prefix=uint16"`
+	Unknown    uint16
+}
+
 type SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost struct {
 	ScreenName string `oscar:"len_prefix=uint8"`
 	Accepted   uint8
@@ -1856,9 +1863,17 @@ type SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost struct {
 }
 
 type SNAC_0x13_0x1B_FeedbagRespondAuthorizeToClient struct {
+	TLV
 	ScreenName string `oscar:"len_prefix=uint8"`
 	Accepted   uint8
 	Reason     string `oscar:"len_prefix=uint16"`
+	Nullterm   uint16
+}
+
+type SNAC_0x13_0x1C_FeedbagBuddyAdded struct {
+	TLV
+	ScreenName string `oscar:"len_prefix=uint8"`
+	Nullterm   uint16
 }
 
 //

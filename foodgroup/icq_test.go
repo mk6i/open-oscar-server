@@ -46,7 +46,7 @@ func TestICQService_DeleteMsgReq(t *testing.T) {
 					Return(params.err)
 			}
 
-			s := NewICQService(nil, nil, nil, slog.Default(), nil, offlineMessageManager)
+			s := NewICQService(nil, nil, nil, slog.Default(), nil, offlineMessageManager, nil)
 			err := s.DeleteMsgReq(context.Background(), tt.instance, tt.seq)
 			assert.NoError(t, err)
 		})
@@ -150,7 +150,7 @@ func TestICQService_FindByICQName(t *testing.T) {
 														FirstName:     "Jane",
 														LastName:      "Doe",
 														Email:         "janey@example.com",
-														Authorization: 0,
+														Authorization: 1,
 														OnlineStatus:  0,
 														Gender:        2,
 														Age:           25,
@@ -187,7 +187,7 @@ func TestICQService_FindByICQName(t *testing.T) {
 														FirstName:     "John",
 														LastName:      "Doe",
 														Email:         "john@example.com",
-														Authorization: 1,
+														Authorization: 0,
 														OnlineStatus:  1,
 														Gender:        1,
 														Age:           21,
@@ -327,7 +327,7 @@ func TestICQService_FindByICQEmail(t *testing.T) {
 														FirstName:     "John",
 														LastName:      "Doe",
 														Email:         "john@example.com",
-														Authorization: 1,
+														Authorization: 0,
 														OnlineStatus:  1,
 														Gender:        1,
 														Age:           21,
@@ -469,7 +469,7 @@ func TestICQService_FindByEmail3(t *testing.T) {
 														FirstName:     "John",
 														LastName:      "Doe",
 														Email:         "john@example.com",
-														Authorization: 1,
+														Authorization: 0,
 														OnlineStatus:  1,
 														Gender:        1,
 														Age:           21,
@@ -605,7 +605,7 @@ func TestICQService_FindByUIN(t *testing.T) {
 														FirstName:     "John",
 														LastName:      "Doe",
 														Email:         "john@example.com",
-														Authorization: 1,
+														Authorization: 0,
 														OnlineStatus:  1,
 														Gender:        1,
 														Age:           21,
@@ -745,7 +745,7 @@ func TestICQService_FindByUIN2(t *testing.T) {
 														FirstName:     "John",
 														LastName:      "Doe",
 														Email:         "john@example.com",
-														Authorization: 1,
+														Authorization: 0,
 														OnlineStatus:  1,
 														Gender:        1,
 														Age:           21,
@@ -903,7 +903,7 @@ func TestICQService_FindByWhitePages(t *testing.T) {
 														FirstName:     "Jane",
 														LastName:      "Doe",
 														Email:         "janey@example.com",
-														Authorization: 0,
+														Authorization: 1,
 														OnlineStatus:  0,
 														Gender:        2,
 														Age:           25,
@@ -940,7 +940,7 @@ func TestICQService_FindByWhitePages(t *testing.T) {
 														FirstName:     "Alice",
 														LastName:      "Smith",
 														Email:         "alice@example.com",
-														Authorization: 1,
+														Authorization: 0,
 														OnlineStatus:  1,
 														Gender:        1,
 														Age:           21,
@@ -1108,7 +1108,7 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 														FirstName:     "Jane",
 														LastName:      "Doe",
 														Email:         "janey@example.com",
-														Authorization: 0,
+														Authorization: 1,
 														OnlineStatus:  0,
 														Gender:        2,
 														Age:           25,
@@ -1145,7 +1145,7 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 														FirstName:     "Alice",
 														LastName:      "Smith",
 														Email:         "alice@example.com",
-														Authorization: 1,
+														Authorization: 0,
 														OnlineStatus:  1,
 														Gender:        1,
 														Age:           21,
@@ -1263,7 +1263,7 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 														FirstName:     "Jane",
 														LastName:      "Doe",
 														Email:         "janey@example.com",
-														Authorization: 0,
+														Authorization: 1,
 														OnlineStatus:  0,
 														Gender:        2,
 														Age:           25,
@@ -1467,7 +1467,7 @@ func TestICQService_FullUserInfo(t *testing.T) {
 													ZIP:          "10001",
 													CountryCode:  1,
 													GMTOffset:    5,
-													AuthFlag:     1,
+													AuthFlag:     0,
 													WebAware:     0,
 													DCPerms:      0,
 													PublishEmail: wire.ICQUserFlagPublishEmailYes,
@@ -1789,14 +1789,15 @@ func TestICQService_FullUserInfo(t *testing.T) {
 
 func TestICQService_OfflineMsgReq(t *testing.T) {
 	tests := []struct {
-		name       string
-		seq        uint16
-		instance   *state.SessionInstance
-		mockParams mockParams
-		wantErr    error
+		name                string
+		seq                 uint16
+		instance            *state.SessionInstance
+		mockParams          mockParams
+		wantErr             error
+		wantICBMSenderCalls int
 	}{
 		{
-			name:     "send offline IM, offline friend request",
+			name:     "send offline IM, offline friend request to non-feedbag client",
 			seq:      1,
 			instance: newTestInstance("11111111", sessOptUIN(11111111)),
 			mockParams: mockParams{
@@ -1943,6 +1944,76 @@ func TestICQService_OfflineMsgReq(t *testing.T) {
 					},
 				},
 			},
+			wantICBMSenderCalls: 0,
+		},
+		{
+			name:     "send offline IM; ICQ auth request uses feedbag path (no legacy offline reply for auth)",
+			seq:      1,
+			instance: newTestInstance("11111111", sessOptUIN(11111111), sessOptFeedbagEnabled),
+			mockParams: mockParams{
+				offlineMessageManagerParams: offlineMessageManagerParams{
+					retrieveMessagesParams: retrieveMessagesParams{
+						{
+							recipIn: state.NewIdentScreenName("11111111"),
+							messagesOut: []state.OfflineMessage{
+								{
+									Sender:    state.NewIdentScreenName("33333333"),
+									Recipient: state.NewIdentScreenName("11111111"),
+									Message: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
+										ChannelID: wire.ICBMChannelICQ,
+										TLVRestBlock: wire.TLVRestBlock{
+											TLVList: wire.TLVList{
+												wire.NewTLVBE(wire.ICBMTLVData, func() []byte {
+													msg := wire.ICBMCh4Message{
+														UIN:         33333333,
+														MessageType: wire.ICBMExtendedMsgTypeAuthReq,
+														Flags:       0,
+														Message:     "please add me to your contacts list",
+													}
+													buf := &bytes.Buffer{}
+													assert.NoError(t, wire.MarshalLE(msg, buf))
+													return buf.Bytes()
+												}()),
+											},
+										},
+									},
+									Sent: time.Date(2024, time.August, 1, 8, 2, 0, 0, time.UTC),
+								},
+							},
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("11111111"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.ICQ,
+									SubGroup:  wire.ICQDBReply,
+								},
+								Body: wire.SNAC_0x15_0x02_DBReply{
+									TLVRestBlock: wire.TLVRestBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.ICQTLVTagsMetadata, wire.ICQMessageReplyEnvelope{
+												Message: wire.ICQ_0x0042_DBQueryOfflineMsgReplyLast{
+													ICQMetadata: wire.ICQMetadata{
+														UIN:     11111111,
+														ReqType: wire.ICQDBQueryOfflineMsgReplyLast,
+														Seq:     1,
+													},
+													DroppedMessages: 0,
+												},
+											}),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantICBMSenderCalls: 1,
 		},
 	}
 	for _, tt := range tests {
@@ -1955,12 +2026,20 @@ func TestICQService_OfflineMsgReq(t *testing.T) {
 			}
 			messageRelayer := newMockMessageRelayer(t)
 			for _, params := range tt.mockParams.relayToScreenNameParams {
-				messageRelayer.EXPECT().RelayToScreenName(mock.Anything, params.screenName, params.message)
+				messageRelayer.EXPECT().
+					RelayToScreenName(mock.Anything, params.screenName, params.message)
 			}
 
-			s := NewICQService(messageRelayer, nil, nil, slog.Default(), nil, offlineMessageManager)
+			var icbmSenderCalls int
+			icbmSender := func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) (*wire.SNACMessage, error) {
+				icbmSenderCalls++
+				return nil, nil
+			}
+
+			s := NewICQService(messageRelayer, nil, nil, slog.Default(), nil, offlineMessageManager, icbmSender)
 			err := s.OfflineMsgReq(context.Background(), tt.instance, tt.seq)
 			assert.NoError(t, err)
+			assert.Equal(t, tt.wantICBMSenderCalls, icbmSenderCalls)
 		})
 	}
 }
@@ -2996,7 +3075,7 @@ func TestICQService_ShortUserInfo(t *testing.T) {
 													FirstName:     "John",
 													LastName:      "Doe",
 													Email:         "john.doe@example.com",
-													Authorization: 1,
+													Authorization: 0,
 													Gender:        2,
 												},
 											}),

@@ -100,10 +100,16 @@ func (s *InMemorySessionManager) RelayToAll(ctx context.Context, msg wire.SNACMe
 func (s *InMemorySessionManager) RelayToScreenName(ctx context.Context, screenName IdentScreenName, msg wire.SNACMessage) {
 	sess := s.RetrieveSession(screenName)
 	if sess == nil {
-		s.logger.WarnContext(ctx, "RelayToScreenName: session not found", "recipient", screenName, "food_group", msg.Frame.FoodGroup, "sub_group", msg.Frame.SubGroup)
+		s.logger.WarnContext(ctx, "RelayToScreenName: session not found",
+			"recipient", screenName,
+			"food_group", wire.FoodGroupName(msg.Frame.FoodGroup),
+			"sub_group", wire.SubGroupName(msg.Frame.FoodGroup, msg.Frame.SubGroup))
 		return
 	}
-	s.logger.DebugContext(ctx, "RelayToScreenName: found session, relaying", "recipient", screenName, "food_group", msg.Frame.FoodGroup, "sub_group", msg.Frame.SubGroup, "instances", len(sess.Instances()))
+	s.logger.DebugContext(ctx, "RelayToScreenName: found session, relaying", "recipient", screenName,
+		"food_group", wire.FoodGroupName(msg.Frame.FoodGroup),
+		"sub_group", wire.SubGroupName(msg.Frame.FoodGroup, msg.Frame.SubGroup),
+		"instances", len(sess.Instances()))
 	s.maybeRelayMessage(ctx, msg, sess)
 }
 
@@ -168,8 +174,8 @@ func (s *InMemorySessionManager) maybeRelayMessage(ctx context.Context, msg wire
 		default:
 			s.logger.DebugContext(ctx, "maybeRelayMessage: relayed to instance",
 				"recipient", sess.IdentScreenName(),
-				"food_group", msg.Frame.FoodGroup,
-				"sub_group", msg.Frame.SubGroup,
+				"food_group", wire.FoodGroupName(msg.Frame.FoodGroup),
+				"sub_group", wire.SubGroupName(msg.Frame.FoodGroup, msg.Frame.SubGroup),
 			)
 		}
 	}

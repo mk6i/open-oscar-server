@@ -912,6 +912,11 @@ func sessOptMixedStates(instance *state.SessionInstance) {
 	// with some active and some inactive
 }
 
+// sessOptFeedbagEnabled marks the instance as using the feedbag buddy list this sign-on.
+func sessOptFeedbagEnabled(instance *state.SessionInstance) {
+	instance.Session().SetUsesFeedbag()
+}
+
 // sessBuddyIcon sets session buddy icon
 func sessOptBuddyIcon(icon wire.BARTID) func(instance *state.SessionInstance) {
 	return func(instance *state.SessionInstance) {

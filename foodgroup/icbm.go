@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -133,6 +134,16 @@ func (s ICBMService) ChannelMsgToHost(ctx context.Context, instance *state.Sessi
 		return msg, err
 	}
 
+	if inBody.ChannelID == wire.ICBMChannelICQ && recipSess.UsesFeedbag() {
+		if b, ok := inBody.Bytes(wire.ICBMTLVData); ok {
+			authMsg := wire.ICBMCh4Message{}
+			if err = wire.UnmarshalLE(&authMsg, bytes.NewReader(b)); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal ICBM authMsg: %w", err)
+			}
+			return nil, s.forwardICQAuthEvents(ctx, instance, recipSess.IdentScreenName(), authMsg)
+		}
+	}
+
 	clientIM := wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
 		Cookie:       inBody.Cookie,
 		ChannelID:    inBody.ChannelID,
@@ -210,6 +221,123 @@ func (s ICBMService) ChannelMsgToHost(ctx context.Context, instance *state.Sessi
 			ScreenName: inBody.ScreenName,
 		},
 	}, nil
+}
+
+// forwardICQAuthEvents converts ICQ channel-4 payloads to feedbag SNACs and
+// sends them to feedbag-enabled recipient.
+func (s ICBMService) forwardICQAuthEvents(ctx context.Context, sender *state.SessionInstance, recipient state.IdentScreenName, authMsg wire.ICBMCh4Message) error {
+	switch authMsg.MessageType {
+	case wire.ICBMMsgTypeAuthOK:
+		items, err := s.feedbagManager.Feedbag(ctx, recipient)
+		if err != nil {
+			return fmt.Errorf("failed to fetch feedbag items: %w", err)
+		}
+
+		// look for the pending buddy authorization
+		var buddyItem *wire.FeedbagItem
+		for _, item := range items {
+			if item.ClassID == wire.FeedbagClassIdBuddy && item.Name == sender.IdentScreenName().String() {
+				buddyItem = &item
+				break
+			}
+		}
+
+		// pending buddy authorization is not found, nothing to do
+		if buddyItem == nil || !buddyItem.HasTag(wire.FeedbagAttributesPending) {
+			return fmt.Errorf("no pending buddy authorization found for %s", sender.IdentScreenName().String())
+		}
+
+		// remove the pending buddy authorization tag
+		buddyItem.TLVList = slices.DeleteFunc(buddyItem.TLVList, func(tlv wire.TLV) bool {
+			return tlv.Tag == wire.FeedbagAttributesPending
+		})
+
+		updates := []wire.FeedbagItem{*buddyItem}
+		if err = s.feedbagManager.FeedbagUpsert(ctx, recipient, updates); err != nil {
+			return fmt.Errorf("failed to update feedbag: %w", err)
+		}
+
+		// clear the pending flag on the recipient's buddy entry
+		s.messageRelayer.RelayToScreenName(ctx, recipient, wire.SNACMessage{
+			Frame: wire.SNACFrame{
+				FoodGroup: wire.Feedbag,
+				SubGroup:  wire.FeedbagUpdateItem,
+				Flags:     0x8000,
+			},
+			Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
+				Items: updates,
+			},
+		})
+
+		// tell the recipient that we're friends
+		snac := wire.SNACMessage{
+			Frame: wire.SNACFrame{
+				FoodGroup: wire.Feedbag,
+				SubGroup:  wire.FeedbagRespondAuthorizeToClient,
+				Flags:     0x8000,
+			},
+			Body: wire.SNAC_0x13_0x1B_FeedbagRespondAuthorizeToClient{
+				TLV:        wire.NewTLVBE(6, uint32(0x00020004)),
+				ScreenName: sender.IdentScreenName().String(),
+				Accepted:   1,
+			},
+		}
+		s.messageRelayer.RelayToScreenName(ctx, recipient, snac)
+
+		// tell the recipient that we're online
+		if err := s.buddyBroadcaster.BroadcastVisibility(ctx, sender, []state.IdentScreenName{recipient}, false); err != nil {
+			s.logger.ErrorContext(ctx, "broadcastBuddyArrived failed", "err", err)
+		}
+		return nil
+	case wire.ICBMMsgTypeAuthDeny:
+		snac := wire.SNACMessage{
+			Frame: wire.SNACFrame{
+				FoodGroup: wire.Feedbag,
+				SubGroup:  wire.FeedbagRespondAuthorizeToClient,
+				Flags:     0x8000,
+			},
+			Body: wire.SNAC_0x13_0x1B_FeedbagRespondAuthorizeToClient{
+				TLV:        wire.NewTLVBE(6, uint32(0x00020004)),
+				ScreenName: sender.IdentScreenName().String(),
+				Accepted:   0,
+				Reason:     authMsg.Message,
+			},
+		}
+		s.messageRelayer.RelayToScreenName(ctx, recipient, snac)
+		return nil
+	case wire.ICBMMsgTypeAdded:
+		snac := wire.SNACMessage{
+			Frame: wire.SNACFrame{
+				FoodGroup: wire.Feedbag,
+				SubGroup:  wire.FeedbagBuddyAdded,
+				Flags:     0x8000,
+			},
+			Body: wire.SNAC_0x13_0x1C_FeedbagBuddyAdded{
+				TLV:        wire.NewTLVBE(6, uint32(0x00020004)),
+				ScreenName: sender.IdentScreenName().String(),
+			},
+		}
+		s.messageRelayer.RelayToScreenName(ctx, recipient, snac)
+		return nil
+	case wire.ICBMMsgTypeAuthReq:
+		snac := wire.SNACMessage{
+			Frame: wire.SNACFrame{
+				FoodGroup: wire.Feedbag,
+				SubGroup:  wire.FeedbagRequestAuthorizeToClient,
+				Flags:     0x8000,
+			},
+			Body: wire.SNAC_0x13_0x19_FeedbagRequestAuthorizeToClient{
+				TLV:        wire.NewTLVBE(6, uint32(0x00020004)),
+				ScreenName: sender.IdentScreenName().String(),
+				Reason:     authMsg.Message,
+			},
+		}
+		s.messageRelayer.RelayToScreenName(ctx, recipient, snac)
+		return nil
+	default:
+		s.logger.WarnContext(ctx, "unknown authMsg ICBM message type", "type", authMsg.MessageType)
+		return nil
+	}
 }
 
 // canSendOfflineMessage returns true if the user can send an offline message.

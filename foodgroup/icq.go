@@ -24,6 +24,7 @@ func NewICQService(
 	logger *slog.Logger,
 	sessionRetriever SessionRetriever,
 	offlineMessageManager OfflineMessageManager,
+	icbmSender func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) (*wire.SNACMessage, error),
 ) ICQService {
 	return ICQService{
 		messageRelayer:        messageRelayer,
@@ -32,6 +33,7 @@ func NewICQService(
 		logger:                logger,
 		sessionRetriever:      sessionRetriever,
 		offlineMessageManager: offlineMessageManager,
+		icbmSender:            icbmSender,
 		timeNow:               time.Now,
 	}
 }
@@ -45,6 +47,7 @@ type ICQService struct {
 	userUpdater           ICQUserUpdater
 	timeNow               func() time.Time
 	offlineMessageManager OfflineMessageManager
+	icbmSender            func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) (*wire.SNACMessage, error)
 }
 
 func (s ICQService) DeleteMsgReq(ctx context.Context, instance *state.SessionInstance, seq uint16) error {
@@ -421,11 +424,25 @@ func (s ICQService) OfflineMsgReq(ctx context.Context, instance *state.SessionIn
 			}
 		case wire.ICBMChannelICQ:
 			if b, hasAuthReq := msgIn.Message.Bytes(wire.ICBMTLVData); hasAuthReq {
-				// send authorization request
 				msg := wire.ICBMCh4Message{}
 				buf := bytes.NewBuffer(b)
 				if err := wire.UnmarshalLE(&msg, buf); err != nil {
 					return err
+				}
+				if instance.Session().UsesFeedbag() {
+					// send auth grant/deny/request SNACs instead of the legacy MSG_TYPE_*
+					// ICQ messages.
+					frame := wire.SNACFrame{
+						FoodGroup: wire.ICBM,
+						SubGroup:  wire.ICBMChannelMsgToHost,
+					}
+					// fake a session since the sender may be offline
+					sender := state.NewSession()
+					sender.SetIdentScreenName(msgIn.Sender)
+					if _, err := s.icbmSender(ctx, sender.AddInstance(), frame, msgIn.Message); err != nil {
+						return fmt.Errorf("s.icbmSender: %w", err)
+					}
+					continue // do not send these messages in response
 				}
 				reply.MsgType = msg.MessageType
 				reply.Flags = msg.Flags
@@ -457,7 +474,11 @@ func (s ICQService) OfflineMsgReq(ctx context.Context, instance *state.SessionIn
 		},
 	}
 
-	return s.reply(ctx, instance, eofMsg)
+	if err := s.reply(ctx, instance, eofMsg); err != nil {
+		return fmt.Errorf("sending end of offline messages: %w", err)
+	}
+
+	return nil
 }
 
 func (s ICQService) SetAffiliations(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x041A_DBQueryMetaReqSetAffiliations, seq uint16) error {
@@ -632,7 +653,7 @@ func (s ICQService) ShortUserInfo(ctx context.Context, instance *state.SessionIn
 		Email:      user.ICQBasicInfo.EmailAddress,
 		Gender:     uint8(user.ICQMoreInfo.Gender),
 	}
-	if user.ICQPermissions.AuthRequired {
+	if !user.ICQPermissions.AuthRequired {
 		info.Authorization = 1
 	}
 
@@ -722,7 +743,7 @@ func (s ICQService) createResult(res state.User) wire.ICQUserSearchRecord {
 		Gender:    uint8(res.ICQMoreInfo.Gender),
 		Age:       res.Age(s.timeNow),
 	}
-	if res.ICQPermissions.AuthRequired {
+	if !res.ICQPermissions.AuthRequired {
 		searchRecord.Authorization = 1
 	}
 
@@ -909,12 +930,12 @@ func (s ICQService) userInfo(ctx context.Context, instance *state.SessionInstanc
 		ZIP:         user.ICQBasicInfo.ZIPCode,
 		CountryCode: user.ICQBasicInfo.CountryCode,
 		GMTOffset:   user.ICQBasicInfo.GMTOffset,
-		AuthFlag:    0,
+		AuthFlag:    0, // required by default
 		WebAware:    1,
 		DCPerms:     0,
 	}
 
-	if user.ICQPermissions.AuthRequired {
+	if !user.ICQPermissions.AuthRequired {
 		userInfo.AuthFlag = 1
 	}
 	if user.ICQPermissions.WebAware {

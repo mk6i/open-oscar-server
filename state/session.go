@@ -73,6 +73,8 @@ type Session struct {
 	chatRoomCookie      string
 	buddyIcon           wire.BARTID
 	typingEventsEnabled bool
+	// usesFeedbag is true after FeedbagService.Use completes this sign-on (server-side buddy list / SSI).
+	usesFeedbag bool
 
 	// Rate limiting (shared across all sessions per user)
 	rateLimitStates         [5]RateClassState
@@ -777,6 +779,20 @@ func (s *Session) TypingEventsEnabled() bool {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 	return s.typingEventsEnabled
+}
+
+// SetUsesFeedbag records that this session uses the feedbag (server-side) buddy list for this sign-on.
+func (s *Session) SetUsesFeedbag() {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.usesFeedbag = true
+}
+
+// UsesFeedbag reports whether the client completed the feedbag Use handshake this sign-on.
+func (s *Session) UsesFeedbag() bool {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.usesFeedbag
 }
 
 func (s *Session) userInfo() wire.TLVList {

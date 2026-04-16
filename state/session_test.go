@@ -13,6 +13,26 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestSession_UsesFeedbag(t *testing.T) {
+	s := NewSession()
+
+	if s.UsesFeedbag() {
+		t.Fatalf("UsesFeedbag() = true; want false")
+	}
+
+	s.SetUsesFeedbag()
+
+	if !s.UsesFeedbag() {
+		t.Fatalf("UsesFeedbag() = false; want true")
+	}
+
+	// idempotent
+	s.SetUsesFeedbag()
+	if !s.UsesFeedbag() {
+		t.Fatalf("UsesFeedbag() = false after second SetUsesFeedbag; want true")
+	}
+}
+
 func TestSession_IncrementAndGetWarning(t *testing.T) {
 	s := NewSession().AddInstance()
 

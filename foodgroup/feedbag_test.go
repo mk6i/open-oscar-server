@@ -328,7 +328,7 @@ func TestFeedbagService_QueryIfModified(t *testing.T) {
 }
 
 func TestFeedbagService_RightsQuery(t *testing.T) {
-	svc := NewFeedbagService(nil, nil, nil, nil, nil, nil, nil)
+	svc := NewFeedbagService(nil, nil, nil, nil, nil, nil, nil, nil)
 
 	outputSNAC := svc.RightsQuery(context.Background(), wire.SNACFrame{RequestID: 1234})
 	expectSNAC := wire.SNACMessage{
@@ -484,6 +484,112 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 								},
 								Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
 									Results: []uint16{0x0000, 0x0000},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectOutput: nil,
+		},
+		{
+			name:     "add 2 ICQ buddies one that requires authorization",
+			instance: newTestInstance("me"),
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagInsertItem,
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x13_0x08_FeedbagInsertItem{
+					Items: []wire.FeedbagItem{
+						{
+							ClassID: wire.FeedbagClassIdBuddy,
+							Name:    "123400", // requires authorization
+						},
+						{
+							ClassID: wire.FeedbagClassIdBuddy,
+							Name:    "123401", // does not require authorization
+						},
+					},
+				},
+			},
+			mockParams: mockParams{
+				feedbagManagerParams: feedbagManagerParams{
+					feedbagUpsertParams: feedbagUpsertParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							items: []wire.FeedbagItem{
+								{
+									ClassID: wire.FeedbagClassIdBuddy,
+									Name:    "123401",
+								},
+							},
+						},
+					},
+				},
+				buddyBroadcasterParams: buddyBroadcasterParams{
+					broadcastVisibilityParams: broadcastVisibilityParams{
+						{
+							from: state.NewIdentScreenName("me"),
+							filter: []state.IdentScreenName{
+								state.NewIdentScreenName("123401"),
+							},
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToOtherInstancesParams: relayToOtherInstancesParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagInsertItem,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
+									Items: []wire.FeedbagItem{
+										{
+											ClassID: wire.FeedbagClassIdBuddy,
+											Name:    "123401",
+										},
+									},
+								},
+							},
+						},
+					},
+					relayToSelfParams: relayToSelfParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagStatus,
+									RequestID: 1234,
+								},
+								Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
+									Results: []uint16{0x000E, 0x0000},
+								},
+							},
+						},
+					},
+				},
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{
+							screenName: state.NewIdentScreenName("123400"),
+							result: &state.User{
+								ICQPermissions: state.ICQPermissions{
+									AuthRequired: true,
+								},
+							},
+						},
+						{
+							screenName: state.NewIdentScreenName("123401"),
+							result: &state.User{
+								ICQPermissions: state.ICQPermissions{
+									AuthRequired: false,
 								},
 							},
 						},
@@ -1601,7 +1707,13 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					BroadcastVisibility(mock.Anything, matchSession(params.from), params.filter, true).
 					Return(params.err)
 			}
-			svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, bartItemManager, nil, nil, nil)
+			userManager := newMockUserManager(t)
+			for _, params := range tc.mockParams.userManagerParams.getUserParams {
+				userManager.EXPECT().
+					User(matchContext(), params.screenName).
+					Return(params.result, params.err)
+			}
+			svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, bartItemManager, nil, nil, userManager, nil)
 			svc.buddyBroadcaster = buddyUpdateBroadcaster
 			output, err := svc.UpsertItem(context.Background(), tc.instance, tc.inputSNAC.Frame,
 				tc.inputSNAC.Body.(wire.SNAC_0x13_0x08_FeedbagInsertItem).Items)
@@ -1888,7 +2000,7 @@ func TestFeedbagService_Use(t *testing.T) {
 					Return(params.results, nil)
 			}
 
-			svc := NewFeedbagService(slog.Default(), nil, feedbagManager, nil, nil, nil, nil)
+			svc := NewFeedbagService(slog.Default(), nil, feedbagManager, nil, nil, nil, nil, nil)
 
 			haveErr := svc.Use(context.Background(), tt.instance)
 			assert.ErrorIs(t, tt.wantErr, haveErr)
@@ -1899,12 +2011,16 @@ func TestFeedbagService_Use(t *testing.T) {
 }
 
 func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
+	wantICBMFrame := wire.SNACFrame{
+		FoodGroup: wire.ICBM,
+		SubGroup:  wire.ICBMChannelMsgToHost,
+	}
 	tests := []struct {
-		name       string
-		instance   *state.SessionInstance
-		bodyIn     wire.SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost
-		mockParams mockParams
-		wantErr    error
+		name         string
+		instance     *state.SessionInstance
+		bodyIn       wire.SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost
+		wantHostSNAC wire.SNAC_0x04_0x06_ICBMChannelMsgToHost
+		wantErr      error
 	}{
 		{
 			name:     "authorization accepted",
@@ -1913,31 +2029,16 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 				ScreenName: "100003",
 				Accepted:   1,
 			},
-			mockParams: mockParams{
-				messageRelayerParams: messageRelayerParams{
-					relayToScreenNameParams: relayToScreenNameParams{
-						{
-							screenName: state.NewIdentScreenName("100003"),
-							message: wire.SNACMessage{
-								Frame: wire.SNACFrame{
-									FoodGroup: wire.ICBM,
-									SubGroup:  wire.ICBMChannelMsgToClient,
-								},
-								Body: wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
-									ChannelID:   wire.ICBMChannelICQ,
-									TLVUserInfo: newTestInstance("100001").Session().TLVUserInfo(),
-									TLVRestBlock: wire.TLVRestBlock{
-										TLVList: wire.TLVList{
-											wire.NewTLVLE(wire.ICBMTLVData, wire.ICBMCh4Message{
-												UIN:         100001,
-												MessageType: wire.ICBMMsgTypeAuthOK,
-											}),
-											wire.NewTLVBE(wire.ICBMTLVStore, []byte{}),
-										},
-									},
-								},
-							},
-						},
+			wantHostSNAC: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
+				ChannelID:  wire.ICBMChannelICQ,
+				ScreenName: "100003",
+				TLVRestBlock: wire.TLVRestBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVLE(wire.ICBMTLVData, wire.ICBMCh4Message{
+							UIN:         100001,
+							MessageType: wire.ICBMMsgTypeAuthOK,
+						}),
+						wire.NewTLVBE(wire.ICBMTLVStore, []byte{}),
 					},
 				},
 			},
@@ -1950,32 +2051,17 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 				Accepted:   0,
 				Reason:     "I don't know you!",
 			},
-			mockParams: mockParams{
-				messageRelayerParams: messageRelayerParams{
-					relayToScreenNameParams: relayToScreenNameParams{
-						{
-							screenName: state.NewIdentScreenName("100003"),
-							message: wire.SNACMessage{
-								Frame: wire.SNACFrame{
-									FoodGroup: wire.ICBM,
-									SubGroup:  wire.ICBMChannelMsgToClient,
-								},
-								Body: wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
-									ChannelID:   wire.ICBMChannelICQ,
-									TLVUserInfo: newTestInstance("100001").Session().TLVUserInfo(),
-									TLVRestBlock: wire.TLVRestBlock{
-										TLVList: wire.TLVList{
-											wire.NewTLVLE(wire.ICBMTLVData, wire.ICBMCh4Message{
-												UIN:         100001,
-												MessageType: wire.ICBMMsgTypeAuthDeny,
-												Message:     "I don't know you!",
-											}),
-											wire.NewTLVBE(wire.ICBMTLVStore, []byte{}),
-										},
-									},
-								},
-							},
-						},
+			wantHostSNAC: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
+				ChannelID:  wire.ICBMChannelICQ,
+				ScreenName: "100003",
+				TLVRestBlock: wire.TLVRestBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVLE(wire.ICBMTLVData, wire.ICBMCh4Message{
+							UIN:         100001,
+							MessageType: wire.ICBMMsgTypeAuthDeny,
+							Message:     "I don't know you!",
+						}),
+						wire.NewTLVBE(wire.ICBMTLVStore, []byte{}),
 					},
 				},
 			},
@@ -1983,13 +2069,14 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			messageRelayer := newMockMessageRelayer(t)
-			for _, params := range tt.mockParams.relayToScreenNameParams {
-				messageRelayer.EXPECT().
-					RelayToScreenName(matchContext(), params.screenName, params.message)
+			icbmSender := func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) (*wire.SNACMessage, error) {
+				assert.Equal(t, wantICBMFrame, inFrame)
+				assert.Equal(t, tt.instance, instance)
+				assert.Equal(t, tt.wantHostSNAC, inBody)
+				return nil, nil
 			}
 
-			svc := NewFeedbagService(slog.Default(), messageRelayer, nil, nil, nil, nil, nil)
+			svc := NewFeedbagService(slog.Default(), nil, nil, nil, nil, nil, nil, icbmSender)
 			haveErr := svc.RespondAuthorizeToHost(context.Background(), tt.instance, wire.SNACFrame{}, tt.bodyIn)
 			assert.ErrorIs(t, tt.wantErr, haveErr)
 		})
@@ -2181,7 +2268,7 @@ func TestFeedbagService_StartCluster(t *testing.T) {
 			Body:  inBody,
 		})
 
-	svc := NewFeedbagService(slog.Default(), messageRelayer, nil, nil, nil, nil, nil)
+	svc := NewFeedbagService(slog.Default(), messageRelayer, nil, nil, nil, nil, nil, nil)
 	svc.StartCluster(context.Background(), instance, inFrame, inBody)
 }
 
@@ -2200,6 +2287,6 @@ func TestFeedbagService_EndCluster(t *testing.T) {
 			Body:  wire.SNAC_0x13_0x12_FeedbagEndCluster{},
 		})
 
-	svc := NewFeedbagService(slog.Default(), messageRelayer, nil, nil, nil, nil, nil)
+	svc := NewFeedbagService(slog.Default(), messageRelayer, nil, nil, nil, nil, nil, nil)
 	svc.EndCluster(context.Background(), instance, inFrame)
 }

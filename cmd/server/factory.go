@@ -40,6 +40,7 @@ type Container struct {
 	sqLiteUserStore        *state.SQLiteUserStore
 	webAPISessionManager   *state.WebAPISessionManager
 	Listeners              []config.Listener
+	feedbagSvc             foodgroup.FeedbagService
 }
 
 // MakeCommonDeps creates common dependencies used by the food group services.
@@ -81,7 +82,6 @@ func MakeCommonDeps() (Container, error) {
 	c.rateLimitClasses = wire.DefaultRateLimitClasses()
 	c.snacRateLimits = wire.DefaultSNACRateLimits()
 
-	// ICBM svc is a common dep because OSCAR and TOC need to share convo history state.
 	c.icbmSvc = foodgroup.NewICBMService(
 		c.sqLiteUserStore,
 		c.inMemorySessionManager,
@@ -92,6 +92,17 @@ func MakeCommonDeps() (Container, error) {
 		c.sqLiteUserStore,
 		c.snacRateLimits,
 		c.logger,
+	)
+
+	c.feedbagSvc = foodgroup.NewFeedbagService(
+		c.logger,
+		c.inMemorySessionManager,
+		c.sqLiteUserStore,
+		c.sqLiteUserStore,
+		c.sqLiteUserStore,
+		c.inMemorySessionManager,
+		c.sqLiteUserStore,
+		c.icbmSvc.ChannelMsgToHost,
 	)
 
 	return c, nil
@@ -257,15 +268,6 @@ func OSCAR(deps Container) *oscar.Server {
 	)
 	chatService := foodgroup.NewChatService(deps.chatSessionManager)
 	chatNavService := foodgroup.NewChatNavService(logger, deps.sqLiteUserStore)
-	feedbagService := foodgroup.NewFeedbagService(
-		logger,
-		deps.inMemorySessionManager,
-		deps.sqLiteUserStore,
-		deps.sqLiteUserStore,
-		deps.sqLiteUserStore,
-		deps.inMemorySessionManager,
-		deps.sqLiteUserStore,
-	)
 	permitDenyService := foodgroup.NewPermitDenyService(
 		deps.sqLiteUserStore,
 		deps.sqLiteUserStore,
@@ -280,6 +282,7 @@ func OSCAR(deps Container) *oscar.Server {
 		logger,
 		deps.inMemorySessionManager,
 		deps.sqLiteUserStore,
+		deps.icbmSvc.ChannelMsgToHost,
 	)
 	locateService := foodgroup.NewLocateService(
 		deps.sqLiteUserStore,
@@ -324,7 +327,7 @@ func OSCAR(deps Container) *oscar.Server {
 			BuddyService:      buddyService,
 			ChatNavService:    chatNavService,
 			ChatService:       chatService,
-			FeedbagService:    feedbagService,
+			FeedbagService:    deps.feedbagSvc,
 			ICBMService:       deps.icbmSvc,
 			ICQService:        icqService,
 			LocateService:     locateService,
@@ -477,19 +480,11 @@ func TOC(deps Container) *toc.Server {
 				deps.inMemorySessionManager,
 				deps.inMemorySessionManager,
 			),
-			TOCConfigStore: deps.sqLiteUserStore,
-			ChatService:    foodgroup.NewChatService(deps.chatSessionManager),
-			ChatNavService: foodgroup.NewChatNavService(logger, deps.sqLiteUserStore),
-			FeedbagManager: deps.sqLiteUserStore,
-			FeedbagService: foodgroup.NewFeedbagService(
-				logger,
-				deps.inMemorySessionManager,
-				deps.sqLiteUserStore,
-				deps.sqLiteUserStore,
-				deps.sqLiteUserStore,
-				deps.inMemorySessionManager,
-				deps.sqLiteUserStore,
-			),
+			TOCConfigStore:    deps.sqLiteUserStore,
+			ChatService:       foodgroup.NewChatService(deps.chatSessionManager),
+			ChatNavService:    foodgroup.NewChatNavService(logger, deps.sqLiteUserStore),
+			FeedbagManager:    deps.sqLiteUserStore,
+			FeedbagService:    deps.feedbagSvc,
 			SNACRateLimits:    deps.snacRateLimits,
 			HTTPIPRateLimiter: toc.NewIPRateLimiter(rate.Every(1*time.Minute), 10, 1*time.Minute),
 			SessionRetriever:  deps.inMemorySessionManager,

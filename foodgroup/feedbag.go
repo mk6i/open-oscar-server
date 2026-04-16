@@ -21,7 +21,8 @@ func NewFeedbagService(
 	bartItemManager BARTItemManager,
 	relationshipFetcher RelationshipFetcher,
 	sessionRetriever SessionRetriever,
-	userFinder ICQUserFinder,
+	userManager UserManager,
+	icbmSender func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) (*wire.SNACMessage, error),
 ) FeedbagService {
 	return FeedbagService{
 		bartItemManager:  bartItemManager,
@@ -29,7 +30,9 @@ func NewFeedbagService(
 		feedbagManager:   feedbagManager,
 		logger:           logger,
 		messageRelayer:   messageRelayer,
-		userFinder:       userFinder,
+		sessionRetriever: sessionRetriever,
+		userManager:      userManager,
+		icbmSender:       icbmSender,
 	}
 }
 
@@ -41,7 +44,9 @@ type FeedbagService struct {
 	feedbagManager   FeedbagManager
 	logger           *slog.Logger
 	messageRelayer   MessageRelayer
-	userFinder       ICQUserFinder
+	sessionRetriever SessionRetriever
+	userManager      UserManager
+	icbmSender       func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) (*wire.SNACMessage, error)
 }
 
 // RightsQuery returns SNAC wire.FeedbagRightsReply, which contains Feedbag
@@ -199,56 +204,44 @@ func (s FeedbagService) UpsertItem(ctx context.Context, instance *state.SessionI
 	// Check which buddy items require authorization. Items that need auth
 	// are NOT inserted into the feedbag — the client must retry with the
 	// FeedbagAttributesPending flag after receiving error 0x000E.
-	authRequired := make(map[int]bool)
-	if s.userFinder != nil {
-		for i, item := range items {
-			if item.ClassID == wire.FeedbagClassIdBuddy && !item.HasTag(wire.FeedbagAttributesPending) {
-				uin, err := strconv.ParseUint(item.Name, 10, 32)
-				if err == nil {
-					if user, findErr := s.userFinder.FindByUIN(ctx, uint32(uin)); findErr == nil && user.ICQPermissions.AuthRequired {
-						authRequired[i] = true
-					}
-				}
+	var toUpsert []wire.FeedbagItem
+	authRequired := make(map[string]bool)
+
+	for _, item := range items {
+		if item.ClassID == wire.FeedbagClassIdBuddy && !item.HasTag(wire.FeedbagAttributesPending) {
+			sn := state.NewIdentScreenName(item.Name)
+			if sn.UIN() == 0 {
+				continue
 			}
+			user, err := s.userManager.User(ctx, sn)
+			if err != nil {
+				return nil, fmt.Errorf("userManager.User: %w", err)
+			}
+			if user == nil {
+				s.logger.DebugContext(ctx, "user not found", "name", item.Name)
+				continue
+			}
+			if user.ICQPermissions.AuthRequired {
+				authRequired[item.Name] = true
+			} else {
+				toUpsert = append(toUpsert, item)
+			}
+		} else {
+			toUpsert = append(toUpsert, item)
 		}
 	}
 
-	// Only upsert items that don't require auth
-	var itemsToUpsert []wire.FeedbagItem
-	for i, item := range items {
-		if !authRequired[i] {
-			itemsToUpsert = append(itemsToUpsert, item)
-		}
-	}
-	if len(itemsToUpsert) > 0 {
-		if err := s.feedbagManager.FeedbagUpsert(ctx, instance.IdentScreenName(), itemsToUpsert); err != nil {
+	if len(toUpsert) > 0 {
+		if err := s.feedbagManager.FeedbagUpsert(ctx, instance.IdentScreenName(), toUpsert); err != nil {
 			return nil, err
 		}
 	}
 
 	setSessionBuddyPrefs(items, instance)
 
-	var filter []state.IdentScreenName
-	var alertAll bool
-	for i, item := range items {
-		if authRequired[i] {
-			continue
-		}
-		switch item.ClassID {
-		case wire.FeedbagClassIdBuddy, wire.FeedbagClassIDPermit, wire.FeedbagClassIDDeny:
-			filter = append(filter, state.NewIdentScreenName(item.Name))
-		case wire.FeedbagClassIdBart:
-			if err := s.setBARTItem(ctx, instance, item); err != nil {
-				return nil, err
-			}
-		case wire.FeedbagClassIdPdinfo:
-			alertAll = true
-		}
-	}
-
 	snacPayloadOut := wire.SNAC_0x13_0x0E_FeedbagStatus{}
-	for i := range items {
-		if authRequired[i] {
+	for _, item := range items {
+		if authRequired[item.Name] {
 			snacPayloadOut.Results = append(snacPayloadOut.Results, 0x000E)
 		} else {
 			snacPayloadOut.Results = append(snacPayloadOut.Results, 0x0000)
@@ -271,9 +264,24 @@ func (s FeedbagService) UpsertItem(ctx context.Context, instance *state.SessionI
 			RequestID: wire.ReqIDFromServer,
 		},
 		Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
-			Items: items,
+			Items: toUpsert,
 		},
 	})
+
+	var filter []state.IdentScreenName
+	var alertAll bool
+	for _, item := range toUpsert {
+		switch item.ClassID {
+		case wire.FeedbagClassIdBuddy, wire.FeedbagClassIDPermit, wire.FeedbagClassIDDeny:
+			filter = append(filter, state.NewIdentScreenName(item.Name))
+		case wire.FeedbagClassIdBart:
+			if err := s.setBARTItem(ctx, instance, item); err != nil {
+				return nil, err
+			}
+		case wire.FeedbagClassIdPdinfo:
+			alertAll = true
+		}
+	}
 
 	if alertAll || len(filter) > 0 {
 		if err := s.buddyBroadcaster.BroadcastVisibility(ctx, instance, filter, true); err != nil {
@@ -441,24 +449,94 @@ func (s FeedbagService) Use(ctx context.Context, instance *state.SessionInstance
 		return fmt.Errorf("feedbagManager.Feedbag: %w", err)
 	}
 	setSessionBuddyPrefs(items, instance)
+	instance.Session().SetUsesFeedbag()
 	return nil
 }
 
 // RequestAuthorizeToHost forwards an authorization request from the user who
-// wants to add a contact to the contact being added. The target user receives
-// SNAC(0x13,0x19) with the requester's screen name and reason text.
+// wants to add a contact to the contact being added. If the recipient session
+// uses feedbag this sign-on, they receive SNAC(0x13,0x19); otherwise a
+// synthetic SNAC(0x04,0x06) ICBM channel message to host (ICQ ch4 auth req)
+// is relayed to the recipient via messageRelayer.
 func (s FeedbagService) RequestAuthorizeToHost(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x18_FeedbagRequestAuthorizationToHost) error {
-	s.messageRelayer.RelayToScreenName(ctx, state.NewIdentScreenName(inBody.ScreenName), wire.SNACMessage{
-		Frame: wire.SNACFrame{
-			FoodGroup: wire.Feedbag,
-			SubGroup:  wire.FeedbagRequestAuthorizeToClient,
-		},
-		Body: wire.SNAC_0x13_0x18_FeedbagRequestAuthorizationToHost{
-			ScreenName: instance.IdentScreenName().String(),
-			Reason:     inBody.Reason,
-		},
-	})
+	recipient := state.NewIdentScreenName(inBody.ScreenName)
+	recipSess := s.sessionRetriever.RetrieveSession(recipient)
+	useFeedbag := recipSess != nil && recipSess.UsesFeedbag()
+
+	if useFeedbag {
+		s.messageRelayer.RelayToScreenName(ctx, recipient, wire.SNACMessage{
+			Frame: wire.SNACFrame{
+				FoodGroup: wire.Feedbag,
+				SubGroup:  wire.FeedbagRequestAuthorizeToClient,
+			},
+			Body: wire.SNAC_0x13_0x18_FeedbagRequestAuthorizationToHost{
+				ScreenName: instance.IdentScreenName().String(),
+				Reason:     inBody.Reason,
+			},
+		})
+		return nil
+	}
+
+	// send offline or to old client
+	frame := wire.SNACFrame{
+		FoodGroup: wire.ICBM,
+		SubGroup:  wire.ICBMChannelMsgToHost,
+	}
+	hostBody := buildAuthRequestICBMChannelMsgToHost(instance, inBody.ScreenName, inBody.Reason)
+	if _, err := s.icbmSender(ctx, instance, frame, hostBody); err != nil {
+		return err
+	}
+
 	return nil
+}
+
+// buildAuthRequestICBMChannelMsgToHost builds SNAC(0x04,0x06) for an ICQ authorization
+// request.
+func buildAuthRequestICBMChannelMsgToHost(instance *state.SessionInstance, recipientScreenName, reason string) wire.SNAC_0x04_0x06_ICBMChannelMsgToHost {
+	fromUIN := instance.UIN()
+	reasonLatin := utf8ToLatin1(reason)
+	text := fmt.Sprintf("%d\xFE%s\xFE%s\xFE%s\xFE1\xFE%s", fromUIN, "", "", "", reasonLatin)
+
+	ch4 := wire.ICBMCh4Message{
+		UIN:         fromUIN,
+		MessageType: wire.ICBMMsgTypeAuthReq,
+		Message:     text,
+	}
+	return wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
+		Cookie:     uint64(time.Now().UnixNano()),
+		ChannelID:  wire.ICBMChannelICQ,
+		ScreenName: recipientScreenName,
+		TLVRestBlock: wire.TLVRestBlock{
+			TLVList: wire.TLVList{
+				wire.NewTLVLE(wire.ICBMTLVData, ch4),
+				wire.NewTLVBE(wire.ICBMTLVStore, []byte{}),
+			},
+		},
+	}
+}
+
+func utf8ToLatin1(s string) string {
+	if isASCII(s) {
+		return s
+	}
+	var result []byte
+	for _, r := range s {
+		if r <= 0xFF {
+			result = append(result, byte(r))
+		} else {
+			result = append(result, '?')
+		}
+	}
+	return string(result)
+}
+
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] > 0x7F {
+			return false
+		}
+	}
+	return true
 }
 
 // RespondAuthorizeToHost forwards an authorization response from the user
@@ -482,22 +560,24 @@ func (s FeedbagService) RespondAuthorizeToHost(ctx context.Context, instance *st
 		return fmt.Errorf("invalid accepted flag %d", inBody.Accepted)
 	}
 
-	s.messageRelayer.RelayToScreenName(ctx, state.NewIdentScreenName(inBody.ScreenName), wire.SNACMessage{
-		Frame: wire.SNACFrame{
-			FoodGroup: wire.ICBM,
-			SubGroup:  wire.ICBMChannelMsgToClient,
-		},
-		Body: wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
-			ChannelID:   wire.ICBMChannelICQ,
-			TLVUserInfo: instance.Session().TLVUserInfo(),
-			TLVRestBlock: wire.TLVRestBlock{
-				TLVList: wire.TLVList{
-					wire.NewTLVLE(wire.ICBMTLVData, response),
-					wire.NewTLVBE(wire.ICBMTLVStore, []byte{}),
-				},
+	frame := wire.SNACFrame{
+		FoodGroup: wire.ICBM,
+		SubGroup:  wire.ICBMChannelMsgToHost,
+	}
+	snac := wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
+		ChannelID:  wire.ICBMChannelICQ,
+		ScreenName: inBody.ScreenName,
+		TLVRestBlock: wire.TLVRestBlock{
+			TLVList: wire.TLVList{
+				wire.NewTLVLE(wire.ICBMTLVData, response),
+				wire.NewTLVBE(wire.ICBMTLVStore, []byte{}),
 			},
 		},
-	})
+	}
+
+	if _, err := s.icbmSender(ctx, instance, frame, snac); err != nil {
+		return fmt.Errorf("could not send ICBM message: %w", err)
+	}
 
 	return nil
 }
