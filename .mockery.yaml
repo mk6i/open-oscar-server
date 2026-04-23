@@ -145,6 +145,9 @@ packages:
       ClientSideBuddyListManager:
         config:
           filename: "mock_client_side_buddy_list_manager_test.go"
+      ContactPreAuthorizer:
+        config:
+          filename: "mock_contact_pre_authorizer_test.go"
       MessageRelayer:
         config:
           filename: "mock_message_relayer_test.go"

@@ -12,7 +12,7 @@ import (
 )
 
 func TestBuddyService_RightsQuery(t *testing.T) {
-	svc := NewBuddyService(nil, nil, nil, nil, nil)
+	svc := NewBuddyService(nil, nil, nil, nil, nil, newMockContactPreAuthorizer(t))
 
 	want := wire.SNACMessage{
 		Frame: wire.SNACFrame{
@@ -47,6 +47,8 @@ func TestBuddyService_AddBuddies(t *testing.T) {
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
+		// wantSNAC is the expected SNAC returned when buddies are rejected
+		wantSNAC *wire.SNACMessage
 		// wantErr is the expected error
 		wantErr error
 	}{
@@ -121,6 +123,129 @@ func TestBuddyService_AddBuddies(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:     "UIN blocked by pre-authorization",
+			instance: newTestInstance("100002", sessOptSignonComplete),
+			bodyIn: wire.SNAC_0x03_0x04_BuddyAddBuddies{
+				Buddies: []struct {
+					ScreenName string `oscar:"len_prefix=uint8"`
+				}{
+					{ScreenName: "100001"},
+				},
+			},
+			mockParams: mockParams{
+				contactPreAuthorizerParams: contactPreAuthorizerParams{
+					requiresAuthorizationParams: requiresAuthorizationParams{
+						{
+							owner:     state.NewIdentScreenName("100001"),
+							requester: state.NewIdentScreenName("100002"),
+							result:    true,
+						},
+					},
+				},
+			},
+			wantSNAC: &wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.Buddy,
+					SubGroup:  wire.BuddyRejectNotification,
+					RequestID: 42,
+				},
+				Body: wire.SNAC_0x03_0x0A_BuddyRejectNotification{
+					Buddies: []struct {
+						ScreenName string `oscar:"len_prefix=uint8"`
+					}{
+						{ScreenName: "100001"},
+					},
+				},
+			},
+		},
+		{
+			name:     "non-UIN skips pre-auth check",
+			instance: newTestInstance("100002", sessOptSignonComplete),
+			bodyIn: wire.SNAC_0x03_0x04_BuddyAddBuddies{
+				Buddies: []struct {
+					ScreenName string `oscar:"len_prefix=uint8"`
+				}{
+					{ScreenName: "somebody"},
+				},
+			},
+			mockParams: mockParams{
+				clientSideBuddyListManagerParams: clientSideBuddyListManagerParams{
+					addBuddyParams: addBuddyParams{
+						{
+							me:   state.NewIdentScreenName("100002"),
+							them: state.NewIdentScreenName("somebody"),
+						},
+					},
+				},
+				buddyBroadcasterParams: buddyBroadcasterParams{
+					broadcastVisibilityParams: broadcastVisibilityParams{
+						{
+							from:   state.NewIdentScreenName("100002"),
+							filter: []state.IdentScreenName{state.NewIdentScreenName("somebody")},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "partial batch, UIN blocked",
+			instance: newTestInstance("100002", sessOptSignonComplete),
+			bodyIn: wire.SNAC_0x03_0x04_BuddyAddBuddies{
+				Buddies: []struct {
+					ScreenName string `oscar:"len_prefix=uint8"`
+				}{
+					{ScreenName: "100001"},
+					{ScreenName: "100003"},
+				},
+			},
+			mockParams: mockParams{
+				contactPreAuthorizerParams: contactPreAuthorizerParams{
+					requiresAuthorizationParams: requiresAuthorizationParams{
+						{
+							owner:     state.NewIdentScreenName("100001"),
+							requester: state.NewIdentScreenName("100002"),
+							result:    true,
+						},
+						{
+							owner:     state.NewIdentScreenName("100003"),
+							requester: state.NewIdentScreenName("100002"),
+							result:    false,
+						},
+					},
+				},
+				clientSideBuddyListManagerParams: clientSideBuddyListManagerParams{
+					addBuddyParams: addBuddyParams{
+						{
+							me:   state.NewIdentScreenName("100002"),
+							them: state.NewIdentScreenName("100003"),
+						},
+					},
+				},
+				buddyBroadcasterParams: buddyBroadcasterParams{
+					broadcastVisibilityParams: broadcastVisibilityParams{
+						{
+							from:   state.NewIdentScreenName("100002"),
+							filter: []state.IdentScreenName{state.NewIdentScreenName("100003")},
+						},
+					},
+				},
+			},
+			wantSNAC: &wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.Buddy,
+					SubGroup:  wire.BuddyRejectNotification,
+					RequestID: 42,
+				},
+				Body: wire.SNAC_0x03_0x0A_BuddyRejectNotification{
+					Buddies: []struct {
+						ScreenName string `oscar:"len_prefix=uint8"`
+					}{
+						{ScreenName: "100001"},
+					},
+				},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -136,14 +261,20 @@ func TestBuddyService_AddBuddies(t *testing.T) {
 					BroadcastVisibility(matchContext(), matchSession(params.from), params.filter, true).
 					Return(params.err)
 			}
+			contactPreAuth := newMockContactPreAuthorizer(t)
+			for _, params := range tt.mockParams.requiresAuthorizationParams {
+				contactPreAuth.EXPECT().RequiresAuthorization(matchContext(), params.owner, params.requester).Return(params.result, params.err)
+			}
 
 			svc := BuddyService{
 				clientSideBuddyListManager: clientSideBuddyListManager,
 				buddyBroadcaster:           mockBuddyBroadcaster,
+				contactPreAuthorizer:       contactPreAuth,
 			}
 
-			haveErr := svc.AddBuddies(context.Background(), tt.instance, tt.bodyIn)
-			assert.ErrorIs(t, tt.wantErr, haveErr)
+			rejectSNAC, haveErr := svc.AddBuddies(context.Background(), tt.instance, wire.SNACFrame{RequestID: 42}, tt.bodyIn)
+			assert.Equal(t, tt.wantSNAC, rejectSNAC)
+			assert.ErrorIs(t, haveErr, tt.wantErr)
 		})
 	}
 }
@@ -329,14 +460,20 @@ func TestBuddyService_AddTempBuddies(t *testing.T) {
 					BroadcastVisibility(matchContext(), matchSession(params.from), params.filter, true).
 					Return(params.err)
 			}
+			contactPreAuth := newMockContactPreAuthorizer(t)
+			for _, params := range tt.mockParams.requiresAuthorizationParams {
+				contactPreAuth.EXPECT().RequiresAuthorization(matchContext(), params.owner, params.requester).Return(params.result, params.err)
+			}
 
 			svc := BuddyService{
 				clientSideBuddyListManager: clientSideBuddyListManager,
 				buddyBroadcaster:           mockBuddyBroadcaster,
+				contactPreAuthorizer:       contactPreAuth,
 			}
 
-			haveErr := svc.AddTempBuddies(context.Background(), tt.instance, tt.bodyIn)
-			assert.ErrorIs(t, tt.wantErr, haveErr)
+			rejectSNAC, haveErr := svc.AddTempBuddies(context.Background(), tt.instance, wire.SNACFrame{RequestID: 42}, tt.bodyIn)
+			assert.Nil(t, rejectSNAC)
+			assert.ErrorIs(t, haveErr, tt.wantErr)
 		})
 	}
 }

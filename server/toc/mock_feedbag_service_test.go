@@ -322,7 +322,7 @@ func (_c *mockFeedbagService_QueryIfModified_Call) RunAndReturn(run func(ctx con
 }
 
 // RespondAuthorizeToHost provides a mock function for the type mockFeedbagService
-func (_mock *mockFeedbagService) RespondAuthorizeToHost(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost) error {
+func (_mock *mockFeedbagService) RespondAuthorizeToHost(ctx context.Context, instance state.IdentScreenName, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost) error {
 	ret := _mock.Called(ctx, instance, inFrame, inBody)
 
 	if len(ret) == 0 {
@@ -330,7 +330,7 @@ func (_mock *mockFeedbagService) RespondAuthorizeToHost(ctx context.Context, ins
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost) error); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, state.IdentScreenName, wire.SNACFrame, wire.SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost) error); ok {
 		r0 = returnFunc(ctx, instance, inFrame, inBody)
 	} else {
 		r0 = ret.Error(0)
@@ -345,22 +345,22 @@ type mockFeedbagService_RespondAuthorizeToHost_Call struct {
 
 // RespondAuthorizeToHost is a helper method to define mock.On call
 //   - ctx context.Context
-//   - instance *state.SessionInstance
+//   - instance state.IdentScreenName
 //   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost
 func (_e *mockFeedbagService_Expecter) RespondAuthorizeToHost(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}) *mockFeedbagService_RespondAuthorizeToHost_Call {
 	return &mockFeedbagService_RespondAuthorizeToHost_Call{Call: _e.mock.On("RespondAuthorizeToHost", ctx, instance, inFrame, inBody)}
 }
 
-func (_c *mockFeedbagService_RespondAuthorizeToHost_Call) Run(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost)) *mockFeedbagService_RespondAuthorizeToHost_Call {
+func (_c *mockFeedbagService_RespondAuthorizeToHost_Call) Run(run func(ctx context.Context, instance state.IdentScreenName, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost)) *mockFeedbagService_RespondAuthorizeToHost_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *state.SessionInstance
+		var arg1 state.IdentScreenName
 		if args[1] != nil {
-			arg1 = args[1].(*state.SessionInstance)
+			arg1 = args[1].(state.IdentScreenName)
 		}
 		var arg2 wire.SNACFrame
 		if args[2] != nil {
@@ -385,7 +385,7 @@ func (_c *mockFeedbagService_RespondAuthorizeToHost_Call) Return(err error) *moc
 	return _c
 }
 
-func (_c *mockFeedbagService_RespondAuthorizeToHost_Call) RunAndReturn(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost) error) *mockFeedbagService_RespondAuthorizeToHost_Call {
+func (_c *mockFeedbagService_RespondAuthorizeToHost_Call) RunAndReturn(run func(ctx context.Context, instance state.IdentScreenName, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost) error) *mockFeedbagService_RespondAuthorizeToHost_Call {
 	_c.Call.Return(run)
 	return _c
 }

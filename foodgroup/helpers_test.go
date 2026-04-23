@@ -18,6 +18,7 @@ type mockParams struct {
 	accountManagerParams
 	bartItemManagerParams
 	buddyBroadcasterParams
+	contactPreAuthorizerParams
 	relationshipFetcherParams
 	chatMessageRelayerParams
 	chatRoomRegistryParams
@@ -32,6 +33,30 @@ type mockParams struct {
 	sessionRegistryParams
 	sessionRetrieverParams
 	userManagerParams
+}
+
+// contactPreAuthorizerParams is a helper struct that contains mock parameters for
+// ContactPreAuthorizer methods
+type contactPreAuthorizerParams struct {
+	recordPreAuthParams
+	requiresAuthorizationParams
+}
+
+// recordPreAuthParams is the list of parameters passed at the mock
+// ContactPreAuthorizer.RecordPreAuth call site
+type recordPreAuthParams []struct {
+	owner state.IdentScreenName
+	buddy state.IdentScreenName
+	err   error
+}
+
+// requiresAuthorizationParams is the list of parameters passed at the mock
+// ContactPreAuthorizer.RequiresAuthorization call site
+type requiresAuthorizationParams []struct {
+	owner     state.IdentScreenName
+	requester state.IdentScreenName
+	result    bool
+	err       error
 }
 
 // relationshipFetcherParams is a helper struct that contains mock parameters

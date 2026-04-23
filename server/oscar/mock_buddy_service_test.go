@@ -40,20 +40,31 @@ func (_m *mockBuddyService) EXPECT() *mockBuddyService_Expecter {
 }
 
 // AddBuddies provides a mock function for the type mockBuddyService
-func (_mock *mockBuddyService) AddBuddies(ctx context.Context, instance *state.SessionInstance, inBody wire.SNAC_0x03_0x04_BuddyAddBuddies) error {
-	ret := _mock.Called(ctx, instance, inBody)
+func (_mock *mockBuddyService) AddBuddies(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x03_0x04_BuddyAddBuddies) (*wire.SNACMessage, error) {
+	ret := _mock.Called(ctx, instance, inFrame, inBody)
 
 	if len(ret) == 0 {
 		panic("no return value specified for AddBuddies")
 	}
 
-	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNAC_0x03_0x04_BuddyAddBuddies) error); ok {
-		r0 = returnFunc(ctx, instance, inBody)
-	} else {
-		r0 = ret.Error(0)
+	var r0 *wire.SNACMessage
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x03_0x04_BuddyAddBuddies) (*wire.SNACMessage, error)); ok {
+		return returnFunc(ctx, instance, inFrame, inBody)
 	}
-	return r0
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x03_0x04_BuddyAddBuddies) *wire.SNACMessage); ok {
+		r0 = returnFunc(ctx, instance, inFrame, inBody)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*wire.SNACMessage)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x03_0x04_BuddyAddBuddies) error); ok {
+		r1 = returnFunc(ctx, instance, inFrame, inBody)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
 }
 
 // mockBuddyService_AddBuddies_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AddBuddies'
@@ -64,12 +75,13 @@ type mockBuddyService_AddBuddies_Call struct {
 // AddBuddies is a helper method to define mock.On call
 //   - ctx context.Context
 //   - instance *state.SessionInstance
+//   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x03_0x04_BuddyAddBuddies
-func (_e *mockBuddyService_Expecter) AddBuddies(ctx interface{}, instance interface{}, inBody interface{}) *mockBuddyService_AddBuddies_Call {
-	return &mockBuddyService_AddBuddies_Call{Call: _e.mock.On("AddBuddies", ctx, instance, inBody)}
+func (_e *mockBuddyService_Expecter) AddBuddies(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}) *mockBuddyService_AddBuddies_Call {
+	return &mockBuddyService_AddBuddies_Call{Call: _e.mock.On("AddBuddies", ctx, instance, inFrame, inBody)}
 }
 
-func (_c *mockBuddyService_AddBuddies_Call) Run(run func(ctx context.Context, instance *state.SessionInstance, inBody wire.SNAC_0x03_0x04_BuddyAddBuddies)) *mockBuddyService_AddBuddies_Call {
+func (_c *mockBuddyService_AddBuddies_Call) Run(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x03_0x04_BuddyAddBuddies)) *mockBuddyService_AddBuddies_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -79,44 +91,60 @@ func (_c *mockBuddyService_AddBuddies_Call) Run(run func(ctx context.Context, in
 		if args[1] != nil {
 			arg1 = args[1].(*state.SessionInstance)
 		}
-		var arg2 wire.SNAC_0x03_0x04_BuddyAddBuddies
+		var arg2 wire.SNACFrame
 		if args[2] != nil {
-			arg2 = args[2].(wire.SNAC_0x03_0x04_BuddyAddBuddies)
+			arg2 = args[2].(wire.SNACFrame)
+		}
+		var arg3 wire.SNAC_0x03_0x04_BuddyAddBuddies
+		if args[3] != nil {
+			arg3 = args[3].(wire.SNAC_0x03_0x04_BuddyAddBuddies)
 		}
 		run(
 			arg0,
 			arg1,
 			arg2,
+			arg3,
 		)
 	})
 	return _c
 }
 
-func (_c *mockBuddyService_AddBuddies_Call) Return(err error) *mockBuddyService_AddBuddies_Call {
-	_c.Call.Return(err)
+func (_c *mockBuddyService_AddBuddies_Call) Return(sNACMessage *wire.SNACMessage, err error) *mockBuddyService_AddBuddies_Call {
+	_c.Call.Return(sNACMessage, err)
 	return _c
 }
 
-func (_c *mockBuddyService_AddBuddies_Call) RunAndReturn(run func(ctx context.Context, instance *state.SessionInstance, inBody wire.SNAC_0x03_0x04_BuddyAddBuddies) error) *mockBuddyService_AddBuddies_Call {
+func (_c *mockBuddyService_AddBuddies_Call) RunAndReturn(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x03_0x04_BuddyAddBuddies) (*wire.SNACMessage, error)) *mockBuddyService_AddBuddies_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // AddTempBuddies provides a mock function for the type mockBuddyService
-func (_mock *mockBuddyService) AddTempBuddies(ctx context.Context, instance *state.SessionInstance, inBody wire.SNAC_0x03_0x0F_BuddyAddTempBuddies) error {
-	ret := _mock.Called(ctx, instance, inBody)
+func (_mock *mockBuddyService) AddTempBuddies(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x03_0x0F_BuddyAddTempBuddies) (*wire.SNACMessage, error) {
+	ret := _mock.Called(ctx, instance, inFrame, inBody)
 
 	if len(ret) == 0 {
 		panic("no return value specified for AddTempBuddies")
 	}
 
-	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNAC_0x03_0x0F_BuddyAddTempBuddies) error); ok {
-		r0 = returnFunc(ctx, instance, inBody)
-	} else {
-		r0 = ret.Error(0)
+	var r0 *wire.SNACMessage
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x03_0x0F_BuddyAddTempBuddies) (*wire.SNACMessage, error)); ok {
+		return returnFunc(ctx, instance, inFrame, inBody)
 	}
-	return r0
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x03_0x0F_BuddyAddTempBuddies) *wire.SNACMessage); ok {
+		r0 = returnFunc(ctx, instance, inFrame, inBody)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*wire.SNACMessage)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x03_0x0F_BuddyAddTempBuddies) error); ok {
+		r1 = returnFunc(ctx, instance, inFrame, inBody)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
 }
 
 // mockBuddyService_AddTempBuddies_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AddTempBuddies'
@@ -127,12 +155,13 @@ type mockBuddyService_AddTempBuddies_Call struct {
 // AddTempBuddies is a helper method to define mock.On call
 //   - ctx context.Context
 //   - instance *state.SessionInstance
+//   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x03_0x0F_BuddyAddTempBuddies
-func (_e *mockBuddyService_Expecter) AddTempBuddies(ctx interface{}, instance interface{}, inBody interface{}) *mockBuddyService_AddTempBuddies_Call {
-	return &mockBuddyService_AddTempBuddies_Call{Call: _e.mock.On("AddTempBuddies", ctx, instance, inBody)}
+func (_e *mockBuddyService_Expecter) AddTempBuddies(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}) *mockBuddyService_AddTempBuddies_Call {
+	return &mockBuddyService_AddTempBuddies_Call{Call: _e.mock.On("AddTempBuddies", ctx, instance, inFrame, inBody)}
 }
 
-func (_c *mockBuddyService_AddTempBuddies_Call) Run(run func(ctx context.Context, instance *state.SessionInstance, inBody wire.SNAC_0x03_0x0F_BuddyAddTempBuddies)) *mockBuddyService_AddTempBuddies_Call {
+func (_c *mockBuddyService_AddTempBuddies_Call) Run(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x03_0x0F_BuddyAddTempBuddies)) *mockBuddyService_AddTempBuddies_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -142,25 +171,30 @@ func (_c *mockBuddyService_AddTempBuddies_Call) Run(run func(ctx context.Context
 		if args[1] != nil {
 			arg1 = args[1].(*state.SessionInstance)
 		}
-		var arg2 wire.SNAC_0x03_0x0F_BuddyAddTempBuddies
+		var arg2 wire.SNACFrame
 		if args[2] != nil {
-			arg2 = args[2].(wire.SNAC_0x03_0x0F_BuddyAddTempBuddies)
+			arg2 = args[2].(wire.SNACFrame)
+		}
+		var arg3 wire.SNAC_0x03_0x0F_BuddyAddTempBuddies
+		if args[3] != nil {
+			arg3 = args[3].(wire.SNAC_0x03_0x0F_BuddyAddTempBuddies)
 		}
 		run(
 			arg0,
 			arg1,
 			arg2,
+			arg3,
 		)
 	})
 	return _c
 }
 
-func (_c *mockBuddyService_AddTempBuddies_Call) Return(err error) *mockBuddyService_AddTempBuddies_Call {
-	_c.Call.Return(err)
+func (_c *mockBuddyService_AddTempBuddies_Call) Return(sNACMessage *wire.SNACMessage, err error) *mockBuddyService_AddTempBuddies_Call {
+	_c.Call.Return(sNACMessage, err)
 	return _c
 }
 
-func (_c *mockBuddyService_AddTempBuddies_Call) RunAndReturn(run func(ctx context.Context, instance *state.SessionInstance, inBody wire.SNAC_0x03_0x0F_BuddyAddTempBuddies) error) *mockBuddyService_AddTempBuddies_Call {
+func (_c *mockBuddyService_AddTempBuddies_Call) RunAndReturn(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x03_0x0F_BuddyAddTempBuddies) (*wire.SNACMessage, error)) *mockBuddyService_AddTempBuddies_Call {
 	_c.Call.Return(run)
 	return _c
 }

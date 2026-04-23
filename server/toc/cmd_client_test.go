@@ -104,8 +104,8 @@ func TestOSCARProxy_RecvClientCmd_AddBuddy(t *testing.T) {
 			buddySvc := newMockBuddyService(t)
 			for _, params := range tc.mockParams.addBuddiesParams {
 				buddySvc.EXPECT().
-					AddBuddies(ctx, matchSession(params.me), params.inBody).
-					Return(params.err)
+					AddBuddies(ctx, matchSession(params.me), mock.Anything, params.inBody).
+					Return(nil, params.err)
 			}
 
 			svc := OSCARProxy{
@@ -6011,8 +6011,8 @@ func TestOSCARProxy_RecvClientCmd_SetConfig(t *testing.T) {
 			buddySvc := newMockBuddyService(t)
 			for _, params := range tc.mockParams.addBuddiesParams {
 				buddySvc.EXPECT().
-					AddBuddies(ctx, matchSession(params.me), params.inBody).
-					Return(params.err)
+					AddBuddies(ctx, matchSession(params.me), mock.Anything, params.inBody).
+					Return(nil, params.err)
 			}
 			tocConfigSvc := newMockTOCConfigStore(t)
 			for _, params := range tc.mockParams.setTOCConfigParams {

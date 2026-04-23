@@ -148,10 +148,17 @@ func (s *InMemorySessionManager) RelayToOtherInstances(ctx context.Context, inst
 func (s *InMemorySessionManager) RelayToScreenNameActiveOnly(ctx context.Context, screenName IdentScreenName, msg wire.SNACMessage) {
 	sess := s.RetrieveSession(screenName)
 	if sess == nil {
-		s.logger.WarnContext(ctx, "RelayToScreenNameActiveOnly: session not found", "recipient", screenName, "food_group", msg.Frame.FoodGroup, "sub_group", msg.Frame.SubGroup)
+		s.logger.WarnContext(ctx, "RelayToScreenNameActiveOnly: session not found",
+			"recipient", screenName,
+			"food_group", wire.FoodGroupName(msg.Frame.FoodGroup),
+			"sub_group", wire.SubGroupName(msg.Frame.FoodGroup, msg.Frame.SubGroup))
 		return
 	}
-	s.logger.DebugContext(ctx, "RelayToScreenNameActiveOnly: found session, relaying", "recipient", screenName, "food_group", msg.Frame.FoodGroup, "sub_group", msg.Frame.SubGroup, "instances", len(sess.Instances()), "inactive", sess.Inactive())
+	s.logger.DebugContext(ctx, "RelayToScreenNameActiveOnly: found session, relaying", "recipient", screenName,
+		"food_group", wire.FoodGroupName(msg.Frame.FoodGroup),
+		"sub_group", wire.SubGroupName(msg.Frame.FoodGroup, msg.Frame.SubGroup),
+		"instances", len(sess.Instances()),
+		"inactive", sess.Inactive())
 	s.maybeRelayMessageActiveOnly(ctx, msg, sess)
 }
 
@@ -160,9 +167,8 @@ func (s *InMemorySessionManager) maybeRelayMessage(ctx context.Context, msg wire
 		if !instance.live() {
 			s.logger.DebugContext(ctx, "maybeRelayMessage: skipping non-live instance",
 				"recipient", sess.IdentScreenName(),
-				"food_group", msg.Frame.FoodGroup,
-				"sub_group", msg.Frame.SubGroup,
-			)
+				"food_group", wire.FoodGroupName(msg.Frame.FoodGroup),
+				"sub_group", wire.SubGroupName(msg.Frame.FoodGroup, msg.Frame.SubGroup))
 			continue
 		}
 		switch instance.RelayMessageToInstance(msg) {

@@ -15,10 +15,12 @@ func NewBuddyService(
 	relationshipFetcher RelationshipFetcher,
 	sessionRetriever SessionRetriever,
 	bartItemManager BARTItemManager,
+	contactPreAuthorizer ContactPreAuthorizer,
 ) *BuddyService {
 	return &BuddyService{
 		buddyBroadcaster:           newBuddyNotifier(bartItemManager, relationshipFetcher, messageRelayer, sessionRetriever),
 		clientSideBuddyListManager: clientSideBuddyListManager,
+		contactPreAuthorizer:       contactPreAuthorizer,
 	}
 }
 
@@ -26,6 +28,7 @@ func NewBuddyService(
 type BuddyService struct {
 	clientSideBuddyListManager ClientSideBuddyListManager
 	buddyBroadcaster           buddyBroadcaster
+	contactPreAuthorizer       ContactPreAuthorizer
 }
 
 // RightsQuery returns buddy list service parameters.
@@ -50,35 +53,62 @@ func (s BuddyService) RightsQuery(_ context.Context, frameIn wire.SNACFrame) wir
 }
 
 // AddBuddies adds buddies to my client-side buddy list.
-func (s BuddyService) AddBuddies(ctx context.Context, instance *state.SessionInstance, inBody wire.SNAC_0x03_0x04_BuddyAddBuddies) error {
+// It returns a single SNAC(03,0x0A) listing buddies rejected for lack of
+// pre-authorization (ICQ UIN contacts only), or nil when none were rejected.
+func (s BuddyService) AddBuddies(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x03_0x04_BuddyAddBuddies) (*wire.SNACMessage, error) {
+	var rejected []struct {
+		ScreenName string `oscar:"len_prefix=uint8"`
+	}
+	var added []state.IdentScreenName
 
 	for _, entry := range inBody.Buddies {
-		sn := state.NewIdentScreenName(entry.ScreenName)
-		if err := s.clientSideBuddyListManager.AddBuddy(ctx, instance.IdentScreenName(), sn); err != nil {
-			return err
+		them := state.NewIdentScreenName(entry.ScreenName)
+		if them.UIN() != 0 {
+			blocked, err := s.contactPreAuthorizer.RequiresAuthorization(ctx, them, instance.IdentScreenName())
+			if err != nil {
+				return nil, err
+			}
+			if blocked {
+				rejected = append(rejected, struct {
+					ScreenName string `oscar:"len_prefix=uint8"`
+				}{ScreenName: entry.ScreenName})
+				continue
+			}
 		}
+		if err := s.clientSideBuddyListManager.AddBuddy(ctx, instance.IdentScreenName(), them); err != nil {
+			return nil, err
+		}
+		added = append(added, them)
 	}
 
 	if !instance.SignonComplete() {
 		// client has not completed sign-on sequence, so any arrival
 		// messages sent at this point would be ignored by the client.
-		return nil
+		return nil, nil
 	}
 
-	var toNotify []state.IdentScreenName
-	for _, entry := range inBody.Buddies {
-		toNotify = append(toNotify, state.NewIdentScreenName(entry.ScreenName))
-	}
-	if err := s.buddyBroadcaster.BroadcastVisibility(ctx, instance, toNotify, true); err != nil {
-		return fmt.Errorf("buddyBroadcaster.BroadcastVisibility: %w", err)
+	if len(added) > 0 {
+		if err := s.buddyBroadcaster.BroadcastVisibility(ctx, instance, added, true); err != nil {
+			return nil, fmt.Errorf("buddyBroadcaster.BroadcastVisibility: %w", err)
+		}
 	}
 
-	return nil
+	if len(rejected) > 0 {
+		return &wire.SNACMessage{
+			Frame: wire.SNACFrame{
+				FoodGroup: wire.Buddy,
+				SubGroup:  wire.BuddyRejectNotification,
+				RequestID: inFrame.RequestID,
+			},
+			Body: wire.SNAC_0x03_0x0A_BuddyRejectNotification{Buddies: rejected},
+		}, nil
+	}
+
+	return nil, nil
 }
 
 // DelBuddies deletes buddies from my client-side buddy list.
 func (s BuddyService) DelBuddies(ctx context.Context, instance *state.SessionInstance, inBody wire.SNAC_0x03_0x05_BuddyDelBuddies) error {
-
 	var toNotify []state.IdentScreenName
 
 	for _, entry := range inBody.Buddies {
@@ -98,7 +128,7 @@ func (s BuddyService) DelBuddies(ctx context.Context, instance *state.SessionIns
 
 // AddTempBuddies adds temporary buddies to the user's buddy list that persist
 // for the duration of the user's session.
-func (s BuddyService) AddTempBuddies(ctx context.Context, instance *state.SessionInstance, inBody wire.SNAC_0x03_0x0F_BuddyAddTempBuddies) error {
+func (s BuddyService) AddTempBuddies(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x03_0x0F_BuddyAddTempBuddies) (*wire.SNACMessage, error) {
 	var b wire.SNAC_0x03_0x04_BuddyAddBuddies
 
 	for _, buddy := range inBody.Buddies {
@@ -107,7 +137,7 @@ func (s BuddyService) AddTempBuddies(ctx context.Context, instance *state.Sessio
 		}{ScreenName: buddy.ScreenName})
 	}
 
-	return s.AddBuddies(ctx, instance, b)
+	return s.AddBuddies(ctx, instance, inFrame, b)
 }
 
 // DelTempBuddies deletes temporary buddies from the user's buddy list.

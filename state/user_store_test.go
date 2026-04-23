@@ -3724,3 +3724,58 @@ func TestSQLiteUserStore_DeleteBARTItem(t *testing.T) {
 		assert.ErrorIs(t, err, ErrBARTItemNotFound)
 	})
 }
+
+func TestSQLiteUserStore_ContactPreAuth(t *testing.T) {
+	ctx := context.Background()
+	defer func() {
+		assert.NoError(t, os.Remove(testFile))
+	}()
+
+	f, err := NewSQLiteUserStore(testFile)
+	require.NoError(t, err)
+
+	owner := NewIdentScreenName("100001")
+	requester := NewIdentScreenName("100002")
+
+	require.NoError(t, f.InsertUser(ctx, User{
+		IdentScreenName:   owner,
+		DisplayScreenName: DisplayScreenName("100001"),
+		IsICQ:             true,
+		ICQPermissions:    ICQPermissions{AuthRequired: true},
+	}))
+	require.NoError(t, f.InsertUser(ctx, User{
+		IdentScreenName:   requester,
+		DisplayScreenName: DisplayScreenName("100002"),
+		IsICQ:             true,
+	}))
+
+	blocked, err := f.RequiresAuthorization(ctx, owner, requester)
+	require.NoError(t, err)
+	assert.True(t, blocked)
+
+	require.NoError(t, f.RecordPreAuth(ctx, owner, requester))
+	blocked, err = f.RequiresAuthorization(ctx, owner, requester)
+	require.NoError(t, err)
+	assert.False(t, blocked)
+
+	// Pre-auth rows persist; FeedbagUpsert and AddBuddy do not delete them.
+	buddyItem := wire.FeedbagItem{
+		GroupID:   0,
+		ItemID:    1,
+		ClassID:   wire.FeedbagClassIdBuddy,
+		Name:      owner.String(),
+		TLVLBlock: wire.TLVLBlock{},
+	}
+	require.NoError(t, f.FeedbagUpsert(ctx, requester, []wire.FeedbagItem{buddyItem}))
+	var count int
+	err = f.db.QueryRow(`SELECT COUNT(*) FROM contactPreauth WHERE ownerScreenName = ? AND authorizedScreenName = ?`,
+		owner.String(), requester.String()).Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 1, count)
+
+	require.NoError(t, f.AddBuddy(ctx, requester, owner))
+	err = f.db.QueryRow(`SELECT COUNT(*) FROM contactPreauth WHERE ownerScreenName = ? AND authorizedScreenName = ?`,
+		owner.String(), requester.String()).Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 1, count)
+}

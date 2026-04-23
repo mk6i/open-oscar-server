@@ -168,8 +168,19 @@ func (rt Handler) BuddyAddBuddies(ctx context.Context, instance *state.SessionIn
 	if err := wire.UnmarshalBE(&inSNAC, r); err != nil {
 		return err
 	}
-	rt.LogRequest(ctx, inFrame, inSNAC)
-	return rt.BuddyService.AddBuddies(ctx, instance, inSNAC)
+	rejectSNAC, err := rt.BuddyService.AddBuddies(ctx, instance, inFrame, inSNAC)
+	if err != nil {
+		return err
+	}
+	if rejectSNAC != nil {
+		rt.LogRequestAndResponse(ctx, inFrame, inSNAC, rejectSNAC.Frame, rejectSNAC.Body)
+		if sendErr := rw.SendSNAC(rejectSNAC.Frame, rejectSNAC.Body); sendErr != nil {
+			return sendErr
+		}
+	} else {
+		rt.LogRequest(ctx, inFrame, inSNAC)
+	}
+	return nil
 }
 
 func (rt Handler) BuddyDelBuddies(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
@@ -186,8 +197,19 @@ func (rt Handler) BuddyAddTempBuddies(ctx context.Context, instance *state.Sessi
 	if err := wire.UnmarshalBE(&inSNAC, r); err != nil {
 		return err
 	}
-	rt.LogRequest(ctx, inFrame, inSNAC)
-	return rt.BuddyService.AddTempBuddies(ctx, instance, inSNAC)
+	rejectSNAC, err := rt.BuddyService.AddTempBuddies(ctx, instance, inFrame, inSNAC)
+	if err != nil {
+		return err
+	}
+	if rejectSNAC != nil {
+		rt.LogRequestAndResponse(ctx, inFrame, inSNAC, rejectSNAC.Frame, rejectSNAC.Body)
+		if sendErr := rw.SendSNAC(rejectSNAC.Frame, rejectSNAC.Body); sendErr != nil {
+			return sendErr
+		}
+	} else {
+		rt.LogRequest(ctx, inFrame, inSNAC)
+	}
+	return nil
 }
 
 func (rt Handler) BuddyDelTempBuddies(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
@@ -367,6 +389,23 @@ func (rt Handler) FeedbagEndCluster(ctx context.Context, instance *state.Session
 	return nil
 }
 
+func (rt Handler) FeedbagPreAuthorizeBuddy(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+	inBody := wire.SNAC_0x13_0x14_FeedbagPreAuthorizeBuddy{}
+	if err := wire.UnmarshalBE(&inBody, r); err != nil {
+		return err
+	}
+	outSNAC, err := rt.FeedbagService.PreAuthorizeBuddy(ctx, instance, inFrame, inBody)
+	if err != nil {
+		return err
+	}
+	if outSNAC != nil {
+		rt.LogRequestAndResponse(ctx, inFrame, inBody, outSNAC.Frame, outSNAC.Body)
+		return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
+	}
+	rt.LogRequest(ctx, inFrame, inBody)
+	return nil
+}
+
 func (rt Handler) FeedbagRequestAuthorizeToHost(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
 	inBody := wire.SNAC_0x13_0x18_FeedbagRequestAuthorizationToHost{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
@@ -384,7 +423,7 @@ func (rt Handler) FeedbagRespondAuthorizeToHost(ctx context.Context, instance *s
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
 	}
-	if err := rt.FeedbagService.RespondAuthorizeToHost(ctx, instance, inFrame, inBody); err != nil {
+	if err := rt.FeedbagService.RespondAuthorizeToHost(ctx, instance.IdentScreenName(), inFrame, inBody); err != nil {
 		return err
 	}
 	rt.LogRequest(ctx, inFrame, inBody)
@@ -412,8 +451,8 @@ func (rt Handler) ICBMChannelMsgToHost(ctx context.Context, instance *state.Sess
 	if err != nil {
 		return err
 	}
-	rt.Logger.InfoContext(ctx, "user sent an IM", slog.String("recipient", inBody.ScreenName))
 	if outSNAC == nil {
+		rt.LogRequest(ctx, inFrame, inBody)
 		return nil
 	}
 	rt.LogRequestAndResponse(ctx, inFrame, inBody, outSNAC.Frame, outSNAC.Body)
@@ -1086,6 +1125,8 @@ func (rt Handler) Handle(ctx context.Context, server uint16, instance *state.Ses
 			return rt.FeedbagQuery(ctx, instance, inFrame, r, rw)
 		case wire.FeedbagQueryIfModified:
 			return rt.FeedbagQueryIfModified(ctx, instance, inFrame, r, rw)
+		case wire.FeedbagPreAuthorizeBuddy:
+			return rt.FeedbagPreAuthorizeBuddy(ctx, instance, inFrame, r, rw)
 		case wire.FeedbagRequestAuthorizeToHost:
 			return rt.FeedbagRequestAuthorizeToHost(ctx, instance, inFrame, r, rw)
 		case wire.FeedbagRespondAuthorizeToHost:

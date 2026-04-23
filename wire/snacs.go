@@ -653,6 +653,14 @@ type SNAC_0x03_0x04_BuddyAddBuddies struct {
 	}
 }
 
+// SNAC_0x03_0x0A_BuddyRejectNotification is SRV_NOTIFICATION_REJECTED (iserverd):
+// one or more length-prefixed buddy id strings for contacts not added.
+type SNAC_0x03_0x0A_BuddyRejectNotification struct {
+	Buddies []struct {
+		ScreenName string `oscar:"len_prefix=uint8"`
+	}
+}
+
 type SNAC_0x03_0x05_BuddyDelBuddies struct {
 	Buddies []struct {
 		ScreenName string `oscar:"len_prefix=uint8"`
@@ -1874,6 +1882,22 @@ type SNAC_0x13_0x1C_FeedbagBuddyAdded struct {
 	TLV
 	ScreenName string `oscar:"len_prefix=uint8"`
 	Nullterm   uint16
+}
+
+// SNAC_0x13_0x14_FeedbagPreAuthorizeBuddy is the client request for
+// FEEDBAG__PRE_AUTHORIZE_BUDDY.
+type SNAC_0x13_0x14_FeedbagPreAuthorizeBuddy struct {
+	ScreenName string `oscar:"len_prefix=uint8"`
+	Message    string `oscar:"len_prefix=uint16"`
+	Flags      uint16
+}
+
+// SNAC_0x13_0x15_FeedbagPreAuthorizedBuddy is the server notification
+// FEEDBAG__PRE_AUTHORIZED_BUDDY.
+type SNAC_0x13_0x15_FeedbagPreAuthorizedBuddy struct {
+	ScreenName string `oscar:"len_prefix=uint8"`
+	Message    string `oscar:"len_prefix=uint16"`
+	Flags      uint16
 }
 
 //

@@ -46,7 +46,7 @@ func TestICQService_DeleteMsgReq(t *testing.T) {
 					Return(params.err)
 			}
 
-			s := NewICQService(nil, nil, nil, slog.Default(), nil, offlineMessageManager, nil)
+			s := NewICQService(nil, nil, nil, slog.Default(), nil, offlineMessageManager)
 			err := s.DeleteMsgReq(context.Background(), tt.instance, tt.seq)
 			assert.NoError(t, err)
 		})
@@ -2030,16 +2030,16 @@ func TestICQService_OfflineMsgReq(t *testing.T) {
 					RelayToScreenName(mock.Anything, params.screenName, params.message)
 			}
 
-			var icbmSenderCalls int
-			icbmSender := func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) (*wire.SNACMessage, error) {
-				icbmSenderCalls++
-				return nil, nil
-			}
+			var feedbagSenderCalls int
 
-			s := NewICQService(messageRelayer, nil, nil, slog.Default(), nil, offlineMessageManager, icbmSender)
+			s := NewICQService(messageRelayer, nil, nil, slog.Default(), nil, offlineMessageManager)
+			s.forwardICQAuthEvents = func(ctx context.Context, sender state.IdentScreenName, recipient state.IdentScreenName, authMsg wire.ICBMCh4Message) error {
+				feedbagSenderCalls++
+				return nil
+			}
 			err := s.OfflineMsgReq(context.Background(), tt.instance, tt.seq)
 			assert.NoError(t, err)
-			assert.Equal(t, tt.wantICBMSenderCalls, icbmSenderCalls)
+			assert.Equal(t, tt.wantICBMSenderCalls, feedbagSenderCalls)
 		})
 	}
 }

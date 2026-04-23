@@ -40,7 +40,8 @@ type Container struct {
 	sqLiteUserStore        *state.SQLiteUserStore
 	webAPISessionManager   *state.WebAPISessionManager
 	Listeners              []config.Listener
-	feedbagSvc             foodgroup.FeedbagService
+	feedbagSvc             *foodgroup.FeedbagService
+	icqService             *foodgroup.ICQService
 }
 
 // MakeCommonDeps creates common dependencies used by the food group services.
@@ -82,18 +83,6 @@ func MakeCommonDeps() (Container, error) {
 	c.rateLimitClasses = wire.DefaultRateLimitClasses()
 	c.snacRateLimits = wire.DefaultSNACRateLimits()
 
-	c.icbmSvc = foodgroup.NewICBMService(
-		c.sqLiteUserStore,
-		c.inMemorySessionManager,
-		c.sqLiteUserStore,
-		c.sqLiteUserStore,
-		c.inMemorySessionManager,
-		c.sqLiteUserStore,
-		c.sqLiteUserStore,
-		c.snacRateLimits,
-		c.logger,
-	)
-
 	c.feedbagSvc = foodgroup.NewFeedbagService(
 		c.logger,
 		c.inMemorySessionManager,
@@ -102,8 +91,33 @@ func MakeCommonDeps() (Container, error) {
 		c.sqLiteUserStore,
 		c.inMemorySessionManager,
 		c.sqLiteUserStore,
-		c.icbmSvc.ChannelMsgToHost,
 	)
+
+	c.icbmSvc = foodgroup.NewICBMService(
+		c.sqLiteUserStore,
+		c.inMemorySessionManager,
+		c.sqLiteUserStore,
+		c.sqLiteUserStore,
+		c.inMemorySessionManager,
+		c.sqLiteUserStore,
+		c.sqLiteUserStore,
+		c.sqLiteUserStore,
+		c.snacRateLimits,
+		c.logger,
+	)
+
+	c.icqService = foodgroup.NewICQService(
+		c.inMemorySessionManager,
+		c.sqLiteUserStore,
+		c.sqLiteUserStore,
+		c.logger,
+		c.inMemorySessionManager,
+		c.sqLiteUserStore,
+	)
+
+	c.feedbagSvc.BridgeICBMService(c.icbmSvc)
+	c.icbmSvc.BridgeFeedbagService(c.feedbagSvc)
+	c.icqService.BridgeFeedbagService(c.feedbagSvc)
 
 	return c, nil
 }
@@ -265,6 +279,7 @@ func OSCAR(deps Container) *oscar.Server {
 		deps.sqLiteUserStore,
 		deps.inMemorySessionManager,
 		deps.sqLiteUserStore,
+		deps.sqLiteUserStore,
 	)
 	chatService := foodgroup.NewChatService(deps.chatSessionManager)
 	chatNavService := foodgroup.NewChatNavService(logger, deps.sqLiteUserStore)
@@ -274,15 +289,6 @@ func OSCAR(deps Container) *oscar.Server {
 		deps.sqLiteUserStore,
 		deps.inMemorySessionManager,
 		deps.inMemorySessionManager,
-	)
-	icqService := foodgroup.NewICQService(
-		deps.inMemorySessionManager,
-		deps.sqLiteUserStore,
-		deps.sqLiteUserStore,
-		logger,
-		deps.inMemorySessionManager,
-		deps.sqLiteUserStore,
-		deps.icbmSvc.ChannelMsgToHost,
 	)
 	locateService := foodgroup.NewLocateService(
 		deps.sqLiteUserStore,
@@ -329,7 +335,7 @@ func OSCAR(deps Container) *oscar.Server {
 			ChatService:       chatService,
 			FeedbagService:    deps.feedbagSvc,
 			ICBMService:       deps.icbmSvc,
-			ICQService:        icqService,
+			ICQService:        deps.icqService,
 			LocateService:     locateService,
 			ODirService:       oDirService,
 			OServiceService:   oServiceService,
@@ -382,6 +388,7 @@ func MgmtAPI(deps Container) *http.Server {
 		deps.sqLiteUserStore,
 		deps.sqLiteUserStore,
 		deps.inMemorySessionManager,
+		deps.sqLiteUserStore,
 		deps.sqLiteUserStore,
 	)
 	return http.NewManagementAPI(
@@ -444,6 +451,7 @@ func TOC(deps Container) *toc.Server {
 				deps.sqLiteUserStore,
 				deps.sqLiteUserStore,
 				deps.inMemorySessionManager,
+				deps.sqLiteUserStore,
 				deps.sqLiteUserStore,
 			),
 			ChatSessionManager: deps.chatSessionManager,
@@ -519,6 +527,7 @@ func WebAPI(deps Container) *webapi.Server {
 		deps.sqLiteUserStore,
 		deps.inMemorySessionManager,
 		deps.sqLiteUserStore,
+		deps.sqLiteUserStore,
 	)
 
 	handler := webapi.Handler{
@@ -550,6 +559,7 @@ func WebAPI(deps Container) *webapi.Server {
 			deps.sqLiteUserStore,
 			deps.sqLiteUserStore,
 			deps.inMemorySessionManager,
+			deps.sqLiteUserStore,
 			deps.sqLiteUserStore,
 		),
 		CookieBaker:      deps.hmacCookieBaker,
@@ -639,6 +649,7 @@ func ICQLegacy(deps Container) *icq_legacy.LegacyServer {
 			deps.sqLiteUserStore,
 			deps.sqLiteUserStore,
 			deps.inMemorySessionManager,
+			deps.sqLiteUserStore,
 			deps.sqLiteUserStore,
 		),
 		deps.sqLiteUserStore, // offlineMessageManager

@@ -755,8 +755,8 @@ func TestHandler_BuddyAddBuddies(t *testing.T) {
 
 			svc := newMockBuddyService(t)
 			svc.EXPECT().
-				AddBuddies(mock.Anything, mock.Anything, input.Body).
-				Return(tt.serviceError)
+				AddBuddies(mock.Anything, mock.Anything, mock.Anything, input.Body).
+				Return(nil, tt.serviceError)
 
 			h := Handler{
 				BuddyService: svc,
@@ -899,8 +899,8 @@ func TestHandler_BuddyAddTempBuddies(t *testing.T) {
 
 			svc := newMockBuddyService(t)
 			svc.EXPECT().
-				AddTempBuddies(mock.Anything, mock.Anything, input.Body).
-				Return(tt.serviceError)
+				AddTempBuddies(mock.Anything, mock.Anything, mock.Anything, input.Body).
+				Return(nil, tt.serviceError)
 
 			h := Handler{
 				BuddyService: svc,
@@ -2297,6 +2297,39 @@ func TestHandler_FeedbagRespondAuthorizeToHost(t *testing.T) {
 	svc.EXPECT().
 		RespondAuthorizeToHost(mock.Anything, mock.Anything, input.Frame, input.Body).
 		Return(nil)
+
+	h := Handler{
+		FeedbagService: svc,
+		RouteLogger: middleware.RouteLogger{
+			Logger: slog.Default(),
+		},
+	}
+	responseWriter := newMockResponseWriter(t)
+
+	instance := state.NewSession().AddInstance()
+
+	buf := &bytes.Buffer{}
+	assert.NoError(t, wire.MarshalBE(input.Body, buf))
+
+	assert.NoError(t, h.Handle(context.TODO(), wire.BOS, instance, input.Frame, buf, responseWriter, config.Listener{}))
+}
+
+func TestHandler_FeedbagPreAuthorizeBuddy(t *testing.T) {
+	input := wire.SNACMessage{
+		Frame: wire.SNACFrame{
+			FoodGroup: wire.Feedbag,
+			SubGroup:  wire.FeedbagPreAuthorizeBuddy,
+		},
+		Body: wire.SNAC_0x13_0x14_FeedbagPreAuthorizeBuddy{
+			ScreenName: "100002",
+			Message:    "x",
+		},
+	}
+
+	svc := newMockFeedbagService(t)
+	svc.EXPECT().
+		PreAuthorizeBuddy(mock.Anything, mock.Anything, input.Frame, input.Body).
+		Return(nil, nil)
 
 	h := Handler{
 		FeedbagService: svc,

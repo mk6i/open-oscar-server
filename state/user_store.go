@@ -333,6 +333,56 @@ func (f SQLiteUserStore) User(ctx context.Context, screenName IdentScreenName) (
 	return &users[0], nil
 }
 
+// RequiresAuthorization reports whether adding owner as a contact by requester
+// is still blocked: owner requires authorization and requester does not have a
+// pre-authorization grant from owner.
+func (f SQLiteUserStore) RequiresAuthorization(ctx context.Context, owner, requester IdentScreenName) (bool, error) {
+	u, err := f.User(ctx, owner)
+	if err != nil {
+		return false, fmt.Errorf("RequiresAuthorization: %w", err)
+	}
+	if u == nil || !u.ICQPermissions.AuthRequired {
+		return false, nil
+	}
+	var one int
+	err = f.db.QueryRowContext(ctx,
+		`SELECT 1 FROM contactPreauth WHERE ownerScreenName = ? AND authorizedScreenName = ? LIMIT 1`,
+		owner.String(), requester.String(),
+	).Scan(&one)
+	if errors.Is(err, sql.ErrNoRows) {
+		return true, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("RequiresAuthorization: %w", err)
+	}
+	return false, nil
+}
+
+// RecordPreAuth records that owner has pre-authorized requester to add owner
+// without a further authorization prompt. Returns ErrNoUser if requester
+// does not exist.
+func (f SQLiteUserStore) RecordPreAuth(ctx context.Context, owner, requester IdentScreenName) error {
+	q := `
+		INSERT INTO contactPreauth (ownerScreenName, authorizedScreenName, createdAt)
+		SELECT ?, ?, UNIXEPOCH()
+		WHERE EXISTS (SELECT 1 FROM users WHERE identScreenName = ?)
+		ON CONFLICT (ownerScreenName, authorizedScreenName)
+			DO UPDATE SET createdAt = UNIXEPOCH()
+	`
+	result, err := f.db.ExecContext(ctx, q, owner.String(), requester.String(), requester.String())
+	if err != nil {
+		return fmt.Errorf("RecordPreAuth: %w", err)
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("RecordPreAuth: %w", err)
+	}
+	if n == 0 {
+		return ErrNoUser
+	}
+	return nil
+}
+
 // queryUsers retrieves a list of users from the database based on the
 // specified WHERE clause and query parameters. Returns a slice of User objects
 // or an error if the query fails.

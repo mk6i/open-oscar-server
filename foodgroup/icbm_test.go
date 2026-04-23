@@ -34,6 +34,15 @@ func TestICBMService_ChannelMsgToHost(t *testing.T) {
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
+		// expectForwardICQAuthEvents indicates whether ChannelMsgToHost should
+		// delegate ICQ channel-4 auth events to forwardICQAuthEvents.
+		expectForwardICQAuthEvents bool
+		// expectForwardRecipient is the expected recipient passed to
+		// forwardICQAuthEvents when expectForwardICQAuthEvents is true.
+		expectForwardRecipient state.IdentScreenName
+		// expectForwardAuthMsg is the expected auth message passed to
+		// forwardICQAuthEvents when expectForwardICQAuthEvents is true.
+		expectForwardAuthMsg wire.ICBMCh4Message
 		// timeNow returns the current time
 		timeNow func() time.Time
 	}{
@@ -1784,83 +1793,86 @@ func TestICBMService_ChannelMsgToHost(t *testing.T) {
 						},
 					},
 				},
-				feedbagManagerParams: feedbagManagerParams{
-					feedbagParams: feedbagParams{
-						{
-							screenName: state.NewIdentScreenName("200002"),
-							results: []wire.FeedbagItem{
-								{
-									Name:    "100001",
-									ClassID: wire.FeedbagClassIdBuddy,
-									TLVLBlock: wire.TLVLBlock{
-										TLVList: wire.TLVList{{Tag: wire.FeedbagAttributesPending, Value: []byte{1}}},
-									},
-								},
-							},
+			},
+			expectForwardICQAuthEvents: true,
+			expectForwardRecipient:     state.NewIdentScreenName("200002"),
+			expectForwardAuthMsg: wire.ICBMCh4Message{
+				UIN:         100001,
+				MessageType: wire.ICBMMsgTypeAuthOK,
+			},
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{},
+				Body: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
+					ChannelID:  wire.ICBMChannelICQ,
+					ScreenName: "200002",
+					TLVRestBlock: wire.TLVRestBlock{
+						TLVList: wire.TLVList{
+							wire.NewTLVLE(wire.ICBMTLVData, wire.ICBMCh4Message{
+								UIN:         100001,
+								MessageType: wire.ICBMMsgTypeAuthOK,
+							}),
 						},
 					},
-					feedbagUpsertParams: feedbagUpsertParams{
+				},
+			},
+			expectOutput: nil,
+			wantErr:      nil,
+		},
+		{
+			name:     "ICQ channel non-feedbag ch4: auth_ok",
+			instance: newTestInstance("100001", sessOptUIN(100001)),
+			mockParams: mockParams{
+				relationshipFetcherParams: relationshipFetcherParams{
+					relationshipParams: relationshipParams{
 						{
-							screenName: state.NewIdentScreenName("200002"),
-							items: []wire.FeedbagItem{
-								{
-									Name:    "100001",
-									ClassID: wire.FeedbagClassIdBuddy,
-									TLVLBlock: wire.TLVLBlock{
-										TLVList: wire.TLVList{},
-									},
-								},
+							me:   state.NewIdentScreenName("100001"),
+							them: state.NewIdentScreenName("200002"),
+							result: state.Relationship{
+								User:          state.NewIdentScreenName("200002"),
+								BlocksYou:     false,
+								YouBlock:      false,
+								IsOnTheirList: false,
+								IsOnYourList:  false,
 							},
 						},
 					},
 				},
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams{
+						{
+							screenName: state.NewIdentScreenName("200002"),
+							result:     newTestInstance("200002", sessOptSignonComplete).Session(),
+						},
+					},
+				},
+				contactPreAuthorizerParams: contactPreAuthorizerParams{
+					recordPreAuthParams: recordPreAuthParams{
+						{owner: state.NewIdentScreenName("100001"), buddy: state.NewIdentScreenName("200002")},
+					},
+				},
 				messageRelayerParams: messageRelayerParams{
-					relayToScreenNameParams: relayToScreenNameParams{
+					relayToScreenNameActiveOnlyParams: relayToScreenNameActiveOnlyParams{
 						{
 							screenName: state.NewIdentScreenName("200002"),
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
-									FoodGroup: wire.Feedbag,
-									SubGroup:  wire.FeedbagUpdateItem,
-									Flags:     0x8000,
+									FoodGroup: wire.ICBM,
+									SubGroup:  wire.ICBMChannelMsgToClient,
+									RequestID: wire.ReqIDFromServer,
 								},
-								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
-									Items: []wire.FeedbagItem{
-										{
-											Name:    "100001",
-											ClassID: wire.FeedbagClassIdBuddy,
-											TLVLBlock: wire.TLVLBlock{
-												TLVList: wire.TLVList{},
-											},
+								Body: wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
+									ChannelID:   wire.ICBMChannelICQ,
+									TLVUserInfo: newTestInstance("100001", sessOptUIN(100001)).Session().TLVUserInfo(),
+									TLVRestBlock: wire.TLVRestBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVLE(wire.ICBMTLVData, wire.ICBMCh4Message{
+												UIN:         100001,
+												MessageType: wire.ICBMMsgTypeAuthOK,
+											}),
 										},
 									},
 								},
 							},
-						},
-						{
-							screenName: state.NewIdentScreenName("200002"),
-							message: wire.SNACMessage{
-								Frame: wire.SNACFrame{
-									FoodGroup: wire.Feedbag,
-									SubGroup:  wire.FeedbagRespondAuthorizeToClient,
-									Flags:     0x8000,
-								},
-								Body: wire.SNAC_0x13_0x1B_FeedbagRespondAuthorizeToClient{
-									TLV:        wire.NewTLVBE(6, uint32(0x00020004)),
-									ScreenName: "100001",
-									Accepted:   1,
-								},
-							},
-						},
-					},
-				},
-				buddyBroadcasterParams: buddyBroadcasterParams{
-					broadcastVisibilityParams: broadcastVisibilityParams{
-						{
-							from:             state.NewIdentScreenName("100001"),
-							filter:           []state.IdentScreenName{state.NewIdentScreenName("200002")},
-							doSendDepartures: false,
-							err:              nil,
 						},
 					},
 				},
@@ -1910,26 +1922,13 @@ func TestICBMService_ChannelMsgToHost(t *testing.T) {
 						},
 					},
 				},
-				messageRelayerParams: messageRelayerParams{
-					relayToScreenNameParams: relayToScreenNameParams{
-						{
-							screenName: state.NewIdentScreenName("200002"),
-							message: wire.SNACMessage{
-								Frame: wire.SNACFrame{
-									FoodGroup: wire.Feedbag,
-									SubGroup:  wire.FeedbagRespondAuthorizeToClient,
-									Flags:     0x8000,
-								},
-								Body: wire.SNAC_0x13_0x1B_FeedbagRespondAuthorizeToClient{
-									TLV:        wire.NewTLVBE(6, uint32(0x00020004)),
-									ScreenName: "100001",
-									Accepted:   0,
-									Reason:     "no thanks",
-								},
-							},
-						},
-					},
-				},
+			},
+			expectForwardICQAuthEvents: true,
+			expectForwardRecipient:     state.NewIdentScreenName("200002"),
+			expectForwardAuthMsg: wire.ICBMCh4Message{
+				UIN:         100001,
+				MessageType: wire.ICBMMsgTypeAuthDeny,
+				Message:     "no thanks",
 			},
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{},
@@ -1977,24 +1976,12 @@ func TestICBMService_ChannelMsgToHost(t *testing.T) {
 						},
 					},
 				},
-				messageRelayerParams: messageRelayerParams{
-					relayToScreenNameParams: relayToScreenNameParams{
-						{
-							screenName: state.NewIdentScreenName("200002"),
-							message: wire.SNACMessage{
-								Frame: wire.SNACFrame{
-									FoodGroup: wire.Feedbag,
-									SubGroup:  wire.FeedbagBuddyAdded,
-									Flags:     0x8000,
-								},
-								Body: wire.SNAC_0x13_0x1C_FeedbagBuddyAdded{
-									TLV:        wire.NewTLVBE(6, uint32(0x00020004)),
-									ScreenName: "100001",
-								},
-							},
-						},
-					},
-				},
+			},
+			expectForwardICQAuthEvents: true,
+			expectForwardRecipient:     state.NewIdentScreenName("200002"),
+			expectForwardAuthMsg: wire.ICBMCh4Message{
+				UIN:         100001,
+				MessageType: wire.ICBMMsgTypeAdded,
 			},
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{},
@@ -2041,25 +2028,13 @@ func TestICBMService_ChannelMsgToHost(t *testing.T) {
 						},
 					},
 				},
-				messageRelayerParams: messageRelayerParams{
-					relayToScreenNameParams: relayToScreenNameParams{
-						{
-							screenName: state.NewIdentScreenName("200002"),
-							message: wire.SNACMessage{
-								Frame: wire.SNACFrame{
-									FoodGroup: wire.Feedbag,
-									SubGroup:  wire.FeedbagRequestAuthorizeToClient,
-									Flags:     0x8000,
-								},
-								Body: wire.SNAC_0x13_0x19_FeedbagRequestAuthorizeToClient{
-									TLV:        wire.NewTLVBE(6, uint32(0x00020004)),
-									ScreenName: "100001",
-									Reason:     "hi",
-								},
-							},
-						},
-					},
-				},
+			},
+			expectForwardICQAuthEvents: true,
+			expectForwardRecipient:     state.NewIdentScreenName("200002"),
+			expectForwardAuthMsg: wire.ICBMCh4Message{
+				UIN:         100001,
+				MessageType: wire.ICBMMsgTypeAuthReq,
+				Message:     "hi",
 			},
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{},
@@ -2134,23 +2109,39 @@ func TestICBMService_ChannelMsgToHost(t *testing.T) {
 					BroadcastVisibility(mock.Anything, matchSession(params.from), params.filter, params.doSendDepartures).
 					Return(params.err)
 			}
+			contactPreAuth := newMockContactPreAuthorizer(t)
+			for _, params := range tc.mockParams.recordPreAuthParams {
+				contactPreAuth.EXPECT().
+					RecordPreAuth(matchContext(), params.owner, params.buddy).
+					Return(params.err)
+			}
 
 			svc := ICBMService{
-				relationshipFetcher: relationshipFetcher,
-				messageRelayer:      messageRelayer,
-				offlineMessageSaver: offlineMessageManager,
-				sessionRetriever:    sessionRetriever,
-				timeNow:             tc.timeNow,
-				convoTracker:        newConvoTracker(),
-				feedbagManager:      feedbagManager,
-				buddyBroadcaster:    buddyBroadcaster,
-				logger:              discardLogger,
+				relationshipFetcher:  relationshipFetcher,
+				messageRelayer:       messageRelayer,
+				offlineMessageSaver:  offlineMessageManager,
+				sessionRetriever:     sessionRetriever,
+				timeNow:              tc.timeNow,
+				convoTracker:         newConvoTracker(),
+				feedbagManager:       feedbagManager,
+				contactPreAuthorizer: contactPreAuth,
+				buddyBroadcaster:     buddyBroadcaster,
+				logger:               discardLogger,
+			}
+			var forwardCalled bool
+			svc.forwardICQAuthEvents = func(ctx context.Context, sender state.IdentScreenName, recipient state.IdentScreenName, authMsg wire.ICBMCh4Message) error {
+				forwardCalled = true
+				assert.Equal(t, tc.instance.IdentScreenName(), sender)
+				assert.Equal(t, tc.expectForwardRecipient, recipient)
+				assert.Equal(t, tc.expectForwardAuthMsg, authMsg)
+				return nil
 			}
 
 			outputSNAC, err := svc.ChannelMsgToHost(context.Background(), tc.instance, tc.inputSNAC.Frame,
 				tc.inputSNAC.Body.(wire.SNAC_0x04_0x06_ICBMChannelMsgToHost))
 			assert.ErrorIs(t, err, tc.wantErr)
 			assert.Equal(t, tc.expectOutput, outputSNAC)
+			assert.Equal(t, tc.expectForwardICQAuthEvents, forwardCalled)
 		})
 	}
 }
@@ -2940,7 +2931,7 @@ func TestICBMService_EvilRequest(t *testing.T) {
 }
 
 func TestICBMService_ParameterQuery(t *testing.T) {
-	svc := NewICBMService(nil, nil, nil, nil, nil, nil, nil, wire.DefaultSNACRateLimits(), slog.Default())
+	svc := NewICBMService(nil, nil, nil, nil, nil, nil, nil, nil, wire.DefaultSNACRateLimits(), slog.Default())
 
 	have := svc.ParameterQuery(nil, wire.SNACFrame{RequestID: 1234})
 	want := wire.SNACMessage{
@@ -2992,7 +2983,7 @@ func TestICBMService_ClientErr(t *testing.T) {
 	messageRelayer.EXPECT().
 		RelayToScreenName(mock.Anything, state.NewIdentScreenName("recipientScreenName"), expect)
 
-	svc := NewICBMService(nil, messageRelayer, nil, nil, nil, nil, nil, wire.DefaultSNACRateLimits(), slog.Default())
+	svc := NewICBMService(nil, messageRelayer, nil, nil, nil, nil, nil, nil, wire.DefaultSNACRateLimits(), slog.Default())
 
 	err := svc.ClientErr(context.Background(), instance, wire.SNACFrame{RequestID: 1234}, inBody)
 	assert.NoError(t, err)

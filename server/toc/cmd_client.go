@@ -295,7 +295,7 @@ func (s OSCARProxy) AddBuddy(ctx context.Context, me *state.SessionInstance, arg
 		}{ScreenName: sn})
 	}
 
-	if err := s.BuddyService.AddBuddies(ctx, me, snac); err != nil {
+	if _, err := s.BuddyService.AddBuddies(ctx, me, wire.SNACFrame{}, snac); err != nil {
 		return s.runtimeErr(ctx, fmt.Errorf("BuddyService.AddBuddies: %w", err))
 	}
 

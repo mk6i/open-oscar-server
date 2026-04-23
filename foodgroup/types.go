@@ -116,6 +116,20 @@ type BARTItemManager interface {
 	DeleteBARTItem(ctx context.Context, hash []byte) error
 }
 
+// ContactPreAuthorizer evaluates and records contact pre-authorization: when
+// owner requires authorization to be added, requester must hold a grant from owner.
+type ContactPreAuthorizer interface {
+	// RequiresAuthorization reports whether requester must obtain authorization
+	// from owner before adding owner as a buddy. Returns false if owner does
+	// not require authorization or has already pre-authorized requester.
+	RequiresAuthorization(ctx context.Context, owner, requester state.IdentScreenName) (bool, error)
+
+	// RecordPreAuth records that owner has pre-authorized requester to add
+	// owner as a buddy without an authorization prompt. Returns
+	// state.ErrNoUser if requester does not exist.
+	RecordPreAuth(ctx context.Context, owner, requester state.IdentScreenName) error
+}
+
 // RelationshipFetcher is the interface for retrieving relationships between users.
 type RelationshipFetcher interface {
 	// AllRelationships retrieves the relationships between the specified user (`me`)
