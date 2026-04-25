@@ -222,14 +222,6 @@ func TestICQLegacyService_ProcessMessage(t *testing.T) {
 				Message: "hello from legacy",
 			},
 			mockParams: mockParams{
-				sessionRetrieverParams: sessionRetrieverParams{
-					retrieveSessionParams: retrieveSessionParams{
-						{
-							screenName: state.NewIdentScreenName("22222"),
-							result:     &state.Session{},
-						},
-					},
-				},
 				icbmFoodgroupParams: icbmFoodgroupParams{
 					channelMsgToHostParams: channelMsgToHostParams{
 						{
@@ -265,6 +257,7 @@ func TestICQLegacyService_ProcessMessage(t *testing.T) {
 		},
 		{
 			name: "target offline - stored",
+			sess: newTestLegacySession(11111, legacySessionOptOSCARSess),
 			req: MessageRequest{
 				FromUIN: 11111,
 				ToUIN:   22222,
@@ -272,18 +265,37 @@ func TestICQLegacyService_ProcessMessage(t *testing.T) {
 				Message: "offline msg",
 			},
 			mockParams: mockParams{
-				sessionRetrieverParams: sessionRetrieverParams{
-					retrieveSessionParams: retrieveSessionParams{
+				icbmFoodgroupParams: icbmFoodgroupParams{
+					channelMsgToHostParams: channelMsgToHostParams{
 						{
-							screenName: state.NewIdentScreenName("22222"),
-							result:     nil,
-						},
-					},
-				},
-				offlineMessageManagerParams: offlineMessageManagerParams{
-					saveMessageParams: saveMessageParams{
-						{
-							count: 1,
+							screenName: state.NewIdentScreenName("11111"),
+							inFrame: wire.SNACFrame{
+								FoodGroup: wire.ICBM,
+								SubGroup:  wire.ICBMChannelMsgToHost,
+							},
+							inBody: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
+								ChannelID:  wire.ICBMChannelICQ,
+								ScreenName: "22222",
+								TLVRestBlock: wire.TLVRestBlock{
+									TLVList: wire.TLVList{
+										wire.NewTLVLE(wire.ICBMTLVData, wire.ICBMCh4Message{
+											UIN:         11111,
+											MessageType: wire.ICBMMsgTypePlain,
+											Message:     "offline msg",
+										}),
+										wire.NewTLVBE(wire.ICBMTLVStore, []byte{}),
+									},
+								},
+							},
+							result: &wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.ICBM,
+									SubGroup:  wire.ICBMErr,
+								},
+								Body: wire.SNACError{
+									Code: wire.ErrorCodeNotLoggedOn,
+								},
+							},
 						},
 					},
 				},
@@ -327,41 +339,21 @@ func TestICQLegacyService_ProcessMessage(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			sessionRetriever := newMockSessionRetriever(t)
-			for _, p := range tc.mockParams.retrieveSessionParams {
-				sessionRetriever.EXPECT().
-					RetrieveSession(p.screenName).
-					Return(p.result)
-			}
-
-			messageRelayer := newMockMessageRelayer(t)
-			for range tc.mockParams.relayToScreenNameParams {
-				messageRelayer.EXPECT().
-					RelayToScreenName(matchContext(), mock.Anything, mock.Anything).
-					Return()
-			}
-
-			offlineMsgMgr := newMockOfflineMessageManager(t)
-			for _, p := range tc.mockParams.saveMessageParams {
-				offlineMsgMgr.EXPECT().
-					SaveMessage(matchContext(), mock.Anything).
-					Return(p.count, p.err)
-			}
 
 			icbmSvc := newMockICBMService(t)
 			for _, msg := range tc.mockParams.channelMsgToHostParams {
 				icbmSvc.EXPECT().
 					ChannelMsgToHost(matchContext(), matchSession(msg.screenName), msg.inFrame, msg.inBody).
-					Return(nil, msg.err)
+					Return(msg.result, msg.err)
 			}
 
 			svc := NewICQLegacyService(
 				newMockUserManager(t),
 				newMockAccountManager(t),
-				sessionRetriever,
-				messageRelayer,
+				newMockSessionRetriever(t),
+				newMockMessageRelayer(t),
 				newMockBuddyBroadcaster(t),
-				offlineMsgMgr,
+				newMockOfflineMessageManager(t),
 				newMockICQUserFinder(t),
 				newMockICQUserUpdater(t),
 				newMockFeedbagManager(t),

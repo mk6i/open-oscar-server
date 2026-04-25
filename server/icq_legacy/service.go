@@ -527,7 +527,9 @@ func (s *ICQLegacyService) ProcessMessage(ctx context.Context, session *LegacySe
 	if resp != nil && resp.Frame.FoodGroup == wire.ICBM && resp.Frame.SubGroup == wire.ICBMErr {
 		if snErr, ok := resp.Body.(wire.SNACError); ok {
 			if snErr.Code == wire.ErrorCodeNotLoggedOn {
+				result.Delivered = false
 				result.StoredOffline = true
+				result.TargetOnline = false
 				s.logger.Info("ProcessMessage: message stored for offline delivery",
 					"from", req.FromUIN,
 					"to", req.ToUIN,

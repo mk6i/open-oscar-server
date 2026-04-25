@@ -38,6 +38,7 @@ type channelMsgToHostParams []struct {
 	screenName state.IdentScreenName
 	inFrame    wire.SNACFrame
 	inBody     wire.SNAC_0x04_0x06_ICBMChannelMsgToHost
+	result     *wire.SNACMessage
 	err        error
 }
 
