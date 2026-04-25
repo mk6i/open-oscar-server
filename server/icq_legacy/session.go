@@ -94,6 +94,7 @@ func (m *LegacySessionManager) CreateSession(uin uint32, addr *net.UDPAddr, vers
 	// session's TLVUserInfo() include the ICQ flag and DC info TLV that
 	// ICQ 2003b requires to display the user as online.
 	instance.SetUserInfoFlag(wire.OServiceUserFlagICQ | wire.OServiceUserFlagOSCARFree)
+	instance.Session().SetUIN(uin)
 
 	session := &LegacySession{
 		UIN:          uin,

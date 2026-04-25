@@ -436,13 +436,18 @@ func (s *ICQService) OfflineMsgReq(ctx context.Context, instance *state.SessionI
 				if err := wire.UnmarshalLE(&msg, buf); err != nil {
 					return err
 				}
-				if instance.Session().UsesFeedbag() {
-					// send auth grant/deny/request SNACs instead of the legacy MSG_TYPE_*
-					// ICQ messages.
-					if err := s.forwardICQAuthEvents(ctx, msgIn.Sender, msgIn.Recipient, msg); err != nil {
-						return fmt.Errorf("s.forwardICQAuthEvents: %w", err)
+				if msg.MessageType == wire.ICBMMsgTypeAuthReq ||
+					msg.MessageType == wire.ICBMMsgTypeAuthDeny ||
+					msg.MessageType == wire.ICBMMsgTypeAuthOK ||
+					msg.MessageType == wire.ICBMMsgTypeAdded {
+					if instance.Session().UsesFeedbag() {
+						// send auth grant/deny/request SNACs instead of the legacy MSG_TYPE_*
+						// ICQ messages.
+						if err := s.forwardICQAuthEvents(ctx, msgIn.Sender, msgIn.Recipient, msg); err != nil {
+							return fmt.Errorf("s.forwardICQAuthEvents: %w", err)
+						}
+						continue // do not send these messages in response
 					}
-					continue // do not send these messages in response
 				}
 				reply.MsgType = msg.MessageType
 				reply.Flags = msg.Flags

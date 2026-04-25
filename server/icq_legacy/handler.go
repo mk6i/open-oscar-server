@@ -307,11 +307,6 @@ type LegacyService interface {
 
 	// AckOfflineMessages acknowledges and deletes offline messages for the given UIN.
 	AckOfflineMessages(ctx context.Context, uin uint32) error
-	// SaveOfflineMessage stores a message for offline delivery when the target user is not online.
-	// This is called by V3/V5 handlers when a message is sent to an offline user.
-	// From iserverd v3_process_sysmsg() and v5_process_sysmsg() - when target is offline,
-	// the message is stored in the database for later delivery.
-	SaveOfflineMessage(ctx context.Context, fromUIN, toUIN uint32, msgType uint16, message string) error
 
 	// ProcessMessage handles message routing and offline storage.
 	// This is the service layer method for messaging that handlers call after

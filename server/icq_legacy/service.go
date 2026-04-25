@@ -485,65 +485,57 @@ func (s *ICQLegacyService) ProcessMessage(ctx context.Context, session *LegacySe
 
 	// Check if target user is online via OSCAR session
 	toScreenName := state.NewIdentScreenName(strconv.FormatUint(uint64(req.ToUIN), 10))
-	oscarSession := s.sessionRetriever.RetrieveSession(toScreenName)
-	if oscarSession != nil {
-		// Target is online via OSCAR protocol
-		result.TargetOnline = true
-		result.Delivered = true
-		result.TargetVersion = 0 // OSCAR client, not legacy
+	// Target is online via OSCAR protocol
+	result.TargetOnline = true
+	result.Delivered = true
+	result.TargetVersion = 0 // OSCAR client, not legacy
 
-		s.logger.Debug("ProcessMessage: target online (OSCAR)",
-			"to", req.ToUIN,
-		)
+	s.logger.Debug("ProcessMessage: target online (OSCAR)",
+		"to", req.ToUIN,
+	)
 
-		// Send message to OSCAR client
-		fromScreenName := state.NewIdentScreenName(strconv.FormatUint(uint64(req.FromUIN), 10))
-
-		frame := wire.SNACFrame{
-			FoodGroup: wire.ICBM,
-			SubGroup:  wire.ICBMChannelMsgToHost,
-		}
-		snac := wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
-			ChannelID:  wire.ICBMChannelICQ,
-			ScreenName: toScreenName.String(),
-			TLVRestBlock: wire.TLVRestBlock{
-				TLVList: wire.TLVList{
-					wire.NewTLVLE(wire.ICBMTLVData, wire.ICBMCh4Message{
-						UIN:         fromScreenName.UIN(),
-						MessageType: uint8(req.MsgType),
-						Message:     req.Message,
-					}),
-					wire.NewTLVBE(wire.ICBMTLVStore, []byte{}),
-				},
-			},
-		}
-		if _, err := s.icbmService.ChannelMsgToHost(ctx, session.Instance, frame, snac); err != nil {
-			s.logger.Error("ProcessMessage: failed to send to OSCAR client",
-				"to", req.ToUIN,
-				"err", err,
-			)
-			// Still mark as delivered since we attempted
-		}
-		return result, nil
-	}
-
-	// Target is offline - store message for later delivery
+	// Send message to OSCAR client
 	fromScreenName := state.NewIdentScreenName(strconv.FormatUint(uint64(req.FromUIN), 10))
-	if err := s.storeOfflineMessage(ctx, fromScreenName, toScreenName, req.MsgType, req.Message); err != nil {
-		s.logger.Error("ProcessMessage: failed to store offline message",
-			"from", req.FromUIN,
+
+	frame := wire.SNACFrame{
+		FoodGroup: wire.ICBM,
+		SubGroup:  wire.ICBMChannelMsgToHost,
+	}
+	snac := wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
+		ChannelID:  wire.ICBMChannelICQ,
+		ScreenName: toScreenName.String(),
+		TLVRestBlock: wire.TLVRestBlock{
+			TLVList: wire.TLVList{
+				wire.NewTLVLE(wire.ICBMTLVData, wire.ICBMCh4Message{
+					UIN:         fromScreenName.UIN(),
+					MessageType: uint8(req.MsgType),
+					Message:     req.Message,
+				}),
+				wire.NewTLVBE(wire.ICBMTLVStore, []byte{}),
+			},
+		},
+	}
+	resp, err := s.icbmService.ChannelMsgToHost(ctx, session.Instance, frame, snac)
+	if err != nil {
+		s.logger.Error("ProcessMessage: failed to send to OSCAR client",
 			"to", req.ToUIN,
 			"err", err,
 		)
-		return result, fmt.Errorf("storing offline message: %w", err)
+		// Still mark as delivered since we attempted
 	}
 
-	result.StoredOffline = true
-	s.logger.Info("ProcessMessage: message stored for offline delivery",
-		"from", req.FromUIN,
-		"to", req.ToUIN,
-		"type", fmt.Sprintf("0x%04X", req.MsgType),
-	)
+	if resp != nil && resp.Frame.FoodGroup == wire.ICBM && resp.Frame.SubGroup == wire.ICBMErr {
+		if snErr, ok := resp.Body.(wire.SNACError); ok {
+			if snErr.Code == wire.ErrorCodeNotLoggedOn {
+				result.StoredOffline = true
+				s.logger.Info("ProcessMessage: message stored for offline delivery",
+					"from", req.FromUIN,
+					"to", req.ToUIN,
+					"type", fmt.Sprintf("0x%04X", req.MsgType),
+				)
+			}
+		}
+	}
 
 	return result, nil
 }
@@ -827,32 +819,6 @@ func (s *ICQLegacyService) sendToOSCARClient(ctx context.Context, from, to state
 
 	s.messageRelayer.RelayToScreenName(ctx, to, icbmMsg)
 	return nil
-}
-
-// SaveOfflineMessage stores a message for offline delivery when the target user is not online.
-// This is the public interface called by V3/V5 handlers when a message is sent to an offline user.
-// From iserverd v3_process_sysmsg() and v5_process_sysmsg() - when target is offline,
-// the message is stored in the database for later delivery.
-//
-// Parameters:
-//   - fromUIN: The sender's UIN
-//   - toUIN: The recipient's UIN (who is offline)
-//   - msgType: The ICQ message type (e.g., 0x0001 for text, 0x0004 for URL)
-//   - message: The message content
-//
-// Returns nil on success, or an error if the message could not be stored.
-func (s *ICQLegacyService) SaveOfflineMessage(ctx context.Context, fromUIN, toUIN uint32, msgType uint16, message string) error {
-	fromScreenName := state.NewIdentScreenName(strconv.FormatUint(uint64(fromUIN), 10))
-	toScreenName := state.NewIdentScreenName(strconv.FormatUint(uint64(toUIN), 10))
-
-	s.logger.Debug("storing offline message",
-		"from", fromUIN,
-		"to", toUIN,
-		"type", fmt.Sprintf("0x%04X", msgType),
-		"msg_len", len(message),
-	)
-
-	return s.storeOfflineMessage(ctx, fromScreenName, toScreenName, msgType, message)
 }
 
 // storeOfflineMessage stores a message for offline delivery
