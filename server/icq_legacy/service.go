@@ -33,6 +33,7 @@ type ICQLegacyService struct {
 	messageRelayer             MessageRelayer
 	buddyBroadcaster           BuddyBroadcaster
 	offlineMessageManager      OfflineMessageManager
+	icbmService                ICBMService
 	userFinder                 ICQUserFinder
 	userUpdater                ICQUserUpdater
 	feedbagManager             FeedbagManager
@@ -62,6 +63,7 @@ func NewICQLegacyService(
 	relationshipFetcher RelationshipFetcher,
 	buddyListRegistry BuddyListRegistry,
 	clientSideBuddyListManager ClientSideBuddyListManager,
+	icbmSvc ICBMService,
 	logger *slog.Logger,
 ) *ICQLegacyService {
 	return &ICQLegacyService{
@@ -77,6 +79,7 @@ func NewICQLegacyService(
 		relationshipFetcher:        relationshipFetcher,
 		buddyListRegistry:          buddyListRegistry,
 		clientSideBuddyListManager: clientSideBuddyListManager,
+		icbmService:                icbmSvc,
 		logger:                     logger,
 		timeNow:                    time.Now,
 	}
@@ -436,7 +439,7 @@ func (s *ICQLegacyService) ProcessUserAdd(ctx context.Context, req UserAddReques
 // - Parsing protocol-specific message packets into MessageRequest
 // - Using the returned MessageResult to route messages or confirm storage
 // - Building protocol-specific responses
-func (s *ICQLegacyService) ProcessMessage(ctx context.Context, req MessageRequest) (*MessageResult, error) {
+func (s *ICQLegacyService) ProcessMessage(ctx context.Context, session *LegacySession, req MessageRequest) (*MessageResult, error) {
 	result := &MessageResult{
 		Delivered:     false,
 		StoredOffline: false,
@@ -495,7 +498,26 @@ func (s *ICQLegacyService) ProcessMessage(ctx context.Context, req MessageReques
 
 		// Send message to OSCAR client
 		fromScreenName := state.NewIdentScreenName(strconv.FormatUint(uint64(req.FromUIN), 10))
-		if err := s.sendToOSCARClient(ctx, fromScreenName, toScreenName, req.MsgType, req.Message); err != nil {
+
+		frame := wire.SNACFrame{
+			FoodGroup: wire.ICBM,
+			SubGroup:  wire.ICBMChannelMsgToHost,
+		}
+		snac := wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
+			ChannelID:  wire.ICBMChannelICQ,
+			ScreenName: toScreenName.String(),
+			TLVRestBlock: wire.TLVRestBlock{
+				TLVList: wire.TLVList{
+					wire.NewTLVLE(wire.ICBMTLVData, wire.ICBMCh4Message{
+						UIN:         fromScreenName.UIN(),
+						MessageType: uint8(req.MsgType),
+						Message:     req.Message,
+					}),
+					wire.NewTLVBE(wire.ICBMTLVStore, []byte{}),
+				},
+			},
+		}
+		if _, err := s.icbmService.ChannelMsgToHost(ctx, session.Instance, frame, snac); err != nil {
 			s.logger.Error("ProcessMessage: failed to send to OSCAR client",
 				"to", req.ToUIN,
 				"err", err,
@@ -595,40 +617,6 @@ func (s *ICQLegacyService) generateNewUIN(ctx context.Context) (uint32, error) {
 	}
 
 	return 0, errors.New("no available UINs")
-}
-
-// SendMessage sends a message from one user to another, routing to online
-// users via OSCAR or legacy protocols, or storing for offline delivery.
-// The handler is responsible for sending to legacy sessions; this method
-// handles OSCAR routing and offline storage.
-func (s *ICQLegacyService) SendMessage(ctx context.Context, fromUIN, toUIN uint32, msgType uint16, message string) error {
-	fromScreenName := state.NewIdentScreenName(strconv.FormatUint(uint64(fromUIN), 10))
-	toScreenName := state.NewIdentScreenName(strconv.FormatUint(uint64(toUIN), 10))
-
-	s.logger.Debug("sending message",
-		"from", fromUIN,
-		"to", toUIN,
-		"type", msgType,
-	)
-
-	// Check if recipient is online (OSCAR session)
-	oscarSession := s.sessionRetriever.RetrieveSession(toScreenName)
-	if oscarSession != nil {
-		// Send via OSCAR protocol
-		return s.sendToOSCARClient(ctx, fromScreenName, toScreenName, msgType, message)
-	}
-
-	// Check if recipient is online (legacy session)
-	if s.legacySessionManager != nil {
-		legacySession := s.legacySessionManager.GetSession(toUIN)
-		if legacySession != nil {
-			// Message will be sent by the caller (handler) since it has access to the sender
-			return nil
-		}
-	}
-
-	// Recipient is offline - store as offline message
-	return s.storeOfflineMessage(ctx, fromScreenName, toScreenName, msgType, message)
 }
 
 // sendToOSCARClient sends a message to an OSCAR client

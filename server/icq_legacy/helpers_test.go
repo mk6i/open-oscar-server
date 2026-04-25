@@ -3,6 +3,7 @@ package icq_legacy
 import (
 	"context"
 	"net"
+	"strconv"
 
 	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
@@ -22,6 +23,22 @@ type mockParams struct {
 	icqUserUpdaterParams
 	feedbagManagerParams
 	relationshipFetcherParams
+	icbmFoodgroupParams
+}
+
+// icbmFoodgroupParams is a helper struct that contains mock parameters for
+// ICBMService methods
+type icbmFoodgroupParams struct {
+	channelMsgToHostParams
+}
+
+// channelMsgToHostParams is the list of parameters passed at the mock
+// ICBMService.ChannelMsgToHost call site
+type channelMsgToHostParams []struct {
+	screenName state.IdentScreenName
+	inFrame    wire.SNACFrame
+	inBody     wire.SNAC_0x04_0x06_ICBMChannelMsgToHost
+	err        error
 }
 
 // userManagerParams is a helper struct that contains mock parameters for
@@ -319,14 +336,23 @@ type relationshipParams []struct {
 // newTestLegacySession creates a *LegacySession with configurable fields for
 // use in table-driven tests. Fields not set remain at their zero values.
 func newTestLegacySession(uin uint32, opts ...func(*LegacySession)) *LegacySession {
-	sess := &LegacySession{
+	legacySess := &LegacySession{
 		UIN:  uin,
 		Addr: &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 4000},
 	}
 	for _, opt := range opts {
-		opt(sess)
+		opt(legacySess)
 	}
-	return sess
+	return legacySess
+}
+
+// legacySessionOptAddr sets the UDP address on the legacy session.
+func legacySessionOptOSCARSess(s *LegacySession) {
+	oscarSess := state.NewSession()
+	oscarSess.SetUIN(s.UIN)
+	oscarSess.SetDisplayScreenName(state.DisplayScreenName(strconv.FormatUint(uint64(s.UIN), 10)))
+	oscarSess.SetIdentScreenName(oscarSess.DisplayScreenName().IdentScreenName())
+	s.Instance = oscarSess.AddInstance()
 }
 
 // legacySessionOptVersion sets the protocol version on the legacy session.
@@ -379,5 +405,12 @@ func matchContext() interface{} {
 	return mock.MatchedBy(func(ctx any) bool {
 		_, ok := ctx.(context.Context)
 		return ok
+	})
+}
+
+// matchSession matches a mock call based session ident screen name.
+func matchSession(mustMatch state.IdentScreenName) interface{} {
+	return mock.MatchedBy(func(s *state.SessionInstance) bool {
+		return mustMatch == s.IdentScreenName()
 	})
 }

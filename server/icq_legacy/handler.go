@@ -302,10 +302,6 @@ type LegacyService interface {
 	// Returns the newly assigned UIN on success.
 	RegisterNewUser(ctx context.Context, nickname, firstName, lastName, email, password string) (uint32, error)
 
-	// SendMessage sends a message from one user to another, routing to online
-	// users or storing for offline delivery.
-	SendMessage(ctx context.Context, fromUIN, toUIN uint32, msgType uint16, message string) error
-
 	// GetOfflineMessages retrieves stored offline messages for the given UIN.
 	GetOfflineMessages(ctx context.Context, uin uint32) ([]LegacyOfflineMessage, error)
 
@@ -324,7 +320,7 @@ type LegacyService interface {
 	// The method does NOT contain any protocol-specific packet building logic.
 	// Handlers are responsible for building protocol-specific responses based on
 	// the returned MessageResult.
-	ProcessMessage(ctx context.Context, req MessageRequest) (*MessageResult, error)
+	ProcessMessage(ctx context.Context, session *LegacySession, req MessageRequest) (*MessageResult, error)
 
 	// ProcessContactList processes a contact list and returns online status for each contact.
 	// This is the service layer method for contact list processing that handlers call after

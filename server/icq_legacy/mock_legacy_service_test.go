@@ -1083,8 +1083,8 @@ func (_c *mockLegacyService_ProcessContactList_Call) RunAndReturn(run func(ctx c
 }
 
 // ProcessMessage provides a mock function for the type mockLegacyService
-func (_mock *mockLegacyService) ProcessMessage(ctx context.Context, req MessageRequest) (*MessageResult, error) {
-	ret := _mock.Called(ctx, req)
+func (_mock *mockLegacyService) ProcessMessage(ctx context.Context, session *LegacySession, req MessageRequest) (*MessageResult, error) {
+	ret := _mock.Called(ctx, session, req)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ProcessMessage")
@@ -1092,18 +1092,18 @@ func (_mock *mockLegacyService) ProcessMessage(ctx context.Context, req MessageR
 
 	var r0 *MessageResult
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, MessageRequest) (*MessageResult, error)); ok {
-		return returnFunc(ctx, req)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *LegacySession, MessageRequest) (*MessageResult, error)); ok {
+		return returnFunc(ctx, session, req)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, MessageRequest) *MessageResult); ok {
-		r0 = returnFunc(ctx, req)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *LegacySession, MessageRequest) *MessageResult); ok {
+		r0 = returnFunc(ctx, session, req)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*MessageResult)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, MessageRequest) error); ok {
-		r1 = returnFunc(ctx, req)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *LegacySession, MessageRequest) error); ok {
+		r1 = returnFunc(ctx, session, req)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -1117,24 +1117,30 @@ type mockLegacyService_ProcessMessage_Call struct {
 
 // ProcessMessage is a helper method to define mock.On call
 //   - ctx context.Context
+//   - session *LegacySession
 //   - req MessageRequest
-func (_e *mockLegacyService_Expecter) ProcessMessage(ctx interface{}, req interface{}) *mockLegacyService_ProcessMessage_Call {
-	return &mockLegacyService_ProcessMessage_Call{Call: _e.mock.On("ProcessMessage", ctx, req)}
+func (_e *mockLegacyService_Expecter) ProcessMessage(ctx interface{}, session interface{}, req interface{}) *mockLegacyService_ProcessMessage_Call {
+	return &mockLegacyService_ProcessMessage_Call{Call: _e.mock.On("ProcessMessage", ctx, session, req)}
 }
 
-func (_c *mockLegacyService_ProcessMessage_Call) Run(run func(ctx context.Context, req MessageRequest)) *mockLegacyService_ProcessMessage_Call {
+func (_c *mockLegacyService_ProcessMessage_Call) Run(run func(ctx context.Context, session *LegacySession, req MessageRequest)) *mockLegacyService_ProcessMessage_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 MessageRequest
+		var arg1 *LegacySession
 		if args[1] != nil {
-			arg1 = args[1].(MessageRequest)
+			arg1 = args[1].(*LegacySession)
+		}
+		var arg2 MessageRequest
+		if args[2] != nil {
+			arg2 = args[2].(MessageRequest)
 		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
@@ -1145,7 +1151,7 @@ func (_c *mockLegacyService_ProcessMessage_Call) Return(messageResult *MessageRe
 	return _c
 }
 
-func (_c *mockLegacyService_ProcessMessage_Call) RunAndReturn(run func(ctx context.Context, req MessageRequest) (*MessageResult, error)) *mockLegacyService_ProcessMessage_Call {
+func (_c *mockLegacyService_ProcessMessage_Call) RunAndReturn(run func(ctx context.Context, session *LegacySession, req MessageRequest) (*MessageResult, error)) *mockLegacyService_ProcessMessage_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -1601,81 +1607,6 @@ func (_c *mockLegacyService_SearchByUIN_Call) Return(legacyUserSearchResult *Leg
 }
 
 func (_c *mockLegacyService_SearchByUIN_Call) RunAndReturn(run func(ctx context.Context, uin uint32) (*LegacyUserSearchResult, error)) *mockLegacyService_SearchByUIN_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// SendMessage provides a mock function for the type mockLegacyService
-func (_mock *mockLegacyService) SendMessage(ctx context.Context, fromUIN uint32, toUIN uint32, msgType uint16, message string) error {
-	ret := _mock.Called(ctx, fromUIN, toUIN, msgType, message)
-
-	if len(ret) == 0 {
-		panic("no return value specified for SendMessage")
-	}
-
-	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uint32, uint32, uint16, string) error); ok {
-		r0 = returnFunc(ctx, fromUIN, toUIN, msgType, message)
-	} else {
-		r0 = ret.Error(0)
-	}
-	return r0
-}
-
-// mockLegacyService_SendMessage_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SendMessage'
-type mockLegacyService_SendMessage_Call struct {
-	*mock.Call
-}
-
-// SendMessage is a helper method to define mock.On call
-//   - ctx context.Context
-//   - fromUIN uint32
-//   - toUIN uint32
-//   - msgType uint16
-//   - message string
-func (_e *mockLegacyService_Expecter) SendMessage(ctx interface{}, fromUIN interface{}, toUIN interface{}, msgType interface{}, message interface{}) *mockLegacyService_SendMessage_Call {
-	return &mockLegacyService_SendMessage_Call{Call: _e.mock.On("SendMessage", ctx, fromUIN, toUIN, msgType, message)}
-}
-
-func (_c *mockLegacyService_SendMessage_Call) Run(run func(ctx context.Context, fromUIN uint32, toUIN uint32, msgType uint16, message string)) *mockLegacyService_SendMessage_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 uint32
-		if args[1] != nil {
-			arg1 = args[1].(uint32)
-		}
-		var arg2 uint32
-		if args[2] != nil {
-			arg2 = args[2].(uint32)
-		}
-		var arg3 uint16
-		if args[3] != nil {
-			arg3 = args[3].(uint16)
-		}
-		var arg4 string
-		if args[4] != nil {
-			arg4 = args[4].(string)
-		}
-		run(
-			arg0,
-			arg1,
-			arg2,
-			arg3,
-			arg4,
-		)
-	})
-	return _c
-}
-
-func (_c *mockLegacyService_SendMessage_Call) Return(err error) *mockLegacyService_SendMessage_Call {
-	_c.Call.Return(err)
-	return _c
-}
-
-func (_c *mockLegacyService_SendMessage_Call) RunAndReturn(run func(ctx context.Context, fromUIN uint32, toUIN uint32, msgType uint16, message string) error) *mockLegacyService_SendMessage_Call {
 	_c.Call.Return(run)
 	return _c
 }

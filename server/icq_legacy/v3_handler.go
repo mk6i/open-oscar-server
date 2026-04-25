@@ -653,7 +653,7 @@ func (h *V3Handler) handleMessage(session *LegacySession, seq1, seq2 uint16, uin
 
 	// 3. Call service layer with typed request
 	ctx := context.Background()
-	result, err := h.service.ProcessMessage(ctx, req)
+	result, err := h.service.ProcessMessage(ctx, session, req)
 	if err != nil {
 		h.logger.Error("message processing failed",
 			"from", req.FromUIN,

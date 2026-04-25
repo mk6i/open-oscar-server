@@ -268,3 +268,6 @@ packages:
       LegacyService:
         config:
           filename: "mock_legacy_service_test.go"
+      ICBMService:
+        config:
+          filename: "mock_icbm_service_test.go"

@@ -393,3 +393,8 @@ type LegacyMessageSender interface {
 	// SendUserOffline sends a user offline notification to a legacy client.
 	SendUserOffline(uin uint32, targetUIN uint32) error
 }
+
+// ICBMService is the interface for sending SNAC messages to the OSCAR ICBM service.
+type ICBMService interface {
+	ChannelMsgToHost(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) (*wire.SNACMessage, error)
+}

@@ -158,6 +158,7 @@ func TestICQLegacyService_AuthenticateUser(t *testing.T) {
 				newMockRelationshipFetcher(t),
 				newMockBuddyListRegistry(t),
 				newMockClientSideBuddyListManager(t),
+				newMockICBMService(t),
 				slog.Default(),
 			)
 
@@ -180,6 +181,7 @@ func TestICQLegacyService_AuthenticateUser(t *testing.T) {
 func TestICQLegacyService_ProcessMessage(t *testing.T) {
 	tests := []struct {
 		name       string
+		sess       *LegacySession
 		mockParams mockParams
 		req        MessageRequest
 		wantResult *MessageResult
@@ -212,6 +214,7 @@ func TestICQLegacyService_ProcessMessage(t *testing.T) {
 		},
 		{
 			name: "target online - OSCAR session",
+			sess: newTestLegacySession(11111, legacySessionOptOSCARSess),
 			req: MessageRequest{
 				FromUIN: 11111,
 				ToUIN:   22222,
@@ -227,11 +230,28 @@ func TestICQLegacyService_ProcessMessage(t *testing.T) {
 						},
 					},
 				},
-				messageRelayerParams: messageRelayerParams{
-					relayToScreenNameParams: relayToScreenNameParams{
+				icbmFoodgroupParams: icbmFoodgroupParams{
+					channelMsgToHostParams: channelMsgToHostParams{
 						{
-							screenName: state.NewIdentScreenName("22222"),
-							message:    wire.SNACMessage{}, // use mock.Anything for message
+							screenName: state.NewIdentScreenName("11111"),
+							inFrame: wire.SNACFrame{
+								FoodGroup: wire.ICBM,
+								SubGroup:  wire.ICBMChannelMsgToHost,
+							},
+							inBody: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
+								ChannelID:  wire.ICBMChannelICQ,
+								ScreenName: "22222",
+								TLVRestBlock: wire.TLVRestBlock{
+									TLVList: wire.TLVList{
+										wire.NewTLVLE(wire.ICBMTLVData, wire.ICBMCh4Message{
+											UIN:         11111,
+											MessageType: wire.ICBMMsgTypePlain,
+											Message:     "hello from legacy",
+										}),
+										wire.NewTLVBE(wire.ICBMTLVStore, []byte{}),
+									},
+								},
+							},
 						},
 					},
 				},
@@ -328,6 +348,13 @@ func TestICQLegacyService_ProcessMessage(t *testing.T) {
 					Return(p.count, p.err)
 			}
 
+			icbmSvc := newMockICBMService(t)
+			for _, msg := range tc.mockParams.channelMsgToHostParams {
+				icbmSvc.EXPECT().
+					ChannelMsgToHost(matchContext(), matchSession(msg.screenName), msg.inFrame, msg.inBody).
+					Return(nil, msg.err)
+			}
+
 			svc := NewICQLegacyService(
 				newMockUserManager(t),
 				newMockAccountManager(t),
@@ -341,6 +368,7 @@ func TestICQLegacyService_ProcessMessage(t *testing.T) {
 				newMockRelationshipFetcher(t),
 				newMockBuddyListRegistry(t),
 				newMockClientSideBuddyListManager(t),
+				icbmSvc,
 				slog.Default(),
 			)
 
@@ -348,7 +376,7 @@ func TestICQLegacyService_ProcessMessage(t *testing.T) {
 				tc.setupLegacyMgr(t, svc)
 			}
 
-			got, err := svc.ProcessMessage(context.Background(), tc.req)
+			got, err := svc.ProcessMessage(context.Background(), tc.sess, tc.req)
 
 			if tc.wantErr != nil {
 				assert.ErrorIs(t, err, tc.wantErr)
@@ -450,6 +478,7 @@ func TestICQLegacyService_ProcessContactList(t *testing.T) {
 				newMockRelationshipFetcher(t),
 				newMockBuddyListRegistry(t),
 				clientSideBuddyListMgr,
+				newMockICBMService(t),
 				slog.Default(),
 			)
 
@@ -526,6 +555,7 @@ func TestICQLegacyService_ProcessStatusChange(t *testing.T) {
 				newMockRelationshipFetcher(t),
 				newMockBuddyListRegistry(t),
 				newMockClientSideBuddyListManager(t),
+				newMockICBMService(t),
 				slog.Default(),
 			)
 
@@ -632,6 +662,7 @@ func TestICQLegacyService_SearchByUIN(t *testing.T) {
 				newMockRelationshipFetcher(t),
 				newMockBuddyListRegistry(t),
 				newMockClientSideBuddyListManager(t),
+				newMockICBMService(t),
 				slog.Default(),
 			)
 
@@ -761,6 +792,7 @@ func TestICQLegacyService_SearchByName(t *testing.T) {
 				newMockRelationshipFetcher(t),
 				newMockBuddyListRegistry(t),
 				newMockClientSideBuddyListManager(t),
+				newMockICBMService(t),
 				slog.Default(),
 			)
 
@@ -852,6 +884,7 @@ func TestICQLegacyService_GetOfflineMessages(t *testing.T) {
 				newMockRelationshipFetcher(t),
 				newMockBuddyListRegistry(t),
 				newMockClientSideBuddyListManager(t),
+				newMockICBMService(t),
 				slog.Default(),
 			)
 
@@ -903,6 +936,7 @@ func TestICQLegacyService_RegisterNewUser(t *testing.T) {
 				newMockRelationshipFetcher(t),
 				newMockBuddyListRegistry(t),
 				newMockClientSideBuddyListManager(t),
+				newMockICBMService(t),
 				slog.Default(),
 			)
 
@@ -1001,6 +1035,7 @@ func TestICQLegacyService_DeleteUser(t *testing.T) {
 				newMockRelationshipFetcher(t),
 				newMockBuddyListRegistry(t),
 				newMockClientSideBuddyListManager(t),
+				newMockICBMService(t),
 				slog.Default(),
 			)
 

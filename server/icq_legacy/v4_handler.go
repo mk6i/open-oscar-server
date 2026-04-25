@@ -909,7 +909,7 @@ func (h *V4Handler) handleMessage(session *LegacySession, seq1, seq2 uint16, uin
 	)
 
 	// 3. Call service layer with typed request
-	result, err := h.service.ProcessMessage(ctx, req)
+	result, err := h.service.ProcessMessage(ctx, session, req)
 	if err != nil {
 		h.logger.Error("V4 message processing failed",
 			"from", req.FromUIN,

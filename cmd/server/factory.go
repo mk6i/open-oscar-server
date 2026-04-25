@@ -659,6 +659,7 @@ func ICQLegacy(deps Container) *icq_legacy.LegacyServer {
 		deps.sqLiteUserStore, // relationshipFetcher
 		deps.sqLiteUserStore, // buddyListRegistry
 		deps.sqLiteUserStore, // clientSideBuddyListManager
+		deps.icbmSvc,
 		logger,
 	)
 

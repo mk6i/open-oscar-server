@@ -141,11 +141,16 @@ func (s *ICBMService) ChannelMsgToHost(ctx context.Context, instance *state.Sess
 			if err = wire.UnmarshalLE(&authMsg, bytes.NewReader(b)); err != nil {
 				return nil, fmt.Errorf("failed to unmarshal ICBM authMsg: %w", err)
 			}
-			if recipSess.UsesFeedbag() {
-				return nil, s.forwardICQAuthEvents(ctx, instance.IdentScreenName(), recipSess.IdentScreenName(), authMsg)
-			} else if authMsg.MessageType == wire.ICBMMsgTypeAuthOK {
-				if err := s.contactPreAuthorizer.RecordPreAuth(ctx, instance.IdentScreenName(), recipSess.IdentScreenName()); err != nil {
-					return nil, fmt.Errorf("RecordPreAuth: %w", err)
+			if authMsg.MessageType == wire.ICBMMsgTypeAuthReq ||
+				authMsg.MessageType == wire.ICBMMsgTypeAuthDeny ||
+				authMsg.MessageType == wire.ICBMMsgTypeAuthOK ||
+				authMsg.MessageType == wire.ICBMMsgTypeAdded {
+				if recipSess.UsesFeedbag() {
+					return nil, s.forwardICQAuthEvents(ctx, instance.IdentScreenName(), recipSess.IdentScreenName(), authMsg)
+				} else if authMsg.MessageType == wire.ICBMMsgTypeAuthOK {
+					if err := s.contactPreAuthorizer.RecordPreAuth(ctx, instance.IdentScreenName(), recipSess.IdentScreenName()); err != nil {
+						return nil, fmt.Errorf("RecordPreAuth: %w", err)
+					}
 				}
 			}
 		}

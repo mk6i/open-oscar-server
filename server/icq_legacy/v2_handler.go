@@ -413,7 +413,7 @@ func (h *V2Handler) handleSendMessage(session *LegacySession, pkt *V2ClientPacke
 		Message: msg.Message,
 	}
 
-	msgResult, err := h.service.ProcessMessage(ctx, msgReq)
+	msgResult, err := h.service.ProcessMessage(ctx, session, msgReq)
 	if err != nil {
 		h.logger.Debug("failed to process message", "err", err)
 	} else {
