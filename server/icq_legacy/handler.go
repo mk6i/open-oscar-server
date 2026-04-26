@@ -8,6 +8,7 @@ import (
 
 	"github.com/mk6i/open-oscar-server/config"
 	"github.com/mk6i/open-oscar-server/state"
+	"github.com/mk6i/open-oscar-server/wire"
 )
 
 // ProtocolDispatcher routes packets to the appropriate version handler
@@ -279,6 +280,13 @@ type BaseHandler struct {
 	service  LegacyService
 	sender   PacketSender
 	logger   *slog.Logger
+}
+
+// AuthService provides OSCAR authentication and BOS session registration.
+type AuthService interface {
+	FLAPLogin(ctx context.Context, inFrame wire.FLAPSignonFrame, advertisedHost string) (wire.TLVRestBlock, error)
+	CrackCookie(authCookie []byte) (state.ServerCookie, error)
+	RegisterBOSSession(ctx context.Context, authCookie state.ServerCookie, cfg func(*state.Session)) (*state.SessionInstance, error)
 }
 
 // LegacyService is the interface for the ICQ legacy service layer.

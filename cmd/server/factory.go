@@ -638,8 +638,24 @@ func ICQLegacy(deps Container) *icq_legacy.LegacyServer {
 		logger,
 	)
 
+	authService := foodgroup.NewAuthService(
+		deps.cfg,
+		deps.inMemorySessionManager,
+		deps.inMemorySessionManager,
+		deps.chatSessionManager,
+		deps.sqLiteUserStore,
+		deps.hmacCookieBaker,
+		deps.chatSessionManager,
+		deps.sqLiteUserStore,
+		deps.sqLiteUserStore,
+		deps.rateLimitClasses,
+		state.NewAccountCreator(deps.sqLiteUserStore.InsertUser),
+		logger,
+	)
+
 	// Create the ICQ legacy service
 	icqLegacyService := icq_legacy.NewICQLegacyService(
+		authService,
 		deps.sqLiteUserStore,        // userManager
 		deps.sqLiteUserStore,        // accountManager
 		deps.inMemorySessionManager, // sessionRetriever

@@ -217,7 +217,7 @@ func (h *V2Handler) handleLogin(session *LegacySession, addr *net.UDPAddr, pkt *
 	}
 
 	// 3. Create session
-	newSession, err := h.sessions.CreateSession(pkt.UIN, addr, pkt.Version)
+	newSession, err := h.sessions.CreateSession(pkt.UIN, addr, pkt.Version, authResult.oscarSession)
 	if err != nil {
 		h.logger.Error("failed to create session", "err", err, "uin", pkt.UIN)
 		return h.sender.SendPacket(addr, h.packetBuilder.BuildBadPassword(pkt.SeqNum, pkt.Version))
@@ -1130,8 +1130,8 @@ func (h *V2Handler) handleGetDeps(addr *net.UDPAddr, packet []byte) error {
 		Version:  ICQLegacyVersionV2,
 	}
 
-	authResult, err := h.service.AuthenticateUser(ctx, authReq)
-	if err != nil || !authResult.Success {
+	loginOK, err := h.service.ValidateCredentials(ctx, authReq.UIN, authReq.Password)
+	if err != nil || !loginOK {
 		h.logger.Info("getdeps failed - invalid credentials", "uin", uin)
 		return h.sendBadPassword(addr, seq1, 2)
 	}

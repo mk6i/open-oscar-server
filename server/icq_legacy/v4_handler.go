@@ -472,14 +472,14 @@ func (h *V4Handler) handleGetDeps(addr *net.UDPAddr, seq1, seq2 uint16, uin uint
 		Version:  ICQLegacyVersionV4,
 	}
 
-	authResult, err := h.service.AuthenticateUser(ctx, authReq)
+	loginOK, err := h.service.ValidateCredentials(ctx, authReq.UIN, authReq.Password)
 	if err != nil {
 		h.logger.Error("V4 getdeps authentication error", "err", err, "uin", dataUIN)
 		return h.sender.SendPacket(addr, h.packetBuilder.BuildBadPassword(seq1, seq2, uin))
 	}
 
-	if !authResult.Success {
-		h.logger.Info("V4 login failed - invalid credentials", "uin", dataUIN, "error_code", authResult.ErrorCode)
+	if !loginOK {
+		h.logger.Info("V4 login failed - invalid credentials", "uin", dataUIN)
 		return h.sender.SendPacket(addr, h.packetBuilder.BuildBadPassword(seq1, seq2, uin))
 	}
 
@@ -491,7 +491,7 @@ func (h *V4Handler) handleGetDeps(addr *net.UDPAddr, seq1, seq2 uint16, uin uint
 	// TODO: parse and store direct connection info (IP, port, DC version, DC type)
 	// from the V4 login packet so that presence notifications can include real
 	// connection details when ICQ_LEGACY_DIRECT_CONNECTIONS includes V4.
-	newSession, err := h.sessions.CreateSession(dataUIN, addr, ICQLegacyVersionV4)
+	newSession, err := h.sessions.CreatePendingSession(dataUIN, addr, ICQLegacyVersionV4)
 	if err != nil {
 		h.logger.Error("failed to create V4 session", "err", err, "uin", dataUIN)
 		return h.sender.SendPacket(addr, h.packetBuilder.BuildBadPassword(seq1, seq2, uin))
@@ -616,7 +616,11 @@ func (h *V4Handler) handleLogin(session *LegacySession, addr *net.UDPAddr, seq1,
 		// FirstLogin flow: session already exists from handleGetDeps.
 		// Depts list was already sent there, just update metadata and
 		// send the login reply.
-		h.sessions.UpdateSessionAddr(uin, addr)
+		existingSession, err = h.sessions.AttachOSCARSession(uin, addr, authResult.oscarSession)
+		if err != nil {
+			h.logger.Error("failed to attach V4 OSCAR session", "err", err, "uin", uin)
+			return h.sender.SendPacket(addr, h.packetBuilder.BuildBadPassword(seq1, seq2, uin))
+		}
 		existingSession.Password = password
 		existingSession.SetStatus(requestedStatus)
 
@@ -636,7 +640,7 @@ func (h *V4Handler) handleLogin(session *LegacySession, addr *net.UDPAddr, seq1,
 		// Direct login flow: client sent Login (0x03E8) without prior
 		// GetDeps. Just create session and send login reply directly.
 		// TODO: parse and store direct connection info from V4 login packet.
-		newSession, err := h.sessions.CreateSession(uin, addr, ICQLegacyVersionV4)
+		newSession, err := h.sessions.CreateSession(uin, addr, ICQLegacyVersionV4, authResult.oscarSession)
 		if err != nil {
 			h.logger.Error("failed to create V4 session", "err", err, "uin", uin)
 			return h.sender.SendPacket(addr, h.packetBuilder.BuildBadPassword(seq1, seq2, uin))

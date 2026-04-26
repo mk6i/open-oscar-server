@@ -356,6 +356,13 @@ func legacySessionOptOSCARSess(s *LegacySession) {
 	s.Instance = oscarSess.AddInstance()
 }
 
+func newTestOSCARInstance(screenName state.DisplayScreenName) *state.SessionInstance {
+	oscarSess := state.NewSession()
+	oscarSess.SetDisplayScreenName(screenName)
+	oscarSess.SetIdentScreenName(screenName.IdentScreenName())
+	return oscarSess.AddInstance()
+}
+
 // legacySessionOptVersion sets the protocol version on the legacy session.
 func legacySessionOptVersion(version uint16) func(*LegacySession) {
 	return func(s *LegacySession) {

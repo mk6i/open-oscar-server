@@ -353,9 +353,8 @@ func (s AuthService) KerberosLogin(ctx context.Context, inBody wire.SNAC_0x050C_
 	if info.Version >= 4 {
 		list = append(list, wire.NewTLVBE(wire.LoginTLVTagsRoastedKerberosPassword, info.Password))
 	} else {
-		list = append(list, wire.NewTLVBE(wire.LoginTLVTagsPlaintextPassword, info.Password))
+		list = append(list, wire.NewTLVBE(wire.LoginTLVTagsPlaintextKerberosPassword, info.Password))
 	}
-
 	result, err := s.login(ctx, list, advertisedHost)
 	if err != nil {
 		return wire.SNACMessage{}, fmt.Errorf("login: %w", err)
@@ -428,6 +427,7 @@ type loginProperties struct {
 	isFLAPJavaAuth          bool
 	isKerberosPlaintextAuth bool
 	isKerberosRoastedAuth   bool
+	isPlaintextAuth         bool
 	isTOCAuth               bool
 	multiConnFlag           uint8
 	passwordHash            []byte
@@ -471,9 +471,12 @@ func (l *loginProperties) fromTLV(list wire.TLVList) error {
 		// extract roasted password for TOC FLAP login
 		l.roastedPass, _ = list.Bytes(wire.LoginTLVTagsRoastedTOCPassword)
 		l.isTOCAuth = true
+	case list.HasTag(wire.LoginTLVTagsPlaintextKerberosPassword):
+		l.plaintextPassword, _ = list.Bytes(wire.LoginTLVTagsPlaintextKerberosPassword)
+		l.isKerberosPlaintextAuth = true
 	case list.HasTag(wire.LoginTLVTagsPlaintextPassword):
 		l.plaintextPassword, _ = list.Bytes(wire.LoginTLVTagsPlaintextPassword)
-		l.isKerberosPlaintextAuth = true
+		l.isPlaintextAuth = true
 	case list.HasTag(wire.LoginTLVTagsRoastedKerberosPassword):
 		l.roastedPass, _ = list.Bytes(wire.LoginTLVTagsRoastedKerberosPassword)
 		l.isKerberosRoastedAuth = true
@@ -508,6 +511,7 @@ func (s AuthService) login(ctx context.Context, tlv wire.TLVList, advertisedHost
 		"is_toc", props.isTOCAuth,
 		"is_kerberos_plaintext", props.isKerberosPlaintextAuth,
 		"is_kerberos_roasted", props.isKerberosRoastedAuth,
+		"is_plaintext", props.isPlaintextAuth,
 		"password_hash_len", len(props.passwordHash),
 		"roasted_pass_len", len(props.roastedPass))
 
@@ -573,6 +577,9 @@ func (s AuthService) login(ctx context.Context, tlv wire.TLVList, advertisedHost
 	case props.isKerberosRoastedAuth:
 		authMethod = "Kerberos_Roasted"
 		loginOK = user.ValidateRoastedKerberosPass(props.roastedPass)
+	case props.isPlaintextAuth:
+		authMethod = "Plaintext"
+		loginOK = user.ValidatePlaintextPass(props.plaintextPassword)
 	}
 
 	s.logger.Debug("login: password validation result",

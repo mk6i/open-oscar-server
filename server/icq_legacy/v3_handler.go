@@ -253,14 +253,14 @@ func (h *V3Handler) handleGetDeps(addr *net.UDPAddr, seq1, seq2 uint16, data []b
 		Version:  ICQLegacyVersionV3,
 	}
 
-	authResult, err := h.service.AuthenticateUser(ctx, authReq)
+	loginOK, err := h.service.ValidateCredentials(ctx, authReq.UIN, authReq.Password)
 	if err != nil {
 		h.logger.Error("getdeps authentication error", "err", err, "uin", uin)
 		return h.sender.SendPacket(addr, h.packetBuilder.BuildBadPassword(seq1, seq2, uin))
 	}
 
-	if !authResult.Success {
-		h.logger.Info("getdeps failed - invalid credentials", "uin", uin, "error_code", authResult.ErrorCode)
+	if !loginOK {
+		h.logger.Info("getdeps failed - invalid credentials", "uin", uin)
 		return h.sender.SendPacket(addr, h.packetBuilder.BuildBadPassword(seq1, seq2, uin))
 	}
 
@@ -357,7 +357,7 @@ func (h *V3Handler) handleLogin(session *LegacySession, addr *net.UDPAddr, seq1,
 	// TODO: parse and store direct connection info (IP, port, DC version, DC type)
 	// from the V3 login packet so that presence notifications can include real
 	// connection details when ICQ_LEGACY_DIRECT_CONNECTIONS includes V3.
-	newSession, err := h.sessions.CreateSession(uin, addr, ICQLegacyVersionV3)
+	newSession, err := h.sessions.CreateSession(uin, addr, ICQLegacyVersionV3, authResult.oscarSession)
 	if err != nil {
 		h.logger.Error("failed to create session", "err", err, "uin", uin)
 		return h.sender.SendPacket(addr, h.packetBuilder.BuildBadPassword(seq1, seq2, uin))

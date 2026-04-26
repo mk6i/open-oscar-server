@@ -8,6 +8,8 @@ import (
 	"testing/quick"
 
 	"github.com/mk6i/open-oscar-server/state"
+	"github.com/mk6i/open-oscar-server/wire"
+	"github.com/stretchr/testify/mock"
 )
 
 // TestProperty_UINScreenNameRoundTrip verifies Property 8: UIN↔ScreenName round trip.
@@ -52,15 +54,17 @@ func TestProperty_ServiceBehavioralEquivalence(t *testing.T) {
 		// Generate a non-empty password from the random byte
 		password := string([]byte{'a' + passByte%26})
 
-		// Create a service with a mock UserManager that always returns ErrNoUser
-		userManager := newMockUserManager(t)
-		screenName := state.NewIdentScreenName(strconv.FormatUint(uint64(uin), 10))
-		userManager.EXPECT().
-			User(matchContext(), screenName).
-			Return(nil, state.ErrNoUser)
+		authSvc := newMockAuthService(t)
+		authSvc.EXPECT().FLAPLogin(mock.Anything, mock.Anything, "").
+			Return(wire.TLVRestBlock{
+				TLVList: []wire.TLV{
+					wire.NewTLVBE(wire.LoginTLVTagsErrorSubcode, wire.LoginErrICQUserErr),
+				},
+			}, nil)
 
 		svc := NewICQLegacyService(
-			userManager,
+			authSvc,
+			newMockUserManager(t),
 			newMockAccountManager(t),
 			newMockSessionRetriever(t),
 			newMockMessageRelayer(t),

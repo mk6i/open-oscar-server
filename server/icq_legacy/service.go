@@ -27,6 +27,7 @@ import (
 // parsing protocol-specific packets into request structs and building
 // protocol-specific response packets from the returned result structs.
 type ICQLegacyService struct {
+	authService                AuthService
 	userManager                UserManager
 	accountManager             AccountManager
 	sessionRetriever           SessionRetriever
@@ -51,6 +52,7 @@ type ICQLegacyService struct {
 // The legacy session manager must be set separately via SetLegacySessionManager
 // after the server package initializes it, to avoid circular dependencies.
 func NewICQLegacyService(
+	authService AuthService,
 	userManager UserManager,
 	accountManager AccountManager,
 	sessionRetriever SessionRetriever,
@@ -67,6 +69,7 @@ func NewICQLegacyService(
 	logger *slog.Logger,
 ) *ICQLegacyService {
 	return &ICQLegacyService{
+		authService:                authService,
 		userManager:                userManager,
 		accountManager:             accountManager,
 		sessionRetriever:           sessionRetriever,
@@ -95,34 +98,21 @@ func (s *ICQLegacyService) SetLegacySessionManager(mgr *LegacySessionManager) {
 
 // ValidateCredentials checks if the given UIN and password are valid.
 // Returns true if credentials are valid, false otherwise.
-// The password is validated using the same StrongMD5 hash method as OSCAR.
+// The password is validated by AuthService without registering a BOS session.
 func (s *ICQLegacyService) ValidateCredentials(ctx context.Context, uin uint32, password string) (bool, error) {
-	screenName := state.NewIdentScreenName(strconv.FormatUint(uint64(uin), 10))
-
-	user, err := s.userManager.User(ctx, screenName)
+	if uin == 0 {
+		return false, nil
+	}
+	block, err := s.legacyFLAPLogin(ctx, uin, password)
 	if err != nil {
 		if errors.Is(err, state.ErrNoUser) {
 			return false, nil
 		}
-		return false, fmt.Errorf("looking up user: %w", err)
+		return false, fmt.Errorf("AuthService.FLAPLogin: %w", err)
 	}
 
-	// User not found
-	if user == nil {
-		return false, nil
-	}
-
-	// For legacy ICQ, we do a simple password comparison
-	// The password is stored as a hash, but legacy clients send plaintext
-	if user.StrongMD5Pass == nil {
-		s.logger.Debug("user has no password hash", "uin", uin)
-		return false, nil
-	}
-
-	// Validate password using the same hash method as OSCAR
-	expectedHash := wire.StrongMD5PasswordHash(password, user.AuthKey)
-	if !user.ValidateHash(expectedHash) {
-		s.logger.Debug("password validation failed", "uin", uin)
+	if block.HasTag(wire.LoginTLVTagsErrorSubcode) {
+		s.logger.Debug("credentials validation failed", "uin", uin)
 		return false, nil
 	}
 
@@ -151,37 +141,49 @@ func (s *ICQLegacyService) AuthenticateUser(ctx context.Context, req AuthRequest
 		return result, nil
 	}
 
-	// Look up the user
-	screenName := state.NewIdentScreenName(strconv.FormatUint(uint64(req.UIN), 10))
-	user, err := s.userManager.User(ctx, screenName)
+	block, err := s.legacyFLAPLogin(ctx, req.UIN, req.Password)
 	if err != nil {
 		if errors.Is(err, state.ErrNoUser) {
 			s.logger.Debug("authentication failed - user not found", "uin", req.UIN)
 			result.ErrorCode = 0x0002 // User not found
 			return result, nil
 		}
-		return nil, fmt.Errorf("looking up user: %w", err)
+		return nil, fmt.Errorf("AuthService.FLAPLogin: %w", err)
 	}
 
-	// User not found
-	if user == nil {
-		s.logger.Debug("authentication failed - user not found", "uin", req.UIN)
-		result.ErrorCode = 0x0002 // User not found
+	if errCode, ok := block.Uint16BE(wire.LoginTLVTagsErrorSubcode); ok {
+		s.logger.Debug("authentication failed",
+			"uin", req.UIN,
+			"error_code", fmt.Sprintf("0x%04X", errCode),
+		)
+		if errCode == wire.LoginErrICQUserErr {
+			result.ErrorCode = 0x0002 // User not found
+		}
 		return result, nil
 	}
 
-	// Check if user has a password hash
-	if user.StrongMD5Pass == nil {
-		s.logger.Debug("authentication failed - user has no password hash", "uin", req.UIN)
-		result.ErrorCode = 0x0001 // Bad password
-		return result, nil
+	authCookie, ok := block.Bytes(wire.LoginTLVTagsAuthorizationCookie)
+	if !ok {
+		return nil, fmt.Errorf("authorization cookie missing from auth response")
 	}
 
-	// Validate password using the same hash method as OSCAR
-	expectedHash := wire.StrongMD5PasswordHash(req.Password, user.AuthKey)
-	if !user.ValidateHash(expectedHash) {
-		s.logger.Debug("authentication failed - invalid password", "uin", req.UIN)
-		result.ErrorCode = 0x0001 // Bad password
+	serverCookie, err := s.authService.CrackCookie(authCookie)
+	if err != nil {
+		return nil, fmt.Errorf("AuthService.CrackCookie: %w", err)
+	}
+
+	instance, err := s.authService.RegisterBOSSession(ctx, serverCookie, func(sess *state.Session) {
+		sess.OnSessionClose(func() {
+			if s.legacySessionManager != nil {
+				s.legacySessionManager.RemoveSession(req.UIN)
+			}
+		})
+	})
+	if err != nil {
+		return nil, fmt.Errorf("AuthService.RegisterBOSSession: %w", err)
+	}
+	if instance == nil {
+		s.logger.Debug("authentication failed - missing OSCAR session", "uin", req.UIN)
 		return result, nil
 	}
 
@@ -189,6 +191,7 @@ func (s *ICQLegacyService) AuthenticateUser(ctx context.Context, req AuthRequest
 	result.Success = true
 	result.ErrorCode = 0 // Success
 	result.SessionID = uuid.New().String()
+	result.oscarSession = instance
 
 	s.logger.Info("user authenticated successfully",
 		"uin", req.UIN,
@@ -197,6 +200,14 @@ func (s *ICQLegacyService) AuthenticateUser(ctx context.Context, req AuthRequest
 	)
 
 	return result, nil
+}
+
+func (s *ICQLegacyService) legacyFLAPLogin(ctx context.Context, uin uint32, password string) (wire.TLVRestBlock, error) {
+	screenName := strconv.FormatUint(uint64(uin), 10)
+	signonFrame := wire.FLAPSignonFrame{}
+	signonFrame.Append(wire.NewTLVBE(wire.LoginTLVTagsScreenName, screenName))
+	signonFrame.Append(wire.NewTLVBE(wire.LoginTLVTagsPlaintextPassword, password))
+	return s.authService.FLAPLogin(ctx, signonFrame, "")
 }
 
 // ProcessContactList processes a contact list and returns online status for each contact.
@@ -1135,7 +1146,6 @@ func (s *ICQLegacyService) SearchByName(ctx context.Context, nick, first, last, 
 // Results are limited to 40 users maximum, matching iserverd behavior.
 func (s *ICQLegacyService) WhitePagesSearch(ctx context.Context, criteria WhitePagesSearchCriteria) ([]LegacyUserSearchResult, error) {
 	var allResults []state.User
-	var err error
 
 	// Start with basic name/email search if those criteria are provided
 	// This is the primary search method available in the current infrastructure
@@ -1178,10 +1188,6 @@ func (s *ICQLegacyService) WhitePagesSearch(ctx context.Context, criteria WhiteP
 		if findErr == nil {
 			allResults = s.mergeUserResults(allResults, users)
 		}
-	}
-
-	if err != nil {
-		return nil, err
 	}
 
 	// Filter results based on additional criteria

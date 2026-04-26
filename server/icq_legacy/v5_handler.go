@@ -414,16 +414,15 @@ func (h *V5Handler) handleGetDeps(session *LegacySession, addr *net.UDPAddr, pkt
 		Version:  ICQLegacyVersionV5,
 	}
 
-	authResult, err := h.service.AuthenticateUser(ctx, authReq)
+	loginOK, err := h.service.ValidateCredentials(ctx, authReq.UIN, authReq.Password)
 	if err != nil {
 		h.logger.Error("V5 getdeps authentication error", "err", err, "uin", uin)
 		return h.sender.SendPacket(addr, h.packetBuilder.BuildBadPassword(pkt.SessionID, uin, pkt.SeqNum2))
 	}
 
-	if !authResult.Success {
+	if !loginOK {
 		h.logger.Info("V5 getdeps FAILED - invalid credentials",
 			"uin", uin,
-			"error_code", authResult.ErrorCode,
 		)
 		return h.sender.SendPacket(addr, h.packetBuilder.BuildBadPassword(pkt.SessionID, uin, pkt.SeqNum2))
 	}
@@ -1232,7 +1231,7 @@ func (h *V5Handler) handleLogin(session *LegacySession, addr *net.UDPAddr, pkt *
 	}
 
 	// 4. Create session (handler responsibility - session management)
-	newSession, err := h.sessions.CreateSession(pkt.UIN, addr, ICQLegacyVersionV5)
+	newSession, err := h.sessions.CreateSession(pkt.UIN, addr, ICQLegacyVersionV5, authResult.oscarSession)
 	if err != nil {
 		h.logger.Error("failed to create V5 session", "err", err, "uin", pkt.UIN)
 		return h.sender.SendPacket(addr, h.packetBuilder.BuildBadPassword(pkt.SessionID, pkt.UIN, pkt.SeqNum2))
