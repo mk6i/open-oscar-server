@@ -1035,7 +1035,7 @@ func (s *ICQLegacyService) GetUserInfoForProtocol(ctx context.Context, targetUIN
 		Position:   user.ICQWorkInfo.Position,
 
 		// Auth required
-		AuthRequired: 0,
+		AuthRequired: 1,
 	}
 
 	// Use UIN as fallback nickname if not set
@@ -1045,7 +1045,7 @@ func (s *ICQLegacyService) GetUserInfoForProtocol(ctx context.Context, targetUIN
 
 	// Set auth required flag
 	if user.ICQPermissions.AuthRequired {
-		result.AuthRequired = 1
+		result.AuthRequired = 0
 	}
 
 	// Check if user is online
