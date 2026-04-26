@@ -469,7 +469,7 @@ func (h *V5Handler) handleContactList(session *LegacySession, pkt *V5ClientPacke
 
 	// 3. Call service layer with typed request
 	ctx := context.Background()
-	result, err := h.service.ProcessContactList(ctx, req)
+	result, err := h.service.ProcessContactList(ctx, session.Instance, req)
 	if err != nil {
 		h.logger.Error("contact list processing failed", "uin", session.UIN, "err", err)
 		// Still send contact list done on error
@@ -838,7 +838,7 @@ func (h *V5Handler) handleUserAdd(session *LegacySession, pkt *V5ClientPacket) e
 
 	// 3. Call service layer with typed request
 	ctx := context.Background()
-	result, err := h.service.ProcessUserAdd(ctx, req)
+	result, err := h.service.ProcessUserAdd(ctx, session.Instance, req)
 	if err != nil {
 		h.logger.Error("user add processing failed", "from", req.FromUIN, "target", req.TargetUIN, "err", err)
 		return nil

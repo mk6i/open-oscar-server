@@ -750,7 +750,7 @@ func (h *V4Handler) handleContactList(session *LegacySession, seq1, seq2 uint16,
 	session.SetContactList(req.Contacts)
 
 	// 3. Call service layer with typed request
-	result, err := h.service.ProcessContactList(ctx, req)
+	result, err := h.service.ProcessContactList(ctx, session.Instance, req)
 	if err != nil {
 		h.logger.Error("V4 contact list processing failed", "uin", uin, "err", err)
 		// Still send contact list done on error
@@ -1027,6 +1027,14 @@ func (h *V4Handler) handleUserAdd(session *LegacySession, seq1, seq2 uint16, uin
 	contacts := session.GetContactList()
 	contacts = append(contacts, targetUIN)
 	session.SetContactList(contacts)
+
+	ctx := context.Background()
+	if _, err := h.service.ProcessUserAdd(ctx, session.Instance, UserAddRequest{
+		FromUIN:   uin,
+		TargetUIN: targetUIN,
+	}); err != nil {
+		h.logger.Debug("V4 user add service call failed", "err", err)
+	}
 
 	targetSession := h.sessions.GetSession(targetUIN)
 	if targetSession != nil {

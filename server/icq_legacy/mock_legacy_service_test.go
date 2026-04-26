@@ -1015,8 +1015,8 @@ func (_c *mockLegacyService_NotifyUserOnline_Call) RunAndReturn(run func(ctx con
 }
 
 // ProcessContactList provides a mock function for the type mockLegacyService
-func (_mock *mockLegacyService) ProcessContactList(ctx context.Context, req ContactListRequest) (*ContactListResult, error) {
-	ret := _mock.Called(ctx, req)
+func (_mock *mockLegacyService) ProcessContactList(ctx context.Context, instance *state.SessionInstance, req ContactListRequest) (*ContactListResult, error) {
+	ret := _mock.Called(ctx, instance, req)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ProcessContactList")
@@ -1024,18 +1024,18 @@ func (_mock *mockLegacyService) ProcessContactList(ctx context.Context, req Cont
 
 	var r0 *ContactListResult
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, ContactListRequest) (*ContactListResult, error)); ok {
-		return returnFunc(ctx, req)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, ContactListRequest) (*ContactListResult, error)); ok {
+		return returnFunc(ctx, instance, req)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, ContactListRequest) *ContactListResult); ok {
-		r0 = returnFunc(ctx, req)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, ContactListRequest) *ContactListResult); ok {
+		r0 = returnFunc(ctx, instance, req)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*ContactListResult)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, ContactListRequest) error); ok {
-		r1 = returnFunc(ctx, req)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *state.SessionInstance, ContactListRequest) error); ok {
+		r1 = returnFunc(ctx, instance, req)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -1049,24 +1049,30 @@ type mockLegacyService_ProcessContactList_Call struct {
 
 // ProcessContactList is a helper method to define mock.On call
 //   - ctx context.Context
+//   - instance *state.SessionInstance
 //   - req ContactListRequest
-func (_e *mockLegacyService_Expecter) ProcessContactList(ctx interface{}, req interface{}) *mockLegacyService_ProcessContactList_Call {
-	return &mockLegacyService_ProcessContactList_Call{Call: _e.mock.On("ProcessContactList", ctx, req)}
+func (_e *mockLegacyService_Expecter) ProcessContactList(ctx interface{}, instance interface{}, req interface{}) *mockLegacyService_ProcessContactList_Call {
+	return &mockLegacyService_ProcessContactList_Call{Call: _e.mock.On("ProcessContactList", ctx, instance, req)}
 }
 
-func (_c *mockLegacyService_ProcessContactList_Call) Run(run func(ctx context.Context, req ContactListRequest)) *mockLegacyService_ProcessContactList_Call {
+func (_c *mockLegacyService_ProcessContactList_Call) Run(run func(ctx context.Context, instance *state.SessionInstance, req ContactListRequest)) *mockLegacyService_ProcessContactList_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 ContactListRequest
+		var arg1 *state.SessionInstance
 		if args[1] != nil {
-			arg1 = args[1].(ContactListRequest)
+			arg1 = args[1].(*state.SessionInstance)
+		}
+		var arg2 ContactListRequest
+		if args[2] != nil {
+			arg2 = args[2].(ContactListRequest)
 		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
@@ -1077,7 +1083,7 @@ func (_c *mockLegacyService_ProcessContactList_Call) Return(contactListResult *C
 	return _c
 }
 
-func (_c *mockLegacyService_ProcessContactList_Call) RunAndReturn(run func(ctx context.Context, req ContactListRequest) (*ContactListResult, error)) *mockLegacyService_ProcessContactList_Call {
+func (_c *mockLegacyService_ProcessContactList_Call) RunAndReturn(run func(ctx context.Context, instance *state.SessionInstance, req ContactListRequest) (*ContactListResult, error)) *mockLegacyService_ProcessContactList_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -1225,8 +1231,8 @@ func (_c *mockLegacyService_ProcessStatusChange_Call) RunAndReturn(run func(ctx 
 }
 
 // ProcessUserAdd provides a mock function for the type mockLegacyService
-func (_mock *mockLegacyService) ProcessUserAdd(ctx context.Context, req UserAddRequest) (*UserAddResult, error) {
-	ret := _mock.Called(ctx, req)
+func (_mock *mockLegacyService) ProcessUserAdd(ctx context.Context, instance *state.SessionInstance, req UserAddRequest) (*UserAddResult, error) {
+	ret := _mock.Called(ctx, instance, req)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ProcessUserAdd")
@@ -1234,18 +1240,18 @@ func (_mock *mockLegacyService) ProcessUserAdd(ctx context.Context, req UserAddR
 
 	var r0 *UserAddResult
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, UserAddRequest) (*UserAddResult, error)); ok {
-		return returnFunc(ctx, req)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, UserAddRequest) (*UserAddResult, error)); ok {
+		return returnFunc(ctx, instance, req)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, UserAddRequest) *UserAddResult); ok {
-		r0 = returnFunc(ctx, req)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, UserAddRequest) *UserAddResult); ok {
+		r0 = returnFunc(ctx, instance, req)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*UserAddResult)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, UserAddRequest) error); ok {
-		r1 = returnFunc(ctx, req)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *state.SessionInstance, UserAddRequest) error); ok {
+		r1 = returnFunc(ctx, instance, req)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -1259,24 +1265,30 @@ type mockLegacyService_ProcessUserAdd_Call struct {
 
 // ProcessUserAdd is a helper method to define mock.On call
 //   - ctx context.Context
+//   - instance *state.SessionInstance
 //   - req UserAddRequest
-func (_e *mockLegacyService_Expecter) ProcessUserAdd(ctx interface{}, req interface{}) *mockLegacyService_ProcessUserAdd_Call {
-	return &mockLegacyService_ProcessUserAdd_Call{Call: _e.mock.On("ProcessUserAdd", ctx, req)}
+func (_e *mockLegacyService_Expecter) ProcessUserAdd(ctx interface{}, instance interface{}, req interface{}) *mockLegacyService_ProcessUserAdd_Call {
+	return &mockLegacyService_ProcessUserAdd_Call{Call: _e.mock.On("ProcessUserAdd", ctx, instance, req)}
 }
 
-func (_c *mockLegacyService_ProcessUserAdd_Call) Run(run func(ctx context.Context, req UserAddRequest)) *mockLegacyService_ProcessUserAdd_Call {
+func (_c *mockLegacyService_ProcessUserAdd_Call) Run(run func(ctx context.Context, instance *state.SessionInstance, req UserAddRequest)) *mockLegacyService_ProcessUserAdd_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 UserAddRequest
+		var arg1 *state.SessionInstance
 		if args[1] != nil {
-			arg1 = args[1].(UserAddRequest)
+			arg1 = args[1].(*state.SessionInstance)
+		}
+		var arg2 UserAddRequest
+		if args[2] != nil {
+			arg2 = args[2].(UserAddRequest)
 		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
@@ -1287,7 +1299,7 @@ func (_c *mockLegacyService_ProcessUserAdd_Call) Return(userAddResult *UserAddRe
 	return _c
 }
 
-func (_c *mockLegacyService_ProcessUserAdd_Call) RunAndReturn(run func(ctx context.Context, req UserAddRequest) (*UserAddResult, error)) *mockLegacyService_ProcessUserAdd_Call {
+func (_c *mockLegacyService_ProcessUserAdd_Call) RunAndReturn(run func(ctx context.Context, instance *state.SessionInstance, req UserAddRequest) (*UserAddResult, error)) *mockLegacyService_ProcessUserAdd_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -145,7 +145,7 @@ func TestICQLegacyService_AuthenticateUser(t *testing.T) {
 				newMockFeedbagManager(t),
 				newMockRelationshipFetcher(t),
 				newMockBuddyListRegistry(t),
-				newMockClientSideBuddyListManager(t),
+				newMockBuddyService(t),
 				newMockICBMService(t),
 				slog.Default(),
 			)
@@ -349,7 +349,7 @@ func TestICQLegacyService_ProcessMessage(t *testing.T) {
 				newMockFeedbagManager(t),
 				newMockRelationshipFetcher(t),
 				newMockBuddyListRegistry(t),
-				newMockClientSideBuddyListManager(t),
+				newMockBuddyService(t),
 				icbmSvc,
 				slog.Default(),
 			)
@@ -435,12 +435,12 @@ func TestICQLegacyService_ProcessContactList(t *testing.T) {
 					Return(p.result)
 			}
 
-			clientSideBuddyListMgr := newMockClientSideBuddyListManager(t)
+			buddySvc := newMockBuddyService(t)
 			userFinder := newMockICQUserFinder(t)
 			// ProcessContactList adds both forward and reverse buddy entries
-			clientSideBuddyListMgr.EXPECT().
-				AddBuddy(mock.Anything, mock.Anything, mock.Anything).
-				Return(nil).
+			buddySvc.EXPECT().
+				AddBuddies(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+				Return(nil, nil).
 				Maybe()
 			userFinder.EXPECT().
 				FindByUIN(mock.Anything, mock.Anything).
@@ -460,7 +460,7 @@ func TestICQLegacyService_ProcessContactList(t *testing.T) {
 				newMockFeedbagManager(t),
 				newMockRelationshipFetcher(t),
 				newMockBuddyListRegistry(t),
-				clientSideBuddyListMgr,
+				buddySvc,
 				newMockICBMService(t),
 				slog.Default(),
 			)
@@ -468,8 +468,12 @@ func TestICQLegacyService_ProcessContactList(t *testing.T) {
 			if tc.setupLegacyMgr != nil {
 				tc.setupLegacyMgr(t, svc)
 			}
+			var instance *state.SessionInstance
+			if tc.req.UIN != 0 {
+				instance = newTestOSCARInstance(state.DisplayScreenName(strconv.FormatUint(uint64(tc.req.UIN), 10)))
+			}
 
-			got, err := svc.ProcessContactList(context.Background(), tc.req)
+			got, err := svc.ProcessContactList(context.Background(), instance, tc.req)
 
 			assert.NoError(t, err)
 			assert.Equal(t, len(tc.wantResult.OnlineContacts), len(got.OnlineContacts))
@@ -538,7 +542,7 @@ func TestICQLegacyService_ProcessStatusChange(t *testing.T) {
 				newMockFeedbagManager(t),
 				newMockRelationshipFetcher(t),
 				newMockBuddyListRegistry(t),
-				newMockClientSideBuddyListManager(t),
+				newMockBuddyService(t),
 				newMockICBMService(t),
 				slog.Default(),
 			)
@@ -646,7 +650,7 @@ func TestICQLegacyService_SearchByUIN(t *testing.T) {
 				newMockFeedbagManager(t),
 				newMockRelationshipFetcher(t),
 				newMockBuddyListRegistry(t),
-				newMockClientSideBuddyListManager(t),
+				newMockBuddyService(t),
 				newMockICBMService(t),
 				slog.Default(),
 			)
@@ -777,7 +781,7 @@ func TestICQLegacyService_SearchByName(t *testing.T) {
 				newMockFeedbagManager(t),
 				newMockRelationshipFetcher(t),
 				newMockBuddyListRegistry(t),
-				newMockClientSideBuddyListManager(t),
+				newMockBuddyService(t),
 				newMockICBMService(t),
 				slog.Default(),
 			)
@@ -870,7 +874,7 @@ func TestICQLegacyService_GetOfflineMessages(t *testing.T) {
 				newMockFeedbagManager(t),
 				newMockRelationshipFetcher(t),
 				newMockBuddyListRegistry(t),
-				newMockClientSideBuddyListManager(t),
+				newMockBuddyService(t),
 				newMockICBMService(t),
 				slog.Default(),
 			)
@@ -923,7 +927,7 @@ func TestICQLegacyService_RegisterNewUser(t *testing.T) {
 				newMockFeedbagManager(t),
 				newMockRelationshipFetcher(t),
 				newMockBuddyListRegistry(t),
-				newMockClientSideBuddyListManager(t),
+				newMockBuddyService(t),
 				newMockICBMService(t),
 				slog.Default(),
 			)
@@ -1031,7 +1035,7 @@ func TestICQLegacyService_DeleteUser(t *testing.T) {
 				newMockFeedbagManager(t),
 				newMockRelationshipFetcher(t),
 				newMockBuddyListRegistry(t),
-				newMockClientSideBuddyListManager(t),
+				newMockBuddyService(t),
 				newMockICBMService(t),
 				slog.Default(),
 			)

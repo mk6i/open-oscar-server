@@ -338,7 +338,7 @@ func (h *V2Handler) handleContactList(session *LegacySession, pkt *V2ClientPacke
 		Contacts: contactList.UINs,
 	}
 
-	contactResult, err := h.service.ProcessContactList(ctx, contactReq)
+	contactResult, err := h.service.ProcessContactList(ctx, session.Instance, contactReq)
 	if err != nil {
 		h.logger.Debug("failed to process contact list", "err", err)
 		// Still send contact list done even on error
@@ -968,7 +968,7 @@ func (h *V2Handler) handleUserAdd(session *LegacySession, pkt *V2ClientPacket) e
 
 	// Sync to clientSideBuddyList so OSCAR's BuddyArrived reaches this user
 	// for the newly added contact (mirrors ProcessContactList sync logic)
-	if _, err := h.service.ProcessUserAdd(ctx, UserAddRequest{
+	if _, err := h.service.ProcessUserAdd(ctx, session.Instance, UserAddRequest{
 		FromUIN:   session.UIN,
 		TargetUIN: targetUIN,
 	}); err != nil {

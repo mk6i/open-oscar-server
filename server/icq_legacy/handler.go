@@ -332,7 +332,7 @@ type LegacyService interface {
 	// The method does NOT contain any protocol-specific packet building logic.
 	// Handlers are responsible for building protocol-specific responses based on
 	// the returned ContactListResult.
-	ProcessContactList(ctx context.Context, req ContactListRequest) (*ContactListResult, error)
+	ProcessContactList(ctx context.Context, instance *state.SessionInstance, req ContactListRequest) (*ContactListResult, error)
 
 	// ProcessUserAdd processes a user add request and returns information about the target user.
 	// This is the service layer method for user add operations that handlers call after
@@ -341,7 +341,7 @@ type LegacyService interface {
 	// The method does NOT contain any protocol-specific packet building logic.
 	// Handlers are responsible for building protocol-specific responses based on
 	// the returned UserAddResult.
-	ProcessUserAdd(ctx context.Context, req UserAddRequest) (*UserAddResult, error)
+	ProcessUserAdd(ctx context.Context, instance *state.SessionInstance, req UserAddRequest) (*UserAddResult, error)
 
 	// ProcessStatusChange processes a status change and returns notification targets.
 	// This is the service layer method for status changes that handlers call after

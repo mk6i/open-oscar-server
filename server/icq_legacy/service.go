@@ -27,22 +27,22 @@ import (
 // parsing protocol-specific packets into request structs and building
 // protocol-specific response packets from the returned result structs.
 type ICQLegacyService struct {
-	authService                AuthService
-	userManager                UserManager
-	accountManager             AccountManager
-	sessionRetriever           SessionRetriever
-	messageRelayer             MessageRelayer
-	buddyBroadcaster           BuddyBroadcaster
-	offlineMessageManager      OfflineMessageManager
-	icbmService                ICBMService
-	userFinder                 ICQUserFinder
-	userUpdater                ICQUserUpdater
-	feedbagManager             FeedbagManager
-	relationshipFetcher        RelationshipFetcher
-	buddyListRegistry          BuddyListRegistry
-	clientSideBuddyListManager ClientSideBuddyListManager
-	logger                     *slog.Logger
-	timeNow                    func() time.Time
+	authService           AuthService
+	userManager           UserManager
+	accountManager        AccountManager
+	sessionRetriever      SessionRetriever
+	messageRelayer        MessageRelayer
+	buddyBroadcaster      BuddyBroadcaster
+	offlineMessageManager OfflineMessageManager
+	icbmService           ICBMService
+	userFinder            ICQUserFinder
+	userUpdater           ICQUserUpdater
+	feedbagManager        FeedbagManager
+	relationshipFetcher   RelationshipFetcher
+	buddyListRegistry     BuddyListRegistry
+	buddyService          BuddyService
+	logger                *slog.Logger
+	timeNow               func() time.Time
 
 	// legacySessionManager is set by the server package
 	legacySessionManager *LegacySessionManager
@@ -64,27 +64,27 @@ func NewICQLegacyService(
 	feedbagManager FeedbagManager,
 	relationshipFetcher RelationshipFetcher,
 	buddyListRegistry BuddyListRegistry,
-	clientSideBuddyListManager ClientSideBuddyListManager,
+	buddyService BuddyService,
 	icbmSvc ICBMService,
 	logger *slog.Logger,
 ) *ICQLegacyService {
 	return &ICQLegacyService{
-		authService:                authService,
-		userManager:                userManager,
-		accountManager:             accountManager,
-		sessionRetriever:           sessionRetriever,
-		messageRelayer:             messageRelayer,
-		buddyBroadcaster:           buddyBroadcaster,
-		offlineMessageManager:      offlineMessageManager,
-		userFinder:                 userFinder,
-		userUpdater:                userUpdater,
-		feedbagManager:             feedbagManager,
-		relationshipFetcher:        relationshipFetcher,
-		buddyListRegistry:          buddyListRegistry,
-		clientSideBuddyListManager: clientSideBuddyListManager,
-		icbmService:                icbmSvc,
-		logger:                     logger,
-		timeNow:                    time.Now,
+		authService:           authService,
+		userManager:           userManager,
+		accountManager:        accountManager,
+		sessionRetriever:      sessionRetriever,
+		messageRelayer:        messageRelayer,
+		buddyBroadcaster:      buddyBroadcaster,
+		offlineMessageManager: offlineMessageManager,
+		userFinder:            userFinder,
+		userUpdater:           userUpdater,
+		feedbagManager:        feedbagManager,
+		relationshipFetcher:   relationshipFetcher,
+		buddyListRegistry:     buddyListRegistry,
+		buddyService:          buddyService,
+		icbmService:           icbmSvc,
+		logger:                logger,
+		timeNow:               time.Now,
 	}
 }
 
@@ -220,7 +220,7 @@ func (s *ICQLegacyService) legacyFLAPLogin(ctx context.Context, uin uint32, pass
 // - Parsing protocol-specific contact list packets into ContactListRequest
 // - Using the returned ContactListResult to send online/offline notifications
 // - Building protocol-specific response packets
-func (s *ICQLegacyService) ProcessContactList(ctx context.Context, req ContactListRequest) (*ContactListResult, error) {
+func (s *ICQLegacyService) ProcessContactList(ctx context.Context, instance *state.SessionInstance, req ContactListRequest) (*ContactListResult, error) {
 	result := &ContactListResult{
 		OnlineContacts: make([]ContactStatus, 0, len(req.Contacts)),
 	}
@@ -245,35 +245,42 @@ func (s *ICQLegacyService) ProcessContactList(ctx context.Context, req ContactLi
 	ownerScreenName := state.NewIdentScreenName(strconv.FormatUint(uint64(req.UIN), 10))
 	for _, contactUIN := range req.Contacts {
 		contactName := state.NewIdentScreenName(strconv.FormatUint(uint64(contactUIN), 10))
-		// Forward: owner has contact on their list
-		if err := s.clientSideBuddyListManager.AddBuddy(ctx, ownerScreenName, contactName); err != nil {
-			s.logger.Error("ProcessContactList: failed to add buddy to client-side list",
+		// Forward: owner has contact on their list.
+		snac := wire.SNAC_0x03_0x04_BuddyAddBuddies{}
+		snac.Buddies = append(snac.Buddies, struct {
+			ScreenName string `oscar:"len_prefix=uint8"`
+		}{ScreenName: contactName.String()})
+		if _, err := s.buddyService.AddBuddies(ctx, instance, wire.SNACFrame{}, snac); err != nil {
+			s.logger.Error("ProcessContactList: failed to add buddy via BuddyService",
 				"owner_uin", req.UIN,
 				"contact_uin", contactUIN,
 				"err", err,
 			)
 		}
+
 		// Reverse: contact has owner on their list (so OSCAR clients see the legacy user).
 		// Only add if the contact does NOT require authorization — otherwise the
 		// legacy user must go through the auth request flow first.
 		contactUser, userErr := s.userFinder.FindByUIN(ctx, contactUIN)
-		if userErr == nil && !contactUser.ICQPermissions.AuthRequired {
-			if err := s.clientSideBuddyListManager.AddBuddy(ctx, contactName, ownerScreenName); err != nil {
-				s.logger.Error("ProcessContactList: failed to add reverse buddy entry",
-					"owner_uin", req.UIN,
-					"contact_uin", contactUIN,
-					"err", err,
-				)
-			}
-		} else if userErr != nil {
-			// User not found or error — add reverse entry anyway (permissive default)
-			if err := s.clientSideBuddyListManager.AddBuddy(ctx, contactName, ownerScreenName); err != nil {
-				s.logger.Error("ProcessContactList: failed to add reverse buddy entry",
-					"owner_uin", req.UIN,
-					"contact_uin", contactUIN,
-					"err", err,
-				)
-			}
+		if userErr == nil && contactUser.ICQPermissions.AuthRequired {
+			continue
+		}
+		contactSession := state.NewSession()
+		contactSession.SetUIN(contactUIN)
+		contactSession.SetDisplayScreenName(state.DisplayScreenName(contactName.String()))
+		contactSession.SetIdentScreenName(contactName)
+		contactInstance := contactSession.AddInstance()
+
+		snac = wire.SNAC_0x03_0x04_BuddyAddBuddies{}
+		snac.Buddies = append(snac.Buddies, struct {
+			ScreenName string `oscar:"len_prefix=uint8"`
+		}{ScreenName: ownerScreenName.String()})
+		if _, err := s.buddyService.AddBuddies(ctx, contactInstance, wire.SNACFrame{}, snac); err != nil {
+			s.logger.Error("ProcessContactList: failed to add reverse buddy entry via BuddyService",
+				"owner_uin", req.UIN,
+				"contact_uin", contactUIN,
+				"err", err,
+			)
 		}
 	}
 
@@ -363,7 +370,7 @@ func countOnlineContacts(contacts []ContactStatus) int {
 // From iserverd v3_process_useradd() and v5_process_useradd() - when a user adds
 // someone to their contact list, the server checks if the target is online and
 // optionally sends a "you were added" notification to the target.
-func (s *ICQLegacyService) ProcessUserAdd(ctx context.Context, req UserAddRequest) (*UserAddResult, error) {
+func (s *ICQLegacyService) ProcessUserAdd(ctx context.Context, instance *state.SessionInstance, req UserAddRequest) (*UserAddResult, error) {
 	result := &UserAddResult{
 		TargetOnline:     false,
 		TargetStatus:     0,
@@ -388,10 +395,13 @@ func (s *ICQLegacyService) ProcessUserAdd(ctx context.Context, req UserAddReques
 
 	// Sync to clientSideBuddyList so OSCAR's BuddyArrived/Departed
 	// notifications reach this legacy user for the newly added contact.
-	ownerScreenName := state.NewIdentScreenName(strconv.FormatUint(uint64(req.FromUIN), 10))
 	contactName := state.NewIdentScreenName(strconv.FormatUint(uint64(req.TargetUIN), 10))
-	if err := s.clientSideBuddyListManager.AddBuddy(ctx, ownerScreenName, contactName); err != nil {
-		s.logger.Error("ProcessUserAdd: failed to add buddy to client-side list",
+	snac := wire.SNAC_0x03_0x04_BuddyAddBuddies{}
+	snac.Buddies = append(snac.Buddies, struct {
+		ScreenName string `oscar:"len_prefix=uint8"`
+	}{ScreenName: contactName.String()})
+	if _, err := s.buddyService.AddBuddies(ctx, instance, wire.SNACFrame{}, snac); err != nil {
+		s.logger.Error("ProcessUserAdd: failed to add buddy via BuddyService",
 			"from_uin", req.FromUIN,
 			"target_uin", req.TargetUIN,
 			"err", err,

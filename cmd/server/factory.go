@@ -653,6 +653,15 @@ func ICQLegacy(deps Container) *icq_legacy.LegacyServer {
 		logger,
 	)
 
+	buddyService := foodgroup.NewBuddyService(
+		deps.inMemorySessionManager,
+		deps.sqLiteUserStore,
+		deps.sqLiteUserStore,
+		deps.inMemorySessionManager,
+		deps.sqLiteUserStore,
+		deps.sqLiteUserStore,
+	)
+
 	// Create the ICQ legacy service
 	icqLegacyService := icq_legacy.NewICQLegacyService(
 		authService,
@@ -660,21 +669,14 @@ func ICQLegacy(deps Container) *icq_legacy.LegacyServer {
 		deps.sqLiteUserStore,        // accountManager
 		deps.inMemorySessionManager, // sessionRetriever
 		deps.inMemorySessionManager, // messageRelayer
-		foodgroup.NewBuddyService( // buddyBroadcaster
-			deps.inMemorySessionManager,
-			deps.sqLiteUserStore,
-			deps.sqLiteUserStore,
-			deps.inMemorySessionManager,
-			deps.sqLiteUserStore,
-			deps.sqLiteUserStore,
-		),
-		deps.sqLiteUserStore, // offlineMessageManager
-		deps.sqLiteUserStore, // userFinder
-		deps.sqLiteUserStore, // userUpdater
-		deps.sqLiteUserStore, // feedbagManager
-		deps.sqLiteUserStore, // relationshipFetcher
-		deps.sqLiteUserStore, // buddyListRegistry
-		deps.sqLiteUserStore, // clientSideBuddyListManager
+		buddyService,                // buddyBroadcaster
+		deps.sqLiteUserStore,        // offlineMessageManager
+		deps.sqLiteUserStore,        // userFinder
+		deps.sqLiteUserStore,        // userUpdater
+		deps.sqLiteUserStore,        // feedbagManager
+		deps.sqLiteUserStore,        // relationshipFetcher
+		deps.sqLiteUserStore,        // buddyListRegistry
+		buddyService,                // buddyService
 		deps.icbmSvc,
 		logger,
 	)

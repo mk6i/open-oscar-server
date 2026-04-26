@@ -244,6 +244,9 @@ packages:
       BuddyBroadcaster:
         config:
           filename: "mock_buddy_broadcaster_test.go"
+      BuddyService:
+        config:
+          filename: "mock_buddy_service_test.go"
       OfflineMessageManager:
         config:
           filename: "mock_offline_message_manager_test.go"
