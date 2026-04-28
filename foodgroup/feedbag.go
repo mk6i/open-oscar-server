@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/mk6i/open-oscar-server/state"
@@ -1021,6 +1022,11 @@ func (s *FeedbagService) ForwardICQAuthEvents(ctx context.Context, sender state.
 			},
 		})
 	case wire.ICBMMsgTypeAuthReq:
+		reasonText := ""
+		parts := strings.Split(authMsg.Message, "\xFE")
+		if len(parts) >= 6 {
+			reasonText = parts[5]
+		}
 		s.messageRelayer.RelayToScreenName(ctx, recipient, wire.SNACMessage{
 			Frame: wire.SNACFrame{
 				FoodGroup: wire.Feedbag,
@@ -1030,7 +1036,7 @@ func (s *FeedbagService) ForwardICQAuthEvents(ctx context.Context, sender state.
 			Body: wire.SNAC_0x13_0x19_FeedbagRequestAuthorizeToClient{
 				TLV:        wire.NewTLVBE(6, uint32(0x00020004)),
 				ScreenName: sender.String(),
-				Reason:     authMsg.Message,
+				Reason:     reasonText,
 			},
 		})
 	default:
