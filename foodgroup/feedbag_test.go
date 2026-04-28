@@ -3920,7 +3920,7 @@ func TestFeedbagService_ForwardICQAuthEvents(t *testing.T) {
 			name: "auth req - relays FeedbagRequestAuthorizeToClient SNAC to recipient",
 			authMsg: wire.ICBMCh4Message{
 				MessageType: wire.ICBMMsgTypeAuthReq,
-				Message:     "please add me",
+				Message:     "11111111\xFE\xFE\xFE\xFE1\xFEplease add me",
 			},
 			mockParams: mockParams{
 				messageRelayerParams: messageRelayerParams{
