@@ -226,6 +226,9 @@ packages:
           filename: "mock_auth_test.go"
   github.com/mk6i/open-oscar-server/server/icq_legacy:
     interfaces:
+      AuthService:
+        config:
+          filename: "mock_auth_service_test.go"
       UserManager:
         config:
           filename: "mock_user_manager_test.go"
@@ -241,6 +244,9 @@ packages:
       BuddyBroadcaster:
         config:
           filename: "mock_buddy_broadcaster_test.go"
+      BuddyService:
+        config:
+          filename: "mock_buddy_service_test.go"
       OfflineMessageManager:
         config:
           filename: "mock_offline_message_manager_test.go"

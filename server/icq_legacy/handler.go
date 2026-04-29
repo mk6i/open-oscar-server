@@ -8,6 +8,7 @@ import (
 
 	"github.com/mk6i/open-oscar-server/config"
 	"github.com/mk6i/open-oscar-server/state"
+	"github.com/mk6i/open-oscar-server/wire"
 )
 
 // ProtocolDispatcher routes packets to the appropriate version handler
@@ -281,6 +282,13 @@ type BaseHandler struct {
 	logger   *slog.Logger
 }
 
+// AuthService provides OSCAR authentication and BOS session registration.
+type AuthService interface {
+	FLAPLogin(ctx context.Context, inFrame wire.FLAPSignonFrame, advertisedHost string) (wire.TLVRestBlock, error)
+	CrackCookie(authCookie []byte) (state.ServerCookie, error)
+	RegisterBOSSession(ctx context.Context, authCookie state.ServerCookie, cfg func(*state.Session)) (*state.SessionInstance, error)
+}
+
 // LegacyService is the interface for the ICQ legacy service layer.
 // It defines all business logic operations that protocol handlers delegate to,
 // keeping handlers thin and protocol-independent logic centralized.
@@ -324,7 +332,7 @@ type LegacyService interface {
 	// The method does NOT contain any protocol-specific packet building logic.
 	// Handlers are responsible for building protocol-specific responses based on
 	// the returned ContactListResult.
-	ProcessContactList(ctx context.Context, req ContactListRequest) (*ContactListResult, error)
+	ProcessContactList(ctx context.Context, instance *state.SessionInstance, req ContactListRequest) (*ContactListResult, error)
 
 	// ProcessUserAdd processes a user add request and returns information about the target user.
 	// This is the service layer method for user add operations that handlers call after
@@ -333,7 +341,7 @@ type LegacyService interface {
 	// The method does NOT contain any protocol-specific packet building logic.
 	// Handlers are responsible for building protocol-specific responses based on
 	// the returned UserAddResult.
-	ProcessUserAdd(ctx context.Context, req UserAddRequest) (*UserAddResult, error)
+	ProcessUserAdd(ctx context.Context, instance *state.SessionInstance, req UserAddRequest) (*UserAddResult, error)
 
 	// ProcessStatusChange processes a status change and returns notification targets.
 	// This is the service layer method for status changes that handlers call after
@@ -469,31 +477,6 @@ func (h *BaseHandler) sendAck(session *LegacySession, seqNum uint16) error {
 	return h.sender.SendToSession(session, MarshalV2ServerPacket(pkt))
 }
 
-// sendLoginReply sends a login success response
-func (h *BaseHandler) sendLoginReply(session *LegacySession, clientSeqNum uint16) error {
-	var clientIP net.IP
-	if session.Addr != nil {
-		clientIP = session.Addr.IP
-	}
-	// Use server's own sequence number for packet header
-	// Echo client's login sequence in the data payload
-	serverSeq := session.NextServerSeqNum()
-	pkt := BuildV2LoginReply(serverSeq, clientSeqNum, session.UIN, clientIP)
-	pkt.Version = session.Version
-
-	rawPkt := MarshalV2ServerPacket(pkt)
-	h.logger.Debug("sending V2 login reply",
-		"uin", session.UIN,
-		"server_seq", serverSeq,
-		"client_seq", clientSeqNum,
-		"command", fmt.Sprintf("0x%04X", pkt.Command),
-		"data_len", len(pkt.Data),
-		"raw_hex", fmt.Sprintf("%X", rawPkt),
-	)
-
-	return h.sender.SendToSession(session, rawPkt)
-}
-
 // sendBadPassword sends a bad password response
 func (h *BaseHandler) sendBadPassword(addr *net.UDPAddr, seqNum uint16, version uint16) error {
 	pkt := BuildV2BadPassword(seqNum)
@@ -518,13 +501,6 @@ func (h *BaseHandler) sendUserOffline(session *LegacySession, uin uint32) error 
 // sendStatusUpdate sends a status update notification
 func (h *BaseHandler) sendStatusUpdate(session *LegacySession, uin uint32, status uint32) error {
 	pkt := BuildV2StatusUpdate(session.NextServerSeqNum(), uin, status)
-	pkt.Version = session.Version
-	return h.sender.SendToSession(session, MarshalV2ServerPacket(pkt))
-}
-
-// sendContactListDone sends a contact list processed response
-func (h *BaseHandler) sendContactListDone(session *LegacySession, seqNum uint16) error {
-	pkt := BuildV2ContactListDone(seqNum, session.UIN)
 	pkt.Version = session.Version
 	return h.sender.SendToSession(session, MarshalV2ServerPacket(pkt))
 }

@@ -1,17 +1,14 @@
 package icq_legacy
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 	"net"
-	"strconv"
 	"sync"
 	"time"
 
 	"github.com/mk6i/open-oscar-server/config"
 	"github.com/mk6i/open-oscar-server/state"
-	"github.com/mk6i/open-oscar-server/wire"
 )
 
 // LegacySessionManager manages sessions for legacy ICQ clients
@@ -28,9 +25,7 @@ type LegacySessionManager struct {
 
 // SessionRegistry is the interface for the unified session manager
 type SessionRegistry interface {
-	AddSession(ctx context.Context, screenName state.DisplayScreenName, doMultiSess bool, cfg ...func(sess *state.Session)) (*state.SessionInstance, error)
 	RemoveSession(session *state.Session)
-	RetrieveSession(screenName state.IdentScreenName) *state.Session
 }
 
 // NewLegacySessionManager creates a new session manager
@@ -57,8 +52,12 @@ func (m *LegacySessionManager) SetOnSessionExpired(fn func(session *LegacySessio
 	m.onSessionExpired = fn
 }
 
-// CreateSession creates a new legacy session
-func (m *LegacySessionManager) CreateSession(uin uint32, addr *net.UDPAddr, version uint16) (*LegacySession, error) {
+// CreateSession creates a new legacy session backed by an OSCAR session instance.
+func (m *LegacySessionManager) CreateSession(uin uint32, addr *net.UDPAddr, version uint16, instance *state.SessionInstance) (*LegacySession, error) {
+	if instance == nil {
+		return nil, fmt.Errorf("missing OSCAR session instance for UIN %d", uin)
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -68,44 +67,8 @@ func (m *LegacySessionManager) CreateSession(uin uint32, addr *net.UDPAddr, vers
 		m.removeSessionLocked(existing)
 	}
 
-	// Create screen name from UIN
-	screenName := state.NewIdentScreenName(strconv.FormatUint(uint64(uin), 10))
-	displayName := state.DisplayScreenName(screenName.String())
-
-	// Register with unified session manager
-	ctx := context.Background()
-	instance, err := m.sessionMgr.AddSession(ctx, displayName, false)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create unified session for UIN %d: %w", uin, err)
-	}
-
-	// Generate session ID for V5
-	sessionID := GenerateSessionID()
-
-	// Mark the unified session instance as signon-complete so that
-	// RetrieveSession() considers this session "live". Without this, the
-	// OSCAR relay system (RelayToScreenName, BroadcastBuddyArrived, etc.)
-	// skips legacy sessions, and messages/status notifications never reach
-	// the message pump. The legacy login handshake is simpler than OSCAR's
-	// multi-step signon, so we can mark it complete immediately.
-	instance.SetSignonComplete()
-
-	// Set ICQ user flags so that BuddyArrived SNACs generated from this
-	// session's TLVUserInfo() include the ICQ flag and DC info TLV that
-	// ICQ 2003b requires to display the user as online.
-	instance.SetUserInfoFlag(wire.OServiceUserFlagICQ | wire.OServiceUserFlagOSCARFree)
-	instance.Session().SetUIN(uin)
-
-	session := &LegacySession{
-		UIN:          uin,
-		Addr:         addr,
-		Version:      version,
-		SessionID:    sessionID,
-		SeqNumServer: 0, // V2 spec: server starts counting at 0
-		Status:       ICQLegacyStatusOnline,
-		LastActivity: time.Now(),
-		Instance:     instance,
-	}
+	session := newLegacySession(uin, addr, version, instance)
+	m.activateSessionLocked(session)
 
 	m.sessions[uin] = session
 	m.addrIndex[addr.String()] = session
@@ -114,8 +77,85 @@ func (m *LegacySessionManager) CreateSession(uin uint32, addr *net.UDPAddr, vers
 		"uin", uin,
 		"addr", addr.String(),
 		"version", version,
-		"session_id", sessionID,
+		"session_id", session.SessionID,
 	)
+
+	return session, nil
+}
+
+// CreatePendingSession creates a legacy session before the OSCAR session exists.
+func (m *LegacySessionManager) CreatePendingSession(uin uint32, addr *net.UDPAddr, version uint16) (*LegacySession, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if existing, ok := m.sessions[uin]; ok {
+		m.removeSessionLocked(existing)
+	}
+
+	session := newLegacySession(uin, addr, version, nil)
+	m.sessions[uin] = session
+	m.addrIndex[addr.String()] = session
+
+	m.logger.Info("created pending legacy session",
+		"uin", uin,
+		"addr", addr.String(),
+		"version", version,
+		"session_id", session.SessionID,
+	)
+
+	return session, nil
+}
+
+// AttachOSCARSession attaches an AuthService-created OSCAR instance to a pending legacy session.
+func (m *LegacySessionManager) AttachOSCARSession(uin uint32, addr *net.UDPAddr, instance *state.SessionInstance) (*LegacySession, error) {
+	if instance == nil {
+		return nil, fmt.Errorf("missing OSCAR session instance for UIN %d", uin)
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	session, ok := m.sessions[uin]
+	if !ok {
+		return nil, fmt.Errorf("pending legacy session not found for UIN %d", uin)
+	}
+	if session.Instance != nil && session.Instance != instance {
+		return nil, fmt.Errorf("legacy session for UIN %d already has an OSCAR session", uin)
+	}
+
+	if session.Addr != nil {
+		delete(m.addrIndex, session.Addr.String())
+	}
+	session.Addr = addr
+	m.addrIndex[addr.String()] = session
+	session.Instance = instance
+	m.activateSessionLocked(session)
+
+	m.logger.Info("attached OSCAR session to legacy session",
+		"uin", uin,
+		"addr", addr.String(),
+		"version", session.Version,
+		"session_id", session.SessionID,
+	)
+
+	return session, nil
+}
+
+func newLegacySession(uin uint32, addr *net.UDPAddr, version uint16, instance *state.SessionInstance) *LegacySession {
+	return &LegacySession{
+		UIN:          uin,
+		Addr:         addr,
+		Version:      version,
+		SessionID:    GenerateSessionID(),
+		SeqNumServer: 0, // V2 spec: server starts counting at 0
+		Status:       ICQLegacyStatusOnline,
+		LastActivity: time.Now(),
+		Instance:     instance,
+	}
+}
+
+func (m *LegacySessionManager) activateSessionLocked(session *LegacySession) {
+	session.Instance.SetSignonComplete()
 
 	// Start the OSCAR message pump for this session. This goroutine drains
 	// SNAC messages (BuddyArrived/BuddyDeparted) that the OSCAR buddy system
@@ -125,8 +165,6 @@ func (m *LegacySessionManager) CreateSession(uin uint32, addr *net.UDPAddr, vers
 	if m.bridge != nil {
 		m.bridge.StartOSCARMessagePump(session)
 	}
-
-	return session, nil
 }
 
 // GetSession retrieves a session by UIN

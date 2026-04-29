@@ -472,14 +472,14 @@ func (h *V4Handler) handleGetDeps(addr *net.UDPAddr, seq1, seq2 uint16, uin uint
 		Version:  ICQLegacyVersionV4,
 	}
 
-	authResult, err := h.service.AuthenticateUser(ctx, authReq)
+	loginOK, err := h.service.ValidateCredentials(ctx, authReq.UIN, authReq.Password)
 	if err != nil {
 		h.logger.Error("V4 getdeps authentication error", "err", err, "uin", dataUIN)
 		return h.sender.SendPacket(addr, h.packetBuilder.BuildBadPassword(seq1, seq2, uin))
 	}
 
-	if !authResult.Success {
-		h.logger.Info("V4 login failed - invalid credentials", "uin", dataUIN, "error_code", authResult.ErrorCode)
+	if !loginOK {
+		h.logger.Info("V4 login failed - invalid credentials", "uin", dataUIN)
 		return h.sender.SendPacket(addr, h.packetBuilder.BuildBadPassword(seq1, seq2, uin))
 	}
 
@@ -491,7 +491,7 @@ func (h *V4Handler) handleGetDeps(addr *net.UDPAddr, seq1, seq2 uint16, uin uint
 	// TODO: parse and store direct connection info (IP, port, DC version, DC type)
 	// from the V4 login packet so that presence notifications can include real
 	// connection details when ICQ_LEGACY_DIRECT_CONNECTIONS includes V4.
-	newSession, err := h.sessions.CreateSession(dataUIN, addr, ICQLegacyVersionV4)
+	newSession, err := h.sessions.CreatePendingSession(dataUIN, addr, ICQLegacyVersionV4)
 	if err != nil {
 		h.logger.Error("failed to create V4 session", "err", err, "uin", dataUIN)
 		return h.sender.SendPacket(addr, h.packetBuilder.BuildBadPassword(seq1, seq2, uin))
@@ -616,7 +616,11 @@ func (h *V4Handler) handleLogin(session *LegacySession, addr *net.UDPAddr, seq1,
 		// FirstLogin flow: session already exists from handleGetDeps.
 		// Depts list was already sent there, just update metadata and
 		// send the login reply.
-		h.sessions.UpdateSessionAddr(uin, addr)
+		existingSession, err = h.sessions.AttachOSCARSession(uin, addr, authResult.oscarSession)
+		if err != nil {
+			h.logger.Error("failed to attach V4 OSCAR session", "err", err, "uin", uin)
+			return h.sender.SendPacket(addr, h.packetBuilder.BuildBadPassword(seq1, seq2, uin))
+		}
 		existingSession.Password = password
 		existingSession.SetStatus(requestedStatus)
 
@@ -636,7 +640,7 @@ func (h *V4Handler) handleLogin(session *LegacySession, addr *net.UDPAddr, seq1,
 		// Direct login flow: client sent Login (0x03E8) without prior
 		// GetDeps. Just create session and send login reply directly.
 		// TODO: parse and store direct connection info from V4 login packet.
-		newSession, err := h.sessions.CreateSession(uin, addr, ICQLegacyVersionV4)
+		newSession, err := h.sessions.CreateSession(uin, addr, ICQLegacyVersionV4, authResult.oscarSession)
 		if err != nil {
 			h.logger.Error("failed to create V4 session", "err", err, "uin", uin)
 			return h.sender.SendPacket(addr, h.packetBuilder.BuildBadPassword(seq1, seq2, uin))
@@ -746,7 +750,7 @@ func (h *V4Handler) handleContactList(session *LegacySession, seq1, seq2 uint16,
 	session.SetContactList(req.Contacts)
 
 	// 3. Call service layer with typed request
-	result, err := h.service.ProcessContactList(ctx, req)
+	result, err := h.service.ProcessContactList(ctx, session.Instance, req)
 	if err != nil {
 		h.logger.Error("V4 contact list processing failed", "uin", uin, "err", err)
 		// Still send contact list done on error
@@ -1023,6 +1027,14 @@ func (h *V4Handler) handleUserAdd(session *LegacySession, seq1, seq2 uint16, uin
 	contacts := session.GetContactList()
 	contacts = append(contacts, targetUIN)
 	session.SetContactList(contacts)
+
+	ctx := context.Background()
+	if _, err := h.service.ProcessUserAdd(ctx, session.Instance, UserAddRequest{
+		FromUIN:   uin,
+		TargetUIN: targetUIN,
+	}); err != nil {
+		h.logger.Debug("V4 user add service call failed", "err", err)
+	}
 
 	targetSession := h.sessions.GetSession(targetUIN)
 	if targetSession != nil {
@@ -1643,20 +1655,6 @@ func (h *V4Handler) sendAck(addr *net.UDPAddr, seq1, seq2 uint16, uin uint32) er
 	return h.sender.SendPacket(addr, pkt)
 }
 
-// sendBadPassword sends wrong password response
-// V3 server packet format: VERSION(2) + COMMAND(2) + SEQ1(2) + SEQ2(2) + UIN(4) + ZERO(4)
-func (h *V4Handler) sendBadPassword(addr *net.UDPAddr, seq1, seq2 uint16, uin uint32) error {
-	pkt := make([]byte, 16)
-	binary.LittleEndian.PutUint16(pkt[0:2], ICQLegacyVersionV3)
-	binary.LittleEndian.PutUint16(pkt[2:4], ICQLegacySrvWrongPasswd)
-	binary.LittleEndian.PutUint16(pkt[4:6], seq1)
-	binary.LittleEndian.PutUint16(pkt[6:8], seq2)
-	binary.LittleEndian.PutUint32(pkt[8:12], uin)
-	binary.LittleEndian.PutUint32(pkt[12:16], 0) // Zero field
-
-	return h.sender.SendPacket(addr, pkt)
-}
-
 // sendNotConnected sends not connected error
 // V3 server packet format: VERSION(2) + COMMAND(2) + SEQ1(2) + SEQ2(2) + UIN(4) + ZERO(4)
 func (h *V4Handler) sendNotConnected(addr *net.UDPAddr, seq2 uint16, uin uint32) error {
@@ -1669,122 +1667,6 @@ func (h *V4Handler) sendNotConnected(addr *net.UDPAddr, seq2 uint16, uin uint32)
 	binary.LittleEndian.PutUint32(pkt[12:16], 0) // Zero field
 
 	return h.sender.SendPacket(addr, pkt)
-}
-
-// sendLoginReply sends login success (HELLO packet)
-// V3 server packet format (from server.html):
-// VERSION(2) + COMMAND(2) + SEQ1(2) + SEQ2(2) + UIN(4) + CHECKCODE(4) + DATA...
-// V3 packets need a checkcode at offset 12 for the client to accept them
-// Server uses its own seq1 counter, seq2 references the client's login packet
-func (h *V4Handler) sendLoginReply(session *LegacySession, seq2 uint16) error {
-	// Get client IP as 4 bytes in network byte order (big-endian)
-	// Example from docs: c0 a8 0a 01 = 192.168.10.1
-	var ipBytes [4]byte
-	if session.Addr != nil && session.Addr.IP != nil {
-		ip := session.Addr.IP.To4()
-		if ip != nil {
-			copy(ipBytes[:], ip)
-		}
-	}
-
-	// LOGIN_REPLY packet format based on ICQ98a client reverse engineering:
-	// Header: 16 bytes (VERSION(2) + COMMAND(2) + SEQ1(2) + SEQ2(2) + UIN(4) + CHECKCODE(4))
-	// Data: IP(4) + 10 WORDs(20) = 24 bytes
-	// Total: 40 bytes
-
-	pkt := make([]byte, 40)
-	offset := 0
-
-	// V3 Header (16 bytes)
-	// Server uses its own seq1, but keeps client's seq2 as reference
-	serverSeq := session.NextServerSeqNum()
-
-	binary.LittleEndian.PutUint16(pkt[offset:], ICQLegacyVersionV3) // 03 00
-	offset += 2
-	binary.LittleEndian.PutUint16(pkt[offset:], ICQLegacySrvHello) // 5a 00
-	offset += 2
-	binary.LittleEndian.PutUint16(pkt[offset:], serverSeq) // server's seq1
-	offset += 2
-	binary.LittleEndian.PutUint16(pkt[offset:], seq2) // seq2 of login packet
-	offset += 2
-	binary.LittleEndian.PutUint32(pkt[offset:], session.UIN) // UIN
-	offset += 4
-
-	// Calculate and add checkcode (V3 packets need this for client to accept)
-	// Note: The server.html example shows 00 00 00 00 at this position.
-	// Some implementations may not verify the checkcode, so we calculate it properly.
-	checkcode := h.calculateV4Checkcode(pkt)
-	binary.LittleEndian.PutUint32(pkt[offset:], checkcode)
-	offset += 4
-
-	// Data section for LOGIN_REPLY (0x005A):
-	// Based on reverse engineering ICQ98a client handle_login_reply_005A:
-	// The client reads: IP(4) + 6 WORDs (stored) + 4 WORDs (discarded) + conditional data
-	// Total: 4 + 20 = 24 bytes of data after header
-	//
-	// IP is in network byte order (big-endian): c0 a8 0a 01 = 192.168.10.1
-	pkt[offset] = ipBytes[0]
-	pkt[offset+1] = ipBytes[1]
-	pkt[offset+2] = ipBytes[2]
-	pkt[offset+3] = ipBytes[3]
-	offset += 4
-
-	// 6 WORDs that get stored in globals:
-	binary.LittleEndian.PutUint16(pkt[offset:], 0x0000) // -> DAT_004df54c
-	offset += 2
-	binary.LittleEndian.PutUint16(pkt[offset:], 0x0000) // -> DAT_004df438
-	offset += 2
-	binary.LittleEndian.PutUint16(pkt[offset:], 0x0019) // -> DAT_004df7a8 (keep-alive interval suggestion = 25)
-	offset += 2
-	binary.LittleEndian.PutUint16(pkt[offset:], 0x0002) // -> DAT_004df550
-	offset += 2
-	binary.LittleEndian.PutUint16(pkt[offset:], 0x0001) // -> DAT_004d4178
-	offset += 2
-	binary.LittleEndian.PutUint16(pkt[offset:], 0x00FA) // -> DAT_004df820 (250 = timeout?)
-	offset += 2
-
-	// 4 WORDs that are discarded:
-	binary.LittleEndian.PutUint16(pkt[offset:], 0x002D) // discarded
-	offset += 2
-	binary.LittleEndian.PutUint16(pkt[offset:], 0x0005) // discarded
-	offset += 2
-	binary.LittleEndian.PutUint16(pkt[offset:], 0x000A) // discarded
-	offset += 2
-	binary.LittleEndian.PutUint16(pkt[offset:], 0x0005) // discarded
-	offset += 2
-
-	h.logger.Debug("sending V4 login reply",
-		"uin", session.UIN,
-		"client_ip", fmt.Sprintf("%d.%d.%d.%d", ipBytes[0], ipBytes[1], ipBytes[2], ipBytes[3]),
-		"packet_len", offset,
-		"hex", fmt.Sprintf("%X", pkt[:offset]),
-	)
-
-	return h.sender.SendToSession(session, pkt[:offset])
-}
-
-// sendContactListDone sends contact list processed response
-// V3 server packet format: VERSION(2) + COMMAND(2) + SEQ1(2) + SEQ2(2) + UIN(4) + CHECKCODE(4)
-// seq2 should be the seq2 of the client's contact list packet, or 0 if unsolicited
-func (h *V4Handler) sendContactListDone(session *LegacySession, clientSeq2 uint16) error {
-	pkt := make([]byte, 16)
-	binary.LittleEndian.PutUint16(pkt[0:2], ICQLegacyVersionV3)
-	binary.LittleEndian.PutUint16(pkt[2:4], ICQLegacySrvUserListDone)
-	binary.LittleEndian.PutUint16(pkt[4:6], session.NextServerSeqNum())
-	binary.LittleEndian.PutUint16(pkt[6:8], clientSeq2) // seq2 of contact list packet, or 0 if unsolicited
-	binary.LittleEndian.PutUint32(pkt[8:12], session.UIN)
-
-	// Calculate and add checkcode
-	checkcode := h.calculateV4Checkcode(pkt)
-	binary.LittleEndian.PutUint32(pkt[12:16], checkcode)
-
-	h.logger.Debug("sending V4 contact list done",
-		"uin", session.UIN,
-		"seq2", clientSeq2,
-		"hex", fmt.Sprintf("%X", pkt),
-	)
-
-	return h.sender.SendToSession(session, pkt)
 }
 
 // notifyContactsUserOnline notifies all contacts who have this user in their list that we're online
@@ -1831,7 +1713,6 @@ func (h *V4Handler) notifyContactsUserOffline(session *LegacySession) {
 
 // sendUserOnline sends user online notification
 // V3 server packet format: VERSION(2) + COMMAND(2) + SEQ1(2) + SEQ2(2) + UIN(4) + CHECKCODE(4) + DATA
-// sendUserOnline sends user online notification
 // From iserverd v3_send_user_online() - V3 and V4 share the same server packet format.
 // Data: UIN(4) + IP(4) + PORT(4) + REAL_IP(4) + DC_TYPE(1) + STATUS(2) + ESTATUS(2) + DCVER(2) + UNKNOWN(2)
 // Total data: 25 bytes, total packet: 41 bytes
@@ -1885,91 +1766,6 @@ func (h *V4Handler) sendUserOnline(session *LegacySession, uin uint32, status ui
 	offset += 2
 
 	return h.sender.SendToSession(session, pkt[:offset])
-}
-
-// sendUserOnlineNotification sends a full user online notification for the session user
-// From iserverd v3_send_user_online() - V3 and V4 share the same server packet format.
-// Data: UIN(4) + IP(4) + PORT(4) + REAL_IP(4) + DC_TYPE(1) + STATUS(2) + ESTATUS(2) + DCVER(2) + UNKNOWN(2)
-// Total data: 25 bytes, total packet: 41 bytes
-func (h *V4Handler) sendUserOnlineNotification(session *LegacySession) error {
-	// Get client IP
-	var clientIP uint32
-	if session.Addr != nil && session.Addr.IP != nil {
-		ip := session.Addr.IP.To4()
-		if ip != nil {
-			clientIP = uint32(ip[0]) | uint32(ip[1])<<8 | uint32(ip[2])<<16 | uint32(ip[3])<<24
-		}
-	}
-
-	pkt := make([]byte, 41)
-	offset := 0
-
-	// Header
-	binary.LittleEndian.PutUint16(pkt[offset:], ICQLegacyVersionV3)
-	offset += 2
-	binary.LittleEndian.PutUint16(pkt[offset:], ICQLegacySrvUserOnline)
-	offset += 2
-	binary.LittleEndian.PutUint16(pkt[offset:], session.NextServerSeqNum())
-	offset += 2
-	binary.LittleEndian.PutUint16(pkt[offset:], 0) // seq2 = 0 for notifications
-	offset += 2
-	binary.LittleEndian.PutUint32(pkt[offset:], session.UIN)
-	offset += 4
-
-	// Calculate and add checkcode
-	checkcode := h.calculateV4Checkcode(pkt)
-	binary.LittleEndian.PutUint32(pkt[offset:], checkcode)
-	offset += 4
-
-	// UIN of user who came online
-	binary.LittleEndian.PutUint32(pkt[offset:], session.UIN)
-	offset += 4
-	// IP address (4 bytes LE)
-	binary.LittleEndian.PutUint32(pkt[offset:], clientIP)
-	offset += 4
-	// TCP port (4 bytes)
-	binary.LittleEndian.PutUint32(pkt[offset:], 0)
-	offset += 4
-	// Internal/real IP (4 bytes)
-	binary.LittleEndian.PutUint32(pkt[offset:], 0)
-	offset += 4
-	// DC type (1 byte)
-	pkt[offset] = 0x04
-	offset++
-	// Status (low 16 bits) - online
-	binary.LittleEndian.PutUint16(pkt[offset:], uint16(ICQLegacyStatusOnline))
-	offset += 2
-	// Extended status (high 16 bits)
-	binary.LittleEndian.PutUint16(pkt[offset:], 0)
-	offset += 2
-	// DC version (2 bytes)
-	binary.LittleEndian.PutUint16(pkt[offset:], 0)
-	offset += 2
-	// Unknown (2 bytes)
-	binary.LittleEndian.PutUint16(pkt[offset:], 0)
-	offset += 2
-
-	return h.sender.SendToSession(session, pkt[:offset])
-}
-
-// sendDeptsList sends the pre-auth response (historically "departments list" in iserverd).
-// V3 server packet format: VERSION(2) + COMMAND(2) + SEQ1(2) + SEQ2(2) + UIN(4) + ZERO(4) + DATA
-func (h *V4Handler) sendDeptsList(addr *net.UDPAddr, seq2 uint16, uin uint32) error {
-	pkt := make([]byte, 28)
-	binary.LittleEndian.PutUint16(pkt[0:2], ICQLegacyVersionV3)
-	binary.LittleEndian.PutUint16(pkt[2:4], ICQLegacySrvUserDepsList)
-	binary.LittleEndian.PutUint16(pkt[4:6], 0)
-	binary.LittleEndian.PutUint16(pkt[6:8], seq2)
-	binary.LittleEndian.PutUint32(pkt[8:12], uin)
-	binary.LittleEndian.PutUint32(pkt[12:16], 0) // Zero field
-
-	// Pre-auth response data
-	binary.LittleEndian.PutUint32(pkt[16:20], 1)
-	binary.LittleEndian.PutUint32(pkt[20:24], 0)
-	binary.LittleEndian.PutUint16(pkt[24:26], 0x0002)
-	binary.LittleEndian.PutUint16(pkt[26:28], 0x002a)
-
-	return h.sender.SendPacket(addr, pkt)
 }
 
 // sendDeptsListWithCheckcode sends the pre-auth response with proper checkcode for V4 clients.
@@ -2075,60 +1871,6 @@ func (h *V4Handler) sendRegisterInfo(addr *net.UDPAddr, seq2 uint16, uin uint32)
 	)
 
 	return h.sender.SendPacket(addr, pkt[:offset])
-}
-
-// sendRegisterInfoForLogin sends registration info (0x037A) as a response to Login (0x03E8)
-// EXPERIMENT: Testing if this triggers the client to send GetDeps, enabling the normal login flow
-func (h *V4Handler) sendRegisterInfoForLogin(session *LegacySession, seq2 uint16) error {
-	// Admin notes message
-	adminNotes := "Login accepted.\x00"
-
-	// Build packet
-	// Header (16 bytes) + NOTES_LEN(2) + NOTES + REG_ENABLED(1) + UNKNOWN(4)
-	pktSize := 16 + 2 + len(adminNotes) + 1 + 4
-	pkt := make([]byte, pktSize)
-	offset := 0
-
-	// V3 Header
-	binary.LittleEndian.PutUint16(pkt[offset:], ICQLegacyVersionV3)
-	offset += 2
-	binary.LittleEndian.PutUint16(pkt[offset:], ICQLegacySrvRegisterInfo) // 0x037A
-	offset += 2
-	binary.LittleEndian.PutUint16(pkt[offset:], session.NextServerSeqNum()) // server seq1
-	offset += 2
-	binary.LittleEndian.PutUint16(pkt[offset:], seq2) // client's seq2
-	offset += 2
-	binary.LittleEndian.PutUint32(pkt[offset:], session.UIN)
-	offset += 4
-
-	// Calculate and add checkcode
-	checkcode := h.calculateV4Checkcode(pkt)
-	binary.LittleEndian.PutUint32(pkt[offset:], checkcode)
-	offset += 4
-
-	// Admin notes length and string
-	binary.LittleEndian.PutUint16(pkt[offset:], uint16(len(adminNotes)))
-	offset += 2
-	copy(pkt[offset:], adminNotes)
-	offset += len(adminNotes)
-
-	// Registration enabled flag (0 = disabled, since this is login not registration)
-	pkt[offset] = 0x00
-	offset++
-
-	// Unknown fields (from iserverd: 0x0002, 0x002A)
-	binary.LittleEndian.PutUint16(pkt[offset:], 0x0002)
-	offset += 2
-	binary.LittleEndian.PutUint16(pkt[offset:], 0x002A)
-	offset += 2
-
-	h.logger.Info("EXPERIMENT: sending RegInfo (0x037A) instead of LoginReply for login",
-		"uin", session.UIN,
-		"seq2", seq2,
-		"hex", fmt.Sprintf("%X", pkt[:offset]),
-	)
-
-	return h.sender.SendToSession(session, pkt[:offset])
 }
 
 // sendRegistrationOK sends registration success with the new UIN

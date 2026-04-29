@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/mk6i/open-oscar-server/state"
@@ -23,6 +24,7 @@ func NewFeedbagService(
 	relationshipFetcher RelationshipFetcher,
 	sessionRetriever SessionRetriever,
 	contactPreAuthorizer ContactPreAuthorizer,
+	userManager UserManager,
 ) *FeedbagService {
 	return &FeedbagService{
 		bartItemManager:      bartItemManager,
@@ -33,6 +35,7 @@ func NewFeedbagService(
 		relationshipFetcher:  relationshipFetcher,
 		sessionRetriever:     sessionRetriever,
 		contactPreAuthorizer: contactPreAuthorizer,
+		userManager:          userManager,
 		icbmSender: func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) (*wire.SNACMessage, error) {
 			return nil, errors.New("icbmSender not implemented")
 		},
@@ -50,6 +53,7 @@ type FeedbagService struct {
 	relationshipFetcher  RelationshipFetcher
 	sessionRetriever     SessionRetriever
 	contactPreAuthorizer ContactPreAuthorizer
+	userManager          UserManager
 	icbmSender           func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) (*wire.SNACMessage, error)
 }
 
@@ -523,6 +527,15 @@ func (s *FeedbagService) RequestAuthorizeToHost(ctx context.Context, instance *s
 		authorized = 0
 	}
 
+	var userInfo state.User
+	if user, err := s.userManager.User(ctx, instance.IdentScreenName()); err != nil {
+		return fmt.Errorf("userManager.User: %w", err)
+	} else if user != nil {
+		userInfo = *user
+	} else {
+		s.logger.ErrorContext(ctx, "user not found", "screen_name", instance.IdentScreenName())
+	}
+
 	snac := wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
 		ChannelID:  wire.ICBMChannelICQ,
 		ScreenName: inBody.ScreenName,
@@ -531,7 +544,13 @@ func (s *FeedbagService) RequestAuthorizeToHost(ctx context.Context, instance *s
 				wire.NewTLVLE(wire.ICBMTLVData, wire.ICBMCh4Message{
 					UIN:         instance.UIN(),
 					MessageType: wire.ICBMMsgTypeAuthReq,
-					Message:     fmt.Sprintf("%d\xFE\xFE\xFE\xFE%d\xFE%s", instance.UIN(), authorized, utf8ToLatin1(inBody.Reason)),
+					Message: fmt.Sprintf("%s\xFE%s\xFE%s\xFE%s\xFE%d\xFE%s",
+						userInfo.ICQBasicInfo.Nickname,
+						userInfo.ICQBasicInfo.FirstName,
+						userInfo.ICQBasicInfo.LastName,
+						userInfo.ICQBasicInfo.EmailAddress,
+						authorized,
+						utf8ToLatin1(inBody.Reason)),
 				}),
 				wire.NewTLVBE(wire.ICBMTLVStore, []byte{}),
 			},
@@ -1021,6 +1040,11 @@ func (s *FeedbagService) ForwardICQAuthEvents(ctx context.Context, sender state.
 			},
 		})
 	case wire.ICBMMsgTypeAuthReq:
+		reasonText := ""
+		parts := strings.Split(authMsg.Message, "\xFE")
+		if len(parts) >= 6 {
+			reasonText = parts[5]
+		}
 		s.messageRelayer.RelayToScreenName(ctx, recipient, wire.SNACMessage{
 			Frame: wire.SNACFrame{
 				FoodGroup: wire.Feedbag,
@@ -1030,7 +1054,7 @@ func (s *FeedbagService) ForwardICQAuthEvents(ctx context.Context, sender state.
 			Body: wire.SNAC_0x13_0x19_FeedbagRequestAuthorizeToClient{
 				TLV:        wire.NewTLVBE(6, uint32(0x00020004)),
 				ScreenName: sender.String(),
-				Reason:     authMsg.Message,
+				Reason:     reasonText,
 			},
 		})
 	default:

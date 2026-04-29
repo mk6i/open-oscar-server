@@ -414,16 +414,15 @@ func (h *V5Handler) handleGetDeps(session *LegacySession, addr *net.UDPAddr, pkt
 		Version:  ICQLegacyVersionV5,
 	}
 
-	authResult, err := h.service.AuthenticateUser(ctx, authReq)
+	loginOK, err := h.service.ValidateCredentials(ctx, authReq.UIN, authReq.Password)
 	if err != nil {
 		h.logger.Error("V5 getdeps authentication error", "err", err, "uin", uin)
 		return h.sender.SendPacket(addr, h.packetBuilder.BuildBadPassword(pkt.SessionID, uin, pkt.SeqNum2))
 	}
 
-	if !authResult.Success {
+	if !loginOK {
 		h.logger.Info("V5 getdeps FAILED - invalid credentials",
 			"uin", uin,
-			"error_code", authResult.ErrorCode,
 		)
 		return h.sender.SendPacket(addr, h.packetBuilder.BuildBadPassword(pkt.SessionID, uin, pkt.SeqNum2))
 	}
@@ -470,7 +469,7 @@ func (h *V5Handler) handleContactList(session *LegacySession, pkt *V5ClientPacke
 
 	// 3. Call service layer with typed request
 	ctx := context.Background()
-	result, err := h.service.ProcessContactList(ctx, req)
+	result, err := h.service.ProcessContactList(ctx, session.Instance, req)
 	if err != nil {
 		h.logger.Error("contact list processing failed", "uin", session.UIN, "err", err)
 		// Still send contact list done on error
@@ -839,7 +838,7 @@ func (h *V5Handler) handleUserAdd(session *LegacySession, pkt *V5ClientPacket) e
 
 	// 3. Call service layer with typed request
 	ctx := context.Background()
-	result, err := h.service.ProcessUserAdd(ctx, req)
+	result, err := h.service.ProcessUserAdd(ctx, session.Instance, req)
 	if err != nil {
 		h.logger.Error("user add processing failed", "from", req.FromUIN, "target", req.TargetUIN, "err", err)
 		return nil
@@ -1232,7 +1231,7 @@ func (h *V5Handler) handleLogin(session *LegacySession, addr *net.UDPAddr, pkt *
 	}
 
 	// 4. Create session (handler responsibility - session management)
-	newSession, err := h.sessions.CreateSession(pkt.UIN, addr, ICQLegacyVersionV5)
+	newSession, err := h.sessions.CreateSession(pkt.UIN, addr, ICQLegacyVersionV5, authResult.oscarSession)
 	if err != nil {
 		h.logger.Error("failed to create V5 session", "err", err, "uin", pkt.UIN)
 		return h.sender.SendPacket(addr, h.packetBuilder.BuildBadPassword(pkt.SessionID, pkt.UIN, pkt.SeqNum2))
@@ -1258,96 +1257,6 @@ func (h *V5Handler) handleLogin(session *LegacySession, addr *net.UDPAddr, pkt *
 	)
 
 	return nil
-}
-
-// sendV5BadPassword sends a bad password response
-func (h *V5Handler) sendV5BadPassword(addr *net.UDPAddr, sessionID uint32, uin uint32, seq2 uint16) error {
-	pkt := &V5ServerPacket{
-		Version:   ICQLegacyVersionV5,
-		SessionID: sessionID,
-		Command:   ICQLegacySrvWrongPasswd,
-		SeqNum1:   0,
-		SeqNum2:   seq2,
-		UIN:       uin,
-	}
-
-	data := MarshalV5ServerPacket(pkt)
-	return h.sender.SendPacket(addr, data)
-}
-
-// sendV5LoginReply sends the login success (HELLO) packet
-// From iserverd v5_send_login_reply()
-//
-// Data format (20 bytes total):
-// - iserverd sends: 0x008C(2) + 0x0000(2) + PING_TIME(2) + TIMEOUT(2) + 0x000A(2) + RETRIES(2) + CLIENT_IP(4) + SERVER_ID(4)
-// - Documentation shows: X1(4)=0x0000008C + X2(2)=0x00F0 + X3(2)=0x000A + X4(2)=0x000A + X5(2)=0x0005 + IP(4) + X6(4)
-//
-// Note: The JUNK(4) in iserverd code is the checkcode placeholder in the HEADER at offset 0x11, NOT data!
-func (h *V5Handler) sendV5LoginReply(session *LegacySession, seq2 uint16) error {
-	// Get client IP as uint32 (little-endian)
-	var clientIP uint32
-	if session.Addr != nil && session.Addr.IP != nil {
-		ip := session.Addr.IP.To4()
-		if ip != nil {
-			clientIP = uint32(ip[0]) | uint32(ip[1])<<8 | uint32(ip[2])<<16 | uint32(ip[3])<<24
-		}
-	}
-
-	// Build data - 20 bytes (using iserverd format)
-	data := make([]byte, 20)
-	offset := 0
-
-	binary.LittleEndian.PutUint16(data[offset:], 0x008C) // keep alive interval low
-	offset += 2
-	binary.LittleEndian.PutUint16(data[offset:], 0x0000) // keep alive interval high
-	offset += 2
-	binary.LittleEndian.PutUint16(data[offset:], 50) // ping time (60-10)
-	offset += 2
-	binary.LittleEndian.PutUint16(data[offset:], 60) // timeout
-	offset += 2
-	binary.LittleEndian.PutUint16(data[offset:], 0x000A) // unknown
-	offset += 2
-	binary.LittleEndian.PutUint16(data[offset:], 5) // retries
-	offset += 2
-	binary.LittleEndian.PutUint32(data[offset:], clientIP) // client IP
-	offset += 4
-	binary.LittleEndian.PutUint32(data[offset:], 0x80CDC19B) // server ID
-
-	pkt := &V5ServerPacket{
-		Version:   ICQLegacyVersionV5,
-		SessionID: session.SessionID,
-		Command:   ICQLegacySrvHello,
-		SeqNum1:   0,
-		SeqNum2:   seq2,
-		UIN:       session.UIN,
-		Data:      data,
-	}
-
-	packetData := MarshalV5ServerPacket(pkt)
-
-	h.logger.Debug("sending V5 login reply",
-		"uin", session.UIN,
-		"session_id", session.SessionID,
-		"client_ip", clientIP,
-		"packet_len", len(packetData),
-		"packet_hex", fmt.Sprintf("%X", packetData),
-	)
-
-	return h.sender.SendToSession(session, packetData)
-}
-
-// sendV5ContactListDone sends contact list processed response
-func (h *V5Handler) sendV5ContactListDone(session *LegacySession, seq2 uint16) error {
-	pkt := &V5ServerPacket{
-		Version:   ICQLegacyVersionV5,
-		SessionID: session.SessionID,
-		Command:   ICQLegacySrvUserListDone,
-		SeqNum1:   session.NextServerSeqNum(),
-		SeqNum2:   seq2,
-		UIN:       session.UIN,
-	}
-
-	return h.sender.SendToSession(session, MarshalV5ServerPacket(pkt))
 }
 
 // sendV5UserOnline sends user online notification
@@ -3004,29 +2913,6 @@ func (h *V5Handler) sendV5FirstLoginReply(addr *net.UDPAddr, sessionID uint32, u
 	return h.sender.SendPacket(addr, packetData)
 }
 
-// sendV5DepsListReply sends the pre-auth response (V3 format!)
-// Historically called "departments list" in iserverd. In V5, this is a deprecated
-// empty V3-format response sent during the pre-auth pseudo-login (0x03F2).
-// From iserverd v5_send_depslist()
-func (h *V5Handler) sendV5DepsListReply(addr *net.UDPAddr, uin uint32, seq2 uint16) error {
-	// V3 format packet: VERSION(2) + COMMAND(2) + SEQ1(2) + SEQ2(2) + UIN(4) + CHECKSUM(4)
-	// Command is 0x0032 (pre-auth response)
-	buf := make([]byte, 16)
-	binary.LittleEndian.PutUint16(buf[0:2], ICQLegacyVersionV3)
-	binary.LittleEndian.PutUint16(buf[2:4], ICQLegacySrvUserDepsList)
-	binary.LittleEndian.PutUint16(buf[4:6], 0x0000) // seq1
-	binary.LittleEndian.PutUint16(buf[6:8], seq2)
-	binary.LittleEndian.PutUint32(buf[8:12], uin)
-	binary.LittleEndian.PutUint32(buf[12:16], 0x8FFCACBF) // magic checksum
-
-	h.logger.Debug("sending V5 depslist reply (V3 format)",
-		"uin", uin,
-		"packet_len", len(buf),
-	)
-
-	return h.sender.SendPacket(addr, buf)
-}
-
 func (h *V5Handler) sendV5Ack(session *LegacySession, seqNum uint16) error {
 	if session == nil {
 		return nil
@@ -3659,355 +3545,6 @@ func (h *V5Handler) sendMetaUserInfo(session *LegacySession, seqNum uint16, info
 	)
 
 	return h.sender.SendToSession(session, packetData)
-}
-
-// sendMetaUserInfo2 sends an extended META user info response (home info)
-// From iserverd v5_send_meta_info2() in make_meta.cpp
-//
-// This is an extended version of sendMetaUserInfo() that includes home address info.
-// Packet format (success case):
-// - SubCommand (2 bytes): SRV_META_USER_INFO2 (0x00C8)
-// - Success (1 byte): 0x0A for success
-// - Nickname length (2 bytes) + Nickname (null-terminated string)
-// - First name length (2 bytes) + First name (null-terminated string)
-// - Last name length (2 bytes) + Last name (null-terminated string)
-// - Email1 length (2 bytes) + Email1 (null-terminated string) - conditionally hidden based on e1publ
-// - Email2 length (2 bytes) + Email2 (null-terminated string)
-// - Email3 length (2 bytes) + Email3 (null-terminated string)
-// - Home city length (2 bytes) + Home city (null-terminated string)
-// - Home state length (2 bytes) + Home state (null-terminated string)
-// - Home phone length (2 bytes) + Home phone (null-terminated string)
-// - Home fax length (2 bytes) + Home fax (null-terminated string)
-// - Home address length (2 bytes) + Home address (null-terminated string)
-// - Home cell length (2 bytes) + Home cell (null-terminated string)
-// - Home ZIP (4 bytes): uint32 little-endian
-// - Home country (2 bytes): uint16 little-endian
-// - GMT offset (2 bytes): uint16 little-endian
-// - Auth required (1 byte): 0=no auth, 1=auth required
-// - Web aware (1 byte): 0=not web aware, 1=web aware
-// - IP hide (1 byte): 0=show IP, 1=hide IP
-// - Zero (1 byte): 0x00
-// - Zero (1 byte): 0x00
-func (h *V5Handler) sendMetaUserInfo2(session *LegacySession, seqNum uint16, info *LegacyUserSearchResult) error {
-	if session == nil {
-		return nil
-	}
-
-	buf := new(bytes.Buffer)
-
-	// SubCommand: SRV_META_USER_INFO2 (0x00C8)
-	binary.Write(buf, binary.LittleEndian, ICQLegacySrvMetaUserInfo2)
-
-	if info != nil {
-		// Success byte: 0x0A
-		buf.WriteByte(0x0A)
-
-		// Nickname (length-prefixed, null-terminated)
-		writeLegacyString(buf, info.Nickname)
-
-		// First name (length-prefixed, null-terminated)
-		writeLegacyString(buf, info.FirstName)
-
-		// Last name (length-prefixed, null-terminated)
-		writeLegacyString(buf, info.LastName)
-
-		// Email1 (length-prefixed, null-terminated)
-		// Note: In iserverd, this is conditionally hidden based on e1publ flag
-		// For now, we always send the email (same as sendMetaUserInfo)
-		writeLegacyString(buf, info.Email)
-
-		// Email2 (length-prefixed, null-terminated) - not in LegacyUserSearchResult
-		writeLegacyString(buf, "")
-
-		// Email3 (length-prefixed, null-terminated) - not in LegacyUserSearchResult
-		writeLegacyString(buf, "")
-
-		// Home city (length-prefixed, null-terminated) - not in LegacyUserSearchResult
-		writeLegacyString(buf, "")
-
-		// Home state (length-prefixed, null-terminated) - not in LegacyUserSearchResult
-		writeLegacyString(buf, "")
-
-		// Home phone (length-prefixed, null-terminated) - not in LegacyUserSearchResult
-		writeLegacyString(buf, "")
-
-		// Home fax (length-prefixed, null-terminated) - not in LegacyUserSearchResult
-		writeLegacyString(buf, "")
-
-		// Home address (length-prefixed, null-terminated) - not in LegacyUserSearchResult
-		writeLegacyString(buf, "")
-
-		// Home cell (length-prefixed, null-terminated) - not in LegacyUserSearchResult
-		writeLegacyString(buf, "")
-
-		// Home ZIP (4 bytes): uint32 little-endian - not in LegacyUserSearchResult
-		binary.Write(buf, binary.LittleEndian, uint32(0))
-
-		// Home country (2 bytes): uint16 little-endian - not in LegacyUserSearchResult
-		binary.Write(buf, binary.LittleEndian, uint16(0))
-
-		// GMT offset (2 bytes): uint16 little-endian - not in LegacyUserSearchResult
-		binary.Write(buf, binary.LittleEndian, uint16(0))
-
-		// Auth required (1 byte)
-		buf.WriteByte(info.AuthRequired)
-
-		// Web aware (1 byte)
-		buf.WriteByte(info.WebAware)
-
-		// IP hide (1 byte) - not in LegacyUserSearchResult, default to 0 (show IP)
-		buf.WriteByte(0x00)
-
-		// Two trailing zeros (as per iserverd)
-		buf.WriteByte(0x00)
-		buf.WriteByte(0x00)
-	} else {
-		// Failure case: send meta fail
-		// Success byte: 0x32 (fail)
-		buf.WriteByte(0x32)
-	}
-
-	pkt := &V5ServerPacket{
-		Version:   ICQLegacyVersionV5,
-		SessionID: session.SessionID,
-		Command:   ICQLegacySrvMetaUser,
-		SeqNum1:   session.NextServerSeqNum(),
-		SeqNum2:   seqNum,
-		UIN:       session.UIN,
-		Data:      buf.Bytes(),
-	}
-
-	packetData := MarshalV5ServerPacket(pkt)
-
-	h.logger.Info("sending META user info2 (home info)",
-		"uin", session.UIN,
-		"sub_command", fmt.Sprintf("0x%04X", ICQLegacySrvMetaUserInfo2),
-		"target_uin", info.UIN,
-		"nickname", info.Nickname,
-		"firstname", info.FirstName,
-		"lastname", info.LastName,
-		"email", info.Email,
-		"auth", info.AuthRequired,
-		"webaware", info.WebAware,
-		"packet_len", len(packetData),
-	)
-
-	return h.sender.SendToSession(session, packetData)
-}
-
-// sendMetaUserInfo3 sends an extended META user info response (home info) for ICQ99b clients
-// From iserverd v5_send_meta_info3() in make_meta.cpp
-//
-// This is a variant of sendMetaUserInfo2() used with ICQ99b clients.
-// The key difference is that the home ZIP code is sent as a string instead of uint32.
-//
-// Packet format (success case):
-// - SubCommand (2 bytes): SRV_META_USER_INFO2 (0x00C8) - same as info2
-// - Success (1 byte): 0x0A for success
-// - Nickname length (2 bytes) + Nickname (null-terminated string)
-// - First name length (2 bytes) + First name (null-terminated string)
-// - Last name length (2 bytes) + Last name (null-terminated string)
-// - Email1 length (2 bytes) + Email1 (null-terminated string) - conditionally hidden based on e1publ
-// - Email2 length (2 bytes) + Email2 (null-terminated string)
-// - Email3 length (2 bytes) + Email3 (null-terminated string)
-// - Home city length (2 bytes) + Home city (null-terminated string)
-// - Home state length (2 bytes) + Home state (null-terminated string)
-// - Home phone length (2 bytes) + Home phone (null-terminated string)
-// - Home fax length (2 bytes) + Home fax (null-terminated string)
-// - Home address length (2 bytes) + Home address (null-terminated string)
-// - Home cell length (2 bytes) + Home cell (null-terminated string)
-// - Home ZIP length (2 bytes) + Home ZIP (null-terminated STRING) - KEY DIFFERENCE from info2
-// - Home country (2 bytes): uint16 little-endian
-// - GMT offset (2 bytes): uint16 little-endian
-// - 0x01 (1 byte): constant
-// - e1publ (1 byte): email1 public flag
-// - Zero (1 byte): 0x00
-// - Zero (1 byte): 0x00
-// - Zero (1 byte): 0x00
-func (h *V5Handler) sendMetaUserInfo3(session *LegacySession, seqNum uint16, info *LegacyUserSearchResult) error {
-	if session == nil {
-		return nil
-	}
-
-	buf := new(bytes.Buffer)
-
-	// SubCommand: SRV_META_USER_INFO2 (0x00C8) - same as info2
-	binary.Write(buf, binary.LittleEndian, ICQLegacySrvMetaUserInfo2)
-
-	if info != nil {
-		// Success byte: 0x0A
-		buf.WriteByte(0x0A)
-
-		// Nickname (length-prefixed, null-terminated)
-		writeLegacyString(buf, info.Nickname)
-
-		// First name (length-prefixed, null-terminated)
-		writeLegacyString(buf, info.FirstName)
-
-		// Last name (length-prefixed, null-terminated)
-		writeLegacyString(buf, info.LastName)
-
-		// Email1 (length-prefixed, null-terminated)
-		// Note: In iserverd, this is conditionally hidden based on e1publ flag
-		// If e1publ != 1 OR requesting own info, show email; otherwise hide it
-		// For simplicity, we always send the email (same as sendMetaUserInfo2)
-		writeLegacyString(buf, info.Email)
-
-		// Email2 (length-prefixed, null-terminated) - not in LegacyUserSearchResult
-		writeLegacyString(buf, "")
-
-		// Email3 (length-prefixed, null-terminated) - not in LegacyUserSearchResult
-		writeLegacyString(buf, "")
-
-		// Home city (length-prefixed, null-terminated) - not in LegacyUserSearchResult
-		writeLegacyString(buf, "")
-
-		// Home state (length-prefixed, null-terminated) - not in LegacyUserSearchResult
-		writeLegacyString(buf, "")
-
-		// Home phone (length-prefixed, null-terminated) - not in LegacyUserSearchResult
-		writeLegacyString(buf, "")
-
-		// Home fax (length-prefixed, null-terminated) - not in LegacyUserSearchResult
-		writeLegacyString(buf, "")
-
-		// Home address (length-prefixed, null-terminated) - not in LegacyUserSearchResult
-		writeLegacyString(buf, "")
-
-		// Home cell (length-prefixed, null-terminated) - not in LegacyUserSearchResult
-		writeLegacyString(buf, "")
-
-		// Home ZIP as STRING (KEY DIFFERENCE from info2)
-		// In iserverd: snprintf(hzip, 31, "%lu", tuser.hzip)
-		// For now, we send empty string since we don't have ZIP in LegacyUserSearchResult
-		writeLegacyString(buf, "")
-
-		// Home country (2 bytes): uint16 little-endian - not in LegacyUserSearchResult
-		binary.Write(buf, binary.LittleEndian, uint16(0))
-
-		// GMT offset (2 bytes): uint16 little-endian - not in LegacyUserSearchResult
-		binary.Write(buf, binary.LittleEndian, uint16(0))
-
-		// 0x01 (1 byte): constant - as per iserverd
-		buf.WriteByte(0x01)
-
-		// e1publ (1 byte): email1 public flag - default to 1 (public)
-		buf.WriteByte(0x01)
-
-		// Three trailing zeros (as per iserverd)
-		buf.WriteByte(0x00)
-		buf.WriteByte(0x00)
-		buf.WriteByte(0x00)
-	} else {
-		// Failure case: send meta fail
-		// Success byte: 0x32 (fail)
-		buf.WriteByte(0x32)
-	}
-
-	pkt := &V5ServerPacket{
-		Version:   ICQLegacyVersionV5,
-		SessionID: session.SessionID,
-		Command:   ICQLegacySrvMetaUser,
-		SeqNum1:   session.NextServerSeqNum(),
-		SeqNum2:   seqNum,
-		UIN:       session.UIN,
-		Data:      buf.Bytes(),
-	}
-
-	packetData := MarshalV5ServerPacket(pkt)
-
-	h.logger.Info("sending META user info3 (home info for ICQ99b)",
-		"uin", session.UIN,
-		"sub_command", fmt.Sprintf("0x%04X", ICQLegacySrvMetaUserInfo2),
-		"target_uin", info.UIN,
-		"nickname", info.Nickname,
-		"firstname", info.FirstName,
-		"lastname", info.LastName,
-		"email", info.Email,
-		"auth", info.AuthRequired,
-		"webaware", info.WebAware,
-		"packet_len", len(packetData),
-	)
-
-	return h.sender.SendToSession(session, packetData)
-}
-
-// sendMetaSearchResult sends a META search result
-// From iserverd v5_send_user_found2()
-func (h *V5Handler) sendMetaSearchResult(session *LegacySession, seqNum uint16, result *LegacyUserSearchResult, isLast bool) error {
-	if session == nil {
-		return nil
-	}
-
-	subCommand := uint16(0x0190) // SRV_META_USER_FOUND
-	if isLast {
-		subCommand = 0x019A // SRV_META_USER_LAST_FOUND
-	}
-
-	buf := new(bytes.Buffer)
-	binary.Write(buf, binary.LittleEndian, subCommand)
-
-	if result != nil {
-		buf.WriteByte(0x0A) // success
-
-		// Calculate pack_len: 15 + strings + 4 for users_left
-		packLen := uint16(15 + len(result.Nickname) + len(result.FirstName) + len(result.LastName) + len(result.Email) + 4)
-		binary.Write(buf, binary.LittleEndian, packLen)
-
-		binary.Write(buf, binary.LittleEndian, result.UIN)
-		writeLegacyString(buf, result.Nickname)
-		writeLegacyString(buf, result.FirstName)
-		writeLegacyString(buf, result.LastName)
-		writeLegacyString(buf, result.Email)
-		buf.WriteByte(0) // auth
-		buf.WriteByte(0) // webaware
-		buf.WriteByte(0) // unknown
-
-		if isLast {
-			binary.Write(buf, binary.LittleEndian, uint32(0)) // users_left
-		}
-	} else {
-		buf.WriteByte(0x32) // fail - no results
-		if isLast {
-			binary.Write(buf, binary.LittleEndian, uint32(0)) // users_left
-		}
-	}
-
-	pkt := &V5ServerPacket{
-		Version:   ICQLegacyVersionV5,
-		SessionID: session.SessionID,
-		Command:   ICQLegacySrvMetaUser,
-		SeqNum1:   session.NextServerSeqNum(),
-		SeqNum2:   seqNum,
-		UIN:       session.UIN,
-		Data:      buf.Bytes(),
-	}
-
-	packetData := MarshalV5ServerPacket(pkt)
-
-	if result != nil {
-		h.logger.Info("sending META search result",
-			"uin", session.UIN,
-			"sub_command", fmt.Sprintf("0x%04X", subCommand),
-			"result_uin", result.UIN,
-			"result_nickname", result.Nickname,
-			"is_last", isLast,
-			"packet_len", len(packetData),
-		)
-	} else {
-		h.logger.Info("sending META search result - no results",
-			"uin", session.UIN,
-			"sub_command", fmt.Sprintf("0x%04X", subCommand),
-			"is_last", isLast,
-		)
-	}
-
-	return h.sender.SendToSession(session, packetData)
-}
-
-func (h *V5Handler) sendMetaSearchEnd(session *LegacySession, seqNum uint16) error {
-	// Send empty last result to indicate end of search
-	return h.sendMetaSearchResult(session, seqNum, nil, true)
 }
 
 // sendV5OldSearchFound sends an old-style search result

@@ -328,7 +328,7 @@ func TestFeedbagService_QueryIfModified(t *testing.T) {
 }
 
 func TestFeedbagService_RightsQuery(t *testing.T) {
-	svc := NewFeedbagService(nil, nil, nil, nil, nil, nil, nil)
+	svc := NewFeedbagService(nil, nil, nil, nil, nil, nil, nil, nil)
 
 	outputSNAC := svc.RightsQuery(context.Background(), wire.SNACFrame{RequestID: 1234})
 	expectSNAC := wire.SNACMessage{
@@ -2078,7 +2078,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 				assert.Equal(t, wantBody, haveBody)
 				return nil, nil
 			}
-			svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, bartItemManager, nil, sessionRetriever, contactPreAuth)
+			svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, bartItemManager, nil, sessionRetriever, contactPreAuth, nil)
 			svc.buddyBroadcaster = buddyUpdateBroadcaster
 			svc.icbmSender = icbmSender
 			output, err := svc.UpsertItem(context.Background(), tc.instance, tc.inputSNAC.Frame,
@@ -2374,7 +2374,7 @@ func TestFeedbagService_Use(t *testing.T) {
 					Return(params.results, nil)
 			}
 
-			svc := NewFeedbagService(slog.Default(), nil, feedbagManager, nil, nil, nil, nil)
+			svc := NewFeedbagService(slog.Default(), nil, feedbagManager, nil, nil, nil, nil, nil)
 
 			haveErr := svc.Use(context.Background(), tt.instance)
 			assert.ErrorIs(t, tt.wantErr, haveErr)
@@ -2384,6 +2384,15 @@ func TestFeedbagService_Use(t *testing.T) {
 }
 
 func TestFeedbagService_RequestAuthorizeToHost(t *testing.T) {
+	authReqSender := state.User{
+		ICQBasicInfo: state.ICQBasicInfo{
+			Nickname:     "CoolNickname",
+			FirstName:    "Alice",
+			LastName:     "Smith",
+			EmailAddress: "alice@example.com",
+		},
+	}
+
 	tests := []struct {
 		// name is the unit test name
 		name string
@@ -2475,6 +2484,11 @@ func TestFeedbagService_RequestAuthorizeToHost(t *testing.T) {
 						{owner: state.NewIdentScreenName("100001"), requester: state.NewIdentScreenName("100002"), result: false},
 					},
 				},
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{screenName: state.NewIdentScreenName("100001"), result: &authReqSender, err: nil},
+					},
+				},
 			},
 			expectOutput: wire.SNACMessage{
 				Frame: wire.SNACFrame{
@@ -2490,7 +2504,14 @@ func TestFeedbagService_RequestAuthorizeToHost(t *testing.T) {
 							wire.NewTLVLE(wire.ICBMTLVData, wire.ICBMCh4Message{
 								UIN:         100001,
 								MessageType: wire.ICBMMsgTypeAuthReq,
-								Message:     fmt.Sprintf("%d\xFE%s\xFE%s\xFE%s\xFE1\xFE%s", 100001, "", "", "", "please add me"),
+								Message: fmt.Sprintf("%s\xFE%s\xFE%s\xFE%s\xFE%d\xFE%s",
+									authReqSender.ICQBasicInfo.Nickname,
+									authReqSender.ICQBasicInfo.FirstName,
+									authReqSender.ICQBasicInfo.LastName,
+									authReqSender.ICQBasicInfo.EmailAddress,
+									1,
+									utf8ToLatin1("please add me"),
+								),
 							}),
 							wire.NewTLVBE(wire.ICBMTLVStore, []byte{}),
 						},
@@ -2529,6 +2550,11 @@ func TestFeedbagService_RequestAuthorizeToHost(t *testing.T) {
 						{owner: state.NewIdentScreenName("100001"), requester: state.NewIdentScreenName("100002"), result: false},
 					},
 				},
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{screenName: state.NewIdentScreenName("100001"), result: &authReqSender, err: nil},
+					},
+				},
 			},
 			expectOutput: wire.SNACMessage{
 				Frame: wire.SNACFrame{
@@ -2544,7 +2570,14 @@ func TestFeedbagService_RequestAuthorizeToHost(t *testing.T) {
 							wire.NewTLVLE(wire.ICBMTLVData, wire.ICBMCh4Message{
 								UIN:         100001,
 								MessageType: wire.ICBMMsgTypeAuthReq,
-								Message:     fmt.Sprintf("%d\xFE%s\xFE%s\xFE%s\xFE1\xFE%s", 100001, "", "", "", "please add me"),
+								Message: fmt.Sprintf("%s\xFE%s\xFE%s\xFE%s\xFE%d\xFE%s",
+									authReqSender.ICQBasicInfo.Nickname,
+									authReqSender.ICQBasicInfo.FirstName,
+									authReqSender.ICQBasicInfo.LastName,
+									authReqSender.ICQBasicInfo.EmailAddress,
+									1,
+									utf8ToLatin1("please add me"),
+								),
 							}),
 							wire.NewTLVBE(wire.ICBMTLVStore, []byte{}),
 						},
@@ -2579,6 +2612,11 @@ func TestFeedbagService_RequestAuthorizeToHost(t *testing.T) {
 						{owner: state.NewIdentScreenName("100001"), requester: state.NewIdentScreenName("100002"), result: true},
 					},
 				},
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{screenName: state.NewIdentScreenName("100001"), result: &authReqSender, err: nil},
+					},
+				},
 			},
 			expectOutput: wire.SNACMessage{
 				Frame: wire.SNACFrame{
@@ -2594,7 +2632,14 @@ func TestFeedbagService_RequestAuthorizeToHost(t *testing.T) {
 							wire.NewTLVLE(wire.ICBMTLVData, wire.ICBMCh4Message{
 								UIN:         100001,
 								MessageType: wire.ICBMMsgTypeAuthReq,
-								Message:     fmt.Sprintf("%d\xFE%s\xFE%s\xFE%s\xFE0\xFE%s", 100001, "", "", "", "please add me"),
+								Message: fmt.Sprintf("%s\xFE%s\xFE%s\xFE%s\xFE%d\xFE%s",
+									authReqSender.ICQBasicInfo.Nickname,
+									authReqSender.ICQBasicInfo.FirstName,
+									authReqSender.ICQBasicInfo.LastName,
+									authReqSender.ICQBasicInfo.EmailAddress,
+									0,
+									utf8ToLatin1("please add me"),
+								),
 							}),
 							wire.NewTLVBE(wire.ICBMTLVStore, []byte{}),
 						},
@@ -2629,6 +2674,11 @@ func TestFeedbagService_RequestAuthorizeToHost(t *testing.T) {
 						{owner: state.NewIdentScreenName("100001"), requester: state.NewIdentScreenName("100002"), result: false},
 					},
 				},
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{screenName: state.NewIdentScreenName("100001"), result: &authReqSender, err: nil},
+					},
+				},
 			},
 			expectOutput: wire.SNACMessage{
 				Frame: wire.SNACFrame{
@@ -2644,7 +2694,14 @@ func TestFeedbagService_RequestAuthorizeToHost(t *testing.T) {
 							wire.NewTLVLE(wire.ICBMTLVData, wire.ICBMCh4Message{
 								UIN:         100001,
 								MessageType: wire.ICBMMsgTypeAuthReq,
-								Message:     fmt.Sprintf("%d\xFE%s\xFE%s\xFE%s\xFE1\xFE%s", 100001, "", "", "", "please add me"),
+								Message: fmt.Sprintf("%s\xFE%s\xFE%s\xFE%s\xFE%d\xFE%s",
+									authReqSender.ICQBasicInfo.Nickname,
+									authReqSender.ICQBasicInfo.FirstName,
+									authReqSender.ICQBasicInfo.LastName,
+									authReqSender.ICQBasicInfo.EmailAddress,
+									1,
+									utf8ToLatin1("please add me"),
+								),
 							}),
 							wire.NewTLVBE(wire.ICBMTLVStore, []byte{}),
 						},
@@ -2684,7 +2741,14 @@ func TestFeedbagService_RequestAuthorizeToHost(t *testing.T) {
 					Return(params.result, params.err)
 			}
 
-			svc := NewFeedbagService(slog.Default(), messageRelayer, nil, nil, nil, sessionRetriever, contactPreAuth)
+			userManager := newMockUserManager(t)
+			for _, params := range tt.mockParams.userManagerParams.getUserParams {
+				userManager.EXPECT().
+					User(matchContext(), params.screenName).
+					Return(params.result, params.err)
+			}
+
+			svc := NewFeedbagService(slog.Default(), messageRelayer, nil, nil, nil, sessionRetriever, contactPreAuth, userManager)
 			svc.icbmSender = icbmSender
 
 			haveErr := svc.RequestAuthorizeToHost(
@@ -3135,7 +3199,7 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 				return nil, tt.wantErr
 			}
 
-			svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, nil, relationshipFetcher, sessionRetriever, contactPreAuth)
+			svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, nil, relationshipFetcher, sessionRetriever, contactPreAuth, nil)
 			svc.buddyBroadcaster = buddyBroadcaster
 			svc.icbmSender = icbmSender
 
@@ -3465,7 +3529,7 @@ func TestFeedbagService_PreAuthorizeBuddy(t *testing.T) {
 				return nil, nil
 			}
 
-			svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, nil, relationshipFetcher, sessionRetriever, contactPreAuth)
+			svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, nil, relationshipFetcher, sessionRetriever, contactPreAuth, nil)
 			svc.icbmSender = icbmSender
 
 			out, err := svc.PreAuthorizeBuddy(context.Background(), alice, tt.inFrame, tt.inBody)
@@ -3694,7 +3758,7 @@ func TestFeedbagService_StartCluster(t *testing.T) {
 			Body:  inBody,
 		})
 
-	svc := NewFeedbagService(slog.Default(), messageRelayer, nil, nil, nil, nil, nil)
+	svc := NewFeedbagService(slog.Default(), messageRelayer, nil, nil, nil, nil, nil, nil)
 	svc.StartCluster(context.Background(), instance, inFrame, inBody)
 }
 
@@ -3713,7 +3777,7 @@ func TestFeedbagService_EndCluster(t *testing.T) {
 			Body:  wire.SNAC_0x13_0x12_FeedbagEndCluster{},
 		})
 
-	svc := NewFeedbagService(slog.Default(), messageRelayer, nil, nil, nil, nil, nil)
+	svc := NewFeedbagService(slog.Default(), messageRelayer, nil, nil, nil, nil, nil, nil)
 	svc.EndCluster(context.Background(), instance, inFrame)
 }
 
@@ -3920,7 +3984,7 @@ func TestFeedbagService_ForwardICQAuthEvents(t *testing.T) {
 			name: "auth req - relays FeedbagRequestAuthorizeToClient SNAC to recipient",
 			authMsg: wire.ICBMCh4Message{
 				MessageType: wire.ICBMMsgTypeAuthReq,
-				Message:     "please add me",
+				Message:     "11111111\xFE\xFE\xFE\xFE1\xFEplease add me",
 			},
 			mockParams: mockParams{
 				messageRelayerParams: messageRelayerParams{
@@ -3988,7 +4052,7 @@ func TestFeedbagService_ForwardICQAuthEvents(t *testing.T) {
 				return nil, tt.wantErr
 			}
 
-			svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, nil, relationshipFetcher, sessionRetriever, contactPreAuth)
+			svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, nil, relationshipFetcher, sessionRetriever, contactPreAuth, nil)
 			svc.icbmSender = icbmSender
 
 			err := svc.ForwardICQAuthEvents(context.Background(), sender.IdentScreenName(), recipient, tt.authMsg)

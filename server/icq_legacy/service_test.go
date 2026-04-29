@@ -14,13 +14,20 @@ import (
 )
 
 func TestICQLegacyService_AuthenticateUser(t *testing.T) {
-	authKey := "test-auth-key"
 	password := "secret123"
-	passHash := wire.StrongMD5PasswordHash(password, authKey)
+	authCookie := []byte("auth-cookie")
+	screenName := state.DisplayScreenName("12345")
+	serverCookie := state.ServerCookie{ScreenName: screenName}
+	oscarSession := newTestOSCARInstance(screenName)
+	successBlock := wire.TLVRestBlock{
+		TLVList: []wire.TLV{
+			wire.NewTLVBE(wire.LoginTLVTagsAuthorizationCookie, authCookie),
+		},
+	}
 
 	tests := []struct {
 		name       string
-		mockParams mockParams
+		setupAuth  func(*mockAuthService)
 		req        AuthRequest
 		wantResult *AuthResult
 		wantErr    error
@@ -32,18 +39,13 @@ func TestICQLegacyService_AuthenticateUser(t *testing.T) {
 				Password: password,
 				Version:  ICQLegacyVersionV5,
 			},
-			mockParams: mockParams{
-				userManagerParams: userManagerParams{
-					userParams: userParams{
-						{
-							screenName: state.NewIdentScreenName("12345"),
-							result: &state.User{
-								AuthKey:       authKey,
-								StrongMD5Pass: passHash,
-							},
-						},
-					},
-				},
+			setupAuth: func(authSvc *mockAuthService) {
+				authSvc.EXPECT().FLAPLogin(mock.Anything, mock.Anything, "").
+					Return(successBlock, nil)
+				authSvc.EXPECT().CrackCookie(authCookie).
+					Return(serverCookie, nil)
+				authSvc.EXPECT().RegisterBOSSession(mock.Anything, serverCookie, mock.Anything).
+					Return(oscarSession, nil)
 			},
 			wantResult: &AuthResult{
 				Success:   true,
@@ -57,18 +59,13 @@ func TestICQLegacyService_AuthenticateUser(t *testing.T) {
 				Password: "wrongpass",
 				Version:  ICQLegacyVersionV5,
 			},
-			mockParams: mockParams{
-				userManagerParams: userManagerParams{
-					userParams: userParams{
-						{
-							screenName: state.NewIdentScreenName("12345"),
-							result: &state.User{
-								AuthKey:       authKey,
-								StrongMD5Pass: passHash,
-							},
+			setupAuth: func(authSvc *mockAuthService) {
+				authSvc.EXPECT().FLAPLogin(mock.Anything, mock.Anything, "").
+					Return(wire.TLVRestBlock{
+						TLVList: []wire.TLV{
+							wire.NewTLVBE(wire.LoginTLVTagsErrorSubcode, wire.LoginErrInvalidPassword),
 						},
-					},
-				},
+					}, nil)
 			},
 			wantResult: &AuthResult{
 				Success:   false,
@@ -82,16 +79,13 @@ func TestICQLegacyService_AuthenticateUser(t *testing.T) {
 				Password: password,
 				Version:  ICQLegacyVersionV5,
 			},
-			mockParams: mockParams{
-				userManagerParams: userManagerParams{
-					userParams: userParams{
-						{
-							screenName: state.NewIdentScreenName("99999"),
-							result:     nil,
-							err:        state.ErrNoUser,
+			setupAuth: func(authSvc *mockAuthService) {
+				authSvc.EXPECT().FLAPLogin(mock.Anything, mock.Anything, "").
+					Return(wire.TLVRestBlock{
+						TLVList: []wire.TLV{
+							wire.NewTLVBE(wire.LoginTLVTagsErrorSubcode, wire.LoginErrICQUserErr),
 						},
-					},
-				},
+					}, nil)
 			},
 			wantResult: &AuthResult{
 				Success:   false,
@@ -116,18 +110,13 @@ func TestICQLegacyService_AuthenticateUser(t *testing.T) {
 				Password: password,
 				Version:  ICQLegacyVersionV5,
 			},
-			mockParams: mockParams{
-				userManagerParams: userManagerParams{
-					userParams: userParams{
-						{
-							screenName: state.NewIdentScreenName("12345"),
-							result: &state.User{
-								AuthKey:       authKey,
-								StrongMD5Pass: nil,
-							},
+			setupAuth: func(authSvc *mockAuthService) {
+				authSvc.EXPECT().FLAPLogin(mock.Anything, mock.Anything, "").
+					Return(wire.TLVRestBlock{
+						TLVList: []wire.TLV{
+							wire.NewTLVBE(wire.LoginTLVTagsErrorSubcode, wire.LoginErrInvalidPassword),
 						},
-					},
-				},
+					}, nil)
 			},
 			wantResult: &AuthResult{
 				Success:   false,
@@ -138,15 +127,14 @@ func TestICQLegacyService_AuthenticateUser(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			userManager := newMockUserManager(t)
-			for _, p := range tc.mockParams.userParams {
-				userManager.EXPECT().
-					User(matchContext(), p.screenName).
-					Return(p.result, p.err)
+			authSvc := newMockAuthService(t)
+			if tc.setupAuth != nil {
+				tc.setupAuth(authSvc)
 			}
 
 			svc := NewICQLegacyService(
-				userManager,
+				authSvc,
+				newMockUserManager(t),
 				newMockAccountManager(t),
 				newMockSessionRetriever(t),
 				newMockMessageRelayer(t),
@@ -157,7 +145,7 @@ func TestICQLegacyService_AuthenticateUser(t *testing.T) {
 				newMockFeedbagManager(t),
 				newMockRelationshipFetcher(t),
 				newMockBuddyListRegistry(t),
-				newMockClientSideBuddyListManager(t),
+				newMockBuddyService(t),
 				newMockICBMService(t),
 				slog.Default(),
 			)
@@ -173,6 +161,7 @@ func TestICQLegacyService_AuthenticateUser(t *testing.T) {
 			assert.Equal(t, tc.wantResult.ErrorCode, got.ErrorCode)
 			if tc.wantResult.Success {
 				assert.NotEmpty(t, got.SessionID)
+				assert.Same(t, oscarSession, got.oscarSession)
 			}
 		})
 	}
@@ -348,6 +337,7 @@ func TestICQLegacyService_ProcessMessage(t *testing.T) {
 			}
 
 			svc := NewICQLegacyService(
+				newMockAuthService(t),
 				newMockUserManager(t),
 				newMockAccountManager(t),
 				newMockSessionRetriever(t),
@@ -359,7 +349,7 @@ func TestICQLegacyService_ProcessMessage(t *testing.T) {
 				newMockFeedbagManager(t),
 				newMockRelationshipFetcher(t),
 				newMockBuddyListRegistry(t),
-				newMockClientSideBuddyListManager(t),
+				newMockBuddyService(t),
 				icbmSvc,
 				slog.Default(),
 			)
@@ -445,12 +435,12 @@ func TestICQLegacyService_ProcessContactList(t *testing.T) {
 					Return(p.result)
 			}
 
-			clientSideBuddyListMgr := newMockClientSideBuddyListManager(t)
+			buddySvc := newMockBuddyService(t)
 			userFinder := newMockICQUserFinder(t)
 			// ProcessContactList adds both forward and reverse buddy entries
-			clientSideBuddyListMgr.EXPECT().
-				AddBuddy(mock.Anything, mock.Anything, mock.Anything).
-				Return(nil).
+			buddySvc.EXPECT().
+				AddBuddies(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+				Return(nil, nil).
 				Maybe()
 			userFinder.EXPECT().
 				FindByUIN(mock.Anything, mock.Anything).
@@ -458,6 +448,7 @@ func TestICQLegacyService_ProcessContactList(t *testing.T) {
 				Maybe()
 
 			svc := NewICQLegacyService(
+				newMockAuthService(t),
 				newMockUserManager(t),
 				newMockAccountManager(t),
 				sessionRetriever,
@@ -469,7 +460,7 @@ func TestICQLegacyService_ProcessContactList(t *testing.T) {
 				newMockFeedbagManager(t),
 				newMockRelationshipFetcher(t),
 				newMockBuddyListRegistry(t),
-				clientSideBuddyListMgr,
+				buddySvc,
 				newMockICBMService(t),
 				slog.Default(),
 			)
@@ -477,8 +468,12 @@ func TestICQLegacyService_ProcessContactList(t *testing.T) {
 			if tc.setupLegacyMgr != nil {
 				tc.setupLegacyMgr(t, svc)
 			}
+			var instance *state.SessionInstance
+			if tc.req.UIN != 0 {
+				instance = newTestOSCARInstance(state.DisplayScreenName(strconv.FormatUint(uint64(tc.req.UIN), 10)))
+			}
 
-			got, err := svc.ProcessContactList(context.Background(), tc.req)
+			got, err := svc.ProcessContactList(context.Background(), instance, tc.req)
 
 			assert.NoError(t, err)
 			assert.Equal(t, len(tc.wantResult.OnlineContacts), len(got.OnlineContacts))
@@ -535,6 +530,7 @@ func TestICQLegacyService_ProcessStatusChange(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			svc := NewICQLegacyService(
+				newMockAuthService(t),
 				newMockUserManager(t),
 				newMockAccountManager(t),
 				newMockSessionRetriever(t),
@@ -546,7 +542,7 @@ func TestICQLegacyService_ProcessStatusChange(t *testing.T) {
 				newMockFeedbagManager(t),
 				newMockRelationshipFetcher(t),
 				newMockBuddyListRegistry(t),
-				newMockClientSideBuddyListManager(t),
+				newMockBuddyService(t),
 				newMockICBMService(t),
 				slog.Default(),
 			)
@@ -642,6 +638,7 @@ func TestICQLegacyService_SearchByUIN(t *testing.T) {
 			}
 
 			svc := NewICQLegacyService(
+				newMockAuthService(t),
 				newMockUserManager(t),
 				newMockAccountManager(t),
 				sessionRetriever,
@@ -653,7 +650,7 @@ func TestICQLegacyService_SearchByUIN(t *testing.T) {
 				newMockFeedbagManager(t),
 				newMockRelationshipFetcher(t),
 				newMockBuddyListRegistry(t),
-				newMockClientSideBuddyListManager(t),
+				newMockBuddyService(t),
 				newMockICBMService(t),
 				slog.Default(),
 			)
@@ -772,6 +769,7 @@ func TestICQLegacyService_SearchByName(t *testing.T) {
 			}
 
 			svc := NewICQLegacyService(
+				newMockAuthService(t),
 				newMockUserManager(t),
 				newMockAccountManager(t),
 				sessionRetriever,
@@ -783,7 +781,7 @@ func TestICQLegacyService_SearchByName(t *testing.T) {
 				newMockFeedbagManager(t),
 				newMockRelationshipFetcher(t),
 				newMockBuddyListRegistry(t),
-				newMockClientSideBuddyListManager(t),
+				newMockBuddyService(t),
 				newMockICBMService(t),
 				slog.Default(),
 			)
@@ -864,6 +862,7 @@ func TestICQLegacyService_GetOfflineMessages(t *testing.T) {
 			}
 
 			svc := NewICQLegacyService(
+				newMockAuthService(t),
 				newMockUserManager(t),
 				newMockAccountManager(t),
 				newMockSessionRetriever(t),
@@ -875,7 +874,7 @@ func TestICQLegacyService_GetOfflineMessages(t *testing.T) {
 				newMockFeedbagManager(t),
 				newMockRelationshipFetcher(t),
 				newMockBuddyListRegistry(t),
-				newMockClientSideBuddyListManager(t),
+				newMockBuddyService(t),
 				newMockICBMService(t),
 				slog.Default(),
 			)
@@ -916,6 +915,7 @@ func TestICQLegacyService_RegisterNewUser(t *testing.T) {
 				Return(nil)
 
 			svc := NewICQLegacyService(
+				newMockAuthService(t),
 				userManager,
 				newMockAccountManager(t),
 				newMockSessionRetriever(t),
@@ -927,7 +927,7 @@ func TestICQLegacyService_RegisterNewUser(t *testing.T) {
 				newMockFeedbagManager(t),
 				newMockRelationshipFetcher(t),
 				newMockBuddyListRegistry(t),
-				newMockClientSideBuddyListManager(t),
+				newMockBuddyService(t),
 				newMockICBMService(t),
 				slog.Default(),
 			)
@@ -1002,12 +1002,20 @@ func TestICQLegacyService_DeleteUser(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			userManager := newMockUserManager(t)
-			for _, p := range tc.mockParams.userParams {
-				userManager.EXPECT().
-					User(matchContext(), p.screenName).
-					Return(p.result, p.err)
+			authSvc := newMockAuthService(t)
+			if tc.wantErr {
+				authSvc.EXPECT().FLAPLogin(mock.Anything, mock.Anything, "").
+					Return(wire.TLVRestBlock{
+						TLVList: []wire.TLV{
+							wire.NewTLVBE(wire.LoginTLVTagsErrorSubcode, wire.LoginErrInvalidPassword),
+						},
+					}, nil)
+			} else {
+				authSvc.EXPECT().FLAPLogin(mock.Anything, mock.Anything, "").
+					Return(wire.TLVRestBlock{}, nil)
 			}
+
+			userManager := newMockUserManager(t)
 			for _, p := range tc.mockParams.deleteUserParams {
 				userManager.EXPECT().
 					DeleteUser(matchContext(), p.screenName).
@@ -1015,6 +1023,7 @@ func TestICQLegacyService_DeleteUser(t *testing.T) {
 			}
 
 			svc := NewICQLegacyService(
+				authSvc,
 				userManager,
 				newMockAccountManager(t),
 				newMockSessionRetriever(t),
@@ -1026,7 +1035,7 @@ func TestICQLegacyService_DeleteUser(t *testing.T) {
 				newMockFeedbagManager(t),
 				newMockRelationshipFetcher(t),
 				newMockBuddyListRegistry(t),
-				newMockClientSideBuddyListManager(t),
+				newMockBuddyService(t),
 				newMockICBMService(t),
 				slog.Default(),
 			)

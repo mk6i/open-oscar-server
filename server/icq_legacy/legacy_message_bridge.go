@@ -390,31 +390,10 @@ func (b *LegacyMessageBridge) handleICBMMessage(session *LegacySession, msg wire
 			if err := wire.UnmarshalLE(&ch4Msg, bytes.NewBuffer(payload)); err == nil {
 				msgType = uint16(ch4Msg.MessageType)
 				text = ch4Msg.Message
-
-				// For auth messages from OSCAR, wrap reason text in FE-delimited
-				// format that legacy clients expect:
-				// nick\xFEfirst\xFElast\xFEemail\xFEauth\xFEreason
-				switch msgType {
-				case ICQLegacyMsgAuthReq, ICQLegacyMsgAuthDeny, ICQLegacyMsgAuthGrant, ICQLegacyMsgAdded:
-					nick, first, last, email := b.buildLegacyAuthFields(fromUIN)
-					reason := ch4Msg.Message
-					switch msgType {
-					case ICQLegacyMsgAuthReq:
-						text = fmt.Sprintf("%s\xFE%s\xFE%s\xFE%s\xFE1\xFE%s", nick, first, last, email, reason)
-					case ICQLegacyMsgAuthDeny:
-						text = fmt.Sprintf("%s\xFE%s\xFE%s\xFE%s\xFE%s", nick, first, last, email, reason)
-					case ICQLegacyMsgAuthGrant:
-						text = fmt.Sprintf("%s\xFE%s\xFE%s\xFE%s\xFE", nick, first, last, email)
-					case ICQLegacyMsgAdded:
-						text = fmt.Sprintf("%s\xFE%s\xFE%s\xFE%s\xFE0", nick, first, last, email)
-					}
-				}
 			}
 		}
-	}
-
-	// Fallback to channel 1 text extraction
-	if text == "" {
+	} else {
+		// Fallback to channel 1 text extraction
 		text = extractAndConvertICBMText(clientMsg)
 		msgType = ICQLegacyMsgText
 	}

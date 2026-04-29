@@ -27,21 +27,22 @@ import (
 // parsing protocol-specific packets into request structs and building
 // protocol-specific response packets from the returned result structs.
 type ICQLegacyService struct {
-	userManager                UserManager
-	accountManager             AccountManager
-	sessionRetriever           SessionRetriever
-	messageRelayer             MessageRelayer
-	buddyBroadcaster           BuddyBroadcaster
-	offlineMessageManager      OfflineMessageManager
-	icbmService                ICBMService
-	userFinder                 ICQUserFinder
-	userUpdater                ICQUserUpdater
-	feedbagManager             FeedbagManager
-	relationshipFetcher        RelationshipFetcher
-	buddyListRegistry          BuddyListRegistry
-	clientSideBuddyListManager ClientSideBuddyListManager
-	logger                     *slog.Logger
-	timeNow                    func() time.Time
+	authService           AuthService
+	userManager           UserManager
+	accountManager        AccountManager
+	sessionRetriever      SessionRetriever
+	messageRelayer        MessageRelayer
+	buddyBroadcaster      BuddyBroadcaster
+	offlineMessageManager OfflineMessageManager
+	icbmService           ICBMService
+	userFinder            ICQUserFinder
+	userUpdater           ICQUserUpdater
+	feedbagManager        FeedbagManager
+	relationshipFetcher   RelationshipFetcher
+	buddyListRegistry     BuddyListRegistry
+	buddyService          BuddyService
+	logger                *slog.Logger
+	timeNow               func() time.Time
 
 	// legacySessionManager is set by the server package
 	legacySessionManager *LegacySessionManager
@@ -51,6 +52,7 @@ type ICQLegacyService struct {
 // The legacy session manager must be set separately via SetLegacySessionManager
 // after the server package initializes it, to avoid circular dependencies.
 func NewICQLegacyService(
+	authService AuthService,
 	userManager UserManager,
 	accountManager AccountManager,
 	sessionRetriever SessionRetriever,
@@ -62,26 +64,27 @@ func NewICQLegacyService(
 	feedbagManager FeedbagManager,
 	relationshipFetcher RelationshipFetcher,
 	buddyListRegistry BuddyListRegistry,
-	clientSideBuddyListManager ClientSideBuddyListManager,
+	buddyService BuddyService,
 	icbmSvc ICBMService,
 	logger *slog.Logger,
 ) *ICQLegacyService {
 	return &ICQLegacyService{
-		userManager:                userManager,
-		accountManager:             accountManager,
-		sessionRetriever:           sessionRetriever,
-		messageRelayer:             messageRelayer,
-		buddyBroadcaster:           buddyBroadcaster,
-		offlineMessageManager:      offlineMessageManager,
-		userFinder:                 userFinder,
-		userUpdater:                userUpdater,
-		feedbagManager:             feedbagManager,
-		relationshipFetcher:        relationshipFetcher,
-		buddyListRegistry:          buddyListRegistry,
-		clientSideBuddyListManager: clientSideBuddyListManager,
-		icbmService:                icbmSvc,
-		logger:                     logger,
-		timeNow:                    time.Now,
+		authService:           authService,
+		userManager:           userManager,
+		accountManager:        accountManager,
+		sessionRetriever:      sessionRetriever,
+		messageRelayer:        messageRelayer,
+		buddyBroadcaster:      buddyBroadcaster,
+		offlineMessageManager: offlineMessageManager,
+		userFinder:            userFinder,
+		userUpdater:           userUpdater,
+		feedbagManager:        feedbagManager,
+		relationshipFetcher:   relationshipFetcher,
+		buddyListRegistry:     buddyListRegistry,
+		buddyService:          buddyService,
+		icbmService:           icbmSvc,
+		logger:                logger,
+		timeNow:               time.Now,
 	}
 }
 
@@ -95,34 +98,21 @@ func (s *ICQLegacyService) SetLegacySessionManager(mgr *LegacySessionManager) {
 
 // ValidateCredentials checks if the given UIN and password are valid.
 // Returns true if credentials are valid, false otherwise.
-// The password is validated using the same StrongMD5 hash method as OSCAR.
+// The password is validated by AuthService without registering a BOS session.
 func (s *ICQLegacyService) ValidateCredentials(ctx context.Context, uin uint32, password string) (bool, error) {
-	screenName := state.NewIdentScreenName(strconv.FormatUint(uint64(uin), 10))
-
-	user, err := s.userManager.User(ctx, screenName)
+	if uin == 0 {
+		return false, nil
+	}
+	block, err := s.legacyFLAPLogin(ctx, uin, password)
 	if err != nil {
 		if errors.Is(err, state.ErrNoUser) {
 			return false, nil
 		}
-		return false, fmt.Errorf("looking up user: %w", err)
+		return false, fmt.Errorf("AuthService.FLAPLogin: %w", err)
 	}
 
-	// User not found
-	if user == nil {
-		return false, nil
-	}
-
-	// For legacy ICQ, we do a simple password comparison
-	// The password is stored as a hash, but legacy clients send plaintext
-	if user.StrongMD5Pass == nil {
-		s.logger.Debug("user has no password hash", "uin", uin)
-		return false, nil
-	}
-
-	// Validate password using the same hash method as OSCAR
-	expectedHash := wire.StrongMD5PasswordHash(password, user.AuthKey)
-	if !user.ValidateHash(expectedHash) {
-		s.logger.Debug("password validation failed", "uin", uin)
+	if block.HasTag(wire.LoginTLVTagsErrorSubcode) {
+		s.logger.Debug("credentials validation failed", "uin", uin)
 		return false, nil
 	}
 
@@ -151,37 +141,49 @@ func (s *ICQLegacyService) AuthenticateUser(ctx context.Context, req AuthRequest
 		return result, nil
 	}
 
-	// Look up the user
-	screenName := state.NewIdentScreenName(strconv.FormatUint(uint64(req.UIN), 10))
-	user, err := s.userManager.User(ctx, screenName)
+	block, err := s.legacyFLAPLogin(ctx, req.UIN, req.Password)
 	if err != nil {
 		if errors.Is(err, state.ErrNoUser) {
 			s.logger.Debug("authentication failed - user not found", "uin", req.UIN)
 			result.ErrorCode = 0x0002 // User not found
 			return result, nil
 		}
-		return nil, fmt.Errorf("looking up user: %w", err)
+		return nil, fmt.Errorf("AuthService.FLAPLogin: %w", err)
 	}
 
-	// User not found
-	if user == nil {
-		s.logger.Debug("authentication failed - user not found", "uin", req.UIN)
-		result.ErrorCode = 0x0002 // User not found
+	if errCode, ok := block.Uint16BE(wire.LoginTLVTagsErrorSubcode); ok {
+		s.logger.Debug("authentication failed",
+			"uin", req.UIN,
+			"error_code", fmt.Sprintf("0x%04X", errCode),
+		)
+		if errCode == wire.LoginErrICQUserErr {
+			result.ErrorCode = 0x0002 // User not found
+		}
 		return result, nil
 	}
 
-	// Check if user has a password hash
-	if user.StrongMD5Pass == nil {
-		s.logger.Debug("authentication failed - user has no password hash", "uin", req.UIN)
-		result.ErrorCode = 0x0001 // Bad password
-		return result, nil
+	authCookie, ok := block.Bytes(wire.LoginTLVTagsAuthorizationCookie)
+	if !ok {
+		return nil, fmt.Errorf("authorization cookie missing from auth response")
 	}
 
-	// Validate password using the same hash method as OSCAR
-	expectedHash := wire.StrongMD5PasswordHash(req.Password, user.AuthKey)
-	if !user.ValidateHash(expectedHash) {
-		s.logger.Debug("authentication failed - invalid password", "uin", req.UIN)
-		result.ErrorCode = 0x0001 // Bad password
+	serverCookie, err := s.authService.CrackCookie(authCookie)
+	if err != nil {
+		return nil, fmt.Errorf("AuthService.CrackCookie: %w", err)
+	}
+
+	instance, err := s.authService.RegisterBOSSession(ctx, serverCookie, func(sess *state.Session) {
+		sess.OnSessionClose(func() {
+			if s.legacySessionManager != nil {
+				s.legacySessionManager.RemoveSession(req.UIN)
+			}
+		})
+	})
+	if err != nil {
+		return nil, fmt.Errorf("AuthService.RegisterBOSSession: %w", err)
+	}
+	if instance == nil {
+		s.logger.Debug("authentication failed - missing OSCAR session", "uin", req.UIN)
 		return result, nil
 	}
 
@@ -189,6 +191,7 @@ func (s *ICQLegacyService) AuthenticateUser(ctx context.Context, req AuthRequest
 	result.Success = true
 	result.ErrorCode = 0 // Success
 	result.SessionID = uuid.New().String()
+	result.oscarSession = instance
 
 	s.logger.Info("user authenticated successfully",
 		"uin", req.UIN,
@@ -197,6 +200,14 @@ func (s *ICQLegacyService) AuthenticateUser(ctx context.Context, req AuthRequest
 	)
 
 	return result, nil
+}
+
+func (s *ICQLegacyService) legacyFLAPLogin(ctx context.Context, uin uint32, password string) (wire.TLVRestBlock, error) {
+	screenName := strconv.FormatUint(uint64(uin), 10)
+	signonFrame := wire.FLAPSignonFrame{}
+	signonFrame.Append(wire.NewTLVBE(wire.LoginTLVTagsScreenName, screenName))
+	signonFrame.Append(wire.NewTLVBE(wire.LoginTLVTagsPlaintextPassword, password))
+	return s.authService.FLAPLogin(ctx, signonFrame, "")
 }
 
 // ProcessContactList processes a contact list and returns online status for each contact.
@@ -209,7 +220,7 @@ func (s *ICQLegacyService) AuthenticateUser(ctx context.Context, req AuthRequest
 // - Parsing protocol-specific contact list packets into ContactListRequest
 // - Using the returned ContactListResult to send online/offline notifications
 // - Building protocol-specific response packets
-func (s *ICQLegacyService) ProcessContactList(ctx context.Context, req ContactListRequest) (*ContactListResult, error) {
+func (s *ICQLegacyService) ProcessContactList(ctx context.Context, instance *state.SessionInstance, req ContactListRequest) (*ContactListResult, error) {
 	result := &ContactListResult{
 		OnlineContacts: make([]ContactStatus, 0, len(req.Contacts)),
 	}
@@ -234,35 +245,42 @@ func (s *ICQLegacyService) ProcessContactList(ctx context.Context, req ContactLi
 	ownerScreenName := state.NewIdentScreenName(strconv.FormatUint(uint64(req.UIN), 10))
 	for _, contactUIN := range req.Contacts {
 		contactName := state.NewIdentScreenName(strconv.FormatUint(uint64(contactUIN), 10))
-		// Forward: owner has contact on their list
-		if err := s.clientSideBuddyListManager.AddBuddy(ctx, ownerScreenName, contactName); err != nil {
-			s.logger.Error("ProcessContactList: failed to add buddy to client-side list",
+		// Forward: owner has contact on their list.
+		snac := wire.SNAC_0x03_0x04_BuddyAddBuddies{}
+		snac.Buddies = append(snac.Buddies, struct {
+			ScreenName string `oscar:"len_prefix=uint8"`
+		}{ScreenName: contactName.String()})
+		if _, err := s.buddyService.AddBuddies(ctx, instance, wire.SNACFrame{}, snac); err != nil {
+			s.logger.Error("ProcessContactList: failed to add buddy via BuddyService",
 				"owner_uin", req.UIN,
 				"contact_uin", contactUIN,
 				"err", err,
 			)
 		}
+
 		// Reverse: contact has owner on their list (so OSCAR clients see the legacy user).
 		// Only add if the contact does NOT require authorization — otherwise the
 		// legacy user must go through the auth request flow first.
 		contactUser, userErr := s.userFinder.FindByUIN(ctx, contactUIN)
-		if userErr == nil && !contactUser.ICQPermissions.AuthRequired {
-			if err := s.clientSideBuddyListManager.AddBuddy(ctx, contactName, ownerScreenName); err != nil {
-				s.logger.Error("ProcessContactList: failed to add reverse buddy entry",
-					"owner_uin", req.UIN,
-					"contact_uin", contactUIN,
-					"err", err,
-				)
-			}
-		} else if userErr != nil {
-			// User not found or error — add reverse entry anyway (permissive default)
-			if err := s.clientSideBuddyListManager.AddBuddy(ctx, contactName, ownerScreenName); err != nil {
-				s.logger.Error("ProcessContactList: failed to add reverse buddy entry",
-					"owner_uin", req.UIN,
-					"contact_uin", contactUIN,
-					"err", err,
-				)
-			}
+		if userErr == nil && contactUser.ICQPermissions.AuthRequired {
+			continue
+		}
+		contactSession := state.NewSession()
+		contactSession.SetUIN(contactUIN)
+		contactSession.SetDisplayScreenName(state.DisplayScreenName(contactName.String()))
+		contactSession.SetIdentScreenName(contactName)
+		contactInstance := contactSession.AddInstance()
+
+		snac = wire.SNAC_0x03_0x04_BuddyAddBuddies{}
+		snac.Buddies = append(snac.Buddies, struct {
+			ScreenName string `oscar:"len_prefix=uint8"`
+		}{ScreenName: ownerScreenName.String()})
+		if _, err := s.buddyService.AddBuddies(ctx, contactInstance, wire.SNACFrame{}, snac); err != nil {
+			s.logger.Error("ProcessContactList: failed to add reverse buddy entry via BuddyService",
+				"owner_uin", req.UIN,
+				"contact_uin", contactUIN,
+				"err", err,
+			)
 		}
 	}
 
@@ -352,7 +370,7 @@ func countOnlineContacts(contacts []ContactStatus) int {
 // From iserverd v3_process_useradd() and v5_process_useradd() - when a user adds
 // someone to their contact list, the server checks if the target is online and
 // optionally sends a "you were added" notification to the target.
-func (s *ICQLegacyService) ProcessUserAdd(ctx context.Context, req UserAddRequest) (*UserAddResult, error) {
+func (s *ICQLegacyService) ProcessUserAdd(ctx context.Context, instance *state.SessionInstance, req UserAddRequest) (*UserAddResult, error) {
 	result := &UserAddResult{
 		TargetOnline:     false,
 		TargetStatus:     0,
@@ -377,10 +395,13 @@ func (s *ICQLegacyService) ProcessUserAdd(ctx context.Context, req UserAddReques
 
 	// Sync to clientSideBuddyList so OSCAR's BuddyArrived/Departed
 	// notifications reach this legacy user for the newly added contact.
-	ownerScreenName := state.NewIdentScreenName(strconv.FormatUint(uint64(req.FromUIN), 10))
 	contactName := state.NewIdentScreenName(strconv.FormatUint(uint64(req.TargetUIN), 10))
-	if err := s.clientSideBuddyListManager.AddBuddy(ctx, ownerScreenName, contactName); err != nil {
-		s.logger.Error("ProcessUserAdd: failed to add buddy to client-side list",
+	snac := wire.SNAC_0x03_0x04_BuddyAddBuddies{}
+	snac.Buddies = append(snac.Buddies, struct {
+		ScreenName string `oscar:"len_prefix=uint8"`
+	}{ScreenName: contactName.String()})
+	if _, err := s.buddyService.AddBuddies(ctx, instance, wire.SNACFrame{}, snac); err != nil {
+		s.logger.Error("ProcessUserAdd: failed to add buddy via BuddyService",
 			"from_uin", req.FromUIN,
 			"target_uin", req.TargetUIN,
 			"err", err,
@@ -613,263 +634,6 @@ func (s *ICQLegacyService) generateNewUIN(ctx context.Context) (uint32, error) {
 	return 0, errors.New("no available UINs")
 }
 
-// sendToOSCARClient sends a message to an OSCAR client
-func (s *ICQLegacyService) sendToOSCARClient(ctx context.Context, from, to state.IdentScreenName, msgType uint16, message string) error {
-	// Strip trailing null bytes from legacy messages
-	message = strings.TrimRight(message, "\x00")
-
-	// Messages that use FE-delimited format (URLs, contacts) are sent on
-	// ICBM Channel 4 with their original message type preserved.
-	// OSCAR ICQ clients handle these natively on Channel 4.
-	if msgType == ICQLegacyMsgURL || msgType == ICQLegacyMsgContacts {
-		fromUINVal, _ := strconv.ParseUint(from.String(), 10, 32)
-		var urlSenderInfo wire.TLVUserInfo
-		if s.legacySessionManager != nil {
-			session := s.legacySessionManager.GetSession(uint32(fromUINVal))
-			if session != nil && session.Instance != nil {
-				urlSenderInfo = session.Instance.Session().TLVUserInfo()
-			}
-		}
-		if urlSenderInfo.ScreenName == "" {
-			urlSenderInfo = wire.TLVUserInfo{ScreenName: from.String()}
-		}
-		ch4Msg := wire.ICBMCh4Message{
-			UIN:         uint32(fromUINVal),
-			MessageType: uint8(ICQLegacyMsgURL),
-			Message:     message,
-		}
-		s.messageRelayer.RelayToScreenName(ctx, to, wire.SNACMessage{
-			Frame: wire.SNACFrame{
-				FoodGroup: wire.ICBM,
-				SubGroup:  wire.ICBMChannelMsgToClient,
-				RequestID: wire.ReqIDFromServer,
-			},
-			Body: wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
-				Cookie:      generateMessageCookie(),
-				ChannelID:   wire.ICBMChannelICQ,
-				TLVUserInfo: urlSenderInfo,
-				TLVRestBlock: wire.TLVRestBlock{
-					TLVList: wire.TLVList{
-						wire.NewTLVLE(wire.ICBMTLVData, ch4Msg),
-						wire.NewTLVBE(wire.ICBMTLVStore, []byte{}),
-					},
-				},
-			},
-		})
-		return nil
-	}
-
-	// Auth grant/deny: send as ICBM Channel 4 (same as RespondAuthorizeToHost).
-	// ICQ 2003b handles auth responses on Channel 4 correctly — it shows the
-	// message and updates the pending flag. Sending as FeedbagRespondAuthorizeToClient
-	// (0x13,0x1B) causes the client to remove the pending flag on deny, preventing
-	// re-request authorization.
-	switch msgType {
-	case ICQLegacyMsgAuthGrant, ICQLegacyMsgAuthDeny:
-		fromUIN, _ := strconv.ParseUint(from.String(), 10, 32)
-		reasonText := strings.TrimRight(message, "\x00")
-
-		var senderInfo wire.TLVUserInfo
-		if s.legacySessionManager != nil {
-			session := s.legacySessionManager.GetSession(uint32(fromUIN))
-			if session != nil && session.Instance != nil {
-				senderInfo = session.Instance.Session().TLVUserInfo()
-			}
-		}
-		if senderInfo.ScreenName == "" {
-			senderInfo = wire.TLVUserInfo{ScreenName: from.String()}
-		}
-
-		ch4Msg := wire.ICBMCh4Message{
-			UIN:         uint32(fromUIN),
-			MessageType: uint8(msgType),
-			Message:     reasonText,
-		}
-		s.messageRelayer.RelayToScreenName(ctx, to, wire.SNACMessage{
-			Frame: wire.SNACFrame{
-				FoodGroup: wire.ICBM,
-				SubGroup:  wire.ICBMChannelMsgToClient,
-				RequestID: wire.ReqIDFromServer,
-			},
-			Body: wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
-				Cookie:      generateMessageCookie(),
-				ChannelID:   wire.ICBMChannelICQ,
-				TLVUserInfo: senderInfo,
-				TLVRestBlock: wire.TLVRestBlock{
-					TLVList: wire.TLVList{
-						wire.NewTLVLE(wire.ICBMTLVData, ch4Msg),
-						wire.NewTLVBE(wire.ICBMTLVStore, []byte{}),
-					},
-				},
-			},
-		})
-		// For auth grant, also send FeedbagRespondAuthorizeToClient so the
-		// OSCAR client removes the pending flag from the feedbag item.
-		// For deny, only ICBM is sent — this preserves the pending flag so
-		// the user can re-request authorization.
-		if msgType == ICQLegacyMsgAuthGrant {
-			s.messageRelayer.RelayToScreenName(ctx, to, wire.SNACMessage{
-				Frame: wire.SNACFrame{
-					FoodGroup: wire.Feedbag,
-					SubGroup:  wire.FeedbagRespondAuthorizeToClient,
-				},
-				Body: wire.SNAC_0x13_0x1B_FeedbagRespondAuthorizeToClient{
-					ScreenName: from.String(),
-					Accepted:   1,
-				},
-			})
-		}
-		return nil
-
-	case ICQLegacyMsgAuthReq:
-		// Send as FeedbagRequestAuthorizeToClient so OSCAR client shows auth dialog
-		reasonText := ""
-		parts := strings.Split(message, "\xFE")
-		if len(parts) >= 6 {
-			reasonText = parts[5]
-		}
-		s.messageRelayer.RelayToScreenName(ctx, to, wire.SNACMessage{
-			Frame: wire.SNACFrame{
-				FoodGroup: wire.Feedbag,
-				SubGroup:  wire.FeedbagRequestAuthorizeToClient,
-			},
-			Body: wire.SNAC_0x13_0x18_FeedbagRequestAuthorizationToHost{
-				ScreenName: from.String(),
-				Reason:     reasonText,
-			},
-		})
-		return nil
-
-	case ICQLegacyMsgAdded:
-		fromUIN, _ := strconv.ParseUint(from.String(), 10, 32)
-
-		// Populate TLVUserInfo from the sender's OSCAR session if available,
-		// otherwise build a minimal one with ICQ flags
-		var senderInfo wire.TLVUserInfo
-		if s.legacySessionManager != nil {
-			session := s.legacySessionManager.GetSession(uint32(fromUIN))
-			if session != nil && session.Instance != nil {
-				senderInfo = session.Instance.Session().TLVUserInfo()
-			}
-		}
-		if senderInfo.ScreenName == "" {
-			senderInfo = wire.TLVUserInfo{ScreenName: from.String()}
-		}
-
-		ch4Msg := wire.ICBMCh4Message{
-			UIN:         uint32(fromUIN),
-			MessageType: uint8(msgType),
-			Message:     "",
-		}
-		s.messageRelayer.RelayToScreenName(ctx, to, wire.SNACMessage{
-			Frame: wire.SNACFrame{
-				FoodGroup: wire.ICBM,
-				SubGroup:  wire.ICBMChannelMsgToClient,
-				RequestID: wire.ReqIDFromServer,
-			},
-			Body: wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
-				Cookie:      generateMessageCookie(),
-				ChannelID:   wire.ICBMChannelICQ,
-				TLVUserInfo: senderInfo,
-				TLVRestBlock: wire.TLVRestBlock{
-					TLVList: wire.TLVList{
-						wire.NewTLVLE(wire.ICBMTLVData, ch4Msg),
-						wire.NewTLVBE(wire.ICBMTLVStore, []byte{}),
-					},
-				},
-			},
-		})
-		return nil
-	}
-
-	// Regular text messages use ICBM Channel 1
-	frags, err := wire.ICBMFragmentList(message)
-	if err != nil {
-		return fmt.Errorf("creating ICBM fragments: %w", err)
-	}
-
-	// Use sender's session TLVUserInfo if available
-	var senderInfo wire.TLVUserInfo
-	fromUIN, _ := strconv.ParseUint(from.String(), 10, 32)
-	if s.legacySessionManager != nil {
-		session := s.legacySessionManager.GetSession(uint32(fromUIN))
-		if session != nil && session.Instance != nil {
-			senderInfo = session.Instance.Session().TLVUserInfo()
-		}
-	}
-	if senderInfo.ScreenName == "" {
-		senderInfo = wire.TLVUserInfo{ScreenName: from.String()}
-	}
-
-	icbmMsg := wire.SNACMessage{
-		Frame: wire.SNACFrame{
-			FoodGroup: wire.ICBM,
-			SubGroup:  wire.ICBMChannelMsgToClient,
-			RequestID: wire.ReqIDFromServer,
-		},
-		Body: wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
-			Cookie:      generateMessageCookie(),
-			ChannelID:   wire.ICBMChannelIM,
-			TLVUserInfo: senderInfo,
-			TLVRestBlock: wire.TLVRestBlock{
-				TLVList: wire.TLVList{
-					wire.NewTLVBE(wire.ICBMTLVAOLIMData, frags),
-				},
-			},
-		},
-	}
-
-	s.messageRelayer.RelayToScreenName(ctx, to, icbmMsg)
-	return nil
-}
-
-// storeOfflineMessage stores a message for offline delivery
-func (s *ICQLegacyService) storeOfflineMessage(ctx context.Context, from, to state.IdentScreenName, msgType uint16, message string) error {
-	// Create ICBM fragment list for the message
-	frags, err := wire.ICBMFragmentList(message)
-	if err != nil {
-		return fmt.Errorf("creating ICBM fragments: %w", err)
-	}
-
-	// Store the legacy message type in ICBMTLVICQBlob so it can be
-	// recovered when delivering the message to a legacy client.
-	// Without this, all offline messages are delivered as type 0x0001
-	// (normal text), which causes auth requests and "you were added"
-	// notifications to display as garbage on the receiving client.
-	msgTypeBytes := make([]byte, 2)
-	msgTypeBytes[0] = byte(msgType)
-	msgTypeBytes[1] = byte(msgType >> 8)
-
-	offlineMsg := state.OfflineMessage{
-		Sender:    from,
-		Recipient: to,
-		Sent:      s.timeNow(),
-		Message: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
-			Cookie:    generateMessageCookie(),
-			ChannelID: wire.ICBMChannelIM,
-			TLVRestBlock: wire.TLVRestBlock{
-				TLVList: wire.TLVList{
-					wire.NewTLVBE(wire.ICBMTLVAOLIMData, frags),
-					wire.NewTLVBE(wire.ICBMTLVICQBlob, msgTypeBytes),
-				},
-			},
-		},
-	}
-
-	_, err = s.offlineMessageManager.SaveMessage(ctx, offlineMsg)
-	if err != nil {
-		return fmt.Errorf("saving offline message: %w", err)
-	}
-
-	s.logger.Debug("stored offline message",
-		"from", from.String(),
-		"to", to.String(),
-		"msg_type", fmt.Sprintf("0x%04X", msgType),
-	)
-
-	return nil
-}
-
 // GetOfflineMessages retrieves stored offline messages for the given UIN.
 // Messages are converted from the internal OSCAR ICBM format to the legacy
 // LegacyOfflineMessage format suitable for delivery by protocol handlers.
@@ -1035,7 +799,7 @@ func (s *ICQLegacyService) GetUserInfoForProtocol(ctx context.Context, targetUIN
 		Position:   user.ICQWorkInfo.Position,
 
 		// Auth required
-		AuthRequired: 0,
+		AuthRequired: 1,
 	}
 
 	// Use UIN as fallback nickname if not set
@@ -1045,7 +809,7 @@ func (s *ICQLegacyService) GetUserInfoForProtocol(ctx context.Context, targetUIN
 
 	// Set auth required flag
 	if user.ICQPermissions.AuthRequired {
-		result.AuthRequired = 1
+		result.AuthRequired = 0
 	}
 
 	// Check if user is online
@@ -1135,7 +899,6 @@ func (s *ICQLegacyService) SearchByName(ctx context.Context, nick, first, last, 
 // Results are limited to 40 users maximum, matching iserverd behavior.
 func (s *ICQLegacyService) WhitePagesSearch(ctx context.Context, criteria WhitePagesSearchCriteria) ([]LegacyUserSearchResult, error) {
 	var allResults []state.User
-	var err error
 
 	// Start with basic name/email search if those criteria are provided
 	// This is the primary search method available in the current infrastructure
@@ -1178,10 +941,6 @@ func (s *ICQLegacyService) WhitePagesSearch(ctx context.Context, criteria WhiteP
 		if findErr == nil {
 			allResults = s.mergeUserResults(allResults, users)
 		}
-	}
-
-	if err != nil {
-		return nil, err
 	}
 
 	// Filter results based on additional criteria
@@ -2111,10 +1870,4 @@ func mapOSCARStatusToLegacy(oscarStatus uint32) uint32 {
 	}
 
 	return legacyStatus
-}
-
-// generateMessageCookie generates a unique message cookie for ICBM messages
-// using the current nanosecond timestamp.
-func generateMessageCookie() uint64 {
-	return uint64(time.Now().UnixNano())
 }

@@ -217,7 +217,7 @@ func (h *V2Handler) handleLogin(session *LegacySession, addr *net.UDPAddr, pkt *
 	}
 
 	// 3. Create session
-	newSession, err := h.sessions.CreateSession(pkt.UIN, addr, pkt.Version)
+	newSession, err := h.sessions.CreateSession(pkt.UIN, addr, pkt.Version, authResult.oscarSession)
 	if err != nil {
 		h.logger.Error("failed to create session", "err", err, "uin", pkt.UIN)
 		return h.sender.SendPacket(addr, h.packetBuilder.BuildBadPassword(pkt.SeqNum, pkt.Version))
@@ -338,7 +338,7 @@ func (h *V2Handler) handleContactList(session *LegacySession, pkt *V2ClientPacke
 		Contacts: contactList.UINs,
 	}
 
-	contactResult, err := h.service.ProcessContactList(ctx, contactReq)
+	contactResult, err := h.service.ProcessContactList(ctx, session.Instance, contactReq)
 	if err != nil {
 		h.logger.Debug("failed to process contact list", "err", err)
 		// Still send contact list done even on error
@@ -573,67 +573,6 @@ func (h *V2Handler) handleInfoReq(session *LegacySession, pkt *V2ClientPacket) e
 	replyPkt := BuildV2InfoReply(session.NextServerSeqNum(), infoSeq, wireInfo)
 	replyPkt.Version = session.Version
 	return h.sender.SendToSession(session, MarshalV2ServerPacket(replyPkt))
-}
-
-// handleLoginInfoReq processes a login info request (0x04CE)
-// The V2 client sends this after login to get its own profile data.
-// We respond with both SRV_INFO_REPLY (0x0118) and SRV_EXT_INFO_REPLY (0x0122).
-func (h *V2Handler) handleLoginInfoReq(session *LegacySession, pkt *V2ClientPacket) error {
-	if session == nil {
-		return nil
-	}
-
-	ctx := context.Background()
-
-	if err := h.sendAck(session, pkt.SeqNum); err != nil {
-		return err
-	}
-
-	targetUIN := session.UIN
-	if len(pkt.Data) >= 4 {
-		targetUIN = binary.LittleEndian.Uint32(pkt.Data[0:4])
-	}
-	if targetUIN == 0 {
-		targetUIN = session.UIN
-	}
-
-	info, err := h.service.GetUserInfo(ctx, targetUIN)
-	if err != nil || info == nil {
-		return nil
-	}
-
-	// Send basic info (0x0118)
-	wireInfo := &LegacyUserInfo{
-		UIN:       info.UIN,
-		Nickname:  truncateField(info.Nickname, 20, h.logger, "nickname", info.UIN),
-		FirstName: truncateField(info.FirstName, 64, h.logger, "first_name", info.UIN),
-		LastName:  truncateField(info.LastName, 64, h.logger, "last_name", info.UIN),
-		Email:     truncateField(info.Email, 64, h.logger, "email", info.UIN),
-		Auth:      info.AuthRequired,
-	}
-	replyPkt := BuildV2InfoReply(session.NextServerSeqNum(), pkt.SeqNum, wireInfo)
-	replyPkt.Version = session.Version
-	h.sender.SendToSession(session, MarshalV2ServerPacket(replyPkt))
-
-	// Send extended info (0x0122)
-	user, err := h.service.GetFullUserInfo(ctx, targetUIN)
-	if err != nil || user == nil {
-		return nil
-	}
-	extInfo := &LegacyUserInfo{
-		UIN:      targetUIN,
-		City:     truncateField(user.ICQBasicInfo.City, 64, h.logger, "city", targetUIN),
-		State:    truncateField(user.ICQBasicInfo.State, 64, h.logger, "state", targetUIN),
-		Country:  user.ICQBasicInfo.CountryCode,
-		Phone:    truncateField(user.ICQBasicInfo.CellPhone, 30, h.logger, "phone", targetUIN),
-		Homepage: truncateField(user.ICQMoreInfo.HomePageAddr, 127, h.logger, "homepage", targetUIN),
-		About:    truncateField(user.ICQNotes.Notes, 450, h.logger, "about", targetUIN),
-		Age:      user.Age(time.Now),
-		Gender:   uint8(user.ICQMoreInfo.Gender),
-	}
-	extReplyPkt := BuildV2ExtInfoReply(session.NextServerSeqNum(), pkt.SeqNum, extInfo)
-	extReplyPkt.Version = session.Version
-	return h.sender.SendToSession(session, MarshalV2ServerPacket(extReplyPkt))
 }
 
 // handleExtInfoReq processes an extended user info request
@@ -968,7 +907,7 @@ func (h *V2Handler) handleUserAdd(session *LegacySession, pkt *V2ClientPacket) e
 
 	// Sync to clientSideBuddyList so OSCAR's BuddyArrived reaches this user
 	// for the newly added contact (mirrors ProcessContactList sync logic)
-	if _, err := h.service.ProcessUserAdd(ctx, UserAddRequest{
+	if _, err := h.service.ProcessUserAdd(ctx, session.Instance, UserAddRequest{
 		FromUIN:   session.UIN,
 		TargetUIN: targetUIN,
 	}); err != nil {
@@ -1023,40 +962,6 @@ func (h *V2Handler) handleFirstLogin(session *LegacySession, addr *net.UDPAddr, 
 		SeqNum:  pkt.SeqNum,
 	}
 	return h.sender.SendPacket(addr, MarshalV2ServerPacket(ackPkt))
-}
-
-// sendRegisterInfo sends registration info (admin notes) to the client.
-// V2 server packet format: VERSION(2) + COMMAND(2) + SEQ(2) + DATA
-// Following V4's sendRegisterInfo but using V2 packet format.
-func (h *V2Handler) sendRegisterInfo(addr *net.UDPAddr, seqNum uint16, uin uint32) error {
-	adminNotes := "Welcome to Open OSCAR Server!\x00"
-
-	buf := make([]byte, 2+len(adminNotes)+1+4)
-	offset := 0
-
-	// NOTES_LEN(2) + NOTES
-	binary.LittleEndian.PutUint16(buf[offset:], uint16(len(adminNotes)))
-	offset += 2
-	copy(buf[offset:], adminNotes)
-	offset += len(adminNotes)
-
-	// Registration enabled flag
-	buf[offset] = 0x01
-	offset++
-
-	// Trailer (from iserverd)
-	binary.LittleEndian.PutUint16(buf[offset:], 0x0002)
-	offset += 2
-	binary.LittleEndian.PutUint16(buf[offset:], 0x002A)
-	offset += 2
-
-	pkt := &V2ServerPacket{
-		Version: ICQLegacyVersionV2,
-		Command: ICQLegacySrvRegisterInfo,
-		SeqNum:  seqNum,
-		Data:    buf[:offset],
-	}
-	return h.sender.SendPacket(addr, MarshalV2ServerPacket(pkt))
 }
 
 // handleGetDeps processes the pre-auth pseudo-login packet (0x03F2).
@@ -1130,8 +1035,8 @@ func (h *V2Handler) handleGetDeps(addr *net.UDPAddr, packet []byte) error {
 		Version:  ICQLegacyVersionV2,
 	}
 
-	authResult, err := h.service.AuthenticateUser(ctx, authReq)
-	if err != nil || !authResult.Success {
+	loginOK, err := h.service.ValidateCredentials(ctx, authReq.UIN, authReq.Password)
+	if err != nil || !loginOK {
 		h.logger.Info("getdeps failed - invalid credentials", "uin", uin)
 		return h.sendBadPassword(addr, seq1, 2)
 	}

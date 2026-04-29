@@ -129,7 +129,7 @@ func (h *V1Handler) handleV1Login(session *LegacySession, addr *net.UDPAddr, pac
 	}
 
 	// Create session
-	newSession, err := h.sessions.CreateSession(uin, addr, ICQLegacyVersionV1)
+	newSession, err := h.sessions.CreateSession(uin, addr, ICQLegacyVersionV1, authResult.oscarSession)
 	if err != nil {
 		h.logger.Error("failed to create V1 session", "err", err, "uin", uin)
 		return h.sender.SendPacket(addr, h.packetBuilder.BuildBadPassword(seqNum, ICQLegacyVersionV1))

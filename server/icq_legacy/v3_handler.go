@@ -253,14 +253,14 @@ func (h *V3Handler) handleGetDeps(addr *net.UDPAddr, seq1, seq2 uint16, data []b
 		Version:  ICQLegacyVersionV3,
 	}
 
-	authResult, err := h.service.AuthenticateUser(ctx, authReq)
+	loginOK, err := h.service.ValidateCredentials(ctx, authReq.UIN, authReq.Password)
 	if err != nil {
 		h.logger.Error("getdeps authentication error", "err", err, "uin", uin)
 		return h.sender.SendPacket(addr, h.packetBuilder.BuildBadPassword(seq1, seq2, uin))
 	}
 
-	if !authResult.Success {
-		h.logger.Info("getdeps failed - invalid credentials", "uin", uin, "error_code", authResult.ErrorCode)
+	if !loginOK {
+		h.logger.Info("getdeps failed - invalid credentials", "uin", uin)
 		return h.sender.SendPacket(addr, h.packetBuilder.BuildBadPassword(seq1, seq2, uin))
 	}
 
@@ -357,7 +357,7 @@ func (h *V3Handler) handleLogin(session *LegacySession, addr *net.UDPAddr, seq1,
 	// TODO: parse and store direct connection info (IP, port, DC version, DC type)
 	// from the V3 login packet so that presence notifications can include real
 	// connection details when ICQ_LEGACY_DIRECT_CONNECTIONS includes V3.
-	newSession, err := h.sessions.CreateSession(uin, addr, ICQLegacyVersionV3)
+	newSession, err := h.sessions.CreateSession(uin, addr, ICQLegacyVersionV3, authResult.oscarSession)
 	if err != nil {
 		h.logger.Error("failed to create session", "err", err, "uin", uin)
 		return h.sender.SendPacket(addr, h.packetBuilder.BuildBadPassword(seq1, seq2, uin))
@@ -461,7 +461,7 @@ func (h *V3Handler) handleContactList(session *LegacySession, seq1, seq2 uint16,
 
 	// 3. Call service layer with typed request
 	ctx := context.Background()
-	result, err := h.service.ProcessContactList(ctx, req)
+	result, err := h.service.ProcessContactList(ctx, session.Instance, req)
 	if err != nil {
 		h.logger.Error("contact list processing failed", "uin", uin, "err", err)
 		// Still send contact list done on error
@@ -765,7 +765,7 @@ func (h *V3Handler) handleUserAdd(session *LegacySession, seq1, seq2 uint16, uin
 
 	// 3. Call service layer with typed request
 	ctx := context.Background()
-	result, err := h.service.ProcessUserAdd(ctx, req)
+	result, err := h.service.ProcessUserAdd(ctx, session.Instance, req)
 	if err != nil {
 		h.logger.Error("user add processing failed", "from", req.FromUIN, "target", req.TargetUIN, "err", err)
 		return nil
@@ -1265,20 +1265,6 @@ func (h *V3Handler) handleUnknownDep(session *LegacySession, seq1, seq2 uint16, 
 	h.logger.Debug("V3 unknown dep request", "uin", uin)
 
 	return nil
-}
-
-// handleSearch processes search request (0x0528)
-func (h *V3Handler) handleSearch(session *LegacySession, seq1, seq2 uint16, uin uint32, data []byte) error {
-	if session == nil {
-		return nil
-	}
-
-	h.sendAck(session.Addr, seq1, seq2, uin)
-
-	h.logger.Debug("V3 search request", "uin", uin)
-
-	// Send search done (no results for now)
-	return h.sendSearchDone(session, seq2)
 }
 
 // handleSearchStart processes search user request (0x05C8)

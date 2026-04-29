@@ -349,12 +349,10 @@ type BuddyListRegistry interface {
 	UnregisterBuddyList(ctx context.Context, user state.IdentScreenName) error
 }
 
-// ClientSideBuddyListManager provides client-side buddy list management.
-// Legacy ICQ clients use client-side buddy lists (not feedbag), so their
-// contacts must be written to the clientSideBuddyList table for the
-// relationship query to discover them.
-type ClientSideBuddyListManager interface {
-	AddBuddy(ctx context.Context, me state.IdentScreenName, them state.IdentScreenName) error
+// BuddyService provides client-side buddy list management through the OSCAR
+// Buddy food group path used by OSCAR and TOC clients.
+type BuddyService interface {
+	AddBuddies(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x03_0x04_BuddyAddBuddies) (*wire.SNACMessage, error)
 }
 
 // LegacySessionInstance represents a legacy session as seen by the service layer.

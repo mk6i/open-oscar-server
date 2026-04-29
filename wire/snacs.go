@@ -94,21 +94,22 @@ const (
 //
 
 const (
-	LoginTLVTagsScreenName              uint16 = 0x01
-	LoginTLVTagsRoastedPassword         uint16 = 0x02
-	LoginTLVTagsClientIdentity          uint16 = 0x03
-	LoginTLVTagsReconnectHere           uint16 = 0x05
-	LoginTLVTagsAuthorizationCookie     uint16 = 0x06
-	LoginTLVTagsErrorSubcode            uint16 = 0x08
-	LoginTLVTagsPasswordHash            uint16 = 0x25
-	LoginTLVTagsMultiConnFlags          uint16 = 0x4A
-	LoginTLVTagsMaxSendSize             uint16 = 0x8001
-	LoginTLVTagsMaxRecvSize             uint16 = 0x8003
-	LoginTLVTagsHostSuffix              uint16 = 0x8004
-	LoginTLVTagsRoastedKerberosPassword uint16 = 0x1335
-	LoginTLVTagsRoastedTOCPassword      uint16 = 0x1337
-	LoginTLVTagsPlaintextPassword       uint16 = 0x1338
-	LoginTLVTagsUseBigTime              uint16 = 0x2038
+	LoginTLVTagsScreenName                uint16 = 0x01
+	LoginTLVTagsRoastedPassword           uint16 = 0x02
+	LoginTLVTagsClientIdentity            uint16 = 0x03
+	LoginTLVTagsReconnectHere             uint16 = 0x05
+	LoginTLVTagsAuthorizationCookie       uint16 = 0x06
+	LoginTLVTagsErrorSubcode              uint16 = 0x08
+	LoginTLVTagsPasswordHash              uint16 = 0x25
+	LoginTLVTagsMultiConnFlags            uint16 = 0x4A
+	LoginTLVTagsMaxSendSize               uint16 = 0x8001
+	LoginTLVTagsMaxRecvSize               uint16 = 0x8003
+	LoginTLVTagsHostSuffix                uint16 = 0x8004
+	LoginTLVTagsRoastedKerberosPassword   uint16 = 0x1335
+	LoginTLVTagsRoastedTOCPassword        uint16 = 0x1337
+	LoginTLVTagsPlaintextKerberosPassword uint16 = 0x1338
+	LoginTLVTagsPlaintextPassword         uint16 = 0x1339
+	LoginTLVTagsUseBigTime                uint16 = 0x2038
 )
 
 const (

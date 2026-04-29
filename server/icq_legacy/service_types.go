@@ -3,6 +3,8 @@ package icq_legacy
 import (
 	"net"
 	"time"
+
+	"github.com/mk6i/open-oscar-server/state"
 )
 
 // This file contains typed request and response structs for the ICQ legacy service layer.
@@ -105,6 +107,9 @@ type AuthResult struct {
 	// - 0x0002: User not found
 	// - 0x0003: Already logged in
 	ErrorCode uint16
+
+	// oscarSession is the BOS session registered by AuthService for full logins.
+	oscarSession *state.SessionInstance
 }
 
 // MessageResult contains message routing info from the service layer.
@@ -197,7 +202,7 @@ type UserInfoResult struct {
 	// Online indicates whether the user is currently online
 	Online bool
 
-	// AuthRequired indicates whether authorization is required to add this user (0=no, 1=yes)
+	// AuthRequired indicates whether authorization is required to add this user (0=yes, 1=no)
 	AuthRequired uint8
 
 	// Extended fields (V3/V5 protocols)

@@ -91,6 +91,7 @@ func MakeCommonDeps() (Container, error) {
 		c.sqLiteUserStore,
 		c.inMemorySessionManager,
 		c.sqLiteUserStore,
+		c.sqLiteUserStore,
 	)
 
 	c.icbmSvc = foodgroup.NewICBMService(
@@ -638,27 +639,45 @@ func ICQLegacy(deps Container) *icq_legacy.LegacyServer {
 		logger,
 	)
 
+	authService := foodgroup.NewAuthService(
+		deps.cfg,
+		deps.inMemorySessionManager,
+		deps.inMemorySessionManager,
+		deps.chatSessionManager,
+		deps.sqLiteUserStore,
+		deps.hmacCookieBaker,
+		deps.chatSessionManager,
+		deps.sqLiteUserStore,
+		deps.sqLiteUserStore,
+		deps.rateLimitClasses,
+		state.NewAccountCreator(deps.sqLiteUserStore.InsertUser),
+		logger,
+	)
+
+	buddyService := foodgroup.NewBuddyService(
+		deps.inMemorySessionManager,
+		deps.sqLiteUserStore,
+		deps.sqLiteUserStore,
+		deps.inMemorySessionManager,
+		deps.sqLiteUserStore,
+		deps.sqLiteUserStore,
+	)
+
 	// Create the ICQ legacy service
 	icqLegacyService := icq_legacy.NewICQLegacyService(
+		authService,
 		deps.sqLiteUserStore,        // userManager
 		deps.sqLiteUserStore,        // accountManager
 		deps.inMemorySessionManager, // sessionRetriever
 		deps.inMemorySessionManager, // messageRelayer
-		foodgroup.NewBuddyService( // buddyBroadcaster
-			deps.inMemorySessionManager,
-			deps.sqLiteUserStore,
-			deps.sqLiteUserStore,
-			deps.inMemorySessionManager,
-			deps.sqLiteUserStore,
-			deps.sqLiteUserStore,
-		),
-		deps.sqLiteUserStore, // offlineMessageManager
-		deps.sqLiteUserStore, // userFinder
-		deps.sqLiteUserStore, // userUpdater
-		deps.sqLiteUserStore, // feedbagManager
-		deps.sqLiteUserStore, // relationshipFetcher
-		deps.sqLiteUserStore, // buddyListRegistry
-		deps.sqLiteUserStore, // clientSideBuddyListManager
+		buddyService,                // buddyBroadcaster
+		deps.sqLiteUserStore,        // offlineMessageManager
+		deps.sqLiteUserStore,        // userFinder
+		deps.sqLiteUserStore,        // userUpdater
+		deps.sqLiteUserStore,        // feedbagManager
+		deps.sqLiteUserStore,        // relationshipFetcher
+		deps.sqLiteUserStore,        // buddyListRegistry
+		buddyService,                // buddyService
 		deps.icbmSvc,
 		logger,
 	)
