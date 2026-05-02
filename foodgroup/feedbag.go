@@ -224,7 +224,12 @@ func (s *FeedbagService) UpsertItem(ctx context.Context, instance *state.Session
 	for _, item := range items {
 		if item.ClassID == wire.FeedbagClassIdBuddy && !item.HasTag(wire.FeedbagAttributesPending) {
 			sn := state.NewIdentScreenName(item.Name)
-			if sn.UIN() != 0 {
+			switch {
+			case instance.UIN() != 0 && sn.UIN() == 0: // sender=icq, recip=aim
+				if err := s.contactPreAuthorizer.RecordPreAuth(ctx, instance.IdentScreenName(), sn); err != nil {
+					return nil, fmt.Errorf("contactPreAuthorizer.RecordPreAuth: %w", err)
+				}
+			case instance.UIN() != 0 && sn.UIN() != 0: // sender=icq, recip=icq
 				blocked, err := s.contactPreAuthorizer.RequiresAuthorization(ctx, sn, instance.IdentScreenName())
 				if err != nil {
 					return nil, fmt.Errorf("contactPreAuthorizer.RequiresAuthorization: %w", err)
@@ -232,6 +237,17 @@ func (s *FeedbagService) UpsertItem(ctx context.Context, instance *state.Session
 				if blocked {
 					authRequired[item.Name] = true
 					continue
+				}
+			case instance.UIN() == 0 && sn.UIN() != 0: // sender=aim, recip=icq
+				blocked, err := s.contactPreAuthorizer.RequiresAuthorization(ctx, sn, instance.IdentScreenName())
+				if err != nil {
+					return nil, fmt.Errorf("contactPreAuthorizer.RequiresAuthorization: %w", err)
+				}
+				if blocked {
+					item.Append(wire.NewTLVLE(wire.FeedbagAttributesPending, []byte{}))
+					if err := s.sendLegacyAuthReq(ctx, instance, sn, "", state.ICQBasicInfo{}, 1); err != nil {
+						return nil, fmt.Errorf("sendLegacyAuthReq: %w", err)
+					}
 				}
 			}
 		}
@@ -510,13 +526,6 @@ func (s *FeedbagService) RequestAuthorizeToHost(ctx context.Context, instance *s
 		return nil
 	}
 
-	// send an offline authorization or request to legacy client
-	frame := wire.SNACFrame{
-		FoodGroup: wire.ICBM,
-		SubGroup:  wire.ICBMChannelMsgToHost,
-		RequestID: inFrame.RequestID,
-	}
-
 	// if authorized, the recipient can reciprocate without requesting authorization
 	authorized := 1
 	blocked, err := s.contactPreAuthorizer.RequiresAuthorization(ctx, instance.IdentScreenName(), recipient)
@@ -536,31 +545,39 @@ func (s *FeedbagService) RequestAuthorizeToHost(ctx context.Context, instance *s
 		s.logger.ErrorContext(ctx, "user not found", "screen_name", instance.IdentScreenName())
 	}
 
+	return s.sendLegacyAuthReq(ctx, instance, recipient, inBody.Reason, userInfo.ICQBasicInfo, authorized)
+}
+
+// sendLegacyAuthReq sends an offline authorization request to ICQ client
+func (s *FeedbagService) sendLegacyAuthReq(ctx context.Context, from *state.SessionInstance, to state.IdentScreenName, reason string, userInfo state.ICQBasicInfo, authorized int) error {
+	frame := wire.SNACFrame{
+		FoodGroup: wire.ICBM,
+		SubGroup:  wire.ICBMChannelMsgToHost,
+	}
 	snac := wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
 		ChannelID:  wire.ICBMChannelICQ,
-		ScreenName: inBody.ScreenName,
+		ScreenName: to.String(),
 		TLVRestBlock: wire.TLVRestBlock{
 			TLVList: wire.TLVList{
 				wire.NewTLVLE(wire.ICBMTLVData, wire.ICBMCh4Message{
-					UIN:         instance.UIN(),
+					UIN:         from.UIN(),
 					MessageType: wire.ICBMMsgTypeAuthReq,
 					Message: fmt.Sprintf("%s\xFE%s\xFE%s\xFE%s\xFE%d\xFE%s",
-						userInfo.ICQBasicInfo.Nickname,
-						userInfo.ICQBasicInfo.FirstName,
-						userInfo.ICQBasicInfo.LastName,
-						userInfo.ICQBasicInfo.EmailAddress,
+						userInfo.Nickname,
+						userInfo.FirstName,
+						userInfo.LastName,
+						userInfo.EmailAddress,
 						authorized,
-						utf8ToLatin1(inBody.Reason)),
+						utf8ToLatin1(reason)),
 				}),
 				wire.NewTLVBE(wire.ICBMTLVStore, []byte{}),
 			},
 		},
 	}
 
-	if _, err := s.icbmSender(ctx, instance, frame, snac); err != nil {
+	if _, err := s.icbmSender(ctx, from, frame, snac); err != nil {
 		return fmt.Errorf("icbmSender: %w", err)
 	}
-
 	return nil
 }
 

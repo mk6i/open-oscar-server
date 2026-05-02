@@ -3,6 +3,7 @@ package state
 import (
 	"context"
 	"os"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -21,6 +22,9 @@ func TestSQLiteUserStore_AllRelationships(t *testing.T) {
 		permitList []IdentScreenName
 		// buddyList is the list of users on the deny list. only active when wire.FeedbagPDModeDenySome is set.
 		denyList []IdentScreenName
+		// buddyPendingAuth lists buddies (subset of buddyList) whose server-side feedbag buddy row
+		// is written with TLV FeedbagAttributesPending / authPending.
+		buddyPendingAuth []IdentScreenName
 	}
 
 	tests := []struct {
@@ -3131,6 +3135,35 @@ func TestSQLiteUserStore_AllRelationships(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:            "feedbag server-side: buddy with auth pending does not count on your list",
+			me:              NewIdentScreenName("me"),
+			clientSideLists: map[IdentScreenName]buddyList{},
+			serverSideLists: map[IdentScreenName]buddyList{
+				NewIdentScreenName("me"): {
+					privacyMode:      wire.FeedbagPDModePermitAll,
+					buddyList:        []IdentScreenName{NewIdentScreenName("them")},
+					buddyPendingAuth: []IdentScreenName{NewIdentScreenName("them")},
+					permitList:       []IdentScreenName{},
+					denyList:         []IdentScreenName{},
+				},
+				NewIdentScreenName("them"): {
+					privacyMode: wire.FeedbagPDModePermitAll,
+					buddyList:   []IdentScreenName{},
+					permitList:  []IdentScreenName{},
+					denyList:    []IdentScreenName{},
+				},
+			},
+			expect: []Relationship{
+				{
+					User:          NewIdentScreenName("them"),
+					BlocksYou:     false,
+					YouBlock:      false,
+					IsOnTheirList: false,
+					IsOnYourList:  false,
+				},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -3162,15 +3195,20 @@ func TestSQLiteUserStore_AllRelationships(t *testing.T) {
 				}
 				itemID++
 				for _, buddy := range list.buddyList {
-					items = append(items, newFeedbagItem(wire.FeedbagClassIdBuddy, itemID, buddy.String()))
+					items = append(items, newFeedbagItem(
+						wire.FeedbagClassIdBuddy,
+						itemID,
+						buddy.String(),
+						slices.Contains(list.buddyPendingAuth, buddy),
+					))
 					itemID++
 				}
 				for _, buddy := range list.permitList {
-					items = append(items, newFeedbagItem(wire.FeedbagClassIDPermit, itemID, buddy.String()))
+					items = append(items, newFeedbagItem(wire.FeedbagClassIDPermit, itemID, buddy.String(), false))
 					itemID++
 				}
 				for _, buddy := range list.denyList {
-					items = append(items, newFeedbagItem(wire.FeedbagClassIDDeny, itemID, buddy.String()))
+					items = append(items, newFeedbagItem(wire.FeedbagClassIDDeny, itemID, buddy.String(), false))
 					itemID++
 				}
 				assert.NoError(t, feedbagStore.FeedbagUpsert(context.Background(), sn, items))

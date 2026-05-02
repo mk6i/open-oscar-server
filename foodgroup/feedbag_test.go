@@ -498,7 +498,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 		},
 		{
 			name:     "add 2 ICQ buddies one that requires authorization",
-			instance: newTestInstance("me"),
+			instance: newTestInstance("100001", sessOptUIN(100001)),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.Feedbag,
@@ -522,7 +522,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 				feedbagManagerParams: feedbagManagerParams{
 					feedbagUpsertParams: feedbagUpsertParams{
 						{
-							screenName: state.NewIdentScreenName("me"),
+							screenName: state.NewIdentScreenName("100001"),
 							items: []wire.FeedbagItem{
 								{
 									ClassID: wire.FeedbagClassIdBuddy,
@@ -543,7 +543,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 				buddyBroadcasterParams: buddyBroadcasterParams{
 					broadcastVisibilityParams: broadcastVisibilityParams{
 						{
-							from: state.NewIdentScreenName("me"),
+							from: state.NewIdentScreenName("100001"),
 							filter: []state.IdentScreenName{
 								state.NewIdentScreenName("123401"),
 							},
@@ -553,7 +553,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 				messageRelayerParams: messageRelayerParams{
 					relayToOtherInstancesParams: relayToOtherInstancesParams{
 						{
-							screenName: state.NewIdentScreenName("me"),
+							screenName: state.NewIdentScreenName("100001"),
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
@@ -573,7 +573,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					},
 					relayToSelfParams: relayToSelfParams{
 						{
-							screenName: state.NewIdentScreenName("me"),
+							screenName: state.NewIdentScreenName("100001"),
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
@@ -589,8 +589,8 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 				},
 				contactPreAuthorizerParams: contactPreAuthorizerParams{
 					requiresAuthorizationParams: requiresAuthorizationParams{
-						{owner: state.NewIdentScreenName("123400"), requester: state.NewIdentScreenName("me"), result: true},
-						{owner: state.NewIdentScreenName("123401"), requester: state.NewIdentScreenName("me"), result: false},
+						{owner: state.NewIdentScreenName("123400"), requester: state.NewIdentScreenName("100001"), result: true},
+						{owner: state.NewIdentScreenName("123401"), requester: state.NewIdentScreenName("100001"), result: false},
 					},
 				},
 			},
@@ -602,7 +602,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 				TLVRestBlock: wire.TLVRestBlock{
 					TLVList: wire.TLVList{
 						wire.NewTLVLE(wire.ICBMTLVData, wire.ICBMCh4Message{
-							UIN:         0,
+							UIN:         100001,
 							MessageType: wire.ICBMMsgTypeAdded,
 						}),
 						wire.NewTLVBE(wire.ICBMTLVStore, []byte{}),
@@ -2494,7 +2494,6 @@ func TestFeedbagService_RequestAuthorizeToHost(t *testing.T) {
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.ICBM,
 					SubGroup:  wire.ICBMChannelMsgToHost,
-					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
 					ChannelID:  wire.ICBMChannelICQ,
@@ -2560,7 +2559,6 @@ func TestFeedbagService_RequestAuthorizeToHost(t *testing.T) {
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.ICBM,
 					SubGroup:  wire.ICBMChannelMsgToHost,
-					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
 					ChannelID:  wire.ICBMChannelICQ,
@@ -2622,7 +2620,6 @@ func TestFeedbagService_RequestAuthorizeToHost(t *testing.T) {
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.ICBM,
 					SubGroup:  wire.ICBMChannelMsgToHost,
-					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
 					ChannelID:  wire.ICBMChannelICQ,
@@ -2684,7 +2681,6 @@ func TestFeedbagService_RequestAuthorizeToHost(t *testing.T) {
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.ICBM,
 					SubGroup:  wire.ICBMChannelMsgToHost,
-					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
 					ChannelID:  wire.ICBMChannelICQ,

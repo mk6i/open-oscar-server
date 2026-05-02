@@ -769,13 +769,14 @@ func (f SQLiteUserStore) FeedbagDelete(ctx context.Context, screenName IdentScre
 
 func (f SQLiteUserStore) FeedbagUpsert(ctx context.Context, screenName IdentScreenName, items []wire.FeedbagItem) error {
 	q := `
-		INSERT INTO feedbag (screenName, groupID, itemID, classID, name, attributes, pdMode, lastModified)
-		VALUES (?, ?, ?, ?, ?, ?, ?, UNIXEPOCH())
+		INSERT INTO feedbag (screenName, groupID, itemID, classID, name, attributes, pdMode, authPending, lastModified)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, UNIXEPOCH())
 		ON CONFLICT (screenName, groupID, itemID)
 			DO UPDATE SET classID      = excluded.classID,
 						  name         = excluded.name,
 						  attributes   = excluded.attributes,
-						  pdMode       = excluded.pdMode, 
+						  pdMode       = excluded.pdMode,
+						  authPending  = excluded.authPending,
 						  lastModified = UNIXEPOCH()
 	`
 
@@ -800,6 +801,8 @@ func (f SQLiteUserStore) FeedbagUpsert(ctx context.Context, screenName IdentScre
 				pdMode = uint8(wire.FeedbagPDModePermitAll)
 			}
 		}
+		authPending := item.ClassID == wire.FeedbagClassIdBuddy &&
+			item.HasTag(wire.FeedbagAttributesPending)
 		_, err := f.db.ExecContext(ctx,
 			q,
 			screenName.String(),
@@ -808,7 +811,8 @@ func (f SQLiteUserStore) FeedbagUpsert(ctx context.Context, screenName IdentScre
 			item.ClassID,
 			item.Name,
 			buf.Bytes(),
-			pdMode)
+			pdMode,
+			authPending)
 		if err != nil {
 			return err
 		}
