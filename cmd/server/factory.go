@@ -679,6 +679,7 @@ func ICQLegacy(deps Container) *icq_legacy.LegacyServer {
 		deps.sqLiteUserStore,        // buddyListRegistry
 		buddyService,                // buddyService
 		deps.icbmSvc,
+		sessionManager, // legacySessionManager
 		logger,
 	)
 
@@ -725,9 +726,6 @@ func ICQLegacy(deps Container) *icq_legacy.LegacyServer {
 	v3Handler.SetDispatcher(dispatcher)
 	v4Handler.SetDispatcher(dispatcher)
 	v5Handler.SetDispatcher(dispatcher)
-
-	// Set the legacy session manager on the service (same package, no adapter needed)
-	icqLegacyService.SetLegacySessionManager(sessionManager)
 
 	// Wire up OSCAR->legacy message bridge so OSCAR status notifications
 	// reach legacy clients via the session message pump

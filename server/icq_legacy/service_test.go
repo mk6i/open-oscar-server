@@ -147,6 +147,7 @@ func TestICQLegacyService_AuthenticateUser(t *testing.T) {
 				newMockBuddyListRegistry(t),
 				newMockBuddyService(t),
 				newMockICBMService(t),
+				&LegacySessionManager{sessions: map[uint32]*LegacySession{}},
 				slog.Default(),
 			)
 
@@ -175,8 +176,7 @@ func TestICQLegacyService_ProcessMessage(t *testing.T) {
 		req        MessageRequest
 		wantResult *MessageResult
 		wantErr    error
-		// legacySessionManager is set to non-nil when we need legacy session lookup
-		setupLegacyMgr func(t *testing.T, svc *ICQLegacyService)
+		legacyMgr  *LegacySessionManager
 	}{
 		{
 			name: "target online - legacy session exists",
@@ -186,13 +186,10 @@ func TestICQLegacyService_ProcessMessage(t *testing.T) {
 				MsgType: ICQLegacyMsgText,
 				Message: "hello",
 			},
-			setupLegacyMgr: func(t *testing.T, svc *ICQLegacyService) {
-				mgr := &LegacySessionManager{
-					sessions: map[uint32]*LegacySession{
-						22222: newTestLegacySession(22222),
-					},
-				}
-				svc.SetLegacySessionManager(mgr)
+			legacyMgr: &LegacySessionManager{
+				sessions: map[uint32]*LegacySession{
+					22222: newTestLegacySession(22222),
+				},
 			},
 			wantResult: &MessageResult{
 				Delivered:     true,
@@ -243,6 +240,7 @@ func TestICQLegacyService_ProcessMessage(t *testing.T) {
 				TargetOnline:  true,
 				TargetVersion: 0,
 			},
+			legacyMgr: &LegacySessionManager{sessions: map[uint32]*LegacySession{}},
 		},
 		{
 			name: "target offline - stored",
@@ -295,6 +293,7 @@ func TestICQLegacyService_ProcessMessage(t *testing.T) {
 				TargetOnline:  false,
 				TargetVersion: 0,
 			},
+			legacyMgr: &LegacySessionManager{sessions: map[uint32]*LegacySession{}},
 		},
 		{
 			name: "invalid sender UIN (0)",
@@ -309,6 +308,7 @@ func TestICQLegacyService_ProcessMessage(t *testing.T) {
 				StoredOffline: false,
 				TargetOnline:  false,
 			},
+			legacyMgr: &LegacySessionManager{sessions: map[uint32]*LegacySession{}},
 		},
 		{
 			name: "invalid target UIN (0)",
@@ -323,6 +323,7 @@ func TestICQLegacyService_ProcessMessage(t *testing.T) {
 				StoredOffline: false,
 				TargetOnline:  false,
 			},
+			legacyMgr: &LegacySessionManager{sessions: map[uint32]*LegacySession{}},
 		},
 	}
 
@@ -351,12 +352,9 @@ func TestICQLegacyService_ProcessMessage(t *testing.T) {
 				newMockBuddyListRegistry(t),
 				newMockBuddyService(t),
 				icbmSvc,
+				tc.legacyMgr,
 				slog.Default(),
 			)
-
-			if tc.setupLegacyMgr != nil {
-				tc.setupLegacyMgr(t, svc)
-			}
 
 			got, err := svc.ProcessMessage(context.Background(), tc.sess, tc.req)
 
@@ -375,11 +373,11 @@ func TestICQLegacyService_ProcessMessage(t *testing.T) {
 
 func TestICQLegacyService_ProcessContactList(t *testing.T) {
 	tests := []struct {
-		name           string
-		mockParams     mockParams
-		req            ContactListRequest
-		setupLegacyMgr func(t *testing.T, svc *ICQLegacyService)
-		wantResult     *ContactListResult
+		name       string
+		mockParams mockParams
+		req        ContactListRequest
+		legacyMgr  *LegacySessionManager
+		wantResult *ContactListResult
 	}{
 		{
 			name: "mixed online/offline contacts",
@@ -401,11 +399,8 @@ func TestICQLegacyService_ProcessContactList(t *testing.T) {
 					},
 				},
 			},
-			setupLegacyMgr: func(t *testing.T, svc *ICQLegacyService) {
-				mgr := &LegacySessionManager{
-					sessions: make(map[uint32]*LegacySession),
-				}
-				svc.SetLegacySessionManager(mgr)
+			legacyMgr: &LegacySessionManager{
+				sessions: make(map[uint32]*LegacySession),
 			},
 			wantResult: &ContactListResult{
 				OnlineContacts: []ContactStatus{
@@ -420,6 +415,7 @@ func TestICQLegacyService_ProcessContactList(t *testing.T) {
 				UIN:      11111,
 				Contacts: []uint32{},
 			},
+			legacyMgr: &LegacySessionManager{sessions: map[uint32]*LegacySession{}},
 			wantResult: &ContactListResult{
 				OnlineContacts: []ContactStatus{},
 			},
@@ -462,12 +458,10 @@ func TestICQLegacyService_ProcessContactList(t *testing.T) {
 				newMockBuddyListRegistry(t),
 				buddySvc,
 				newMockICBMService(t),
+				tc.legacyMgr,
 				slog.Default(),
 			)
 
-			if tc.setupLegacyMgr != nil {
-				tc.setupLegacyMgr(t, svc)
-			}
 			var instance *state.SessionInstance
 			if tc.req.UIN != 0 {
 				instance = newTestOSCARInstance(state.DisplayScreenName(strconv.FormatUint(uint64(tc.req.UIN), 10)))
@@ -490,11 +484,11 @@ func TestICQLegacyService_ProcessContactList(t *testing.T) {
 
 func TestICQLegacyService_ProcessStatusChange(t *testing.T) {
 	tests := []struct {
-		name           string
-		mockParams     mockParams
-		req            StatusChangeRequest
-		setupLegacyMgr func(t *testing.T, svc *ICQLegacyService)
-		wantTargets    int
+		name        string
+		mockParams  mockParams
+		req         StatusChangeRequest
+		legacyMgr   *LegacySessionManager
+		wantTargets int
 	}{
 		{
 			name: "status change with notification targets",
@@ -503,16 +497,11 @@ func TestICQLegacyService_ProcessStatusChange(t *testing.T) {
 				OldStatus: ICQLegacyStatusOnline,
 				NewStatus: ICQLegacyStatusAway,
 			},
-			setupLegacyMgr: func(t *testing.T, svc *ICQLegacyService) {
-				sess := newTestLegacySession(11111, legacySessionOptContactList([]uint32{22222}))
-				contactSess := newTestLegacySession(22222, legacySessionOptContactList([]uint32{11111}))
-				mgr := &LegacySessionManager{
-					sessions: map[uint32]*LegacySession{
-						11111: sess,
-						22222: contactSess,
-					},
-				}
-				svc.SetLegacySessionManager(mgr)
+			legacyMgr: &LegacySessionManager{
+				sessions: map[uint32]*LegacySession{
+					11111: newTestLegacySession(11111, legacySessionOptContactList([]uint32{22222})),
+					22222: newTestLegacySession(22222, legacySessionOptContactList([]uint32{11111})),
+				},
 			},
 			wantTargets: 1,
 		},
@@ -523,6 +512,7 @@ func TestICQLegacyService_ProcessStatusChange(t *testing.T) {
 				OldStatus: ICQLegacyStatusOnline,
 				NewStatus: ICQLegacyStatusAway,
 			},
+			legacyMgr:   &LegacySessionManager{sessions: map[uint32]*LegacySession{}},
 			wantTargets: 0,
 		},
 	}
@@ -544,12 +534,9 @@ func TestICQLegacyService_ProcessStatusChange(t *testing.T) {
 				newMockBuddyListRegistry(t),
 				newMockBuddyService(t),
 				newMockICBMService(t),
+				tc.legacyMgr,
 				slog.Default(),
 			)
-
-			if tc.setupLegacyMgr != nil {
-				tc.setupLegacyMgr(t, svc)
-			}
 
 			got, err := svc.ProcessStatusChange(context.Background(), tc.req)
 
@@ -652,6 +639,7 @@ func TestICQLegacyService_SearchByUIN(t *testing.T) {
 				newMockBuddyListRegistry(t),
 				newMockBuddyService(t),
 				newMockICBMService(t),
+				&LegacySessionManager{sessions: map[uint32]*LegacySession{}},
 				slog.Default(),
 			)
 
@@ -783,6 +771,7 @@ func TestICQLegacyService_SearchByName(t *testing.T) {
 				newMockBuddyListRegistry(t),
 				newMockBuddyService(t),
 				newMockICBMService(t),
+				&LegacySessionManager{sessions: map[uint32]*LegacySession{}},
 				slog.Default(),
 			)
 
@@ -876,6 +865,7 @@ func TestICQLegacyService_GetOfflineMessages(t *testing.T) {
 				newMockBuddyListRegistry(t),
 				newMockBuddyService(t),
 				newMockICBMService(t),
+				&LegacySessionManager{sessions: map[uint32]*LegacySession{}},
 				slog.Default(),
 			)
 
@@ -929,6 +919,7 @@ func TestICQLegacyService_RegisterNewUser(t *testing.T) {
 				newMockBuddyListRegistry(t),
 				newMockBuddyService(t),
 				newMockICBMService(t),
+				&LegacySessionManager{sessions: map[uint32]*LegacySession{}},
 				slog.Default(),
 			)
 
@@ -1037,6 +1028,7 @@ func TestICQLegacyService_DeleteUser(t *testing.T) {
 				newMockBuddyListRegistry(t),
 				newMockBuddyService(t),
 				newMockICBMService(t),
+				&LegacySessionManager{sessions: map[uint32]*LegacySession{}},
 				slog.Default(),
 			)
 

@@ -41,16 +41,14 @@ type ICQLegacyService struct {
 	relationshipFetcher   RelationshipFetcher
 	buddyListRegistry     BuddyListRegistry
 	buddyService          BuddyService
-	logger                *slog.Logger
-	timeNow               func() time.Time
-
-	// legacySessionManager is set by the server package
+	// legacySessionManager tracks legacy ICQ UDP sessions for presence, messaging,
+	// and contact notifications (shared with protocol handlers).
 	legacySessionManager *LegacySessionManager
+	logger               *slog.Logger
+	timeNow              func() time.Time
 }
 
 // NewICQLegacyService creates a new ICQLegacyService with the given dependencies.
-// The legacy session manager must be set separately via SetLegacySessionManager
-// after the server package initializes it, to avoid circular dependencies.
 func NewICQLegacyService(
 	authService AuthService,
 	userManager UserManager,
@@ -66,6 +64,7 @@ func NewICQLegacyService(
 	buddyListRegistry BuddyListRegistry,
 	buddyService BuddyService,
 	icbmSvc ICBMService,
+	legacySessionManager *LegacySessionManager,
 	logger *slog.Logger,
 ) *ICQLegacyService {
 	return &ICQLegacyService{
@@ -83,17 +82,10 @@ func NewICQLegacyService(
 		buddyListRegistry:     buddyListRegistry,
 		buddyService:          buddyService,
 		icbmService:           icbmSvc,
+		legacySessionManager:  legacySessionManager,
 		logger:                logger,
 		timeNow:               time.Now,
 	}
-}
-
-// SetLegacySessionManager sets the legacy session manager used for checking
-// online status and determining notification targets. This is called by the
-// server package after initialization to break the circular dependency between
-// the foodgroup and server/icq_legacy packages.
-func (s *ICQLegacyService) SetLegacySessionManager(mgr *LegacySessionManager) {
-	s.legacySessionManager = mgr
 }
 
 // ValidateCredentials checks if the given UIN and password are valid.
@@ -174,9 +166,7 @@ func (s *ICQLegacyService) AuthenticateUser(ctx context.Context, req AuthRequest
 
 	instance, err := s.authService.RegisterBOSSession(ctx, serverCookie, func(sess *state.Session) {
 		sess.OnSessionClose(func() {
-			if s.legacySessionManager != nil {
-				s.legacySessionManager.RemoveSession(req.UIN)
-			}
+			s.legacySessionManager.RemoveSession(req.UIN)
 		})
 	})
 	if err != nil {
@@ -294,24 +284,22 @@ func (s *ICQLegacyService) ProcessContactList(ctx context.Context, instance *sta
 		}
 
 		// Check if contact is online via legacy session manager
-		if s.legacySessionManager != nil {
-			legacySession := s.legacySessionManager.GetSession(contactUIN)
-			if legacySession != nil {
-				// Check visibility — invisible users should not appear online
-				// unless the viewer is on their visible list
-				contactStatus := legacySession.GetStatus()
-				visible := true
-				if contactStatus&ICQLegacyStatusInvisible != 0 {
-					visible = legacySession.IsOnVisibleList(req.UIN)
-				}
-				if visible {
-					status.Online = true
-					status.Status = contactStatus
-					s.logger.Debug("ProcessContactList: contact online (legacy)",
-						"contact_uin", contactUIN,
-						"status", fmt.Sprintf("0x%08X", status.Status),
-					)
-				}
+		legacySession := s.legacySessionManager.GetSession(contactUIN)
+		if legacySession != nil {
+			// Check visibility — invisible users should not appear online
+			// unless the viewer is on their visible list
+			contactStatus := legacySession.GetStatus()
+			visible := true
+			if contactStatus&ICQLegacyStatusInvisible != 0 {
+				visible = legacySession.IsOnVisibleList(req.UIN)
+			}
+			if visible {
+				status.Online = true
+				status.Status = contactStatus
+				s.logger.Debug("ProcessContactList: contact online (legacy)",
+					"contact_uin", contactUIN,
+					"status", fmt.Sprintf("0x%08X", status.Status),
+				)
 			}
 		}
 
@@ -409,20 +397,18 @@ func (s *ICQLegacyService) ProcessUserAdd(ctx context.Context, instance *state.S
 	}
 
 	// Check if target user is online via legacy session manager
-	if s.legacySessionManager != nil {
-		legacySession := s.legacySessionManager.GetSession(req.TargetUIN)
-		if legacySession != nil {
-			result.TargetOnline = true
-			result.TargetStatus = legacySession.GetStatus()
-			// SendYouWereAdded is true for legacy clients so they know someone added them
-			result.SendYouWereAdded = true
+	legacySession := s.legacySessionManager.GetSession(req.TargetUIN)
+	if legacySession != nil {
+		result.TargetOnline = true
+		result.TargetStatus = legacySession.GetStatus()
+		// SendYouWereAdded is true for legacy clients so they know someone added them
+		result.SendYouWereAdded = true
 
-			s.logger.Debug("ProcessUserAdd: target online (legacy)",
-				"target_uin", req.TargetUIN,
-				"status", fmt.Sprintf("0x%08X", result.TargetStatus),
-			)
-			return result, nil
-		}
+		s.logger.Debug("ProcessUserAdd: target online (legacy)",
+			"target_uin", req.TargetUIN,
+			"status", fmt.Sprintf("0x%08X", result.TargetStatus),
+		)
+		return result, nil
 	}
 
 	// Check if target user is online via OSCAR session
@@ -486,22 +472,20 @@ func (s *ICQLegacyService) ProcessMessage(ctx context.Context, session *LegacySe
 	)
 
 	// Check if target user is online via legacy session manager
-	if s.legacySessionManager != nil {
-		legacySession := s.legacySessionManager.GetSession(req.ToUIN)
-		if legacySession != nil {
-			// Target is online via legacy protocol
-			result.TargetOnline = true
-			result.Delivered = true
-			// Get the protocol version from the session
-			// The handler will use this to route to the correct protocol handler
-			result.TargetVersion = ICQLegacyVersionV5 // Default, actual version determined by session
+	legacySession := s.legacySessionManager.GetSession(req.ToUIN)
+	if legacySession != nil {
+		// Target is online via legacy protocol
+		result.TargetOnline = true
+		result.Delivered = true
+		// Get the protocol version from the session
+		// The handler will use this to route to the correct protocol handler
+		result.TargetVersion = ICQLegacyVersionV5 // Default, actual version determined by session
 
-			s.logger.Debug("ProcessMessage: target online (legacy)",
-				"to", req.ToUIN,
-				"status", fmt.Sprintf("0x%08X", legacySession.GetStatus()),
-			)
-			return result, nil
-		}
+		s.logger.Debug("ProcessMessage: target online (legacy)",
+			"to", req.ToUIN,
+			"status", fmt.Sprintf("0x%08X", legacySession.GetStatus()),
+		)
+		return result, nil
 	}
 
 	// Check if target user is online via OSCAR session
@@ -814,17 +798,15 @@ func (s *ICQLegacyService) GetUserInfoForProtocol(ctx context.Context, targetUIN
 
 	// Check if user is online
 	// First check legacy sessions
-	if s.legacySessionManager != nil {
-		legacySession := s.legacySessionManager.GetSession(targetUIN)
-		if legacySession != nil {
-			result.Online = true
-			result.Status = legacySession.GetStatus()
-			s.logger.Debug("GetUserInfoForProtocol: user online (legacy)",
-				"uin", targetUIN,
-				"status", fmt.Sprintf("0x%08X", result.Status),
-			)
-			return result, nil
-		}
+	legacySession := s.legacySessionManager.GetSession(targetUIN)
+	if legacySession != nil {
+		result.Online = true
+		result.Status = legacySession.GetStatus()
+		s.logger.Debug("GetUserInfoForProtocol: user online (legacy)",
+			"uin", targetUIN,
+			"status", fmt.Sprintf("0x%08X", result.Status),
+		)
+		return result, nil
 	}
 
 	// Check OSCAR sessions
@@ -1139,18 +1121,15 @@ func (s *ICQLegacyService) ProcessStatusChange(ctx context.Context, req StatusCh
 	// Get all users who have this user in their contact list
 	// These are the users who should be notified of the status change
 	// Use the legacy session manager's NotifyContactsOfStatus method
-	if s.legacySessionManager != nil {
-		// Get the session for the user whose status is changing
-		session := s.legacySessionManager.GetSession(req.UIN)
-		if session != nil {
-			// Get all UINs that should be notified (users who have this user in their contact list)
-			contactsToNotify := s.legacySessionManager.NotifyContactsOfStatus(session)
-			for _, contactUIN := range contactsToNotify {
-				result.NotifyTargets = append(result.NotifyTargets, NotifyTarget{
-					UIN:     contactUIN,
-					Version: 0, // Version will be determined by handler from session
-				})
-			}
+	session := s.legacySessionManager.GetSession(req.UIN)
+	if session != nil {
+		// Get all UINs that should be notified (users who have this user in their contact list)
+		contactsToNotify := s.legacySessionManager.NotifyContactsOfStatus(session)
+		for _, contactUIN := range contactsToNotify {
+			result.NotifyTargets = append(result.NotifyTargets, NotifyTarget{
+				UIN:     contactUIN,
+				Version: 0, // Version will be determined by handler from session
+			})
 		}
 	}
 
@@ -1160,27 +1139,25 @@ func (s *ICQLegacyService) ProcessStatusChange(ctx context.Context, req StatusCh
 
 	// Update the legacy session's OSCAR instance status and broadcast
 	// using session.TLVUserInfo() — exactly like OSCAR's SetUserInfoFields does.
-	if s.legacySessionManager != nil {
-		session := s.legacySessionManager.GetSession(req.UIN)
-		if session != nil && session.Instance != nil {
-			oscarStatus := mapLegacyStatusToOSCAR(req.NewStatus)
-			session.Instance.SetUserStatusBitmask(oscarStatus)
-			if oscarStatus != wire.OServiceUserStatusAvailable {
-				session.Instance.SetUserInfoFlag(wire.OServiceUserFlagUnavailable)
-			} else {
-				session.Instance.ClearUserInfoFlag(wire.OServiceUserFlagUnavailable)
-			}
+	statusSession := s.legacySessionManager.GetSession(req.UIN)
+	if statusSession != nil && statusSession.Instance != nil {
+		oscarStatus := mapLegacyStatusToOSCAR(req.NewStatus)
+		statusSession.Instance.SetUserStatusBitmask(oscarStatus)
+		if oscarStatus != wire.OServiceUserStatusAvailable {
+			statusSession.Instance.SetUserInfoFlag(wire.OServiceUserFlagUnavailable)
+		} else {
+			statusSession.Instance.ClearUserInfoFlag(wire.OServiceUserFlagUnavailable)
+		}
 
-			// Mirror OSCAR's SetUserInfoFields: if invisible, send departure;
-			// otherwise send arrival with updated TLVUserInfo.
-			if session.Instance.Session().Invisible() {
-				if err := s.buddyBroadcaster.BroadcastBuddyDeparted(ctx, screenName); err != nil {
-					s.logger.Debug("ProcessStatusChange: failed to broadcast departure", "err", err)
-				}
-			} else {
-				if err := s.buddyBroadcaster.BroadcastBuddyArrived(ctx, screenName, session.Instance.Session().TLVUserInfo()); err != nil {
-					s.logger.Debug("ProcessStatusChange: failed to broadcast to OSCAR clients", "err", err)
-				}
+		// Mirror OSCAR's SetUserInfoFields: if invisible, send departure;
+		// otherwise send arrival with updated TLVUserInfo.
+		if statusSession.Instance.Session().Invisible() {
+			if err := s.buddyBroadcaster.BroadcastBuddyDeparted(ctx, screenName); err != nil {
+				s.logger.Debug("ProcessStatusChange: failed to broadcast departure", "err", err)
+			}
+		} else {
+			if err := s.buddyBroadcaster.BroadcastBuddyArrived(ctx, screenName, statusSession.Instance.Session().TLVUserInfo()); err != nil {
+				s.logger.Debug("ProcessStatusChange: failed to broadcast to OSCAR clients", "err", err)
 			}
 		}
 	}
@@ -1202,30 +1179,28 @@ func (s *ICQLegacyService) NotifyStatusChange(ctx context.Context, uin uint32, s
 	oscarStatus := mapLegacyStatusToOSCAR(status)
 
 	// Update the OSCAR instance so session.TLVUserInfo() is correct
-	if s.legacySessionManager != nil {
-		session := s.legacySessionManager.GetSession(uin)
-		if session != nil && session.Instance != nil {
-			session.Instance.SetUserStatusBitmask(oscarStatus)
-			if oscarStatus != wire.OServiceUserStatusAvailable {
-				session.Instance.SetUserInfoFlag(wire.OServiceUserFlagUnavailable)
-			} else {
-				session.Instance.ClearUserInfoFlag(wire.OServiceUserFlagUnavailable)
-			}
+	notifySession := s.legacySessionManager.GetSession(uin)
+	if notifySession != nil && notifySession.Instance != nil {
+		notifySession.Instance.SetUserStatusBitmask(oscarStatus)
+		if oscarStatus != wire.OServiceUserStatusAvailable {
+			notifySession.Instance.SetUserInfoFlag(wire.OServiceUserFlagUnavailable)
+		} else {
+			notifySession.Instance.ClearUserInfoFlag(wire.OServiceUserFlagUnavailable)
+		}
 
-			// Invisible: send departure so OSCAR clients see user as offline
-			if status&ICQLegacyStatusInvisible != 0 {
-				if err := s.buddyBroadcaster.BroadcastBuddyDeparted(ctx, screenName); err != nil {
-					s.logger.Debug("NotifyStatusChange: failed to broadcast departure", "err", err)
-				}
-				return nil
-			}
-
-			userInfo := session.Instance.Session().TLVUserInfo()
-			if err := s.buddyBroadcaster.BroadcastBuddyArrived(ctx, screenName, userInfo); err != nil {
-				s.logger.Debug("NotifyStatusChange: failed to broadcast arrival", "err", err)
+		// Invisible: send departure so OSCAR clients see user as offline
+		if status&ICQLegacyStatusInvisible != 0 {
+			if err := s.buddyBroadcaster.BroadcastBuddyDeparted(ctx, screenName); err != nil {
+				s.logger.Debug("NotifyStatusChange: failed to broadcast departure", "err", err)
 			}
 			return nil
 		}
+
+		userInfo := notifySession.Instance.Session().TLVUserInfo()
+		if err := s.buddyBroadcaster.BroadcastBuddyArrived(ctx, screenName, userInfo); err != nil {
+			s.logger.Debug("NotifyStatusChange: failed to broadcast arrival", "err", err)
+		}
+		return nil
 	}
 
 	// Fallback if no session/instance — invisible should not broadcast arrival
@@ -1274,27 +1249,25 @@ func (s *ICQLegacyService) NotifyUserOnline(ctx context.Context, uin uint32, sta
 	// Update the legacy session's OSCAR instance status bitmask so that
 	// session.TLVUserInfo() reflects the correct status.
 	oscarStatus := mapLegacyStatusToOSCAR(status)
-	if s.legacySessionManager != nil {
-		session := s.legacySessionManager.GetSession(uin)
-		if session != nil && session.Instance != nil {
-			session.Instance.SetUserStatusBitmask(oscarStatus)
-			if oscarStatus != wire.OServiceUserStatusAvailable {
-				session.Instance.SetUserInfoFlag(wire.OServiceUserFlagUnavailable)
-			} else {
-				session.Instance.ClearUserInfoFlag(wire.OServiceUserFlagUnavailable)
-			}
+	onlineSession := s.legacySessionManager.GetSession(uin)
+	if onlineSession != nil && onlineSession.Instance != nil {
+		onlineSession.Instance.SetUserStatusBitmask(oscarStatus)
+		if oscarStatus != wire.OServiceUserStatusAvailable {
+			onlineSession.Instance.SetUserInfoFlag(wire.OServiceUserFlagUnavailable)
+		} else {
+			onlineSession.Instance.ClearUserInfoFlag(wire.OServiceUserFlagUnavailable)
+		}
 
-			// Invisible: don't broadcast arrival — user should appear offline
-			if status&ICQLegacyStatusInvisible != 0 {
-				return nil
-			}
+		// Invisible: don't broadcast arrival — user should appear offline
+		if status&ICQLegacyStatusInvisible != 0 {
+			return nil
+		}
 
-			// Use the session's TLVUserInfo — same as OSCAR's SetUserInfoFields
-			userInfo := session.Instance.Session().TLVUserInfo()
+		// Use the session's TLVUserInfo — same as OSCAR's SetUserInfoFields
+		userInfo := onlineSession.Instance.Session().TLVUserInfo()
 
-			if err := s.buddyBroadcaster.BroadcastBuddyArrived(ctx, screenName, userInfo); err != nil {
-				s.logger.Debug("NotifyUserOnline: failed to broadcast arrival", "uin", uin, "err", err)
-			}
+		if err := s.buddyBroadcaster.BroadcastBuddyArrived(ctx, screenName, userInfo); err != nil {
+			s.logger.Debug("NotifyUserOnline: failed to broadcast arrival", "uin", uin, "err", err)
 		}
 	}
 

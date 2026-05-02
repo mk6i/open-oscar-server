@@ -77,6 +77,7 @@ func TestProperty_ServiceBehavioralEquivalence(t *testing.T) {
 			newMockBuddyListRegistry(t),
 			newMockBuddyService(t),
 			newMockICBMService(t),
+			&LegacySessionManager{sessions: map[uint32]*LegacySession{}},
 			slog.Default(),
 		)
 
