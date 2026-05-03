@@ -498,7 +498,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 		},
 		{
 			name:     "add 2 ICQ buddies one that requires authorization",
-			instance: newTestInstance("me"),
+			instance: newTestInstance("100001", sessOptUIN(100001)),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.Feedbag,
@@ -522,7 +522,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 				feedbagManagerParams: feedbagManagerParams{
 					feedbagUpsertParams: feedbagUpsertParams{
 						{
-							screenName: state.NewIdentScreenName("me"),
+							screenName: state.NewIdentScreenName("100001"),
 							items: []wire.FeedbagItem{
 								{
 									ClassID: wire.FeedbagClassIdBuddy,
@@ -543,7 +543,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 				buddyBroadcasterParams: buddyBroadcasterParams{
 					broadcastVisibilityParams: broadcastVisibilityParams{
 						{
-							from: state.NewIdentScreenName("me"),
+							from: state.NewIdentScreenName("100001"),
 							filter: []state.IdentScreenName{
 								state.NewIdentScreenName("123401"),
 							},
@@ -553,7 +553,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 				messageRelayerParams: messageRelayerParams{
 					relayToOtherInstancesParams: relayToOtherInstancesParams{
 						{
-							screenName: state.NewIdentScreenName("me"),
+							screenName: state.NewIdentScreenName("100001"),
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
@@ -573,7 +573,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					},
 					relayToSelfParams: relayToSelfParams{
 						{
-							screenName: state.NewIdentScreenName("me"),
+							screenName: state.NewIdentScreenName("100001"),
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
@@ -589,8 +589,8 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 				},
 				contactPreAuthorizerParams: contactPreAuthorizerParams{
 					requiresAuthorizationParams: requiresAuthorizationParams{
-						{owner: state.NewIdentScreenName("123400"), requester: state.NewIdentScreenName("me"), result: true},
-						{owner: state.NewIdentScreenName("123401"), requester: state.NewIdentScreenName("me"), result: false},
+						{owner: state.NewIdentScreenName("123400"), requester: state.NewIdentScreenName("100001"), result: true},
+						{owner: state.NewIdentScreenName("123401"), requester: state.NewIdentScreenName("100001"), result: false},
 					},
 				},
 			},
@@ -602,7 +602,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 				TLVRestBlock: wire.TLVRestBlock{
 					TLVList: wire.TLVList{
 						wire.NewTLVLE(wire.ICBMTLVData, wire.ICBMCh4Message{
-							UIN:         0,
+							UIN:         100001,
 							MessageType: wire.ICBMMsgTypeAdded,
 						}),
 						wire.NewTLVBE(wire.ICBMTLVStore, []byte{}),
@@ -2007,6 +2007,212 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:     "ICQ user adds AIM buddy: expect ICQ user to preauthorize AIM user",
+			instance: newTestInstance("100777", sessOptUIN(100777)),
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagInsertItem,
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x13_0x08_FeedbagInsertItem{
+					Items: []wire.FeedbagItem{
+						{
+							ClassID: wire.FeedbagClassIdBuddy,
+							Name:    "buddyaim",
+						},
+					},
+				},
+			},
+			mockParams: mockParams{
+				contactPreAuthorizerParams: contactPreAuthorizerParams{
+					recordPreAuthParams: recordPreAuthParams{
+						{
+							owner: state.NewIdentScreenName("100777"),
+							buddy: state.NewIdentScreenName("buddyaim"),
+						},
+					},
+				},
+				feedbagManagerParams: feedbagManagerParams{
+					feedbagUpsertParams: feedbagUpsertParams{
+						{
+							screenName: state.NewIdentScreenName("100777"),
+							items: []wire.FeedbagItem{
+								{
+									ClassID: wire.FeedbagClassIdBuddy,
+									Name:    "buddyaim",
+								},
+							},
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToOtherInstancesParams: relayToOtherInstancesParams{
+						{
+							screenName: state.NewIdentScreenName("100777"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagInsertItem,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
+									Items: []wire.FeedbagItem{
+										{
+											ClassID: wire.FeedbagClassIdBuddy,
+											Name:    "buddyaim",
+										},
+									},
+								},
+							},
+						},
+					},
+					relayToSelfParams: relayToSelfParams{
+						{
+							screenName: state.NewIdentScreenName("100777"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagStatus,
+									RequestID: 1234,
+								},
+								Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
+									Results: []uint16{0x0000},
+								},
+							},
+						},
+					},
+				},
+				buddyBroadcasterParams: buddyBroadcasterParams{
+					broadcastVisibilityParams: broadcastVisibilityParams{
+						{
+							from: state.NewIdentScreenName("100777"),
+							filter: []state.IdentScreenName{
+								state.NewIdentScreenName("buddyaim"),
+							},
+						},
+					},
+				},
+			},
+			expectOutput: nil,
+		},
+		{
+			name:     "AIM user adds ICQ buddy pending auth: expect AIM user to send auth request to ICQ user",
+			instance: newTestInstance("myaim"),
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagInsertItem,
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x13_0x08_FeedbagInsertItem{
+					Items: []wire.FeedbagItem{
+						{
+							ClassID: wire.FeedbagClassIdBuddy,
+							Name:    "990011",
+						},
+					},
+				},
+			},
+			mockParams: mockParams{
+				contactPreAuthorizerParams: contactPreAuthorizerParams{
+					requiresAuthorizationParams: requiresAuthorizationParams{
+						{
+							owner:     state.NewIdentScreenName("990011"),
+							requester: state.NewIdentScreenName("myaim"),
+							result:    true,
+						},
+					},
+				},
+				feedbagManagerParams: feedbagManagerParams{
+					feedbagUpsertParams: feedbagUpsertParams{
+						{
+							screenName: state.NewIdentScreenName("myaim"),
+							items: []wire.FeedbagItem{
+								{
+									ClassID: wire.FeedbagClassIdBuddy,
+									Name:    "990011",
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.FeedbagAttributesPending, []byte{}),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToOtherInstancesParams: relayToOtherInstancesParams{
+						{
+							screenName: state.NewIdentScreenName("myaim"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagInsertItem,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
+									Items: []wire.FeedbagItem{
+										{
+											ClassID: wire.FeedbagClassIdBuddy,
+											Name:    "990011",
+											TLVLBlock: wire.TLVLBlock{
+												TLVList: wire.TLVList{
+													wire.NewTLVBE(wire.FeedbagAttributesPending, []byte{}),
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+					relayToSelfParams: relayToSelfParams{
+						{
+							screenName: state.NewIdentScreenName("myaim"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagStatus,
+									RequestID: 1234,
+								},
+								Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
+									Results: []uint16{0x0000},
+								},
+							},
+						},
+					},
+				},
+				buddyBroadcasterParams: buddyBroadcasterParams{
+					broadcastVisibilityParams: broadcastVisibilityParams{
+						{
+							from: state.NewIdentScreenName("myaim"),
+							filter: []state.IdentScreenName{
+								state.NewIdentScreenName("990011"),
+							},
+						},
+					},
+				},
+			},
+			expectOutput: nil,
+			expectICBM:   true,
+			wantICBMBody: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
+				ChannelID:  wire.ICBMChannelICQ,
+				ScreenName: "990011",
+				TLVRestBlock: wire.TLVRestBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVLE(wire.ICBMTLVData, wire.ICBMCh4Message{
+							UIN:         0,
+							MessageType: wire.ICBMMsgTypeAuthReq,
+							Message:     "\xFE\xFE\xFE\xFE1\xFE",
+						}),
+						wire.NewTLVBE(wire.ICBMTLVStore, []byte{}),
+					},
+				},
+			},
+		},
 	}
 
 	for _, tc := range cases {
@@ -2058,6 +2264,9 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					Return(params.err)
 			}
 			contactPreAuth := newMockContactPreAuthorizer(t)
+			for _, params := range tc.mockParams.recordPreAuthParams {
+				contactPreAuth.EXPECT().RecordPreAuth(matchContext(), params.owner, params.buddy).Return(params.err)
+			}
 			for _, params := range tc.mockParams.requiresAuthorizationParams {
 				contactPreAuth.EXPECT().RequiresAuthorization(matchContext(), params.owner, params.requester).Return(params.result, params.err)
 			}
@@ -2494,7 +2703,6 @@ func TestFeedbagService_RequestAuthorizeToHost(t *testing.T) {
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.ICBM,
 					SubGroup:  wire.ICBMChannelMsgToHost,
-					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
 					ChannelID:  wire.ICBMChannelICQ,
@@ -2560,7 +2768,6 @@ func TestFeedbagService_RequestAuthorizeToHost(t *testing.T) {
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.ICBM,
 					SubGroup:  wire.ICBMChannelMsgToHost,
-					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
 					ChannelID:  wire.ICBMChannelICQ,
@@ -2622,7 +2829,6 @@ func TestFeedbagService_RequestAuthorizeToHost(t *testing.T) {
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.ICBM,
 					SubGroup:  wire.ICBMChannelMsgToHost,
-					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
 					ChannelID:  wire.ICBMChannelICQ,
@@ -2684,7 +2890,6 @@ func TestFeedbagService_RequestAuthorizeToHost(t *testing.T) {
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.ICBM,
 					SubGroup:  wire.ICBMChannelMsgToHost,
-					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
 					ChannelID:  wire.ICBMChannelICQ,
@@ -2918,7 +3123,7 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 									Name:    "100001",
 									TLVLBlock: wire.TLVLBlock{
 										TLVList: wire.TLVList{
-											wire.NewTLVBE(wire.FeedbagAttributesPending, uint16(0)),
+											wire.NewTLVBE(wire.FeedbagAttributesPending, []byte{}),
 										},
 									},
 								},
@@ -3037,7 +3242,7 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 									Name:    "100001",
 									TLVLBlock: wire.TLVLBlock{
 										TLVList: wire.TLVList{
-											wire.NewTLVBE(wire.FeedbagAttributesPending, uint16(0)),
+											wire.NewTLVBE(wire.FeedbagAttributesPending, []byte{}),
 										},
 									},
 								},

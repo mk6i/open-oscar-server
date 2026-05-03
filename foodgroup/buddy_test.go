@@ -160,6 +160,75 @@ func TestBuddyService_AddBuddies(t *testing.T) {
 			},
 		},
 		{
+			name:     "AIM session rejects ICQ UIN on client-side buddy path",
+			instance: newTestInstance("aimuser", sessOptSignonComplete),
+			bodyIn: wire.SNAC_0x03_0x04_BuddyAddBuddies{
+				Buddies: []struct {
+					ScreenName string `oscar:"len_prefix=uint8"`
+				}{
+					{ScreenName: "100001"},
+				},
+			},
+			wantSNAC: &wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.Buddy,
+					SubGroup:  wire.BuddyRejectNotification,
+					RequestID: 42,
+				},
+				Body: wire.SNAC_0x03_0x0A_BuddyRejectNotification{
+					Buddies: []struct {
+						ScreenName string `oscar:"len_prefix=uint8"`
+					}{
+						{ScreenName: "100001"},
+					},
+				},
+			},
+		},
+		{
+			name:     "AIM session rejects ICQ UIN but adds non-UIN buddy in same batch",
+			instance: newTestInstance("aimuser", sessOptSignonComplete),
+			bodyIn: wire.SNAC_0x03_0x04_BuddyAddBuddies{
+				Buddies: []struct {
+					ScreenName string `oscar:"len_prefix=uint8"`
+				}{
+					{ScreenName: "100001"},
+					{ScreenName: "buddyalice"},
+				},
+			},
+			mockParams: mockParams{
+				clientSideBuddyListManagerParams: clientSideBuddyListManagerParams{
+					addBuddyParams: addBuddyParams{
+						{
+							me:   state.NewIdentScreenName("aimuser"),
+							them: state.NewIdentScreenName("buddyalice"),
+						},
+					},
+				},
+				buddyBroadcasterParams: buddyBroadcasterParams{
+					broadcastVisibilityParams: broadcastVisibilityParams{
+						{
+							from:   state.NewIdentScreenName("aimuser"),
+							filter: []state.IdentScreenName{state.NewIdentScreenName("buddyalice")},
+						},
+					},
+				},
+			},
+			wantSNAC: &wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.Buddy,
+					SubGroup:  wire.BuddyRejectNotification,
+					RequestID: 42,
+				},
+				Body: wire.SNAC_0x03_0x0A_BuddyRejectNotification{
+					Buddies: []struct {
+						ScreenName string `oscar:"len_prefix=uint8"`
+					}{
+						{ScreenName: "100001"},
+					},
+				},
+			},
+		},
+		{
 			name:     "non-UIN skips pre-auth check",
 			instance: newTestInstance("100002", sessOptSignonComplete),
 			bodyIn: wire.SNAC_0x03_0x04_BuddyAddBuddies{

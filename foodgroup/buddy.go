@@ -64,6 +64,16 @@ func (s BuddyService) AddBuddies(ctx context.Context, instance *state.SessionIns
 	for _, entry := range inBody.Buddies {
 		them := state.NewIdentScreenName(entry.ScreenName)
 		if them.UIN() != 0 {
+			if instance.IdentScreenName().UIN() == 0 {
+				// AIM may not add ICQ UIN buddies on the client-side buddy path; only the
+				// feedbag route supports ICQ interop for AIM with proper authorization.
+				// Otherwise an AIM session could subscribe to buddy presence ("snoop" on ICQ
+				// status) without completing the authorization flow.
+				rejected = append(rejected, struct {
+					ScreenName string `oscar:"len_prefix=uint8"`
+				}{ScreenName: entry.ScreenName})
+				continue
+			}
 			blocked, err := s.contactPreAuthorizer.RequiresAuthorization(ctx, them, instance.IdentScreenName())
 			if err != nil {
 				return nil, err

@@ -644,6 +644,20 @@ func (s *ICQService) SetWorkInfo(ctx context.Context, instance *state.SessionIns
 func (s *ICQService) ShortUserInfo(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x04BA_DBQueryMetaReqShortInfo, seq uint16) error {
 	user, err := s.userFinder.FindByUIN(ctx, inBody.UIN)
 	if err != nil {
+		if errors.Is(err, state.ErrNoUser) {
+			msg := wire.ICQMessageReplyEnvelope{
+				Message: wire.ICQ_0x07DA_0x0104_DBQueryMetaReplyShortInfo{
+					ICQMetadata: wire.ICQMetadata{
+						UIN:     instance.UIN(),
+						ReqType: wire.ICQDBQueryMetaReply,
+						Seq:     seq,
+					},
+					ReqSubType: wire.ICQDBQueryMetaReplyShortInfo,
+					Success:    wire.ICQStatusCodeErr,
+				},
+			}
+			return s.reply(ctx, instance, msg)
+		}
 		return err
 	}
 

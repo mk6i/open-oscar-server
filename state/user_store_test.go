@@ -127,6 +127,68 @@ func TestSQLiteUserStore_FeedbagUpsert(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, wire.FeedbagPDMode(pdMode), wire.FeedbagPDModePermitAll)
 	})
+
+	t.Run("authPending true for buddy with FeedbagAttributesPending TLV", func(t *testing.T) {
+		defer func() {
+			assert.NoError(t, os.Remove(testFile))
+		}()
+
+		f, err := NewSQLiteUserStore(testFile)
+		require.NoError(t, err)
+
+		me := NewIdentScreenName("me")
+		err = f.FeedbagUpsert(context.Background(), me, []wire.FeedbagItem{
+			{
+				GroupID: 0,
+				ItemID:  1,
+				ClassID: wire.FeedbagClassIdBuddy,
+				Name:    "buddy1",
+				TLVLBlock: wire.TLVLBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.FeedbagAttributesPending, uint16(0)),
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		var authPending bool
+		err = f.db.QueryRow(
+			`SELECT authPending FROM feedbag WHERE screenName = ? AND itemID = 1`,
+			me.String(),
+		).Scan(&authPending)
+		require.NoError(t, err)
+		assert.True(t, authPending)
+	})
+
+	t.Run("authPending false for buddy without pending TLV", func(t *testing.T) {
+		defer func() {
+			assert.NoError(t, os.Remove(testFile))
+		}()
+
+		f, err := NewSQLiteUserStore(testFile)
+		require.NoError(t, err)
+
+		me := NewIdentScreenName("me")
+		err = f.FeedbagUpsert(context.Background(), me, []wire.FeedbagItem{
+			{
+				GroupID:   0,
+				ItemID:    1,
+				ClassID:   wire.FeedbagClassIdBuddy,
+				Name:      "buddy1",
+				TLVLBlock: wire.TLVLBlock{},
+			},
+		})
+		require.NoError(t, err)
+
+		var authPending bool
+		err = f.db.QueryRow(
+			`SELECT authPending FROM feedbag WHERE screenName = ? AND itemID = 1`,
+			me.String(),
+		).Scan(&authPending)
+		require.NoError(t, err)
+		assert.False(t, authPending)
+	})
 }
 
 func TestFeedbagDelete(t *testing.T) {
@@ -626,12 +688,16 @@ func TestSQLiteUserStore_DeleteUser_DeleteNonExistentUser(t *testing.T) {
 	assert.ErrorIs(t, ErrNoUser, err)
 }
 
-func newFeedbagItem(classID uint16, itemID uint16, name string) wire.FeedbagItem {
-	return wire.FeedbagItem{
+func newFeedbagItem(classID uint16, itemID uint16, name string, feedbagPending bool) wire.FeedbagItem {
+	item := wire.FeedbagItem{
 		ClassID: classID,
 		ItemID:  itemID,
 		Name:    name,
 	}
+	if feedbagPending && classID == wire.FeedbagClassIdBuddy {
+		item.Append(wire.NewTLVBE(wire.FeedbagAttributesPending, uint16(0)))
+	}
+	return item
 }
 
 func pdInfoItem(itemID uint16, pdMode wire.FeedbagPDMode) wire.FeedbagItem {

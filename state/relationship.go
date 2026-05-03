@@ -56,7 +56,7 @@ WITH myScreenName AS (SELECT ?),
                               COALESCE(clientSide.isPermit OR feedbag.isPermit, FALSE) AS isPermit,
                               COALESCE(clientSide.isDeny OR feedbag.isDeny, FALSE) AS isDeny
                        FROM (SELECT feedbag.name                                         AS _screenName,
-                                    MAX(CASE WHEN feedbag.classId = 0 THEN 1 ELSE 0 END) AS isBuddy,
+                                    MAX(CASE WHEN feedbag.classId = 0 AND NOT feedbag.authPending THEN 1 ELSE 0 END) AS isBuddy,
                                     MAX(CASE WHEN feedbag.classId = 2 THEN 1 ELSE 0 END) AS isPermit,
                                     MAX(CASE WHEN feedbag.classId = 3 THEN 1 ELSE 0 END) AS isDeny
                              FROM feedbag
