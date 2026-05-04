@@ -102,8 +102,10 @@ func TestAge(t *testing.T) {
 		{
 			name: "Valid birthday, only year is set",
 			user: User{
-				ICQMoreInfo: ICQMoreInfo{
-					BirthYear: 1990,
+				ICQInfo: ICQInfo{
+					More: ICQMoreInfo{
+						BirthYear: 1990,
+					},
 				},
 			},
 			timeNow: func() time.Time {
@@ -114,10 +116,12 @@ func TestAge(t *testing.T) {
 		{
 			name: "Valid birthday, birthday passed this year",
 			user: User{
-				ICQMoreInfo: ICQMoreInfo{
-					BirthYear:  1990,
-					BirthMonth: 5,
-					BirthDay:   10,
+				ICQInfo: ICQInfo{
+					More: ICQMoreInfo{
+						BirthYear:  1990,
+						BirthMonth: 5,
+						BirthDay:   10,
+					},
 				},
 			},
 			timeNow: func() time.Time {
@@ -128,10 +132,12 @@ func TestAge(t *testing.T) {
 		{
 			name: "Valid birthday, birthday not yet passed this year",
 			user: User{
-				ICQMoreInfo: ICQMoreInfo{
-					BirthYear:  1990,
-					BirthMonth: 12,
-					BirthDay:   10,
+				ICQInfo: ICQInfo{
+					More: ICQMoreInfo{
+						BirthYear:  1990,
+						BirthMonth: 12,
+						BirthDay:   10,
+					},
 				},
 			},
 			timeNow: func() time.Time {
@@ -142,10 +148,12 @@ func TestAge(t *testing.T) {
 		{
 			name: "Birthday is today",
 			user: User{
-				ICQMoreInfo: ICQMoreInfo{
-					BirthYear:  1990,
-					BirthMonth: 8,
-					BirthDay:   1,
+				ICQInfo: ICQInfo{
+					More: ICQMoreInfo{
+						BirthYear:  1990,
+						BirthMonth: 8,
+						BirthDay:   1,
+					},
 				},
 			},
 			timeNow: func() time.Time {
@@ -156,10 +164,12 @@ func TestAge(t *testing.T) {
 		{
 			name: "Invalid birthday, year is zero",
 			user: User{
-				ICQMoreInfo: ICQMoreInfo{
-					BirthYear:  0,
-					BirthMonth: 8,
-					BirthDay:   1,
+				ICQInfo: ICQInfo{
+					More: ICQMoreInfo{
+						BirthYear:  0,
+						BirthMonth: 8,
+						BirthDay:   1,
+					},
 				},
 			},
 			timeNow: func() time.Time {
@@ -170,10 +180,12 @@ func TestAge(t *testing.T) {
 		{
 			name: "Invalid birthday, day is zero",
 			user: User{
-				ICQMoreInfo: ICQMoreInfo{
-					BirthYear:  1990,
-					BirthMonth: 8,
-					BirthDay:   0,
+				ICQInfo: ICQInfo{
+					More: ICQMoreInfo{
+						BirthYear:  1990,
+						BirthMonth: 8,
+						BirthDay:   0,
+					},
 				},
 			},
 			timeNow: func() time.Time {
@@ -184,10 +196,12 @@ func TestAge(t *testing.T) {
 		{
 			name: "Invalid birthday, month is zero",
 			user: User{
-				ICQMoreInfo: ICQMoreInfo{
-					BirthYear:  1990,
-					BirthMonth: 0,
-					BirthDay:   1,
+				ICQInfo: ICQInfo{
+					More: ICQMoreInfo{
+						BirthYear:  1990,
+						BirthMonth: 0,
+						BirthDay:   1,
+					},
 				},
 			},
 			timeNow: func() time.Time {

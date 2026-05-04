@@ -3,9 +3,11 @@ package foodgroup
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"log/slog"
+	"math/rand"
 	"strconv"
 	"strings"
 	"time"
@@ -544,6 +546,282 @@ func (s *ICQService) SetEmails(ctx context.Context, instance *state.SessionInsta
 	return s.reqAck(ctx, instance, seq, wire.ICQDBQueryMetaReplySetEmails)
 }
 
+// SetICQInfo handles the TLV-based CLI_SET_FULLINFO (0x0C3A) request used by
+// ICQLite to update profile information in a single packet. The TLV chain may
+// contain any subset of fields; omitted fields are preserved by loading the
+// current user record and overlaying only the values that were sent. Within a
+// multi-valued group (languages, interests, affiliations) any unspecified
+// slots are reset when at least one TLV in that group is present, matching
+// the way ICQLite tabs replace their entire group on save.
+func (s *ICQService) SetICQInfo(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x0C3A_DBQueryMetaReqSetFullInfo, seq uint16) error {
+	user, err := s.userFinder.FindByUIN(ctx, instance.UIN())
+	if err != nil {
+		return fmt.Errorf("FindByUIN: %w", err)
+	}
+
+	// Multi-valued tags are collected in encounter order and applied to
+	// their target struct after the loop.
+	var langTLVs []uint8
+	var interestTLVs, currentAffTLVs, pastAffTLVs [][]byte
+
+	for _, tlv := range inBody.TLVList {
+		switch tlv.Tag {
+
+		// ----- ICQBasicInfo -----
+		case wire.ICQTLVTagsFirstName:
+			if v, ok := decodeICQSString(tlv.Value); ok {
+				user.ICQInfo.Basic.FirstName = v
+			}
+		case wire.ICQTLVTagsLastName:
+			if v, ok := decodeICQSString(tlv.Value); ok {
+				user.ICQInfo.Basic.LastName = v
+			}
+		case wire.ICQTLVTagsNickname:
+			if v, ok := decodeICQSString(tlv.Value); ok {
+				user.ICQInfo.Basic.Nickname = v
+			}
+		case wire.ICQTLVTagsEmail:
+			if email, publish, ok := decodeICQECombo(tlv.Value); ok {
+				user.ICQInfo.Basic.EmailAddress = email
+				// publish=0 means "publish my email", matching the
+				// existing ICQUserFlagPublishEmailYes (0) convention.
+				user.ICQInfo.Basic.PublishEmail = publish == wire.ICQUserFlagPublishEmailYes
+			}
+		case wire.ICQTLVTagsHomeCityName:
+			if v, ok := decodeICQSString(tlv.Value); ok {
+				user.ICQInfo.Basic.City = v
+			}
+		case wire.ICQTLVTagsHomeStateAbbr:
+			if v, ok := decodeICQSString(tlv.Value); ok {
+				user.ICQInfo.Basic.State = v
+			}
+		case wire.ICQTLVTagsHomeCountryCode:
+			if v, ok := readUint16LE(tlv.Value); ok {
+				user.ICQInfo.Basic.CountryCode = v
+			}
+		case wire.ICQTLVTagsHomeStreetAddress:
+			if v, ok := decodeICQSString(tlv.Value); ok {
+				user.ICQInfo.Basic.Address = v
+			}
+		case wire.ICQTLVTagsHomeZipCode:
+			if v, ok := readUint32LE(tlv.Value); ok {
+				user.ICQInfo.Basic.ZIPCode = strconv.FormatUint(uint64(v), 10)
+			}
+		case wire.ICQTLVTagsHomePhoneNumber:
+			if v, ok := decodeICQSString(tlv.Value); ok {
+				user.ICQInfo.Basic.Phone = v
+			}
+		case wire.ICQTLVTagsHomeFaxNumber:
+			if v, ok := decodeICQSString(tlv.Value); ok {
+				user.ICQInfo.Basic.Fax = v
+			}
+		case wire.ICQTLVTagsHomeCellularPhoneNumber:
+			if v, ok := decodeICQSString(tlv.Value); ok {
+				user.ICQInfo.Basic.CellPhone = v
+			}
+		case wire.ICQTLVTagsGMTOffset:
+			if v, ok := readUint8(tlv.Value); ok {
+				user.ICQInfo.Basic.GMTOffset = v
+			}
+
+		// ----- ICQMoreInfo -----
+		case wire.ICQTLVTagsGender:
+			if v, ok := readUint8(tlv.Value); ok {
+				user.ICQInfo.More.Gender = uint16(v)
+			}
+		case wire.ICQTLVTagsSpokenLanguage:
+			if v, ok := readUint8(tlv.Value); ok {
+				langTLVs = append(langTLVs, v)
+			}
+		case wire.ICQTLVTagsBirthdayInfo:
+			if year, month, day, ok := decodeICQBCombo(tlv.Value); ok {
+				user.ICQInfo.More.BirthYear = year
+				user.ICQInfo.More.BirthMonth = uint8(month)
+				user.ICQInfo.More.BirthDay = uint8(day)
+			}
+		case wire.ICQTLVTagsHomepageURL:
+			if _, url, ok := decodeICQICombo(tlv.Value); ok {
+				user.ICQInfo.More.HomePageAddr = url
+			}
+
+		// ----- ICQWorkInfo -----
+		case wire.ICQTLVTagsWorkCompanyName:
+			if v, ok := decodeICQSString(tlv.Value); ok {
+				user.ICQInfo.Work.Company = v
+			}
+		case wire.ICQTLVTagsWorkDepartmentName:
+			if v, ok := decodeICQSString(tlv.Value); ok {
+				user.ICQInfo.Work.Department = v
+			}
+		case wire.ICQTLVTagsWorkPositionTitle:
+			if v, ok := decodeICQSString(tlv.Value); ok {
+				user.ICQInfo.Work.Position = v
+			}
+		case wire.ICQTLVTagsWorkOccupationCode:
+			if v, ok := readUint16LE(tlv.Value); ok {
+				user.ICQInfo.Work.OccupationCode = v
+			}
+		case wire.ICQTLVTagsWorkStreetAddress:
+			if v, ok := decodeICQSString(tlv.Value); ok {
+				user.ICQInfo.Work.Address = v
+			}
+		case wire.ICQTLVTagsWorkCityName:
+			if v, ok := decodeICQSString(tlv.Value); ok {
+				user.ICQInfo.Work.City = v
+			}
+		case wire.ICQTLVTagsWorkStateName:
+			if v, ok := decodeICQSString(tlv.Value); ok {
+				user.ICQInfo.Work.State = v
+			}
+		case wire.ICQTLVTagsWorkCountryCode:
+			if v, ok := readUint16LE(tlv.Value); ok {
+				user.ICQInfo.Work.CountryCode = v
+			}
+		case wire.ICQTLVTagsWorkZipCode:
+			if v, ok := readUint32LE(tlv.Value); ok {
+				user.ICQInfo.Work.ZIPCode = strconv.FormatUint(uint64(v), 10)
+			}
+		case wire.ICQTLVTagsWorkPhoneNumber:
+			if v, ok := decodeICQSString(tlv.Value); ok {
+				user.ICQInfo.Work.Phone = v
+			}
+		case wire.ICQTLVTagsWorkFaxNumber:
+			if v, ok := decodeICQSString(tlv.Value); ok {
+				user.ICQInfo.Work.Fax = v
+			}
+		case wire.ICQTLVTagsWorkWebpageURL:
+			if v, ok := decodeICQSString(tlv.Value); ok {
+				user.ICQInfo.Work.WebPage = v
+			}
+
+		// ----- ICQPermissions -----
+		case wire.ICQTLVTagsAuthorizationPermissions:
+			if v, ok := readUint8(tlv.Value); ok {
+				// Matches the wire-struct convention used by SetPermissions:
+				// authorization == 0 means "authorization required".
+				user.ICQInfo.Permissions.AuthRequired = v == 0
+			}
+		case wire.ICQTLVTagsShowWebStatusPermissions:
+			if v, ok := readUint8(tlv.Value); ok {
+				user.ICQInfo.Permissions.WebAware = v == 1
+			}
+
+		// ----- ICQUserNotes -----
+		case wire.ICQTLVTagsNotesText:
+			if v, ok := decodeICQSString(tlv.Value); ok {
+				user.ICQInfo.Notes.Notes = v
+			}
+
+		// ----- ICQInterests -----
+		case wire.ICQTLVTagsInterestsNode:
+			interestTLVs = append(interestTLVs, tlv.Value)
+
+		// ----- ICQAffiliations -----
+		case wire.ICQTLVTagsAffiliationsNode:
+			currentAffTLVs = append(currentAffTLVs, tlv.Value)
+		case wire.ICQTLVTagsPastInfoNode:
+			pastAffTLVs = append(pastAffTLVs, tlv.Value)
+
+		// ----- ICQHomepageCategory -----
+		case wire.ICQTLVTagsHomepageCategoryKeywords:
+			if code, kw, ok := decodeICQICombo(tlv.Value); ok {
+				user.ICQInfo.HomepageCategory.Index = code
+				user.ICQInfo.HomepageCategory.Description = kw
+				user.ICQInfo.HomepageCategory.Enabled = true
+			}
+
+		default:
+			// Search-only or otherwise unmapped tags
+			// (UIN, Age, AgeRangeSearch, WhitepagesSearchKeywords,
+			// SearchOnlineUsersFlag, OriginallyFromCity/State/CountryCode).
+			s.logger.Debug("ICQ SetICQInfo: ignoring unsupported TLV",
+				"tag", fmt.Sprintf("0x%04X", tlv.Tag),
+				"len", len(tlv.Value))
+		}
+	}
+
+	if len(langTLVs) > 0 {
+		user.ICQInfo.More.Lang1, user.ICQInfo.More.Lang2, user.ICQInfo.More.Lang3 = 0, 0, 0
+		for i, v := range langTLVs {
+			switch i {
+			case 0:
+				user.ICQInfo.More.Lang1 = v
+			case 1:
+				user.ICQInfo.More.Lang2 = v
+			case 2:
+				user.ICQInfo.More.Lang3 = v
+			}
+		}
+	}
+
+	if len(interestTLVs) > 0 {
+		user.ICQInfo.Interests = state.ICQInterests{}
+		for i, raw := range interestTLVs {
+			code, kw, ok := decodeICQICombo(raw)
+			if !ok {
+				continue
+			}
+			switch i {
+			case 0:
+				user.ICQInfo.Interests.Code1, user.ICQInfo.Interests.Keyword1 = code, kw
+			case 1:
+				user.ICQInfo.Interests.Code2, user.ICQInfo.Interests.Keyword2 = code, kw
+			case 2:
+				user.ICQInfo.Interests.Code3, user.ICQInfo.Interests.Keyword3 = code, kw
+			case 3:
+				user.ICQInfo.Interests.Code4, user.ICQInfo.Interests.Keyword4 = code, kw
+			}
+		}
+	}
+
+	if len(currentAffTLVs) > 0 {
+		user.ICQInfo.Affiliations.CurrentCode1, user.ICQInfo.Affiliations.CurrentKeyword1 = 0, ""
+		user.ICQInfo.Affiliations.CurrentCode2, user.ICQInfo.Affiliations.CurrentKeyword2 = 0, ""
+		user.ICQInfo.Affiliations.CurrentCode3, user.ICQInfo.Affiliations.CurrentKeyword3 = 0, ""
+		for i, raw := range currentAffTLVs {
+			code, kw, ok := decodeICQICombo(raw)
+			if !ok {
+				continue
+			}
+			switch i {
+			case 0:
+				user.ICQInfo.Affiliations.CurrentCode1, user.ICQInfo.Affiliations.CurrentKeyword1 = code, kw
+			case 1:
+				user.ICQInfo.Affiliations.CurrentCode2, user.ICQInfo.Affiliations.CurrentKeyword2 = code, kw
+			case 2:
+				user.ICQInfo.Affiliations.CurrentCode3, user.ICQInfo.Affiliations.CurrentKeyword3 = code, kw
+			}
+		}
+	}
+
+	if len(pastAffTLVs) > 0 {
+		user.ICQInfo.Affiliations.PastCode1, user.ICQInfo.Affiliations.PastKeyword1 = 0, ""
+		user.ICQInfo.Affiliations.PastCode2, user.ICQInfo.Affiliations.PastKeyword2 = 0, ""
+		user.ICQInfo.Affiliations.PastCode3, user.ICQInfo.Affiliations.PastKeyword3 = 0, ""
+		for i, raw := range pastAffTLVs {
+			code, kw, ok := decodeICQICombo(raw)
+			if !ok {
+				continue
+			}
+			switch i {
+			case 0:
+				user.ICQInfo.Affiliations.PastCode1, user.ICQInfo.Affiliations.PastKeyword1 = code, kw
+			case 1:
+				user.ICQInfo.Affiliations.PastCode2, user.ICQInfo.Affiliations.PastKeyword2 = code, kw
+			case 2:
+				user.ICQInfo.Affiliations.PastCode3, user.ICQInfo.Affiliations.PastKeyword3 = code, kw
+			}
+		}
+	}
+
+	name := instance.IdentScreenName()
+	if err := s.userUpdater.SetICQInfo(ctx, name, user.ICQInfo); err != nil {
+		return err
+	}
+
+	return s.reqAck(ctx, instance, seq, wire.ICQDBQueryMetaReplySetFullInfo)
+}
+
 func (s *ICQService) SetICQPhone(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x0654_DBQueryMetaReqSetICQPhone, seq uint16) error {
 	s.logger.Debug("received SetICQPhone request")
 	return s.reqAck(ctx, instance, seq, wire.ICQDBQueryMetaReplySetICQPhone)
@@ -669,13 +947,13 @@ func (s *ICQService) ShortUserInfo(ctx context.Context, instance *state.SessionI
 		},
 		ReqSubType: wire.ICQDBQueryMetaReplyShortInfo,
 		Success:    wire.ICQStatusCodeOK,
-		Nickname:   user.ICQBasicInfo.Nickname,
-		FirstName:  user.ICQBasicInfo.FirstName,
-		LastName:   user.ICQBasicInfo.LastName,
-		Email:      user.ICQBasicInfo.EmailAddress,
-		Gender:     uint8(user.ICQMoreInfo.Gender),
+		Nickname:   user.ICQInfo.Basic.Nickname,
+		FirstName:  user.ICQInfo.Basic.FirstName,
+		LastName:   user.ICQInfo.Basic.LastName,
+		Email:      user.ICQInfo.Basic.EmailAddress,
+		Gender:     uint8(user.ICQInfo.More.Gender),
 	}
-	if !user.ICQPermissions.AuthRequired {
+	if !user.ICQInfo.Permissions.AuthRequired {
 		info.Authorization = 1
 	}
 
@@ -686,18 +964,50 @@ func (s *ICQService) ShortUserInfo(ctx context.Context, instance *state.SessionI
 	return s.reply(ctx, instance, msg)
 }
 
+// icqXMLMetaVarKey mirrors iserverd string_sub stripping of <key> / </key> around
+// the variable name sent in META_XML_REQ_DATA.
+func icqXMLMetaVarKey(xmlRequest string) string {
+	s := strings.ReplaceAll(xmlRequest, "<key>", "")
+	s = strings.ReplaceAll(s, "</key>", "")
+	return strings.TrimSpace(s)
+}
+
+// icqXMLMetaClientBBVer is the %d segment in ICQ banner URLs (ICQ 2002a 5.34 → 534).
+const icqXMLMetaClientBBVer = 534
+
+// icqXMLMetaRandQueryToken matches historical %s query/path tokens (e.g. "01971", "05835").
+func icqXMLMetaRandQueryToken() string {
+	return fmt.Sprintf("%05d", rand.Intn(100000))
+}
+
+func icqXMLMetaFormatBannerURL(pattern string) string {
+	return fmt.Sprintf(pattern, icqXMLMetaClientBBVer, icqXMLMetaRandQueryToken())
+}
+
 func (s *ICQService) XMLReqData(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x0898_DBQueryMetaReqXMLReq, seq uint16) error {
-	msg := wire.ICQMessageReplyEnvelope{
-		Message: wire.ICQ_0x07DA_0x08A2_DBQueryMetaReplyXMLData{
-			ICQMetadata: wire.ICQMetadata{
-				UIN:     instance.UIN(),
-				ReqType: wire.ICQDBQueryMetaReply,
-				Seq:     seq,
-			},
-			ReqSubType: wire.ICQDBQueryMetaReplyXMLData,
-			Success:    wire.ICQStatusCodeFail,
-		},
+	meta := wire.ICQMetadata{
+		UIN:     instance.UIN(),
+		ReqType: wire.ICQDBQueryMetaReply,
+		Seq:     seq,
 	}
+	key := icqXMLMetaVarKey(inBody.XMLRequest)
+	var body wire.ICQ_0x07DA_0x08A2_DBQueryMetaReplyXMLData
+	switch key {
+	case "cbHostIP":
+		body = wire.ICQ_0x07DA_0x08A2_DBQueryMetaReplyXMLData{
+			ICQMetadata: meta,
+			ReqSubType:  wire.ICQDBQueryMetaReplyXMLData,
+			Success:     wire.ICQStatusCodeOK,
+			XML:         "<value>205.188.250.25</value>",
+		}
+	default:
+		body = wire.ICQ_0x07DA_0x08A2_DBQueryMetaReplyXMLData{
+			ICQMetadata: meta,
+			ReqSubType:  wire.ICQDBQueryMetaReplyXMLData,
+			Success:     wire.ICQStatusCodeErr,
+		}
+	}
+	msg := wire.ICQMessageReplyEnvelope{Message: body}
 	return s.reply(ctx, instance, msg)
 }
 
@@ -717,16 +1027,16 @@ func (s *ICQService) affiliations(ctx context.Context, instance *state.SessionIn
 					Keyword string `oscar:"len_prefix=uint16,nullterm"`
 				}{
 					{
-						Code:    user.ICQAffiliations.PastCode1,
-						Keyword: user.ICQAffiliations.PastKeyword1,
+						Code:    user.ICQInfo.Affiliations.PastCode1,
+						Keyword: user.ICQInfo.Affiliations.PastKeyword1,
 					},
 					{
-						Code:    user.ICQAffiliations.PastCode2,
-						Keyword: user.ICQAffiliations.PastKeyword2,
+						Code:    user.ICQInfo.Affiliations.PastCode2,
+						Keyword: user.ICQInfo.Affiliations.PastKeyword2,
 					},
 					{
-						Code:    user.ICQAffiliations.PastCode3,
-						Keyword: user.ICQAffiliations.PastKeyword3,
+						Code:    user.ICQInfo.Affiliations.PastCode3,
+						Keyword: user.ICQInfo.Affiliations.PastKeyword3,
 					},
 				},
 				Affiliations: []struct {
@@ -734,16 +1044,16 @@ func (s *ICQService) affiliations(ctx context.Context, instance *state.SessionIn
 					Keyword string `oscar:"len_prefix=uint16,nullterm"`
 				}{
 					{
-						Code:    user.ICQAffiliations.CurrentCode1,
-						Keyword: user.ICQAffiliations.CurrentKeyword1,
+						Code:    user.ICQInfo.Affiliations.CurrentCode1,
+						Keyword: user.ICQInfo.Affiliations.CurrentKeyword1,
 					},
 					{
-						Code:    user.ICQAffiliations.CurrentCode2,
-						Keyword: user.ICQAffiliations.CurrentKeyword2,
+						Code:    user.ICQInfo.Affiliations.CurrentCode2,
+						Keyword: user.ICQInfo.Affiliations.CurrentKeyword2,
 					},
 					{
-						Code:    user.ICQAffiliations.CurrentCode3,
-						Keyword: user.ICQAffiliations.CurrentKeyword3,
+						Code:    user.ICQInfo.Affiliations.CurrentCode3,
+						Keyword: user.ICQInfo.Affiliations.CurrentKeyword3,
 					},
 				},
 			},
@@ -758,14 +1068,14 @@ func (s *ICQService) createResult(res state.User) wire.ICQUserSearchRecord {
 
 	searchRecord := wire.ICQUserSearchRecord{
 		UIN:       uint32(uin),
-		Nickname:  res.ICQBasicInfo.Nickname,
-		FirstName: res.ICQBasicInfo.FirstName,
-		LastName:  res.ICQBasicInfo.LastName,
-		Email:     res.ICQBasicInfo.EmailAddress,
-		Gender:    uint8(res.ICQMoreInfo.Gender),
+		Nickname:  res.ICQInfo.Basic.Nickname,
+		FirstName: res.ICQInfo.Basic.FirstName,
+		LastName:  res.ICQInfo.Basic.LastName,
+		Email:     res.ICQInfo.Basic.EmailAddress,
+		Gender:    uint8(res.ICQInfo.More.Gender),
 		Age:       res.Age(s.timeNow),
 	}
-	if !res.ICQPermissions.AuthRequired {
+	if !res.ICQInfo.Permissions.AuthRequired {
 		searchRecord.Authorization = 1
 	}
 
@@ -823,20 +1133,20 @@ func (s *ICQService) interests(ctx context.Context, instance *state.SessionInsta
 				Keyword string `oscar:"len_prefix=uint16,nullterm"`
 			}{
 				{
-					Code:    user.ICQInterests.Code1,
-					Keyword: user.ICQInterests.Keyword1,
+					Code:    user.ICQInfo.Interests.Code1,
+					Keyword: user.ICQInfo.Interests.Keyword1,
 				},
 				{
-					Code:    user.ICQInterests.Code2,
-					Keyword: user.ICQInterests.Keyword2,
+					Code:    user.ICQInfo.Interests.Code2,
+					Keyword: user.ICQInfo.Interests.Keyword2,
 				},
 				{
-					Code:    user.ICQInterests.Code3,
-					Keyword: user.ICQInterests.Keyword3,
+					Code:    user.ICQInfo.Interests.Code3,
+					Keyword: user.ICQInfo.Interests.Keyword3,
 				},
 				{
-					Code:    user.ICQInterests.Code4,
-					Keyword: user.ICQInterests.Keyword4,
+					Code:    user.ICQInfo.Interests.Code4,
+					Keyword: user.ICQInfo.Interests.Keyword4,
 				},
 			},
 		},
@@ -857,19 +1167,19 @@ func (s *ICQService) moreUserInfo(ctx context.Context, instance *state.SessionIn
 			Success:    wire.ICQStatusCodeOK,
 			ICQ_0x07D0_0x03FD_DBQueryMetaReqSetMoreInfo: wire.ICQ_0x07D0_0x03FD_DBQueryMetaReqSetMoreInfo{
 				Age:          uint8(user.Age(s.timeNow)),
-				Gender:       user.ICQMoreInfo.Gender,
-				HomePageAddr: user.ICQMoreInfo.HomePageAddr,
-				BirthYear:    user.ICQMoreInfo.BirthYear,
-				BirthMonth:   user.ICQMoreInfo.BirthMonth,
-				BirthDay:     user.ICQMoreInfo.BirthDay,
-				Lang1:        user.ICQMoreInfo.Lang1,
-				Lang2:        user.ICQMoreInfo.Lang2,
-				Lang3:        user.ICQMoreInfo.Lang3,
+				Gender:       user.ICQInfo.More.Gender,
+				HomePageAddr: user.ICQInfo.More.HomePageAddr,
+				BirthYear:    user.ICQInfo.More.BirthYear,
+				BirthMonth:   user.ICQInfo.More.BirthMonth,
+				BirthDay:     user.ICQInfo.More.BirthDay,
+				Lang1:        user.ICQInfo.More.Lang1,
+				Lang2:        user.ICQInfo.More.Lang2,
+				Lang3:        user.ICQInfo.More.Lang3,
 			},
-			City:        user.ICQBasicInfo.City,
-			State:       user.ICQBasicInfo.State,
-			CountryCode: user.ICQBasicInfo.CountryCode,
-			TimeZone:    user.ICQBasicInfo.GMTOffset,
+			City:        user.ICQInfo.Basic.City,
+			State:       user.ICQInfo.Basic.State,
+			CountryCode: user.ICQInfo.Basic.CountryCode,
+			TimeZone:    user.ICQInfo.Basic.GMTOffset,
 		},
 	}
 
@@ -887,7 +1197,7 @@ func (s *ICQService) notes(ctx context.Context, instance *state.SessionInstance,
 			ReqSubType: wire.ICQDBQueryMetaReplyNotes,
 			Success:    wire.ICQStatusCodeOK,
 			ICQ_0x07D0_0x0406_DBQueryMetaReqSetNotes: wire.ICQ_0x07D0_0x0406_DBQueryMetaReqSetNotes{
-				Notes: user.ICQNotes.Notes,
+				Notes: user.ICQInfo.Notes.Notes,
 			},
 		},
 	}
@@ -939,34 +1249,34 @@ func (s *ICQService) userInfo(ctx context.Context, instance *state.SessionInstan
 		},
 		ReqSubType:  wire.ICQDBQueryMetaReplyBasicInfo,
 		Success:     wire.ICQStatusCodeOK,
-		Nickname:    user.ICQBasicInfo.Nickname,
-		FirstName:   user.ICQBasicInfo.FirstName,
-		LastName:    user.ICQBasicInfo.LastName,
-		Email:       user.ICQBasicInfo.EmailAddress,
-		City:        user.ICQBasicInfo.City,
-		State:       user.ICQBasicInfo.State,
-		Phone:       user.ICQBasicInfo.Phone,
-		Fax:         user.ICQBasicInfo.Fax,
-		Address:     user.ICQBasicInfo.Address,
-		CellPhone:   user.ICQBasicInfo.CellPhone,
-		ZIP:         user.ICQBasicInfo.ZIPCode,
-		CountryCode: user.ICQBasicInfo.CountryCode,
-		GMTOffset:   user.ICQBasicInfo.GMTOffset,
+		Nickname:    user.ICQInfo.Basic.Nickname,
+		FirstName:   user.ICQInfo.Basic.FirstName,
+		LastName:    user.ICQInfo.Basic.LastName,
+		Email:       user.ICQInfo.Basic.EmailAddress,
+		City:        user.ICQInfo.Basic.City,
+		State:       user.ICQInfo.Basic.State,
+		Phone:       user.ICQInfo.Basic.Phone,
+		Fax:         user.ICQInfo.Basic.Fax,
+		Address:     user.ICQInfo.Basic.Address,
+		CellPhone:   user.ICQInfo.Basic.CellPhone,
+		ZIP:         user.ICQInfo.Basic.ZIPCode,
+		CountryCode: user.ICQInfo.Basic.CountryCode,
+		GMTOffset:   user.ICQInfo.Basic.GMTOffset,
 		AuthFlag:    0, // required by default
 		WebAware:    1,
 		DCPerms:     0,
 	}
 
-	if !user.ICQPermissions.AuthRequired {
+	if !user.ICQInfo.Permissions.AuthRequired {
 		userInfo.AuthFlag = 1
 	}
-	if user.ICQPermissions.WebAware {
+	if user.ICQInfo.Permissions.WebAware {
 		userInfo.WebAware = 1
 	} else {
 		userInfo.WebAware = 0
 	}
 
-	if user.ICQBasicInfo.PublishEmail {
+	if user.ICQInfo.Basic.PublishEmail {
 		userInfo.PublishEmail = wire.ICQUserFlagPublishEmailYes
 	} else {
 		userInfo.PublishEmail = wire.ICQUserFlagPublishEmailNo
@@ -990,20 +1300,94 @@ func (s *ICQService) workInfo(ctx context.Context, instance *state.SessionInstan
 			ReqSubType: wire.ICQDBQueryMetaReplyWorkInfo,
 			Success:    wire.ICQStatusCodeOK,
 			ICQ_0x07D0_0x03F3_DBQueryMetaReqSetWorkInfo: wire.ICQ_0x07D0_0x03F3_DBQueryMetaReqSetWorkInfo{
-				City:           user.ICQWorkInfo.City,
-				State:          user.ICQWorkInfo.State,
-				Phone:          user.ICQWorkInfo.Phone,
-				Fax:            user.ICQWorkInfo.Fax,
-				Address:        user.ICQWorkInfo.Address,
-				ZIP:            user.ICQWorkInfo.ZIPCode,
-				CountryCode:    user.ICQWorkInfo.CountryCode,
-				Company:        user.ICQWorkInfo.Company,
-				Department:     user.ICQWorkInfo.Department,
-				Position:       user.ICQWorkInfo.Position,
-				OccupationCode: user.ICQWorkInfo.OccupationCode,
-				WebPage:        user.ICQWorkInfo.WebPage,
+				City:           user.ICQInfo.Work.City,
+				State:          user.ICQInfo.Work.State,
+				Phone:          user.ICQInfo.Work.Phone,
+				Fax:            user.ICQInfo.Work.Fax,
+				Address:        user.ICQInfo.Work.Address,
+				ZIP:            user.ICQInfo.Work.ZIPCode,
+				CountryCode:    user.ICQInfo.Work.CountryCode,
+				Company:        user.ICQInfo.Work.Company,
+				Department:     user.ICQInfo.Work.Department,
+				Position:       user.ICQInfo.Work.Position,
+				OccupationCode: user.ICQInfo.Work.OccupationCode,
+				WebPage:        user.ICQInfo.Work.WebPage,
 			},
 		},
 	}
 	return s.reply(ctx, instance, msg)
+}
+
+// decodeICQSString decodes an ICQ "sstring" value: a uint16 (LE) length
+// prefix followed by an ASCIIZ string. The length includes the trailing
+// null terminator. Returns the string (without the terminator) and true
+// when the value is well-formed; otherwise returns "" and false.
+func decodeICQSString(b []byte) (string, bool) {
+	if len(b) < 3 {
+		return "", false
+	}
+	expected := binary.LittleEndian.Uint16(b[0:2])
+	value := b[2:]
+	if int(expected) != len(value) {
+		return "", false
+	}
+	return string(value[:len(value)-1]), true
+}
+
+// decodeICQECombo decodes an ICQ "ecombo" value: an sstring (email) followed
+// by a uint8 publish flag.
+func decodeICQECombo(b []byte) (email string, publish uint8, ok bool) {
+	if len(b) < 4 {
+		return "", 0, false
+	}
+	expected := binary.LittleEndian.Uint16(b[0:2])
+	if int(expected)+2+1 != len(b) {
+		return "", 0, false
+	}
+	value := b[2 : 2+int(expected)]
+	return string(value[:len(value)-1]), b[2+int(expected)], true
+}
+
+// decodeICQICombo decodes an ICQ "icombo"/"hcombo" value: a uint16 (LE)
+// category code followed by an sstring keyword.
+func decodeICQICombo(b []byte) (code uint16, keyword string, ok bool) {
+	if len(b) < 2 {
+		return 0, "", false
+	}
+	code = binary.LittleEndian.Uint16(b[0:2])
+	keyword, ok = decodeICQSString(b[2:])
+	return code, keyword, ok
+}
+
+// decodeICQBCombo decodes an ICQ "bcombo" birthday value: three uint16 (LE)
+// values for year, month, and day.
+func decodeICQBCombo(b []byte) (year, month, day uint16, ok bool) {
+	if len(b) < 6 {
+		return 0, 0, 0, false
+	}
+	return binary.LittleEndian.Uint16(b[0:2]),
+		binary.LittleEndian.Uint16(b[2:4]),
+		binary.LittleEndian.Uint16(b[4:6]),
+		true
+}
+
+func readUint8(b []byte) (uint8, bool) {
+	if len(b) < 1 {
+		return 0, false
+	}
+	return b[0], true
+}
+
+func readUint16LE(b []byte) (uint16, bool) {
+	if len(b) < 2 {
+		return 0, false
+	}
+	return binary.LittleEndian.Uint16(b), true
+}
+
+func readUint32LE(b []byte) (uint32, bool) {
+	if len(b) < 4 {
+		return 0, false
+	}
+	return binary.LittleEndian.Uint32(b), true
 }

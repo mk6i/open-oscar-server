@@ -327,6 +327,7 @@ type ICQUserUpdater interface {
 	SetUserNotes(ctx context.Context, name state.IdentScreenName, data state.ICQUserNotes) error
 	SetPermissions(ctx context.Context, name state.IdentScreenName, data state.ICQPermissions) error
 	SetHomepageCategory(ctx context.Context, name state.IdentScreenName, data state.ICQHomepageCategory) error
+	SetICQInfo(ctx context.Context, name state.IdentScreenName, info state.ICQInfo) error
 }
 
 // FeedbagManager provides server-side buddy list access and modification.

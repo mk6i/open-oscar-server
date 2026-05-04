@@ -1949,8 +1949,8 @@ const (
 	ICQTLVTagsWorkPhoneNumber           uint16 = 0x02C6 // User work phone number
 	ICQTLVTagsWorkFaxNumber             uint16 = 0x02D0 // User work fax number
 	ICQTLVTagsWorkWebpageURL            uint16 = 0x02DA // User work webpage URL
-	ICQTLVTagsShowWebStatusPermissions  uint16 = 0x02F8 // User 'show web status' permissions
-	ICQTLVTagsAuthorizationPermissions  uint16 = 0x030C // User authorization permissions
+	ICQTLVTagsAuthorizationPermissions  uint16 = 0x02F8 // User authorization permissions
+	ICQTLVTagsShowWebStatusPermissions  uint16 = 0x030C // User 'show web status' permissions
 	ICQTLVTagsGMTOffset                 uint16 = 0x0316 // User GMT offset
 	ICQTLVTagsOriginallyFromCity        uint16 = 0x0320 // User originally from city
 	ICQTLVTagsOriginallyFromState       uint16 = 0x032A // User originally from state
@@ -2013,6 +2013,7 @@ const (
 	ICQDBQueryMetaReqSetAffiliations   uint16 = 0x041A
 	ICQDBQueryMetaReqSetPermissions    uint16 = 0x0424
 	ICQDBQueryMetaReqSetICQPhone       uint16 = 0x0654
+	ICQDBQueryMetaReqSetFullInfo       uint16 = 0x0C3A
 	ICQDBQueryMetaReqShortInfo         uint16 = 0x04BA
 	ICQDBQueryMetaReqFullInfo          uint16 = 0x04B2
 	ICQDBQueryMetaReqFullInfo2         uint16 = 0x04D0
@@ -2047,6 +2048,7 @@ const (
 	ICQDBQueryMetaReplySetAffiliations uint16 = 0x0096
 	ICQDBQueryMetaReplySetPermissions  uint16 = 0x00A0
 	ICQDBQueryMetaReplySetICQPhone     uint16 = 0x031E
+	ICQDBQueryMetaReplySetFullInfo     uint16 = 0x0C3F
 	ICQDBQueryMetaReplyBasicInfo       uint16 = 0x00C8
 	ICQDBQueryMetaReplyWorkInfo        uint16 = 0x00D2
 	ICQDBQueryMetaReplyMoreInfo        uint16 = 0x00DC
@@ -2145,6 +2147,17 @@ type ICQ_0x07D0_0x0533_DBQueryMetaReqSearchWhitePages struct {
 }
 
 type ICQ_0x07D0_0x055F_DBQueryMetaReqSearchWhitePages2 struct {
+	TLVRestBlock
+}
+
+// ICQ_0x07D0_0x0C3A_DBQueryMetaReqSetFullInfo represents the TLV-based
+// CLI_SET_FULLINFO request used by ICQLite to update profile information in
+// a single packet. The TLV chain may contain any subset of the tags in the
+// ICQTLVTags* group; tags omitted by the client should leave the
+// corresponding profile fields unchanged. Some tags (e.g.
+// ICQTLVTagsSpokenLanguage, ICQTLVTagsAffiliationsNode) may appear multiple
+// times in the chain.
+type ICQ_0x07D0_0x0C3A_DBQueryMetaReqSetFullInfo struct {
 	TLVRestBlock
 }
 

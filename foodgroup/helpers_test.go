@@ -195,6 +195,8 @@ type findByInterestsParams []struct {
 type icqUserUpdaterParams struct {
 	setAffiliationsParams
 	setBasicInfoParams
+	setFullInfoParams
+	setHomepageCategoryParams
 	setInterestsParams
 	setMoreInfoParams
 	setPermissionsParams
@@ -234,6 +236,14 @@ type setBasicInfoParams []struct {
 	err  error
 }
 
+// setFullInfoParams is the list of parameters passed at the mock
+// ICQUserUpdater.SetICQInfo call site
+type setFullInfoParams []struct {
+	name state.IdentScreenName
+	info state.ICQInfo
+	err  error
+}
+
 // setWorkInfoParams is the list of parameters passed at the mock
 // ICQUserUpdater.SetWorkInfo call site
 type setWorkInfoParams []struct {
@@ -255,6 +265,14 @@ type setMoreInfoParams []struct {
 type setPermissionsParams []struct {
 	name state.IdentScreenName
 	data state.ICQPermissions
+	err  error
+}
+
+// setHomepageCategoryParams is the list of parameters passed at the mock
+// ICQUserUpdater.SetHomepageCategory call site
+type setHomepageCategoryParams []struct {
+	name state.IdentScreenName
+	data state.ICQHomepageCategory
 	err  error
 }
 

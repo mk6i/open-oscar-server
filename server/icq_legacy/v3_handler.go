@@ -1082,16 +1082,16 @@ func (h *V3Handler) handleSetHomeInfo(session *LegacySession, seq1, seq2 uint16,
 	ctx := context.Background()
 	existing, err := h.service.GetFullUserInfo(ctx, uin)
 	if err == nil && existing != nil {
-		existing.ICQBasicInfo.Address = address
-		existing.ICQBasicInfo.City = city
-		existing.ICQBasicInfo.State = st
-		existing.ICQBasicInfo.CountryCode = country
-		existing.ICQBasicInfo.Phone = phone
-		existing.ICQBasicInfo.Fax = fax
-		existing.ICQBasicInfo.CellPhone = cell
-		existing.ICQBasicInfo.ZIPCode = fmt.Sprintf("%d", zipCode)
-		existing.ICQBasicInfo.GMTOffset = uint8(gmt)
-		if err := h.service.UpdateBasicInfo(ctx, uin, existing.ICQBasicInfo); err != nil {
+		existing.ICQInfo.Basic.Address = address
+		existing.ICQInfo.Basic.City = city
+		existing.ICQInfo.Basic.State = st
+		existing.ICQInfo.Basic.CountryCode = country
+		existing.ICQInfo.Basic.Phone = phone
+		existing.ICQInfo.Basic.Fax = fax
+		existing.ICQInfo.Basic.CellPhone = cell
+		existing.ICQInfo.Basic.ZIPCode = fmt.Sprintf("%d", zipCode)
+		existing.ICQInfo.Basic.GMTOffset = uint8(gmt)
+		if err := h.service.UpdateBasicInfo(ctx, uin, existing.ICQInfo.Basic); err != nil {
 			h.logger.Error("V3 set home info failed", "uin", uin, "err", err)
 		}
 	}
@@ -1182,16 +1182,16 @@ func (h *V3Handler) handleSetWorkInfo(session *LegacySession, seq1, seq2 uint16,
 	ctx := context.Background()
 	existing, existErr := h.service.GetFullUserInfo(ctx, uin)
 	if existErr == nil && existing != nil {
-		existing.ICQWorkInfo.Address = address
-		existing.ICQWorkInfo.City = city
-		existing.ICQWorkInfo.State = st
-		existing.ICQWorkInfo.CountryCode = country
-		existing.ICQWorkInfo.Company = company
-		existing.ICQWorkInfo.Position = position
-		existing.ICQWorkInfo.Phone = phone
-		existing.ICQWorkInfo.Fax = fax
-		existing.ICQWorkInfo.ZIPCode = fmt.Sprintf("%d", zipCode)
-		if err := h.service.UpdateWorkInfo(ctx, uin, existing.ICQWorkInfo); err != nil {
+		existing.ICQInfo.Work.Address = address
+		existing.ICQInfo.Work.City = city
+		existing.ICQInfo.Work.State = st
+		existing.ICQInfo.Work.CountryCode = country
+		existing.ICQInfo.Work.Company = company
+		existing.ICQInfo.Work.Position = position
+		existing.ICQInfo.Work.Phone = phone
+		existing.ICQInfo.Work.Fax = fax
+		existing.ICQInfo.Work.ZIPCode = fmt.Sprintf("%d", zipCode)
+		if err := h.service.UpdateWorkInfo(ctx, uin, existing.ICQInfo.Work); err != nil {
 			h.logger.Error("V3 set work info failed", "uin", uin, "err", err)
 		}
 	}
@@ -1219,8 +1219,8 @@ func (h *V3Handler) handleSetWorkWeb(session *LegacySession, seq1, seq2 uint16, 
 	ctx := context.Background()
 	existing, err := h.service.GetFullUserInfo(ctx, uin)
 	if err == nil && existing != nil {
-		existing.ICQWorkInfo.WebPage = web
-		if err := h.service.UpdateWorkInfo(ctx, uin, existing.ICQWorkInfo); err != nil {
+		existing.ICQInfo.Work.WebPage = web
+		if err := h.service.UpdateWorkInfo(ctx, uin, existing.ICQInfo.Work); err != nil {
 			h.logger.Error("V3 set work web failed", "uin", uin, "err", err)
 		}
 	}

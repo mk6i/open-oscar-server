@@ -131,6 +131,35 @@ func (s DisplayScreenName) String() string {
 	return string(s)
 }
 
+// ICQInfo groups ICQ profile segments stored for a user. Sub-structs are
+// named fields (not anonymously embedded) because ICQBasicInfo and ICQWorkInfo
+// share exported field names (e.g. Address, City), which would make field
+// promotion into User invalid or ambiguous.
+type ICQInfo struct {
+	// Affiliations holds information about the user's affiliations,
+	// including past and current affiliations.
+	Affiliations ICQAffiliations
+	// Interests holds information about the user's interests, categorized
+	// by code and associated keywords.
+	Interests ICQInterests
+	// More contains additional information about the user.
+	More ICQMoreInfo
+	// Permissions specifies the user's privacy settings.
+	Permissions ICQPermissions
+	// Basic contains the user's basic profile information, including
+	// contact details and personal identifiers.
+	Basic ICQBasicInfo
+	// Notes allows the user to store personal notes or additional
+	// information within their profile.
+	Notes ICQUserNotes
+	// Work contains the user's professional information, including
+	// their workplace address and job-related details.
+	Work ICQWorkInfo
+	// HomepageCategory contains homepage category information for the user.
+	// Used by V5 META_SET_HPCAT (0x0442) command.
+	HomepageCategory ICQHomepageCategory
+}
+
 // User represents a user account.
 type User struct {
 	// IdentScreenName is the AIM screen name.
@@ -158,29 +187,9 @@ type User struct {
 	SuspendedStatus uint16
 	// EmailAddress is the email address set by the AIM client.
 	EmailAddress string
-	// ICQAffiliations holds information about the user's affiliations,
-	// including past and current affiliations.
-	ICQAffiliations ICQAffiliations
-	// ICQInterests holds information about the user's interests, categorized
-	// by code and associated keywords.
-	ICQInterests ICQInterests
-	// ICQMoreInfo contains additional information about the user.
-	ICQMoreInfo ICQMoreInfo
-	// ICQPermissions specifies the user's privacy settings.
-	ICQPermissions ICQPermissions
-	// ICQBasicInfo contains the user's basic profile information, including
-	// contact details and personal identifiers.
-	ICQBasicInfo ICQBasicInfo
-	// ICQNotes allows the user to store personal notes or additional
-	// information within their profile.
-	ICQNotes ICQUserNotes
-	// ICQWorkInfo contains the user's professional information, including
-	// their workplace address and job-related details.
-	ICQWorkInfo ICQWorkInfo
-	// ICQHomepageCategory contains homepage category information for the user.
-	// Used by V5 META_SET_HPCAT (0x0442) command.
-	ICQHomepageCategory ICQHomepageCategory
-	AIMDirectoryInfo    AIMNameAndAddr
+	// ICQInfo holds ICQ-specific profile segments for ICQ accounts.
+	ICQInfo          ICQInfo
+	AIMDirectoryInfo AIMNameAndAddr
 	// TOCConfig is the user's saved server-side info (buddy list, etc) for
 	// on the TOC service.
 	TOCConfig string
@@ -438,11 +447,11 @@ type ICQHomepageCategory struct {
 func (u *User) Age(timeNow func() time.Time) uint16 {
 	now := timeNow().UTC()
 	switch {
-	case u.ICQMoreInfo.BirthYear > 0 && u.ICQMoreInfo.BirthDay == 0 && u.ICQMoreInfo.BirthMonth == 0:
-		bday := time.Date(int(u.ICQMoreInfo.BirthYear), time.January, 1, 0, 0, 0, 0, time.UTC)
+	case u.ICQInfo.More.BirthYear > 0 && u.ICQInfo.More.BirthDay == 0 && u.ICQInfo.More.BirthMonth == 0:
+		bday := time.Date(int(u.ICQInfo.More.BirthYear), time.January, 1, 0, 0, 0, 0, time.UTC)
 		return uint16(now.Year() - bday.Year())
-	case u.ICQMoreInfo.BirthYear > 0 && u.ICQMoreInfo.BirthDay > 0 && u.ICQMoreInfo.BirthMonth > 0:
-		bday := time.Date(int(u.ICQMoreInfo.BirthYear), time.Month(u.ICQMoreInfo.BirthMonth), int(u.ICQMoreInfo.BirthDay), 0, 0, 0, 0, time.UTC)
+	case u.ICQInfo.More.BirthYear > 0 && u.ICQInfo.More.BirthDay > 0 && u.ICQInfo.More.BirthMonth > 0:
+		bday := time.Date(int(u.ICQInfo.More.BirthYear), time.Month(u.ICQInfo.More.BirthMonth), int(u.ICQInfo.More.BirthDay), 0, 0, 0, 0, time.UTC)
 		years := now.Year() - bday.Year()
 		if now.YearDay() < bday.YearDay() {
 			years--

@@ -554,7 +554,7 @@ func (s *FeedbagService) RequestAuthorizeToHost(ctx context.Context, instance *s
 		s.logger.ErrorContext(ctx, "user not found", "screen_name", instance.IdentScreenName())
 	}
 
-	return s.sendLegacyAuthReq(ctx, instance, recipient, inBody.Reason, userInfo.ICQBasicInfo, authorized)
+	return s.sendLegacyAuthReq(ctx, instance, recipient, inBody.Reason, userInfo.ICQInfo.Basic, authorized)
 }
 
 // sendLegacyAuthReq sends an offline authorization request to ICQ client

@@ -564,11 +564,13 @@ func TestICQLegacyService_SearchByUIN(t *testing.T) {
 							UIN: 12345,
 							result: state.User{
 								IdentScreenName: state.NewIdentScreenName("12345"),
-								ICQBasicInfo: state.ICQBasicInfo{
-									Nickname:     "CoolUser",
-									FirstName:    "John",
-									LastName:     "Doe",
-									EmailAddress: "john@example.com",
+								ICQInfo: state.ICQInfo{
+									Basic: state.ICQBasicInfo{
+										Nickname:     "CoolUser",
+										FirstName:    "John",
+										LastName:     "Doe",
+										EmailAddress: "john@example.com",
+									},
 								},
 							},
 						},
@@ -683,10 +685,12 @@ func TestICQLegacyService_SearchByName(t *testing.T) {
 							result: []state.User{
 								{
 									IdentScreenName: state.NewIdentScreenName("12345"),
-									ICQBasicInfo: state.ICQBasicInfo{
-										Nickname:  "JD",
-										FirstName: "John",
-										LastName:  "Doe",
+									ICQInfo: state.ICQInfo{
+										Basic: state.ICQBasicInfo{
+											Nickname:  "JD",
+											FirstName: "John",
+											LastName:  "Doe",
+										},
 									},
 								},
 							},
@@ -714,9 +718,11 @@ func TestICQLegacyService_SearchByName(t *testing.T) {
 							email: "john@example.com",
 							result: state.User{
 								IdentScreenName: state.NewIdentScreenName("12345"),
-								ICQBasicInfo: state.ICQBasicInfo{
-									Nickname:     "JD",
-									EmailAddress: "john@example.com",
+								ICQInfo: state.ICQInfo{
+									Basic: state.ICQBasicInfo{
+										Nickname:     "JD",
+										EmailAddress: "john@example.com",
+									},
 								},
 							},
 						},

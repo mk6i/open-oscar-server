@@ -244,12 +244,12 @@ func (b *LegacyMessageBridge) handleBuddyDeparted(session *LegacySession, msg wi
 func (b *LegacyMessageBridge) buildLegacyAuthFields(uin uint32) (nick, firstName, lastName, email string) {
 	nick = fmt.Sprintf("%d", uin)
 	if user, err := b.userFinder.FindByUIN(context.Background(), uin); err == nil {
-		if user.ICQBasicInfo.Nickname != "" {
-			nick = user.ICQBasicInfo.Nickname
+		if user.ICQInfo.Basic.Nickname != "" {
+			nick = user.ICQInfo.Basic.Nickname
 		}
-		firstName = user.ICQBasicInfo.FirstName
-		lastName = user.ICQBasicInfo.LastName
-		email = user.ICQBasicInfo.EmailAddress
+		firstName = user.ICQInfo.Basic.FirstName
+		lastName = user.ICQInfo.Basic.LastName
+		email = user.ICQInfo.Basic.EmailAddress
 	}
 	if len(nick) > 20 {
 		nick = nick[:20]

@@ -924,6 +924,75 @@ func (_c *mockICQService_SetEmails_Call) RunAndReturn(run func(ctx context.Conte
 	return _c
 }
 
+// SetICQInfo provides a mock function for the type mockICQService
+func (_mock *mockICQService) SetICQInfo(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x0C3A_DBQueryMetaReqSetFullInfo, seq uint16) error {
+	ret := _mock.Called(ctx, instance, inBody, seq)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetICQInfo")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.ICQ_0x07D0_0x0C3A_DBQueryMetaReqSetFullInfo, uint16) error); ok {
+		r0 = returnFunc(ctx, instance, inBody, seq)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// mockICQService_SetICQInfo_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetICQInfo'
+type mockICQService_SetICQInfo_Call struct {
+	*mock.Call
+}
+
+// SetICQInfo is a helper method to define mock.On call
+//   - ctx context.Context
+//   - instance *state.SessionInstance
+//   - inBody wire.ICQ_0x07D0_0x0C3A_DBQueryMetaReqSetFullInfo
+//   - seq uint16
+func (_e *mockICQService_Expecter) SetICQInfo(ctx interface{}, instance interface{}, inBody interface{}, seq interface{}) *mockICQService_SetICQInfo_Call {
+	return &mockICQService_SetICQInfo_Call{Call: _e.mock.On("SetICQInfo", ctx, instance, inBody, seq)}
+}
+
+func (_c *mockICQService_SetICQInfo_Call) Run(run func(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x0C3A_DBQueryMetaReqSetFullInfo, seq uint16)) *mockICQService_SetICQInfo_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 *state.SessionInstance
+		if args[1] != nil {
+			arg1 = args[1].(*state.SessionInstance)
+		}
+		var arg2 wire.ICQ_0x07D0_0x0C3A_DBQueryMetaReqSetFullInfo
+		if args[2] != nil {
+			arg2 = args[2].(wire.ICQ_0x07D0_0x0C3A_DBQueryMetaReqSetFullInfo)
+		}
+		var arg3 uint16
+		if args[3] != nil {
+			arg3 = args[3].(uint16)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *mockICQService_SetICQInfo_Call) Return(err error) *mockICQService_SetICQInfo_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *mockICQService_SetICQInfo_Call) RunAndReturn(run func(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x0C3A_DBQueryMetaReqSetFullInfo, seq uint16) error) *mockICQService_SetICQInfo_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // SetICQPhone provides a mock function for the type mockICQService
 func (_mock *mockICQService) SetICQPhone(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x0654_DBQueryMetaReqSetICQPhone, seq uint16) error {
 	ret := _mock.Called(ctx, instance, inBody, seq)

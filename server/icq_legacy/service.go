@@ -252,7 +252,7 @@ func (s *ICQLegacyService) ProcessContactList(ctx context.Context, instance *sta
 		// Only add if the contact does NOT require authorization — otherwise the
 		// legacy user must go through the auth request flow first.
 		contactUser, userErr := s.userFinder.FindByUIN(ctx, contactUIN)
-		if userErr == nil && contactUser.ICQPermissions.AuthRequired {
+		if userErr == nil && contactUser.ICQInfo.Permissions.AuthRequired {
 			continue
 		}
 		contactSession := state.NewSession()
@@ -567,11 +567,13 @@ func (s *ICQLegacyService) RegisterNewUser(ctx context.Context, nickname, firstN
 		IdentScreenName:   screenName,
 		DisplayScreenName: state.DisplayScreenName(strconv.FormatUint(uint64(newUIN), 10)),
 		IsICQ:             true,
-		ICQBasicInfo: state.ICQBasicInfo{
-			Nickname:     nickname,
-			FirstName:    firstName,
-			LastName:     lastName,
-			EmailAddress: email,
+		ICQInfo: state.ICQInfo{
+			Basic: state.ICQBasicInfo{
+				Nickname:     nickname,
+				FirstName:    firstName,
+				LastName:     lastName,
+				EmailAddress: email,
+			},
 		},
 	}
 
@@ -688,10 +690,10 @@ func (s *ICQLegacyService) GetUserInfo(ctx context.Context, uin uint32) (*Legacy
 		if basicUser != nil {
 			return &LegacyUserSearchResult{
 				UIN:       uin,
-				Nickname:  basicUser.ICQBasicInfo.Nickname,
-				FirstName: basicUser.ICQBasicInfo.FirstName,
-				LastName:  basicUser.ICQBasicInfo.LastName,
-				Email:     basicUser.ICQBasicInfo.EmailAddress,
+				Nickname:  basicUser.ICQInfo.Basic.Nickname,
+				FirstName: basicUser.ICQInfo.Basic.FirstName,
+				LastName:  basicUser.ICQInfo.Basic.LastName,
+				Email:     basicUser.ICQInfo.Basic.EmailAddress,
 			}, nil
 		}
 		// Return minimal info
@@ -760,27 +762,27 @@ func (s *ICQLegacyService) GetUserInfoForProtocol(ctx context.Context, targetUIN
 	result := &UserInfoResult{
 		// Basic fields
 		UIN:       targetUIN,
-		Nickname:  user.ICQBasicInfo.Nickname,
-		FirstName: user.ICQBasicInfo.FirstName,
-		LastName:  user.ICQBasicInfo.LastName,
-		Email:     user.ICQBasicInfo.EmailAddress,
-		Gender:    uint8(user.ICQMoreInfo.Gender),
+		Nickname:  user.ICQInfo.Basic.Nickname,
+		FirstName: user.ICQInfo.Basic.FirstName,
+		LastName:  user.ICQInfo.Basic.LastName,
+		Email:     user.ICQInfo.Basic.EmailAddress,
+		Gender:    uint8(user.ICQInfo.More.Gender),
 		Age:       uint8(user.Age(s.timeNow)),
 
 		// Extended fields - location
-		City:    user.ICQBasicInfo.City,
-		State:   user.ICQBasicInfo.State,
-		Country: user.ICQBasicInfo.CountryCode,
-		Phone:   user.ICQBasicInfo.Phone,
+		City:    user.ICQInfo.Basic.City,
+		State:   user.ICQInfo.Basic.State,
+		Country: user.ICQInfo.Basic.CountryCode,
+		Phone:   user.ICQInfo.Basic.Phone,
 
 		// Extended fields - more info
-		Homepage: user.ICQMoreInfo.HomePageAddr,
-		About:    user.ICQNotes.Notes,
+		Homepage: user.ICQInfo.More.HomePageAddr,
+		About:    user.ICQInfo.Notes.Notes,
 
 		// Work info
-		Company:    user.ICQWorkInfo.Company,
-		Department: user.ICQWorkInfo.Department,
-		Position:   user.ICQWorkInfo.Position,
+		Company:    user.ICQInfo.Work.Company,
+		Department: user.ICQInfo.Work.Department,
+		Position:   user.ICQInfo.Work.Position,
 
 		// Auth required
 		AuthRequired: 1,
@@ -792,7 +794,7 @@ func (s *ICQLegacyService) GetUserInfoForProtocol(ctx context.Context, targetUIN
 	}
 
 	// Set auth required flag
-	if user.ICQPermissions.AuthRequired {
+	if user.ICQInfo.Permissions.AuthRequired {
 		result.AuthRequired = 0
 	}
 
@@ -998,7 +1000,7 @@ func (s *ICQLegacyService) filterWhitePagesResults(users []state.User, criteria 
 
 		// Filter by gender (1=female, 2=male)
 		if criteria.Gender > 0 && criteria.Gender < 16 {
-			if uint8(user.ICQMoreInfo.Gender) != criteria.Gender {
+			if uint8(user.ICQInfo.More.Gender) != criteria.Gender {
 				continue
 			}
 		}
@@ -1006,9 +1008,9 @@ func (s *ICQLegacyService) filterWhitePagesResults(users []state.User, criteria 
 		// Filter by language
 		if criteria.Language > 0 && criteria.Language < 127 {
 			langMatch := false
-			if user.ICQMoreInfo.Lang1 == criteria.Language ||
-				user.ICQMoreInfo.Lang2 == criteria.Language ||
-				user.ICQMoreInfo.Lang3 == criteria.Language {
+			if user.ICQInfo.More.Lang1 == criteria.Language ||
+				user.ICQInfo.More.Lang2 == criteria.Language ||
+				user.ICQInfo.More.Lang3 == criteria.Language {
 				langMatch = true
 			}
 			if !langMatch {
@@ -1018,42 +1020,42 @@ func (s *ICQLegacyService) filterWhitePagesResults(users []state.User, criteria 
 
 		// Filter by country (home country is in ICQBasicInfo)
 		if criteria.Country > 0 && criteria.Country < 20000 {
-			if user.ICQBasicInfo.CountryCode != criteria.Country {
+			if user.ICQInfo.Basic.CountryCode != criteria.Country {
 				continue
 			}
 		}
 
 		// Filter by city (case-insensitive partial match, home city is in ICQBasicInfo)
 		if criteria.City != "" {
-			if !containsIgnoreCase(user.ICQBasicInfo.City, criteria.City) {
+			if !containsIgnoreCase(user.ICQInfo.Basic.City, criteria.City) {
 				continue
 			}
 		}
 
 		// Filter by state (case-insensitive partial match, home state is in ICQBasicInfo)
 		if criteria.State != "" {
-			if !containsIgnoreCase(user.ICQBasicInfo.State, criteria.State) {
+			if !containsIgnoreCase(user.ICQInfo.Basic.State, criteria.State) {
 				continue
 			}
 		}
 
 		// Filter by company (case-insensitive partial match)
 		if criteria.Company != "" {
-			if !containsIgnoreCase(user.ICQWorkInfo.Company, criteria.Company) {
+			if !containsIgnoreCase(user.ICQInfo.Work.Company, criteria.Company) {
 				continue
 			}
 		}
 
 		// Filter by position (case-insensitive partial match)
 		if criteria.Position != "" {
-			if !containsIgnoreCase(user.ICQWorkInfo.Position, criteria.Position) {
+			if !containsIgnoreCase(user.ICQInfo.Work.Position, criteria.Position) {
 				continue
 			}
 		}
 
 		// Filter by work code/occupation
 		if criteria.WorkCode > 0 && criteria.WorkCode < 127 {
-			if uint8(user.ICQWorkInfo.OccupationCode) != criteria.WorkCode {
+			if uint8(user.ICQInfo.Work.OccupationCode) != criteria.WorkCode {
 				continue
 			}
 		}
@@ -1343,10 +1345,10 @@ func (s *ICQLegacyService) GetInterests(ctx context.Context, uin uint32) (*state
 
 	s.logger.Debug("GetInterests: retrieved interests",
 		"uin", uin,
-		"count", user.ICQInterests.Count,
+		"count", user.ICQInfo.Interests.Count,
 	)
 
-	return &user.ICQInterests, nil
+	return &user.ICQInfo.Interests, nil
 }
 
 // SetInterests saves the user's interests to the database.
@@ -1400,11 +1402,11 @@ func (s *ICQLegacyService) GetAffiliations(ctx context.Context, uin uint32) (*st
 
 	s.logger.Debug("GetAffiliations: retrieved affiliations",
 		"uin", uin,
-		"past_count", user.ICQAffiliations.PastCount,
-		"current_count", user.ICQAffiliations.CurrentCount,
+		"past_count", user.ICQInfo.Affiliations.PastCount,
+		"current_count", user.ICQInfo.Affiliations.CurrentCount,
 	)
 
-	return &user.ICQAffiliations, nil
+	return &user.ICQInfo.Affiliations, nil
 }
 
 // SetAffiliations saves the user's affiliations to the database.
@@ -1500,10 +1502,10 @@ func (s *ICQLegacyService) GetNotes(ctx context.Context, uin uint32) (string, er
 
 	s.logger.Debug("GetNotes: retrieved notes",
 		"uin", uin,
-		"notes_len", len(user.ICQNotes.Notes),
+		"notes_len", len(user.ICQInfo.Notes.Notes),
 	)
 
-	return user.ICQNotes.Notes, nil
+	return user.ICQInfo.Notes.Notes, nil
 }
 
 // SetNotes saves the user's notes to the database.
@@ -1624,7 +1626,7 @@ func (s *ICQLegacyService) SetAuthMode(ctx context.Context, uin uint32, authRequ
 	}
 
 	// Update the auth mode while preserving other permission settings
-	permissions := user.ICQPermissions
+	permissions := user.ICQInfo.Permissions
 	permissions.AuthRequired = authRequired
 
 	if err := s.userUpdater.SetPermissions(ctx, screenName, permissions); err != nil {
@@ -1666,11 +1668,11 @@ func (s *ICQLegacyService) GetHomepageCategory(ctx context.Context, uin uint32) 
 
 	s.logger.Debug("GetHomepageCategory: retrieved homepage category",
 		"uin", uin,
-		"enabled", user.ICQHomepageCategory.Enabled,
-		"index", user.ICQHomepageCategory.Index,
+		"enabled", user.ICQInfo.HomepageCategory.Enabled,
+		"index", user.ICQInfo.HomepageCategory.Index,
 	)
 
-	return &user.ICQHomepageCategory, nil
+	return &user.ICQInfo.HomepageCategory, nil
 }
 
 // SetHomepageCategory saves the user's homepage category to the database.
@@ -1708,7 +1710,7 @@ func (s *ICQLegacyService) SetHomepageCategory(ctx context.Context, uin uint32, 
 func (s *ICQLegacyService) userToSearchResult(user state.User) *LegacyUserSearchResult {
 	uin, _ := strconv.Atoi(user.IdentScreenName.String())
 
-	nickname := user.ICQBasicInfo.Nickname
+	nickname := user.ICQInfo.Basic.Nickname
 	// Use UIN as fallback nickname if not set
 	if nickname == "" {
 		nickname = user.IdentScreenName.String()
@@ -1717,10 +1719,10 @@ func (s *ICQLegacyService) userToSearchResult(user state.User) *LegacyUserSearch
 	result := &LegacyUserSearchResult{
 		UIN:       uint32(uin),
 		Nickname:  nickname,
-		FirstName: user.ICQBasicInfo.FirstName,
-		LastName:  user.ICQBasicInfo.LastName,
-		Email:     user.ICQBasicInfo.EmailAddress,
-		Gender:    uint8(user.ICQMoreInfo.Gender),
+		FirstName: user.ICQInfo.Basic.FirstName,
+		LastName:  user.ICQInfo.Basic.LastName,
+		Email:     user.ICQInfo.Basic.EmailAddress,
+		Gender:    uint8(user.ICQInfo.More.Gender),
 		Age:       uint8(user.Age(s.timeNow)),
 	}
 

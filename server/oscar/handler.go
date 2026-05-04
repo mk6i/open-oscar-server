@@ -690,6 +690,14 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 			if err := rt.ICQService.SetAffiliations(ctx, instance, req, icqMD.Seq); err != nil {
 				return err
 			}
+		case wire.ICQDBQueryMetaReqSetFullInfo:
+			req := wire.ICQ_0x07D0_0x0C3A_DBQueryMetaReqSetFullInfo{}
+			if err := wire.UnmarshalLE(&req, buf); err != nil {
+				return err
+			}
+			if err := rt.ICQService.SetICQInfo(ctx, instance, req, icqMD.Seq); err != nil {
+				return err
+			}
 		case wire.ICQDBQueryMetaReqStat0a8c,
 			wire.ICQDBQueryMetaReqStat0a96,
 			wire.ICQDBQueryMetaReqStat0aaa,

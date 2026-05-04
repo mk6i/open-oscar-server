@@ -1495,7 +1495,7 @@ func (h *V5Handler) handleMetaLoginInfo(session *LegacySession, pkt *V5ClientPac
 
 	h.logger.Info("META login info - FOUND, sending 7 info packets",
 		"target_uin", targetUIN,
-		"nickname", user.ICQBasicInfo.Nickname,
+		"nickname", user.ICQInfo.Basic.Nickname,
 	)
 
 	// Send all 7 info packets as per iserverd v5_reply_metafullinfo_request2()
@@ -1924,7 +1924,7 @@ func (h *V5Handler) handleMetaUserFullInfo(session *LegacySession, pkt *V5Client
 
 	h.logger.Info("META user full info - FOUND, sending 7 info packets (older format)",
 		"target_uin", targetUIN,
-		"nickname", user.ICQBasicInfo.Nickname,
+		"nickname", user.ICQInfo.Basic.Nickname,
 	)
 
 	// Send all 7 info packets as per iserverd v5_reply_metafullinfo_request()
@@ -1973,7 +1973,7 @@ func (h *V5Handler) handleMetaUserFullInfo2(session *LegacySession, pkt *V5Clien
 
 	h.logger.Info("META user full info2 - FOUND, sending 7 info packets (newer format)",
 		"target_uin", targetUIN,
-		"nickname", user.ICQBasicInfo.Nickname,
+		"nickname", user.ICQInfo.Basic.Nickname,
 	)
 
 	// Send all 7 info packets as per iserverd v5_reply_metafullinfo_request2()
@@ -3078,28 +3078,28 @@ func (h *V5Handler) sendMetaInfo3(session *LegacySession, seq2 uint16, user *sta
 	buf := new(bytes.Buffer)
 	binary.Write(buf, binary.LittleEndian, uint16(0x00C8)) // SRV_META_USER_INFO2
 	buf.WriteByte(0x0A)                                    // success
-	writeLegacyString(buf, user.ICQBasicInfo.Nickname)
-	writeLegacyString(buf, user.ICQBasicInfo.FirstName)
-	writeLegacyString(buf, user.ICQBasicInfo.LastName)
-	writeLegacyString(buf, user.ICQBasicInfo.EmailAddress) // email1
-	writeLegacyString(buf, "")                             // email2 (secondary)
-	writeLegacyString(buf, "")                             // email3 (old)
-	writeLegacyString(buf, user.ICQBasicInfo.City)
-	writeLegacyString(buf, user.ICQBasicInfo.State)
-	writeLegacyString(buf, user.ICQBasicInfo.Phone)
-	writeLegacyString(buf, user.ICQBasicInfo.Fax)
-	writeLegacyString(buf, user.ICQBasicInfo.Address)
-	writeLegacyString(buf, user.ICQBasicInfo.CellPhone)
-	writeLegacyString(buf, user.ICQBasicInfo.ZIPCode)
-	binary.Write(buf, binary.LittleEndian, user.ICQBasicInfo.CountryCode)
-	binary.Write(buf, binary.LittleEndian, uint16(user.ICQBasicInfo.GMTOffset))
+	writeLegacyString(buf, user.ICQInfo.Basic.Nickname)
+	writeLegacyString(buf, user.ICQInfo.Basic.FirstName)
+	writeLegacyString(buf, user.ICQInfo.Basic.LastName)
+	writeLegacyString(buf, user.ICQInfo.Basic.EmailAddress) // email1
+	writeLegacyString(buf, "")                              // email2 (secondary)
+	writeLegacyString(buf, "")                              // email3 (old)
+	writeLegacyString(buf, user.ICQInfo.Basic.City)
+	writeLegacyString(buf, user.ICQInfo.Basic.State)
+	writeLegacyString(buf, user.ICQInfo.Basic.Phone)
+	writeLegacyString(buf, user.ICQInfo.Basic.Fax)
+	writeLegacyString(buf, user.ICQInfo.Basic.Address)
+	writeLegacyString(buf, user.ICQInfo.Basic.CellPhone)
+	writeLegacyString(buf, user.ICQInfo.Basic.ZIPCode)
+	binary.Write(buf, binary.LittleEndian, user.ICQInfo.Basic.CountryCode)
+	binary.Write(buf, binary.LittleEndian, uint16(user.ICQInfo.Basic.GMTOffset))
 	authFlag := uint8(0)
-	if user.ICQPermissions.AuthRequired {
+	if user.ICQInfo.Permissions.AuthRequired {
 		authFlag = 1
 	}
 	buf.WriteByte(authFlag)
 	publishFlag := uint8(0)
-	if !user.ICQBasicInfo.PublishEmail {
+	if !user.ICQInfo.Basic.PublishEmail {
 		publishFlag = 1
 	}
 	buf.WriteByte(publishFlag)
@@ -3148,24 +3148,24 @@ func (h *V5Handler) sendMetaMore(session *LegacySession, seq2 uint16, user *stat
 	// Calculate birth year as single byte (year - 1900)
 	// From iserverd: if (tuser.byear < 1900) {temp_year = tuser.byear;} else {temp_year = tuser.byear - 1900;};
 	var tempYear uint8
-	if user.ICQMoreInfo.BirthYear < 1900 {
-		tempYear = uint8(user.ICQMoreInfo.BirthYear)
+	if user.ICQInfo.More.BirthYear < 1900 {
+		tempYear = uint8(user.ICQInfo.More.BirthYear)
 	} else {
-		tempYear = uint8(user.ICQMoreInfo.BirthYear - 1900)
+		tempYear = uint8(user.ICQInfo.More.BirthYear - 1900)
 	}
 
 	buf := new(bytes.Buffer)
 	binary.Write(buf, binary.LittleEndian, ICQLegacySrvMetaInfoMore) // SRV_META_INFO_MORE = 0x00DC
 	buf.WriteByte(0x0A)                                              // success
 	binary.Write(buf, binary.LittleEndian, user.Age(time.Now))       // age(2)
-	buf.WriteByte(uint8(user.ICQMoreInfo.Gender))                    // gender(1)
-	writeLegacyString(buf, user.ICQMoreInfo.HomePageAddr)            // homepage_len(2) + homepage
+	buf.WriteByte(uint8(user.ICQInfo.More.Gender))                   // gender(1)
+	writeLegacyString(buf, user.ICQInfo.More.HomePageAddr)           // homepage_len(2) + homepage
 	buf.WriteByte(tempYear)                                          // byear(1) - year minus 1900
-	buf.WriteByte(user.ICQMoreInfo.BirthMonth)                       // bmonth(1)
-	buf.WriteByte(user.ICQMoreInfo.BirthDay)                         // bday(1)
-	buf.WriteByte(user.ICQMoreInfo.Lang1)                            // lang1(1)
-	buf.WriteByte(user.ICQMoreInfo.Lang2)                            // lang2(1)
-	buf.WriteByte(user.ICQMoreInfo.Lang3)                            // lang3(1)
+	buf.WriteByte(user.ICQInfo.More.BirthMonth)                      // bmonth(1)
+	buf.WriteByte(user.ICQInfo.More.BirthDay)                        // bday(1)
+	buf.WriteByte(user.ICQInfo.More.Lang1)                           // lang1(1)
+	buf.WriteByte(user.ICQInfo.More.Lang2)                           // lang2(1)
+	buf.WriteByte(user.ICQInfo.More.Lang3)                           // lang3(1)
 
 	pkt := &V5ServerPacket{
 		Version:   ICQLegacyVersionV5,
@@ -3206,17 +3206,17 @@ func (h *V5Handler) sendMetaMore2(session *LegacySession, seq2 uint16, user *sta
 	}
 
 	buf := new(bytes.Buffer)
-	binary.Write(buf, binary.LittleEndian, ICQLegacySrvMetaInfoMore)   // SRV_META_INFO_MORE = 0x00DC
-	buf.WriteByte(0x0A)                                                // success
-	binary.Write(buf, binary.LittleEndian, user.Age(time.Now))         // age(2)
-	buf.WriteByte(uint8(user.ICQMoreInfo.Gender))                      // gender(1)
-	writeLegacyString(buf, user.ICQMoreInfo.HomePageAddr)              // homepage_len(2) + homepage
-	binary.Write(buf, binary.LittleEndian, user.ICQMoreInfo.BirthYear) // byear(2) - full year
-	buf.WriteByte(user.ICQMoreInfo.BirthMonth)                         // bmonth(1)
-	buf.WriteByte(user.ICQMoreInfo.BirthDay)                           // bday(1)
-	buf.WriteByte(user.ICQMoreInfo.Lang1)                              // lang1(1)
-	buf.WriteByte(user.ICQMoreInfo.Lang2)                              // lang2(1)
-	buf.WriteByte(user.ICQMoreInfo.Lang3)                              // lang3(1)
+	binary.Write(buf, binary.LittleEndian, ICQLegacySrvMetaInfoMore)    // SRV_META_INFO_MORE = 0x00DC
+	buf.WriteByte(0x0A)                                                 // success
+	binary.Write(buf, binary.LittleEndian, user.Age(time.Now))          // age(2)
+	buf.WriteByte(uint8(user.ICQInfo.More.Gender))                      // gender(1)
+	writeLegacyString(buf, user.ICQInfo.More.HomePageAddr)              // homepage_len(2) + homepage
+	binary.Write(buf, binary.LittleEndian, user.ICQInfo.More.BirthYear) // byear(2) - full year
+	buf.WriteByte(user.ICQInfo.More.BirthMonth)                         // bmonth(1)
+	buf.WriteByte(user.ICQInfo.More.BirthDay)                           // bday(1)
+	buf.WriteByte(user.ICQInfo.More.Lang1)                              // lang1(1)
+	buf.WriteByte(user.ICQInfo.More.Lang2)                              // lang2(1)
+	buf.WriteByte(user.ICQInfo.More.Lang3)                              // lang3(1)
 
 	pkt := &V5ServerPacket{
 		Version:   ICQLegacyVersionV5,
@@ -3692,21 +3692,21 @@ func (h *V5Handler) sendV5OldStyleInfoExt(session *LegacySession, targetUIN uint
 	// Extract fields from user struct (matching iserverd field names)
 	// From iserverd: tuser.hcity, tuser.hcountry, tuser.hstate, tuser.age, tuser.gender,
 	//                tuser.hphone, tuser.hpage, notes.notes
-	hcity := user.ICQBasicInfo.City
-	hcountry := user.ICQBasicInfo.CountryCode
-	gmtOffset := user.ICQBasicInfo.GMTOffset
-	hstate := user.ICQBasicInfo.State
+	hcity := user.ICQInfo.Basic.City
+	hcountry := user.ICQInfo.Basic.CountryCode
+	gmtOffset := user.ICQInfo.Basic.GMTOffset
+	hstate := user.ICQInfo.Basic.State
 	age := uint16(user.Age(func() time.Time { return time.Now() }))
-	gender := uint8(user.ICQMoreInfo.Gender)
-	hphone := user.ICQBasicInfo.Phone
-	hpage := user.ICQMoreInfo.HomePageAddr
-	notes := user.ICQNotes.Notes
+	gender := uint8(user.ICQInfo.More.Gender)
+	hphone := user.ICQInfo.Basic.Phone
+	hpage := user.ICQInfo.More.HomePageAddr
+	notes := user.ICQInfo.Notes.Notes
 
 	// Parse ZIP code string to uint32 for the old-style ext info format
 	// The licq.5 client reads this as UnpackUnsignedLong (4 bytes)
 	var zipCode uint32
-	if user.ICQBasicInfo.ZIPCode != "" {
-		fmt.Sscanf(user.ICQBasicInfo.ZIPCode, "%d", &zipCode)
+	if user.ICQInfo.Basic.ZIPCode != "" {
+		fmt.Sscanf(user.ICQInfo.Basic.ZIPCode, "%d", &zipCode)
 	}
 
 	// Build data matching licq.5 client's USERxDETAILS parsing:
