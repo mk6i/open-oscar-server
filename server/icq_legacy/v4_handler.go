@@ -1430,19 +1430,19 @@ func (h *V4Handler) handleUpdateDetail(session *LegacySession, seq1, seq2 uint16
 		// Read existing basic info to avoid overwriting nick/first/last/email
 		existing, err := h.service.GetFullUserInfo(ctx, uin)
 		if err == nil && existing != nil {
-			existing.ICQBasicInfo.City = city
-			existing.ICQBasicInfo.CountryCode = country
-			existing.ICQBasicInfo.State = st
-			existing.ICQBasicInfo.Phone = phone
-			if err := h.service.UpdateBasicInfo(ctx, uin, existing.ICQBasicInfo); err != nil {
+			existing.ICQInfo.Basic.City = city
+			existing.ICQInfo.Basic.CountryCode = country
+			existing.ICQInfo.Basic.State = st
+			existing.ICQInfo.Basic.Phone = phone
+			if err := h.service.UpdateBasicInfo(ctx, uin, existing.ICQInfo.Basic); err != nil {
 				h.logger.Error("V4 update detail basic failed", "uin", uin, "err", err)
 			}
 		}
 		// Merge more info to avoid overwriting birthday/languages
 		if existing != nil {
-			existing.ICQMoreInfo.Gender = uint16(sex)
-			existing.ICQMoreInfo.HomePageAddr = homepage
-			if err := h.service.UpdateMoreInfo(ctx, uin, existing.ICQMoreInfo); err != nil {
+			existing.ICQInfo.More.Gender = uint16(sex)
+			existing.ICQInfo.More.HomePageAddr = homepage
+			if err := h.service.UpdateMoreInfo(ctx, uin, existing.ICQInfo.More); err != nil {
 				h.logger.Error("V4 update detail more failed", "uin", uin, "err", err)
 			}
 		}
@@ -2109,26 +2109,26 @@ func (h *V4Handler) sendExtInfoResponse(session *LegacySession, seq2 uint16, tar
 	// Try to get full user info from the service
 	user, err := h.service.GetFullUserInfo(ctx, targetUIN)
 	if err == nil && user != nil {
-		city = user.ICQBasicInfo.City
-		country = user.ICQBasicInfo.CountryCode
-		timezone = user.ICQBasicInfo.GMTOffset
-		state = user.ICQBasicInfo.State
-		phone = user.ICQBasicInfo.Phone
-		homepage = user.ICQMoreInfo.HomePageAddr
-		about = user.ICQNotes.Notes
+		city = user.ICQInfo.Basic.City
+		country = user.ICQInfo.Basic.CountryCode
+		timezone = user.ICQInfo.Basic.GMTOffset
+		state = user.ICQInfo.Basic.State
+		phone = user.ICQInfo.Basic.Phone
+		homepage = user.ICQInfo.More.HomePageAddr
+		about = user.ICQInfo.Notes.Notes
 
 		// Calculate age from birth year
-		if user.ICQMoreInfo.BirthYear > 0 {
+		if user.ICQInfo.More.BirthYear > 0 {
 			currentYear := uint16(2026) // Current year
-			age = currentYear - user.ICQMoreInfo.BirthYear
+			age = currentYear - user.ICQInfo.More.BirthYear
 		}
 
 		// Gender (ICQ uses 1=female, 2=male, 0=unspecified)
-		gender = byte(user.ICQMoreInfo.Gender)
+		gender = byte(user.ICQInfo.More.Gender)
 
 		// Zip code - stored as string, sent as uint32 in V3/V4 protocol
-		if user.ICQBasicInfo.ZIPCode != "" {
-			if z, err := strconv.ParseUint(user.ICQBasicInfo.ZIPCode, 10, 32); err == nil {
+		if user.ICQInfo.Basic.ZIPCode != "" {
+			if z, err := strconv.ParseUint(user.ICQInfo.Basic.ZIPCode, 10, 32); err == nil {
 				zipcode = uint32(z)
 			}
 		}

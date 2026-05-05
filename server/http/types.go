@@ -190,6 +190,9 @@ type ICQProfileManager interface {
 
 	// SetPermissions updates the user's privacy permissions.
 	SetPermissions(ctx context.Context, name state.IdentScreenName, data state.ICQPermissions) error
+
+	// SetICQInfo updates all ICQ profile columns for the user in one operation.
+	SetICQInfo(ctx context.Context, name state.IdentScreenName, info state.ICQInfo) error
 }
 
 type userWithPassword struct {
@@ -348,6 +351,10 @@ type icqBasicInfoHandle struct {
 	CountryCode  uint16 `json:"country_code"`
 	GMTOffset    uint8  `json:"gmt_offset"`
 	PublishEmail bool   `json:"publish_email"`
+	OriginCity   string `json:"origin_city"`
+	OriginState  string `json:"origin_state"`
+	// OriginCountryCode is the ICQ country code for the user's original home.
+	OriginCountryCode uint16 `json:"origin_country_code"`
 }
 
 type icqMoreInfoHandle struct {

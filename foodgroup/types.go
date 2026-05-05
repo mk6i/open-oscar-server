@@ -296,6 +296,12 @@ type ICQUserUpdater interface {
 
 	// SetPermissions updates the user's privacy and permission settings.
 	SetPermissions(ctx context.Context, name state.IdentScreenName, data state.ICQPermissions) error
+
+	// SetHomepageCategory updates the user's homepage category and keyword.
+	SetHomepageCategory(ctx context.Context, name state.IdentScreenName, data state.ICQHomepageCategory) error
+
+	// SetICQInfo updates all ICQ profile columns for the user in one operation.
+	SetICQInfo(ctx context.Context, name state.IdentScreenName, info state.ICQInfo) error
 }
 
 // MessageRelayer defines methods for delivering SNAC messages to one or more

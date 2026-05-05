@@ -213,6 +213,8 @@ type oscarTag struct {
 	lenPrefix      reflect.Kind
 	optional       bool
 	nullTerminated bool
+	// quirk names an unmarshal-only decode exception
+	quirk string
 }
 
 func parseOSCARTag(tag reflect.StructTag) (oscarTag, error) {
@@ -224,41 +226,58 @@ func parseOSCARTag(tag reflect.StructTag) (oscarTag, error) {
 	}
 
 	for _, kv := range strings.Split(val, ",") {
+		kv = strings.TrimSpace(kv)
+		if kv == "" {
+			continue
+		}
 		kvSplit := strings.SplitN(kv, "=", 2)
+		key := strings.TrimSpace(kvSplit[0])
 		if len(kvSplit) == 2 {
-			switch kvSplit[0] {
+			valPart := strings.TrimSpace(kvSplit[1])
+			switch key {
 			case "len_prefix":
 				oscTag.hasLenPrefix = true
-				switch kvSplit[1] {
+				switch valPart {
 				case "uint8":
 					oscTag.lenPrefix = reflect.Uint8
 				case "uint16":
 					oscTag.lenPrefix = reflect.Uint16
 				default:
 					return oscTag, fmt.Errorf("%w: unsupported type %s. allowed types: uint8, uint16",
-						errInvalidStructTag, kvSplit[1])
+						errInvalidStructTag, valPart)
 				}
 			case "count_prefix":
 				oscTag.hasCountPrefix = true
-				switch kvSplit[1] {
+				switch valPart {
 				case "uint8":
 					oscTag.countPrefix = reflect.Uint8
 				case "uint16":
 					oscTag.countPrefix = reflect.Uint16
 				default:
 					return oscTag, fmt.Errorf("%w: unsupported type %s. allowed types: uint8, uint16",
-						errInvalidStructTag, kvSplit[1])
+						errInvalidStructTag, valPart)
 				}
+			case "quirk":
+				if valPart == "" {
+					return oscTag, fmt.Errorf("%w: empty quirk value", errInvalidStructTag)
+				}
+				if oscTag.quirk != "" {
+					return oscTag, fmt.Errorf("%w: duplicate quirk key", errInvalidStructTag)
+				}
+				oscTag.quirk = valPart
+			default:
+				return oscTag, fmt.Errorf("%w: unsupported struct tag %s",
+					errInvalidStructTag, key)
 			}
 		} else {
-			switch kvSplit[0] {
+			switch key {
 			case "optional":
 				oscTag.optional = true
 			case "nullterm":
 				oscTag.nullTerminated = true
 			default:
 				return oscTag, fmt.Errorf("%w: unsupported struct tag %s",
-					errInvalidStructTag, kvSplit[0])
+					errInvalidStructTag, key)
 			}
 		}
 	}

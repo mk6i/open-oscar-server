@@ -733,6 +733,22 @@ func TestMarshal(t *testing.T) {
 			},
 			wantErr: io.EOF,
 		},
+		{
+			name: "duplicate quirk keys in oscar tag",
+			w:    &bytes.Buffer{},
+			given: struct {
+				V uint8 `oscar:"quirk=a,quirk=b"`
+			}{V: 1},
+			wantErr: errInvalidStructTag,
+		},
+		{
+			name: "empty quirk value",
+			w:    &bytes.Buffer{},
+			given: struct {
+				V uint8 `oscar:"quirk="`
+			}{V: 1},
+			wantErr: errInvalidStructTag,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

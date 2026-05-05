@@ -581,14 +581,8 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 				return err
 			}
 		case wire.ICQDBQueryMetaReqSearchByUIN2:
-			rest := buf.Bytes()
-			if bytes.HasPrefix(rest, []byte{0x36, 0x01, 0x06, 0x00}) && len(rest) == 8 {
-				// fix incorrect TLV len set by QIP 2005. it specifies len=6
-				// for a 4-byte value, causing the unmarshaler to return EOF.
-				rest[2] = 4
-			}
 			req := wire.ICQ_0x07D0_0x0569_DBQueryMetaReqSearchByUIN2{}
-			if err := wire.UnmarshalLE(&req, bytes.NewReader(rest)); err != nil {
+			if err := wire.UnmarshalLE(&req, buf); err != nil {
 				return err
 			}
 			if err := rt.ICQService.FindByUIN2(ctx, instance, req, icqMD.Seq); err != nil {
@@ -688,6 +682,14 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 				return err
 			}
 			if err := rt.ICQService.SetAffiliations(ctx, instance, req, icqMD.Seq); err != nil {
+				return err
+			}
+		case wire.ICQDBQueryMetaReqSetFullInfo:
+			req := wire.ICQ_0x07D0_0x0C3A_DBQueryMetaReqSetFullInfo{}
+			if err := wire.UnmarshalLE(&req, buf); err != nil {
+				return err
+			}
+			if err := rt.ICQService.SetICQInfo(ctx, instance, req, icqMD.Seq); err != nil {
 				return err
 			}
 		case wire.ICQDBQueryMetaReqStat0a8c,

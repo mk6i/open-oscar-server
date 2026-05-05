@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"strings"
 )
 
 var (
@@ -16,7 +17,7 @@ var (
 
 // UnmarshalBE unmarshalls OSCAR protocol messages in big-endian format.
 func UnmarshalBE(v any, r io.Reader) error {
-	if err := unmarshal(reflect.TypeOf(v).Elem(), reflect.ValueOf(v).Elem(), "", r, binary.BigEndian); err != nil {
+	if err := unmarshal(reflect.TypeOf(v).Elem(), reflect.ValueOf(v).Elem(), "", r, binary.BigEndian, ""); err != nil {
 		return fmt.Errorf("%w: %w", ErrUnmarshalFailure, err)
 	}
 	return nil
@@ -24,22 +25,25 @@ func UnmarshalBE(v any, r io.Reader) error {
 
 // UnmarshalLE unmarshalls OSCAR protocol messages in little-endian format.
 func UnmarshalLE(v any, r io.Reader) error {
-	if err := unmarshal(reflect.TypeOf(v).Elem(), reflect.ValueOf(v).Elem(), "", r, binary.LittleEndian); err != nil {
+	if err := unmarshal(reflect.TypeOf(v).Elem(), reflect.ValueOf(v).Elem(), "", r, binary.LittleEndian, ""); err != nil {
 		return fmt.Errorf("%w: %w", ErrUnmarshalFailure, err)
 	}
 	return nil
 }
 
-// MarshalLE marshals ICQ protocol messages in little-endian format.
-func unmarshal(t reflect.Type, v reflect.Value, tag reflect.StructTag, r io.Reader, order binary.ByteOrder) error {
+func unmarshal(t reflect.Type, v reflect.Value, tag reflect.StructTag, r io.Reader, order binary.ByteOrder, activeQuirk string) error {
 	oscTag, err := parseOSCARTag(tag)
 	if err != nil {
 		return fmt.Errorf("error parsing tag: %w", err)
 	}
+	effectiveQuirk := strings.TrimSpace(oscTag.quirk)
+	if effectiveQuirk == "" {
+		effectiveQuirk = activeQuirk
+	}
 
 	if oscTag.optional {
 		v.Set(reflect.New(t.Elem()))
-		err := unmarshalStruct(t.Elem(), v.Elem(), oscTag, r, order)
+		err := unmarshalStruct(t.Elem(), v.Elem(), oscTag, r, order, effectiveQuirk)
 		if errors.Is(err, io.EOF) {
 			// no values to read, but that's ok since this struct is optional
 			v.Set(reflect.Zero(t))
@@ -52,13 +56,13 @@ func unmarshal(t reflect.Type, v reflect.Value, tag reflect.StructTag, r io.Read
 
 	switch v.Kind() {
 	case reflect.Array:
-		return unmarshalArray(v, r, order)
+		return unmarshalArray(v, r, order, effectiveQuirk)
 	case reflect.Slice:
-		return unmarshalSlice(v, oscTag, r, order)
+		return unmarshalSlice(v, oscTag, r, order, effectiveQuirk)
 	case reflect.String:
 		return unmarshalString(v, oscTag, r, order)
 	case reflect.Struct:
-		return unmarshalStruct(t, v, oscTag, r, order)
+		return unmarshalStruct(t, v, oscTag, r, order, effectiveQuirk)
 	case reflect.Uint8:
 		var l uint8
 		if err := binary.Read(r, order, &l); err != nil {
@@ -92,13 +96,13 @@ func unmarshal(t reflect.Type, v reflect.Value, tag reflect.StructTag, r io.Read
 	}
 }
 
-func unmarshalArray(v reflect.Value, r io.Reader, order binary.ByteOrder) error {
+func unmarshalArray(v reflect.Value, r io.Reader, order binary.ByteOrder, activeQuirk string) error {
 	arrLen := v.Len()
 	arrType := v.Type().Elem()
 
 	for i := 0; i < arrLen; i++ {
 		elem := reflect.New(arrType).Elem()
-		if err := unmarshal(arrType, elem, "", r, order); err != nil {
+		if err := unmarshal(arrType, elem, "", r, order, activeQuirk); err != nil {
 			return err
 		}
 		v.Index(i).Set(elem)
@@ -107,7 +111,7 @@ func unmarshalArray(v reflect.Value, r io.Reader, order binary.ByteOrder) error 
 	return nil
 }
 
-func unmarshalSlice(v reflect.Value, oscTag oscarTag, r io.Reader, order binary.ByteOrder) error {
+func unmarshalSlice(v reflect.Value, oscTag oscarTag, r io.Reader, order binary.ByteOrder, activeQuirk string) error {
 	slice := reflect.New(v.Type()).Elem()
 	elemType := v.Type().Elem()
 
@@ -125,7 +129,7 @@ func unmarshalSlice(v reflect.Value, oscTag oscarTag, r io.Reader, order binary.
 		buf := bytes.NewBuffer(b)
 		for buf.Len() > 0 {
 			elem := reflect.New(elemType).Elem()
-			if err := unmarshal(elemType, elem, "", buf, order); err != nil {
+			if err := unmarshalSliceElement(elemType, elem, buf, order, activeQuirk); err != nil {
 				return err
 			}
 			slice = reflect.Append(slice, elem)
@@ -138,7 +142,7 @@ func unmarshalSlice(v reflect.Value, oscTag oscarTag, r io.Reader, order binary.
 
 		for i := 0; i < count; i++ {
 			elem := reflect.New(elemType).Elem()
-			if err := unmarshal(elemType, elem, "", r, order); err != nil {
+			if err := unmarshalSliceElement(elemType, elem, r, order, activeQuirk); err != nil {
 				return err
 			}
 			slice = reflect.Append(slice, elem)
@@ -146,7 +150,7 @@ func unmarshalSlice(v reflect.Value, oscTag oscarTag, r io.Reader, order binary.
 	} else {
 		for {
 			elem := reflect.New(elemType).Elem()
-			if err := unmarshal(elemType, elem, "", r, order); err != nil {
+			if err := unmarshalSliceElement(elemType, elem, r, order, activeQuirk); err != nil {
 				if errors.Is(err, io.EOF) {
 					break
 				}
@@ -156,6 +160,69 @@ func unmarshalSlice(v reflect.Value, oscTag oscarTag, r io.Reader, order binary.
 		}
 	}
 	v.Set(slice)
+	return nil
+}
+
+// unmarshalSliceElement reads one element of a slice; for TLV under LE with decode quirks,
+// applies client-specific length workarounds (see unmarshalTLV* helpers).
+func unmarshalSliceElement(elemType reflect.Type, elem reflect.Value, r io.Reader, order binary.ByteOrder, activeQuirk string) error {
+	if activeQuirk != "" {
+		switch {
+		case activeQuirk == "icq2003b_set_fullinfo" && order == binary.LittleEndian && elemType == reflect.TypeOf(TLV{}):
+			return unmarshalTLVICQ2003bSetFullInfo(elem, r, order)
+		case activeQuirk == "qip_2005_search_by_uin2" && order == binary.LittleEndian && elemType == reflect.TypeOf(TLV{}):
+			return unmarshalTLVQIP2005SearchByUIN2(elem, r, order)
+		}
+	}
+	return unmarshal(elemType, elem, "", r, order, activeQuirk)
+}
+
+// unmarshalTLVICQ2003bSetFullInfo decodes one TLV with ICQ 2003b save-info workaround for ICQTLVTagsEmail.
+func unmarshalTLVICQ2003bSetFullInfo(elem reflect.Value, r io.Reader, order binary.ByteOrder) error {
+	var tag uint16
+	if err := binary.Read(r, order, &tag); err != nil {
+		return err
+	}
+	var n uint16
+	if err := binary.Read(r, order, &n); err != nil {
+		return err
+	}
+	if tag == ICQTLVTagsEmail && n == 3 {
+		n = 4
+	}
+	buf := make([]byte, n)
+	if n > 0 {
+		if _, err := io.ReadFull(r, buf); err != nil {
+			return err
+		}
+	}
+	elem.Field(0).Set(reflect.ValueOf(tag))
+	elem.Field(1).SetBytes(buf)
+	return nil
+}
+
+// unmarshalTLVQIP2005SearchByUIN2 decodes one TLV for META SearchByUIN2 (0x0569): QIP 2005 sends
+// ICQTLVTagsUIN (0x0136) with an incorrect length (e.g. 6) for a 4-byte UIN, causing EOF on a strict read.
+func unmarshalTLVQIP2005SearchByUIN2(elem reflect.Value, r io.Reader, order binary.ByteOrder) error {
+	var tag uint16
+	if err := binary.Read(r, order, &tag); err != nil {
+		return err
+	}
+	var n uint16
+	if err := binary.Read(r, order, &n); err != nil {
+		return err
+	}
+	if tag == ICQTLVTagsUIN && n != 4 {
+		n = 4
+	}
+	buf := make([]byte, n)
+	if n > 0 {
+		if _, err := io.ReadFull(r, buf); err != nil {
+			return err
+		}
+	}
+	elem.Field(0).Set(reflect.ValueOf(tag))
+	elem.Field(1).SetBytes(buf)
 	return nil
 }
 
@@ -186,7 +253,7 @@ func unmarshalString(v reflect.Value, oscTag oscarTag, r io.Reader, order binary
 	return nil
 }
 
-func unmarshalStruct(t reflect.Type, v reflect.Value, oscTag oscarTag, r io.Reader, order binary.ByteOrder) error {
+func unmarshalStruct(t reflect.Type, v reflect.Value, oscTag oscarTag, r io.Reader, order binary.ByteOrder, activeQuirk string) error {
 	if oscTag.hasLenPrefix {
 		bufLen, err := unmarshalUnsignedInt(oscTag.lenPrefix, r, order)
 		if err != nil {
@@ -212,7 +279,7 @@ func unmarshalStruct(t reflect.Type, v reflect.Value, oscTag oscarTag, r io.Read
 					errNonOptionalPointer, field.Name, field.Type.Elem().Kind())
 			}
 		}
-		if err := unmarshal(field.Type, value, field.Tag, r, order); err != nil {
+		if err := unmarshal(field.Type, value, field.Tag, r, order, activeQuirk); err != nil {
 			return err
 		}
 	}

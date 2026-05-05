@@ -1070,74 +1070,77 @@ func getICQProfileHandler(w http.ResponseWriter, r *http.Request, mgr ICQProfile
 	out := icqProfileHandle{
 		UIN: user.IdentScreenName.UIN(),
 		BasicInfo: icqBasicInfoHandle{
-			Nickname:     user.ICQBasicInfo.Nickname,
-			FirstName:    user.ICQBasicInfo.FirstName,
-			LastName:     user.ICQBasicInfo.LastName,
-			EmailAddress: user.ICQBasicInfo.EmailAddress,
-			City:         user.ICQBasicInfo.City,
-			State:        user.ICQBasicInfo.State,
-			Phone:        user.ICQBasicInfo.Phone,
-			Fax:          user.ICQBasicInfo.Fax,
-			Address:      user.ICQBasicInfo.Address,
-			CellPhone:    user.ICQBasicInfo.CellPhone,
-			ZIPCode:      user.ICQBasicInfo.ZIPCode,
-			CountryCode:  user.ICQBasicInfo.CountryCode,
-			GMTOffset:    user.ICQBasicInfo.GMTOffset,
-			PublishEmail: user.ICQBasicInfo.PublishEmail,
+			Nickname:          user.ICQInfo.Basic.Nickname,
+			FirstName:         user.ICQInfo.Basic.FirstName,
+			LastName:          user.ICQInfo.Basic.LastName,
+			EmailAddress:      user.ICQInfo.Basic.EmailAddress,
+			City:              user.ICQInfo.Basic.City,
+			State:             user.ICQInfo.Basic.State,
+			Phone:             user.ICQInfo.Basic.Phone,
+			Fax:               user.ICQInfo.Basic.Fax,
+			Address:           user.ICQInfo.Basic.Address,
+			CellPhone:         user.ICQInfo.Basic.CellPhone,
+			ZIPCode:           user.ICQInfo.Basic.ZIPCode,
+			CountryCode:       user.ICQInfo.Basic.CountryCode,
+			GMTOffset:         user.ICQInfo.Basic.GMTOffset,
+			PublishEmail:      user.ICQInfo.Basic.PublishEmail,
+			OriginCity:        user.ICQInfo.Basic.OriginallyFromCity,
+			OriginState:       user.ICQInfo.Basic.OriginallyFromState,
+			OriginCountryCode: user.ICQInfo.Basic.OriginallyFromCountryCode,
 		},
 		MoreInfo: icqMoreInfoHandle{
-			Gender:       user.ICQMoreInfo.Gender,
-			HomePageAddr: user.ICQMoreInfo.HomePageAddr,
-			BirthYear:    user.ICQMoreInfo.BirthYear,
-			BirthMonth:   user.ICQMoreInfo.BirthMonth,
-			BirthDay:     user.ICQMoreInfo.BirthDay,
-			Lang1:        user.ICQMoreInfo.Lang1,
-			Lang2:        user.ICQMoreInfo.Lang2,
-			Lang3:        user.ICQMoreInfo.Lang3,
+			Gender:       user.ICQInfo.More.Gender,
+			HomePageAddr: user.ICQInfo.More.HomePageAddr,
+			BirthYear:    user.ICQInfo.More.BirthYear,
+			BirthMonth:   user.ICQInfo.More.BirthMonth,
+			BirthDay:     user.ICQInfo.More.BirthDay,
+			Lang1:        user.ICQInfo.More.Lang1,
+			Lang2:        user.ICQInfo.More.Lang2,
+			Lang3:        user.ICQInfo.More.Lang3,
 		},
 		WorkInfo: icqWorkInfoHandle{
-			Company:        user.ICQWorkInfo.Company,
-			Department:     user.ICQWorkInfo.Department,
-			Position:       user.ICQWorkInfo.Position,
-			OccupationCode: user.ICQWorkInfo.OccupationCode,
-			Address:        user.ICQWorkInfo.Address,
-			City:           user.ICQWorkInfo.City,
-			State:          user.ICQWorkInfo.State,
-			ZIPCode:        user.ICQWorkInfo.ZIPCode,
-			CountryCode:    user.ICQWorkInfo.CountryCode,
-			Phone:          user.ICQWorkInfo.Phone,
-			Fax:            user.ICQWorkInfo.Fax,
-			WebPage:        user.ICQWorkInfo.WebPage,
+			Company:        user.ICQInfo.Work.Company,
+			Department:     user.ICQInfo.Work.Department,
+			Position:       user.ICQInfo.Work.Position,
+			OccupationCode: user.ICQInfo.Work.OccupationCode,
+			Address:        user.ICQInfo.Work.Address,
+			City:           user.ICQInfo.Work.City,
+			State:          user.ICQInfo.Work.State,
+			ZIPCode:        user.ICQInfo.Work.ZIPCode,
+			CountryCode:    user.ICQInfo.Work.CountryCode,
+			Phone:          user.ICQInfo.Work.Phone,
+			Fax:            user.ICQInfo.Work.Fax,
+			WebPage:        user.ICQInfo.Work.WebPage,
 		},
-		Notes: user.ICQNotes.Notes,
+		Notes: user.ICQInfo.Notes.Notes,
 		Interests: icqInterestsHandle{
-			Code1:    user.ICQInterests.Code1,
-			Keyword1: user.ICQInterests.Keyword1,
-			Code2:    user.ICQInterests.Code2,
-			Keyword2: user.ICQInterests.Keyword2,
-			Code3:    user.ICQInterests.Code3,
-			Keyword3: user.ICQInterests.Keyword3,
-			Code4:    user.ICQInterests.Code4,
-			Keyword4: user.ICQInterests.Keyword4,
+			Code1:    user.ICQInfo.Interests.Code1,
+			Keyword1: user.ICQInfo.Interests.Keyword1,
+			Code2:    user.ICQInfo.Interests.Code2,
+			Keyword2: user.ICQInfo.Interests.Keyword2,
+			Code3:    user.ICQInfo.Interests.Code3,
+			Keyword3: user.ICQInfo.Interests.Keyword3,
+			Code4:    user.ICQInfo.Interests.Code4,
+			Keyword4: user.ICQInfo.Interests.Keyword4,
 		},
 		Affiliations: icqAffiliationsHandle{
-			PastCode1:       user.ICQAffiliations.PastCode1,
-			PastKeyword1:    user.ICQAffiliations.PastKeyword1,
-			PastCode2:       user.ICQAffiliations.PastCode2,
-			PastKeyword2:    user.ICQAffiliations.PastKeyword2,
-			PastCode3:       user.ICQAffiliations.PastCode3,
-			PastKeyword3:    user.ICQAffiliations.PastKeyword3,
-			CurrentCode1:    user.ICQAffiliations.CurrentCode1,
-			CurrentKeyword1: user.ICQAffiliations.CurrentKeyword1,
-			CurrentCode2:    user.ICQAffiliations.CurrentCode2,
-			CurrentKeyword2: user.ICQAffiliations.CurrentKeyword2,
-			CurrentCode3:    user.ICQAffiliations.CurrentCode3,
-			CurrentKeyword3: user.ICQAffiliations.CurrentKeyword3,
+			PastCode1:       user.ICQInfo.Affiliations.PastCode1,
+			PastKeyword1:    user.ICQInfo.Affiliations.PastKeyword1,
+			PastCode2:       user.ICQInfo.Affiliations.PastCode2,
+			PastKeyword2:    user.ICQInfo.Affiliations.PastKeyword2,
+			PastCode3:       user.ICQInfo.Affiliations.PastCode3,
+			PastKeyword3:    user.ICQInfo.Affiliations.PastKeyword3,
+			CurrentCode1:    user.ICQInfo.Affiliations.CurrentCode1,
+			CurrentKeyword1: user.ICQInfo.Affiliations.CurrentKeyword1,
+			CurrentCode2:    user.ICQInfo.Affiliations.CurrentCode2,
+			CurrentKeyword2: user.ICQInfo.Affiliations.CurrentKeyword2,
+			CurrentCode3:    user.ICQInfo.Affiliations.CurrentCode3,
+			CurrentKeyword3: user.ICQInfo.Affiliations.CurrentKeyword3,
 		},
 		Permissions: icqPermissionsHandle{
-			AuthRequired: user.ICQPermissions.AuthRequired,
-			WebAware:     user.ICQPermissions.WebAware,
-			AllowSpam:    user.ICQPermissions.AllowSpam,
+			AuthRequired: user.ICQInfo.Permissions.AuthRequired,
+			WebAware:     user.ICQInfo.Permissions.WebAware,
+			AllowSpam:    user.ICQInfo.Permissions.AllowSpam,
 		},
 	}
 
@@ -1179,6 +1182,8 @@ func putICQProfileHandler(w http.ResponseWriter, r *http.Request, mgr ICQProfile
 	// - Phone/fax: max 30 chars
 	// - Email: max 64 chars
 	// - Address/city/state: max 64 chars
+	// - Country codes (basic_info.country_code, basic_info.origin_country_code,
+	//   work_info.country_code): uint16 in JSON, not string length checks
 	// - ZIP: max 12 chars
 	// - Homepage: max 127 chars
 	// - Notes: max 450 chars (v5 limit)
@@ -1202,6 +1207,9 @@ func putICQProfileHandler(w http.ResponseWriter, r *http.Request, mgr ICQProfile
 		{"basic_info.address", input.BasicInfo.Address, 64},
 		{"basic_info.cell_phone", input.BasicInfo.CellPhone, 30},
 		{"basic_info.zip", input.BasicInfo.ZIPCode, 12},
+		{"basic_info.origin_city", input.BasicInfo.OriginCity, 64},
+		{"basic_info.origin_state", input.BasicInfo.OriginState, 64},
+		// basic_info.origin_country_code is uint16 (like basic_info.country_code); validated by JSON binding only.
 		{"more_info.homepage", input.MoreInfo.HomePageAddr, 127},
 		{"work_info.company", input.WorkInfo.Company, 64},
 		{"work_info.department", input.WorkInfo.Department, 64},
@@ -1365,6 +1373,25 @@ func putICQProfileHandler(w http.ResponseWriter, r *http.Request, mgr ICQProfile
 		AllowSpam:    input.Permissions.AllowSpam,
 	}); err != nil {
 		logger.Error("error setting permissions", "err", err.Error())
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	merged, err := mgr.User(r.Context(), sn)
+	if err != nil {
+		logger.Error("error reloading user after ICQ profile update", "err", err.Error())
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if merged == nil {
+		http.Error(w, "user not found", http.StatusNotFound)
+		return
+	}
+	merged.ICQInfo.Basic.OriginallyFromCity = input.BasicInfo.OriginCity
+	merged.ICQInfo.Basic.OriginallyFromState = input.BasicInfo.OriginState
+	merged.ICQInfo.Basic.OriginallyFromCountryCode = input.BasicInfo.OriginCountryCode
+	if err := mgr.SetICQInfo(r.Context(), sn, merged.ICQInfo); err != nil {
+		logger.Error("error setting ICQ info (origin fields)", "err", err.Error())
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}

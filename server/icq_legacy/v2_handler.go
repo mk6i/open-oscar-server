@@ -622,14 +622,14 @@ func (h *V2Handler) handleExtInfoReq(session *LegacySession, addr *net.UDPAddr, 
 	// Build and send SRV_EXT_INFO_REPLY (0x0122)
 	wireInfo := &LegacyUserInfo{
 		UIN:      targetUIN,
-		City:     truncateField(user.ICQBasicInfo.City, 64, h.logger, "city", targetUIN),
-		State:    truncateField(user.ICQBasicInfo.State, 64, h.logger, "state", targetUIN),
-		Country:  user.ICQBasicInfo.CountryCode,
-		Phone:    truncateField(user.ICQBasicInfo.CellPhone, 30, h.logger, "phone", targetUIN),
-		Homepage: truncateField(user.ICQMoreInfo.HomePageAddr, 127, h.logger, "homepage", targetUIN),
-		About:    truncateField(user.ICQNotes.Notes, 450, h.logger, "about", targetUIN),
+		City:     truncateField(user.ICQInfo.Basic.City, 64, h.logger, "city", targetUIN),
+		State:    truncateField(user.ICQInfo.Basic.State, 64, h.logger, "state", targetUIN),
+		Country:  user.ICQInfo.Basic.CountryCode,
+		Phone:    truncateField(user.ICQInfo.Basic.CellPhone, 30, h.logger, "phone", targetUIN),
+		Homepage: truncateField(user.ICQInfo.More.HomePageAddr, 127, h.logger, "homepage", targetUIN),
+		About:    truncateField(user.ICQInfo.Notes.Notes, 450, h.logger, "about", targetUIN),
 		Age:      user.Age(time.Now),
-		Gender:   uint8(user.ICQMoreInfo.Gender),
+		Gender:   uint8(user.ICQInfo.More.Gender),
 	}
 
 	if session != nil {
@@ -1128,7 +1128,7 @@ func (h *V2Handler) handleUpdateBasic(session *LegacySession, pkt *V2ClientPacke
 	existing, err := h.service.GetFullUserInfo(ctx, session.UIN)
 	var info state.ICQBasicInfo
 	if err == nil && existing != nil {
-		info = existing.ICQBasicInfo
+		info = existing.ICQInfo.Basic
 	}
 	info.Nickname = alias
 	info.FirstName = firstName
@@ -1236,20 +1236,20 @@ func (h *V2Handler) handleUpdateDetail(session *LegacySession, pkt *V2ClientPack
 	ctx := context.Background()
 	existing, err := h.service.GetFullUserInfo(ctx, session.UIN)
 	if err == nil && existing != nil {
-		existing.ICQBasicInfo.City = city
-		existing.ICQBasicInfo.CountryCode = country
-		existing.ICQBasicInfo.State = st
-		existing.ICQBasicInfo.Phone = phone
-		if err := h.service.UpdateBasicInfo(ctx, session.UIN, existing.ICQBasicInfo); err != nil {
+		existing.ICQInfo.Basic.City = city
+		existing.ICQInfo.Basic.CountryCode = country
+		existing.ICQInfo.Basic.State = st
+		existing.ICQInfo.Basic.Phone = phone
+		if err := h.service.UpdateBasicInfo(ctx, session.UIN, existing.ICQInfo.Basic); err != nil {
 			h.logger.Error("V2 update detail basic failed", "uin", session.UIN, "err", err)
 		}
 	}
 
 	// Read existing more info to avoid overwriting birthday/languages
 	if existing != nil {
-		existing.ICQMoreInfo.Gender = uint16(sex)
-		existing.ICQMoreInfo.HomePageAddr = homepage
-		if err := h.service.UpdateMoreInfo(ctx, session.UIN, existing.ICQMoreInfo); err != nil {
+		existing.ICQInfo.More.Gender = uint16(sex)
+		existing.ICQInfo.More.HomePageAddr = homepage
+		if err := h.service.UpdateMoreInfo(ctx, session.UIN, existing.ICQInfo.More); err != nil {
 			h.logger.Error("V2 update detail more failed", "uin", session.UIN, "err", err)
 		}
 	}

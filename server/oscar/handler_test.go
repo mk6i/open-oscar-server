@@ -2848,6 +2848,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		setAffiliations   *mockParam
 		setBasicInfo      *mockParam
 		setEmails         *mockParam
+		setFullInfo       *mockParam
 		setInterests      *mockParam
 		setMoreInfo       *mockParam
 		setPermissions    *mockParam
@@ -3581,6 +3582,50 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 			},
 		},
 		{
+			name: "MetaReqSetFullInfo - happy path",
+			reqParams: reqParams{
+				instance: state.NewSession().AddInstance(),
+				inBody: wire.SNAC_0x15_0x02_BQuery{
+					TLVRestBlock: wire.TLVRestBlock{
+						TLVList: wire.TLVList{
+							wire.NewTLVBE(wire.ICQTLVTagsMetadata, wire.ICQMessageReplyEnvelope{
+								Message: ICQMetaRequest{
+									ICQMetadata: wire.ICQMetadata{
+										ReqType: wire.ICQDBQueryMetaReq,
+										Seq:     1,
+									},
+									ReqSubType: wire.ICQDBQueryMetaReqSetFullInfo,
+									MetaRequest: wire.ICQ_0x07D0_0x0C3A_DBQueryMetaReqSetFullInfo{
+										TLVRestBlock: wire.TLVRestBlock{
+											TLVList: wire.TLVList{
+												wire.NewTLVLE(wire.ICQTLVTagsFirstName, struct {
+													V string `oscar:"len_prefix=uint16,nullterm"`
+												}{V: "john"}),
+											},
+										},
+									},
+								},
+							}),
+						},
+					},
+				},
+				seq: 1,
+			},
+			allMockParams: allMockParams{
+				setFullInfo: &mockParam{
+					req: wire.ICQ_0x07D0_0x0C3A_DBQueryMetaReqSetFullInfo{
+						TLVRestBlock: wire.TLVRestBlock{
+							TLVList: wire.TLVList{
+								wire.NewTLVLE(wire.ICQTLVTagsFirstName, struct {
+									V string `oscar:"len_prefix=uint16,nullterm"`
+								}{V: "john"}),
+							},
+						},
+					},
+				},
+			},
+		},
+		{
 			name: "MetaReqStat - happy path",
 			reqParams: reqParams{
 				instance: state.NewSession().AddInstance(),
@@ -3781,6 +3826,10 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 				icqService.EXPECT().
 					SetAffiliations(mock.Anything, tt.reqParams.instance, tt.allMockParams.setAffiliations.req, tt.reqParams.seq).
 					Return(tt.allMockParams.setAffiliations.wantErr)
+			case tt.allMockParams.setFullInfo != nil:
+				icqService.EXPECT().
+					SetICQInfo(mock.Anything, tt.reqParams.instance, tt.allMockParams.setFullInfo.req, tt.reqParams.seq).
+					Return(tt.allMockParams.setFullInfo.wantErr)
 			case tt.allMockParams.offlineMsgReq != nil:
 				icqService.EXPECT().
 					OfflineMsgReq(mock.Anything, tt.reqParams.instance, tt.reqParams.seq).

@@ -708,3 +708,36 @@ func TestUnmarshal(t *testing.T) {
 		})
 	}
 }
+
+// TestUnmarshalLE_ICQ2003bSaveInfoEmailTLVLengthQuirk checks ICQ 2003b "save info" / META
+// CLI_SET_FULLINFO: INF_TLV_EMAIL (ICQTLVTagsEmail, 0x015E) declares length 3 but writes 4 bytes
+// on the wire; unmarshal with oscar:"quirk=icq2003b_set_fullinfo" matches iserverd tlv_chain_c::readXXX.
+func TestUnmarshalLE_ICQ2003bSaveInfoEmailTLVLengthQuirk(t *testing.T) {
+	b := []byte{
+		0x5E, 0x01, 0x03, 0x00, 0x01, 0x00, 0x00, 0x00, // ICQTLVTagsEmail: LE len 3, 4 bytes on wire
+		0x58, 0x02, 0x02, 0x00, 0x00, 0x00, // ICQTLVTagsNotesText (0x0258), LE len 2
+	}
+	var got ICQ_0x07D0_0x0C3A_DBQueryMetaReqSetFullInfo
+	err := UnmarshalLE(&got, bytes.NewReader(b))
+	assert.NoError(t, err)
+	assert.Len(t, got.TLVList, 2)
+	assert.Equal(t, ICQTLVTagsEmail, got.TLVList[0].Tag)
+	assert.Equal(t, []byte{0x01, 0x00, 0x00, 0x00}, got.TLVList[0].Value)
+	assert.Equal(t, ICQTLVTagsNotesText, got.TLVList[1].Tag)
+	assert.Equal(t, []byte{0x00, 0x00}, got.TLVList[1].Value)
+}
+
+// TestUnmarshalLE_QIP2005SearchByUIN2TLVLengthQuirk checks QIP 2005 META SearchByUIN2: TLV ICQTLVTagsUIN
+// declares length 6 but only 4 bytes (UIN) follow; unmarshal with oscar:"quirk=qip_2005_search_by_uin2"
+// matches iserverd tlv.cpp rewrite for type 0x0136.
+func TestUnmarshalLE_QIP2005SearchByUIN2TLVLengthQuirk(t *testing.T) {
+	b := []byte{
+		0x36, 0x01, 0x06, 0x00, 0x01, 0x00, 0x00, 0x00, // ICQTLVTagsUIN: LE len 6 (wrong), 4-byte UIN on wire
+	}
+	var got ICQ_0x07D0_0x0569_DBQueryMetaReqSearchByUIN2
+	err := UnmarshalLE(&got, bytes.NewReader(b))
+	assert.NoError(t, err)
+	assert.Len(t, got.TLVList, 1)
+	assert.Equal(t, ICQTLVTagsUIN, got.TLVList[0].Tag)
+	assert.Equal(t, []byte{0x01, 0x00, 0x00, 0x00}, got.TLVList[0].Value)
+}

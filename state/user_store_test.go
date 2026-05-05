@@ -526,7 +526,9 @@ func TestGetUser(t *testing.T) {
 		StrongMD5Pass:     []byte("thepasshash"),
 		RegStatus:         3,
 		LastWarnUpdate:    time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC), // Database default value
-		ICQPermissions:    ICQPermissions{AuthRequired: true},
+		ICQInfo: ICQInfo{
+			Permissions: ICQPermissions{AuthRequired: true},
+		},
 	}
 	err = f.InsertUser(context.Background(), *insertedUser)
 	assert.NoError(t, err)
@@ -1086,18 +1088,18 @@ func TestSQLiteUserStore_SetWorkInfo(t *testing.T) {
 		// Retrieve the user and verify the work info was set correctly
 		updatedUser, err := f.User(context.Background(), screenName)
 		assert.NoError(t, err)
-		assert.Equal(t, workInfo.Company, updatedUser.ICQWorkInfo.Company)
-		assert.Equal(t, workInfo.Department, updatedUser.ICQWorkInfo.Department)
-		assert.Equal(t, workInfo.OccupationCode, updatedUser.ICQWorkInfo.OccupationCode)
-		assert.Equal(t, workInfo.Position, updatedUser.ICQWorkInfo.Position)
-		assert.Equal(t, workInfo.Address, updatedUser.ICQWorkInfo.Address)
-		assert.Equal(t, workInfo.City, updatedUser.ICQWorkInfo.City)
-		assert.Equal(t, workInfo.CountryCode, updatedUser.ICQWorkInfo.CountryCode)
-		assert.Equal(t, workInfo.Fax, updatedUser.ICQWorkInfo.Fax)
-		assert.Equal(t, workInfo.Phone, updatedUser.ICQWorkInfo.Phone)
-		assert.Equal(t, workInfo.State, updatedUser.ICQWorkInfo.State)
-		assert.Equal(t, workInfo.WebPage, updatedUser.ICQWorkInfo.WebPage)
-		assert.Equal(t, workInfo.ZIPCode, updatedUser.ICQWorkInfo.ZIPCode)
+		assert.Equal(t, workInfo.Company, updatedUser.ICQInfo.Work.Company)
+		assert.Equal(t, workInfo.Department, updatedUser.ICQInfo.Work.Department)
+		assert.Equal(t, workInfo.OccupationCode, updatedUser.ICQInfo.Work.OccupationCode)
+		assert.Equal(t, workInfo.Position, updatedUser.ICQInfo.Work.Position)
+		assert.Equal(t, workInfo.Address, updatedUser.ICQInfo.Work.Address)
+		assert.Equal(t, workInfo.City, updatedUser.ICQInfo.Work.City)
+		assert.Equal(t, workInfo.CountryCode, updatedUser.ICQInfo.Work.CountryCode)
+		assert.Equal(t, workInfo.Fax, updatedUser.ICQInfo.Work.Fax)
+		assert.Equal(t, workInfo.Phone, updatedUser.ICQInfo.Work.Phone)
+		assert.Equal(t, workInfo.State, updatedUser.ICQInfo.Work.State)
+		assert.Equal(t, workInfo.WebPage, updatedUser.ICQInfo.Work.WebPage)
+		assert.Equal(t, workInfo.ZIPCode, updatedUser.ICQInfo.Work.ZIPCode)
 	})
 
 	t.Run("Update Non-Existing User", func(t *testing.T) {
@@ -1118,18 +1120,18 @@ func TestSQLiteUserStore_SetWorkInfo(t *testing.T) {
 		// Retrieve the user and verify that fields are empty or have default values
 		updatedUser, err := f.User(context.Background(), screenName)
 		assert.NoError(t, err)
-		assert.Empty(t, updatedUser.ICQWorkInfo.Company)
-		assert.Empty(t, updatedUser.ICQWorkInfo.Department)
-		assert.Empty(t, updatedUser.ICQWorkInfo.OccupationCode)
-		assert.Empty(t, updatedUser.ICQWorkInfo.Position)
-		assert.Empty(t, updatedUser.ICQWorkInfo.Address)
-		assert.Empty(t, updatedUser.ICQWorkInfo.City)
-		assert.Empty(t, updatedUser.ICQWorkInfo.CountryCode)
-		assert.Empty(t, updatedUser.ICQWorkInfo.Fax)
-		assert.Empty(t, updatedUser.ICQWorkInfo.Phone)
-		assert.Empty(t, updatedUser.ICQWorkInfo.State)
-		assert.Empty(t, updatedUser.ICQWorkInfo.WebPage)
-		assert.Empty(t, updatedUser.ICQWorkInfo.ZIPCode)
+		assert.Empty(t, updatedUser.ICQInfo.Work.Company)
+		assert.Empty(t, updatedUser.ICQInfo.Work.Department)
+		assert.Empty(t, updatedUser.ICQInfo.Work.OccupationCode)
+		assert.Empty(t, updatedUser.ICQInfo.Work.Position)
+		assert.Empty(t, updatedUser.ICQInfo.Work.Address)
+		assert.Empty(t, updatedUser.ICQInfo.Work.City)
+		assert.Empty(t, updatedUser.ICQInfo.Work.CountryCode)
+		assert.Empty(t, updatedUser.ICQInfo.Work.Fax)
+		assert.Empty(t, updatedUser.ICQInfo.Work.Phone)
+		assert.Empty(t, updatedUser.ICQInfo.Work.State)
+		assert.Empty(t, updatedUser.ICQInfo.Work.WebPage)
+		assert.Empty(t, updatedUser.ICQInfo.Work.ZIPCode)
 	})
 }
 
@@ -1171,14 +1173,14 @@ func TestSQLiteUserStore_SetMoreInfo(t *testing.T) {
 		// Retrieve the user and verify the more info was set correctly
 		updatedUser, err := f.User(context.Background(), screenName)
 		assert.NoError(t, err)
-		assert.Equal(t, moreInfo.BirthDay, updatedUser.ICQMoreInfo.BirthDay)
-		assert.Equal(t, moreInfo.BirthMonth, updatedUser.ICQMoreInfo.BirthMonth)
-		assert.Equal(t, moreInfo.BirthYear, updatedUser.ICQMoreInfo.BirthYear)
-		assert.Equal(t, moreInfo.Gender, updatedUser.ICQMoreInfo.Gender)
-		assert.Equal(t, moreInfo.HomePageAddr, updatedUser.ICQMoreInfo.HomePageAddr)
-		assert.Equal(t, moreInfo.Lang1, updatedUser.ICQMoreInfo.Lang1)
-		assert.Equal(t, moreInfo.Lang2, updatedUser.ICQMoreInfo.Lang2)
-		assert.Equal(t, moreInfo.Lang3, updatedUser.ICQMoreInfo.Lang3)
+		assert.Equal(t, moreInfo.BirthDay, updatedUser.ICQInfo.More.BirthDay)
+		assert.Equal(t, moreInfo.BirthMonth, updatedUser.ICQInfo.More.BirthMonth)
+		assert.Equal(t, moreInfo.BirthYear, updatedUser.ICQInfo.More.BirthYear)
+		assert.Equal(t, moreInfo.Gender, updatedUser.ICQInfo.More.Gender)
+		assert.Equal(t, moreInfo.HomePageAddr, updatedUser.ICQInfo.More.HomePageAddr)
+		assert.Equal(t, moreInfo.Lang1, updatedUser.ICQInfo.More.Lang1)
+		assert.Equal(t, moreInfo.Lang2, updatedUser.ICQInfo.More.Lang2)
+		assert.Equal(t, moreInfo.Lang3, updatedUser.ICQInfo.More.Lang3)
 	})
 
 	t.Run("Update Non-Existing User", func(t *testing.T) {
@@ -1199,14 +1201,14 @@ func TestSQLiteUserStore_SetMoreInfo(t *testing.T) {
 		// Retrieve the user and verify that fields are empty or have default values
 		updatedUser, err := f.User(context.Background(), screenName)
 		assert.NoError(t, err)
-		assert.Empty(t, updatedUser.ICQMoreInfo.BirthDay)
-		assert.Empty(t, updatedUser.ICQMoreInfo.BirthMonth)
-		assert.Empty(t, updatedUser.ICQMoreInfo.BirthYear)
-		assert.Empty(t, updatedUser.ICQMoreInfo.Gender)
-		assert.Empty(t, updatedUser.ICQMoreInfo.HomePageAddr)
-		assert.Empty(t, updatedUser.ICQMoreInfo.Lang1)
-		assert.Empty(t, updatedUser.ICQMoreInfo.Lang2)
-		assert.Empty(t, updatedUser.ICQMoreInfo.Lang3)
+		assert.Empty(t, updatedUser.ICQInfo.More.BirthDay)
+		assert.Empty(t, updatedUser.ICQInfo.More.BirthMonth)
+		assert.Empty(t, updatedUser.ICQInfo.More.BirthYear)
+		assert.Empty(t, updatedUser.ICQInfo.More.Gender)
+		assert.Empty(t, updatedUser.ICQInfo.More.HomePageAddr)
+		assert.Empty(t, updatedUser.ICQInfo.More.Lang1)
+		assert.Empty(t, updatedUser.ICQInfo.More.Lang2)
+		assert.Empty(t, updatedUser.ICQInfo.More.Lang3)
 	})
 }
 
@@ -1241,7 +1243,7 @@ func TestSQLiteUserStore_SetUserNotes(t *testing.T) {
 		// Retrieve the user and verify the notes were set correctly
 		updatedUser, err := f.User(context.Background(), screenName)
 		assert.NoError(t, err)
-		assert.Equal(t, userNotes.Notes, updatedUser.ICQNotes.Notes)
+		assert.Equal(t, userNotes.Notes, updatedUser.ICQInfo.Notes.Notes)
 	})
 
 	t.Run("Update Non-Existing User", func(t *testing.T) {
@@ -1262,7 +1264,7 @@ func TestSQLiteUserStore_SetUserNotes(t *testing.T) {
 		// Retrieve the user and verify that notes are empty
 		updatedUser, err := f.User(context.Background(), screenName)
 		assert.NoError(t, err)
-		assert.Empty(t, updatedUser.ICQNotes.Notes)
+		assert.Empty(t, updatedUser.ICQInfo.Notes.Notes)
 	})
 }
 
@@ -1304,14 +1306,14 @@ func TestSQLiteUserStore_SetInterests(t *testing.T) {
 		// Retrieve the user and verify the interests were set correctly
 		updatedUser, err := f.User(context.Background(), screenName)
 		assert.NoError(t, err)
-		assert.Equal(t, interests.Code1, updatedUser.ICQInterests.Code1)
-		assert.Equal(t, interests.Keyword1, updatedUser.ICQInterests.Keyword1)
-		assert.Equal(t, interests.Code2, updatedUser.ICQInterests.Code2)
-		assert.Equal(t, interests.Keyword2, updatedUser.ICQInterests.Keyword2)
-		assert.Equal(t, interests.Code3, updatedUser.ICQInterests.Code3)
-		assert.Equal(t, interests.Keyword3, updatedUser.ICQInterests.Keyword3)
-		assert.Equal(t, interests.Code4, updatedUser.ICQInterests.Code4)
-		assert.Equal(t, interests.Keyword4, updatedUser.ICQInterests.Keyword4)
+		assert.Equal(t, interests.Code1, updatedUser.ICQInfo.Interests.Code1)
+		assert.Equal(t, interests.Keyword1, updatedUser.ICQInfo.Interests.Keyword1)
+		assert.Equal(t, interests.Code2, updatedUser.ICQInfo.Interests.Code2)
+		assert.Equal(t, interests.Keyword2, updatedUser.ICQInfo.Interests.Keyword2)
+		assert.Equal(t, interests.Code3, updatedUser.ICQInfo.Interests.Code3)
+		assert.Equal(t, interests.Keyword3, updatedUser.ICQInfo.Interests.Keyword3)
+		assert.Equal(t, interests.Code4, updatedUser.ICQInfo.Interests.Code4)
+		assert.Equal(t, interests.Keyword4, updatedUser.ICQInfo.Interests.Keyword4)
 	})
 
 	t.Run("Update Non-Existing User", func(t *testing.T) {
@@ -1332,14 +1334,14 @@ func TestSQLiteUserStore_SetInterests(t *testing.T) {
 		// Retrieve the user and verify that interests fields are empty or have default values
 		updatedUser, err := f.User(context.Background(), screenName)
 		assert.NoError(t, err)
-		assert.Empty(t, updatedUser.ICQInterests.Code1)
-		assert.Empty(t, updatedUser.ICQInterests.Keyword1)
-		assert.Empty(t, updatedUser.ICQInterests.Code2)
-		assert.Empty(t, updatedUser.ICQInterests.Keyword2)
-		assert.Empty(t, updatedUser.ICQInterests.Code3)
-		assert.Empty(t, updatedUser.ICQInterests.Keyword3)
-		assert.Empty(t, updatedUser.ICQInterests.Code4)
-		assert.Empty(t, updatedUser.ICQInterests.Keyword4)
+		assert.Empty(t, updatedUser.ICQInfo.Interests.Code1)
+		assert.Empty(t, updatedUser.ICQInfo.Interests.Keyword1)
+		assert.Empty(t, updatedUser.ICQInfo.Interests.Code2)
+		assert.Empty(t, updatedUser.ICQInfo.Interests.Keyword2)
+		assert.Empty(t, updatedUser.ICQInfo.Interests.Code3)
+		assert.Empty(t, updatedUser.ICQInfo.Interests.Keyword3)
+		assert.Empty(t, updatedUser.ICQInfo.Interests.Code4)
+		assert.Empty(t, updatedUser.ICQInfo.Interests.Keyword4)
 	})
 }
 
@@ -1385,18 +1387,18 @@ func TestSQLiteUserStore_SetAffiliations(t *testing.T) {
 		// Retrieve the user and verify the affiliations were set correctly
 		updatedUser, err := f.User(context.Background(), screenName)
 		assert.NoError(t, err)
-		assert.Equal(t, affiliations.CurrentCode1, updatedUser.ICQAffiliations.CurrentCode1)
-		assert.Equal(t, affiliations.CurrentKeyword1, updatedUser.ICQAffiliations.CurrentKeyword1)
-		assert.Equal(t, affiliations.CurrentCode2, updatedUser.ICQAffiliations.CurrentCode2)
-		assert.Equal(t, affiliations.CurrentKeyword2, updatedUser.ICQAffiliations.CurrentKeyword2)
-		assert.Equal(t, affiliations.CurrentCode3, updatedUser.ICQAffiliations.CurrentCode3)
-		assert.Equal(t, affiliations.CurrentKeyword3, updatedUser.ICQAffiliations.CurrentKeyword3)
-		assert.Equal(t, affiliations.PastCode1, updatedUser.ICQAffiliations.PastCode1)
-		assert.Equal(t, affiliations.PastKeyword1, updatedUser.ICQAffiliations.PastKeyword1)
-		assert.Equal(t, affiliations.PastCode2, updatedUser.ICQAffiliations.PastCode2)
-		assert.Equal(t, affiliations.PastKeyword2, updatedUser.ICQAffiliations.PastKeyword2)
-		assert.Equal(t, affiliations.PastCode3, updatedUser.ICQAffiliations.PastCode3)
-		assert.Equal(t, affiliations.PastKeyword3, updatedUser.ICQAffiliations.PastKeyword3)
+		assert.Equal(t, affiliations.CurrentCode1, updatedUser.ICQInfo.Affiliations.CurrentCode1)
+		assert.Equal(t, affiliations.CurrentKeyword1, updatedUser.ICQInfo.Affiliations.CurrentKeyword1)
+		assert.Equal(t, affiliations.CurrentCode2, updatedUser.ICQInfo.Affiliations.CurrentCode2)
+		assert.Equal(t, affiliations.CurrentKeyword2, updatedUser.ICQInfo.Affiliations.CurrentKeyword2)
+		assert.Equal(t, affiliations.CurrentCode3, updatedUser.ICQInfo.Affiliations.CurrentCode3)
+		assert.Equal(t, affiliations.CurrentKeyword3, updatedUser.ICQInfo.Affiliations.CurrentKeyword3)
+		assert.Equal(t, affiliations.PastCode1, updatedUser.ICQInfo.Affiliations.PastCode1)
+		assert.Equal(t, affiliations.PastKeyword1, updatedUser.ICQInfo.Affiliations.PastKeyword1)
+		assert.Equal(t, affiliations.PastCode2, updatedUser.ICQInfo.Affiliations.PastCode2)
+		assert.Equal(t, affiliations.PastKeyword2, updatedUser.ICQInfo.Affiliations.PastKeyword2)
+		assert.Equal(t, affiliations.PastCode3, updatedUser.ICQInfo.Affiliations.PastCode3)
+		assert.Equal(t, affiliations.PastKeyword3, updatedUser.ICQInfo.Affiliations.PastKeyword3)
 	})
 
 	t.Run("Update Non-Existing User", func(t *testing.T) {
@@ -1417,18 +1419,18 @@ func TestSQLiteUserStore_SetAffiliations(t *testing.T) {
 		// Retrieve the user and verify that affiliations fields are empty or have default values
 		updatedUser, err := f.User(context.Background(), screenName)
 		assert.NoError(t, err)
-		assert.Empty(t, updatedUser.ICQAffiliations.CurrentCode1)
-		assert.Empty(t, updatedUser.ICQAffiliations.CurrentKeyword1)
-		assert.Empty(t, updatedUser.ICQAffiliations.CurrentCode2)
-		assert.Empty(t, updatedUser.ICQAffiliations.CurrentKeyword2)
-		assert.Empty(t, updatedUser.ICQAffiliations.CurrentCode3)
-		assert.Empty(t, updatedUser.ICQAffiliations.CurrentKeyword3)
-		assert.Empty(t, updatedUser.ICQAffiliations.PastCode1)
-		assert.Empty(t, updatedUser.ICQAffiliations.PastKeyword1)
-		assert.Empty(t, updatedUser.ICQAffiliations.PastCode2)
-		assert.Empty(t, updatedUser.ICQAffiliations.PastKeyword2)
-		assert.Empty(t, updatedUser.ICQAffiliations.PastCode3)
-		assert.Empty(t, updatedUser.ICQAffiliations.PastKeyword3)
+		assert.Empty(t, updatedUser.ICQInfo.Affiliations.CurrentCode1)
+		assert.Empty(t, updatedUser.ICQInfo.Affiliations.CurrentKeyword1)
+		assert.Empty(t, updatedUser.ICQInfo.Affiliations.CurrentCode2)
+		assert.Empty(t, updatedUser.ICQInfo.Affiliations.CurrentKeyword2)
+		assert.Empty(t, updatedUser.ICQInfo.Affiliations.CurrentCode3)
+		assert.Empty(t, updatedUser.ICQInfo.Affiliations.CurrentKeyword3)
+		assert.Empty(t, updatedUser.ICQInfo.Affiliations.PastCode1)
+		assert.Empty(t, updatedUser.ICQInfo.Affiliations.PastKeyword1)
+		assert.Empty(t, updatedUser.ICQInfo.Affiliations.PastCode2)
+		assert.Empty(t, updatedUser.ICQInfo.Affiliations.PastKeyword2)
+		assert.Empty(t, updatedUser.ICQInfo.Affiliations.PastCode3)
+		assert.Empty(t, updatedUser.ICQInfo.Affiliations.PastKeyword3)
 	})
 }
 
@@ -1476,20 +1478,20 @@ func TestSQLiteUserStore_SetBasicInfo(t *testing.T) {
 		// Retrieve the user and verify the basic info was set correctly
 		updatedUser, err := f.User(context.Background(), screenName)
 		assert.NoError(t, err)
-		assert.Equal(t, basicInfo.CellPhone, updatedUser.ICQBasicInfo.CellPhone)
-		assert.Equal(t, basicInfo.CountryCode, updatedUser.ICQBasicInfo.CountryCode)
-		assert.Equal(t, basicInfo.EmailAddress, updatedUser.ICQBasicInfo.EmailAddress)
-		assert.Equal(t, basicInfo.FirstName, updatedUser.ICQBasicInfo.FirstName)
-		assert.Equal(t, basicInfo.GMTOffset, updatedUser.ICQBasicInfo.GMTOffset)
-		assert.Equal(t, basicInfo.Address, updatedUser.ICQBasicInfo.Address)
-		assert.Equal(t, basicInfo.City, updatedUser.ICQBasicInfo.City)
-		assert.Equal(t, basicInfo.Fax, updatedUser.ICQBasicInfo.Fax)
-		assert.Equal(t, basicInfo.Phone, updatedUser.ICQBasicInfo.Phone)
-		assert.Equal(t, basicInfo.State, updatedUser.ICQBasicInfo.State)
-		assert.Equal(t, basicInfo.LastName, updatedUser.ICQBasicInfo.LastName)
-		assert.Equal(t, basicInfo.Nickname, updatedUser.ICQBasicInfo.Nickname)
-		assert.Equal(t, basicInfo.PublishEmail, updatedUser.ICQBasicInfo.PublishEmail)
-		assert.Equal(t, basicInfo.ZIPCode, updatedUser.ICQBasicInfo.ZIPCode)
+		assert.Equal(t, basicInfo.CellPhone, updatedUser.ICQInfo.Basic.CellPhone)
+		assert.Equal(t, basicInfo.CountryCode, updatedUser.ICQInfo.Basic.CountryCode)
+		assert.Equal(t, basicInfo.EmailAddress, updatedUser.ICQInfo.Basic.EmailAddress)
+		assert.Equal(t, basicInfo.FirstName, updatedUser.ICQInfo.Basic.FirstName)
+		assert.Equal(t, basicInfo.GMTOffset, updatedUser.ICQInfo.Basic.GMTOffset)
+		assert.Equal(t, basicInfo.Address, updatedUser.ICQInfo.Basic.Address)
+		assert.Equal(t, basicInfo.City, updatedUser.ICQInfo.Basic.City)
+		assert.Equal(t, basicInfo.Fax, updatedUser.ICQInfo.Basic.Fax)
+		assert.Equal(t, basicInfo.Phone, updatedUser.ICQInfo.Basic.Phone)
+		assert.Equal(t, basicInfo.State, updatedUser.ICQInfo.Basic.State)
+		assert.Equal(t, basicInfo.LastName, updatedUser.ICQInfo.Basic.LastName)
+		assert.Equal(t, basicInfo.Nickname, updatedUser.ICQInfo.Basic.Nickname)
+		assert.Equal(t, basicInfo.PublishEmail, updatedUser.ICQInfo.Basic.PublishEmail)
+		assert.Equal(t, basicInfo.ZIPCode, updatedUser.ICQInfo.Basic.ZIPCode)
 	})
 
 	t.Run("Update Non-Existing User", func(t *testing.T) {
@@ -1510,20 +1512,20 @@ func TestSQLiteUserStore_SetBasicInfo(t *testing.T) {
 		// Retrieve the user and verify that basic info fields are empty or have default values
 		updatedUser, err := f.User(context.Background(), screenName)
 		assert.NoError(t, err)
-		assert.Empty(t, updatedUser.ICQBasicInfo.CellPhone)
-		assert.Empty(t, updatedUser.ICQBasicInfo.CountryCode)
-		assert.Empty(t, updatedUser.ICQBasicInfo.EmailAddress)
-		assert.Empty(t, updatedUser.ICQBasicInfo.FirstName)
-		assert.Empty(t, updatedUser.ICQBasicInfo.GMTOffset)
-		assert.Empty(t, updatedUser.ICQBasicInfo.Address)
-		assert.Empty(t, updatedUser.ICQBasicInfo.City)
-		assert.Empty(t, updatedUser.ICQBasicInfo.Fax)
-		assert.Empty(t, updatedUser.ICQBasicInfo.Phone)
-		assert.Empty(t, updatedUser.ICQBasicInfo.State)
-		assert.Empty(t, updatedUser.ICQBasicInfo.LastName)
-		assert.Empty(t, updatedUser.ICQBasicInfo.Nickname)
-		assert.Empty(t, updatedUser.ICQBasicInfo.PublishEmail)
-		assert.Empty(t, updatedUser.ICQBasicInfo.ZIPCode)
+		assert.Empty(t, updatedUser.ICQInfo.Basic.CellPhone)
+		assert.Empty(t, updatedUser.ICQInfo.Basic.CountryCode)
+		assert.Empty(t, updatedUser.ICQInfo.Basic.EmailAddress)
+		assert.Empty(t, updatedUser.ICQInfo.Basic.FirstName)
+		assert.Empty(t, updatedUser.ICQInfo.Basic.GMTOffset)
+		assert.Empty(t, updatedUser.ICQInfo.Basic.Address)
+		assert.Empty(t, updatedUser.ICQInfo.Basic.City)
+		assert.Empty(t, updatedUser.ICQInfo.Basic.Fax)
+		assert.Empty(t, updatedUser.ICQInfo.Basic.Phone)
+		assert.Empty(t, updatedUser.ICQInfo.Basic.State)
+		assert.Empty(t, updatedUser.ICQInfo.Basic.LastName)
+		assert.Empty(t, updatedUser.ICQInfo.Basic.Nickname)
+		assert.Empty(t, updatedUser.ICQInfo.Basic.PublishEmail)
+		assert.Empty(t, updatedUser.ICQInfo.Basic.ZIPCode)
 	})
 }
 
@@ -3807,7 +3809,9 @@ func TestSQLiteUserStore_ContactPreAuth(t *testing.T) {
 		IdentScreenName:   owner,
 		DisplayScreenName: DisplayScreenName("100001"),
 		IsICQ:             true,
-		ICQPermissions:    ICQPermissions{AuthRequired: true},
+		ICQInfo: ICQInfo{
+			Permissions: ICQPermissions{AuthRequired: true},
+		},
 	}))
 	require.NoError(t, f.InsertUser(ctx, User{
 		IdentScreenName:   requester,
