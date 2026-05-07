@@ -272,6 +272,10 @@ type ICQUserFinder interface {
 
 	// FindByICQKeyword returns users who have the specified keyword in any interest category.
 	FindByICQKeyword(ctx context.Context, keyword string) ([]state.User, error)
+
+	// SearchICQUsers performs a flexible, AND-combined search over ICQ directory
+	// fields (white pages).
+	SearchICQUsers(ctx context.Context, c state.ICQUserSearchCriteria) ([]state.User, error)
 }
 
 // ICQUserUpdater defines methods for updating various fields of an ICQ user's profile.

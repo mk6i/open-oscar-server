@@ -3,7 +3,6 @@ package foodgroup
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -225,30 +224,132 @@ func (s *ICQService) FindByICQInterests(ctx context.Context, instance *state.Ses
 }
 
 func (s *ICQService) FindByWhitePages2(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x055F_DBQueryMetaReqSearchWhitePages2, seq uint16) error {
+	var criteria state.ICQUserSearchCriteria
 
-	users, err := func() ([]state.User, error) {
-		if keyword, hasKeyword := inBody.ICQString(wire.ICQTLVTagsWhitepagesSearchKeywords); hasKeyword {
-			res, err := s.userFinder.FindByICQKeyword(ctx, keyword)
-			if err != nil {
-				return nil, fmt.Errorf("FindByICQKeyword failed: %w", err)
-			}
-			return res, nil
+	if uin, ok := inBody.Uint32LE(wire.ICQTLVTagsUIN); ok {
+		criteria.UIN = &uin
+	}
+	if sNick, ok := inBody.ICQString(wire.ICQTLVTagsNickname); ok {
+		criteria.NickName = &sNick
+	}
+	if sFirst, ok := inBody.ICQString(wire.ICQTLVTagsFirstName); ok {
+		criteria.FirstName = &sFirst
+	}
+	if sLast, ok := inBody.ICQString(wire.ICQTLVTagsLastName); ok {
+		criteria.LastName = &sLast
+	}
+	if sEmail, ok := inBody.ICQString(wire.ICQTLVTagsEmail); ok {
+		criteria.Email = &sEmail
+	}
+	if b, ok := inBody.Bytes(wire.ICQTLVTagsAgeRangeSearch); ok {
+		var ar struct {
+			MinAge uint16
+			MaxAge uint16
 		}
-
-		bNick, hasNick := inBody.ICQString(wire.ICQTLVTagsNickname)
-		bFirst, hasFirst := inBody.ICQString(wire.ICQTLVTagsFirstName)
-		bLast, hastLast := inBody.ICQString(wire.ICQTLVTagsLastName)
-
-		if hasNick || hasFirst || hastLast {
-			res, err := s.userFinder.FindByICQName(ctx, bFirst, bLast, bNick)
-			if err != nil {
-				return nil, fmt.Errorf("FindByICQName failed: %w", err)
-			}
-			return res, nil
+		if err := wire.UnmarshalLE(&ar, bytes.NewReader(b)); err != nil {
+			return fmt.Errorf("unmarshaling age range: %w", err)
 		}
+		criteria.MinAge = &ar.MinAge
+		criteria.MaxAge = &ar.MaxAge
+	}
+	if gender, ok := inBody.Uint8(wire.ICQTLVTagsGender); ok {
+		criteria.Gender = &gender
+	}
+	if lang, ok := inBody.Uint8(wire.ICQTLVTagsSpokenLanguage); ok {
+		criteria.SpokenLanguage = &lang
+	}
+	if city, ok := inBody.ICQString(wire.ICQTLVTagsHomeCityName); ok {
+		criteria.City = &city
+	}
+	if st, ok := inBody.ICQString(wire.ICQTLVTagsHomeStateAbbr); ok {
+		criteria.State = &st
+	}
+	if cc, ok := inBody.Uint16LE(wire.ICQTLVTagsHomeCountryCode); ok {
+		criteria.CountryCode = &cc
+	}
+	if company, ok := inBody.ICQString(wire.ICQTLVTagsWorkCompanyName); ok {
+		criteria.Company = &company
+	}
+	if departmentName, ok := inBody.ICQString(wire.ICQTLVTagsWorkDepartmentName); ok {
+		criteria.DepartmentName = &departmentName
+	}
+	if position, ok := inBody.ICQString(wire.ICQTLVTagsWorkPositionTitle); ok {
+		criteria.Position = &position
+	}
+	if occ, ok := inBody.Uint16LE(wire.ICQTLVTagsWorkOccupationCode); ok {
+		criteria.OccupationCode = &occ
+	}
+	if b, ok := inBody.Bytes(wire.ICQTLVTagsInterestsNode); ok {
+		var n struct {
+			Code    uint16
+			Keyword string `oscar:"len_prefix=uint16,nullterm"`
+		}
+		if err := wire.UnmarshalLE(&n, bytes.NewReader(b)); err != nil {
+			return fmt.Errorf("unmarshaling interests node: %w", err)
+		}
+		if n.Keyword != "" {
+			criteria.InterestsKeywords = strings.Split(n.Keyword, ",")
+			criteria.InterestsCode = &n.Code
+		}
+	}
+	if b, ok := inBody.Bytes(wire.ICQTLVTagsAffiliationsNode); ok {
+		var n struct {
+			Code    uint16
+			Keyword string `oscar:"len_prefix=uint16,nullterm"`
+		}
+		if err := wire.UnmarshalLE(&n, bytes.NewReader(b)); err != nil {
+			return fmt.Errorf("unmarshaling affiliations node: %w", err)
+		}
+		if n.Keyword != "" {
+			criteria.AffiliationsKeywords = strings.Split(n.Keyword, ",")
+			for i := range criteria.AffiliationsKeywords {
+				criteria.AffiliationsKeywords[i] = strings.TrimSpace(criteria.AffiliationsKeywords[i])
+			}
+			criteria.AffiliationsCode = &n.Code
+		}
+	}
+	if b, ok := inBody.Bytes(wire.ICQTLVTagsPastInfoNode); ok {
+		var n struct {
+			Code    uint16
+			Keyword string `oscar:"len_prefix=uint16,nullterm"`
+		}
+		if err := wire.UnmarshalLE(&n, bytes.NewReader(b)); err != nil {
+			return fmt.Errorf("unmarshaling past info node: %w", err)
+		}
+		if n.Keyword != "" {
+			criteria.PastAffiliationsKeywords = strings.Split(n.Keyword, ",")
+			for i := range criteria.PastAffiliationsKeywords {
+				criteria.PastAffiliationsKeywords[i] = strings.TrimSpace(criteria.PastAffiliationsKeywords[i])
+			}
+			criteria.PastAffiliationsCode = &n.Code
+		}
+	}
+	if b, ok := inBody.Bytes(wire.ICQTLVTagsHomepageCategoryKeywords); ok {
+		var p struct {
+			Index    uint16
+			Keywords string `oscar:"len_prefix=uint16,nullterm"`
+		}
+		if err := wire.UnmarshalLE(&p, bytes.NewReader(b)); err != nil {
+			return fmt.Errorf("unmarshaling homepage category keywords: %w", err)
+		}
+		criteria.HomePageCategoryIndex = new(p.Index)
+		if p.Keywords != "" {
+			criteria.HomePageKeywords = strings.Split(p.Keywords, ",")
+			for i := range criteria.HomePageKeywords {
+				criteria.HomePageKeywords[i] = strings.TrimSpace(criteria.HomePageKeywords[i])
+			}
+		}
+	}
+	if kw, ok := inBody.ICQString(wire.ICQTLVTagsWhitepagesSearchKeywords); ok {
+		criteria.AnyKeyword = &kw
+	}
 
-		return nil, nil
-	}()
+	onlineOnly := false
+	if f, ok := inBody.Uint8(wire.ICQTLVTagsSearchOnlineUsersFlag); ok && f != 0 {
+		onlineOnly = true
+	}
+
+	users, err := s.userFinder.SearchICQUsers(ctx, criteria)
 
 	resp := wire.ICQ_0x07DA_0x01AE_DBQueryMetaReplyLastUserFound{
 		ICQMetadata: wire.ICQMetadata{
@@ -261,11 +362,25 @@ func (s *ICQService) FindByWhitePages2(ctx context.Context, instance *state.Sess
 	}
 
 	if err != nil {
-		s.logger.Error("FindByWhitePages2 failed", "err", err.Error())
-		resp.Success = wire.ICQStatusCodeErr
+		if errors.Is(err, state.ErrICQSearchEmptyCriteria) {
+			resp.Success = wire.ICQStatusCodeFail
+		} else {
+			s.logger.Error("FindByWhitePages2 failed", "err", err.Error())
+			resp.Success = wire.ICQStatusCodeErr
+		}
 		return s.reply(ctx, instance, wire.ICQMessageReplyEnvelope{
 			Message: resp,
 		})
+	}
+
+	if onlineOnly {
+		var filtered []state.User
+		for _, u := range users {
+			if s.sessionRetriever.RetrieveSession(u.IdentScreenName) != nil {
+				filtered = append(filtered, u)
+			}
+		}
+		users = filtered
 	}
 
 	if len(users) == 0 {
@@ -568,178 +683,199 @@ func (s *ICQService) SetICQInfo(ctx context.Context, instance *state.SessionInst
 
 		// ----- ICQBasicInfo -----
 		case wire.ICQTLVTagsFirstName:
-			if v, ok := decodeICQSString(tlv.Value); ok {
+			if v, ok := inBody.ICQString(tlv.Tag); ok {
 				user.ICQInfo.Basic.FirstName = v
 			}
 		case wire.ICQTLVTagsLastName:
-			if v, ok := decodeICQSString(tlv.Value); ok {
+			if v, ok := inBody.ICQString(tlv.Tag); ok {
 				user.ICQInfo.Basic.LastName = v
 			}
 		case wire.ICQTLVTagsNickname:
-			if v, ok := decodeICQSString(tlv.Value); ok {
+			if v, ok := inBody.ICQString(tlv.Tag); ok {
 				user.ICQInfo.Basic.Nickname = v
 			}
 		case wire.ICQTLVTagsEmail:
-			if email, publish, ok := decodeICQECombo(tlv.Value); ok {
-				user.ICQInfo.Basic.EmailAddress = email
-				// publish=0 means "publish my email", matching the
-				// existing ICQUserFlagPublishEmailYes (0) convention.
-				user.ICQInfo.Basic.PublishEmail = publish == wire.ICQUserFlagPublishEmailYes
+			var n struct {
+				Email   string `oscar:"len_prefix=uint16,nullterm"`
+				Publish uint8
 			}
+			if err := wire.UnmarshalLE(&n, bytes.NewReader(tlv.Value)); err != nil {
+				return fmt.Errorf("wire.UnmarshalLE: %w", err)
+			}
+			user.ICQInfo.Basic.EmailAddress = n.Email
+			// publish=0 means "publish my email", matching the
+			// existing ICQUserFlagPublishEmailYes (0) convention.
+			user.ICQInfo.Basic.PublishEmail = n.Publish == wire.ICQUserFlagPublishEmailYes
 		case wire.ICQTLVTagsHomeCityName:
-			if v, ok := decodeICQSString(tlv.Value); ok {
+			if v, ok := inBody.ICQString(tlv.Tag); ok {
 				user.ICQInfo.Basic.City = v
 			}
 		case wire.ICQTLVTagsHomeStateAbbr:
-			if v, ok := decodeICQSString(tlv.Value); ok {
+			if v, ok := inBody.ICQString(tlv.Tag); ok {
 				user.ICQInfo.Basic.State = v
 			}
 		case wire.ICQTLVTagsHomeCountryCode:
-			if v, ok := readUint16LE(tlv.Value); ok {
+			if v, ok := inBody.TLVList.Uint16LE(tlv.Tag); ok {
 				user.ICQInfo.Basic.CountryCode = v
 			}
 		case wire.ICQTLVTagsHomeStreetAddress:
-			if v, ok := decodeICQSString(tlv.Value); ok {
+			if v, ok := inBody.ICQString(tlv.Tag); ok {
 				user.ICQInfo.Basic.Address = v
 			}
 		case wire.ICQTLVTagsHomeZipCode:
-			if v, ok := readUint32LE(tlv.Value); ok {
+			if v, ok := inBody.TLVList.Uint32LE(tlv.Tag); ok {
 				user.ICQInfo.Basic.ZIPCode = strconv.FormatUint(uint64(v), 10)
 			}
 		case wire.ICQTLVTagsHomePhoneNumber:
-			if v, ok := decodeICQSString(tlv.Value); ok {
+			if v, ok := inBody.ICQString(tlv.Tag); ok {
 				user.ICQInfo.Basic.Phone = v
 			}
 		case wire.ICQTLVTagsHomeFaxNumber:
-			if v, ok := decodeICQSString(tlv.Value); ok {
+			if v, ok := inBody.ICQString(tlv.Tag); ok {
 				user.ICQInfo.Basic.Fax = v
 			}
 		case wire.ICQTLVTagsHomeCellularPhoneNumber:
-			if v, ok := decodeICQSString(tlv.Value); ok {
+			if v, ok := inBody.ICQString(tlv.Tag); ok {
 				user.ICQInfo.Basic.CellPhone = v
 			}
 		case wire.ICQTLVTagsGMTOffset:
-			if v, ok := readUint8(tlv.Value); ok {
+			if v, ok := inBody.TLVList.Uint8(tlv.Tag); ok {
 				user.ICQInfo.Basic.GMTOffset = v
 			}
 		case wire.ICQTLVTagsOriginallyFromCity:
-			if v, ok := decodeICQSString(tlv.Value); ok {
+			if v, ok := inBody.ICQString(tlv.Tag); ok {
 				user.ICQInfo.Basic.OriginallyFromCity = v
 			}
 		case wire.ICQTLVTagsOriginallyFromState:
-			if v, ok := decodeICQSString(tlv.Value); ok {
+			if v, ok := inBody.ICQString(tlv.Tag); ok {
 				user.ICQInfo.Basic.OriginallyFromState = v
 			}
 		case wire.ICQTLVTagsOriginallyFromCountryCode:
-			if v, ok := readUint16LE(tlv.Value); ok {
+			if v, ok := inBody.TLVList.Uint16LE(tlv.Tag); ok {
 				user.ICQInfo.Basic.OriginallyFromCountryCode = v
 			}
 
 		// ----- ICQMoreInfo -----
 		case wire.ICQTLVTagsGender:
-			if v, ok := readUint8(tlv.Value); ok {
+			if v, ok := inBody.TLVList.Uint8(tlv.Tag); ok {
 				user.ICQInfo.More.Gender = uint16(v)
 			}
-		case wire.ICQTLVTagsSpokenLanguage:
-			if v, ok := readUint8(tlv.Value); ok {
-				langTLVs = append(langTLVs, v)
+		case wire.ICQTLVTagsSpokenLanguage: // may appear multiple times
+			if len(tlv.Value) > 0 {
+				langTLVs = append(langTLVs, tlv.Value[0])
 			}
 		case wire.ICQTLVTagsBirthdayInfo:
-			if year, month, day, ok := decodeICQBCombo(tlv.Value); ok {
-				user.ICQInfo.More.BirthYear = year
-				user.ICQInfo.More.BirthMonth = uint8(month)
-				user.ICQInfo.More.BirthDay = uint8(day)
+			var n struct {
+				Year  uint16
+				Month uint16
+				Day   uint16
 			}
+			if err := wire.UnmarshalLE(&n, bytes.NewReader(tlv.Value)); err != nil {
+				return fmt.Errorf("wire.UnmarshalLE: %w", err)
+			}
+			user.ICQInfo.More.BirthYear = n.Year
+			user.ICQInfo.More.BirthMonth = uint8(n.Month)
+			user.ICQInfo.More.BirthDay = uint8(n.Day)
 		case wire.ICQTLVTagsHomepageURL:
-			if _, url, ok := decodeICQICombo(tlv.Value); ok {
-				user.ICQInfo.More.HomePageAddr = url
+			var n struct {
+				//Code uint16
+				URL string `oscar:"len_prefix=uint16,nullterm"`
 			}
+			if err := wire.UnmarshalLE(&n, bytes.NewReader(tlv.Value)); err != nil {
+				return fmt.Errorf("wire.UnmarshalLE: %w", err)
+			}
+			user.ICQInfo.More.HomePageAddr = n.URL
 
 		// ----- ICQWorkInfo -----
 		case wire.ICQTLVTagsWorkCompanyName:
-			if v, ok := decodeICQSString(tlv.Value); ok {
+			if v, ok := inBody.ICQString(tlv.Tag); ok {
 				user.ICQInfo.Work.Company = v
 			}
 		case wire.ICQTLVTagsWorkDepartmentName:
-			if v, ok := decodeICQSString(tlv.Value); ok {
+			if v, ok := inBody.ICQString(tlv.Tag); ok {
 				user.ICQInfo.Work.Department = v
 			}
 		case wire.ICQTLVTagsWorkPositionTitle:
-			if v, ok := decodeICQSString(tlv.Value); ok {
+			if v, ok := inBody.ICQString(tlv.Tag); ok {
 				user.ICQInfo.Work.Position = v
 			}
 		case wire.ICQTLVTagsWorkOccupationCode:
-			if v, ok := readUint16LE(tlv.Value); ok {
+			if v, ok := inBody.TLVList.Uint16LE(tlv.Tag); ok {
 				user.ICQInfo.Work.OccupationCode = v
 			}
 		case wire.ICQTLVTagsWorkStreetAddress:
-			if v, ok := decodeICQSString(tlv.Value); ok {
+			if v, ok := inBody.ICQString(tlv.Tag); ok {
 				user.ICQInfo.Work.Address = v
 			}
 		case wire.ICQTLVTagsWorkCityName:
-			if v, ok := decodeICQSString(tlv.Value); ok {
+			if v, ok := inBody.ICQString(tlv.Tag); ok {
 				user.ICQInfo.Work.City = v
 			}
 		case wire.ICQTLVTagsWorkStateName:
-			if v, ok := decodeICQSString(tlv.Value); ok {
+			if v, ok := inBody.ICQString(tlv.Tag); ok {
 				user.ICQInfo.Work.State = v
 			}
 		case wire.ICQTLVTagsWorkCountryCode:
-			if v, ok := readUint16LE(tlv.Value); ok {
+			if v, ok := inBody.TLVList.Uint16LE(tlv.Tag); ok {
 				user.ICQInfo.Work.CountryCode = v
 			}
 		case wire.ICQTLVTagsWorkZipCode:
-			if v, ok := readUint32LE(tlv.Value); ok {
+			if v, ok := inBody.TLVList.Uint32LE(tlv.Tag); ok {
 				user.ICQInfo.Work.ZIPCode = strconv.FormatUint(uint64(v), 10)
 			}
 		case wire.ICQTLVTagsWorkPhoneNumber:
-			if v, ok := decodeICQSString(tlv.Value); ok {
+			if v, ok := inBody.ICQString(tlv.Tag); ok {
 				user.ICQInfo.Work.Phone = v
 			}
 		case wire.ICQTLVTagsWorkFaxNumber:
-			if v, ok := decodeICQSString(tlv.Value); ok {
+			if v, ok := inBody.ICQString(tlv.Tag); ok {
 				user.ICQInfo.Work.Fax = v
 			}
 		case wire.ICQTLVTagsWorkWebpageURL:
-			if v, ok := decodeICQSString(tlv.Value); ok {
+			if v, ok := inBody.ICQString(tlv.Tag); ok {
 				user.ICQInfo.Work.WebPage = v
 			}
 
 		// ----- ICQPermissions -----
 		case wire.ICQTLVTagsAuthorizationPermissions:
-			if v, ok := readUint8(tlv.Value); ok {
+			if v, ok := inBody.TLVList.Uint8(tlv.Tag); ok {
 				// Matches the wire-struct convention used by SetPermissions:
 				// authorization == 0 means "authorization required".
 				user.ICQInfo.Permissions.AuthRequired = v == 0
 			}
 		case wire.ICQTLVTagsShowWebStatusPermissions:
-			if v, ok := readUint8(tlv.Value); ok {
+			if v, ok := inBody.TLVList.Uint8(tlv.Tag); ok {
 				user.ICQInfo.Permissions.WebAware = v == 1
 			}
 
 		// ----- ICQUserNotes -----
 		case wire.ICQTLVTagsNotesText:
-			if v, ok := decodeICQSString(tlv.Value); ok {
+			if v, ok := inBody.ICQString(tlv.Tag); ok {
 				user.ICQInfo.Notes.Notes = v
 			}
 
 		// ----- ICQInterests -----
-		case wire.ICQTLVTagsInterestsNode:
+		case wire.ICQTLVTagsInterestsNode: // may appear multiple times
 			interestTLVs = append(interestTLVs, tlv.Value)
 
 		// ----- ICQAffiliations -----
-		case wire.ICQTLVTagsAffiliationsNode:
+		case wire.ICQTLVTagsAffiliationsNode: // may appear multiple times
 			currentAffTLVs = append(currentAffTLVs, tlv.Value)
-		case wire.ICQTLVTagsPastInfoNode:
+		case wire.ICQTLVTagsPastInfoNode: // may appear multiple times
 			pastAffTLVs = append(pastAffTLVs, tlv.Value)
 
 		// ----- ICQHomepageCategory -----
 		case wire.ICQTLVTagsHomepageCategoryKeywords:
-			if code, kw, ok := decodeICQICombo(tlv.Value); ok {
-				user.ICQInfo.HomepageCategory.Index = code
-				user.ICQInfo.HomepageCategory.Description = kw
-				user.ICQInfo.HomepageCategory.Enabled = true
+			var n struct {
+				Index       uint16
+				Description string `oscar:"len_prefix=uint16,nullterm"`
 			}
+			if err := wire.UnmarshalLE(&n, bytes.NewReader(tlv.Value)); err != nil {
+				return fmt.Errorf("wire.UnmarshalLE: %w", err)
+			}
+			user.ICQInfo.HomepageCategory.Index = n.Index
+			user.ICQInfo.HomepageCategory.Description = n.Description
+			user.ICQInfo.HomepageCategory.Enabled = true
 
 		default:
 			// Search-only or otherwise unmapped tags
@@ -768,19 +904,22 @@ func (s *ICQService) SetICQInfo(ctx context.Context, instance *state.SessionInst
 	if len(interestTLVs) > 0 {
 		user.ICQInfo.Interests = state.ICQInterests{}
 		for i, raw := range interestTLVs {
-			code, kw, ok := decodeICQICombo(raw)
-			if !ok {
-				continue
+			var n struct {
+				Code    uint16
+				Keyword string `oscar:"len_prefix=uint16,nullterm"`
+			}
+			if err := wire.UnmarshalLE(&n, bytes.NewReader(raw)); err != nil {
+				return fmt.Errorf("wire.UnmarshalLE: %w", err)
 			}
 			switch i {
 			case 0:
-				user.ICQInfo.Interests.Code1, user.ICQInfo.Interests.Keyword1 = code, kw
+				user.ICQInfo.Interests.Code1, user.ICQInfo.Interests.Keyword1 = n.Code, n.Keyword
 			case 1:
-				user.ICQInfo.Interests.Code2, user.ICQInfo.Interests.Keyword2 = code, kw
+				user.ICQInfo.Interests.Code2, user.ICQInfo.Interests.Keyword2 = n.Code, n.Keyword
 			case 2:
-				user.ICQInfo.Interests.Code3, user.ICQInfo.Interests.Keyword3 = code, kw
+				user.ICQInfo.Interests.Code3, user.ICQInfo.Interests.Keyword3 = n.Code, n.Keyword
 			case 3:
-				user.ICQInfo.Interests.Code4, user.ICQInfo.Interests.Keyword4 = code, kw
+				user.ICQInfo.Interests.Code4, user.ICQInfo.Interests.Keyword4 = n.Code, n.Keyword
 			}
 		}
 	}
@@ -790,17 +929,20 @@ func (s *ICQService) SetICQInfo(ctx context.Context, instance *state.SessionInst
 		user.ICQInfo.Affiliations.CurrentCode2, user.ICQInfo.Affiliations.CurrentKeyword2 = 0, ""
 		user.ICQInfo.Affiliations.CurrentCode3, user.ICQInfo.Affiliations.CurrentKeyword3 = 0, ""
 		for i, raw := range currentAffTLVs {
-			code, kw, ok := decodeICQICombo(raw)
-			if !ok {
-				continue
+			var n struct {
+				Code    uint16
+				Keyword string `oscar:"len_prefix=uint16,nullterm"`
+			}
+			if err := wire.UnmarshalLE(&n, bytes.NewReader(raw)); err != nil {
+				return fmt.Errorf("wire.UnmarshalLE: %w", err)
 			}
 			switch i {
 			case 0:
-				user.ICQInfo.Affiliations.CurrentCode1, user.ICQInfo.Affiliations.CurrentKeyword1 = code, kw
+				user.ICQInfo.Affiliations.CurrentCode1, user.ICQInfo.Affiliations.CurrentKeyword1 = n.Code, n.Keyword
 			case 1:
-				user.ICQInfo.Affiliations.CurrentCode2, user.ICQInfo.Affiliations.CurrentKeyword2 = code, kw
+				user.ICQInfo.Affiliations.CurrentCode2, user.ICQInfo.Affiliations.CurrentKeyword2 = n.Code, n.Keyword
 			case 2:
-				user.ICQInfo.Affiliations.CurrentCode3, user.ICQInfo.Affiliations.CurrentKeyword3 = code, kw
+				user.ICQInfo.Affiliations.CurrentCode3, user.ICQInfo.Affiliations.CurrentKeyword3 = n.Code, n.Keyword
 			}
 		}
 	}
@@ -810,17 +952,20 @@ func (s *ICQService) SetICQInfo(ctx context.Context, instance *state.SessionInst
 		user.ICQInfo.Affiliations.PastCode2, user.ICQInfo.Affiliations.PastKeyword2 = 0, ""
 		user.ICQInfo.Affiliations.PastCode3, user.ICQInfo.Affiliations.PastKeyword3 = 0, ""
 		for i, raw := range pastAffTLVs {
-			code, kw, ok := decodeICQICombo(raw)
-			if !ok {
-				continue
+			var n struct {
+				Code    uint16
+				Keyword string `oscar:"len_prefix=uint16,nullterm"`
+			}
+			if err := wire.UnmarshalLE(&n, bytes.NewReader(raw)); err != nil {
+				return fmt.Errorf("wire.UnmarshalLE: %w", err)
 			}
 			switch i {
 			case 0:
-				user.ICQInfo.Affiliations.PastCode1, user.ICQInfo.Affiliations.PastKeyword1 = code, kw
+				user.ICQInfo.Affiliations.PastCode1, user.ICQInfo.Affiliations.PastKeyword1 = n.Code, n.Keyword
 			case 1:
-				user.ICQInfo.Affiliations.PastCode2, user.ICQInfo.Affiliations.PastKeyword2 = code, kw
+				user.ICQInfo.Affiliations.PastCode2, user.ICQInfo.Affiliations.PastKeyword2 = n.Code, n.Keyword
 			case 2:
-				user.ICQInfo.Affiliations.PastCode3, user.ICQInfo.Affiliations.PastKeyword3 = code, kw
+				user.ICQInfo.Affiliations.PastCode3, user.ICQInfo.Affiliations.PastKeyword3 = n.Code, n.Keyword
 			}
 		}
 	}
@@ -1142,23 +1287,21 @@ func (s *ICQService) moreUserInfo(ctx context.Context, instance *state.SessionIn
 				ReqType: wire.ICQDBQueryMetaReply,
 				Seq:     seq,
 			},
-			ReqSubType: wire.ICQDBQueryMetaReplyMoreInfo,
-			Success:    wire.ICQStatusCodeOK,
-			ICQ_0x07D0_0x03FD_DBQueryMetaReqSetMoreInfo: wire.ICQ_0x07D0_0x03FD_DBQueryMetaReqSetMoreInfo{
-				Age:          uint8(user.Age(s.timeNow)),
-				Gender:       user.ICQInfo.More.Gender,
-				HomePageAddr: user.ICQInfo.More.HomePageAddr,
-				BirthYear:    user.ICQInfo.More.BirthYear,
-				BirthMonth:   user.ICQInfo.More.BirthMonth,
-				BirthDay:     user.ICQInfo.More.BirthDay,
-				Lang1:        user.ICQInfo.More.Lang1,
-				Lang2:        user.ICQInfo.More.Lang2,
-				Lang3:        user.ICQInfo.More.Lang3,
-			},
-			City:        user.ICQInfo.Basic.City,
-			State:       user.ICQInfo.Basic.State,
-			CountryCode: user.ICQInfo.Basic.CountryCode,
-			TimeZone:    user.ICQInfo.Basic.GMTOffset,
+			ReqSubType:   wire.ICQDBQueryMetaReplyMoreInfo,
+			Success:      wire.ICQStatusCodeOK,
+			Age:          uint16(user.Age(s.timeNow)),
+			Gender:       uint8(user.ICQInfo.More.Gender),
+			HomePageAddr: user.ICQInfo.More.HomePageAddr,
+			BirthYear:    user.ICQInfo.More.BirthYear,
+			BirthMonth:   user.ICQInfo.More.BirthMonth,
+			BirthDay:     user.ICQInfo.More.BirthDay,
+			Lang1:        user.ICQInfo.More.Lang1,
+			Lang2:        user.ICQInfo.More.Lang2,
+			Lang3:        user.ICQInfo.More.Lang3,
+			City:         user.ICQInfo.Basic.City,
+			State:        user.ICQInfo.Basic.State,
+			CountryCode:  user.ICQInfo.Basic.CountryCode,
+			TimeZone:     user.ICQInfo.Basic.GMTOffset,
 		},
 	}
 
@@ -1295,78 +1438,4 @@ func (s *ICQService) workInfo(ctx context.Context, instance *state.SessionInstan
 		},
 	}
 	return s.reply(ctx, instance, msg)
-}
-
-// decodeICQSString decodes an ICQ "sstring" value: a uint16 (LE) length
-// prefix followed by an ASCIIZ string. The length includes the trailing
-// null terminator. Returns the string (without the terminator) and true
-// when the value is well-formed; otherwise returns "" and false.
-func decodeICQSString(b []byte) (string, bool) {
-	if len(b) < 3 {
-		return "", false
-	}
-	expected := binary.LittleEndian.Uint16(b[0:2])
-	value := b[2:]
-	if int(expected) != len(value) {
-		return "", false
-	}
-	return string(value[:len(value)-1]), true
-}
-
-// decodeICQECombo decodes an ICQ "ecombo" value: an sstring (email) followed
-// by a uint8 publish flag.
-func decodeICQECombo(b []byte) (email string, publish uint8, ok bool) {
-	if len(b) < 4 {
-		return "", 0, false
-	}
-	expected := binary.LittleEndian.Uint16(b[0:2])
-	if int(expected)+2+1 != len(b) {
-		return "", 0, false
-	}
-	value := b[2 : 2+int(expected)]
-	return string(value[:len(value)-1]), b[2+int(expected)], true
-}
-
-// decodeICQICombo decodes an ICQ "icombo"/"hcombo" value: a uint16 (LE)
-// category code followed by an sstring keyword.
-func decodeICQICombo(b []byte) (code uint16, keyword string, ok bool) {
-	if len(b) < 2 {
-		return 0, "", false
-	}
-	code = binary.LittleEndian.Uint16(b[0:2])
-	keyword, ok = decodeICQSString(b[2:])
-	return code, keyword, ok
-}
-
-// decodeICQBCombo decodes an ICQ "bcombo" birthday value: three uint16 (LE)
-// values for year, month, and day.
-func decodeICQBCombo(b []byte) (year, month, day uint16, ok bool) {
-	if len(b) < 6 {
-		return 0, 0, 0, false
-	}
-	return binary.LittleEndian.Uint16(b[0:2]),
-		binary.LittleEndian.Uint16(b[2:4]),
-		binary.LittleEndian.Uint16(b[4:6]),
-		true
-}
-
-func readUint8(b []byte) (uint8, bool) {
-	if len(b) < 1 {
-		return 0, false
-	}
-	return b[0], true
-}
-
-func readUint16LE(b []byte) (uint16, bool) {
-	if len(b) < 2 {
-		return 0, false
-	}
-	return binary.LittleEndian.Uint16(b), true
-}
-
-func readUint32LE(b []byte) (uint32, bool) {
-	if len(b) < 4 {
-		return 0, false
-	}
-	return binary.LittleEndian.Uint32(b), true
 }

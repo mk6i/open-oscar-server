@@ -38,6 +38,10 @@ var (
 	ErrOfflineInboxFull        = errors.New("offline inbox full")
 	errTooManyCategories       = errors.New("there are too many keyword categories")
 	errTooManyKeywords         = errors.New("there are too many keywords")
+
+	// ErrICQSearchEmptyCriteria indicates the caller did not provide any search
+	// constraints. This prevents accidental full-table scans.
+	ErrICQSearchEmptyCriteria = errors.New("ICQ search criteria is empty")
 )
 
 //go:embed migrations/*
@@ -277,10 +281,11 @@ func (f SQLiteUserStore) FindByAIMNameAndAddr(ctx context.Context, info AIMNameA
 	return users, nil
 }
 
-func (f SQLiteUserStore) FindByICQInterests(ctx context.Context, code uint16, keywords []string) ([]User, error) {
-	var args []any
+// icqInterestsWhereClause builds SQL and args for matching a category code and
+// keyword(s) against the four stored interest slots (same semantics as
+// FindByICQInterests).
+func icqInterestsWhereClause(code uint16, keywords []string) (cond string, args []any) {
 	var clauses []string
-
 	for i := 1; i <= 4; i++ {
 		var subClauses []string
 		args = append(args, code)
@@ -290,14 +295,32 @@ func (f SQLiteUserStore) FindByICQInterests(ctx context.Context, code uint16, ke
 		}
 		clauses = append(clauses, fmt.Sprintf("(icq_interests_code%d = ? AND (%s))", i, strings.Join(subClauses, " OR ")))
 	}
+	return strings.Join(clauses, " OR "), args
+}
 
-	cond := strings.Join(clauses, " OR ")
+// icqAffiliationsWhereClause builds SQL and args for matching a category code and
+// keyword(s) across the six stored affiliation slots (three current + three past),
+// using the same OR-of-slots pattern as icqInterestsWhereClause.
+func icqAffiliationsWhereClause(code uint16, keywords []string, slots []struct{ codeCol, keyCol string }) (cond string, args []any) {
+	var clauses []string
+	for _, slot := range slots {
+		var subClauses []string
+		args = append(args, code)
+		for _, key := range keywords {
+			subClauses = append(subClauses, fmt.Sprintf("%s LIKE ?", slot.keyCol))
+			args = append(args, "%"+key+"%")
+		}
+		clauses = append(clauses, fmt.Sprintf("(%s = ? AND (%s))", slot.codeCol, strings.Join(subClauses, " OR ")))
+	}
+	return strings.Join(clauses, " OR "), args
+}
 
+func (f SQLiteUserStore) FindByICQInterests(ctx context.Context, code uint16, keywords []string) ([]User, error) {
+	cond, args := icqInterestsWhereClause(code, keywords)
 	users, err := f.queryUsers(ctx, cond, args)
 	if err != nil {
-		err = fmt.Errorf("FindByICQInterests: %w", err)
+		return nil, fmt.Errorf("FindByICQInterests: %w", err)
 	}
-
 	return users, nil
 }
 
@@ -317,6 +340,193 @@ func (f SQLiteUserStore) FindByICQKeyword(ctx context.Context, keyword string) (
 		err = fmt.Errorf("FindByICQKeyword: %w", err)
 	}
 
+	return users, nil
+}
+
+// ICQUserSearchCriteria represents an AND-combined set of filters for ICQ
+// white-pages style searches (SNAC(15,02) / 0x07D0 / 0x055F).
+//
+// Fields are pointers so callers can distinguish "unset" from "set to the
+// zero value". For example, MinAge == nil means no minimum age constraint,
+// while MinAge != nil && *MinAge == 0 means the client explicitly set 0.
+type ICQUserSearchCriteria struct {
+	// Identity
+	UIN *uint32
+
+	// Basic name/email (case-insensitive substring matches). When non-nil, the
+	// string is non-empty.
+	FirstName *string
+	LastName  *string
+	NickName  *string
+	Email     *string
+
+	// Demographics
+	MinAge *uint16
+	MaxAge *uint16
+
+	Gender         *uint8
+	SpokenLanguage *uint8
+
+	// Location / work (non-nil *string fields are non-empty)
+	City        *string
+	State       *string
+	CountryCode *uint16
+
+	Company        *string // non-nil => non-empty
+	Position       *string // non-nil => non-empty
+	DepartmentName *string // non-nil => non-empty
+	OccupationCode *uint16
+
+	// Directory nodes (code + keywords). InterestsCode and InterestsKeywords are
+	// either both unset or both set; when code is non-nil, keywords must be non-empty.
+	InterestsCode     *uint16
+	InterestsKeywords []string
+
+	// AffiliationsCode and AffiliationsKeywords follow the same pairing rules as
+	// InterestsCode / InterestsKeywords.
+	AffiliationsCode     *uint16
+	AffiliationsKeywords []string
+
+	// PastAffiliationsCode and PastAffiliationsKeywords follow the same pairing rules as
+	// InterestsCode / InterestsKeywords.
+	PastAffiliationsCode     *uint16
+	PastAffiliationsKeywords []string
+
+	HomePageCategoryIndex *uint16
+	HomePageKeywords      []string
+
+	// Whitepages search keywords string (TLV 0x0226). This is modeled as a
+	// global keyword across searchable profile fields.
+	AnyKeyword *string
+}
+
+// SearchICQUsers returns ICQ users whose stored profile fields satisfy every
+// non-empty constraint in c. Predicates are AND-combined. Only accounts with
+// isICQ = 1 are considered.
+//
+// If c contains no constraints, SearchICQUsers returns [ErrICQSearchEmptyCriteria].
+func (f SQLiteUserStore) SearchICQUsers(ctx context.Context, c ICQUserSearchCriteria) ([]User, error) {
+	var args []any
+	var clauses []string
+
+	appendLike := func(column string, val string) {
+		args = append(args, "%"+val+"%")
+		clauses = append(clauses, fmt.Sprintf(`LOWER(%s) LIKE LOWER(?)`, column))
+	}
+
+	if c.UIN != nil {
+		args = append(args, strconv.Itoa(int(*c.UIN)))
+		clauses = append(clauses, `identScreenName = ?`)
+	}
+	if c.FirstName != nil {
+		appendLike("icq_basicInfo_firstName", *c.FirstName)
+	}
+	if c.LastName != nil {
+		appendLike("icq_basicInfo_lastName", *c.LastName)
+	}
+	if c.NickName != nil {
+		appendLike("icq_basicInfo_nickName", *c.NickName)
+	}
+	if c.Email != nil {
+		appendLike("icq_basicInfo_emailAddress", *c.Email)
+	}
+	if c.Gender != nil {
+		args = append(args, *c.Gender)
+		clauses = append(clauses, `icq_moreInfo_gender = ?`)
+	}
+	if c.SpokenLanguage != nil {
+		args = append(args, *c.SpokenLanguage, *c.SpokenLanguage, *c.SpokenLanguage)
+		clauses = append(clauses, `(icq_moreInfo_lang1 = ? OR icq_moreInfo_lang2 = ? OR icq_moreInfo_lang3 = ?)`)
+	}
+	if c.MinAge != nil {
+		args = append(args, *c.MinAge)
+		clauses = append(clauses, `(icq_moreInfo_birthYear > 0 AND (CAST(strftime('%Y','now') AS INTEGER) - icq_moreInfo_birthYear) >= ?)`)
+	}
+	if c.MaxAge != nil {
+		args = append(args, *c.MaxAge)
+		clauses = append(clauses, `(icq_moreInfo_birthYear > 0 AND (CAST(strftime('%Y','now') AS INTEGER) - icq_moreInfo_birthYear) <= ?)`)
+	}
+	if c.City != nil {
+		appendLike("icq_basicInfo_city", *c.City)
+	}
+	if c.State != nil {
+		args = append(args, "%"+*c.State+"%", "%"+*c.State+"%")
+		clauses = append(clauses, `(LOWER(icq_basicInfo_state) LIKE LOWER(?) OR LOWER(icq_workInfo_state) LIKE LOWER(?))`)
+	}
+	if c.CountryCode != nil {
+		args = append(args, *c.CountryCode, *c.CountryCode)
+		clauses = append(clauses, `(icq_basicInfo_countryCode = ? OR icq_workInfo_countryCode = ?)`)
+	}
+	if c.Company != nil {
+		appendLike("icq_workInfo_company", *c.Company)
+	}
+	if c.DepartmentName != nil {
+		appendLike("icq_workInfo_department", *c.DepartmentName)
+	}
+	if c.Position != nil {
+		appendLike("icq_workInfo_position", *c.Position)
+	}
+	if c.OccupationCode != nil {
+		args = append(args, *c.OccupationCode)
+		clauses = append(clauses, `icq_workInfo_occupationCode = ?`)
+	}
+	if c.InterestsCode != nil {
+		intCond, intArgs := icqInterestsWhereClause(*c.InterestsCode, c.InterestsKeywords)
+		clauses = append(clauses, "("+intCond+")")
+		args = append(args, intArgs...)
+	}
+	if c.AffiliationsCode != nil {
+		slots := []struct{ codeCol, keyCol string }{
+			{"icq_affiliations_currentCode1", "icq_affiliations_currentKeyword1"},
+			{"icq_affiliations_currentCode2", "icq_affiliations_currentKeyword2"},
+			{"icq_affiliations_currentCode3", "icq_affiliations_currentKeyword3"},
+		}
+		affCond, affArgs := icqAffiliationsWhereClause(*c.AffiliationsCode, c.AffiliationsKeywords, slots)
+		clauses = append(clauses, "("+affCond+")")
+		args = append(args, affArgs...)
+	}
+	if c.PastAffiliationsCode != nil {
+		slots := []struct{ codeCol, keyCol string }{
+			{"icq_affiliations_pastCode1", "icq_affiliations_pastKeyword1"},
+			{"icq_affiliations_pastCode2", "icq_affiliations_pastKeyword2"},
+			{"icq_affiliations_pastCode3", "icq_affiliations_pastKeyword3"},
+		}
+		affCond, affArgs := icqAffiliationsWhereClause(*c.PastAffiliationsCode, c.PastAffiliationsKeywords, slots)
+		clauses = append(clauses, "("+affCond+")")
+		args = append(args, affArgs...)
+	}
+	if c.HomePageCategoryIndex != nil {
+		args = append(args, *c.HomePageCategoryIndex)
+		clauses = append(clauses, `icq_homepageCategory_index = ?`)
+	}
+	if len(c.HomePageKeywords) > 0 {
+		var kwClauses []string
+		for _, kw := range c.HomePageKeywords {
+			kwClauses = append(kwClauses, `LOWER(icq_homepageCategory_description) LIKE LOWER(?)`)
+			args = append(args, "%"+kw+"%")
+		}
+		clauses = append(clauses, fmt.Sprintf("(%s)", strings.Join(kwClauses, " OR ")))
+	}
+	if c.AnyKeyword != nil {
+		var kwClauses []string
+		for i := 1; i <= 4; i++ {
+			kwClauses = append(kwClauses, fmt.Sprintf("icq_interests_keyword%d LIKE ?", i))
+			args = append(args, "%"+*c.AnyKeyword+"%")
+		}
+		clauses = append(clauses, fmt.Sprintf("(%s)", strings.Join(kwClauses, " OR ")))
+	}
+
+	if len(clauses) == 0 {
+		return nil, ErrICQSearchEmptyCriteria
+	}
+
+	clauses = append(clauses, `isICQ = 1`)
+
+	whereClause := strings.Join(clauses, " AND ")
+	users, err := f.queryUsers(ctx, whereClause, args)
+	if err != nil {
+		return nil, fmt.Errorf("SearchICQUsers: %w", err)
+	}
 	return users, nil
 }
 

@@ -1,5 +1,7 @@
 package wire
 
+import "fmt"
+
 var foodGroupName = map[uint16]string{
 	BOS:         "BOS",
 	OService:    "OService",
@@ -339,7 +341,7 @@ var icqDBQuery = map[uint16]string{
 func ICQDBQueryMetaName(query uint16) string {
 	name := icqDBQueryMeta[query]
 	if name == "" {
-		name = "unknown"
+		name = fmt.Sprintf("unknown (%d)", query)
 	}
 	return name
 }
@@ -355,12 +357,17 @@ var icqDBQueryMeta = map[uint16]string{
 	ICQDBQueryMetaReqSetPermissions:    "ICQDBQueryMetaReqSetPermissions",
 	ICQDBQueryMetaReqSetICQPhone:       "ICQDBQueryMetaReqSetICQPhone",
 	ICQDBQueryMetaReqSetFullInfo:       "ICQDBQueryMetaReqSetFullInfo",
+	ICQDBQueryMetaReqShortInfo:         "ICQDBQueryMetaReqShortInfo",
 	ICQDBQueryMetaReqFullInfo:          "ICQDBQueryMetaReqFullInfo",
 	ICQDBQueryMetaReqFullInfo2:         "ICQDBQueryMetaReqFullInfo2",
 	ICQDBQueryMetaReqSearchByDetails:   "ICQDBQueryMetaReqSearchByDetails",
 	ICQDBQueryMetaReqSearchByUIN:       "ICQDBQueryMetaReqSearchByUIN",
 	ICQDBQueryMetaReqSearchByEmail:     "ICQDBQueryMetaReqSearchByEmail",
 	ICQDBQueryMetaReqSearchWhitePages:  "ICQDBQueryMetaReqSearchWhitePages",
+	ICQDBQueryMetaReqSearchWhitePages2: "ICQDBQueryMetaReqSearchWhitePages2",
+	ICQDBQueryMetaReqSearchByUIN2:      "ICQDBQueryMetaReqSearchByUIN2",
+	ICQDBQueryMetaReqSearchByEmail3:    "ICQDBQueryMetaReqSearchByEmail3",
+	ICQDBQueryMetaReqStat0758:          "ICQDBQueryMetaReqStat0758",
 	ICQDBQueryMetaReqXMLReq:            "ICQDBQueryMetaReqXMLReq",
 	ICQDBQueryMetaReqStat0a8c:          "ICQDBQueryMetaReqStat0a8c",
 	ICQDBQueryMetaReqStat0a96:          "ICQDBQueryMetaReqStat0a96",
@@ -372,28 +379,6 @@ var icqDBQueryMeta = map[uint16]string{
 	ICQDBQueryMetaReqStat0acd:          "ICQDBQueryMetaReqStat0acd",
 	ICQDBQueryMetaReqStat0ad2:          "ICQDBQueryMetaReqStat0ad2",
 	ICQDBQueryMetaReqStat0ad7:          "ICQDBQueryMetaReqStat0ad7",
-	ICQDBQueryMetaReqStat0758:          "ICQDBQueryMetaReqStat0758",
 	ICQDBQueryMetaReqDirectoryQuery:    "ICQDBQueryMetaReqDirectoryQuery",
 	ICQDBQueryMetaReqDirectoryUpdate:   "ICQDBQueryMetaReqDirectoryUpdate",
-	ICQDBQueryMetaReplySetBasicInfo:    "ICQDBQueryMetaReplySetBasicInfo",
-	ICQDBQueryMetaReplySetWorkInfo:     "ICQDBQueryMetaReplySetWorkInfo",
-	ICQDBQueryMetaReplySetMoreInfo:     "ICQDBQueryMetaReplySetMoreInfo",
-	ICQDBQueryMetaReplySetNotes:        "ICQDBQueryMetaReplySetNotes",
-	ICQDBQueryMetaReplySetEmails:       "ICQDBQueryMetaReplySetEmails",
-	ICQDBQueryMetaReplySetInterests:    "ICQDBQueryMetaReplySetInterests",
-	ICQDBQueryMetaReplySetAffiliations: "ICQDBQueryMetaReplySetAffiliations",
-	ICQDBQueryMetaReplySetPermissions:  "ICQDBQueryMetaReplySetPermissions",
-	ICQDBQueryMetaReplySetICQPhone:     "ICQDBQueryMetaReplySetICQPhone",
-	ICQDBQueryMetaReplySetFullInfo:     "ICQDBQueryMetaReplySetFullInfo",
-	ICQDBQueryMetaReplyBasicInfo:       "ICQDBQueryMetaReplyBasicInfo",
-	ICQDBQueryMetaReplyWorkInfo:        "ICQDBQueryMetaReplyWorkInfo",
-	ICQDBQueryMetaReplyMoreInfo:        "ICQDBQueryMetaReplyMoreInfo",
-	ICQDBQueryMetaReplyNotes:           "ICQDBQueryMetaReplyNotes",
-	ICQDBQueryMetaReplyExtEmailInfo:    "ICQDBQueryMetaReplyExtEmailInfo",
-	ICQDBQueryMetaReplyInterests:       "ICQDBQueryMetaReplyInterests",
-	ICQDBQueryMetaReplyAffiliations:    "ICQDBQueryMetaReplyAffiliations",
-	ICQDBQueryMetaReplyHomePageCat:     "ICQDBQueryMetaReplyHomePageCat",
-	ICQDBQueryMetaReplyUserFound:       "ICQDBQueryMetaReplyUserFound",
-	ICQDBQueryMetaReplyLastUserFound:   "ICQDBQueryMetaReplyLastUserFound",
-	ICQDBQueryMetaReplyXMLData:         "ICQDBQueryMetaReplyXMLData",
 }

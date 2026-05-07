@@ -391,3 +391,71 @@ func (_c *mockICQUserFinder_FindByUIN_Call) RunAndReturn(run func(ctx context.Co
 	_c.Call.Return(run)
 	return _c
 }
+
+// SearchICQUsers provides a mock function for the type mockICQUserFinder
+func (_mock *mockICQUserFinder) SearchICQUsers(ctx context.Context, c state.ICQUserSearchCriteria) ([]state.User, error) {
+	ret := _mock.Called(ctx, c)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SearchICQUsers")
+	}
+
+	var r0 []state.User
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, state.ICQUserSearchCriteria) ([]state.User, error)); ok {
+		return returnFunc(ctx, c)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, state.ICQUserSearchCriteria) []state.User); ok {
+		r0 = returnFunc(ctx, c)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]state.User)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, state.ICQUserSearchCriteria) error); ok {
+		r1 = returnFunc(ctx, c)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// mockICQUserFinder_SearchICQUsers_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SearchICQUsers'
+type mockICQUserFinder_SearchICQUsers_Call struct {
+	*mock.Call
+}
+
+// SearchICQUsers is a helper method to define mock.On call
+//   - ctx context.Context
+//   - c state.ICQUserSearchCriteria
+func (_e *mockICQUserFinder_Expecter) SearchICQUsers(ctx interface{}, c interface{}) *mockICQUserFinder_SearchICQUsers_Call {
+	return &mockICQUserFinder_SearchICQUsers_Call{Call: _e.mock.On("SearchICQUsers", ctx, c)}
+}
+
+func (_c *mockICQUserFinder_SearchICQUsers_Call) Run(run func(ctx context.Context, c state.ICQUserSearchCriteria)) *mockICQUserFinder_SearchICQUsers_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 state.ICQUserSearchCriteria
+		if args[1] != nil {
+			arg1 = args[1].(state.ICQUserSearchCriteria)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *mockICQUserFinder_SearchICQUsers_Call) Return(users []state.User, err error) *mockICQUserFinder_SearchICQUsers_Call {
+	_c.Call.Return(users, err)
+	return _c
+}
+
+func (_c *mockICQUserFinder_SearchICQUsers_Call) RunAndReturn(run func(ctx context.Context, c state.ICQUserSearchCriteria) ([]state.User, error)) *mockICQUserFinder_SearchICQUsers_Call {
+	_c.Call.Return(run)
+	return _c
+}

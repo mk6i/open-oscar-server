@@ -1,6 +1,6 @@
 module github.com/mk6i/open-oscar-server
 
-go 1.24.2
+go 1.26.0
 
 require (
 	github.com/breign/goAMF3 v1.0.1-0.20250916173039-e43798221950

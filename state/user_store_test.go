@@ -1946,6 +1946,386 @@ func TestSQLiteUserStore_FindByDirectoryInfo(t *testing.T) {
 	})
 }
 
+func TestSQLiteUserStore_SearchICQUsers(t *testing.T) {
+	newStore := func(t *testing.T) (*SQLiteUserStore, string) {
+		t.Helper()
+
+		dbFile := fmt.Sprintf("icq_search_test_%s.db", uuid.NewString())
+
+		f, err := NewSQLiteUserStore(dbFile)
+		require.NoError(t, err)
+		return f, dbFile
+	}
+
+	seedUsers := func(t *testing.T, f *SQLiteUserStore) (User, User) {
+		t.Helper()
+
+		user1 := User{
+			IdentScreenName: NewIdentScreenName("123456"),
+			IsICQ:           true,
+		}
+		require.NoError(t, f.InsertUser(context.Background(), user1))
+		require.NoError(t, f.SetBasicInfo(context.Background(), user1.IdentScreenName, ICQBasicInfo{
+			FirstName:    "Jane",
+			LastName:     "Doe",
+			Nickname:     "Janey",
+			City:         "New York",
+			State:        "NY",
+			EmailAddress: "jane@example.com",
+			CountryCode:  100,
+		}))
+		require.NoError(t, f.SetMoreInfo(context.Background(), user1.IdentScreenName, ICQMoreInfo{
+			BirthYear: 1985,
+			Gender:    2,
+			Lang1:     10,
+		}))
+		require.NoError(t, f.SetWorkInfo(context.Background(), user1.IdentScreenName, ICQWorkInfo{
+			Company:        "Acme Corp",
+			Department:     "Engineering",
+			Position:       "Engineer",
+			OccupationCode: 500,
+			CountryCode:    300,
+		}))
+		require.NoError(t, f.SetInterests(context.Background(), user1.IdentScreenName, ICQInterests{
+			Code1:    1,
+			Keyword1: "Knitting",
+		}))
+		require.NoError(t, f.SetAffiliations(context.Background(), user1.IdentScreenName, ICQAffiliations{
+			CurrentCode1:    99,
+			CurrentKeyword1: "RoboticsTeam",
+			PastCode1:       100,
+			PastKeyword1:    "GhostTeam",
+		}))
+
+		user2 := User{
+			IdentScreenName: NewIdentScreenName("234567"),
+			IsICQ:           true,
+		}
+		require.NoError(t, f.InsertUser(context.Background(), user2))
+		require.NoError(t, f.SetBasicInfo(context.Background(), user2.IdentScreenName, ICQBasicInfo{
+			FirstName:    "Alice",
+			LastName:     "Smith",
+			Nickname:     "Ally",
+			City:         "Boston",
+			State:        "MA",
+			EmailAddress: "alice@example.com",
+			CountryCode:  200,
+		}))
+		require.NoError(t, f.SetMoreInfo(context.Background(), user2.IdentScreenName, ICQMoreInfo{
+			BirthYear: 2005,
+			Gender:    1,
+			Lang1:     20,
+		}))
+		require.NoError(t, f.SetWorkInfo(context.Background(), user2.IdentScreenName, ICQWorkInfo{
+			Company:        "Globex",
+			Position:       "Manager",
+			OccupationCode: 600,
+			CountryCode:    400,
+		}))
+		require.NoError(t, f.SetInterests(context.Background(), user2.IdentScreenName, ICQInterests{
+			Code1:    1,
+			Keyword1: "Music",
+		}))
+		require.NoError(t, f.SetHomepageCategory(context.Background(), user2.IdentScreenName, ICQHomepageCategory{
+			Enabled:     true,
+			Index:       42,
+			Description: "My photo blog about cats",
+		}))
+
+		return user1, user2
+	}
+
+	t.Run("Empty criteria", func(t *testing.T) {
+		defer func() { assert.NoError(t, os.Remove(testFile)) }()
+
+		f, err := NewSQLiteUserStore(testFile)
+		require.NoError(t, err)
+		_, searchErr := f.SearchICQUsers(context.Background(), ICQUserSearchCriteria{})
+		assert.ErrorIs(t, searchErr, ErrICQSearchEmptyCriteria)
+	})
+
+	t.Run("Search by nickname substring", func(t *testing.T) {
+		f, dbFile := newStore(t)
+		defer func() { assert.NoError(t, os.Remove(dbFile)) }()
+
+		user1, _ := seedUsers(t, f)
+		users, err := f.SearchICQUsers(context.Background(), ICQUserSearchCriteria{
+			NickName: new("ane"),
+		})
+		assert.NoError(t, err)
+		require.Len(t, users, 1)
+		assert.Equal(t, user1.IdentScreenName, users[0].IdentScreenName)
+	})
+
+	t.Run("Search by city+state", func(t *testing.T) {
+		f, dbFile := newStore(t)
+		defer func() { assert.NoError(t, os.Remove(dbFile)) }()
+
+		_, user2 := seedUsers(t, f)
+		users, err := f.SearchICQUsers(context.Background(), ICQUserSearchCriteria{
+			City:  new("bost"),
+			State: new("MA"),
+		})
+		assert.NoError(t, err)
+		require.Len(t, users, 1)
+		assert.Equal(t, user2.IdentScreenName, users[0].IdentScreenName)
+	})
+
+	t.Run("Search by keyword", func(t *testing.T) {
+		f, dbFile := newStore(t)
+		defer func() { assert.NoError(t, os.Remove(dbFile)) }()
+
+		user1, _ := seedUsers(t, f)
+		kw := "knit"
+		users, err := f.SearchICQUsers(context.Background(), ICQUserSearchCriteria{
+			AnyKeyword: &kw,
+		})
+		assert.NoError(t, err)
+		require.Len(t, users, 1)
+		assert.Equal(t, user1.IdentScreenName, users[0].IdentScreenName)
+	})
+
+	t.Run("Search by interests node", func(t *testing.T) {
+		f, dbFile := newStore(t)
+		defer func() { assert.NoError(t, os.Remove(dbFile)) }()
+
+		_, user2 := seedUsers(t, f)
+		users, err := f.SearchICQUsers(context.Background(), ICQUserSearchCriteria{
+			InterestsCode:     new(uint16(1)),
+			InterestsKeywords: []string{"Music"},
+		})
+		assert.NoError(t, err)
+		require.Len(t, users, 1)
+		assert.Equal(t, user2.IdentScreenName, users[0].IdentScreenName)
+	})
+
+	t.Run("Search by UIN", func(t *testing.T) {
+		f, dbFile := newStore(t)
+		defer func() { assert.NoError(t, os.Remove(dbFile)) }()
+
+		user1, _ := seedUsers(t, f)
+		users, err := f.SearchICQUsers(context.Background(), ICQUserSearchCriteria{
+			UIN: new(uint32(123456)),
+		})
+		assert.NoError(t, err)
+		require.Len(t, users, 1)
+		assert.Equal(t, user1.IdentScreenName, users[0].IdentScreenName)
+	})
+
+	t.Run("Search by first and last name", func(t *testing.T) {
+		f, dbFile := newStore(t)
+		defer func() { assert.NoError(t, os.Remove(dbFile)) }()
+
+		user1, _ := seedUsers(t, f)
+		users, err := f.SearchICQUsers(context.Background(), ICQUserSearchCriteria{
+			FirstName: new("jan"),
+			LastName:  new("doe"),
+		})
+		assert.NoError(t, err)
+		require.Len(t, users, 1)
+		assert.Equal(t, user1.IdentScreenName, users[0].IdentScreenName)
+	})
+
+	t.Run("Search by email substring", func(t *testing.T) {
+		f, dbFile := newStore(t)
+		defer func() { assert.NoError(t, os.Remove(dbFile)) }()
+
+		_, user2 := seedUsers(t, f)
+		users, err := f.SearchICQUsers(context.Background(), ICQUserSearchCriteria{
+			Email: new("alice@"),
+		})
+		assert.NoError(t, err)
+		require.Len(t, users, 1)
+		assert.Equal(t, user2.IdentScreenName, users[0].IdentScreenName)
+	})
+
+	t.Run("Search by gender", func(t *testing.T) {
+		f, dbFile := newStore(t)
+		defer func() { assert.NoError(t, os.Remove(dbFile)) }()
+
+		_, user2 := seedUsers(t, f)
+		users, err := f.SearchICQUsers(context.Background(), ICQUserSearchCriteria{
+			Gender: new(uint8(1)),
+		})
+		assert.NoError(t, err)
+		require.Len(t, users, 1)
+		assert.Equal(t, user2.IdentScreenName, users[0].IdentScreenName)
+	})
+
+	t.Run("Search by spoken language", func(t *testing.T) {
+		f, dbFile := newStore(t)
+		defer func() { assert.NoError(t, os.Remove(dbFile)) }()
+
+		user1, _ := seedUsers(t, f)
+		users, err := f.SearchICQUsers(context.Background(), ICQUserSearchCriteria{
+			SpokenLanguage: new(uint8(10)),
+		})
+		assert.NoError(t, err)
+		require.Len(t, users, 1)
+		assert.Equal(t, user1.IdentScreenName, users[0].IdentScreenName)
+	})
+
+	t.Run("Search by minimum age", func(t *testing.T) {
+		f, dbFile := newStore(t)
+		defer func() { assert.NoError(t, os.Remove(dbFile)) }()
+
+		user1, _ := seedUsers(t, f)
+		min := uint16(35)
+		users, err := f.SearchICQUsers(context.Background(), ICQUserSearchCriteria{
+			MinAge: &min,
+		})
+		assert.NoError(t, err)
+		require.Len(t, users, 1)
+		assert.Equal(t, user1.IdentScreenName, users[0].IdentScreenName)
+	})
+
+	t.Run("Search by maximum age", func(t *testing.T) {
+		f, dbFile := newStore(t)
+		defer func() { assert.NoError(t, os.Remove(dbFile)) }()
+
+		_, user2 := seedUsers(t, f)
+		max := uint16(25)
+		users, err := f.SearchICQUsers(context.Background(), ICQUserSearchCriteria{
+			MaxAge: &max,
+		})
+		assert.NoError(t, err)
+		require.Len(t, users, 1)
+		assert.Equal(t, user2.IdentScreenName, users[0].IdentScreenName)
+	})
+
+	t.Run("Search by home country code", func(t *testing.T) {
+		f, dbFile := newStore(t)
+		defer func() { assert.NoError(t, os.Remove(dbFile)) }()
+
+		user1, _ := seedUsers(t, f)
+		users, err := f.SearchICQUsers(context.Background(), ICQUserSearchCriteria{
+			CountryCode: new(uint16(100)),
+		})
+		assert.NoError(t, err)
+		require.Len(t, users, 1)
+		assert.Equal(t, user1.IdentScreenName, users[0].IdentScreenName)
+	})
+
+	t.Run("Search by work country code", func(t *testing.T) {
+		f, dbFile := newStore(t)
+		defer func() { assert.NoError(t, os.Remove(dbFile)) }()
+
+		_, user2 := seedUsers(t, f)
+		users, err := f.SearchICQUsers(context.Background(), ICQUserSearchCriteria{
+			CountryCode: new(uint16(400)),
+		})
+		assert.NoError(t, err)
+		require.Len(t, users, 1)
+		assert.Equal(t, user2.IdentScreenName, users[0].IdentScreenName)
+	})
+
+	t.Run("Search by company", func(t *testing.T) {
+		f, dbFile := newStore(t)
+		defer func() { assert.NoError(t, os.Remove(dbFile)) }()
+
+		_, user2 := seedUsers(t, f)
+		users, err := f.SearchICQUsers(context.Background(), ICQUserSearchCriteria{
+			Company: new("Globex"),
+		})
+		assert.NoError(t, err)
+		require.Len(t, users, 1)
+		assert.Equal(t, user2.IdentScreenName, users[0].IdentScreenName)
+	})
+
+	t.Run("Search by department", func(t *testing.T) {
+		f, dbFile := newStore(t)
+		defer func() { assert.NoError(t, os.Remove(dbFile)) }()
+
+		user1, _ := seedUsers(t, f)
+		users, err := f.SearchICQUsers(context.Background(), ICQUserSearchCriteria{
+			DepartmentName: new("Engineering"),
+		})
+		assert.NoError(t, err)
+		require.Len(t, users, 1)
+		assert.Equal(t, user1.IdentScreenName, users[0].IdentScreenName)
+	})
+
+	t.Run("Search by position", func(t *testing.T) {
+		f, dbFile := newStore(t)
+		defer func() { assert.NoError(t, os.Remove(dbFile)) }()
+
+		user1, _ := seedUsers(t, f)
+		users, err := f.SearchICQUsers(context.Background(), ICQUserSearchCriteria{
+			Position: new("Engineer"),
+		})
+		assert.NoError(t, err)
+		require.Len(t, users, 1)
+		assert.Equal(t, user1.IdentScreenName, users[0].IdentScreenName)
+	})
+
+	t.Run("Search by occupation code", func(t *testing.T) {
+		f, dbFile := newStore(t)
+		defer func() { assert.NoError(t, os.Remove(dbFile)) }()
+
+		_, user2 := seedUsers(t, f)
+		users, err := f.SearchICQUsers(context.Background(), ICQUserSearchCriteria{
+			OccupationCode: new(uint16(600)),
+		})
+		assert.NoError(t, err)
+		require.Len(t, users, 1)
+		assert.Equal(t, user2.IdentScreenName, users[0].IdentScreenName)
+	})
+
+	t.Run("Search by affiliations node", func(t *testing.T) {
+		f, dbFile := newStore(t)
+		defer func() { assert.NoError(t, os.Remove(dbFile)) }()
+
+		user1, _ := seedUsers(t, f)
+		users, err := f.SearchICQUsers(context.Background(), ICQUserSearchCriteria{
+			AffiliationsCode:     new(uint16(99)),
+			AffiliationsKeywords: []string{"Robot"},
+		})
+		assert.NoError(t, err)
+		require.Len(t, users, 1)
+		assert.Equal(t, user1.IdentScreenName, users[0].IdentScreenName)
+	})
+
+	t.Run("Search by past affiliations node", func(t *testing.T) {
+		f, dbFile := newStore(t)
+		defer func() { assert.NoError(t, os.Remove(dbFile)) }()
+
+		user1, _ := seedUsers(t, f)
+		users, err := f.SearchICQUsers(context.Background(), ICQUserSearchCriteria{
+			PastAffiliationsCode:     new(uint16(100)),
+			PastAffiliationsKeywords: []string{"Ghost"},
+		})
+		assert.NoError(t, err)
+		require.Len(t, users, 1)
+		assert.Equal(t, user1.IdentScreenName, users[0].IdentScreenName)
+	})
+
+	t.Run("Search by homepage category index", func(t *testing.T) {
+		f, dbFile := newStore(t)
+		defer func() { assert.NoError(t, os.Remove(dbFile)) }()
+
+		_, user2 := seedUsers(t, f)
+		users, err := f.SearchICQUsers(context.Background(), ICQUserSearchCriteria{
+			HomePageCategoryIndex: new(uint16(42)),
+		})
+		assert.NoError(t, err)
+		require.Len(t, users, 1)
+		assert.Equal(t, user2.IdentScreenName, users[0].IdentScreenName)
+	})
+
+	t.Run("Search by homepage keywords", func(t *testing.T) {
+		f, dbFile := newStore(t)
+		defer func() { assert.NoError(t, os.Remove(dbFile)) }()
+
+		_, user2 := seedUsers(t, f)
+		users, err := f.SearchICQUsers(context.Background(), ICQUserSearchCriteria{
+			HomePageKeywords: []string{"cats"},
+		})
+		assert.NoError(t, err)
+		require.Len(t, users, 1)
+		assert.Equal(t, user2.IdentScreenName, users[0].IdentScreenName)
+	})
+}
+
 func TestSQLiteUserStore_FindByICQEmail(t *testing.T) {
 	// Cleanup after test
 	defer func() {

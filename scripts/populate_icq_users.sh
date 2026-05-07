@@ -24,13 +24,13 @@ API="${1:-http://127.0.0.1:8080}"
 #   6=Community, 7=Education, 8=Engineering, 9=Financial Services, 10=Government, 11=High School Student,
 #   12=Home, 13=ICQ-Providing Help, 14=Law, 15=Managerial, 16=Manufacturing, 17=Medical/Health,
 #   18=Military, 19=Not Employed, 20=Other Services, 99=Retired
-# ICQ affiliation codes (past): 200=Elementary School, 201=High School, 202=College, 203=University,
-#   204=Military, 205=Past Work Place, 206=Past Organization, 207=Other
-# ICQ affiliation codes (current): 300=Alumni Org, 301=Charity Org, 302=Club/Social Org, 303=Community Org,
-#   304=Cultural Org, 305=Fan Clubs, 306=Fraternity/Sorority, 307=Hobbyists Org, 308=International Org,
-#   309=Nature and Environment Org, 310=Professional Org, 311=Scientific/Technical Org, 312=Self Improvement,
-#   313=Spiritual/Religious Org, 314=Sports Org, 315=Support Org, 316=Trade and Business Org,
-#   317=Union, 318=Volunteer Org, 399=Other
+# ICQ affiliation codes (past): 300=Elementary School, 301=High School, 302=College, 303=University,
+#   304=Military, 305=Past Work Place, 306=Past Organization, 307=Other
+# ICQ affiliation codes (current): 200=Alumni Org, 201=Charity Org, 202=Club/Social Org, 203=Community Org,
+#   204=Cultural Org, 205=Fan Clubs, 206=Fraternity/Sorority, 207=Hobbyists Org, 208=International Org,
+#   209=Nature and Environment Org, 210=Professional Org, 211=Scientific/Technical Org, 212=Self Improvement,
+#   213=Spiritual/Religious Org, 214=Sports Org, 215=Support Org, 216=Trade and Business Org,
+#   217=Union, 218=Volunteer Org, 299=Other
 # Gender: 0=not specified, 1=female, 2=male
 
 set -e
@@ -40,7 +40,7 @@ create_user() {
     echo "Creating user $uin..."
     curl -s -o /dev/null -w "  -> %{http_code}\n" -X POST "$API/user" \
         -H 'Content-Type: application/json' \
-        -d "{\"screen_name\":\"$uin\",\"password\":\"123123\"}" || true
+        -d "{\"screen_name\":\"$uin\",\"password\":\"122123\"}" || true
 }
 
 set_profile() {
@@ -115,11 +115,11 @@ set_profile 123400 '{
     "code4": 120, "keyword4": "Basketball"
   },
   "affiliations": {
-    "past_code1": 203, "past_keyword1": "Eastfield University",
-    "past_code2": 205, "past_keyword2": "Orion Software",
+    "past_code1": 303, "past_keyword1": "Eastfield University",
+    "past_code2": 305, "past_keyword2": "Orion Software",
     "past_code3": 0, "past_keyword3": "",
-    "current_code1": 310, "current_keyword1": "Dev Guild",
-    "current_code2": 314, "current_keyword2": "NYC Basketball League",
+    "current_code1": 210, "current_keyword1": "Dev Guild",
+    "current_code2": 214, "current_keyword2": "NYC Basketball League",
     "current_code3": 0, "current_keyword3": ""
   },
   "permissions": {
@@ -181,12 +181,12 @@ set_profile 123401 '{
     "code4": 124, "keyword4": "International Travel Photography and Adventure Tourism Planning"
   },
   "affiliations": {
-    "past_code1": 203, "past_keyword1": "Westbridge University College of Computer Science and Engineerin",
-    "past_code2": 202, "past_keyword2": "Kingsfield College Department of Computing and Applied Engineeri",
-    "past_code3": 201, "past_keyword3": "Thornhill Academy for Advanced Mathematics and Natural Sciences",
-    "current_code1": 308, "current_keyword1": "International Association for Computing Professionals UK Chapter",
-    "current_code2": 311, "current_keyword2": "Royal Society for the Encouragement of Arts Manufactures Commer",
-    "current_code3": 304, "current_keyword3": "Heritage Museum Friends Society and Cultural Heritage Preservati"
+    "past_code1": 303, "past_keyword1": "Westbridge University College of Computer Science and Engineerin",
+    "past_code2": 302, "past_keyword2": "Kingsfield College Department of Computing and Applied Engineeri",
+    "past_code3": 301, "past_keyword3": "Thornhill Academy for Advanced Mathematics and Natural Sciences",
+    "current_code1": 208, "current_keyword1": "International Association for Computing Professionals UK Chapter",
+    "current_code2": 211, "current_keyword2": "Royal Society for the Encouragement of Arts Manufactures Commer",
+    "current_code3": 204, "current_keyword3": "Heritage Museum Friends Society and Cultural Heritage Preservati"
   },
   "permissions": {
     "auth_required": true,
@@ -247,10 +247,10 @@ set_profile 123402 '{
     "code4": 106, "keyword4": "Cycling"
   },
   "affiliations": {
-    "past_code1": 203, "past_keyword1": "Berlin Technical University",
+    "past_code1": 303, "past_keyword1": "Berlin Technical University",
     "past_code2": 0, "past_keyword2": "",
     "past_code3": 0, "past_keyword3": "",
-    "current_code1": 310, "current_keyword1": "VDI Engineers Association",
+    "current_code1": 210, "current_keyword1": "VDI Engineers Association",
     "current_code2": 0, "current_keyword2": "",
     "current_code3": 0, "current_keyword3": ""
   },
@@ -313,10 +313,10 @@ set_profile 123403 '{
     "code4": 136, "keyword4": "Cooking"
   },
   "affiliations": {
-    "past_code1": 203, "past_keyword1": "Kyiv National University",
-    "past_code2": 205, "past_keyword2": "Sunrise Media Group",
+    "past_code1": 303, "past_keyword1": "Kyiv National University",
+    "past_code2": 303, "Westbridge University College of Computer Science and Engineerin",
     "past_code3": 0, "past_keyword3": "",
-    "current_code1": 304, "current_keyword1": "Kyiv Art Society",
+    "current_code1": 204, "current_keyword1": "Kyiv Art Society",
     "current_code2": 0, "current_keyword2": "",
     "current_code3": 0, "current_keyword3": ""
   },
@@ -343,7 +343,7 @@ set_profile 123404 '{
     "fax": "",
     "address": "Herzl Blvd 42",
     "cell_phone": "+972-555-054-0100",
-    "zip": "6688312",
+    "zip": "6688212",
     "country_code": 972,
     "gmt_offset": 2,
     "publish_email": false
@@ -380,10 +380,10 @@ set_profile 123404 '{
     "code4": 120, "keyword4": "Football"
   },
   "affiliations": {
-    "past_code1": 203, "past_keyword1": "Haifa Institute of Technology",
-    "past_code2": 204, "past_keyword2": "Military Service",
-    "past_code3": 205, "past_keyword3": "Firewall Systems Ltd",
-    "current_code1": 310, "current_keyword1": "National Cyber Directorate",
+    "past_code1": 303, "past_keyword1": "Haifa Institute of Technology",
+    "past_code2": 304, "past_keyword2": "Military Service",
+    "past_code3": 305, "past_keyword3": "Firewall Systems Ltd",
+    "current_code1": 210, "current_keyword1": "National Cyber Directorate",
     "current_code2": 316, "current_keyword2": "Tel Aviv Tech Hub",
     "current_code3": 0, "current_keyword3": ""
   },
@@ -405,8 +405,8 @@ set_profile 123405 '{
     "email": "yuki.tanaka@example.jp",
     "city": "Tokyo",
     "state": "Tokyo",
-    "phone": "+81-555-300-0100",
-    "fax": "+81-555-300-0101",
+    "phone": "+81-555-200-0100",
+    "fax": "+81-555-200-0101",
     "address": "Shibuya 2-21-1",
     "cell_phone": "+81-555-900-0100",
     "zip": "150-0002",
@@ -446,11 +446,11 @@ set_profile 123405 '{
     "code4": 103, "keyword4": "Figurines"
   },
   "affiliations": {
-    "past_code1": 203, "past_keyword1": "Tokyo University of the Arts",
+    "past_code1": 303, "past_keyword1": "Tokyo University of the Arts",
     "past_code2": 0, "past_keyword2": "",
     "past_code3": 0, "past_keyword3": "",
-    "current_code1": 305, "current_keyword1": "Retro Gaming Club Japan",
-    "current_code2": 307, "current_keyword2": "Tokyo Pixel Artists",
+    "current_code1": 205, "current_keyword1": "Retro Gaming Club Japan",
+    "current_code2": 207, "current_keyword2": "Tokyo Pixel Artists",
     "current_code3": 0, "current_keyword3": ""
   },
   "permissions": {
@@ -475,7 +475,7 @@ set_profile 123406 '{
     "fax": "",
     "address": "Av Ipiranga 1578",
     "cell_phone": "+55-555-119-0100",
-    "zip": "01310-200",
+    "zip": "01210-200",
     "country_code": 55,
     "gmt_offset": 253,
     "publish_email": true
@@ -512,10 +512,10 @@ set_profile 123406 '{
     "code4": 120, "keyword4": "Surfing"
   },
   "affiliations": {
-    "past_code1": 202, "past_keyword1": "SP Conservatory of Music",
+    "past_code1": 302, "past_keyword1": "SP Conservatory of Music",
     "past_code2": 0, "past_keyword2": "",
     "past_code3": 0, "past_keyword3": "",
-    "current_code1": 302, "current_keyword1": "SP Electronic Music Collective",
+    "current_code1": 202, "current_keyword1": "SP Electronic Music Collective",
     "current_code2": 0, "current_keyword2": "",
     "current_code3": 0, "current_keyword3": ""
   },
@@ -578,12 +578,12 @@ set_profile 123407 '{
     "code4": 125, "keyword4": "Astronomy"
   },
   "affiliations": {
-    "past_code1": 203, "past_keyword1": "Southport University",
-    "past_code2": 203, "past_keyword2": "Reef Coast University",
+    "past_code1": 303, "past_keyword1": "Southport University",
+    "past_code2": 303, "past_keyword2": "Reef Coast University",
     "past_code3": 0, "past_keyword3": "",
-    "current_code1": 311, "current_keyword1": "Australian Marine Sciences Assoc",
-    "current_code2": 309, "current_keyword2": "Reef Conservation Foundation",
-    "current_code3": 310, "current_keyword3": "Royal Society of NSW"
+    "current_code1": 211, "current_keyword1": "Australian Marine Sciences Assoc",
+    "current_code2": 209, "current_keyword2": "Reef Conservation Foundation",
+    "current_code3": 210, "current_keyword3": "Royal Society of NSW"
   },
   "permissions": {
     "auth_required": true,
@@ -645,10 +645,10 @@ set_profile 123408 '{
     "code4": 124, "keyword4": "European Travel"
   },
   "affiliations": {
-    "past_code1": 203, "past_keyword1": "Sorbonne Business School",
-    "past_code2": 205, "past_keyword2": "Alpine Investments",
+    "past_code1": 303, "past_keyword1": "Sorbonne Business School",
+    "past_code2": 305, "past_keyword2": "Alpine Investments",
     "past_code3": 0, "past_keyword3": "",
-    "current_code1": 310, "current_keyword1": "European Finance Association",
+    "current_code1": 210, "current_keyword1": "European Finance Association",
     "current_code2": 316, "current_keyword2": "Paris Fintech Forum",
     "current_code3": 0, "current_keyword3": ""
   },
@@ -711,11 +711,11 @@ set_profile 123409 '{
     "code4": 113, "keyword4": "Electronic Music"
   },
   "affiliations": {
-    "past_code1": 201, "past_keyword1": "Lviv Lyceum No 1",
+    "past_code1": 301, "past_keyword1": "Lviv Lyceum No 1",
     "past_code2": 0, "past_keyword2": "",
     "past_code3": 0, "past_keyword3": "",
-    "current_code1": 302, "current_keyword1": "Lviv Open Source Community",
-    "current_code2": 307, "current_keyword2": "Retro Computing Club",
+    "current_code1": 202, "current_keyword1": "Lviv Open Source Community",
+    "current_code2": 207, "current_keyword2": "Retro Computing Club",
     "current_code3": 0, "current_keyword3": ""
   },
   "permissions": {
