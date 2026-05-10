@@ -98,14 +98,12 @@ func (f *FlapClient) String() string {
 // SendSignonFrame sends a signon FLAP frame containing a list of TLVs to
 // authenticate or initiate a session.
 func (f *FlapClient) SendSignonFrame(tlvs []TLV) error {
-	signonFrame := FLAPSignonFrame{
-		FLAPVersion: 1,
-	}
-	if len(tlvs) > 0 {
-		signonFrame.AppendList(tlvs)
-	}
+	_ = tlvs
+	// Keep the initial signon payload minimal for legacy clients.
+	// Jimm 0.6.0 expects a plain FLAP version frame here and can abort if
+	// extra TLVs leak into the first handshake.
 	buf := &bytes.Buffer{}
-	if err := MarshalBE(signonFrame, buf); err != nil {
+	if err := MarshalBE(uint32(1), buf); err != nil {
 		return err
 	}
 

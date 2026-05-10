@@ -683,17 +683,19 @@ func (s OServiceService) ClientOnline(ctx context.Context, service uint16, inBod
 			return fmt.Errorf("unable to send buddy arrival notification: %w", err)
 		}
 
-		msg := wire.SNACMessage{
-			Frame: wire.SNACFrame{
-				FoodGroup: wire.Stats,
-				SubGroup:  wire.StatsSetMinReportInterval,
-				RequestID: wire.ReqIDFromServer,
-			},
-			Body: wire.SNAC_0x0B_0x02_StatsSetMinReportInterval{
-				MinReportInterval: 1,
-			},
+		if instance.UIN() == 0 {
+			msg := wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.Stats,
+					SubGroup:  wire.StatsSetMinReportInterval,
+					RequestID: wire.ReqIDFromServer,
+				},
+				Body: wire.SNAC_0x0B_0x02_StatsSetMinReportInterval{
+					MinReportInterval: 1,
+				},
+			}
+			s.messageRelayer.RelayToScreenName(ctx, instance.IdentScreenName(), msg)
 		}
-		s.messageRelayer.RelayToScreenName(ctx, instance.IdentScreenName(), msg)
 
 		// set stored profile
 		if instance.KerberosAuth() {

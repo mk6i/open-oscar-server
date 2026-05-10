@@ -151,7 +151,10 @@ func unmarshalSlice(v reflect.Value, oscTag oscarTag, r io.Reader, order binary.
 		for {
 			elem := reflect.New(elemType).Elem()
 			if err := unmarshalSliceElement(elemType, elem, r, order, activeQuirk); err != nil {
-				if errors.Is(err, io.EOF) {
+				// Tolerate truncated TLV tails for vanilla Jimm.
+				// Some clients emit malformed lengths and leave orphaned bytes
+				// at the end of a TLV list, which should not fail decoding.
+				if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
 					break
 				}
 				return err

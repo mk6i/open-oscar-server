@@ -132,7 +132,7 @@ func marshalSlice(t reflect.Type, v reflect.Value, oscTag oscarTag, w io.Writer,
 
 func marshalString(oscTag oscarTag, v reflect.Value, w io.Writer, order binary.ByteOrder) error {
 	str := v.String()
-	if oscTag.nullTerminated && str != "" {
+	if oscTag.nullTerminated {
 		str = str + "\x00"
 	}
 	if oscTag.hasLenPrefix {
