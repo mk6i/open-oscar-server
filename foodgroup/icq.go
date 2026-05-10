@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -363,37 +364,83 @@ func (s *ICQService) FullUserInfo(ctx context.Context, instance *state.SessionIn
 	if err != nil {
 		return err
 	}
+	if s.logger != nil {
+		s.logger.Debug("ICQ full userinfo request received",
+			"request_uin", inBody.UIN,
+			"owner_uin", instance.UIN(),
+			"seq", seq,
+			"nickname", icqProfileNickname(user),
+			"basic_nickname_empty", strings.TrimSpace(user.ICQInfo.Basic.Nickname) == "",
+			"more_homepage_empty", strings.TrimSpace(user.ICQInfo.More.HomePageAddr) == "",
+			"notes_empty", strings.TrimSpace(user.ICQInfo.Notes.Notes) == "",
+			"work_company_empty", strings.TrimSpace(user.ICQInfo.Work.Company) == "",
+			"interests_count", countNonEmptyICQInterests(user),
+			"affiliations_count", countNonEmptyICQAffiliations(user),
+		)
+	}
+
+	pauseForJ2ME := func() error {
+		timer := time.NewTimer(250 * time.Millisecond)
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 
 	if err := s.userInfo(ctx, instance, user, seq); err != nil {
+		return err
+	}
+	if s.logger != nil {
+		s.logger.Debug("ICQ full userinfo reply sent", "subtype", "00C8 basic", "request_uin", inBody.UIN, "seq", seq)
+	}
+	if err := pauseForJ2ME(); err != nil {
 		return err
 	}
 
 	if err := s.moreUserInfo(ctx, instance, user, seq); err != nil {
 		return err
 	}
-
-	if err := s.extraEmails(ctx, instance, user, seq); err != nil {
-		return err
+	if s.logger != nil {
+		s.logger.Debug("ICQ full userinfo reply sent", "subtype", "00DC more", "request_uin", inBody.UIN, "seq", seq)
 	}
-
-	if err := s.homepageCat(ctx, instance, user, seq); err != nil {
+	if err := pauseForJ2ME(); err != nil {
 		return err
 	}
 
 	if err := s.workInfo(ctx, instance, user, seq); err != nil {
 		return err
 	}
+	if s.logger != nil {
+		s.logger.Debug("ICQ full userinfo reply sent", "subtype", "00D2 work", "request_uin", inBody.UIN, "seq", seq)
+	}
+	if err := pauseForJ2ME(); err != nil {
+		return err
+	}
 
 	if err := s.notes(ctx, instance, user, seq); err != nil {
 		return err
 	}
-
-	if err := s.interests(ctx, instance, user, seq); err != nil {
+	if s.logger != nil {
+		s.logger.Debug("ICQ full userinfo reply sent", "subtype", "00E6 notes", "request_uin", inBody.UIN, "seq", seq)
+	}
+	if err := pauseForJ2ME(); err != nil {
 		return err
 	}
 
 	if err := s.affiliations(ctx, instance, user, seq); err != nil {
 		return err
+	}
+	if s.logger != nil {
+		s.logger.Debug("ICQ full userinfo reply sent", "subtype", "00FA affiliations", "request_uin", inBody.UIN, "seq", seq)
+		s.logger.Debug("ICQ full userinfo reply sequence complete",
+			"request_uin", inBody.UIN,
+			"seq", seq,
+			"sent_subtypes", []string{"00C8", "00DC", "00D2", "00E6", "00FA"},
+			"omitted_for_jimm_060", []string{"00EB", "010E", "00F0"},
+		)
 	}
 	return nil
 }
@@ -958,8 +1005,8 @@ func (s *ICQService) ShortUserInfo(ctx context.Context, instance *state.SessionI
 		},
 		ReqSubType: wire.ICQDBQueryMetaReplyShortInfo,
 		Success:    wire.ICQStatusCodeOK,
-		Nickname:   user.ICQInfo.Basic.Nickname,
-		FirstName:  user.ICQInfo.Basic.FirstName,
+		Nickname:   icqProfileNickname(user),
+		FirstName:  icqProfileFirstName(user),
 		LastName:   user.ICQInfo.Basic.LastName,
 		Email:      user.ICQInfo.Basic.EmailAddress,
 		Gender:     uint8(user.ICQInfo.More.Gender),
@@ -991,8 +1038,16 @@ func (s *ICQService) XMLReqData(ctx context.Context, instance *state.SessionInst
 }
 
 func (s *ICQService) affiliations(ctx context.Context, instance *state.SessionInstance, user state.User, seq uint16) error {
+	if s.logger != nil {
+		s.logger.Debug("ICQ full userinfo affiliations minimal ack",
+			"seq", seq,
+			"request_uin", instance.UIN(),
+			"past_affiliations_count", countNonEmptyICQAffiliations(user),
+		)
+	}
+
 	msg := wire.ICQMessageReplyEnvelope{
-		Message: wire.ICQ_0x07DA_0x00FA_DBQueryMetaReplyAffiliations{
+		Message: wire.ICQ_0x07DA_DBQueryMetaReplyAck{
 			ICQMetadata: wire.ICQMetadata{
 				UIN:     instance.UIN(),
 				ReqType: wire.ICQDBQueryMetaReply,
@@ -1000,46 +1055,9 @@ func (s *ICQService) affiliations(ctx context.Context, instance *state.SessionIn
 			},
 			ReqSubType: wire.ICQDBQueryMetaReplyAffiliations,
 			Success:    wire.ICQStatusCodeOK,
-			ICQ_0x07D0_0x041A_DBQueryMetaReqSetAffiliations: wire.ICQ_0x07D0_0x041A_DBQueryMetaReqSetAffiliations{
-				PastAffiliations: []struct {
-					Code    uint16
-					Keyword string `oscar:"len_prefix=uint16,nullterm"`
-				}{
-					{
-						Code:    user.ICQInfo.Affiliations.PastCode1,
-						Keyword: user.ICQInfo.Affiliations.PastKeyword1,
-					},
-					{
-						Code:    user.ICQInfo.Affiliations.PastCode2,
-						Keyword: user.ICQInfo.Affiliations.PastKeyword2,
-					},
-					{
-						Code:    user.ICQInfo.Affiliations.PastCode3,
-						Keyword: user.ICQInfo.Affiliations.PastKeyword3,
-					},
-				},
-				Affiliations: []struct {
-					Code    uint16
-					Keyword string `oscar:"len_prefix=uint16,nullterm"`
-				}{
-					{
-						Code:    user.ICQInfo.Affiliations.CurrentCode1,
-						Keyword: user.ICQInfo.Affiliations.CurrentKeyword1,
-					},
-					{
-						Code:    user.ICQInfo.Affiliations.CurrentCode2,
-						Keyword: user.ICQInfo.Affiliations.CurrentKeyword2,
-					},
-					{
-						Code:    user.ICQInfo.Affiliations.CurrentCode3,
-						Keyword: user.ICQInfo.Affiliations.CurrentKeyword3,
-					},
-				},
-			},
 		},
 	}
-
-	return s.reply(ctx, instance, msg)
+	return s.replyFullInfo(ctx, instance, msg, false)
 }
 
 func (s *ICQService) createResult(res state.User) wire.ICQUserSearchRecord {
@@ -1047,8 +1065,8 @@ func (s *ICQService) createResult(res state.User) wire.ICQUserSearchRecord {
 
 	searchRecord := wire.ICQUserSearchRecord{
 		UIN:       uint32(uin),
-		Nickname:  res.ICQInfo.Basic.Nickname,
-		FirstName: res.ICQInfo.Basic.FirstName,
+		Nickname:  icqProfileNickname(res),
+		FirstName: icqProfileFirstName(res),
 		LastName:  res.ICQInfo.Basic.LastName,
 		Email:     res.ICQInfo.Basic.EmailAddress,
 		Gender:    uint8(res.ICQInfo.More.Gender),
@@ -1065,6 +1083,55 @@ func (s *ICQService) createResult(res state.User) wire.ICQUserSearchRecord {
 	return searchRecord
 }
 
+func icqProfileNickname(user state.User) string {
+	if nickname := strings.TrimSpace(user.ICQInfo.Basic.Nickname); nickname != "" {
+		return nickname
+	}
+	if screenName := strings.TrimSpace(user.DisplayScreenName.String()); screenName != "" {
+		return screenName
+	}
+	return user.IdentScreenName.String()
+}
+
+func icqProfileFirstName(user state.User) string {
+	if firstName := strings.TrimSpace(user.ICQInfo.Basic.FirstName); firstName != "" {
+		return firstName
+	}
+	return icqProfileNickname(user)
+}
+
+func countNonEmptyICQInterests(user state.User) int {
+	count := 0
+	for _, interest := range []string{
+		user.ICQInfo.Interests.Keyword1,
+		user.ICQInfo.Interests.Keyword2,
+		user.ICQInfo.Interests.Keyword3,
+		user.ICQInfo.Interests.Keyword4,
+	} {
+		if strings.TrimSpace(interest) != "" {
+			count++
+		}
+	}
+	return count
+}
+
+func countNonEmptyICQAffiliations(user state.User) int {
+	count := 0
+	for _, affiliation := range []string{
+		user.ICQInfo.Affiliations.PastKeyword1,
+		user.ICQInfo.Affiliations.PastKeyword2,
+		user.ICQInfo.Affiliations.PastKeyword3,
+		user.ICQInfo.Affiliations.CurrentKeyword1,
+		user.ICQInfo.Affiliations.CurrentKeyword2,
+		user.ICQInfo.Affiliations.CurrentKeyword3,
+	} {
+		if strings.TrimSpace(affiliation) != "" {
+			count++
+		}
+	}
+	return count
+}
+
 func (s *ICQService) extraEmails(ctx context.Context, instance *state.SessionInstance, user state.User, seq uint16) error {
 	msg := wire.ICQMessageReplyEnvelope{
 		Message: wire.ICQ_0x07DA_0x00EB_DBQueryMetaReplyExtEmailInfo{
@@ -1078,7 +1145,7 @@ func (s *ICQService) extraEmails(ctx context.Context, instance *state.SessionIns
 		},
 	}
 
-	return s.reply(ctx, instance, msg)
+	return s.replyFullInfo(ctx, instance, msg, true)
 }
 
 func (s *ICQService) homepageCat(ctx context.Context, instance *state.SessionInstance, user state.User, seq uint16) error {
@@ -1093,11 +1160,42 @@ func (s *ICQService) homepageCat(ctx context.Context, instance *state.SessionIns
 			Success:    wire.ICQStatusCodeOK,
 		},
 	}
+	if s.logger != nil {
+		s.logger.Debug("ICQ full userinfo fields",
+			"subtype", "010E homepage_cat",
+			"seq", seq,
+			"request_uin", instance.UIN(),
+		)
+	}
 
-	return s.reply(ctx, instance, msg)
+	return s.replyFullInfo(ctx, instance, msg, false)
 }
 
 func (s *ICQService) interests(ctx context.Context, instance *state.SessionInstance, user state.User, seq uint16) error {
+	interests := make([]struct {
+		Code    uint16
+		Keyword string `oscar:"len_prefix=uint16,nullterm"`
+	}, 0, 4)
+	for _, interest := range []struct {
+		code    uint16
+		keyword string
+	}{
+		{code: user.ICQInfo.Interests.Code1, keyword: user.ICQInfo.Interests.Keyword1},
+		{code: user.ICQInfo.Interests.Code2, keyword: user.ICQInfo.Interests.Keyword2},
+		{code: user.ICQInfo.Interests.Code3, keyword: user.ICQInfo.Interests.Keyword3},
+		{code: user.ICQInfo.Interests.Code4, keyword: user.ICQInfo.Interests.Keyword4},
+	} {
+		if interest.code != 0 || strings.TrimSpace(interest.keyword) != "" {
+			interests = append(interests, struct {
+				Code    uint16
+				Keyword string `oscar:"len_prefix=uint16,nullterm"`
+			}{
+				Code:    interest.code,
+				Keyword: interest.keyword,
+			})
+		}
+	}
+
 	msg := wire.ICQMessageReplyEnvelope{
 		Message: wire.ICQ_0x07DA_0x00F0_DBQueryMetaReplyInterests{
 			ICQMetadata: wire.ICQMetadata{
@@ -1107,62 +1205,71 @@ func (s *ICQService) interests(ctx context.Context, instance *state.SessionInsta
 			},
 			ReqSubType: wire.ICQDBQueryMetaReplyInterests,
 			Success:    wire.ICQStatusCodeOK,
-			Interests: []struct {
-				Code    uint16
-				Keyword string `oscar:"len_prefix=uint16,nullterm"`
-			}{
-				{
-					Code:    user.ICQInfo.Interests.Code1,
-					Keyword: user.ICQInfo.Interests.Keyword1,
-				},
-				{
-					Code:    user.ICQInfo.Interests.Code2,
-					Keyword: user.ICQInfo.Interests.Keyword2,
-				},
-				{
-					Code:    user.ICQInfo.Interests.Code3,
-					Keyword: user.ICQInfo.Interests.Keyword3,
-				},
-				{
-					Code:    user.ICQInfo.Interests.Code4,
-					Keyword: user.ICQInfo.Interests.Keyword4,
-				},
-			},
+			Interests:  interests,
 		},
 	}
+	if s.logger != nil {
+		fields := []any{
+			"subtype", "00F0 interests",
+			"seq", seq,
+			"request_uin", instance.UIN(),
+			"interest_count", len(interests),
+		}
+		for i, interest := range interests {
+			fields = append(fields,
+				fmt.Sprintf("interest_%d_code", i+1), interest.Code,
+				fmt.Sprintf("interest_%d_keyword", i+1), interest.Keyword,
+			)
+		}
+		s.logger.Debug("ICQ full userinfo fields", fields...)
+	}
 
-	return s.reply(ctx, instance, msg)
+	return s.replyFullInfo(ctx, instance, msg, false)
 }
 
 func (s *ICQService) moreUserInfo(ctx context.Context, instance *state.SessionInstance, user state.User, seq uint16) error {
 	msg := wire.ICQMessageReplyEnvelope{
-		Message: wire.ICQ_0x07DA_0x00DC_DBQueryMetaReplyMoreInfo{
+		Message: struct {
+			wire.ICQMetadata
+			ReqSubType   uint16
+			Success      uint8
+			Age          uint16
+			Gender       uint8
+			HomePageAddr string `oscar:"len_prefix=uint16,nullterm"`
+			BirthYear    uint16
+			BirthMonth   uint8
+			BirthDay     uint8
+		}{
 			ICQMetadata: wire.ICQMetadata{
 				UIN:     instance.UIN(),
 				ReqType: wire.ICQDBQueryMetaReply,
 				Seq:     seq,
 			},
-			ReqSubType: wire.ICQDBQueryMetaReplyMoreInfo,
-			Success:    wire.ICQStatusCodeOK,
-			ICQ_0x07D0_0x03FD_DBQueryMetaReqSetMoreInfo: wire.ICQ_0x07D0_0x03FD_DBQueryMetaReqSetMoreInfo{
-				Age:          uint8(user.Age(s.timeNow)),
-				Gender:       user.ICQInfo.More.Gender,
-				HomePageAddr: user.ICQInfo.More.HomePageAddr,
-				BirthYear:    user.ICQInfo.More.BirthYear,
-				BirthMonth:   user.ICQInfo.More.BirthMonth,
-				BirthDay:     user.ICQInfo.More.BirthDay,
-				Lang1:        user.ICQInfo.More.Lang1,
-				Lang2:        user.ICQInfo.More.Lang2,
-				Lang3:        user.ICQInfo.More.Lang3,
-			},
-			City:        user.ICQInfo.Basic.City,
-			State:       user.ICQInfo.Basic.State,
-			CountryCode: user.ICQInfo.Basic.CountryCode,
-			TimeZone:    user.ICQInfo.Basic.GMTOffset,
+			ReqSubType:   wire.ICQDBQueryMetaReplyMoreInfo,
+			Success:      wire.ICQStatusCodeOK,
+			Age:          uint16(user.Age(s.timeNow)),
+			Gender:       uint8(user.ICQInfo.More.Gender),
+			HomePageAddr: user.ICQInfo.More.HomePageAddr,
+			BirthYear:    user.ICQInfo.More.BirthYear,
+			BirthMonth:   user.ICQInfo.More.BirthMonth,
+			BirthDay:     user.ICQInfo.More.BirthDay,
 		},
 	}
+	if s.logger != nil {
+		s.logger.Debug("ICQ full userinfo fields",
+			"subtype", "00DC more",
+			"seq", seq,
+			"request_uin", instance.UIN(),
+			"age", user.Age(s.timeNow),
+			"gender", user.ICQInfo.More.Gender,
+			"home_page", user.ICQInfo.More.HomePageAddr,
+			"birth_year", user.ICQInfo.More.BirthYear,
+			"birth_month", user.ICQInfo.More.BirthMonth,
+			"birth_day", user.ICQInfo.More.BirthDay,
+		)
+	}
 
-	return s.reply(ctx, instance, msg)
+	return s.replyFullInfo(ctx, instance, msg, true)
 }
 
 func (s *ICQService) notes(ctx context.Context, instance *state.SessionInstance, user state.User, seq uint16) error {
@@ -1180,16 +1287,53 @@ func (s *ICQService) notes(ctx context.Context, instance *state.SessionInstance,
 			},
 		},
 	}
+	if s.logger != nil {
+		s.logger.Debug("ICQ full userinfo fields",
+			"subtype", "00E6 notes",
+			"seq", seq,
+			"request_uin", instance.UIN(),
+			"notes", user.ICQInfo.Notes.Notes,
+			"notes_len", len(user.ICQInfo.Notes.Notes),
+		)
+	}
 
-	return s.reply(ctx, instance, msg)
+	return s.replyFullInfo(ctx, instance, msg, false)
 }
 
 func (s *ICQService) reply(ctx context.Context, instance *state.SessionInstance, message wire.ICQMessageReplyEnvelope) error {
+	return s.replyWithFrame(ctx, instance, message, wire.SNACFrame{
+		FoodGroup: wire.ICQ,
+		SubGroup:  wire.ICQDBReply,
+	})
+}
+
+func (s *ICQService) replyWithFrame(ctx context.Context, instance *state.SessionInstance, message wire.ICQMessageReplyEnvelope, frame wire.SNACFrame) error {
+	if s.logger != nil {
+		var payload bytes.Buffer
+		if err := wire.MarshalLE(message, &payload); err != nil {
+			s.logger.Warn("ICQ reply marshal failed",
+				"err", err.Error(),
+				"frame_food_group", frame.FoodGroup,
+				"frame_sub_group", frame.SubGroup,
+				"frame_flags", frame.Flags,
+				"frame_request_id", frame.RequestID,
+				"message_type", fmt.Sprintf("%T", message.Message),
+			)
+		} else {
+			s.logger.Debug("ICQ reply detail",
+				"frame_food_group", frame.FoodGroup,
+				"frame_sub_group", frame.SubGroup,
+				"frame_flags", frame.Flags,
+				"frame_request_id", frame.RequestID,
+				"message_type", fmt.Sprintf("%T", message.Message),
+				"payload_len", payload.Len(),
+				"payload_hex", hex.EncodeToString(payload.Bytes()),
+			)
+		}
+	}
+
 	msg := wire.SNACMessage{
-		Frame: wire.SNACFrame{
-			FoodGroup: wire.ICQ,
-			SubGroup:  wire.ICQDBReply,
-		},
+		Frame: frame,
 		Body: wire.SNAC_0x15_0x02_DBReply{
 			TLVRestBlock: wire.TLVRestBlock{
 				TLVList: wire.TLVList{
@@ -1203,9 +1347,21 @@ func (s *ICQService) reply(ctx context.Context, instance *state.SessionInstance,
 	return nil
 }
 
+func (s *ICQService) replyFullInfo(ctx context.Context, instance *state.SessionInstance, message wire.ICQMessageReplyEnvelope, moreComing bool) error {
+	frame := wire.SNACFrame{
+		FoodGroup: wire.ICQ,
+		SubGroup:  wire.ICQDBReply,
+	}
+	if moreComing {
+		frame.Flags = 1
+		frame.RequestID = wire.ReqIDFromServer
+	}
+	return s.replyWithFrame(ctx, instance, message, frame)
+}
+
 func (s *ICQService) reqAck(ctx context.Context, instance *state.SessionInstance, seq uint16, subType uint16) error {
 	msg := wire.ICQMessageReplyEnvelope{
-		Message: wire.ICQ_0x07DA_0x00DC_DBQueryMetaReplyMoreInfo{
+		Message: wire.ICQ_0x07DA_DBQueryMetaReplyAck{
 			ICQMetadata: wire.ICQMetadata{
 				UIN:     instance.UIN(),
 				ReqType: wire.ICQDBQueryMetaReply,
@@ -1220,81 +1376,121 @@ func (s *ICQService) reqAck(ctx context.Context, instance *state.SessionInstance
 }
 
 func (s *ICQService) userInfo(ctx context.Context, instance *state.SessionInstance, user state.User, seq uint16) error {
-	userInfo := wire.ICQ_0x07DA_0x00C8_DBQueryMetaReplyBasicInfo{
+	userInfo := struct {
+		wire.ICQMetadata
+		ReqSubType uint16
+		Success    uint8
+		Nickname   string `oscar:"len_prefix=uint16,nullterm"`
+		FirstName  string `oscar:"len_prefix=uint16,nullterm"`
+		LastName   string `oscar:"len_prefix=uint16,nullterm"`
+		Email      string `oscar:"len_prefix=uint16,nullterm"`
+		City       string `oscar:"len_prefix=uint16,nullterm"`
+		State      string `oscar:"len_prefix=uint16,nullterm"`
+		Phone      string `oscar:"len_prefix=uint16,nullterm"`
+		Fax        string `oscar:"len_prefix=uint16,nullterm"`
+		Address    string `oscar:"len_prefix=uint16,nullterm"`
+		CellPhone  string `oscar:"len_prefix=uint16,nullterm"`
+	}{
 		ICQMetadata: wire.ICQMetadata{
 			UIN:     instance.UIN(),
 			ReqType: wire.ICQDBQueryMetaReply,
 			Seq:     seq,
 		},
-		ReqSubType:  wire.ICQDBQueryMetaReplyBasicInfo,
-		Success:     wire.ICQStatusCodeOK,
-		Nickname:    user.ICQInfo.Basic.Nickname,
-		FirstName:   user.ICQInfo.Basic.FirstName,
-		LastName:    user.ICQInfo.Basic.LastName,
-		Email:       user.ICQInfo.Basic.EmailAddress,
-		City:        user.ICQInfo.Basic.City,
-		State:       user.ICQInfo.Basic.State,
-		Phone:       user.ICQInfo.Basic.Phone,
-		Fax:         user.ICQInfo.Basic.Fax,
-		Address:     user.ICQInfo.Basic.Address,
-		CellPhone:   user.ICQInfo.Basic.CellPhone,
-		ZIP:         user.ICQInfo.Basic.ZIPCode,
-		CountryCode: user.ICQInfo.Basic.CountryCode,
-		GMTOffset:   user.ICQInfo.Basic.GMTOffset,
-		AuthFlag:    0, // required by default
-		WebAware:    1,
-		DCPerms:     0,
-	}
-
-	if !user.ICQInfo.Permissions.AuthRequired {
-		userInfo.AuthFlag = 1
-	}
-	if user.ICQInfo.Permissions.WebAware {
-		userInfo.WebAware = 1
-	} else {
-		userInfo.WebAware = 0
-	}
-
-	if user.ICQInfo.Basic.PublishEmail {
-		userInfo.PublishEmail = wire.ICQUserFlagPublishEmailYes
-	} else {
-		userInfo.PublishEmail = wire.ICQUserFlagPublishEmailNo
+		ReqSubType: wire.ICQDBQueryMetaReplyBasicInfo,
+		Success:    wire.ICQStatusCodeOK,
+		Nickname:   icqProfileNickname(user),
+		FirstName:  icqProfileFirstName(user),
+		LastName:   user.ICQInfo.Basic.LastName,
+		Email:      user.ICQInfo.Basic.EmailAddress,
+		City:       user.ICQInfo.Basic.City,
+		State:      user.ICQInfo.Basic.State,
+		Phone:      user.ICQInfo.Basic.Phone,
+		Fax:        user.ICQInfo.Basic.Fax,
+		Address:    user.ICQInfo.Basic.Address,
+		CellPhone:  user.ICQInfo.Basic.CellPhone,
 	}
 
 	msg := wire.ICQMessageReplyEnvelope{
 		Message: userInfo,
 	}
-	return s.reply(ctx, instance, msg)
+	if s.logger != nil {
+		s.logger.Debug("ICQ full userinfo fields",
+			"subtype", "00C8 basic",
+			"seq", seq,
+			"request_uin", instance.UIN(),
+			"nickname", userInfo.Nickname,
+			"first_name", userInfo.FirstName,
+			"last_name", userInfo.LastName,
+			"email", userInfo.Email,
+			"city", userInfo.City,
+			"state", userInfo.State,
+			"phone", userInfo.Phone,
+			"fax", userInfo.Fax,
+			"address", userInfo.Address,
+			"cell_phone", userInfo.CellPhone,
+		)
+	}
+	return s.replyFullInfo(ctx, instance, msg, true)
 
 }
 
 func (s *ICQService) workInfo(ctx context.Context, instance *state.SessionInstance, user state.User, seq uint16) error {
 	msg := wire.ICQMessageReplyEnvelope{
-		Message: wire.ICQ_0x07DA_0x00D2_DBQueryMetaReplyWorkInfo{
+		Message: struct {
+			wire.ICQMetadata
+			ReqSubType  uint16
+			Success     uint8
+			City        string `oscar:"len_prefix=uint16,nullterm"`
+			State       string `oscar:"len_prefix=uint16,nullterm"`
+			Phone       string `oscar:"len_prefix=uint16,nullterm"`
+			Fax         string `oscar:"len_prefix=uint16,nullterm"`
+			Address     string `oscar:"len_prefix=uint16,nullterm"`
+			ZIP         string `oscar:"len_prefix=uint16,nullterm"`
+			CountryCode uint16
+			Company     string `oscar:"len_prefix=uint16,nullterm"`
+			Department  string `oscar:"len_prefix=uint16,nullterm"`
+			Position    string `oscar:"len_prefix=uint16,nullterm"`
+			WebPage     string `oscar:"len_prefix=uint16,nullterm"`
+		}{
 			ICQMetadata: wire.ICQMetadata{
 				UIN:     instance.UIN(),
 				ReqType: wire.ICQDBQueryMetaReply,
 				Seq:     seq,
 			},
-			ReqSubType: wire.ICQDBQueryMetaReplyWorkInfo,
-			Success:    wire.ICQStatusCodeOK,
-			ICQ_0x07D0_0x03F3_DBQueryMetaReqSetWorkInfo: wire.ICQ_0x07D0_0x03F3_DBQueryMetaReqSetWorkInfo{
-				City:           user.ICQInfo.Work.City,
-				State:          user.ICQInfo.Work.State,
-				Phone:          user.ICQInfo.Work.Phone,
-				Fax:            user.ICQInfo.Work.Fax,
-				Address:        user.ICQInfo.Work.Address,
-				ZIP:            user.ICQInfo.Work.ZIPCode,
-				CountryCode:    user.ICQInfo.Work.CountryCode,
-				Company:        user.ICQInfo.Work.Company,
-				Department:     user.ICQInfo.Work.Department,
-				Position:       user.ICQInfo.Work.Position,
-				OccupationCode: user.ICQInfo.Work.OccupationCode,
-				WebPage:        user.ICQInfo.Work.WebPage,
-			},
+			ReqSubType:  wire.ICQDBQueryMetaReplyWorkInfo,
+			Success:     wire.ICQStatusCodeOK,
+			City:        user.ICQInfo.Work.City,
+			State:       user.ICQInfo.Work.State,
+			Phone:       user.ICQInfo.Work.Phone,
+			Fax:         user.ICQInfo.Work.Fax,
+			Address:     user.ICQInfo.Work.Address,
+			ZIP:         user.ICQInfo.Work.ZIPCode,
+			CountryCode: user.ICQInfo.Work.CountryCode,
+			Company:     user.ICQInfo.Work.Company,
+			Department:  user.ICQInfo.Work.Department,
+			Position:    user.ICQInfo.Work.Position,
+			WebPage:     user.ICQInfo.Work.WebPage,
 		},
 	}
-	return s.reply(ctx, instance, msg)
+	if s.logger != nil {
+		s.logger.Debug("ICQ full userinfo fields",
+			"subtype", "00D2 work",
+			"seq", seq,
+			"request_uin", instance.UIN(),
+			"city", user.ICQInfo.Work.City,
+			"state", user.ICQInfo.Work.State,
+			"phone", user.ICQInfo.Work.Phone,
+			"fax", user.ICQInfo.Work.Fax,
+			"address", user.ICQInfo.Work.Address,
+			"zip", user.ICQInfo.Work.ZIPCode,
+			"country_code", user.ICQInfo.Work.CountryCode,
+			"company", user.ICQInfo.Work.Company,
+			"department", user.ICQInfo.Work.Department,
+			"position", user.ICQInfo.Work.Position,
+			"web_page", user.ICQInfo.Work.WebPage,
+		)
+	}
+	return s.replyFullInfo(ctx, instance, msg, true)
 }
 
 // decodeICQSString decodes an ICQ "sstring" value: a uint16 (LE) length

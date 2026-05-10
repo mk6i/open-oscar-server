@@ -206,19 +206,15 @@ func (s oscarServer) routeConnection(ctx context.Context, conn net.Conn, listene
 
 	flapc := wire.NewFlapClient(100, conn, conn)
 
-	// send flap signon with server capabilities
-	signonTLVs := []wire.TLV{
-		wire.NewTLVBE(wire.LoginTLVTagsMaxSendSize, wire.FLAPMaxDataSize),
-		wire.NewTLVBE(wire.LoginTLVTagsMaxRecvSize, wire.FLAPMaxDataSize),
-		wire.NewTLVBE(wire.LoginTLVTagsUseBigTime, []byte{}), // empty TLV indicates support
-	}
-	if err := flapc.SendSignonFrame(signonTLVs); err != nil {
+	s.logWireValue(ctx, "out", "initial signon", wire.FLAPSignonFrame{FLAPVersion: 1})
+	if err := flapc.SendSignonFrame(nil); err != nil {
 		return err
 	}
 	flap, err := flapc.ReceiveSignonFrame()
 	if err != nil {
 		return err
 	}
+	s.logWireValue(ctx, "in", "signon response", flap)
 
 	if flap.HasTag(wire.OServiceTLVTagsLoginCookie) {
 		return s.connectToOSCARService(ctx, flap, flapc, conn, listener)
@@ -370,6 +366,7 @@ func (s oscarServer) connectToOSCARService(
 	ctx = context.WithValue(ctx, "screenName", instance.IdentScreenName())
 
 	msg := s.OnlineNotifier.HostOnline(cookie.Service)
+	s.logWireSNAC(ctx, "out", "host online", msg.Frame, msg.Body)
 	if err := flapc.SendSNAC(msg.Frame, msg.Body); err != nil {
 		return err
 	}
@@ -387,6 +384,42 @@ func shuttingDown(ctx context.Context) bool {
 	return false
 }
 
+func (s oscarServer) logWireValue(ctx context.Context, direction string, label string, v any) {
+	if s.Logger == nil {
+		return
+	}
+	buf := &bytes.Buffer{}
+	if err := wire.MarshalBE(v, buf); err != nil {
+		s.Logger.DebugContext(ctx, "wire trace marshal failed",
+			"direction", direction,
+			"label", label,
+			"err", err.Error(),
+		)
+		return
+	}
+	s.Logger.DebugContext(ctx, "wire trace",
+		"direction", direction,
+		"label", label,
+		"len", buf.Len(),
+		"hex", fmt.Sprintf("%x", buf.Bytes()),
+	)
+}
+
+func (s oscarServer) logWireSNAC(ctx context.Context, direction string, label string, frame wire.SNACFrame, body any) {
+	if s.Logger == nil {
+		return
+	}
+	s.Logger.DebugContext(ctx, "snac trace",
+		"direction", direction,
+		"label", label,
+		"food_group", wire.FoodGroupName(frame.FoodGroup),
+		"subgroup", wire.SubGroupName(frame.FoodGroup, frame.SubGroup),
+		"request_id", frame.RequestID,
+	)
+	s.logWireValue(ctx, direction, label+" frame", frame)
+	s.logWireValue(ctx, direction, label+" body", body)
+}
+
 func (s oscarServer) receiveSessMessages(ctx context.Context, instance *state.SessionInstance, flapc *wire.FlapClient) {
 	for {
 		select {
@@ -396,6 +429,7 @@ func (s oscarServer) receiveSessMessages(ctx context.Context, instance *state.Se
 			return
 		case m := <-instance.ReceiveMessage():
 			// forward a notification sent from another client to this client
+			s.logWireSNAC(ctx, "out", "session message", m.Frame, m.Body)
 			if err := flapc.SendSNAC(m.Frame, m.Body); err != nil {
 				middleware.LogRequestError(ctx, s.Logger, m.Frame, err)
 			} else {
@@ -601,6 +635,7 @@ func (s oscarServer) dispatchIncomingMessages(
 			if !ok {
 				return nil
 			}
+			s.logWireValue(ctx, "in", "received flap", flap)
 			switch flap.FrameType {
 			case wire.FLAPFrameData:
 				flapBuf := bytes.NewBuffer(flap.Payload)
@@ -609,6 +644,7 @@ func (s oscarServer) dispatchIncomingMessages(
 				if err := wire.UnmarshalBE(&inFrame, flapBuf); err != nil {
 					return err
 				}
+				s.logWireSNAC(ctx, "in", "client snac", inFrame, flapBuf.Bytes())
 
 				rateClassID, ok := s.SNACRateLimits.RateClassLookup(inFrame.FoodGroup, inFrame.SubGroup)
 				if ok {
@@ -647,6 +683,9 @@ func (s oscarServer) dispatchIncomingMessages(
 				return fmt.Errorf("got unknown FLAP frame type. flap: %v", flap)
 			}
 		case <-time.After(1 * time.Second):
+			if instance.UIN() != 0 {
+				break
+			}
 			updates := s.RateLimitUpdater.RateLimitUpdates(ctx, instance, time.Now())
 			for _, update := range updates {
 				if err := flapc.SendSNAC(update.Frame, update.Body); err != nil {

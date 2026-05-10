@@ -2162,7 +2162,7 @@ type ICQ_0x07D0_0x0C3A_DBQueryMetaReqSetFullInfo struct {
 }
 
 type ICQ_0x07D0_0x03FD_DBQueryMetaReqSetMoreInfo struct {
-	Age          uint8 // not used because age is calculated from birthdate
+	Age          uint16 // not used because age is calculated from birthdate
 	Gender       uint16
 	HomePageAddr string `oscar:"len_prefix=uint16,nullterm"`
 	BirthYear    uint16
@@ -2255,16 +2255,25 @@ type ICQ_0x07DA_0x08A2_DBQueryMetaReplyXMLData struct {
 	XML        string `oscar:"len_prefix=uint16,nullterm"`
 }
 
-type ICQ_0x07DA_0x00DC_DBQueryMetaReplyMoreInfo struct {
+type ICQ_0x07DA_DBQueryMetaReplyAck struct {
 	ICQMetadata
 	ReqSubType uint16
 	Success    uint8
-	ICQ_0x07D0_0x03FD_DBQueryMetaReqSetMoreInfo
-	Unknown     uint16
-	City        string `oscar:"len_prefix=uint16,nullterm"`
-	State       string `oscar:"len_prefix=uint16,nullterm"`
-	CountryCode uint16
-	TimeZone    uint8
+}
+
+type ICQ_0x07DA_0x00DC_DBQueryMetaReplyMoreInfo struct {
+	ICQMetadata
+	ReqSubType   uint16
+	Success      uint8
+	Age          uint16
+	Gender       uint8
+	HomePageAddr string `oscar:"len_prefix=uint16,nullterm"`
+	BirthYear    uint16
+	BirthMonth   uint8
+	BirthDay     uint8
+	Lang1        uint8
+	Lang2        uint8
+	Lang3        uint8
 }
 
 type ICQ_0x07DA_0x00EB_DBQueryMetaReplyExtEmailInfo struct {

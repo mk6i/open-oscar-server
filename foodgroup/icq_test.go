@@ -135,6 +135,8 @@ func TestICQService_FindByICQName(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									Flags:     1,
+									RequestID: wire.ReqIDFromServer,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -172,6 +174,8 @@ func TestICQService_FindByICQName(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									Flags:     1,
+									RequestID: wire.ReqIDFromServer,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -314,6 +318,8 @@ func TestICQService_FindByICQEmail(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									Flags:     1,
+									RequestID: wire.ReqIDFromServer,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -458,6 +464,8 @@ func TestICQService_FindByEmail3(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									Flags:     1,
+									RequestID: wire.ReqIDFromServer,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -596,6 +604,8 @@ func TestICQService_FindByUIN(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									Flags:     0,
+									RequestID: wire.ReqIDFromServer,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -738,6 +748,8 @@ func TestICQService_FindByUIN2(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									Flags:     1,
+									RequestID: wire.ReqIDFromServer,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -900,6 +912,8 @@ func TestICQService_FindByWhitePages(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									Flags:     1,
+									RequestID: wire.ReqIDFromServer,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -937,6 +951,8 @@ func TestICQService_FindByWhitePages(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									Flags:     1,
+									RequestID: wire.ReqIDFromServer,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -1109,6 +1125,8 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									Flags:     1,
+									RequestID: wire.ReqIDFromServer,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -1146,6 +1164,8 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									Flags:     0,
+									RequestID: wire.ReqIDFromServer,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -1266,6 +1286,8 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									Flags:     1,
+									RequestID: wire.ReqIDFromServer,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -1464,6 +1486,8 @@ func TestICQService_FullUserInfo(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									Flags:     1,
+									RequestID: wire.ReqIDFromServer,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -1508,6 +1532,8 @@ func TestICQService_FullUserInfo(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									Flags:     1,
+									RequestID: wire.ReqIDFromServer,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -1549,58 +1575,8 @@ func TestICQService_FullUserInfo(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
-								},
-								Body: wire.SNAC_0x15_0x02_DBReply{
-									TLVRestBlock: wire.TLVRestBlock{
-										TLVList: wire.TLVList{
-											wire.NewTLVBE(wire.ICQTLVTagsMetadata, wire.ICQMessageReplyEnvelope{
-												Message: wire.ICQ_0x07DA_0x00EB_DBQueryMetaReplyExtEmailInfo{
-													ICQMetadata: wire.ICQMetadata{
-														UIN:     11111111,
-														ReqType: wire.ICQDBQueryMetaReply,
-														Seq:     1,
-													},
-													Success:    wire.ICQStatusCodeOK,
-													ReqSubType: wire.ICQDBQueryMetaReplyExtEmailInfo,
-												},
-											}),
-										},
-									},
-								},
-							},
-						},
-						{
-							screenName: state.NewIdentScreenName("11111111"),
-							message: wire.SNACMessage{
-								Frame: wire.SNACFrame{
-									FoodGroup: wire.ICQ,
-									SubGroup:  wire.ICQDBReply,
-								},
-								Body: wire.SNAC_0x15_0x02_DBReply{
-									TLVRestBlock: wire.TLVRestBlock{
-										TLVList: wire.TLVList{
-											wire.NewTLVBE(wire.ICQTLVTagsMetadata, wire.ICQMessageReplyEnvelope{
-												Message: wire.ICQ_0x07DA_0x010E_DBQueryMetaReplyHomePageCat{
-													ICQMetadata: wire.ICQMetadata{
-														UIN:     11111111,
-														ReqType: wire.ICQDBQueryMetaReply,
-														Seq:     1,
-													},
-													Success:    wire.ICQStatusCodeOK,
-													ReqSubType: wire.ICQDBQueryMetaReplyHomePageCat,
-												},
-											}),
-										},
-									},
-								},
-							},
-						},
-						{
-							screenName: state.NewIdentScreenName("11111111"),
-							message: wire.SNACMessage{
-								Frame: wire.SNACFrame{
-									FoodGroup: wire.ICQ,
-									SubGroup:  wire.ICQDBReply,
+									Flags:     1,
+									RequestID: wire.ReqIDFromServer,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -1641,6 +1617,8 @@ func TestICQService_FullUserInfo(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									Flags:     0,
+									RequestID: wire.ReqIDFromServer,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -1656,53 +1634,6 @@ func TestICQService_FullUserInfo(t *testing.T) {
 													ReqSubType: wire.ICQDBQueryMetaReplyNotes,
 													ICQ_0x07D0_0x0406_DBQueryMetaReqSetNotes: wire.ICQ_0x07D0_0x0406_DBQueryMetaReqSetNotes{
 														Notes: "This is a test user.",
-													},
-												},
-											}),
-										},
-									},
-								},
-							},
-						},
-						{
-							screenName: state.NewIdentScreenName("11111111"),
-							message: wire.SNACMessage{
-								Frame: wire.SNACFrame{
-									FoodGroup: wire.ICQ,
-									SubGroup:  wire.ICQDBReply,
-								},
-								Body: wire.SNAC_0x15_0x02_DBReply{
-									TLVRestBlock: wire.TLVRestBlock{
-										TLVList: wire.TLVList{
-											wire.NewTLVBE(wire.ICQTLVTagsMetadata, wire.ICQMessageReplyEnvelope{
-												Message: wire.ICQ_0x07DA_0x00F0_DBQueryMetaReplyInterests{
-													ICQMetadata: wire.ICQMetadata{
-														UIN:     11111111,
-														ReqType: wire.ICQDBQueryMetaReply,
-														Seq:     1,
-													},
-													Success:    wire.ICQStatusCodeOK,
-													ReqSubType: wire.ICQDBQueryMetaReplyInterests,
-													Interests: []struct {
-														Code    uint16
-														Keyword string `oscar:"len_prefix=uint16,nullterm"`
-													}{
-														{
-															Code:    5678,
-															Keyword: "Programming",
-														},
-														{
-															Code:    6789,
-															Keyword: "Gaming",
-														},
-														{
-															Code:    7890,
-															Keyword: "Music",
-														},
-														{
-															Code:    8901,
-															Keyword: "Traveling",
-														},
 													},
 												},
 											}),
