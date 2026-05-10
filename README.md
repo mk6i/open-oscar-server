@@ -60,6 +60,18 @@ Don't have AIM installed yet? Check out the [AIM Client Setup Guide](./docs/CLIE
 
 ...how about ICQ? Check out the [ICQ Client Setup Guide](./docs/CLIENT_ICQ.md).
 
+
+## 🌐 Built-in Web Client
+
+Open OSCAR Server includes a lightweight browser client for the Web AIM API. Start the server with the WebAPI enabled, create a Web API key, then open `http://localhost:9000/client/`.
+
+```shell
+ENABLE_WEBAPI=1 go run ./cmd/server
+DB_PATH=oscar.sqlite go run ./cmd/webapi_keygen generate --app-name "Local Web Client" --origins "http://localhost:9000"
+```
+
+Paste the generated API key into the web client sign-in form along with a screen name and password. The client can start a WebAPI session, show contacts with online/offline presence, switch your visible status between online and invisible/offline, send and receive instant messages, and keep per-contact message history in the browser's local storage.
+
 ## 🛠️ Development
 
 This project is under active development. Contributions are welcome!
