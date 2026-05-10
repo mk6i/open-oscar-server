@@ -99,6 +99,12 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 	for _, l := range listeners {
 		mux := http.NewServeMux()
 
+		// Built-in static browser client for the Web AIM API.
+		mux.HandleFunc("GET /client", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "/client/", http.StatusMovedPermanently)
+		})
+		mux.Handle("GET /client/", http.StripPrefix("/client/", http.FileServerFS(webClientFiles())))
+
 		// Public endpoint (no auth required for hello world)
 		mux.HandleFunc("GET /", handler.GetHelloWorldHandler)
 
