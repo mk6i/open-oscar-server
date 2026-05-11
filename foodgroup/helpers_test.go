@@ -145,6 +145,7 @@ type icqUserFinderParams struct {
 	findByInterestsParams
 	findByKeywordParams
 	findByUINParams
+	searchICQUsersParams
 }
 
 // findByKeywordParams is the list of parameters passed at the mock
@@ -186,6 +187,14 @@ type findByDetailsParams []struct {
 type findByInterestsParams []struct {
 	code     uint16
 	keywords []string
+	result   []state.User
+	err      error
+}
+
+// searchICQUsersParams is the list of parameters passed at the mock
+// ICQUserFinder.SearchICQUsers call site.
+type searchICQUsersParams []struct {
+	criteria state.ICQUserSearchCriteria
 	result   []state.User
 	err      error
 }

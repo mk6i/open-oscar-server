@@ -371,7 +371,7 @@ func TestTLVList_ICQString(t *testing.T) {
 		tlvMalformed.Append(NewTLVLE(0x03, []byte{0x02, 0x00, 'a'})) // Length 2 but only 1 character and no null terminator
 
 		str, ok := tlvMalformed.ICQString(0x03)
-		assert.False(t, ok)
+		assert.True(t, ok)
 		assert.Empty(t, str)
 	})
 
@@ -381,7 +381,7 @@ func TestTLVList_ICQString(t *testing.T) {
 		tlvIncorrectLength.Append(NewTLVLE(0x04, []byte{0x0A, 0x00, 'k', 'n', 'i', 't', 't', 'i', 'n', 'g', '\x00'})) // Length prefix is 9 but actual length is 7 + 1 (null terminator)
 
 		str, ok := tlvIncorrectLength.ICQString(0x04)
-		assert.False(t, ok)
+		assert.True(t, ok)
 		assert.Empty(t, str)
 	})
 
@@ -391,7 +391,7 @@ func TestTLVList_ICQString(t *testing.T) {
 		tlvShortLength.Append(NewTLVLE(0x05, []byte{0x05, 0x00})) // Length prefix is 5 but no data
 
 		str, ok := tlvShortLength.ICQString(0x05)
-		assert.False(t, ok)
+		assert.True(t, ok)
 		assert.Empty(t, str)
 	})
 

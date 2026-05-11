@@ -14,6 +14,55 @@ type TLV struct {
 	Value []byte `oscar:"len_prefix=uint16"`
 }
 
+func (t TLV) ICQString() string {
+	// Ensure the value is long enough to contain a valid length prefix and value
+	if len(t.Value) < 3 {
+		return ""
+	}
+
+	// Extract the length prefix (first 2 bytes) as a uint16
+	expectedLength := binary.LittleEndian.Uint16(t.Value[0:2])
+
+	// Extract the actual string value, excluding the length prefix
+	value := t.Value[2:]
+
+	// Check if the length matches the value length (including the null terminator)
+	if int(expectedLength) != len(value) {
+		return ""
+	}
+
+	// Remove the null terminator
+	return string(value[:len(value)-1])
+}
+
+// Uint8 returns a uint8 representation of the TLV.
+func (t TLV) Uint8() uint8 {
+	if len(t.Value) > 0 {
+		return t.Value[0]
+	}
+	return 0
+}
+
+// Uint16LE returns a uint16 little-endian representation of the TLV.
+func (t TLV) Uint16LE() uint16 {
+	return binary.LittleEndian.Uint16(t.Value)
+}
+
+// Uint16BE returns a uint16 big-endian representation of the TLV.
+func (t TLV) Uint16BE() uint16 {
+	return binary.BigEndian.Uint16(t.Value)
+}
+
+// Uint32LE returns a uint32 little-endian representation of the TLV.
+func (t TLV) Uint32LE() uint32 {
+	return binary.LittleEndian.Uint32(t.Value)
+}
+
+// Uint32BE returns a uint32 big-endian representation of the TLV.
+func (t TLV) Uint32BE() uint32 {
+	return binary.BigEndian.Uint32(t.Value)
+}
+
 // NewTLVBE creates a new TLV. Values are marshalled in big-endian order.
 func NewTLVBE(tag uint16, val any) TLV {
 	return newTLV(tag, val, binary.BigEndian)
@@ -133,25 +182,7 @@ func (s *TLVList) ICQString(tag uint16) (string, bool) {
 		if tag != tlv.Tag {
 			continue
 		}
-
-		// Ensure the value is long enough to contain a valid length prefix and value
-		if len(tlv.Value) < 3 {
-			break
-		}
-
-		// Extract the length prefix (first 2 bytes) as a uint16
-		expectedLength := binary.LittleEndian.Uint16(tlv.Value[0:2])
-
-		// Extract the actual string value, excluding the length prefix
-		value := tlv.Value[2:]
-
-		// Check if the length matches the value length (including the null terminator)
-		if int(expectedLength) != len(value) {
-			break
-		}
-
-		// Remove the null terminator
-		return string(value[:len(value)-1]), true
+		return tlv.ICQString(), true
 	}
 
 	// Tag not found
@@ -181,9 +212,7 @@ func (s *TLVList) Bytes(tag uint16) ([]byte, bool) {
 func (s *TLVList) Uint8(tag uint16) (uint8, bool) {
 	for _, tlv := range *s {
 		if tag == tlv.Tag {
-			if len(tlv.Value) > 0 {
-				return tlv.Value[0], true
-			}
+			return tlv.Uint8(), true
 		}
 	}
 	return 0, false
@@ -197,7 +226,12 @@ func (s *TLVList) Uint8(tag uint16) (uint8, bool) {
 // as a uint16 and true. If the tag is not found, the function returns 0 and
 // false.
 func (s *TLVList) Uint16BE(tag uint16) (uint16, bool) {
-	return s.uint16(tag, binary.BigEndian)
+	for _, tlv := range *s {
+		if tag == tlv.Tag {
+			return tlv.Uint16BE(), true
+		}
+	}
+	return 0, false
 }
 
 // Uint16LE retrieves a 16-bit unsigned integer value from the TLVList
@@ -208,13 +242,9 @@ func (s *TLVList) Uint16BE(tag uint16) (uint16, bool) {
 // as a uint16 and true. If the tag is not found, the function returns 0 and
 // false.
 func (s *TLVList) Uint16LE(tag uint16) (uint16, bool) {
-	return s.uint16(tag, binary.LittleEndian)
-}
-
-func (s *TLVList) uint16(tag uint16, order binary.ByteOrder) (uint16, bool) {
 	for _, tlv := range *s {
 		if tag == tlv.Tag {
-			return order.Uint16(tlv.Value), true
+			return tlv.Uint16LE(), true
 		}
 	}
 	return 0, false
@@ -226,7 +256,12 @@ func (s *TLVList) uint16(tag uint16, order binary.ByteOrder) (uint16, bool) {
 // If the specified tag is found, the function returns the associated value
 // as a uint32 and true. If the tag is not found, the function returns 0 and false.
 func (s *TLVList) Uint32BE(tag uint16) (uint32, bool) {
-	return s.uint32(tag, binary.BigEndian)
+	for _, tlv := range *s {
+		if tag == tlv.Tag {
+			return tlv.Uint32BE(), true
+		}
+	}
+	return 0, false
 }
 
 // Uint32LE retrieves a 32-bit unsigned integer value from the TLVList
@@ -235,13 +270,9 @@ func (s *TLVList) Uint32BE(tag uint16) (uint32, bool) {
 // If the specified tag is found, the function returns the associated value
 // as a uint32 and true. If the tag is not found, the function returns 0 and false.
 func (s *TLVList) Uint32LE(tag uint16) (uint32, bool) {
-	return s.uint32(tag, binary.LittleEndian)
-}
-
-func (s *TLVList) uint32(tag uint16, order binary.ByteOrder) (uint32, bool) {
 	for _, tlv := range *s {
 		if tag == tlv.Tag {
-			return order.Uint32(tlv.Value), true
+			return tlv.Uint32LE(), true
 		}
 	}
 	return 0, false

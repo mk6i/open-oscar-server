@@ -315,6 +315,7 @@ type ICQUserFinder interface {
 	FindByICQName(ctx context.Context, firstName, lastName, nickName string) ([]state.User, error)
 	FindByICQInterests(ctx context.Context, code uint16, keywords []string) ([]state.User, error)
 	FindByICQKeyword(ctx context.Context, keyword string) ([]state.User, error)
+	SearchICQUsers(ctx context.Context, c state.ICQUserSearchCriteria) ([]state.User, error)
 }
 
 // ICQUserUpdater provides profile update capabilities for legacy ICQ operations.

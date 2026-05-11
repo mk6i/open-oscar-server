@@ -1927,9 +1927,9 @@ const (
 	ICQTLVTagsWorkDepartmentName        uint16 = 0x01B8 // User work department name
 	ICQTLVTagsWorkPositionTitle         uint16 = 0x01C2 // User work position (title)
 	ICQTLVTagsWorkOccupationCode        uint16 = 0x01CC // User work occupation code
-	ICQTLVTagsAffiliationsNode          uint16 = 0x01D6 // User affiliations node
+	ICQTLVTagsAffiliationsNode          uint16 = 0x01FE // User affiliations node
 	ICQTLVTagsInterestsNode             uint16 = 0x01EA // User interests node
-	ICQTLVTagsPastInfoNode              uint16 = 0x01FE // User past info node
+	ICQTLVTagsPastInfoNode              uint16 = 0x01D6 // User past info node
 	ICQTLVTagsHomepageCategoryKeywords  uint16 = 0x0212 // User homepage category/keywords
 	ICQTLVTagsHomepageURL               uint16 = 0x0213 // User homepage URL
 	ICQTLVTagsWhitepagesSearchKeywords  uint16 = 0x0226 // Whitepages search keywords string (search)
@@ -2257,14 +2257,22 @@ type ICQ_0x07DA_0x08A2_DBQueryMetaReplyXMLData struct {
 
 type ICQ_0x07DA_0x00DC_DBQueryMetaReplyMoreInfo struct {
 	ICQMetadata
-	ReqSubType uint16
-	Success    uint8
-	ICQ_0x07D0_0x03FD_DBQueryMetaReqSetMoreInfo
-	Unknown     uint16
-	City        string `oscar:"len_prefix=uint16,nullterm"`
-	State       string `oscar:"len_prefix=uint16,nullterm"`
-	CountryCode uint16
-	TimeZone    uint8
+	ReqSubType   uint16
+	Success      uint8
+	Age          uint16
+	Gender       uint8
+	HomePageAddr string `oscar:"len_prefix=uint16,nullterm"`
+	BirthYear    uint16
+	BirthMonth   uint8
+	BirthDay     uint8
+	Lang1        uint8
+	Lang2        uint8
+	Lang3        uint8
+	Unknown      uint16
+	City         string `oscar:"len_prefix=uint16,nullterm"`
+	State        string `oscar:"len_prefix=uint16,nullterm"`
+	CountryCode  uint16
+	TimeZone     uint8
 }
 
 type ICQ_0x07DA_0x00EB_DBQueryMetaReplyExtEmailInfo struct {

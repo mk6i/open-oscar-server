@@ -3,6 +3,7 @@ package foodgroup
 import (
 	"bytes"
 	"context"
+	"io"
 	"log/slog"
 	"testing"
 	"time"
@@ -247,6 +248,7 @@ func TestICQService_FindByICQName(t *testing.T) {
 			}
 
 			s := ICQService{
+				logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
 				messageRelayer:   messageRelayer,
 				sessionRetriever: sessionRetriever,
 				timeNow:          tt.timeNow,
@@ -385,6 +387,7 @@ func TestICQService_FindByICQEmail(t *testing.T) {
 			}
 
 			s := ICQService{
+				logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
 				messageRelayer:   messageRelayer,
 				sessionRetriever: sessionRetriever,
 				timeNow:          tt.timeNow,
@@ -529,6 +532,7 @@ func TestICQService_FindByEmail3(t *testing.T) {
 			}
 
 			s := ICQService{
+				logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
 				messageRelayer:   messageRelayer,
 				sessionRetriever: sessionRetriever,
 				timeNow:          tt.timeNow,
@@ -667,6 +671,7 @@ func TestICQService_FindByUIN(t *testing.T) {
 			}
 
 			s := ICQService{
+				logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
 				messageRelayer:   messageRelayer,
 				sessionRetriever: sessionRetriever,
 				timeNow:          tt.timeNow,
@@ -809,6 +814,7 @@ func TestICQService_FindByUIN2(t *testing.T) {
 			}
 
 			s := ICQService{
+				logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
 				messageRelayer:   messageRelayer,
 				sessionRetriever: sessionRetriever,
 				timeNow:          tt.timeNow,
@@ -1012,6 +1018,7 @@ func TestICQService_FindByWhitePages(t *testing.T) {
 			}
 
 			s := ICQService{
+				logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
 				messageRelayer:   messageRelayer,
 				sessionRetriever: sessionRetriever,
 				timeNow:          tt.timeNow,
@@ -1053,9 +1060,11 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 			},
 			mockParams: mockParams{
 				icqUserFinderParams: icqUserFinderParams{
-					findByKeywordParams: findByKeywordParams{
+					searchICQUsersParams: searchICQUsersParams{
 						{
-							keyword: "knitting",
+							criteria: state.ICQUserSearchCriteria{
+								AnyKeyword: new("knitting"),
+							},
 							result: []state.User{
 								{
 									IdentScreenName: state.NewIdentScreenName("987654321"),
@@ -1228,11 +1237,13 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 			},
 			mockParams: mockParams{
 				icqUserFinderParams: icqUserFinderParams{
-					findByDetailsParams: findByDetailsParams{
+					searchICQUsersParams: searchICQUsersParams{
 						{
-							nickName:  "Janey",
-							firstName: "Jane",
-							lastName:  "Janey",
+							criteria: state.ICQUserSearchCriteria{
+								NickName:  new("Janey"),
+								FirstName: new("Jane"),
+								LastName:  new("Janey"),
+							},
 							result: []state.User{
 								{
 									IdentScreenName: state.NewIdentScreenName("987654321"),
@@ -1314,18 +1325,522 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "search by structured TLVs",
+			timeNow: func() time.Time {
+				return time.Date(2020, time.August, 1, 0, 0, 0, 0, time.UTC)
+			},
+			seq:      1,
+			instance: newTestInstance("11111111", sessOptUIN(11111111)),
+			req: wire.ICQ_0x07D0_0x055F_DBQueryMetaReqSearchWhitePages2{
+				TLVRestBlock: wire.TLVRestBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVLE(wire.ICQTLVTagsUIN, uint32(987654321)),
+						wire.NewTLVLE(wire.ICQTLVTagsEmail, struct {
+							Val string `oscar:"len_prefix=uint16,nullterm"`
+						}{
+							Val: "janey@example.com",
+						}),
+						wire.NewTLVLE(wire.ICQTLVTagsAgeRangeSearch, struct {
+							MinAge uint16
+							MaxAge uint16
+						}{
+							MinAge: 18,
+							MaxAge: 30,
+						}),
+						wire.NewTLVLE(wire.ICQTLVTagsGender, uint8(2)),
+						wire.NewTLVLE(wire.ICQTLVTagsSpokenLanguage, uint8(10)),
+
+						wire.NewTLVLE(wire.ICQTLVTagsHomeCityName, struct {
+							Val string `oscar:"len_prefix=uint16,nullterm"`
+						}{
+							Val: "New York",
+						}),
+						wire.NewTLVLE(wire.ICQTLVTagsHomeStateAbbr, struct {
+							Val string `oscar:"len_prefix=uint16,nullterm"`
+						}{
+							Val: "NY",
+						}),
+						wire.NewTLVLE(wire.ICQTLVTagsHomeCountryCode, uint16(840)),
+
+						wire.NewTLVLE(wire.ICQTLVTagsWorkCompanyName, struct {
+							Val string `oscar:"len_prefix=uint16,nullterm"`
+						}{
+							Val: "Acme Corp",
+						}),
+						wire.NewTLVLE(wire.ICQTLVTagsWorkDepartmentName, struct {
+							Val string `oscar:"len_prefix=uint16,nullterm"`
+						}{
+							Val: "Engineering",
+						}),
+						wire.NewTLVLE(wire.ICQTLVTagsWorkPositionTitle, struct {
+							Val string `oscar:"len_prefix=uint16,nullterm"`
+						}{
+							Val: "Engineer",
+						}),
+						wire.NewTLVLE(wire.ICQTLVTagsWorkOccupationCode, uint16(42)),
+
+						wire.NewTLVLE(wire.ICQTLVTagsInterestsNode, wire.ICQInterests{Code: 1, Keyword: "Music"}),
+						wire.NewTLVLE(wire.ICQTLVTagsAffiliationsNode, wire.ICQInterests{Code: 99, Keyword: "NewClub1,NewClub2, NewClub3"}),
+						wire.NewTLVLE(wire.ICQTLVTagsPastInfoNode, wire.ICQInterests{Code: 100, Keyword: "OldClub1, OldClub2 ,OldClub3"}),
+						wire.NewTLVLE(wire.ICQTLVTagsHomepageCategoryKeywords, struct {
+							Index    uint16
+							Keywords string `oscar:"len_prefix=uint16,nullterm"`
+						}{
+							Index:    7,
+							Keywords: "cats,dogs ,parrots",
+						}),
+					},
+				},
+			},
+			mockParams: mockParams{
+				icqUserFinderParams: icqUserFinderParams{
+					searchICQUsersParams: searchICQUsersParams{
+						{
+							criteria: state.ICQUserSearchCriteria{
+								UIN:            new(uint32(987654321)),
+								Email:          new("janey@example.com"),
+								MinAge:         new(uint16(18)),
+								MaxAge:         new(uint16(30)),
+								Gender:         new(uint8(2)),
+								SpokenLanguage: new(uint8(10)),
+								City:           new("New York"),
+								State:          new("NY"),
+								CountryCode:    new(uint16(840)),
+								Company:        new("Acme Corp"),
+								DepartmentName: new("Engineering"),
+								Position:       new("Engineer"),
+								OccupationCode: new(uint16(42)),
+								InterestsCode:  new(uint16(1)),
+								InterestsKeywords: []string{
+									"Music",
+								},
+								AffiliationsCode: new(uint16(99)),
+								AffiliationsKeywords: []string{
+									"NewClub1",
+									"NewClub2",
+									"NewClub3",
+								},
+								PastAffiliationsCode: new(uint16(100)),
+								PastAffiliationsKeywords: []string{
+									"OldClub1",
+									"OldClub2",
+									"OldClub3",
+								},
+								HomePageCategoryIndex: new(uint16(7)),
+								HomePageKeywords: []string{
+									"cats",
+									"dogs",
+									"parrots",
+								},
+							},
+							result: []state.User{
+								{
+									IdentScreenName: state.NewIdentScreenName("987654321"),
+									ICQInfo: state.ICQInfo{
+										Basic: state.ICQBasicInfo{
+											EmailAddress: "janey@example.com",
+											FirstName:    "Jane",
+											LastName:     "Doe",
+											Nickname:     "Janey",
+										},
+										Permissions: state.ICQPermissions{
+											AuthRequired: false,
+										},
+										More: state.ICQMoreInfo{
+											BirthDay:   31,
+											BirthMonth: 7,
+											BirthYear:  1995,
+											Gender:     2,
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("11111111"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.ICQ,
+									SubGroup:  wire.ICQDBReply,
+								},
+								Body: wire.SNAC_0x15_0x02_DBReply{
+									TLVRestBlock: wire.TLVRestBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.ICQTLVTagsMetadata, wire.ICQMessageReplyEnvelope{
+												Message: wire.ICQ_0x07DA_0x01AE_DBQueryMetaReplyLastUserFound{
+													ICQMetadata: wire.ICQMetadata{
+														UIN:     11111111,
+														ReqType: wire.ICQDBQueryMetaReply,
+														Seq:     1,
+													},
+													Success:    wire.ICQStatusCodeOK,
+													ReqSubType: wire.ICQDBQueryMetaReplyLastUserFound,
+													Details: wire.ICQUserSearchRecord{
+														UIN:           987654321,
+														Nickname:      "Janey",
+														FirstName:     "Jane",
+														LastName:      "Doe",
+														Email:         "janey@example.com",
+														Authorization: 1,
+														OnlineStatus:  0,
+														Gender:        2,
+														Age:           25,
+													},
+													LastMessageFooter: &struct {
+														FoundUsersLeft uint32
+													}{
+														FoundUsersLeft: 0,
+													},
+												},
+											}),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams{
+						{
+							screenName: state.NewIdentScreenName("987654321"),
+							result:     nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "search returns runtime error",
+			timeNow: func() time.Time {
+				return time.Date(2020, time.August, 1, 0, 0, 0, 0, time.UTC)
+			},
+			seq:      1,
+			instance: newTestInstance("11111111", sessOptUIN(11111111)),
+			req: wire.ICQ_0x07D0_0x055F_DBQueryMetaReqSearchWhitePages2{
+				TLVRestBlock: wire.TLVRestBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVLE(wire.ICQTLVTagsWhitepagesSearchKeywords, struct {
+							Val string `oscar:"len_prefix=uint16,nullterm"`
+						}{
+							Val: "knitting",
+						}),
+					},
+				},
+			},
+			mockParams: mockParams{
+				icqUserFinderParams: icqUserFinderParams{
+					searchICQUsersParams: searchICQUsersParams{
+						{
+							criteria: state.ICQUserSearchCriteria{
+								AnyKeyword: new("knitting"),
+							},
+							err: assert.AnError,
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("11111111"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.ICQ,
+									SubGroup:  wire.ICQDBReply,
+								},
+								Body: wire.SNAC_0x15_0x02_DBReply{
+									TLVRestBlock: wire.TLVRestBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.ICQTLVTagsMetadata, wire.ICQMessageReplyEnvelope{
+												Message: wire.ICQ_0x07DA_0x01AE_DBQueryMetaReplyLastUserFound{
+													ICQMetadata: wire.ICQMetadata{
+														UIN:     11111111,
+														ReqType: wire.ICQDBQueryMetaReply,
+														Seq:     1,
+													},
+													Success:    wire.ICQStatusCodeErr,
+													ReqSubType: wire.ICQDBQueryMetaReplyLastUserFound,
+												},
+											}),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams{},
+				},
+			},
+		},
+		{
+			name: "search returns empty criteria error",
+			timeNow: func() time.Time {
+				return time.Date(2020, time.August, 1, 0, 0, 0, 0, time.UTC)
+			},
+			seq:      1,
+			instance: newTestInstance("11111111", sessOptUIN(11111111)),
+			req: wire.ICQ_0x07D0_0x055F_DBQueryMetaReqSearchWhitePages2{
+				TLVRestBlock: wire.TLVRestBlock{TLVList: wire.TLVList{}},
+			},
+			mockParams: mockParams{
+				icqUserFinderParams: icqUserFinderParams{
+					searchICQUsersParams: searchICQUsersParams{
+						{
+							criteria: state.ICQUserSearchCriteria{},
+							err:      state.ErrICQSearchEmptyCriteria,
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("11111111"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.ICQ,
+									SubGroup:  wire.ICQDBReply,
+								},
+								Body: wire.SNAC_0x15_0x02_DBReply{
+									TLVRestBlock: wire.TLVRestBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.ICQTLVTagsMetadata, wire.ICQMessageReplyEnvelope{
+												Message: wire.ICQ_0x07DA_0x01AE_DBQueryMetaReplyLastUserFound{
+													ICQMetadata: wire.ICQMetadata{
+														UIN:     11111111,
+														ReqType: wire.ICQDBQueryMetaReply,
+														Seq:     1,
+													},
+													Success:    wire.ICQStatusCodeFail,
+													ReqSubType: wire.ICQDBQueryMetaReplyLastUserFound,
+												},
+											}),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams{},
+				},
+			},
+		},
+		{
+			name: "search returns no users",
+			timeNow: func() time.Time {
+				return time.Date(2020, time.August, 1, 0, 0, 0, 0, time.UTC)
+			},
+			seq:      1,
+			instance: newTestInstance("11111111", sessOptUIN(11111111)),
+			req: wire.ICQ_0x07D0_0x055F_DBQueryMetaReqSearchWhitePages2{
+				TLVRestBlock: wire.TLVRestBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVLE(wire.ICQTLVTagsWhitepagesSearchKeywords, struct {
+							Val string `oscar:"len_prefix=uint16,nullterm"`
+						}{
+							Val: "knitting",
+						}),
+					},
+				},
+			},
+			mockParams: mockParams{
+				icqUserFinderParams: icqUserFinderParams{
+					searchICQUsersParams: searchICQUsersParams{
+						{
+							criteria: state.ICQUserSearchCriteria{
+								AnyKeyword: new("knitting"),
+							},
+							result: []state.User{},
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("11111111"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.ICQ,
+									SubGroup:  wire.ICQDBReply,
+								},
+								Body: wire.SNAC_0x15_0x02_DBReply{
+									TLVRestBlock: wire.TLVRestBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.ICQTLVTagsMetadata, wire.ICQMessageReplyEnvelope{
+												Message: wire.ICQ_0x07DA_0x01AE_DBQueryMetaReplyLastUserFound{
+													ICQMetadata: wire.ICQMetadata{
+														UIN:     11111111,
+														ReqType: wire.ICQDBQueryMetaReply,
+														Seq:     1,
+													},
+													Success:    wire.ICQStatusCodeFail,
+													ReqSubType: wire.ICQDBQueryMetaReplyLastUserFound,
+												},
+											}),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams{},
+				},
+			},
+		},
+		{
+			name: "search by keyword (online only)",
+			timeNow: func() time.Time {
+				return time.Date(2020, time.August, 1, 0, 0, 0, 0, time.UTC)
+			},
+			seq:      1,
+			instance: newTestInstance("11111111", sessOptUIN(11111111)),
+			req: wire.ICQ_0x07D0_0x055F_DBQueryMetaReqSearchWhitePages2{
+				TLVRestBlock: wire.TLVRestBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVLE(wire.ICQTLVTagsWhitepagesSearchKeywords, struct {
+							Val string `oscar:"len_prefix=uint16,nullterm"`
+						}{
+							Val: "knitting",
+						}),
+						wire.NewTLVLE(wire.ICQTLVTagsSearchOnlineUsersFlag, uint8(1)),
+					},
+				},
+			},
+			mockParams: mockParams{
+				icqUserFinderParams: icqUserFinderParams{
+					searchICQUsersParams: searchICQUsersParams{
+						{
+							criteria: state.ICQUserSearchCriteria{
+								AnyKeyword: new("knitting"),
+							},
+							result: []state.User{
+								{
+									IdentScreenName: state.NewIdentScreenName("987654321"),
+									ICQInfo: state.ICQInfo{
+										Basic: state.ICQBasicInfo{
+											EmailAddress: "janey@example.com",
+											FirstName:    "Jane",
+											LastName:     "Doe",
+											Nickname:     "Janey",
+										},
+										Permissions: state.ICQPermissions{
+											AuthRequired: false,
+										},
+										More: state.ICQMoreInfo{
+											BirthDay:   31,
+											BirthMonth: 7,
+											BirthYear:  1995,
+											Gender:     2,
+										},
+									},
+								},
+								{
+									IdentScreenName: state.NewIdentScreenName("123456789"),
+									ICQInfo: state.ICQInfo{
+										Basic: state.ICQBasicInfo{
+											EmailAddress: "alice@example.com",
+											FirstName:    "Alice",
+											LastName:     "Smith",
+											Nickname:     "Ally123",
+										},
+										Permissions: state.ICQPermissions{
+											AuthRequired: true,
+										},
+										More: state.ICQMoreInfo{
+											BirthDay:   31,
+											BirthMonth: 7,
+											BirthYear:  1999,
+											Gender:     1,
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("11111111"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.ICQ,
+									SubGroup:  wire.ICQDBReply,
+								},
+								Body: wire.SNAC_0x15_0x02_DBReply{
+									TLVRestBlock: wire.TLVRestBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.ICQTLVTagsMetadata, wire.ICQMessageReplyEnvelope{
+												Message: wire.ICQ_0x07DA_0x01AE_DBQueryMetaReplyLastUserFound{
+													ICQMetadata: wire.ICQMetadata{
+														UIN:     11111111,
+														ReqType: wire.ICQDBQueryMetaReply,
+														Seq:     1,
+													},
+													Success:    wire.ICQStatusCodeOK,
+													ReqSubType: wire.ICQDBQueryMetaReplyLastUserFound,
+													Details: wire.ICQUserSearchRecord{
+														UIN:           123456789,
+														Nickname:      "Ally123",
+														FirstName:     "Alice",
+														LastName:      "Smith",
+														Email:         "alice@example.com",
+														Authorization: 0,
+														OnlineStatus:  1,
+														Gender:        1,
+														Age:           21,
+													},
+													LastMessageFooter: &struct {
+														FoundUsersLeft uint32
+													}{
+														FoundUsersLeft: 0,
+													},
+												},
+											}),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams{
+						// filter step
+						{
+							screenName: state.NewIdentScreenName("987654321"),
+							result:     nil,
+						},
+						{
+							screenName: state.NewIdentScreenName("123456789"),
+							result:     state.NewSession(),
+						},
+						// createResult step (only for the included user)
+						{
+							screenName: state.NewIdentScreenName("123456789"),
+							result:     state.NewSession(),
+						},
+					},
+				},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			userFinder := newMockICQUserFinder(t)
-			for _, params := range tt.mockParams.findByKeywordParams {
+			for _, params := range tt.mockParams.searchICQUsersParams {
 				userFinder.EXPECT().
-					FindByICQKeyword(matchContext(), params.keyword).
-					Return(params.result, params.err)
-			}
-			for _, params := range tt.mockParams.findByDetailsParams {
-				userFinder.EXPECT().
-					FindByICQName(matchContext(), params.firstName, params.lastName, params.nickName).
+					SearchICQUsers(matchContext(), params.criteria).
 					Return(params.result, params.err)
 			}
 
@@ -1342,6 +1857,7 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 			}
 
 			s := ICQService{
+				logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
 				messageRelayer:   messageRelayer,
 				sessionRetriever: sessionRetriever,
 				timeNow:          tt.timeNow,
@@ -1519,23 +2035,21 @@ func TestICQService_FullUserInfo(t *testing.T) {
 														ReqType: wire.ICQDBQueryMetaReply,
 														Seq:     1,
 													},
-													Success:    wire.ICQStatusCodeOK,
-													ReqSubType: wire.ICQDBQueryMetaReplyMoreInfo,
-													ICQ_0x07D0_0x03FD_DBQueryMetaReqSetMoreInfo: wire.ICQ_0x07D0_0x03FD_DBQueryMetaReqSetMoreInfo{
-														Age:          30,
-														Gender:       1,
-														HomePageAddr: "https://johnsdomain.com",
-														BirthYear:    1990,
-														BirthMonth:   6,
-														BirthDay:     15,
-														Lang1:        1,
-														Lang2:        2,
-														Lang3:        3,
-													},
-													City:        "New York",
-													State:       "NY",
-													CountryCode: 1,
-													TimeZone:    5,
+													Success:      wire.ICQStatusCodeOK,
+													ReqSubType:   wire.ICQDBQueryMetaReplyMoreInfo,
+													Age:          30,
+													Gender:       1,
+													HomePageAddr: "https://johnsdomain.com",
+													BirthYear:    1990,
+													BirthMonth:   6,
+													BirthDay:     15,
+													Lang1:        1,
+													Lang2:        2,
+													Lang3:        3,
+													City:         "New York",
+													State:        "NY",
+													CountryCode:  1,
+													TimeZone:     5,
 												},
 											}),
 										},
@@ -2481,16 +2995,6 @@ func TestICQService_SetICQInfo(t *testing.T) {
 		}{V: v})
 	}
 
-	type ecombo struct {
-		Email   string `oscar:"len_prefix=uint16,nullterm"`
-		Publish uint8
-	}
-	type bcombo struct {
-		Year  uint16
-		Month uint16
-		Day   uint16
-	}
-
 	expectedReply := wire.SNACMessage{
 		Frame: wire.SNACFrame{
 			FoodGroup: wire.ICQ,
@@ -2533,7 +3037,10 @@ func TestICQService_SetICQInfo(t *testing.T) {
 						sstring(wire.ICQTLVTagsFirstName, "John"),
 						sstring(wire.ICQTLVTagsLastName, "Doe"),
 						sstring(wire.ICQTLVTagsNickname, "Johnny"),
-						wire.NewTLVLE(wire.ICQTLVTagsEmail, ecombo{Email: "j@d.com", Publish: 0}),
+						wire.NewTLVLE(wire.ICQTLVTagsEmail, struct {
+							Email   string `oscar:"len_prefix=uint16,nullterm"`
+							Publish uint8
+						}{Email: "j@d.com", Publish: 0}),
 						sstring(wire.ICQTLVTagsHomeCityName, "Anytown"),
 						sstring(wire.ICQTLVTagsHomeStateAbbr, "CA"),
 						wire.NewTLVLE(wire.ICQTLVTagsHomeCountryCode, uint16(840)),
@@ -2545,9 +3052,12 @@ func TestICQService_SetICQInfo(t *testing.T) {
 						wire.NewTLVLE(wire.ICQTLVTagsGMTOffset, uint8(5)),
 
 						wire.NewTLVLE(wire.ICQTLVTagsGender, uint8(2)),
-						wire.NewTLVLE(wire.ICQTLVTagsBirthdayInfo, bcombo{Year: 1990, Month: 5, Day: 15}),
-						wire.NewTLVLE(wire.ICQTLVTagsHomepageURL, wire.ICQInterests{Code: 0, Keyword: "http://johnd.example.com"}),
-
+						wire.NewTLVLE(wire.ICQTLVTagsBirthdayInfo, struct {
+							Year  uint16
+							Month uint16
+							Day   uint16
+						}{Year: 1990, Month: 5, Day: 15}),
+						sstring(wire.ICQTLVTagsHomepageURL, "http://johnd.example.com"),
 						sstring(wire.ICQTLVTagsWorkCompanyName, "Acme"),
 						sstring(wire.ICQTLVTagsWorkDepartmentName, "Eng"),
 						sstring(wire.ICQTLVTagsWorkPositionTitle, "SWE"),
