@@ -22,29 +22,11 @@ func (f *FeedbagAdapter) RetrieveFeedbag(ctx context.Context, screenName state.I
 	return f.Store.Feedbag(ctx, screenName)
 }
 
-// RelationshipsByUser implements FeedbagRetriever interface
-// Returns the list of users who have this user in their buddy list
+// RelationshipsByUser implements FeedbagRetriever interface. It returns the
+// contacts on the user's buddy list, including legacy client-side buddy list
+// entries that are not represented as feedbag items.
 func (f *FeedbagAdapter) RelationshipsByUser(ctx context.Context, screenName state.IdentScreenName) ([]state.IdentScreenName, error) {
-	// Get all relationships where this user is involved
-	relationships, err := f.Store.AllRelationships(ctx, screenName, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	// Extract unique screen names from relationships
-	uniqueUsers := make(map[state.IdentScreenName]bool)
-	for _, rel := range relationships {
-		// Add the user from the relationship
-		uniqueUsers[rel.User] = true
-	}
-
-	// Convert map to slice
-	users := make([]state.IdentScreenName, 0, len(uniqueUsers))
-	for user := range uniqueUsers {
-		users = append(users, user)
-	}
-
-	return users, nil
+	return f.Store.ClientSideBuddies(ctx, screenName)
 }
 
 // InsertItem implements FeedbagManager interface

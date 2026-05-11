@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ICQ Web</title>
+  <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -37,12 +38,12 @@
             <h2 id="contacts-title">Контакты</h2>
             <p id="session-summary">Не подключено</p>
           </div>
-          <button id="logout-button" class="logout-button" type="button" title="Выйти" aria-label="Выйти"><span></span></button>
+          <button id="logout-button" class="logout-button inline-flex items-center justify-center uppercase tracking-widest transition-colors" type="button">ВЫХОД</button>
         </div>
 
         <div class="contact-toolbar">
           <button id="refresh-contacts" class="icon-button" type="button" title="Обновить контакты" aria-label="Обновить контакты">↻</button>
-          <select id="presence-state" aria-label="Мой статус">
+          <select id="presence-state" class="tailwind-select rounded-2xl border border-gray-700 bg-gray-900 text-gray-100 shadow-sm" aria-label="Мой статус">
             <option value="online">В сети</option>
             <option value="away">Отошёл</option>
             <option value="na">Недоступен</option>

@@ -74,6 +74,34 @@ input,
 select { min-height: 44px; padding: 0 14px; }
 textarea { padding: 13px 15px; resize: none; }
 
+select,
+select option,
+select optgroup {
+  color: var(--text);
+  background-color: #111827;
+}
+
+select option:checked {
+  background-color: #14532d;
+}
+
+.tailwind-select {
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, #d1d5db 50%),
+    linear-gradient(135deg, #d1d5db 50%, transparent 50%),
+    linear-gradient(180deg, rgba(31, 41, 55, 0.95), rgba(17, 24, 39, 0.95));
+  background-position:
+    calc(100% - 18px) 19px,
+    calc(100% - 13px) 19px,
+    0 0;
+  background-size: 5px 5px, 5px 5px, 100% 100%;
+  background-repeat: no-repeat;
+  border-color: rgba(75, 85, 99, 0.9);
+  padding-right: 42px;
+}
+
+
 input:focus,
 textarea:focus,
 select:focus {
@@ -427,33 +455,21 @@ p { margin: 0; }
 }
 
 .logout-button {
-  position: relative;
-  width: 38px;
-  height: 38px;
+  min-width: 84px;
+  min-height: 38px;
+  padding: 0 16px;
   border-radius: 999px;
-  background: rgba(255, 69, 58, 0.13);
+  color: #fecaca;
+  background: linear-gradient(180deg, rgba(127, 29, 29, 0.9), rgba(69, 10, 10, 0.88));
+  border: 1px solid rgba(248, 113, 113, 0.34);
+  box-shadow: 0 10px 22px rgba(127, 29, 29, 0.22);
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
 }
-.logout-button::before {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 8px;
-  width: 3px;
-  height: 13px;
-  border-radius: 999px;
-  background: #ff6b62;
-  transform: translateX(-50%);
-}
-.logout-button::after {
-  content: "";
-  position: absolute;
-  left: 10px;
-  top: 12px;
-  width: 18px;
-  height: 18px;
-  border: 3px solid #ff6b62;
-  border-top-color: transparent;
-  border-radius: 50%;
+.logout-button:hover {
+  color: #fff;
+  background: linear-gradient(180deg, rgba(185, 28, 28, 0.92), rgba(127, 29, 29, 0.9));
 }
 
 .composer {
