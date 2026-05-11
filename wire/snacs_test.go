@@ -415,3 +415,34 @@ func TestFeedbagItem_RemoveOrderMembers(t *testing.T) {
 		assert.Equal(t, []uint16{5, 10}, order)
 	})
 }
+
+func TestICBMFragmentList_RoundTripsUnicodeText(t *testing.T) {
+	input := "ииииииии"
+
+	frags, err := ICBMFragmentList(input)
+	assert.NoError(t, err)
+	assert.Len(t, frags, 2)
+
+	msg := ICBMCh1Message{}
+	err = UnmarshalBE(&msg, bytes.NewBuffer(frags[1].Payload))
+	assert.NoError(t, err)
+	assert.Equal(t, ICBMMessageEncodingUnicode, msg.Charset)
+
+	payload, err := MarshalICBMFragmentList(frags)
+	assert.NoError(t, err)
+
+	got, err := UnmarshalICBMMessageText(payload)
+	assert.NoError(t, err)
+	assert.Equal(t, input, got)
+}
+
+func TestICBMFragmentList_KeepsASCIIEncodingForASCIIText(t *testing.T) {
+	frags, err := ICBMFragmentList("hello")
+	assert.NoError(t, err)
+	assert.Len(t, frags, 2)
+
+	msg := ICBMCh1Message{}
+	err = UnmarshalBE(&msg, bytes.NewBuffer(frags[1].Payload))
+	assert.NoError(t, err)
+	assert.Equal(t, ICBMMessageEncodingASCII, msg.Charset)
+}

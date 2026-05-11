@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	crand "crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -624,8 +626,13 @@ func WebAPI(deps Container) *webapi.Server {
 		// Phase 5 additions for chat rooms
 		ChatManager: deps.sqLiteUserStore.NewWebAPIChatManager(logger, deps.webAPISessionManager),
 	}
+	webClientAPIKey, err := ensureBuiltInWebClientAPIKey(context.Background(), deps.sqLiteUserStore)
+	if err != nil {
+		logger.Error("failed to ensure built-in web client API key", "error", err)
+	}
+
 	// Pass SQLiteUserStore as the API key validator (it implements middleware.APIKeyValidator)
-	return webapi.NewServer([]string{"0.0.0.0:9000"}, logger, handler, deps.sqLiteUserStore, deps.webAPISessionManager)
+	return webapi.NewServer([]string{"0.0.0.0:9000"}, logger, handler, deps.sqLiteUserStore, deps.webAPISessionManager, webClientAPIKey)
 }
 
 // ICQLegacy creates a legacy ICQ server for v2-v5 protocols.
@@ -754,4 +761,41 @@ func ICQLegacy(deps Container) *icq_legacy.LegacyServer {
 	})
 
 	return server
+}
+
+func ensureBuiltInWebClientAPIKey(ctx context.Context, store *state.SQLiteUserStore) (string, error) {
+	const devID = "dev_builtin_web_client"
+
+	key, err := store.GetAPIKeyByDevID(ctx, devID)
+	if err == nil {
+		active := true
+		allowedOrigins := []string{}
+		if err := store.UpdateAPIKey(ctx, devID, state.WebAPIKeyUpdate{IsActive: &active, AllowedOrigins: &allowedOrigins}); err != nil {
+			return "", err
+		}
+		return key.DevKey, nil
+	}
+	if err != state.ErrNoAPIKey {
+		return "", err
+	}
+
+	keyBytes := make([]byte, 32)
+	if _, err := crand.Read(keyBytes); err != nil {
+		return "", err
+	}
+
+	apiKey := state.WebAPIKey{
+		DevID:          devID,
+		DevKey:         hex.EncodeToString(keyBytes),
+		AppName:        "Built-in Web Client",
+		CreatedAt:      time.Now(),
+		IsActive:       true,
+		RateLimit:      600,
+		AllowedOrigins: []string{},
+		Capabilities:   []string{},
+	}
+	if err := store.CreateAPIKey(ctx, apiKey); err != nil {
+		return "", err
+	}
+	return apiKey.DevKey, nil
 }
