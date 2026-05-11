@@ -768,6 +768,7 @@ func ensureBuiltInWebClientAPIKey(ctx context.Context, store *state.SQLiteUserSt
 
 	key, err := store.GetAPIKeyByDevID(ctx, devID)
 	if err == nil {
+
 		active := true
 		allowedOrigins := []string{}
 		if err := store.UpdateAPIKey(ctx, devID, state.WebAPIKeyUpdate{IsActive: &active, AllowedOrigins: &allowedOrigins}); err != nil {
@@ -791,7 +792,9 @@ func ensureBuiltInWebClientAPIKey(ctx context.Context, store *state.SQLiteUserSt
 		CreatedAt:      time.Now(),
 		IsActive:       true,
 		RateLimit:      600,
+
 		AllowedOrigins: []string{},
+
 		Capabilities:   []string{},
 	}
 	if err := store.CreateAPIKey(ctx, apiKey); err != nil {
