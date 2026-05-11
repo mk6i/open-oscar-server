@@ -1,8 +1,7 @@
 const STORAGE_PREFIX = 'openOscar.webClient';
-const MAX_EVENTS = 80;
 
 const state = {
-  apiKey: localStorage.getItem(`${STORAGE_PREFIX}.apiKey`) || '',
+  apiKey: '',
   screenName: localStorage.getItem(`${STORAGE_PREFIX}.screenName`) || '',
   token: '',
   aimsid: '',
@@ -27,10 +26,6 @@ const elements = {
   screenName: $('screen-name'),
   password: $('password'),
   sessionSummary: $('session-summary'),
-  sessionScreenName: $('session-screen-name'),
-  sessionId: $('session-id'),
-  lastSequence: $('last-sequence'),
-  selectedContact: $('selected-contact'),
   presenceState: $('presence-state'),
   refreshContacts: $('refresh-contacts'),
   addContactForm: $('add-contact-form'),
@@ -44,36 +39,31 @@ const elements = {
   messageForm: $('message-form'),
   messageText: $('message-text'),
   sendButton: $('send-button'),
-  eventLog: $('event-log'),
-  clearEvents: $('clear-events'),
   toast: $('toast'),
 };
 
-elements.apiKey.value = state.apiKey;
 elements.screenName.value = state.screenName;
-
 elements.loginForm.addEventListener('submit', login);
 elements.logoutButton.addEventListener('click', logout);
 elements.presenceState.addEventListener('change', updateOwnPresence);
 elements.refreshContacts.addEventListener('click', () => refreshContacts(true).catch((error) => {
-  showToast(`Could not refresh contacts: ${error.message}`, true);
-  logEvent('refresh contacts error', error.message, true);
+  showToast(`Не удалось обновить контакты: ${error.message}`, true);
 }));
 elements.addContactForm.addEventListener('submit', addContact);
 elements.contactFilter.addEventListener('input', renderContacts);
 elements.messageForm.addEventListener('submit', sendMessage);
 elements.clearHistory.addEventListener('click', clearCurrentHistory);
-elements.clearEvents.addEventListener('click', () => {
-  elements.eventLog.textContent = '';
-});
 window.addEventListener('beforeunload', () => stopPolling());
 
+loadClientConfig().catch((error) => {
+  setStatus('Клиент не настроен');
+  showToast(error.message, true);
+});
 renderContacts();
 renderConversation();
 
-function setStatus(text, mode = 'offline') {
+function setStatus(text) {
   elements.status.textContent = text;
-  elements.status.className = `status-pill ${mode}`;
 }
 
 function showToast(message, isError = false) {
@@ -83,11 +73,11 @@ function showToast(message, isError = false) {
   window.clearTimeout(showToast.timer);
   showToast.timer = window.setTimeout(() => {
     elements.toast.hidden = true;
-  }, 4500);
+  }, 4200);
 }
 
 function normalizeName(name) {
-  return name.trim();
+  return String(name || '').trim();
 }
 
 function contactKey(name) {
@@ -111,10 +101,9 @@ function loadHistory() {
 }
 
 function saveHistory() {
-  if (!state.screenName) {
-    return;
+  if (state.screenName) {
+    localStorage.setItem(historyKey(), JSON.stringify(state.history));
   }
-  localStorage.setItem(historyKey(), JSON.stringify(state.history));
 }
 
 function apiURL(path, params = {}) {
@@ -134,7 +123,7 @@ async function readAPIResponse(response) {
     try {
       payload = JSON.parse(text);
     } catch {
-      throw new Error(`Unexpected response: ${text.slice(0, 180)}`);
+      throw new Error(`Неожиданный ответ сервера: ${text.slice(0, 180)}`);
     }
   }
 
@@ -144,7 +133,7 @@ async function readAPIResponse(response) {
 
   const statusCode = payload?.response?.statusCode;
   if (statusCode && statusCode >= 400) {
-    throw new Error(payload.response.statusText || `API error ${statusCode}`);
+    throw new Error(payload.response.statusText || `Ошибка API ${statusCode}`);
   }
 
   return payload;
@@ -168,21 +157,18 @@ function responseData(payload) {
   return payload?.response?.data || {};
 }
 
-function logEvent(type, data, isError = false) {
-  const item = document.createElement('li');
-  item.className = `event${isError ? ' error' : ''}`;
-  item.innerHTML = '<strong></strong><time></time><pre></pre>';
-  item.querySelector('strong').textContent = type;
-  item.querySelector('time').textContent = new Date().toLocaleTimeString();
-  item.querySelector('pre').textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
-  elements.eventLog.prepend(item);
-  while (elements.eventLog.children.length > MAX_EVENTS) {
-    elements.eventLog.lastElementChild.remove();
+async function loadClientConfig() {
+  const response = await fetch(apiURL('/client/config'));
+  const payload = await readAPIResponse(response);
+  state.apiKey = payload.apiKey || '';
+  elements.apiKey.value = state.apiKey;
+  if (!state.apiKey) {
+    throw new Error('Встроенный Web-клиент не получил API ключ. Перезапустите WebAPI.');
   }
 }
 
 function contactFromBuddy(buddy) {
-  const aimId = normalizeName(buddy.aimId || buddy.screenName || buddy.displayId || buddy.name || String(buddy));
+  const aimId = normalizeName(buddy?.aimId || buddy?.screenName || buddy?.displayId || buddy?.name || String(buddy || ''));
   if (!aimId) {
     return null;
   }
@@ -206,9 +192,11 @@ function upsertContact(contact) {
 }
 
 function contactStatus(contact) {
-  return contact?.state === 'online' || contact?.state === 'away' || contact?.state === 'idle' || contact?.state === 'dnd'
-    ? contact.state
-    : 'offline';
+  return ['online', 'away', 'idle', 'dnd'].includes(contact?.state) ? contact.state : 'offline';
+}
+
+function statusLabel(status) {
+  return status === 'online' ? 'в сети' : status === 'away' ? 'отошёл' : status === 'idle' ? 'неактивен' : 'не в сети';
 }
 
 function setSignedIn(data) {
@@ -218,34 +206,25 @@ function setSignedIn(data) {
   elements.presenceState.value = 'online';
   elements.loginPanel.hidden = true;
   elements.clientPanel.hidden = false;
-  elements.logoutButton.hidden = false;
-  elements.sessionSummary.textContent = `${state.screenName} · online`;
-  elements.sessionScreenName.textContent = state.screenName;
-  elements.sessionId.textContent = state.aimsid;
-  elements.lastSequence.textContent = '0';
-  setStatus(`Online as ${state.screenName}`, 'online');
+  elements.sessionSummary.textContent = `${state.screenName} · в сети`;
   loadHistory();
   mergeBuddyGroups(data.events?.buddylist?.groups || []);
   renderContacts();
   renderConversation();
-  logEvent('startSession', data);
 }
 
-function setSignedOut(reason = 'Signed out') {
+function setSignedOut(reason = 'Ожидание входа') {
   stopPolling();
   state.token = '';
   state.aimsid = '';
   state.lastSeqNum = 0;
-  state.presenceState = 'offline';
+  state.presenceState = 'online';
   elements.loginPanel.hidden = false;
   elements.clientPanel.hidden = true;
-  elements.logoutButton.hidden = true;
-  elements.sessionSummary.textContent = 'Not connected';
-  elements.sessionId.textContent = '—';
-  elements.lastSequence.textContent = '0';
+  elements.sessionSummary.textContent = 'Не подключено';
   elements.messageText.disabled = true;
   elements.sendButton.disabled = true;
-  setStatus(reason, reason === 'Signed out' ? 'offline' : 'error');
+  setStatus(reason);
 }
 
 function mergeBuddyGroups(groups) {
@@ -261,137 +240,138 @@ function mergeBuddyGroups(groups) {
 }
 
 function renderContacts() {
-  const filter = contactKey(elements.contactFilter.value || '');
-  const contacts = [...state.contacts.values()]
-    .filter((contact) => !filter || contactKey(contact.aimId).includes(filter) || contactKey(contact.displayId || '').includes(filter))
+  const filter = contactKey(elements.contactFilter.value);
+  const contacts = Array.from(state.contacts.values())
+    .filter((contact) => !filter || contactKey(contact.displayId || contact.aimId).includes(filter))
     .sort((a, b) => {
       const statusOrder = { online: 0, away: 1, idle: 2, dnd: 3, offline: 4 };
-      const byStatus = (statusOrder[contactStatus(a)] ?? 9) - (statusOrder[contactStatus(b)] ?? 9);
-      if (byStatus !== 0) {
-        return byStatus;
+      const aStatus = statusOrder[contactStatus(a)] ?? 5;
+      const bStatus = statusOrder[contactStatus(b)] ?? 5;
+      if (aStatus !== bStatus) {
+        return aStatus - bStatus;
       }
-      return a.aimId.localeCompare(b.aimId);
+      return (a.displayId || a.aimId).localeCompare(b.displayId || b.aimId, 'ru');
     });
 
   elements.contactList.textContent = '';
   if (contacts.length === 0) {
     const empty = document.createElement('li');
     empty.className = 'empty-state';
-    empty.textContent = state.aimsid ? 'No contacts yet. Add a buddy above.' : 'Sign in to load contacts.';
+    empty.textContent = filter ? 'Ничего не найдено' : 'Контактов пока нет';
     elements.contactList.append(empty);
     return;
   }
 
   for (const contact of contacts) {
+    const status = contactStatus(contact);
     const item = document.createElement('li');
     const button = document.createElement('button');
-    const status = contactStatus(contact);
     button.type = 'button';
-    button.className = `contact ${state.selectedContact && contactKey(state.selectedContact) === contactKey(contact.aimId) ? 'selected' : ''}`;
-    button.innerHTML = `
-      <span class="avatar" aria-hidden="true">${escapeInitials(contact.displayId || contact.aimId)}</span>
-      <span class="contact-main">
-        <span class="contact-name"></span>
-        <span class="contact-meta"><span class="dot ${status}"></span>${statusLabel(status)}</span>
-      </span>
-      <span class="unread" hidden></span>
-    `;
-    button.querySelector('.contact-name').textContent = contact.displayId || contact.aimId;
-    const history = state.history[contactKey(contact.aimId)] || [];
-    const unread = history.filter((message) => message.unread).length;
-    const unreadEl = button.querySelector('.unread');
-    if (unread > 0) {
-      unreadEl.textContent = unread > 99 ? '99+' : String(unread);
-      unreadEl.hidden = false;
-    }
+    button.className = `contact ${status}${contactKey(state.selectedContact) === contactKey(contact.aimId) ? ' selected' : ''}`;
     button.addEventListener('click', () => selectContact(contact.aimId));
+
+    const avatar = document.createElement('span');
+    avatar.className = 'avatar';
+    avatar.textContent = (contact.displayId || contact.aimId).slice(0, 2).toUpperCase();
+
+    const main = document.createElement('span');
+    main.className = 'contact-main';
+    const name = document.createElement('span');
+    name.className = 'contact-name';
+    name.textContent = contact.displayId || contact.aimId;
+    const meta = document.createElement('span');
+    meta.className = 'contact-meta';
+    meta.textContent = statusLabel(status);
+    main.append(name, meta);
+
+    const unread = unreadCount(contact.aimId);
+    if (unread > 0) {
+      const badge = document.createElement('span');
+      badge.className = 'unread';
+      badge.textContent = unread > 9 ? '9+' : String(unread);
+      button.append(avatar, main, badge);
+    } else {
+      button.append(avatar, main);
+    }
+
     item.append(button);
     elements.contactList.append(item);
   }
 }
 
-function statusLabel(status) {
-  switch (status) {
-    case 'online': return 'online';
-    case 'away': return 'away';
-    case 'idle': return 'idle';
-    case 'dnd': return 'do not disturb';
-    default: return 'offline';
-  }
-}
-
-function escapeInitials(name) {
-  const text = normalizeName(name).replace(/[^a-zA-Z0-9]/g, '');
-  return (text.slice(0, 2) || '?').toUpperCase();
+function unreadCount(contact) {
+  const messages = state.history[contactKey(contact)] || [];
+  return messages.filter((message) => message.unread).length;
 }
 
 function selectContact(aimId) {
   state.selectedContact = aimId;
-  const key = contactKey(aimId);
-  for (const message of state.history[key] || []) {
+  const messages = state.history[contactKey(aimId)] || [];
+  for (const message of messages) {
     message.unread = false;
   }
   saveHistory();
   renderContacts();
   renderConversation();
-  elements.messageText.focus();
 }
 
 function renderConversation() {
   const selected = state.selectedContact;
-  elements.messages.textContent = '';
-  elements.selectedContact.textContent = selected || '—';
+  const contact = selected ? state.contacts.get(contactKey(selected)) : null;
+  elements.chatTitle.textContent = contact?.displayId || selected || 'Выберите контакт';
+  elements.chatSubtitle.textContent = selected ? statusLabel(contactStatus(contact)) : 'История сообщений появится здесь.';
   elements.clearHistory.disabled = !selected;
   elements.messageText.disabled = !selected || !state.aimsid;
   elements.sendButton.disabled = !selected || !state.aimsid;
+  elements.messages.textContent = '';
 
   if (!selected) {
-    elements.chatTitle.textContent = 'Choose a contact';
-    elements.chatSubtitle.textContent = 'Select someone from the contact list to start chatting.';
     const empty = document.createElement('li');
-    empty.className = 'empty-conversation';
-    empty.textContent = 'No conversation selected.';
+    empty.className = 'conversation-empty';
+    empty.textContent = 'Выберите контакт слева, чтобы начать переписку.';
     elements.messages.append(empty);
     return;
   }
 
-  const contact = state.contacts.get(contactKey(selected));
-  const status = contactStatus(contact);
-  elements.chatTitle.textContent = contact?.displayId || selected;
-  elements.chatSubtitle.textContent = `${statusLabel(status)} · history is saved locally in this browser`;
-
-  const history = state.history[contactKey(selected)] || [];
-  if (history.length === 0) {
+  const messages = state.history[contactKey(selected)] || [];
+  if (messages.length === 0) {
     const empty = document.createElement('li');
-    empty.className = 'empty-conversation';
-    empty.textContent = 'No messages yet.';
+    empty.className = 'conversation-empty';
+    empty.textContent = 'Сообщений пока нет.';
     elements.messages.append(empty);
     return;
   }
 
-  for (const message of history) {
-    appendMessageElement(message);
+  for (const message of messages) {
+    const item = document.createElement('li');
+    item.className = `message ${message.direction}`;
+
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    const text = document.createElement('p');
+    text.textContent = repairMojibake(message.text);
+    const time = document.createElement('time');
+    time.dateTime = new Date(message.timestamp).toISOString();
+    time.textContent = new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    bubble.append(text, time);
+    item.append(bubble);
+    elements.messages.append(item);
   }
   elements.messages.scrollTop = elements.messages.scrollHeight;
 }
 
-function appendMessageElement(message) {
-  const item = document.createElement('li');
-  item.className = `message ${message.direction}`;
-  const date = new Date(message.timestamp);
-  item.innerHTML = '<div class="bubble"><div class="message-meta"></div><div class="message-body"></div></div>';
-  item.querySelector('.message-meta').textContent = `${message.direction === 'out' ? 'You' : message.peer} · ${date.toLocaleString()}`;
-  item.querySelector('.message-body').textContent = message.text;
-  elements.messages.append(item);
-}
-
-function storeMessage(peer, direction, text, timestamp = Date.now(), unread = false) {
-  const key = contactKey(peer);
+function storeMessage(contact, direction, text, timestamp = Date.now(), unread = false) {
+  const key = contactKey(contact);
+  const repairedText = repairMojibake(text);
   state.history[key] ||= [];
-  state.history[key].push({ peer, direction, text, timestamp, unread });
-  if (state.history[key].length > 500) {
-    state.history[key] = state.history[key].slice(-500);
+  const last = state.history[key].at(-1);
+  if (last && last.direction === direction && last.text === repairedText && Math.abs(last.timestamp - timestamp) < 3000) {
+    last.unread = last.unread || unread;
+    saveHistory();
+    return;
   }
+  state.history[key].push({ direction, text: repairedText, timestamp, unread });
+  state.history[key] = state.history[key].slice(-250);
   saveHistory();
 }
 
@@ -399,28 +379,30 @@ async function login(event) {
   event.preventDefault();
   elements.loginButton.disabled = true;
   try {
-    state.apiKey = elements.apiKey.value.trim();
+    if (!state.apiKey) {
+      await loadClientConfig();
+    }
+
     state.screenName = normalizeName(elements.screenName.value);
-    localStorage.setItem(`${STORAGE_PREFIX}.apiKey`, state.apiKey);
     localStorage.setItem(`${STORAGE_PREFIX}.screenName`, state.screenName);
 
-    setStatus('Authenticating…', 'offline');
+    setStatus('Входим…');
     const loginPayload = await postJSON('/auth/clientLogin', {
       username: state.screenName,
       password: elements.password.value,
     });
     state.token = responseData(loginPayload).token?.a;
     if (!state.token) {
-      throw new Error('Login response did not include an auth token.');
+      throw new Error('Сервер не вернул токен входа.');
     }
 
-    setStatus('Starting session…', 'offline');
+    setStatus('Подключаемся…');
     const sessionPayload = await getJSON('/aim/startSession', {
       k: state.apiKey,
       a: state.token,
       events: 'myInfo,buddylist,presence,im,sentIM,typing,offlineIM,sessionEnded',
-      clientName: 'Open OSCAR Web Client',
-      clientVersion: '2',
+      clientName: 'Open OSCAR ICQ Web',
+      clientVersion: '3',
       sessionTimeout: '1800',
     });
 
@@ -429,16 +411,15 @@ async function login(event) {
     setSignedIn(responseData(sessionPayload));
     try {
       await refreshContacts(false);
-    } catch (error) {
-      logEvent('refresh contacts warning', error.message, true);
+    } catch {
+      // Initial buddy-list refresh is best effort; event polling will keep the UI current.
     }
     state.polling = true;
     pollEvents();
-    showToast('Signed in successfully.');
+    showToast('Вы вошли.');
   } catch (error) {
-    setSignedOut('Sign-in failed');
+    setSignedOut('Ошибка входа');
     showToast(error.message, true);
-    logEvent('login error', error.message, true);
   } finally {
     elements.loginButton.disabled = false;
   }
@@ -455,7 +436,7 @@ async function refreshContacts(showNotice = false) {
   mergeBuddyGroups(responseData(payload).groups || []);
   renderContacts();
   if (showNotice) {
-    showToast('Contacts refreshed.');
+    showToast('Контакты обновлены.');
   }
 }
 
@@ -472,7 +453,6 @@ async function pollEvents() {
       const payload = await readAPIResponse(response);
       const data = responseData(payload);
       state.lastSeqNum = data.lastSeqNum ?? state.lastSeqNum;
-      elements.lastSequence.textContent = String(state.lastSeqNum);
       for (const event of data.events || []) {
         handleServerEvent(event);
       }
@@ -480,8 +460,7 @@ async function pollEvents() {
       if (!state.polling || error.name === 'AbortError') {
         return;
       }
-      logEvent('poll error', error.message, true);
-      showToast(`Event polling failed: ${error.message}`, true);
+      showToast(`Связь прервана: ${error.message}`, true);
       await new Promise((resolve) => setTimeout(resolve, 2500));
     }
   }
@@ -494,15 +473,12 @@ function stopPolling() {
 }
 
 function handleServerEvent(event) {
-  logEvent(event.type || 'event', event);
   if (event.seqNum) {
     state.lastSeqNum = Math.max(state.lastSeqNum, event.seqNum);
-    elements.lastSequence.textContent = String(state.lastSeqNum);
   }
 
   if (event.type === 'presence') {
-    const data = event.data || {};
-    const contact = contactFromBuddy(data);
+    const contact = contactFromBuddy(event.data || {});
     if (contact) {
       upsertContact(contact);
       renderContacts();
@@ -549,7 +525,7 @@ function handleServerEvent(event) {
   }
 
   if (event.type === 'sessionEnded') {
-    setSignedOut('Session ended');
+    setSignedOut('Сессия завершена');
   }
 }
 
@@ -565,13 +541,10 @@ async function updateOwnPresence() {
       state: apiState,
     });
     state.presenceState = wanted;
-    elements.sessionSummary.textContent = `${state.screenName} · ${wanted}`;
-    setStatus(`${wanted === 'offline' ? 'Invisible' : 'Online'} as ${state.screenName}`, wanted === 'offline' ? 'offline' : 'online');
-    logEvent('presence/setState', { state: wanted, apiState });
+    elements.sessionSummary.textContent = `${state.screenName} · ${wanted === 'offline' ? 'невидимый' : 'в сети'}`;
   } catch (error) {
     elements.presenceState.value = state.presenceState;
-    showToast(`Could not change status: ${error.message}`, true);
-    logEvent('presence error', error.message, true);
+    showToast(`Не удалось изменить статус: ${error.message}`, true);
   }
 }
 
@@ -593,11 +566,10 @@ async function addContact(event) {
     elements.contactName.value = '';
     renderContacts();
     selectContact(buddy);
-    showToast(data.resultCode === 'alreadyExists' ? 'Contact already exists.' : 'Contact added.');
+    showToast(data.resultCode === 'alreadyExists' ? 'Контакт уже есть.' : 'Контакт добавлен.');
     await refreshContacts(false);
   } catch (error) {
-    showToast(`Contact was not added: ${error.message}`, true);
-    logEvent('add contact error', error.message, true);
+    showToast(`Контакт не добавлен: ${error.message}`, true);
   }
 }
 
@@ -611,17 +583,18 @@ async function sendMessage(event) {
 
   elements.sendButton.disabled = true;
   try {
-    const payload = await getJSON('/im/sendIM', {
+    await getJSON('/im/sendIM', {
       aimsid: state.aimsid,
       t: recipient,
       message,
       offlineIM: '1',
     });
+    storeMessage(recipient, 'out', message);
+    renderContacts();
+    renderConversation();
     elements.messageText.value = '';
-    logEvent('sendIM', responseData(payload));
   } catch (error) {
-    showToast(`Message not sent: ${error.message}`, true);
-    logEvent('sendIM error', error.message, true);
+    showToast(`Сообщение не отправлено: ${error.message}`, true);
   } finally {
     elements.sendButton.disabled = !state.selectedContact || !state.aimsid;
   }
@@ -635,7 +608,7 @@ function clearCurrentHistory() {
   saveHistory();
   renderContacts();
   renderConversation();
-  showToast('Conversation history cleared.');
+  showToast('История очищена.');
 }
 
 async function logout() {
@@ -646,8 +619,54 @@ async function logout() {
   }
   try {
     await getJSON('/aim/endSession', { aimsid });
-    showToast('Signed out.');
-  } catch (error) {
-    logEvent('endSession warning', error.message, true);
+    showToast('Вы вышли.');
+  } catch {
+    // Ignore logout races: the local session has already been cleared.
   }
+}
+
+function repairMojibake(text) {
+  if (typeof text !== 'string' || !/[ÐÑРС]/.test(text)) {
+    return text;
+  }
+
+  const bytes = [];
+  for (const char of text) {
+    const byte = windows1251Byte(char);
+    if (byte === null) {
+      return text;
+    }
+    bytes.push(byte);
+  }
+
+  try {
+    const decoded = new TextDecoder('utf-8', { fatal: true }).decode(new Uint8Array(bytes));
+    const originalCyrillic = (text.match(/[А-Яа-яЁё]/g) || []).length;
+    const decodedCyrillic = (decoded.match(/[А-Яа-яЁё]/g) || []).length;
+    return decodedCyrillic > originalCyrillic ? decoded : text;
+  } catch {
+    return text;
+  }
+}
+
+function windows1251Byte(char) {
+  const code = char.codePointAt(0);
+  if (code <= 0x7f) {
+    return code;
+  }
+  if (code >= 0x0410 && code <= 0x044f) {
+    return code - 0x0410 + 0xc0;
+  }
+
+  const special = new Map([
+    ['Ђ', 0x80], ['Ѓ', 0x81], ['‚', 0x82], ['ѓ', 0x83], ['„', 0x84], ['…', 0x85], ['†', 0x86], ['‡', 0x87],
+    ['€', 0x88], ['‰', 0x89], ['Љ', 0x8a], ['‹', 0x8b], ['Њ', 0x8c], ['Ќ', 0x8d], ['Ћ', 0x8e], ['Џ', 0x8f],
+    ['ђ', 0x90], ['‘', 0x91], ['’', 0x92], ['“', 0x93], ['”', 0x94], ['•', 0x95], ['–', 0x96], ['—', 0x97],
+    ['™', 0x99], ['љ', 0x9a], ['›', 0x9b], ['њ', 0x9c], ['ќ', 0x9d], ['ћ', 0x9e], ['џ', 0x9f], [' ', 0xa0],
+    ['Ў', 0xa1], ['ў', 0xa2], ['Ј', 0xa3], ['¤', 0xa4], ['Ґ', 0xa5], ['¦', 0xa6], ['§', 0xa7], ['Ё', 0xa8],
+    ['©', 0xa9], ['Є', 0xaa], ['«', 0xab], ['¬', 0xac], ['­', 0xad], ['®', 0xae], ['Ї', 0xaf], ['°', 0xb0],
+    ['±', 0xb1], ['І', 0xb2], ['і', 0xb3], ['ґ', 0xb4], ['µ', 0xb5], ['¶', 0xb6], ['·', 0xb7], ['ё', 0xb8],
+    ['№', 0xb9], ['є', 0xba], ['»', 0xbb], ['ј', 0xbc], ['Ѕ', 0xbd], ['ѕ', 0xbe], ['ї', 0xbf],
+  ]);
+  return special.get(char) ?? null;
 }
