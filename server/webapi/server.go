@@ -107,7 +107,7 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 			w.Header().Set("Content-Type", "application/json; charset=utf-8")
 			_, _ = fmt.Fprintf(w, `{"apiKey":%q}`, webClientAPIKey)
 		})
-		mux.Handle("GET /client/", http.StripPrefix("/client/", http.FileServerFS(webClientFiles())))
+		mux.Handle("GET /client/", webClientHandler())
 
 		// Public endpoint (no auth required for hello world)
 		mux.HandleFunc("GET /", handler.GetHelloWorldHandler)
