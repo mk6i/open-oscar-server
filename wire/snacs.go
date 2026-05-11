@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode/utf16"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 )
@@ -911,6 +913,11 @@ func ICBMFragmentList(text string) ([]ICBMCh1Fragment, error) {
 		Language: 0, // not clear what this means, but it works
 		Text:     []byte(text),
 	}
+	if !isASCII(text) {
+		msg.Charset = ICBMMessageEncodingUnicode
+		msg.Text = encodeUCS2BE(text)
+	}
+
 	msgBuf := bytes.Buffer{}
 	if err := MarshalBE(msg, &msgBuf); err != nil {
 		return nil, fmt.Errorf("unable to marshal ICBM message: %w", err)
@@ -930,13 +937,30 @@ func ICBMFragmentList(text string) ([]ICBMCh1Fragment, error) {
 	}, nil
 }
 
+func isASCII(text string) bool {
+	for _, r := range text {
+		if r > utf8.RuneSelf {
+			return false
+		}
+	}
+	return true
+}
+
+func encodeUCS2BE(text string) []byte {
+	encoded := utf16.Encode([]rune(text))
+	data := make([]byte, len(encoded)*2)
+	for i, r := range encoded {
+		binary.BigEndian.PutUint16(data[i*2:], r)
+	}
+	return data
+}
+
 // UnmarshalICBMMessageText extracts message text from an ICBM fragment list.
 // Param b is a slice from TLV wire.ICBMTLVAOLIMData.
 //
-// The message charset is respected: UCS-2 BE (0x0002) is decoded to UTF-8,
-// while ASCII (0x0000) and Latin-1 (0x0003) are returned as-is since they are
-// valid subsets of UTF-8 for the 7-bit range and Go handles Latin-1 bytes
-// transparently.
+// The message charset is respected: UCS-2 BE (0x0002) is decoded to UTF-8.
+// ASCII (0x0000) and Latin-1 (0x0003) payloads are returned directly when
+// they already contain valid UTF-8 bytes.
 func UnmarshalICBMMessageText(b []byte) (string, error) {
 	var frags []ICBMCh1Fragment
 	if err := UnmarshalBE(&frags, bytes.NewBuffer(b)); err != nil {
@@ -953,11 +977,40 @@ func UnmarshalICBMMessageText(b []byte) (string, error) {
 			if msg.Charset == ICBMMessageEncodingUnicode {
 				return decodeUCS2BE(msg.Text), nil
 			}
-			return string(msg.Text), nil
+			if utf8.Valid(msg.Text) {
+				return string(msg.Text), nil
+			}
+			return decodeWindows1251(msg.Text), nil
 		}
 	}
 
 	return "", errors.New("unable to find message fragment")
+}
+
+func decodeWindows1251(data []byte) string {
+	runes := make([]rune, 0, len(data))
+	for _, b := range data {
+		switch {
+		case b < 0x80:
+			runes = append(runes, rune(b))
+		case b >= 0xC0:
+			runes = append(runes, rune(0x0410+uint16(b)-0xC0))
+		default:
+			runes = append(runes, windows1251Table[b-0x80])
+		}
+	}
+	return string(runes)
+}
+
+var windows1251Table = [...]rune{
+	0x0402, 0x0403, 0x201A, 0x0453, 0x201E, 0x2026, 0x2020, 0x2021,
+	0x20AC, 0x2030, 0x0409, 0x2039, 0x040A, 0x040C, 0x040B, 0x040F,
+	0x0452, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2013, 0x2014,
+	0xFFFD, 0x2122, 0x0459, 0x203A, 0x045A, 0x045C, 0x045B, 0x045F,
+	0x00A0, 0x040E, 0x045E, 0x0408, 0x00A4, 0x0490, 0x00A6, 0x00A7,
+	0x0401, 0x00A9, 0x0404, 0x00AB, 0x00AC, 0x00AD, 0x00AE, 0x0407,
+	0x00B0, 0x00B1, 0x0406, 0x0456, 0x0491, 0x00B5, 0x00B6, 0x00B7,
+	0x0451, 0x2116, 0x0454, 0x00BB, 0x0458, 0x0405, 0x0455, 0x0457,
 }
 
 // decodeUCS2BE converts UCS-2 big-endian encoded bytes to a Go UTF-8 string.
