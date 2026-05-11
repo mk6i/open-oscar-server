@@ -332,9 +332,8 @@ func (m *AuthMiddleware) isOriginAllowed(origin string, allowedOrigins []string)
 			}
 		}
 
-		// Allow all origins (development only)
+		// Allow all origins for session-authenticated browser clients.
 		if allowed == "*" {
-			m.Logger.Warn("wildcard origin (*) used - should not be used in production")
 			return true
 		}
 	}

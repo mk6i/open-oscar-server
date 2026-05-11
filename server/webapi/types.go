@@ -124,6 +124,9 @@ type FeedbagManager interface {
 	InsertItem(ctx context.Context, screenName state.IdentScreenName, item wire.FeedbagItem) error
 	UpdateItem(ctx context.Context, screenName state.IdentScreenName, item wire.FeedbagItem) error
 	DeleteItem(ctx context.Context, screenName state.IdentScreenName, item wire.FeedbagItem) error
+	AddBuddy(ctx context.Context, me state.IdentScreenName, them state.IdentScreenName) error
+	RemoveBuddy(ctx context.Context, me state.IdentScreenName, them state.IdentScreenName) error
+	DenyBuddy(ctx context.Context, me state.IdentScreenName, them state.IdentScreenName) error
 }
 
 // Phase 2: Additional interfaces for messaging and presence

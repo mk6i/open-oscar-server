@@ -415,3 +415,51 @@ func TestFeedbagItem_RemoveOrderMembers(t *testing.T) {
 		assert.Equal(t, []uint16{5, 10}, order)
 	})
 }
+
+func TestICBMFragmentList_RoundTripsUnicodeText(t *testing.T) {
+	input := "ииииииии"
+
+	frags, err := ICBMFragmentList(input)
+	assert.NoError(t, err)
+	assert.Len(t, frags, 2)
+
+	msg := ICBMCh1Message{}
+	err = UnmarshalBE(&msg, bytes.NewBuffer(frags[1].Payload))
+	assert.NoError(t, err)
+	assert.Equal(t, ICBMMessageEncodingUnicode, msg.Charset)
+
+	payload, err := MarshalICBMFragmentList(frags)
+	assert.NoError(t, err)
+
+	got, err := UnmarshalICBMMessageText(payload)
+	assert.NoError(t, err)
+	assert.Equal(t, input, got)
+}
+
+func TestICBMFragmentList_KeepsASCIIEncodingForASCIIText(t *testing.T) {
+	frags, err := ICBMFragmentList("hello")
+	assert.NoError(t, err)
+	assert.Len(t, frags, 2)
+
+	msg := ICBMCh1Message{}
+	err = UnmarshalBE(&msg, bytes.NewBuffer(frags[1].Payload))
+	assert.NoError(t, err)
+	assert.Equal(t, ICBMMessageEncodingASCII, msg.Charset)
+}
+
+func TestUnmarshalICBMMessageText_DecodesWindows1251Fallback(t *testing.T) {
+	msg := ICBMCh1Message{
+		Charset:  ICBMMessageEncodingASCII,
+		Language: 0,
+		Text:     []byte{0xef, 0xf0, 0xe8, 0xe2, 0xe5, 0xf2}, // "привет" in Windows-1251
+	}
+	msgBuf := bytes.Buffer{}
+	assert.NoError(t, MarshalBE(msg, &msgBuf))
+
+	payload, err := MarshalICBMFragmentList([]ICBMCh1Fragment{{ID: 1, Version: 1, Payload: msgBuf.Bytes()}})
+	assert.NoError(t, err)
+
+	got, err := UnmarshalICBMMessageText(payload)
+	assert.NoError(t, err)
+	assert.Equal(t, "привет", got)
+}
