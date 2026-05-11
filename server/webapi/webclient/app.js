@@ -207,8 +207,9 @@ function setSignedIn(data) {
   elements.loginPanel.hidden = true;
   elements.clientPanel.hidden = false;
   elements.sessionSummary.textContent = `${state.screenName} · в сети`;
+  setStatus(`В сети: ${state.screenName}`);
   loadHistory();
-  mergeBuddyGroups(data.events?.buddylist?.groups || []);
+  mergeBuddyGroups(data.events?.buddylist?.groups || data.myInfo?.buddylist?.groups || []);
   renderContacts();
   renderConversation();
 }
@@ -433,7 +434,8 @@ async function refreshContacts(showNotice = false) {
     aimsid: state.aimsid,
     bl: '1',
   });
-  mergeBuddyGroups(responseData(payload).groups || []);
+  const data = responseData(payload);
+  mergeBuddyGroups(data.groups || data.events?.buddylist?.groups || []);
   renderContacts();
   if (showNotice) {
     showToast('Контакты обновлены.');
