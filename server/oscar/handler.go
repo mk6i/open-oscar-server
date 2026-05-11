@@ -500,7 +500,16 @@ func (rt Handler) ICBMOfflineRetrieve(ctx context.Context, instance *state.Sessi
 	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
 }
 
-func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) (err error) {
+	defer func() {
+		if err != nil {
+			rt.Logger.Warn("ICQDBQuery ignored error",
+				"error", err,
+			)
+			err = nil
+		}
+	}()
+
 	inBody := wire.SNAC_0x15_0x02_BQuery{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
@@ -554,7 +563,10 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 				return err
 			}
 			if err := rt.ICQService.XMLReqData(ctx, instance, req, icqMD.Seq); err != nil {
-				return err
+				rt.Logger.Warn("ICQDBQuery ignored service error",
+					"error", err,
+				)
+				return nil
 			}
 		case wire.ICQDBQueryMetaReqSetPermissions:
 			req := wire.ICQ_0x07D0_0x0424_DBQueryMetaReqSetPermissions{}
@@ -562,7 +574,10 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 				return err
 			}
 			if err := rt.ICQService.SetPermissions(ctx, instance, req, icqMD.Seq); err != nil {
-				return err
+				rt.Logger.Warn("ICQDBQuery ignored service error",
+					"error", err,
+				)
+				return nil
 			}
 		case wire.ICQDBQueryMetaReqSetICQPhone:
 			req := wire.ICQ_0x07D0_0x0654_DBQueryMetaReqSetICQPhone{}
@@ -570,7 +585,10 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 				return err
 			}
 			if err := rt.ICQService.SetICQPhone(ctx, instance, req, icqMD.Seq); err != nil {
-				return err
+				rt.Logger.Warn("ICQDBQuery ignored service error",
+					"error", err,
+				)
+				return nil
 			}
 		case wire.ICQDBQueryMetaReqSearchByUIN:
 			req := wire.ICQ_0x07D0_0x051F_DBQueryMetaReqSearchByUIN{}
@@ -600,7 +618,10 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 				return err
 			}
 			if err := rt.ICQService.FindByICQEmail(ctx, instance, req, icqMD.Seq); err != nil {
-				return err
+				rt.Logger.Warn("ICQDBQuery ignored service error",
+					"error", err,
+				)
+				return nil
 			}
 		case wire.ICQDBQueryMetaReqSearchByEmail3:
 			req := wire.ICQ_0x07D0_0x0573_DBQueryMetaReqSearchByEmail3{}
@@ -608,7 +629,10 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 				return err
 			}
 			if err := rt.ICQService.FindByEmail3(ctx, instance, req, icqMD.Seq); err != nil {
-				return err
+				rt.Logger.Warn("ICQDBQuery ignored service error",
+					"error", err,
+				)
+				return nil
 			}
 		case wire.ICQDBQueryMetaReqSearchByDetails:
 			req := wire.ICQ_0x07D0_0x0515_DBQueryMetaReqSearchByDetails{}
@@ -616,7 +640,10 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 				return err
 			}
 			if err := rt.ICQService.FindByICQName(ctx, instance, req, icqMD.Seq); err != nil {
-				return err
+				rt.Logger.Warn("ICQDBQuery ignored service error",
+					"error", err,
+				)
+				return nil
 			}
 		case wire.ICQDBQueryMetaReqSearchWhitePages:
 			req := wire.ICQ_0x07D0_0x0533_DBQueryMetaReqSearchWhitePages{}
@@ -624,7 +651,10 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 				return err
 			}
 			if err := rt.ICQService.FindByICQInterests(ctx, instance, req, icqMD.Seq); err != nil {
-				return err
+				rt.Logger.Warn("ICQDBQuery ignored service error",
+					"error", err,
+				)
+				return nil
 			}
 		case wire.ICQDBQueryMetaReqSearchWhitePages2:
 			req := wire.ICQ_0x07D0_0x055F_DBQueryMetaReqSearchWhitePages2{}
@@ -632,7 +662,10 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 				return err
 			}
 			if err := rt.ICQService.FindByWhitePages2(ctx, instance, req, icqMD.Seq); err != nil {
-				return err
+				rt.Logger.Warn("ICQDBQuery ignored service error",
+					"error", err,
+				)
+				return nil
 			}
 		case wire.ICQDBQueryMetaReqSetBasicInfo:
 			req := wire.ICQ_0x07D0_0x03EA_DBQueryMetaReqSetBasicInfo{}
@@ -640,7 +673,10 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 				return err
 			}
 			if err := rt.ICQService.SetBasicInfo(ctx, instance, req, icqMD.Seq); err != nil {
-				return err
+				rt.Logger.Warn("ICQDBQuery ignored service error",
+					"error", err,
+				)
+				return nil
 			}
 		case wire.ICQDBQueryMetaReqSetWorkInfo:
 			req := wire.ICQ_0x07D0_0x03F3_DBQueryMetaReqSetWorkInfo{}
@@ -648,7 +684,10 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 				return err
 			}
 			if err := rt.ICQService.SetWorkInfo(ctx, instance, req, icqMD.Seq); err != nil {
-				return err
+				rt.Logger.Warn("ICQDBQuery ignored service error",
+					"error", err,
+				)
+				return nil
 			}
 		case wire.ICQDBQueryMetaReqSetMoreInfo:
 			req := wire.ICQ_0x07D0_0x03FD_DBQueryMetaReqSetMoreInfo{}
@@ -656,7 +695,10 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 				return err
 			}
 			if err := rt.ICQService.SetMoreInfo(ctx, instance, req, icqMD.Seq); err != nil {
-				return err
+				rt.Logger.Warn("ICQDBQuery ignored service error",
+					"error", err,
+				)
+				return nil
 			}
 		case wire.ICQDBQueryMetaReqSetNotes:
 			req := wire.ICQ_0x07D0_0x0406_DBQueryMetaReqSetNotes{}
@@ -664,7 +706,10 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 				return err
 			}
 			if err := rt.ICQService.SetUserNotes(ctx, instance, req, icqMD.Seq); err != nil {
-				return err
+				rt.Logger.Warn("ICQDBQuery ignored service error",
+					"error", err,
+				)
+				return nil
 			}
 		case wire.ICQDBQueryMetaReqSetEmails:
 			req := wire.ICQ_0x07D0_0x040B_DBQueryMetaReqSetEmails{}
@@ -672,7 +717,10 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 				return err
 			}
 			if err := rt.ICQService.SetEmails(ctx, instance, req, icqMD.Seq); err != nil {
-				return err
+				rt.Logger.Warn("ICQDBQuery ignored service error",
+					"error", err,
+				)
+				return nil
 			}
 		case wire.ICQDBQueryMetaReqSetInterests:
 			req := wire.ICQ_0x07D0_0x0410_DBQueryMetaReqSetInterests{}
@@ -680,7 +728,10 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 				return err
 			}
 			if err := rt.ICQService.SetInterests(ctx, instance, req, icqMD.Seq); err != nil {
-				return err
+				rt.Logger.Warn("ICQDBQuery ignored service error",
+					"error", err,
+				)
+				return nil
 			}
 		case wire.ICQDBQueryMetaReqSetAffiliations:
 			req := wire.ICQ_0x07D0_0x041A_DBQueryMetaReqSetAffiliations{}
@@ -688,7 +739,10 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 				return err
 			}
 			if err := rt.ICQService.SetAffiliations(ctx, instance, req, icqMD.Seq); err != nil {
-				return err
+				rt.Logger.Warn("ICQDBQuery ignored service error",
+					"error", err,
+				)
+				return nil
 			}
 		case wire.ICQDBQueryMetaReqStat0a8c,
 			wire.ICQDBQueryMetaReqStat0a96,
@@ -705,13 +759,21 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 		case wire.ICQDBQueryMetaReqDirectoryQuery, wire.ICQDBQueryMetaReqDirectoryUpdate:
 			rt.Logger.Debug("got a directory query/update request, not implemented yet")
 		default:
-			return fmt.Errorf("%w: %X", errUnknownICQMetaReqSubType, icqMD.Optional.ReqSubType)
+			rt.Logger.Warn("unsupported ICQ meta subtype ignored",
+				"req_subtype", fmt.Sprintf("%04X", icqMD.Optional.ReqSubType),
+			)
+			return nil
 		}
+
 	default:
-		return fmt.Errorf("%w: %X", errUnknownICQMetaReqType, icqMD.ReqType)
+		rt.Logger.Warn("unsupported ICQ meta request ignored",
+			"req_type", fmt.Sprintf("%04X", icqMD.ReqType),
+		)
+		return nil
 	}
 
 	return nil
+
 }
 
 func (rt Handler) LocateRightsQuery(ctx context.Context, _ *state.SessionInstance, inFrame wire.SNACFrame, _ io.Reader, rw ResponseWriter) error {
