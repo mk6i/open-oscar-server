@@ -84,6 +84,8 @@ func TestPresenceHandler_GetPresence(t *testing.T) {
 						{ItemID: 1, ClassID: wire.FeedbagClassIdGroup, Name: "Friends", GroupID: 0},
 						{ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, Name: "buddy1", GroupID: 1},
 					}, nil)
+				fr.On("RelationshipsByUser", mock.Anything, state.NewIdentScreenName("testuser")).
+					Return([]state.IdentScreenName{}, nil)
 				rf.On("Relationship", mock.Anything, state.NewIdentScreenName("testuser"), state.NewIdentScreenName("buddy1")).
 					Return(state.Relationship{}, nil)
 				sr.On("RetrieveSession", state.NewIdentScreenName("buddy1")).

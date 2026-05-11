@@ -950,6 +950,37 @@ func clearClientSidePDFlags(ctx context.Context, tx *sql.Tx, me IdentScreenName,
 	return err
 }
 
+// ClientSideBuddies returns the users on the user's legacy client-side buddy list.
+func (f SQLiteUserStore) ClientSideBuddies(ctx context.Context, me IdentScreenName) ([]IdentScreenName, error) {
+	q := `
+		SELECT them
+		FROM clientSideBuddyList
+		WHERE me = ?
+		  AND isBuddy IS TRUE
+		ORDER BY them
+	`
+	rows, err := f.db.QueryContext(ctx, q, me.String())
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		_ = rows.Close()
+	}()
+
+	buddies := []IdentScreenName{}
+	for rows.Next() {
+		var buddy string
+		if err := rows.Scan(&buddy); err != nil {
+			return nil, err
+		}
+		buddies = append(buddies, NewIdentScreenName(buddy))
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return buddies, nil
+}
+
 func (f SQLiteUserStore) AddBuddy(ctx context.Context, me IdentScreenName, them IdentScreenName) error {
 	q := `
 		INSERT INTO clientSideBuddyList (me, them, isBuddy)

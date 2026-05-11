@@ -81,6 +81,31 @@ func (m *BuddyListManager) GetBuddyListForUser(ctx context.Context, screenName s
 		}
 	}
 
+	seenBuddies := make(map[state.IdentScreenName]bool)
+	for _, buddyItems := range buddyGroupMap {
+		for _, buddyItem := range buddyItems {
+			seenBuddies[state.NewIdentScreenName(buddyItem.Name)] = true
+		}
+	}
+
+	legacyBuddies, err := m.feedbagRetriever.RelationshipsByUser(ctx, screenName)
+	if err != nil {
+		m.logger.WarnContext(ctx, "failed to retrieve legacy buddy list", "err", err.Error())
+	} else {
+		for _, buddyName := range legacyBuddies {
+			if buddyName == screenName || seenBuddies[buddyName] {
+				continue
+			}
+			groupMap[0] = "Buddies"
+			buddyGroupMap[0] = append(buddyGroupMap[0], wire.FeedbagItem{
+				ClassID: wire.FeedbagClassIdBuddy,
+				Name:    buddyName.String(),
+				GroupID: 0,
+			})
+			seenBuddies[buddyName] = true
+		}
+	}
+
 	// Convert to WebAPI format
 	var groups []WebAPIBuddyGroup
 

@@ -1,115 +1,101 @@
 <!doctype html>
-<html lang="en">
+<html lang="ru">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Open OSCAR Web Client</title>
+  <title>ICQ Web</title>
+  <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <main class="app-shell">
-    <section class="topbar" aria-labelledby="app-title">
-      <div>
-        <p class="eyebrow">Open OSCAR Server</p>
-        <h1 id="app-title">Web ICQ/AIM Client</h1>
-      </div>
-      <div class="topbar-actions">
-        <span id="connection-status" class="status-pill offline" role="status">Signed out</span>
-        <button id="logout-button" class="ghost" type="button" hidden>Sign out</button>
-      </div>
-    </section>
+    <section id="login-panel" class="login-screen" aria-labelledby="login-title">
+      <form id="login-form" class="login-card">
+        <div class="app-icon" aria-hidden="true">✿</div>
+        <p class="eyebrow">Open OSCAR</p>
+        <h1 id="login-title">ICQ Web</h1>
+        <p class="login-subtitle">Войдите по UIN и паролю, чтобы перейти к общению.</p>
 
-    <section id="login-panel" class="login-card" aria-labelledby="login-title">
-      <div class="login-copy">
-        <h2 id="login-title">Sign in to chat</h2>
-        <p>Use a Web API key plus your screen name/UIN and password. In development, <code>DISABLE_AUTH=true</code> can auto-create accounts.</p>
-      </div>
-      <form id="login-form" class="login-form">
         <label>
-          Web API key
-          <input id="api-key" name="api-key" type="password" autocomplete="off" required placeholder="dev key from webapi_keygen">
+          UIN
+          <input id="screen-name" name="screen-name" autocomplete="username" inputmode="numeric" required placeholder="123456">
         </label>
         <label>
-          Screen name / UIN
-          <input id="screen-name" name="screen-name" autocomplete="username" required placeholder="alice">
-        </label>
-        <label>
-          Password
+          Пароль
           <input id="password" name="password" type="password" autocomplete="current-password" required placeholder="••••••••">
         </label>
-        <button id="login-button" type="submit">Sign in</button>
+        <input id="api-key" name="api-key" type="hidden">
+        <button id="login-button" type="submit">Войти</button>
+        <p id="connection-status" class="login-status" role="status">Ожидание входа</p>
       </form>
-      <details class="hint">
-        <summary>How do I get a Web API key?</summary>
-        <p>Start the WebAPI with <code>ENABLE_WEBAPI=1</code>, then create a key with <code>cmd/webapi_keygen</code> or the management API.</p>
-      </details>
     </section>
 
     <section id="client-panel" class="client-layout" hidden>
       <aside class="panel contacts-panel" aria-labelledby="contacts-title">
-        <div class="panel-header">
+        <div class="panel-header compact">
           <div>
-            <h2 id="contacts-title">Contacts</h2>
-            <p id="session-summary">Not connected</p>
+            <p class="eyebrow">ICQ Web</p>
+            <h2 id="contacts-title">Контакты</h2>
+            <p id="session-summary">Не подключено</p>
           </div>
-          <button id="refresh-contacts" class="icon-button" type="button" title="Refresh contacts" aria-label="Refresh contacts">↻</button>
+          <button id="logout-button" class="logout-button inline-flex items-center justify-center uppercase tracking-widest transition-colors" type="button">ВЫХОД</button>
         </div>
 
-        <label class="presence-control">
-          My status
-          <select id="presence-state">
-            <option value="online">Online</option>
-            <option value="offline">Offline / invisible</option>
+        <div class="contact-toolbar">
+          <button id="refresh-contacts" class="icon-button" type="button" title="Обновить контакты" aria-label="Обновить контакты">↻</button>
+          <select id="presence-state" class="tailwind-select rounded-2xl border border-gray-700 bg-gray-900 text-gray-100 shadow-sm" aria-label="Мой статус">
+            <option value="online">В сети</option>
+            <option value="away">Отошёл</option>
+            <option value="na">Недоступен</option>
+            <option value="occupied">Занят</option>
+            <option value="dnd">Не беспокоить</option>
+            <option value="freechat">Готов поболтать</option>
+            <option value="offline">Невидимый</option>
           </select>
-        </label>
+        </div>
 
         <form id="add-contact-form" class="add-contact-form">
-          <input id="contact-name" type="text" autocomplete="off" placeholder="screen name or UIN" aria-label="Contact screen name">
-          <button type="submit">Add</button>
+          <input id="contact-name" type="text" autocomplete="off" inputmode="numeric" placeholder="UIN контакта" aria-label="UIN контакта">
+          <button type="submit">+</button>
         </form>
 
-        <div class="contact-filter">
-          <input id="contact-filter" type="search" autocomplete="off" placeholder="Search contacts" aria-label="Search contacts">
-        </div>
-
+        <input id="contact-filter" class="contact-filter" type="search" autocomplete="off" placeholder="Поиск" aria-label="Поиск контактов">
         <ol id="contact-list" class="contact-list" aria-live="polite"></ol>
       </aside>
 
       <section class="panel chat-panel" aria-labelledby="chat-title">
         <div class="chat-header">
           <div>
-            <h2 id="chat-title">Choose a contact</h2>
-            <p id="chat-subtitle">Select someone from the contact list to start chatting.</p>
+            <h2 id="chat-title">Выберите контакт</h2>
+            <p id="chat-subtitle">История сообщений появится здесь.</p>
           </div>
-          <button id="clear-history" class="ghost" type="button" disabled>Clear history</button>
+          <button id="clear-history" class="ghost" type="button" disabled>Очистить</button>
         </div>
 
         <ol id="messages" class="messages" aria-live="polite"></ol>
 
         <form id="message-form" class="composer">
-          <textarea id="message-text" rows="3" placeholder="Type a message…" disabled required></textarea>
-          <button id="send-button" type="submit" disabled>Send</button>
+          <textarea id="message-text" rows="2" placeholder="Сообщение (Ctrl+Enter — отправить)" disabled required></textarea>
+          <button id="emoji-button" class="emoji-toggle" type="button" title="Смайлы" aria-label="Смайлы">☺</button>
+          <button id="send-button" type="submit" disabled>➤</button>
+          <div id="emoji-picker" class="emoji-picker" hidden></div>
         </form>
       </section>
 
-      <aside class="panel info-panel" aria-labelledby="info-title">
-        <div class="panel-header">
-          <div>
-            <h2 id="info-title">Details</h2>
-            <p>Session and recent activity</p>
-          </div>
-        </div>
-        <dl class="facts">
-          <div><dt>Signed in as</dt><dd id="session-screen-name">—</dd></div>
-          <div><dt>AIM SID</dt><dd id="session-id">—</dd></div>
-          <div><dt>Sequence</dt><dd id="last-sequence">0</dd></div>
-          <div><dt>Selected contact</dt><dd id="selected-contact">—</dd></div>
-        </dl>
-        <div class="event-header">
-          <h3>Event log</h3>
-          <button id="clear-events" class="ghost small" type="button">Clear</button>
-        </div>
-        <ol id="event-log" class="event-log" aria-live="polite"></ol>
+      <aside class="panel side-panel" aria-label="Дополнительная панель">
+        <section class="self-card">
+          <button id="avatar-button" class="avatar-large" type="button" title="Загрузить аватар" aria-label="Загрузить аватар">✿</button>
+          <input id="avatar-input" type="file" accept="image/png,image/jpeg" hidden>
+          <h2 id="self-name">ICQ</h2>
+          <p>JPG/PNG до 256×256</p>
+        </section>
+        <section class="contact-actions" aria-labelledby="contact-actions-title">
+          <h3 id="contact-actions-title">Контакт</h3>
+          <p id="contact-actions-name">Выберите контакт</p>
+          <button id="rename-contact" type="button" disabled>Переименовать</button>
+          <button id="delete-contact" type="button" disabled>Удалить</button>
+          <button id="block-contact" type="button" disabled>Заблокировать</button>
+        </section>
       </aside>
     </section>
 
