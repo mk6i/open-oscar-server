@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode/utf16"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 )
@@ -911,6 +913,11 @@ func ICBMFragmentList(text string) ([]ICBMCh1Fragment, error) {
 		Language: 0, // not clear what this means, but it works
 		Text:     []byte(text),
 	}
+	if !isASCII(text) {
+		msg.Charset = ICBMMessageEncodingUnicode
+		msg.Text = encodeUCS2BE(text)
+	}
+
 	msgBuf := bytes.Buffer{}
 	if err := MarshalBE(msg, &msgBuf); err != nil {
 		return nil, fmt.Errorf("unable to marshal ICBM message: %w", err)
@@ -930,13 +937,30 @@ func ICBMFragmentList(text string) ([]ICBMCh1Fragment, error) {
 	}, nil
 }
 
+func isASCII(text string) bool {
+	for _, r := range text {
+		if r > utf8.RuneSelf {
+			return false
+		}
+	}
+	return true
+}
+
+func encodeUCS2BE(text string) []byte {
+	encoded := utf16.Encode([]rune(text))
+	data := make([]byte, len(encoded)*2)
+	for i, r := range encoded {
+		binary.BigEndian.PutUint16(data[i*2:], r)
+	}
+	return data
+}
+
 // UnmarshalICBMMessageText extracts message text from an ICBM fragment list.
 // Param b is a slice from TLV wire.ICBMTLVAOLIMData.
 //
-// The message charset is respected: UCS-2 BE (0x0002) is decoded to UTF-8,
-// while ASCII (0x0000) and Latin-1 (0x0003) are returned as-is since they are
-// valid subsets of UTF-8 for the 7-bit range and Go handles Latin-1 bytes
-// transparently.
+// The message charset is respected: UCS-2 BE (0x0002) is decoded to UTF-8.
+// ASCII (0x0000) and Latin-1 (0x0003) payloads are returned directly when
+// they already contain valid UTF-8 bytes.
 func UnmarshalICBMMessageText(b []byte) (string, error) {
 	var frags []ICBMCh1Fragment
 	if err := UnmarshalBE(&frags, bytes.NewBuffer(b)); err != nil {
@@ -953,7 +977,10 @@ func UnmarshalICBMMessageText(b []byte) (string, error) {
 			if msg.Charset == ICBMMessageEncodingUnicode {
 				return decodeUCS2BE(msg.Text), nil
 			}
-			return string(msg.Text), nil
+			if utf8.Valid(msg.Text) {
+				return string(msg.Text), nil
+			}
+			return string(bytes.Runes(msg.Text)), nil
 		}
 	}
 

@@ -14,7 +14,7 @@ import (
 	"github.com/mk6i/open-oscar-server/state"
 )
 
-func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyValidator middleware.APIKeyValidator, sessionManager *state.WebAPISessionManager) *Server {
+func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyValidator middleware.APIKeyValidator, sessionManager *state.WebAPISessionManager, webClientAPIKey string) *Server {
 	servers := make([]*http.Server, 0, len(listeners))
 
 	// Create authentication middleware
@@ -102,6 +102,10 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 		// Built-in static browser client for the Web AIM API.
 		mux.HandleFunc("GET /client", func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/client/", http.StatusMovedPermanently)
+		})
+		mux.HandleFunc("GET /client/config", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			_, _ = fmt.Fprintf(w, `{"apiKey":%q}`, webClientAPIKey)
 		})
 		mux.Handle("GET /client/", http.StripPrefix("/client/", http.FileServerFS(webClientFiles())))
 

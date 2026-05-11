@@ -36,6 +36,7 @@ func TestWebClientAppIncludesCoreChatFeatures(t *testing.T) {
 	require.NoError(t, err)
 	app := string(data)
 
+	assert.Contains(t, app, "/client/config")
 	assert.Contains(t, app, "/auth/clientLogin")
 	assert.Contains(t, app, "/presence/get")
 	assert.Contains(t, app, "/presence/setState")
