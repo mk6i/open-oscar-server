@@ -30,6 +30,9 @@ type FeedbagManager interface {
 	InsertItem(ctx context.Context, screenName state.IdentScreenName, item wire.FeedbagItem) error
 	UpdateItem(ctx context.Context, screenName state.IdentScreenName, item wire.FeedbagItem) error
 	DeleteItem(ctx context.Context, screenName state.IdentScreenName, item wire.FeedbagItem) error
+	AddBuddy(ctx context.Context, me state.IdentScreenName, them state.IdentScreenName) error
+	RemoveBuddy(ctx context.Context, me state.IdentScreenName, them state.IdentScreenName) error
+	DenyBuddy(ctx context.Context, me state.IdentScreenName, them state.IdentScreenName) error
 }
 
 // AddBuddy handles GET /buddylist/addBuddy requests.
@@ -107,6 +110,74 @@ func (h *BuddyListHandler) AddBuddy(w http.ResponseWriter, r *http.Request) {
 	)
 }
 
+// RemoveBuddy handles GET /buddylist/removeBuddy requests.
+func (h *BuddyListHandler) RemoveBuddy(w http.ResponseWriter, r *http.Request) {
+	h.updateBuddyRelationship(w, r, "remove", func(ctx context.Context, me, them state.IdentScreenName) error {
+		if err := h.deleteFeedbagBuddy(ctx, me, them); err != nil {
+			return err
+		}
+		return h.FeedbagManager.RemoveBuddy(ctx, me, them)
+	})
+}
+
+// BlockBuddy handles GET /buddylist/blockBuddy requests.
+func (h *BuddyListHandler) BlockBuddy(w http.ResponseWriter, r *http.Request) {
+	h.updateBuddyRelationship(w, r, "block", func(ctx context.Context, me, them state.IdentScreenName) error {
+		return h.FeedbagManager.DenyBuddy(ctx, me, them)
+	})
+}
+
+func (h *BuddyListHandler) updateBuddyRelationship(w http.ResponseWriter, r *http.Request, action string, fn func(context.Context, state.IdentScreenName, state.IdentScreenName) error) {
+	ctx := r.Context()
+	aimsid := r.URL.Query().Get("aimsid")
+	if aimsid == "" {
+		h.sendError(w, http.StatusBadRequest, "missing aimsid parameter")
+		return
+	}
+
+	session, err := h.SessionManager.GetSession(ctx, aimsid)
+	if err != nil {
+		h.sendError(w, http.StatusUnauthorized, "invalid or expired session")
+		return
+	}
+	_ = h.SessionManager.TouchSession(ctx, aimsid)
+
+	buddyName := strings.TrimSpace(r.URL.Query().Get("buddy"))
+	if buddyName == "" {
+		h.sendError(w, http.StatusBadRequest, "missing buddy parameter")
+		return
+	}
+
+	me := session.ScreenName.IdentScreenName()
+	them := state.NewIdentScreenName(buddyName)
+	if err := fn(ctx, me, them); err != nil {
+		h.Logger.ErrorContext(ctx, "failed to update buddy relationship", "action", action, "buddy", buddyName, "err", err.Error())
+		h.sendError(w, http.StatusInternalServerError, "failed to update buddy")
+		return
+	}
+
+	resp := BaseResponse{}
+	resp.Response.StatusCode = 200
+	resp.Response.StatusText = "OK"
+	resp.Response.Data = map[string]interface{}{"resultCode": "success", "action": action, "buddy": buddyName}
+	SendResponse(w, r, resp, h.Logger)
+}
+
+func (h *BuddyListHandler) deleteFeedbagBuddy(ctx context.Context, me state.IdentScreenName, them state.IdentScreenName) error {
+	items, err := h.FeedbagManager.RetrieveFeedbag(ctx, me)
+	if err != nil {
+		return err
+	}
+	for _, item := range items {
+		if item.ClassID == wire.FeedbagClassIdBuddy && state.NewIdentScreenName(item.Name) == them {
+			if err := h.FeedbagManager.DeleteItem(ctx, me, item); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // addBuddyToFeedbag adds a buddy to the user's feedbag.
 func (h *BuddyListHandler) addBuddyToFeedbag(ctx context.Context, screenName state.IdentScreenName, buddyName, groupName string) (string, *BuddyPresenceInfo) {
 	// Retrieve current feedbag
@@ -177,10 +248,14 @@ func (h *BuddyListHandler) addBuddyToFeedbag(ctx context.Context, screenName sta
 		TLVLBlock: wire.TLVLBlock{},
 	}
 
-	// Insert buddy into feedbag
+	// Insert buddy into feedbag and mirror it into the client-side buddy list so
+	// legacy ICQ-style contact lookups can also discover the relationship.
 	if err := h.FeedbagManager.InsertItem(ctx, screenName, buddyItem); err != nil {
 		h.Logger.ErrorContext(ctx, "failed to add buddy", "err", err.Error())
 		return "error", nil
+	}
+	if err := h.FeedbagManager.AddBuddy(ctx, screenName, state.NewIdentScreenName(buddyName)); err != nil {
+		h.Logger.WarnContext(ctx, "failed to mirror buddy in client-side list", "err", err.Error())
 	}
 
 	// Get current presence for the buddy

@@ -446,3 +446,20 @@ func TestICBMFragmentList_KeepsASCIIEncodingForASCIIText(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, ICBMMessageEncodingASCII, msg.Charset)
 }
+
+func TestUnmarshalICBMMessageText_DecodesWindows1251Fallback(t *testing.T) {
+	msg := ICBMCh1Message{
+		Charset:  ICBMMessageEncodingASCII,
+		Language: 0,
+		Text:     []byte{0xef, 0xf0, 0xe8, 0xe2, 0xe5, 0xf2}, // "привет" in Windows-1251
+	}
+	msgBuf := bytes.Buffer{}
+	assert.NoError(t, MarshalBE(msg, &msgBuf))
+
+	payload, err := MarshalICBMFragmentList([]ICBMCh1Fragment{{ID: 1, Version: 1, Payload: msgBuf.Bytes()}})
+	assert.NoError(t, err)
+
+	got, err := UnmarshalICBMMessageText(payload)
+	assert.NoError(t, err)
+	assert.Equal(t, "привет", got)
+}

@@ -37,13 +37,18 @@
             <h2 id="contacts-title">Контакты</h2>
             <p id="session-summary">Не подключено</p>
           </div>
-          <button id="logout-button" class="icon-button" type="button" title="Выйти" aria-label="Выйти">⏻</button>
+          <button id="logout-button" class="logout-button" type="button" title="Выйти" aria-label="Выйти"><span></span></button>
         </div>
 
         <div class="contact-toolbar">
           <button id="refresh-contacts" class="icon-button" type="button" title="Обновить контакты" aria-label="Обновить контакты">↻</button>
           <select id="presence-state" aria-label="Мой статус">
             <option value="online">В сети</option>
+            <option value="away">Отошёл</option>
+            <option value="na">Недоступен</option>
+            <option value="occupied">Занят</option>
+            <option value="dnd">Не беспокоить</option>
+            <option value="freechat">Готов поболтать</option>
             <option value="offline">Невидимый</option>
           </select>
         </div>
@@ -69,12 +74,28 @@
         <ol id="messages" class="messages" aria-live="polite"></ol>
 
         <form id="message-form" class="composer">
-          <textarea id="message-text" rows="2" placeholder="Сообщение" disabled required></textarea>
+          <textarea id="message-text" rows="2" placeholder="Сообщение (Ctrl+Enter — отправить)" disabled required></textarea>
+          <button id="emoji-button" class="emoji-toggle" type="button" title="Смайлы" aria-label="Смайлы">☺</button>
           <button id="send-button" type="submit" disabled>➤</button>
+          <div id="emoji-picker" class="emoji-picker" hidden></div>
         </form>
       </section>
 
-      <aside class="panel side-panel" aria-label="Дополнительная панель"></aside>
+      <aside class="panel side-panel" aria-label="Дополнительная панель">
+        <section class="self-card">
+          <button id="avatar-button" class="avatar-large" type="button" title="Загрузить аватар" aria-label="Загрузить аватар">✿</button>
+          <input id="avatar-input" type="file" accept="image/png,image/jpeg" hidden>
+          <h2 id="self-name">ICQ</h2>
+          <p>JPG/PNG до 256×256</p>
+        </section>
+        <section class="contact-actions" aria-labelledby="contact-actions-title">
+          <h3 id="contact-actions-title">Контакт</h3>
+          <p id="contact-actions-name">Выберите контакт</p>
+          <button id="rename-contact" type="button" disabled>Переименовать</button>
+          <button id="delete-contact" type="button" disabled>Удалить</button>
+          <button id="block-contact" type="button" disabled>Заблокировать</button>
+        </section>
+      </aside>
     </section>
 
     <div id="toast" class="toast" role="alert" hidden></div>

@@ -65,6 +65,21 @@ func (f *FeedbagAdapter) DeleteItem(ctx context.Context, screenName state.IdentS
 	return f.Store.FeedbagDelete(ctx, screenName, []wire.FeedbagItem{item})
 }
 
+// AddBuddy adds a buddy to the user's client-side buddy list.
+func (f *FeedbagAdapter) AddBuddy(ctx context.Context, me state.IdentScreenName, them state.IdentScreenName) error {
+	return f.Store.AddBuddy(ctx, me, them)
+}
+
+// RemoveBuddy removes a buddy from the user's client-side buddy list.
+func (f *FeedbagAdapter) RemoveBuddy(ctx context.Context, me state.IdentScreenName, them state.IdentScreenName) error {
+	return f.Store.RemoveBuddy(ctx, me, them)
+}
+
+// DenyBuddy adds a buddy to the user's deny list.
+func (f *FeedbagAdapter) DenyBuddy(ctx context.Context, me state.IdentScreenName, them state.IdentScreenName) error {
+	return f.Store.DenyBuddy(ctx, me, them)
+}
+
 // Message Conversion Functions
 
 // WebAPIToICBM converts a Web API message to OSCAR ICBM format

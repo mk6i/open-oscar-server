@@ -1,4 +1,5 @@
 const STORAGE_PREFIX = 'openOscar.webClient';
+const ICQ_EMOTICONS = [':-)', ';-)', ':-D', ':-P', ':-(', ':-O', ':-*', ':-[', ':-X', '8-)', ':-/', ':-!'];
 
 const state = {
   apiKey: '',
@@ -12,6 +13,8 @@ const state = {
   selectedContact: '',
   presenceState: 'online',
   history: {},
+  aliases: JSON.parse(localStorage.getItem(`${STORAGE_PREFIX}.aliases`) || '{}'),
+  avatars: JSON.parse(localStorage.getItem(`${STORAGE_PREFIX}.avatars`) || '{}'),
 };
 
 const $ = (id) => document.getElementById(id);
@@ -38,7 +41,16 @@ const elements = {
   messages: $('messages'),
   messageForm: $('message-form'),
   messageText: $('message-text'),
+  emojiButton: $('emoji-button'),
+  emojiPicker: $('emoji-picker'),
   sendButton: $('send-button'),
+  avatarButton: $('avatar-button'),
+  avatarInput: $('avatar-input'),
+  selfName: $('self-name'),
+  contactActionsName: $('contact-actions-name'),
+  renameContact: $('rename-contact'),
+  deleteContact: $('delete-contact'),
+  blockContact: $('block-contact'),
   toast: $('toast'),
 };
 
@@ -52,6 +64,13 @@ elements.refreshContacts.addEventListener('click', () => refreshContacts(true).c
 elements.addContactForm.addEventListener('submit', addContact);
 elements.contactFilter.addEventListener('input', renderContacts);
 elements.messageForm.addEventListener('submit', sendMessage);
+elements.messageText.addEventListener('keydown', handleComposerKeydown);
+elements.emojiButton.addEventListener('click', toggleEmojiPicker);
+elements.avatarButton.addEventListener('click', () => elements.avatarInput.click());
+elements.avatarInput.addEventListener('change', updateAvatar);
+elements.renameContact.addEventListener('click', renameSelectedContact);
+elements.deleteContact.addEventListener('click', deleteSelectedContact);
+elements.blockContact.addEventListener('click', blockSelectedContact);
 elements.clearHistory.addEventListener('click', clearCurrentHistory);
 window.addEventListener('beforeunload', () => stopPolling());
 
@@ -59,6 +78,8 @@ loadClientConfig().catch((error) => {
   setStatus('Клиент не настроен');
   showToast(error.message, true);
 });
+renderEmojiPicker();
+applyOwnAvatar();
 renderContacts();
 renderConversation();
 
@@ -82,6 +103,18 @@ function normalizeName(name) {
 
 function contactKey(name) {
   return normalizeName(name).toLowerCase();
+}
+
+function displayNameFor(aimId, fallback = aimId) {
+  return state.aliases[contactKey(aimId)] || fallback || aimId;
+}
+
+function saveAliases() {
+  localStorage.setItem(`${STORAGE_PREFIX}.aliases`, JSON.stringify(state.aliases));
+}
+
+function saveAvatars() {
+  localStorage.setItem(`${STORAGE_PREFIX}.avatars`, JSON.stringify(state.avatars));
 }
 
 function historyKey() {
@@ -174,7 +207,7 @@ function contactFromBuddy(buddy) {
   }
   return {
     aimId,
-    displayId: buddy.displayId || aimId,
+    displayId: displayNameFor(aimId, buddy.displayId || aimId),
     state: buddy.state || 'offline',
     statusMsg: buddy.statusMsg || buddy.awayMsg || '',
     group: buddy.group || 'Buddies',
@@ -192,11 +225,21 @@ function upsertContact(contact) {
 }
 
 function contactStatus(contact) {
-  return ['online', 'away', 'idle', 'dnd'].includes(contact?.state) ? contact.state : 'offline';
+  return ['online', 'away', 'na', 'occupied', 'dnd', 'freechat', 'idle'].includes(contact?.state) ? contact.state : 'offline';
 }
 
 function statusLabel(status) {
-  return status === 'online' ? 'в сети' : status === 'away' ? 'отошёл' : status === 'idle' ? 'неактивен' : 'не в сети';
+  const labels = {
+    online: 'в сети',
+    away: 'отошёл',
+    na: 'недоступен',
+    occupied: 'занят',
+    dnd: 'не беспокоить',
+    freechat: 'готов поболтать',
+    idle: 'неактивен',
+    offline: 'не в сети',
+  };
+  return labels[status] || 'не в сети';
 }
 
 function setSignedIn(data) {
@@ -207,6 +250,7 @@ function setSignedIn(data) {
   elements.loginPanel.hidden = true;
   elements.clientPanel.hidden = false;
   elements.sessionSummary.textContent = `${state.screenName} · в сети`;
+  elements.selfName.textContent = state.screenName;
   setStatus(`В сети: ${state.screenName}`);
   loadHistory();
   mergeBuddyGroups(data.events?.buddylist?.groups || data.myInfo?.buddylist?.groups || []);
@@ -224,6 +268,7 @@ function setSignedOut(reason = 'Ожидание входа') {
   elements.clientPanel.hidden = true;
   elements.sessionSummary.textContent = 'Не подключено';
   elements.messageText.disabled = true;
+  elements.emojiButton.disabled = true;
   elements.sendButton.disabled = true;
   setStatus(reason);
 }
@@ -245,7 +290,7 @@ function renderContacts() {
   const contacts = Array.from(state.contacts.values())
     .filter((contact) => !filter || contactKey(contact.displayId || contact.aimId).includes(filter))
     .sort((a, b) => {
-      const statusOrder = { online: 0, away: 1, idle: 2, dnd: 3, offline: 4 };
+      const statusOrder = { online: 0, freechat: 1, away: 2, na: 3, occupied: 4, dnd: 5, idle: 6, offline: 7 };
       const aStatus = statusOrder[contactStatus(a)] ?? 5;
       const bStatus = statusOrder[contactStatus(b)] ?? 5;
       if (aStatus !== bStatus) {
@@ -273,7 +318,13 @@ function renderContacts() {
 
     const avatar = document.createElement('span');
     avatar.className = 'avatar';
-    avatar.textContent = (contact.displayId || contact.aimId).slice(0, 2).toUpperCase();
+    const avatarData = state.avatars[contactKey(contact.aimId)];
+    if (avatarData) {
+      avatar.style.backgroundImage = `url(${avatarData})`;
+      avatar.textContent = '';
+    } else {
+      avatar.textContent = (contact.displayId || contact.aimId).slice(0, 2).toUpperCase();
+    }
 
     const main = document.createElement('span');
     main.className = 'contact-main';
@@ -319,11 +370,16 @@ function selectContact(aimId) {
 function renderConversation() {
   const selected = state.selectedContact;
   const contact = selected ? state.contacts.get(contactKey(selected)) : null;
-  elements.chatTitle.textContent = contact?.displayId || selected || 'Выберите контакт';
+  elements.chatTitle.textContent = selected ? displayNameFor(selected, contact?.displayId || selected) : 'Выберите контакт';
   elements.chatSubtitle.textContent = selected ? statusLabel(contactStatus(contact)) : 'История сообщений появится здесь.';
   elements.clearHistory.disabled = !selected;
   elements.messageText.disabled = !selected || !state.aimsid;
+  elements.emojiButton.disabled = !selected || !state.aimsid;
   elements.sendButton.disabled = !selected || !state.aimsid;
+  elements.renameContact.disabled = !selected;
+  elements.deleteContact.disabled = !selected;
+  elements.blockContact.disabled = !selected;
+  elements.contactActionsName.textContent = selected ? displayNameFor(selected) : 'Выберите контакт';
   elements.messages.textContent = '';
 
   if (!selected) {
@@ -536,14 +592,15 @@ async function updateOwnPresence() {
     return;
   }
   const wanted = elements.presenceState.value;
-  const apiState = wanted === 'offline' ? 'invisible' : 'online';
+  const stateMap = { offline: 'invisible', na: 'na', occupied: 'occupied', freechat: 'freechat' };
+  const apiState = stateMap[wanted] || wanted;
   try {
     await getJSON('/presence/setState', {
       aimsid: state.aimsid,
       state: apiState,
     });
     state.presenceState = wanted;
-    elements.sessionSummary.textContent = `${state.screenName} · ${wanted === 'offline' ? 'невидимый' : 'в сети'}`;
+    elements.sessionSummary.textContent = `${state.screenName} · ${wanted === 'offline' ? 'невидимый' : statusLabel(wanted)}`;
   } catch (error) {
     elements.presenceState.value = state.presenceState;
     showToast(`Не удалось изменить статус: ${error.message}`, true);
@@ -600,6 +657,113 @@ async function sendMessage(event) {
   } finally {
     elements.sendButton.disabled = !state.selectedContact || !state.aimsid;
   }
+}
+
+
+function handleComposerKeydown(event) {
+  if (event.key === 'Enter' && event.ctrlKey) {
+    event.preventDefault();
+    elements.messageForm.requestSubmit();
+  }
+}
+
+function renderEmojiPicker() {
+  elements.emojiPicker.textContent = '';
+  for (const emoji of ICQ_EMOTICONS) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = emoji;
+    button.addEventListener('click', () => insertAtCursor(`${emoji} `));
+    elements.emojiPicker.append(button);
+  }
+}
+
+function toggleEmojiPicker() {
+  elements.emojiPicker.hidden = !elements.emojiPicker.hidden;
+}
+
+function insertAtCursor(text) {
+  const input = elements.messageText;
+  const start = input.selectionStart ?? input.value.length;
+  const end = input.selectionEnd ?? input.value.length;
+  input.value = `${input.value.slice(0, start)}${text}${input.value.slice(end)}`;
+  input.focus();
+  input.selectionStart = input.selectionEnd = start + text.length;
+}
+
+function applyOwnAvatar() {
+  const avatarData = state.avatars[contactKey(state.screenName)];
+  elements.avatarButton.style.backgroundImage = avatarData ? `url(${avatarData})` : '';
+  elements.avatarButton.textContent = avatarData ? '' : '✿';
+}
+
+function updateAvatar(event) {
+  const file = event.target.files?.[0];
+  if (!file) {
+    return;
+  }
+  if (!['image/jpeg', 'image/png'].includes(file.type)) {
+    showToast('Можно выбрать только JPG или PNG.', true);
+    return;
+  }
+
+  const img = new Image();
+  img.onload = () => {
+    const size = 256;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    const side = Math.min(img.width, img.height);
+    const sx = (img.width - side) / 2;
+    const sy = (img.height - side) / 2;
+    ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
+    state.avatars[contactKey(state.screenName)] = canvas.toDataURL(file.type, 0.88);
+    saveAvatars();
+    applyOwnAvatar();
+    showToast('Аватар обновлён в веб-клиенте.');
+  };
+  img.src = URL.createObjectURL(file);
+}
+
+async function renameSelectedContact() {
+  if (!state.selectedContact) {
+    return;
+  }
+  const current = displayNameFor(state.selectedContact);
+  const next = window.prompt('Новое имя контакта', current);
+  if (!next) {
+    return;
+  }
+  state.aliases[contactKey(state.selectedContact)] = normalizeName(next);
+  saveAliases();
+  const contact = state.contacts.get(contactKey(state.selectedContact));
+  if (contact) {
+    contact.displayId = normalizeName(next);
+  }
+  renderContacts();
+  renderConversation();
+}
+
+async function deleteSelectedContact() {
+  const contact = state.selectedContact;
+  if (!contact || !window.confirm(`Удалить ${displayNameFor(contact)} из списка контактов?`)) {
+    return;
+  }
+  await getJSON('/buddylist/removeBuddy', { aimsid: state.aimsid, buddy: contact });
+  state.contacts.delete(contactKey(contact));
+  state.selectedContact = '';
+  renderContacts();
+  renderConversation();
+}
+
+async function blockSelectedContact() {
+  const contact = state.selectedContact;
+  if (!contact || !window.confirm(`Заблокировать ${displayNameFor(contact)}?`)) {
+    return;
+  }
+  await getJSON('/buddylist/blockBuddy', { aimsid: state.aimsid, buddy: contact });
+  showToast('Контакт заблокирован.');
 }
 
 function clearCurrentHistory() {

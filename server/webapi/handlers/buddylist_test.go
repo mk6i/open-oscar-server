@@ -65,6 +65,21 @@ func (m *MockFeedbagManager) DeleteItem(ctx context.Context, screenName state.Id
 	return args.Error(0)
 }
 
+func (m *MockFeedbagManager) AddBuddy(ctx context.Context, me state.IdentScreenName, them state.IdentScreenName) error {
+	args := m.Called(ctx, me, them)
+	return args.Error(0)
+}
+
+func (m *MockFeedbagManager) RemoveBuddy(ctx context.Context, me state.IdentScreenName, them state.IdentScreenName) error {
+	args := m.Called(ctx, me, them)
+	return args.Error(0)
+}
+
+func (m *MockFeedbagManager) DenyBuddy(ctx context.Context, me state.IdentScreenName, them state.IdentScreenName) error {
+	args := m.Called(ctx, me, them)
+	return args.Error(0)
+}
+
 func TestBuddyListHandler_AddTempBuddy(t *testing.T) {
 	tests := []struct {
 		name               string
@@ -412,6 +427,7 @@ func TestBuddyListHandler_AddBuddy(t *testing.T) {
 						item.Name == "newbuddy" &&
 						item.GroupID == 1
 				})).Return(nil)
+				fm.On("AddBuddy", mock.Anything, state.NewIdentScreenName("testuser"), state.NewIdentScreenName("newbuddy")).Return(nil)
 			},
 			expectedStatusCode: http.StatusOK,
 			expectedResponse:   `{"response":{"statusCode":200,"statusText":"OK","data":{"buddyInfo":{"aimId":"newbuddy","state":"offline","userType":"aim"},"resultCode":"success"}}}`,
@@ -450,6 +466,7 @@ func TestBuddyListHandler_AddBuddy(t *testing.T) {
 						item.Name == "newbuddy" &&
 						item.GroupID == 1
 				})).Return(nil)
+				fm.On("AddBuddy", mock.Anything, state.NewIdentScreenName("testuser"), state.NewIdentScreenName("newbuddy")).Return(nil)
 			},
 			expectedStatusCode: http.StatusOK,
 			expectedResponse:   `{"response":{"statusCode":200,"statusText":"OK","data":{"buddyInfo":{"aimId":"newbuddy","state":"offline","userType":"aim"},"resultCode":"success"}}}`,

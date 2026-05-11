@@ -12,7 +12,6 @@
   --blue: #0a84ff;
   --danger: #ff453a;
   --shadow: 0 24px 70px rgba(0, 0, 0, 0.46);
-
   --radius-xl: 32px;
   --radius-lg: 24px;
   --radius-md: 18px;
@@ -34,14 +33,12 @@ body,
 body {
   color: var(--text);
   background:
-
     radial-gradient(circle at 12% 18%, rgba(52, 199, 89, 0.20), transparent 30%),
     radial-gradient(circle at 88% 10%, rgba(10, 132, 255, 0.18), transparent 28%),
     linear-gradient(135deg, #05070d 0%, #0d1420 52%, #071209 100%);
 }
 
 [hidden] { display: none !important; }
-
 
 button,
 input,
@@ -66,9 +63,7 @@ textarea,
 select {
   width: 100%;
   color: var(--text);
-
   background: rgba(255, 255, 255, 0.08);
-
   border: 1px solid var(--line);
   border-radius: 16px;
   outline: none;
@@ -84,9 +79,7 @@ textarea:focus,
 select:focus {
   border-color: rgba(0, 122, 255, 0.55);
   box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.14);
-
   background: rgba(255, 255, 255, 0.13);
-
 }
 
 .login-screen {
@@ -102,9 +95,7 @@ select:focus {
   display: grid;
   gap: 16px;
   padding: 34px;
-
   border: 1px solid rgba(255, 255, 255, 0.12);
-
   border-radius: var(--radius-xl);
   background: var(--panel-strong);
   box-shadow: var(--shadow);
@@ -156,9 +147,7 @@ p { margin: 0; }
 .login-card label {
   display: grid;
   gap: 8px;
-
   color: #dce5f4;
-
   font-weight: 700;
 }
 
@@ -191,9 +180,7 @@ p { margin: 0; }
 .panel {
   min-width: 0;
   min-height: 0;
-
   border: 1px solid rgba(255, 255, 255, 0.12);
-
   border-radius: var(--radius-xl);
   background: var(--panel);
   box-shadow: 0 18px 48px rgba(31, 41, 55, 0.10);
@@ -205,7 +192,6 @@ p { margin: 0; }
   display: flex;
   flex-direction: column;
   overflow: hidden;
-
 }
 
 .side-panel {
@@ -213,7 +199,6 @@ p { margin: 0; }
     linear-gradient(180deg, rgba(25, 32, 45, 0.72), rgba(17, 23, 34, 0.48)),
     radial-gradient(circle at 50% 20%, rgba(52, 199, 89, 0.14), transparent 38%);
 }
-
 
 .panel-header,
 .chat-header {
@@ -439,4 +424,121 @@ p { margin: 0; }
     grid-template-columns: 32% 68%;
   }
   .side-panel { display: none; }
+}
+
+.logout-button {
+  position: relative;
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  background: rgba(255, 69, 58, 0.13);
+}
+.logout-button::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 8px;
+  width: 3px;
+  height: 13px;
+  border-radius: 999px;
+  background: #ff6b62;
+  transform: translateX(-50%);
+}
+.logout-button::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  top: 12px;
+  width: 18px;
+  height: 18px;
+  border: 3px solid #ff6b62;
+  border-top-color: transparent;
+  border-radius: 50%;
+}
+
+.composer {
+  position: relative;
+  grid-template-columns: 1fr 44px 56px;
+}
+.emoji-toggle {
+  min-height: 52px;
+  border-radius: 18px;
+  color: #ffd166;
+  background: rgba(255, 209, 102, 0.12);
+  font-size: 1.25rem;
+  font-weight: 900;
+}
+.emoji-picker {
+  position: absolute;
+  right: 76px;
+  bottom: 78px;
+  z-index: 5;
+  display: grid;
+  grid-template-columns: repeat(4, auto);
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(22, 29, 42, 0.96);
+  box-shadow: var(--shadow);
+}
+.emoji-picker button {
+  min-width: 46px;
+  min-height: 34px;
+  border-radius: 12px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+  font-weight: 800;
+}
+
+.avatar,
+.avatar-large {
+  background-size: cover;
+  background-position: center;
+}
+.side-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px;
+  overflow: hidden;
+}
+.self-card,
+.contact-actions {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.05);
+}
+.avatar-large {
+  width: 96px;
+  height: 96px;
+  display: grid;
+  place-items: center;
+  margin: 0 auto;
+  border-radius: 30px;
+  color: #fff;
+  background-color: rgba(52, 199, 89, 0.28);
+  background-image: linear-gradient(145deg, #5ee27e, #18a63d);
+  font-size: 48px;
+}
+.self-card h2,
+.self-card p,
+.contact-actions h3,
+.contact-actions p { text-align: center; }
+.self-card p,
+.contact-actions p { color: var(--muted); }
+.contact-actions button {
+  min-height: 40px;
+  border-radius: 14px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+  font-weight: 800;
+}
+.contact-actions button:nth-of-type(2),
+.contact-actions button:nth-of-type(3) {
+  color: #ffb4ad;
+  background: rgba(255, 69, 58, 0.10);
 }
