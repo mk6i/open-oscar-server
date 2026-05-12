@@ -65,6 +65,31 @@ func (m *MockFeedbagManager) DeleteItem(ctx context.Context, screenName state.Id
 	return args.Error(0)
 }
 
+func (m *MockFeedbagManager) AddBuddy(ctx context.Context, me state.IdentScreenName, them state.IdentScreenName) error {
+	args := m.Called(ctx, me, them)
+	return args.Error(0)
+}
+
+func (m *MockFeedbagManager) RemoveBuddy(ctx context.Context, me state.IdentScreenName, them state.IdentScreenName) error {
+	args := m.Called(ctx, me, them)
+	return args.Error(0)
+}
+
+func (m *MockFeedbagManager) DenyBuddy(ctx context.Context, me state.IdentScreenName, them state.IdentScreenName) error {
+	args := m.Called(ctx, me, them)
+	return args.Error(0)
+}
+
+// MockFeedbagAuthorizer is a mock implementation of FeedbagAuthorizer.
+type MockFeedbagAuthorizer struct {
+	mock.Mock
+}
+
+func (m *MockFeedbagAuthorizer) RespondAuthorizeToHost(ctx context.Context, instance state.IdentScreenName, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost) error {
+	args := m.Called(ctx, instance, inFrame, inBody)
+	return args.Error(0)
+}
+
 func TestBuddyListHandler_AddTempBuddy(t *testing.T) {
 	tests := []struct {
 		name               string
@@ -369,6 +394,47 @@ func TestBuddyListHandler_AddTempBuddy_EventQueueBehavior(t *testing.T) {
 	sessionManager.AssertExpectations(t)
 }
 
+func TestBuddyListHandler_RespondAuthorize(t *testing.T) {
+	sessionManager := &MockWebAPISessionManager{}
+	feedbagManager := &MockFeedbagManager{}
+	feedbagAuthorizer := &MockFeedbagAuthorizer{}
+	aimsid := "test-session"
+	session := &state.WebAPISession{
+		AimSID:     aimsid,
+		ScreenName: state.DisplayScreenName("testuser"),
+		EventQueue: types.NewEventQueue(100),
+	}
+
+	sessionManager.On("GetSession", mock.Anything, aimsid).Return(session, nil)
+	sessionManager.On("TouchSession", mock.Anything, aimsid).Return(nil)
+	feedbagAuthorizer.On("RespondAuthorizeToHost", mock.Anything, state.NewIdentScreenName("testuser"), wire.SNACFrame{}, wire.SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost{
+		ScreenName: "buddy1",
+		Accepted:   1,
+		Reason:     "OK",
+	}).Return(nil)
+	feedbagManager.On("AddBuddy", mock.Anything, state.NewIdentScreenName("testuser"), state.NewIdentScreenName("buddy1")).Return(nil)
+
+	handler := &BuddyListHandler{
+		SessionManager:    sessionManager,
+		FeedbagManager:    feedbagManager,
+		FeedbagAuthorizer: feedbagAuthorizer,
+		Logger:            slog.Default(),
+	}
+
+	req, err := http.NewRequest("GET", "/buddylist/respondAuthorize?aimsid=test-session&buddy=buddy1&accepted=1&reason=OK", nil)
+	assert.NoError(t, err)
+	rr := httptest.NewRecorder()
+
+	handler.RespondAuthorize(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.Contains(t, rr.Body.String(), `"resultCode":"success"`)
+	assert.Contains(t, rr.Body.String(), `"accepted":true`)
+	sessionManager.AssertExpectations(t)
+	feedbagAuthorizer.AssertExpectations(t)
+	feedbagManager.AssertExpectations(t)
+}
+
 func TestBuddyListHandler_AddBuddy(t *testing.T) {
 	tests := []struct {
 		name               string
@@ -412,6 +478,7 @@ func TestBuddyListHandler_AddBuddy(t *testing.T) {
 						item.Name == "newbuddy" &&
 						item.GroupID == 1
 				})).Return(nil)
+				fm.On("AddBuddy", mock.Anything, state.NewIdentScreenName("testuser"), state.NewIdentScreenName("newbuddy")).Return(nil)
 			},
 			expectedStatusCode: http.StatusOK,
 			expectedResponse:   `{"response":{"statusCode":200,"statusText":"OK","data":{"buddyInfo":{"aimId":"newbuddy","state":"offline","userType":"aim"},"resultCode":"success"}}}`,
@@ -450,6 +517,7 @@ func TestBuddyListHandler_AddBuddy(t *testing.T) {
 						item.Name == "newbuddy" &&
 						item.GroupID == 1
 				})).Return(nil)
+				fm.On("AddBuddy", mock.Anything, state.NewIdentScreenName("testuser"), state.NewIdentScreenName("newbuddy")).Return(nil)
 			},
 			expectedStatusCode: http.StatusOK,
 			expectedResponse:   `{"response":{"statusCode":200,"statusText":"OK","data":{"buddyInfo":{"aimId":"newbuddy","state":"offline","userType":"aim"},"resultCode":"success"}}}`,

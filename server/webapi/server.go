@@ -14,7 +14,7 @@ import (
 	"github.com/mk6i/open-oscar-server/state"
 )
 
-func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyValidator middleware.APIKeyValidator, sessionManager *state.WebAPISessionManager) *Server {
+func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyValidator middleware.APIKeyValidator, sessionManager *state.WebAPISessionManager, webClientAPIKey string) *Server {
 	servers := make([]*http.Server, 0, len(listeners))
 
 	// Create authentication middleware
@@ -56,9 +56,10 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 	}
 
 	buddyListHandler := &handlers.BuddyListHandler{
-		SessionManager: sessionManager,
-		FeedbagManager: handler.FeedbagManager,
-		Logger:         logger,
+		SessionManager:    sessionManager,
+		FeedbagManager:    handler.FeedbagManager,
+		FeedbagAuthorizer: handler.FeedbagAuthorizer,
+		Logger:            logger,
 	}
 
 	// Phase 2: Messaging handler
@@ -103,7 +104,11 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 		mux.HandleFunc("GET /client", func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/client/", http.StatusMovedPermanently)
 		})
-		mux.Handle("GET /client/", http.StripPrefix("/client/", http.FileServerFS(webClientFiles())))
+		mux.HandleFunc("GET /client/config", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			_, _ = fmt.Fprintf(w, `{"apiKey":%q}`, webClientAPIKey)
+		})
+		mux.Handle("GET /client/", webClientHandler())
 
 		// Public endpoint (no auth required for hello world)
 		mux.HandleFunc("GET /", handler.GetHelloWorldHandler)
@@ -157,6 +162,18 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 		mux.Handle("GET /buddylist/addBuddy", authMiddleware.Authenticate(
 			authMiddleware.CORSMiddleware(
 				http.HandlerFunc(buddyListHandler.AddBuddy))))
+
+		mux.Handle("GET /buddylist/removeBuddy", authMiddleware.AuthenticateFlexible(
+			authMiddleware.CORSMiddleware(
+				http.HandlerFunc(buddyListHandler.RemoveBuddy))))
+
+		mux.Handle("GET /buddylist/blockBuddy", authMiddleware.AuthenticateFlexible(
+			authMiddleware.CORSMiddleware(
+				http.HandlerFunc(buddyListHandler.BlockBuddy))))
+
+		mux.Handle("GET /buddylist/respondAuthorize", authMiddleware.AuthenticateFlexible(
+			authMiddleware.CORSMiddleware(
+				http.HandlerFunc(buddyListHandler.RespondAuthorize))))
 
 		// Phase 2: Messaging endpoints
 		// sendIM supports aimsid-based auth, so we use flexible auth

@@ -103,7 +103,78 @@ func (s *WebAPISession) handleSNACMessage(msg wire.SNACMessage) {
 		s.handleICBMMessage(msg)
 	case wire.Buddy:
 		s.handleBuddyMessage(msg)
+	case wire.Feedbag:
+		s.handleFeedbagMessage(msg)
 	}
+}
+
+// handleFeedbagMessage handles feedbag SNAC messages that are exposed to WebAPI clients.
+func (s *WebAPISession) handleFeedbagMessage(msg wire.SNACMessage) {
+	if !s.IsSubscribedTo("authorization") {
+		return
+	}
+
+	switch msg.Frame.SubGroup {
+	case wire.FeedbagRequestAuthorizeToClient:
+		s.handleAuthorizationRequest(msg)
+	case wire.FeedbagRespondAuthorizeToClient:
+		s.handleAuthorizationResponse(msg)
+	case wire.FeedbagPreAuthorizedBuddy:
+		s.handlePreAuthorizedBuddy(msg)
+	}
+}
+
+func (s *WebAPISession) handleAuthorizationRequest(msg wire.SNACMessage) {
+	var screenName string
+	var reason string
+	switch body := msg.Body.(type) {
+	case wire.SNAC_0x13_0x19_FeedbagRequestAuthorizeToClient:
+		screenName = body.ScreenName
+		reason = body.Reason
+	case wire.SNAC_0x13_0x18_FeedbagRequestAuthorizationToHost:
+		screenName = body.ScreenName
+		reason = body.Reason
+	default:
+		return
+	}
+
+	s.EventQueue.Push(types.EventTypeAuthorization, types.AuthorizationEvent{
+		Action: "request",
+		From:   screenName,
+		Reason: reason,
+	})
+}
+
+func (s *WebAPISession) handleAuthorizationResponse(msg wire.SNACMessage) {
+	body, ok := msg.Body.(wire.SNAC_0x13_0x1B_FeedbagRespondAuthorizeToClient)
+	if !ok {
+		return
+	}
+	action := "denied"
+	if body.Accepted == 1 {
+		action = "accepted"
+	}
+
+	s.EventQueue.Push(types.EventTypeAuthorization, types.AuthorizationEvent{
+		Action:   action,
+		From:     body.ScreenName,
+		Reason:   body.Reason,
+		Accepted: body.Accepted == 1,
+	})
+}
+
+func (s *WebAPISession) handlePreAuthorizedBuddy(msg wire.SNACMessage) {
+	body, ok := msg.Body.(wire.SNAC_0x13_0x15_FeedbagPreAuthorizedBuddy)
+	if !ok {
+		return
+	}
+
+	s.EventQueue.Push(types.EventTypeAuthorization, types.AuthorizationEvent{
+		Action:   "accepted",
+		From:     body.ScreenName,
+		Reason:   body.Message,
+		Accepted: true,
+	})
 }
 
 // handleICBMMessage handles ICBM (instant messaging) SNAC messages.

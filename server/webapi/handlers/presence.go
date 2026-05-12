@@ -213,6 +213,23 @@ func (h *PresenceHandler) getBuddyListGroups(ctx context.Context, screenName sta
 		}
 	}
 
+	// Also include contacts from the client-side buddy list used by legacy ICQ
+	// clients. Legacy contact lists are not stored as feedbag buddy items, so the
+	// web client must merge these relationships to show offline contacts on load.
+	if users, err := h.FeedbagRetriever.RelationshipsByUser(ctx, screenName); err == nil {
+		for _, user := range users {
+			name := user.String()
+			if name == "" || name == screenName.String() {
+				continue
+			}
+			if _, ok := buddyToGroup[name]; !ok {
+				buddyToGroup[name] = 0
+			}
+		}
+	} else {
+		h.Logger.WarnContext(ctx, "failed to get relationship buddy list", "error", err)
+	}
+
 	// If no groups exist, create a default one
 	if len(groupMap) == 0 {
 		groupMap[0] = &BuddyGroupInfo{
@@ -287,11 +304,17 @@ func (h *PresenceHandler) getUserPresence(screenName state.IdentScreenName) Budd
 		presence.State = "online"
 
 		// Check user status
-		if session.Away() {
+		if session.AllUserStatusBitmask(wire.OServiceUserStatusDND) {
+			presence.State = "dnd"
+		} else if session.AllUserStatusBitmask(wire.OServiceUserStatusBusy) {
+			presence.State = "occupied"
+		} else if session.AllUserStatusBitmask(wire.OServiceUserStatusOut) {
+			presence.State = "na"
+		} else if session.AllUserStatusBitmask(wire.OServiceUserStatusChat) {
+			presence.State = "freechat"
+		} else if session.Away() {
 			presence.State = "away"
 			// TODO: Get away message from session
-		} else if session.AllUserStatusBitmask(wire.OServiceUserStatusDND) {
-			presence.State = "dnd"
 		}
 
 		// Check idle time
@@ -392,6 +415,12 @@ func (h *PresenceHandler) SetState(w http.ResponseWriter, r *http.Request) {
 		statusBitmask = wire.OServiceUserStatusInvisible
 	case "dnd":
 		statusBitmask = wire.OServiceUserStatusDND
+	case "na":
+		statusBitmask = wire.OServiceUserStatusOut
+	case "occupied":
+		statusBitmask = wire.OServiceUserStatusBusy
+	case "freechat":
+		statusBitmask = wire.OServiceUserStatusChat
 	default:
 		h.sendError(w, http.StatusBadRequest, "invalid state parameter")
 		return
