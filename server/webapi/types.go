@@ -112,6 +112,11 @@ type SessionRetriever interface {
 	RetrieveSession(screenName state.IdentScreenName) *state.Session
 }
 
+// FeedbagAuthorizer responds to contact authorization requests.
+type FeedbagAuthorizer interface {
+	RespondAuthorizeToHost(ctx context.Context, instance state.IdentScreenName, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost) error
+}
+
 // FeedbagRetriever provides methods to retrieve buddy list data.
 type FeedbagRetriever interface {
 	RetrieveFeedbag(ctx context.Context, screenName state.IdentScreenName) ([]wire.FeedbagItem, error)

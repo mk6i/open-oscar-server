@@ -19,9 +19,10 @@ type WebAPISessionManager interface {
 
 // BuddyListHandler handles Web AIM API buddy list management endpoints.
 type BuddyListHandler struct {
-	SessionManager WebAPISessionManager
-	FeedbagManager FeedbagManager
-	Logger         *slog.Logger
+	SessionManager    WebAPISessionManager
+	FeedbagManager    FeedbagManager
+	FeedbagAuthorizer FeedbagAuthorizer
+	Logger            *slog.Logger
 }
 
 // FeedbagManager provides methods to manage buddy lists.
@@ -33,6 +34,11 @@ type FeedbagManager interface {
 	AddBuddy(ctx context.Context, me state.IdentScreenName, them state.IdentScreenName) error
 	RemoveBuddy(ctx context.Context, me state.IdentScreenName, them state.IdentScreenName) error
 	DenyBuddy(ctx context.Context, me state.IdentScreenName, them state.IdentScreenName) error
+}
+
+// FeedbagAuthorizer responds to contact authorization requests.
+type FeedbagAuthorizer interface {
+	RespondAuthorizeToHost(ctx context.Context, instance state.IdentScreenName, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost) error
 }
 
 // AddBuddy handles GET /buddylist/addBuddy requests.
@@ -108,6 +114,65 @@ func (h *BuddyListHandler) AddBuddy(w http.ResponseWriter, r *http.Request) {
 		"group", groupName,
 		"result", resultCode,
 	)
+}
+
+// RespondAuthorize handles GET /buddylist/respondAuthorize requests.
+func (h *BuddyListHandler) RespondAuthorize(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	aimsid := r.URL.Query().Get("aimsid")
+	if aimsid == "" {
+		h.sendError(w, http.StatusBadRequest, "missing aimsid parameter")
+		return
+	}
+
+	session, err := h.SessionManager.GetSession(ctx, aimsid)
+	if err != nil {
+		h.sendError(w, http.StatusUnauthorized, "invalid or expired session")
+		return
+	}
+	_ = h.SessionManager.TouchSession(ctx, aimsid)
+
+	buddyName := strings.TrimSpace(r.URL.Query().Get("buddy"))
+	if buddyName == "" {
+		h.sendError(w, http.StatusBadRequest, "missing buddy parameter")
+		return
+	}
+
+	acceptedParam := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("accepted")))
+	accepted := acceptedParam == "1" || acceptedParam == "true" || acceptedParam == "yes"
+	reason := strings.TrimSpace(r.URL.Query().Get("reason"))
+	if err := h.FeedbagAuthorizer.RespondAuthorizeToHost(ctx, session.ScreenName.IdentScreenName(), wire.SNACFrame{}, wire.SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost{
+		ScreenName: buddyName,
+		Accepted:   boolToUint8(accepted),
+		Reason:     reason,
+	}); err != nil {
+		h.Logger.ErrorContext(ctx, "failed to respond to authorization request", "buddy", buddyName, "err", err.Error())
+		h.sendError(w, http.StatusInternalServerError, "failed to respond to authorization request")
+		return
+	}
+
+	if accepted {
+		if err := h.FeedbagManager.AddBuddy(ctx, session.ScreenName.IdentScreenName(), state.NewIdentScreenName(buddyName)); err != nil {
+			h.Logger.WarnContext(ctx, "failed to mirror authorized buddy", "buddy", buddyName, "err", err.Error())
+		}
+	}
+
+	resp := BaseResponse{}
+	resp.Response.StatusCode = 200
+	resp.Response.StatusText = "OK"
+	resp.Response.Data = map[string]interface{}{
+		"resultCode": "success",
+		"buddy":      buddyName,
+		"accepted":   accepted,
+	}
+	SendResponse(w, r, resp, h.Logger)
+}
+
+func boolToUint8(value bool) uint8 {
+	if value {
+		return 1
+	}
+	return 0
 }
 
 // RemoveBuddy handles GET /buddylist/removeBuddy requests.

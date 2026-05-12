@@ -27,9 +27,10 @@ type Handler struct {
 	TOCConfigStore    TOCConfigStore
 	SNACRateLimits    wire.SNACRateLimits
 	// New fields for WebAPI handlers
-	SessionRetriever SessionRetriever
-	FeedbagRetriever FeedbagRetriever
-	FeedbagManager   FeedbagManager
+	SessionRetriever  SessionRetriever
+	FeedbagRetriever  FeedbagRetriever
+	FeedbagManager    FeedbagManager
+	FeedbagAuthorizer FeedbagAuthorizer
 	// Phase 2 additions
 	MessageRelayer        MessageRelayer
 	OfflineMessageManager OfflineMessageManager

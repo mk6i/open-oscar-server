@@ -603,9 +603,10 @@ func WebAPI(deps Container) *webapi.Server {
 		ChatNavService: foodgroup.NewChatNavService(logger, deps.sqLiteUserStore),
 		SNACRateLimits: deps.snacRateLimits,
 		// New fields for WebAPI handlers
-		SessionRetriever: deps.inMemorySessionManager,
-		FeedbagRetriever: feedbagAdapter,
-		FeedbagManager:   feedbagAdapter,
+		SessionRetriever:  deps.inMemorySessionManager,
+		FeedbagRetriever:  feedbagAdapter,
+		FeedbagManager:    feedbagAdapter,
+		FeedbagAuthorizer: deps.feedbagSvc,
 		// Phase 2 additions
 		MessageRelayer:        deps.inMemorySessionManager,
 		OfflineMessageManager: deps.sqLiteUserStore,

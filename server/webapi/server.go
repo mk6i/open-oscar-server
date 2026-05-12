@@ -56,9 +56,10 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 	}
 
 	buddyListHandler := &handlers.BuddyListHandler{
-		SessionManager: sessionManager,
-		FeedbagManager: handler.FeedbagManager,
-		Logger:         logger,
+		SessionManager:    sessionManager,
+		FeedbagManager:    handler.FeedbagManager,
+		FeedbagAuthorizer: handler.FeedbagAuthorizer,
+		Logger:            logger,
 	}
 
 	// Phase 2: Messaging handler
@@ -169,6 +170,10 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 		mux.Handle("GET /buddylist/blockBuddy", authMiddleware.AuthenticateFlexible(
 			authMiddleware.CORSMiddleware(
 				http.HandlerFunc(buddyListHandler.BlockBuddy))))
+
+		mux.Handle("GET /buddylist/respondAuthorize", authMiddleware.AuthenticateFlexible(
+			authMiddleware.CORSMiddleware(
+				http.HandlerFunc(buddyListHandler.RespondAuthorize))))
 
 		// Phase 2: Messaging endpoints
 		// sendIM supports aimsid-based auth, so we use flexible auth

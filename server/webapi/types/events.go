@@ -13,15 +13,16 @@ type EventType string
 
 const (
 	// Event types that can be subscribed to
-	EventTypeBuddyList    EventType = "buddylist"
-	EventTypePresence     EventType = "presence"
-	EventTypeIM           EventType = "im"
-	EventTypeSentIM       EventType = "sentIM"
-	EventTypeTyping       EventType = "typing"
-	EventTypeStatus       EventType = "status"
-	EventTypeOfflineIM    EventType = "offlineIM"
-	EventTypeSessionEnded EventType = "sessionEnded"
-	EventTypeRateLimit    EventType = "rateLimit"
+	EventTypeBuddyList     EventType = "buddylist"
+	EventTypePresence      EventType = "presence"
+	EventTypeIM            EventType = "im"
+	EventTypeSentIM        EventType = "sentIM"
+	EventTypeTyping        EventType = "typing"
+	EventTypeStatus        EventType = "status"
+	EventTypeOfflineIM     EventType = "offlineIM"
+	EventTypeSessionEnded  EventType = "sessionEnded"
+	EventTypeRateLimit     EventType = "rateLimit"
+	EventTypeAuthorization EventType = "authorization"
 )
 
 // Event represents an event to be delivered to a web client.
@@ -80,6 +81,14 @@ type BuddyListEvent struct {
 	Action string      `json:"action"` // "add", "remove", "update"
 	Buddy  interface{} `json:"buddy"`
 	Group  string      `json:"group,omitempty"`
+}
+
+// AuthorizationEvent represents a contact authorization request or response.
+type AuthorizationEvent struct {
+	Action   string `json:"action"` // "request", "accepted", or "denied"
+	From     string `json:"from"`
+	Reason   string `json:"reason,omitempty"`
+	Accepted bool   `json:"accepted,omitempty"`
 }
 
 // EventQueue manages a queue of events for a WebAPI session.

@@ -2,123 +2,99 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ICQ Web</title>
-  <script>
-    tailwind = {
-      config: {
-        theme: {
-          extend: {
-            fontFamily: {
-              apple: ['-apple-system', 'BlinkMacSystemFont', 'SF Pro Text', 'Segoe UI', 'sans-serif']
-            },
-            boxShadow: {
-              ios: '0 24px 80px rgba(0,0,0,.42)',
-              soft: '0 16px 48px rgba(0,0,0,.28)'
-            }
-          }
-        }
-      }
-    };
-  </script>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="styles.css">
 </head>
-<body class="min-h-screen overflow-hidden bg-[#08080d] text-white font-apple antialiased selection:bg-[#0a84ff]/40">
-  <main class="app-shell min-h-screen overflow-hidden bg-[radial-gradient(circle_at_15%_12%,rgba(10,132,255,.18),transparent_28%),radial-gradient(circle_at_88%_10%,rgba(48,209,88,.14),transparent_24%),linear-gradient(135deg,#07070b_0%,#0d111c_52%,#080b10_100%)]">
-    <section id="login-panel" class="login-screen grid min-h-screen place-items-center px-4 py-8 sm:px-6" aria-labelledby="login-title">
-      <form id="login-form" class="login-card w-full max-w-[440px] rounded-[34px] border border-white/10 bg-white/[.075] p-6 shadow-ios backdrop-blur-3xl sm:p-8">
-        <div class="mx-auto mb-5 grid h-20 w-20 place-items-center rounded-[26px] bg-gradient-to-br from-[#34c759] to-[#0a84ff] text-5xl shadow-[0_20px_48px_rgba(10,132,255,.28)]" aria-hidden="true">✿</div>
-        <p class="eyebrow text-center text-xs font-black uppercase tracking-[.22em] text-[#30d158]">Open OSCAR</p>
-        <h1 id="login-title" class="mt-2 text-center text-5xl font-black tracking-[-.06em] sm:text-6xl">ICQ Web</h1>
-        <p class="login-subtitle mt-3 text-center text-sm leading-6 text-white/55 sm:text-base">Войдите по UIN и паролю, чтобы перейти к общению.</p>
+<body>
+  <main class="app-shell">
+    <section id="login-panel" class="login-screen" aria-labelledby="login-title">
+      <form id="login-form" class="login-card">
+        <div class="app-icon" aria-hidden="true">✿</div>
+        <p class="eyebrow">Open OSCAR</p>
+        <h1 id="login-title">ICQ Web</h1>
+        <p class="login-subtitle">Войдите по UIN и паролю, чтобы перейти к общению.</p>
 
-        <div class="mt-7 grid gap-4">
-          <label class="grid gap-2 text-sm font-bold text-white/80">
-            UIN
-            <input id="screen-name" name="screen-name" class="field" autocomplete="username" inputmode="numeric" required placeholder="123456">
-          </label>
-          <label class="grid gap-2 text-sm font-bold text-white/80">
-            Пароль
-            <input id="password" name="password" class="field" type="password" autocomplete="current-password" required placeholder="••••••••">
-          </label>
-        </div>
-
+        <label>
+          UIN
+          <input id="screen-name" name="screen-name" autocomplete="username" inputmode="numeric" required placeholder="123456">
+        </label>
+        <label>
+          Пароль
+          <input id="password" name="password" type="password" autocomplete="current-password" required placeholder="••••••••">
+        </label>
         <input id="api-key" name="api-key" type="hidden">
-        <button id="login-button" class="mt-6 h-14 w-full rounded-[20px] bg-[#0a84ff] text-base font-black text-white shadow-[0_16px_36px_rgba(10,132,255,.34)] transition hover:bg-[#3395ff] active:scale-[.985] disabled:cursor-not-allowed disabled:opacity-60" type="submit">Войти</button>
-        <p id="connection-status" class="login-status mt-4 min-h-5 text-center text-sm text-white/45" role="status">Ожидание входа</p>
+        <button id="login-button" type="submit">Войти</button>
+        <p id="connection-status" class="login-status" role="status">Ожидание входа</p>
       </form>
     </section>
 
-    <section id="client-panel" class="client-layout hidden h-screen grid-cols-[320px_minmax(0,1fr)_300px] gap-3 p-3 xl:grid-cols-[360px_minmax(0,1fr)_320px]" hidden>
-      <aside class="panel contacts-panel flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[30px] border border-white/10 bg-white/[.07] shadow-soft backdrop-blur-3xl" aria-labelledby="contacts-title">
-        <div class="panel-header compact flex items-start justify-between gap-3 border-b border-white/10 p-5">
-          <div class="min-w-0">
-            <p class="eyebrow text-xs font-black uppercase tracking-[.22em] text-[#30d158]">ICQ Web</p>
-            <h2 id="contacts-title" class="mt-1 text-2xl font-black tracking-[-.04em]">Контакты</h2>
-            <p id="session-summary" class="mt-1 truncate text-sm text-white/50">Не подключено</p>
+    <section id="client-panel" class="client-layout" hidden>
+      <aside class="panel contacts-panel" aria-labelledby="contacts-title">
+        <div class="panel-header compact">
+          <div>
+            <p class="eyebrow">ICQ Web</p>
+            <h2 id="contacts-title">Контакты</h2>
+            <p id="session-summary">Не подключено</p>
           </div>
-          <button id="logout-button" class="logout-button" type="button">ВЫХОД</button>
+          <button id="logout-button" class="logout-button inline-flex items-center justify-center uppercase tracking-widest transition-colors" type="button">ВЫХОД</button>
         </div>
 
-        <div class="contact-toolbar grid grid-cols-[48px_minmax(0,1fr)] gap-2 px-4 pt-4">
+        <div class="contact-toolbar">
           <button id="refresh-contacts" class="icon-button" type="button" title="Обновить контакты" aria-label="Обновить контакты">↻</button>
-          <select id="presence-state" class="tailwind-select" aria-label="Мой статус">
+          <select id="presence-state" class="tailwind-select rounded-2xl border border-gray-700 bg-gray-900 text-gray-100 shadow-sm" aria-label="Мой статус">
             <option value="online">В сети</option>
+            <option value="freechat">Свободен для разговора</option>
             <option value="away">Отошёл</option>
             <option value="na">Недоступен</option>
             <option value="occupied">Занят</option>
             <option value="dnd">Не беспокоить</option>
-            <option value="freechat">Готов поболтать</option>
-            <option value="offline">Невидимый</option>
+            <option value="invisible">Невидимый</option>
           </select>
         </div>
 
-        <form id="add-contact-form" class="add-contact-form grid grid-cols-[minmax(0,1fr)_48px] gap-2 px-4 pt-3">
-          <input id="contact-name" class="field" type="text" autocomplete="off" inputmode="numeric" placeholder="UIN контакта" aria-label="UIN контакта">
-          <button class="grid h-12 place-items-center rounded-[18px] bg-[#30d158] text-xl font-black text-black transition hover:bg-[#45df6a] active:scale-95" type="submit">+</button>
+        <form id="add-contact-form" class="add-contact-form">
+          <input id="contact-name" type="text" autocomplete="off" inputmode="numeric" placeholder="UIN контакта" aria-label="UIN контакта">
+          <button type="submit">+</button>
         </form>
 
-        <div class="px-4 pt-3">
-          <input id="contact-filter" class="contact-filter field" type="search" autocomplete="off" placeholder="Поиск" aria-label="Поиск контактов">
-        </div>
-        <ol id="contact-list" class="contact-list min-h-0 flex-1 overflow-auto px-3 pb-4 pt-3" aria-live="polite"></ol>
+        <input id="contact-filter" class="contact-filter" type="search" autocomplete="off" placeholder="Поиск" aria-label="Поиск контактов">
+        <ol id="contact-list" class="contact-list" aria-live="polite"></ol>
       </aside>
 
-      <section class="panel chat-panel flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[30px] border border-white/10 bg-white/[.07] shadow-soft backdrop-blur-3xl" aria-labelledby="chat-title">
-        <div class="chat-header flex items-start justify-between gap-4 border-b border-white/10 p-5">
-          <div class="min-w-0">
-            <h2 id="chat-title" class="truncate text-2xl font-black tracking-[-.04em]">Выберите контакт</h2>
-            <p id="chat-subtitle" class="mt-1 truncate text-sm text-white/50">История сообщений появится здесь.</p>
+      <section class="panel chat-panel" aria-labelledby="chat-title">
+        <div class="chat-header">
+          <div>
+            <h2 id="chat-title">Выберите контакт</h2>
+            <p id="chat-subtitle">История сообщений появится здесь.</p>
           </div>
           <button id="clear-history" class="ghost" type="button" disabled>Очистить</button>
         </div>
 
         <ol id="messages" class="messages min-h-0 flex-1 overflow-auto p-5" aria-live="polite"></ol>
 
-        <form id="message-form" class="composer relative grid grid-cols-[minmax(0,1fr)_52px_64px] gap-2 border-t border-white/10 p-4">
-          <textarea id="message-text" class="field min-h-[56px] resize-none py-4" rows="2" placeholder="Сообщение (Ctrl+Enter — отправить)" disabled required></textarea>
+        <form id="message-form" class="composer">
+          <textarea id="message-text" rows="2" placeholder="Сообщение (Ctrl+Enter — отправить)" disabled required></textarea>
           <button id="emoji-button" class="emoji-toggle" type="button" title="Смайлы" aria-label="Смайлы">☺</button>
-          <button id="send-button" class="send-button" type="submit" disabled>➤</button>
+          <button id="send-button" type="submit" disabled>➤</button>
           <div id="emoji-picker" class="emoji-picker" hidden></div>
         </form>
       </section>
 
-      <aside class="panel side-panel min-h-0 min-w-0 overflow-hidden rounded-[30px] border border-white/10 bg-white/[.07] p-4 shadow-soft backdrop-blur-3xl" aria-label="Дополнительная панель">
-        <section class="self-card rounded-[26px] border border-white/10 bg-white/[.055] p-5 text-center">
+      <aside class="panel side-panel" aria-label="Дополнительная панель">
+        <section class="self-card">
           <button id="avatar-button" class="avatar-large" type="button" title="Загрузить аватар" aria-label="Загрузить аватар">✿</button>
           <input id="avatar-input" type="file" accept="image/png,image/jpeg" hidden>
-          <h2 id="self-name" class="mt-4 truncate text-2xl font-black tracking-[-.04em]">ICQ</h2>
-          <p class="mt-1 text-sm text-white/45">JPG/PNG до 256×256</p>
+          <h2 id="self-name">ICQ</h2>
+          <p>JPG/PNG до 256×256</p>
         </section>
-        <section class="contact-actions mt-4 rounded-[26px] border border-white/10 bg-white/[.055] p-5" aria-labelledby="contact-actions-title">
-          <h3 id="contact-actions-title" class="text-center text-lg font-black">Контакт</h3>
-          <p id="contact-actions-name" class="mt-1 truncate text-center text-sm text-white/45">Выберите контакт</p>
-          <div class="mt-4 grid gap-2">
-            <button id="rename-contact" type="button" disabled>Переименовать</button>
-            <button id="delete-contact" type="button" disabled>Удалить</button>
-            <button id="block-contact" type="button" disabled>Заблокировать</button>
-          </div>
+        <section class="contact-actions" aria-labelledby="contact-actions-title">
+          <h3 id="contact-actions-title">Контакт</h3>
+          <p id="contact-actions-name">Выберите контакт</p>
+          <button id="rename-contact" type="button" disabled>Переименовать</button>
+          <button id="delete-contact" type="button" disabled>Удалить</button>
+          <button id="block-contact" type="button" disabled>Заблокировать</button>
         </section>
       </aside>
     </section>

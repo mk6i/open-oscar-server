@@ -1,5 +1,6 @@
 const STORAGE_PREFIX = 'openOscar.webClient';
 const ICQ_EMOTICONS = [':-)', ';-)', ':-D', ':-P', ':-(', ':-O', ':-*', ':-[', ':-X', '8-)', ':-/', ':-!'];
+const CONTACT_REFRESH_INTERVAL_MS = 15000;
 
 const state = {
   apiKey: '',
@@ -9,6 +10,9 @@ const state = {
   lastSeqNum: 0,
   polling: false,
   pollController: null,
+  contactRefreshTimer: null,
+  refreshingContacts: false,
+  audioContext: null,
   contacts: new Map(),
   selectedContact: '',
   presenceState: 'online',
@@ -73,6 +77,11 @@ elements.deleteContact.addEventListener('click', deleteSelectedContact);
 elements.blockContact.addEventListener('click', blockSelectedContact);
 elements.clearHistory.addEventListener('click', clearCurrentHistory);
 window.addEventListener('beforeunload', () => stopPolling());
+window.addEventListener('visibilitychange', () => {
+  if (!document.hidden) {
+    refreshContacts(false).catch(() => {});
+  }
+});
 
 loadClientConfig().catch((error) => {
   setStatus('Клиент не настроен');
@@ -225,7 +234,7 @@ function upsertContact(contact) {
 }
 
 function contactStatus(contact) {
-  return ['online', 'away', 'na', 'occupied', 'dnd', 'freechat', 'idle'].includes(contact?.state) ? contact.state : 'offline';
+  return ['online', 'away', 'na', 'occupied', 'dnd', 'freechat', 'idle', 'invisible'].includes(contact?.state) ? contact.state : 'offline';
 }
 
 function statusLabel(status) {
@@ -235,8 +244,9 @@ function statusLabel(status) {
     na: 'недоступен',
     occupied: 'занят',
     dnd: 'не беспокоить',
-    freechat: 'готов поболтать',
+    freechat: 'свободен для разговора',
     idle: 'неактивен',
+    invisible: 'невидимый',
     offline: 'не в сети',
   };
   return labels[status] || 'не в сети';
@@ -256,10 +266,12 @@ function setSignedIn(data) {
   mergeBuddyGroups(data.events?.buddylist?.groups || data.myInfo?.buddylist?.groups || []);
   renderContacts();
   renderConversation();
+  startAutomaticContactRefresh();
 }
 
 function setSignedOut(reason = 'Ожидание входа') {
   stopPolling();
+  stopAutomaticContactRefresh();
   state.token = '';
   state.aimsid = '';
   state.lastSeqNum = 0;
@@ -457,19 +469,20 @@ async function login(event) {
     const sessionPayload = await getJSON('/aim/startSession', {
       k: state.apiKey,
       a: state.token,
-      events: 'myInfo,buddylist,presence,im,sentIM,typing,offlineIM,sessionEnded',
+      events: 'myInfo,buddylist,presence,im,sentIM,typing,offlineIM,authorization,sessionEnded',
       clientName: 'Open OSCAR ICQ Web',
       clientVersion: '3',
       sessionTimeout: '1800',
     });
 
+    unlockIncomingSound();
     state.contacts.clear();
     state.selectedContact = '';
     setSignedIn(responseData(sessionPayload));
     try {
       await refreshContacts(false);
     } catch {
-      // Initial buddy-list refresh is best effort; event polling will keep the UI current.
+      // Initial buddy-list refresh is best effort; automatic refresh and event polling will keep the UI current.
     }
     state.polling = true;
     pollEvents();
@@ -483,18 +496,40 @@ async function login(event) {
 }
 
 async function refreshContacts(showNotice = false) {
-  if (!state.aimsid) {
+  if (!state.aimsid || state.refreshingContacts) {
     return;
   }
-  const payload = await getJSON('/presence/get', {
-    aimsid: state.aimsid,
-    bl: '1',
-  });
-  const data = responseData(payload);
-  mergeBuddyGroups(data.groups || data.events?.buddylist?.groups || []);
-  renderContacts();
-  if (showNotice) {
-    showToast('Контакты обновлены.');
+  state.refreshingContacts = true;
+  try {
+    const payload = await getJSON('/presence/get', {
+      aimsid: state.aimsid,
+      bl: '1',
+    });
+    const data = responseData(payload);
+    mergeBuddyGroups(data.groups || data.events?.buddylist?.groups || []);
+    renderContacts();
+    if (state.selectedContact) {
+      renderConversation();
+    }
+    if (showNotice) {
+      showToast('Контакты обновлены.');
+    }
+  } finally {
+    state.refreshingContacts = false;
+  }
+}
+
+function startAutomaticContactRefresh() {
+  stopAutomaticContactRefresh();
+  state.contactRefreshTimer = window.setInterval(() => {
+    refreshContacts(false).catch(() => {});
+  }, CONTACT_REFRESH_INTERVAL_MS);
+}
+
+function stopAutomaticContactRefresh() {
+  if (state.contactRefreshTimer) {
+    window.clearInterval(state.contactRefreshTimer);
+    state.contactRefreshTimer = null;
   }
 }
 
@@ -513,6 +548,9 @@ async function pollEvents() {
       state.lastSeqNum = data.lastSeqNum ?? state.lastSeqNum;
       for (const event of data.events || []) {
         handleServerEvent(event);
+      }
+      if ((data.events || []).some((event) => ['buddylist', 'presence'].includes(event.type))) {
+        refreshContacts(false).catch(() => {});
       }
     } catch (error) {
       if (!state.polling || error.name === 'AbortError') {
@@ -561,6 +599,7 @@ function handleServerEvent(event) {
     upsertContact({ aimId: from, displayId: from, state: 'online' });
     const isSelected = state.selectedContact && contactKey(state.selectedContact) === contactKey(from);
     storeMessage(from, 'in', data.message || '', event.timestamp ? event.timestamp * 1000 : Date.now(), !isSelected);
+    playIncomingSound();
     if (!state.selectedContact) {
       selectContact(from);
     } else {
@@ -569,6 +608,10 @@ function handleServerEvent(event) {
         renderConversation();
       }
     }
+  }
+
+  if (event.type === 'authorization') {
+    handleAuthorizationEvent(event.data || {});
   }
 
   if (event.type === 'sentIM') {
@@ -587,12 +630,84 @@ function handleServerEvent(event) {
   }
 }
 
+function unlockIncomingSound() {
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContext || state.audioContext) {
+    return;
+  }
+  try {
+    state.audioContext = new AudioContext();
+    state.audioContext.resume?.();
+  } catch {
+    state.audioContext = null;
+  }
+}
+
+function playIncomingSound() {
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContext) {
+    return;
+  }
+  try {
+    const ctx = state.audioContext || new AudioContext();
+    state.audioContext = ctx;
+    ctx.resume?.();
+    const now = ctx.currentTime;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.16, now + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.26);
+    gain.connect(ctx.destination);
+
+    for (const [offset, frequency] of [[0, 880], [0.12, 1174]]) {
+      const oscillator = ctx.createOscillator();
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(frequency, now + offset);
+      oscillator.connect(gain);
+      oscillator.start(now + offset);
+      oscillator.stop(now + offset + 0.12);
+    }
+  } catch {
+    // Some browsers block audio until the next direct user gesture.
+  }
+}
+
+async function handleAuthorizationEvent(data) {
+  if (data.action !== 'request' || !state.aimsid) {
+    return;
+  }
+  const requester = normalizeName(data.from || data.aimId || data.screenName);
+  if (!requester) {
+    return;
+  }
+  playIncomingSound();
+  const reason = data.reason ? `\n\nСообщение: ${data.reason}` : '';
+  const accepted = window.confirm(`${displayNameFor(requester)} просит авторизацию для добавления вас в контакт-лист.${reason}\n\nРазрешить?`);
+  const responseReason = accepted ? 'Авторизация разрешена' : 'Авторизация отклонена';
+  try {
+    await getJSON('/buddylist/respondAuthorize', {
+      aimsid: state.aimsid,
+      buddy: requester,
+      accepted: accepted ? '1' : '0',
+      reason: responseReason,
+    });
+    if (accepted) {
+      upsertContact({ aimId: requester, displayId: requester, state: 'offline', group: 'Buddies' });
+      renderContacts();
+      await refreshContacts(false);
+    }
+    showToast(accepted ? 'Авторизация контакта разрешена.' : 'Авторизация контакта отклонена.');
+  } catch (error) {
+    showToast(`Не удалось отправить ответ авторизации: ${error.message}`, true);
+  }
+}
+
 async function updateOwnPresence() {
   if (!state.aimsid) {
     return;
   }
   const wanted = elements.presenceState.value;
-  const stateMap = { offline: 'invisible', na: 'na', occupied: 'occupied', freechat: 'freechat' };
+  const stateMap = { offline: 'invisible', invisible: 'invisible', na: 'na', occupied: 'occupied', freechat: 'freechat' };
   const apiState = stateMap[wanted] || wanted;
   try {
     await getJSON('/presence/setState', {
@@ -600,7 +715,7 @@ async function updateOwnPresence() {
       state: apiState,
     });
     state.presenceState = wanted;
-    elements.sessionSummary.textContent = `${state.screenName} · ${wanted === 'offline' ? 'невидимый' : statusLabel(wanted)}`;
+    elements.sessionSummary.textContent = `${state.screenName} · ${statusLabel(wanted)}`;
   } catch (error) {
     elements.presenceState.value = state.presenceState;
     showToast(`Не удалось изменить статус: ${error.message}`, true);
@@ -709,15 +824,15 @@ function updateAvatar(event) {
 
   const img = new Image();
   img.onload = () => {
-    const size = 256;
+    const maxSize = 256;
+    const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+    const width = Math.max(1, Math.round(img.width * scale));
+    const height = Math.max(1, Math.round(img.height * scale));
     const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
+    canvas.width = width;
+    canvas.height = height;
     const ctx = canvas.getContext('2d');
-    const side = Math.min(img.width, img.height);
-    const sx = (img.width - side) / 2;
-    const sy = (img.height - side) / 2;
-    ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
+    ctx.drawImage(img, 0, 0, width, height);
     state.avatars[contactKey(state.screenName)] = canvas.toDataURL(file.type, 0.88);
     saveAvatars();
     applyOwnAvatar();
