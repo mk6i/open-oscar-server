@@ -297,7 +297,6 @@ p { margin: 0; }
 }
 
 .contact {
-  width: 100%;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
@@ -316,6 +315,8 @@ p { margin: 0; }
   width: 42px;
   height: 42px;
   display: grid;
+  height: 50px;
+  width: 50px;
   place-items: center;
   border-radius: 15px;
   color: #fff;
