@@ -2,7 +2,7 @@
 # Build & release helpers
 ################################################################################
 
-DOCKER_IMAGE_TAG_GO_RELEASER := goreleaser/goreleaser:v2.13.1
+DOCKER_IMAGE_TAG_GO_RELEASER := goreleaser/goreleaser:v2.15.4
 # Docker builds cannot load a macOS USB PKCS#11 token. Options: (1) SKIP_CODE_SIGN=1 and skip;
 # (2) SIGN_HTTP_URL=http://host.docker.internal:8765 plus `make sign-server` on the host to
 # sign via HTTP; (3) run release-sign with host goreleaser (no Docker).
