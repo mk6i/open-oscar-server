@@ -1,8 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
-	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -281,39 +279,4 @@ func (h *ChatHandler) LeaveChat(w http.ResponseWriter, r *http.Request) {
 	h.Logger.Info("user left chat room",
 		"screenName", session.ScreenName,
 		"chatsid", chatsid)
-}
-
-// Helper to validate and convert typed JSON data for chat events
-func validateChatEventData(data json.RawMessage, eventType string) (interface{}, error) {
-	switch eventType {
-	case "message":
-		var msgData state.ChatMessageEventData
-		if err := json.Unmarshal(data, &msgData); err != nil {
-			return nil, err
-		}
-		return msgData, nil
-	case "userEntered", "userLeft":
-		var userData state.ChatUserEventData
-		if err := json.Unmarshal(data, &userData); err != nil {
-			return nil, err
-		}
-		return userData, nil
-	case "typing":
-		var typingData state.ChatTypingEventData
-		if err := json.Unmarshal(data, &typingData); err != nil {
-			return nil, err
-		}
-		return typingData, nil
-	case "userInRoom":
-		var participantData state.ChatParticipantList
-		if err := json.Unmarshal(data, &participantData); err != nil {
-			return nil, err
-		}
-		return participantData, nil
-	case "closed":
-		// No additional data for closed event
-		return nil, nil
-	default:
-		return nil, errors.New("unknown chat event type")
-	}
 }

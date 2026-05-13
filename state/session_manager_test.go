@@ -263,15 +263,11 @@ func TestInMemorySessionManager_RelayToScreenNames(t *testing.T) {
 	}
 	sm.RelayToScreenNames(context.Background(), recips, want)
 
-	select {
-	case have := <-user1.ReceiveMessage():
-		assert.Equal(t, want, have)
-	}
+	have := <-user1.ReceiveMessage()
+	assert.Equal(t, want, have)
 
-	select {
-	case have := <-user2.ReceiveMessage():
-		assert.Equal(t, want, have)
-	}
+	have = <-user2.ReceiveMessage()
+	assert.Equal(t, want, have)
 
 	select {
 	case <-user3.ReceiveMessage():
@@ -294,15 +290,11 @@ func TestInMemorySessionManager_Broadcast(t *testing.T) {
 
 	sm.RelayToAll(context.Background(), want)
 
-	select {
-	case have := <-user1.ReceiveMessage():
-		assert.Equal(t, want, have)
-	}
+	have := <-user1.ReceiveMessage()
+	assert.Equal(t, want, have)
 
-	select {
-	case have := <-user2.ReceiveMessage():
-		assert.Equal(t, want, have)
-	}
+	have = <-user2.ReceiveMessage()
+	assert.Equal(t, want, have)
 }
 
 func TestInMemorySessionManager_Broadcast_SkipClosedSession(t *testing.T) {
@@ -320,10 +312,8 @@ func TestInMemorySessionManager_Broadcast_SkipClosedSession(t *testing.T) {
 
 	sm.RelayToAll(context.Background(), want)
 
-	select {
-	case have := <-user1.ReceiveMessage():
-		assert.Equal(t, want, have)
-	}
+	have := <-user1.ReceiveMessage()
+	assert.Equal(t, want, have)
 
 	select {
 	case <-user2.ReceiveMessage():
@@ -347,10 +337,8 @@ func TestInMemorySessionManager_RelayToScreenName_SessionExists(t *testing.T) {
 	recip := NewIdentScreenName("user-screen-name-1")
 	sm.RelayToScreenName(context.Background(), recip, want)
 
-	select {
-	case have := <-user1.ReceiveMessage():
-		assert.Equal(t, want, have)
-	}
+	have := <-user1.ReceiveMessage()
+	assert.Equal(t, want, have)
 
 	select {
 	case <-user2.ReceiveMessage():
@@ -387,10 +375,7 @@ func TestInMemorySessionManager_RelayToScreenName_SkipFullSession(t *testing.T) 
 	msg := wire.SNACMessage{Frame: wire.SNACFrame{FoodGroup: wire.ICBM}}
 
 	wantCount := 0
-	for {
-		if user1.RelayMessageToInstance(msg) == SessQueueFull {
-			break
-		}
+	for user1.RelayMessageToInstance(msg) != SessQueueFull {
 		wantCount++
 	}
 
@@ -592,10 +577,8 @@ func TestInMemoryChatSessionManager_RelayToAllExcept_HappyPath(t *testing.T) {
 
 	sm.RelayToAllExcept(context.Background(), cookie, user2.IdentScreenName(), want)
 
-	select {
-	case have := <-user1.ReceiveMessage():
-		assert.Equal(t, want, have)
-	}
+	have := <-user1.ReceiveMessage()
+	assert.Equal(t, want, have)
 
 	select {
 	case <-user2.ReceiveMessage():
@@ -603,10 +586,8 @@ func TestInMemoryChatSessionManager_RelayToAllExcept_HappyPath(t *testing.T) {
 	default:
 	}
 
-	select {
-	case have := <-user3.ReceiveMessage():
-		assert.Equal(t, want, have)
-	}
+	have = <-user3.ReceiveMessage()
+	assert.Equal(t, want, have)
 }
 
 //func TestInMemoryChatSessionManager_AllSessions_RoomExists(t *testing.T) {
@@ -646,10 +627,8 @@ func TestInMemoryChatSessionManager_RelayToScreenName_SessionAndChatRoomExist(t 
 	recip := NewIdentScreenName("user-screen-name-1")
 	sm.RelayToScreenName(context.Background(), "chat-room-1", recip, want)
 
-	select {
-	case have := <-user1.ReceiveMessage():
-		assert.Equal(t, want, have)
-	}
+	have := <-user1.ReceiveMessage()
+	assert.Equal(t, want, have)
 
 	select {
 	case <-user2.ReceiveMessage():
@@ -809,10 +788,8 @@ func TestInMemorySessionManager_RelayToAll_SkipIncompleteSignon(t *testing.T) {
 
 	sm.RelayToAll(context.Background(), want)
 
-	select {
-	case have := <-user1.ReceiveMessage():
-		assert.Equal(t, want, have)
-	}
+	have := <-user1.ReceiveMessage()
+	assert.Equal(t, want, have)
 
 	select {
 	case <-user2.ReceiveMessage():
@@ -873,10 +850,8 @@ func TestInMemorySessionManager_RelayToScreenNames_SkipIncompleteSignon(t *testi
 	}
 	sm.RelayToScreenNames(context.Background(), recips, want)
 
-	select {
-	case have := <-user1.ReceiveMessage():
-		assert.Equal(t, want, have)
-	}
+	have := <-user1.ReceiveMessage()
+	assert.Equal(t, want, have)
 
 	select {
 	case <-user2.ReceiveMessage():
@@ -884,10 +859,8 @@ func TestInMemorySessionManager_RelayToScreenNames_SkipIncompleteSignon(t *testi
 	default:
 	}
 
-	select {
-	case have := <-user3.ReceiveMessage():
-		assert.Equal(t, want, have)
-	}
+	have = <-user3.ReceiveMessage()
+	assert.Equal(t, want, have)
 }
 
 func TestInMemorySessionManager_AllSessions_SkipIncompleteSignon(t *testing.T) {

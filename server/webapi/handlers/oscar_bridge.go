@@ -161,13 +161,14 @@ func (h *OSCARBridgeHandler) StartOSCARSession(w http.ResponseWriter, r *http.Re
 	// Validate WebAPI session
 	session, err := h.SessionManager.GetSession(r.Context(), aimsid)
 	if err != nil {
-		if err == state.ErrNoWebAPISession {
+		switch err {
+		case state.ErrNoWebAPISession:
 			h.Logger.Warn("session not found", "aimsid", aimsid)
 			h.sendError(w, r, http.StatusNotFound, "session not found")
-		} else if err == state.ErrWebAPISessionExpired {
+		case state.ErrWebAPISessionExpired:
 			h.Logger.Warn("session expired", "aimsid", aimsid)
 			h.sendError(w, r, http.StatusGone, "session expired")
-		} else {
+		default:
 			h.Logger.Error("failed to get session", "error", err)
 			h.sendError(w, r, http.StatusInternalServerError, "internal server error")
 		}
@@ -175,7 +176,7 @@ func (h *OSCARBridgeHandler) StartOSCARSession(w http.ResponseWriter, r *http.Re
 	}
 
 	// Touch the session to update last access time
-	h.SessionManager.TouchSession(r.Context(), aimsid)
+	_ = h.SessionManager.TouchSession(r.Context(), aimsid)
 
 	// Check if session already has an OSCAR bridge
 	if session.OSCARSession != nil {

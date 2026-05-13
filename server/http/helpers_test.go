@@ -304,14 +304,7 @@ type retrieveProfileParams []struct {
 // sessionRetrieverParams is a helper struct that contains mock parameters for
 // SessionRetriever methods
 type sessionRetrieverParams struct {
-	sessionRetrieverAllSessionsParams
 	retrieveSessionByNameParams
-}
-
-// sessionRetrieverAllSessionsParams is the list of parameters passed at the mock
-// SessionRetriever.AllSessions call site
-type sessionRetrieverAllSessionsParams []struct {
-	result []*state.Session
 }
 
 // retrieveSessionByNameParams is the list of parameters passed at the mock

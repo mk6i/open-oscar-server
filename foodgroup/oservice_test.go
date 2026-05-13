@@ -1075,7 +1075,7 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 				logger:           slog.Default(),
 				buddyBroadcaster: buddyUpdateBroadcaster,
 			}
-			outputSNAC, err := svc.SetUserInfoFields(nil, tc.instance, tc.inputSNAC.Frame,
+			outputSNAC, err := svc.SetUserInfoFields(context.TODO(), tc.instance, tc.inputSNAC.Frame,
 				tc.inputSNAC.Body.(wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields))
 			assert.ErrorIs(t, err, tc.expectErr)
 			if tc.expectErr != nil {
@@ -2163,7 +2163,7 @@ func TestOServiceService_IdleNotification(t *testing.T) {
 				logger:           slog.Default(),
 				buddyBroadcaster: buddyUpdateBroadcaster,
 			}
-			haveErr := svc.IdleNotification(nil, tt.instance, tt.bodyIn)
+			haveErr := svc.IdleNotification(context.TODO(), tt.instance, tt.bodyIn)
 			assert.ErrorIs(t, tt.wantErr, haveErr)
 		})
 	}
@@ -2726,13 +2726,13 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 					RelayToScreenName(matchContext(), params.cookie, params.screenName, params.message)
 			}
 			profileManager := newMockProfileManager(t)
-			for _, params := range tt.mockParams.profileManagerParams.retrieveProfileParams {
+			for _, params := range tt.mockParams.retrieveProfileParams {
 				profileManager.EXPECT().
 					Profile(matchContext(), params.screenName).
 					Return(params.result, params.err)
 			}
 			offlineMessageManager := newMockOfflineMessageManager(t)
-			for _, params := range tt.mockParams.offlineMessageManagerParams.setOfflineMsgCountParams {
+			for _, params := range tt.mockParams.setOfflineMsgCountParams {
 				offlineMessageManager.EXPECT().
 					SetOfflineMsgCount(matchContext(), params.screenName, params.count).
 					Return(params.err)

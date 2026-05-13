@@ -332,11 +332,13 @@ func (m *WebAPIChatManager) SetTyping(ctx context.Context, chatsid, typingStatus
 			// Reset typing status to none
 			// Using background context here since this is an async timer callback
 			// and the original context may have expired
-			m.store.db.ExecContext(context.Background(), `
+			if _, err := m.store.db.ExecContext(context.Background(), `
 				UPDATE web_chat_participants 
 				SET typing_status = 'none', typing_updated_at = ?
 				WHERE room_id = ? AND screen_name = ?`,
-				time.Now().Unix(), session.RoomID, session.ScreenName)
+				time.Now().Unix(), session.RoomID, session.ScreenName); err != nil {
+				m.logger.Error("failed to reset typing status", "error", err)
+			}
 			// Broadcast the reset
 			m.broadcastChatEvent(session.RoomID, ChatEventData{
 				ChatSID:   chatsid,
@@ -563,9 +565,11 @@ func (m *WebAPIChatManager) getParticipants(ctx context.Context, roomID string) 
 
 func (m *WebAPIChatManager) closeRoom(ctx context.Context, roomID string) {
 	now := time.Now().Unix()
-	m.store.db.ExecContext(ctx, `
+	if _, err := m.store.db.ExecContext(ctx, `
 		UPDATE web_chat_rooms SET closed_at = ? WHERE room_id = ?`,
-		now, roomID)
+		now, roomID); err != nil {
+		m.logger.Error("failed to close chat room", "roomID", roomID, "error", err)
+	}
 
 	// Remove from cache
 	delete(m.activeRooms, roomID)
@@ -693,9 +697,15 @@ func (m *WebAPIChatManager) CleanupInactiveSessions(ctx context.Context) {
 
 		// Mark as left
 		now := time.Now().Unix()
-		m.store.db.ExecContext(ctx, `UPDATE web_chat_sessions SET left_at = ? WHERE chat_sid = ?`, now, chatsid)
-		m.store.db.ExecContext(ctx, `DELETE FROM web_chat_participants WHERE room_id = ? AND screen_name = ?`,
-			roomID, screenName)
+		if _, err := m.store.db.ExecContext(ctx, `UPDATE web_chat_sessions SET left_at = ? WHERE chat_sid = ?`, now, chatsid); err != nil {
+			m.logger.Error("failed to mark inactive chat session left", "chatsid", chatsid, "error", err)
+			continue
+		}
+		if _, err := m.store.db.ExecContext(ctx, `DELETE FROM web_chat_participants WHERE room_id = ? AND screen_name = ?`,
+			roomID, screenName); err != nil {
+			m.logger.Error("failed to remove inactive chat participant", "roomID", roomID, "screenName", screenName, "error", err)
+			continue
+		}
 
 		// Broadcast user left
 		// Note: Broadcasting doesn't need context as it's fire-and-forget

@@ -163,7 +163,7 @@ func (s *ICBMService) ChannelMsgToHost(ctx context.Context, instance *state.Sess
 		TLVRestBlock: wire.TLVRestBlock{},
 	}
 
-	for _, tlv := range inBody.TLVRestBlock.TLVList {
+	for _, tlv := range inBody.TLVList {
 		if tlv.Tag == wire.ICBMTLVRequestHostAck {
 			// Exclude this TLV, because its presence breaks chat invitations
 			// on macOS client v4.0.9.
@@ -215,7 +215,7 @@ func (s *ICBMService) ChannelMsgToHost(ctx context.Context, instance *state.Sess
 
 	s.convoTracker.trackConvo(time.Now(), instance.IdentScreenName(), recipSess.IdentScreenName())
 
-	if _, requestedConfirmation := inBody.TLVRestBlock.Bytes(wire.ICBMTLVRequestHostAck); !requestedConfirmation {
+	if _, requestedConfirmation := inBody.Bytes(wire.ICBMTLVRequestHostAck); !requestedConfirmation {
 		// don't ack message
 		return nil, nil
 	}
@@ -289,7 +289,7 @@ func (s *ICBMService) sendOfflineMessage(ctx context.Context, instance *state.Se
 		return newICBMErr(inFrame.RequestID, wire.ErrorCodeNotLoggedOn), nil
 	}
 
-	if _, requestedConfirmation := inBody.TLVRestBlock.Bytes(wire.ICBMTLVRequestHostAck); requestedConfirmation {
+	if _, requestedConfirmation := inBody.Bytes(wire.ICBMTLVRequestHostAck); requestedConfirmation {
 		// ack message back to sender
 		return &wire.SNACMessage{
 			Frame: wire.SNACFrame{
@@ -570,7 +570,7 @@ func (s *ICBMService) OfflineRetrieve(ctx context.Context, instance *state.Sessi
 			TLVRestBlock: wire.TLVRestBlock{},
 		}
 
-		for _, tlv := range event.Message.TLVRestBlock.TLVList {
+		for _, tlv := range event.Message.TLVList {
 			clientIM.Append(tlv)
 		}
 		clientIM.Append(wire.NewTLVBE(wire.ICBMTLVSendTime, uint32(event.Sent.Unix())))

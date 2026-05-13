@@ -468,7 +468,7 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 		// Write XML declaration and data as one response
 		xmlOutput := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>%s`, xmlData)
 		w.Header().Set("Content-Length", strconv.Itoa(len(xmlOutput)))
-		fmt.Fprint(w, xmlOutput)
+		_, _ = fmt.Fprint(w, xmlOutput)
 	} else {
 		// Send response in requested format (JSON, JSONP, or AMF)
 		SendResponse(w, r, resp, h.Logger)
@@ -497,11 +497,12 @@ func (h *SessionHandler) EndSession(w http.ResponseWriter, r *http.Request) {
 	// Get session
 	session, err := h.SessionManager.GetSession(r.Context(), aimsid)
 	if err != nil {
-		if err == state.ErrNoWebAPISession {
+		switch err {
+		case state.ErrNoWebAPISession:
 			h.sendError(w, http.StatusNotFound, "session not found")
-		} else if err == state.ErrWebAPISessionExpired {
+		case state.ErrWebAPISessionExpired:
 			h.sendError(w, http.StatusGone, "session expired")
-		} else {
+		default:
 			h.sendError(w, http.StatusInternalServerError, "internal server error")
 		}
 		return

@@ -10,10 +10,7 @@ import (
 	"strings"
 )
 
-var (
-	ErrUnmarshalFailure  = errors.New("failed to unmarshal")
-	errNotNullTerminated = errors.New("nullterm tag is set, but string is not null-terminated")
-)
+var ErrUnmarshalFailure = errors.New("failed to unmarshal")
 
 // UnmarshalBE unmarshalls OSCAR protocol messages in big-endian format.
 func UnmarshalBE(v any, r io.Reader) error {
@@ -50,7 +47,7 @@ func unmarshal(t reflect.Type, v reflect.Value, tag reflect.StructTag, r io.Read
 			err = nil
 		}
 		return err
-	} else if v.Kind() == reflect.Ptr {
+	} else if v.Kind() == reflect.Pointer {
 		return errNonOptionalPointer
 	}
 
@@ -270,7 +267,7 @@ func unmarshalStruct(t reflect.Type, v reflect.Value, oscTag oscarTag, r io.Read
 	for i := 0; i < v.NumField(); i++ {
 		field := t.Field(i)
 		value := v.Field(i)
-		if field.Type.Kind() == reflect.Ptr {
+		if field.Type.Kind() == reflect.Pointer {
 			if i != v.NumField()-1 {
 				return fmt.Errorf("pointer type found at non-final field %s", field.Name)
 			}

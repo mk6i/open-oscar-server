@@ -175,14 +175,14 @@ func validateConfigMigration() error {
 		if len(oldEnvVarsFound) > 0 {
 			errorMsg.WriteString("\nOld environment variables that must be removed:\n\n")
 			for _, envVar := range oldEnvVarsFound {
-				errorMsg.WriteString(fmt.Sprintf("  - %s\n", envVar))
+				fmt.Fprintf(&errorMsg, "  - %s\n", envVar)
 			}
 		}
 
 		if len(newEnvVarsMissing) > 0 {
 			errorMsg.WriteString("\nNew environment variables that must be provided:\n\n")
 			for _, envVar := range newEnvVarsMissing {
-				errorMsg.WriteString(fmt.Sprintf("  - %s\n", envVar))
+				fmt.Fprintf(&errorMsg, "  - %s\n", envVar)
 			}
 
 			// Generate export commands based on old environment variables
@@ -191,29 +191,29 @@ func validateConfigMigration() error {
 			if contains(newEnvVarsMissing, "API_LISTENER") {
 				apiHost := getEnvOrDefault("API_HOST", "127.0.0.1")
 				apiPort := getEnvOrDefault("API_PORT", "8080")
-				errorMsg.WriteString(fmt.Sprintf("export API_LISTENER=%s:%s\n", apiHost, apiPort))
+				fmt.Fprintf(&errorMsg, "export API_LISTENER=%s:%s\n", apiHost, apiPort)
 			}
 
 			if contains(newEnvVarsMissing, "OSCAR_ADVERTISED_LISTENERS_PLAIN") {
 				oscarHost := getEnvOrDefault("OSCAR_HOST", "127.0.0.1")
 				authPort := getEnvOrDefault("AUTH_PORT", "5190")
-				errorMsg.WriteString(fmt.Sprintf("export OSCAR_ADVERTISED_LISTENERS_PLAIN=LOCAL://%s:%s\n", oscarHost, authPort))
+				fmt.Fprintf(&errorMsg, "export OSCAR_ADVERTISED_LISTENERS_PLAIN=LOCAL://%s:%s\n", oscarHost, authPort)
 			}
 
 			if contains(newEnvVarsMissing, "OSCAR_LISTENERS") {
 				authPort := getEnvOrDefault("AUTH_PORT", "5190")
-				errorMsg.WriteString(fmt.Sprintf("export OSCAR_LISTENERS=LOCAL://0.0.0.0:%s\n", authPort))
+				fmt.Fprintf(&errorMsg, "export OSCAR_LISTENERS=LOCAL://0.0.0.0:%s\n", authPort)
 			}
 
 			if contains(newEnvVarsMissing, "KERBEROS_LISTENERS") {
 				kerberosPort := getEnvOrDefault("KERBEROS_PORT", "1088")
-				errorMsg.WriteString(fmt.Sprintf("export KERBEROS_LISTENERS=LOCAL://0.0.0.0:%s\n", kerberosPort))
+				fmt.Fprintf(&errorMsg, "export KERBEROS_LISTENERS=LOCAL://0.0.0.0:%s\n", kerberosPort)
 			}
 
 			if contains(newEnvVarsMissing, "TOC_LISTENERS") {
 				tocHost := getEnvOrDefault("TOC_HOST", "0.0.0.0")
 				tocPort := getEnvOrDefault("TOC_PORT", "9898")
-				errorMsg.WriteString(fmt.Sprintf("export TOC_LISTENERS=%s:%s\n", tocHost, tocPort))
+				fmt.Fprintf(&errorMsg, "export TOC_LISTENERS=%s:%s\n", tocHost, tocPort)
 			}
 		}
 
@@ -744,11 +744,11 @@ func ICQLegacy(deps Container) *icq_legacy.LegacyServer {
 		)
 		// Notify legacy contacts
 		sessionManager.BroadcastToContacts(session, func(contact *icq_legacy.LegacySession) {
-			dispatcher.SendUserOffline(contact, session.UIN)
+			_ = dispatcher.SendUserOffline(contact, session.UIN)
 		})
 		// Notify OSCAR clients
 		ctx := context.Background()
-		icqLegacyService.NotifyUserOffline(ctx, session.UIN)
+		_ = icqLegacyService.NotifyUserOffline(ctx, session.UIN)
 	})
 
 	return server

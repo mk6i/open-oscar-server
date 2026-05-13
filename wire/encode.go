@@ -45,7 +45,7 @@ func marshal(t reflect.Type, v reflect.Value, tag reflect.StructTag, w io.Writer
 	}
 
 	if oscTag.optional {
-		if t.Kind() != reflect.Ptr {
+		if t.Kind() != reflect.Pointer {
 			return fmt.Errorf("%w: got %v", errOptionalNonPointer, t.Kind())
 		}
 		if v.IsNil() {
@@ -53,7 +53,7 @@ func marshal(t reflect.Type, v reflect.Value, tag reflect.StructTag, w io.Writer
 		}
 		// dereference pointer
 		return marshalStruct(t.Elem(), v.Elem(), oscTag, w, order)
-	} else if t.Kind() == reflect.Ptr {
+	} else if t.Kind() == reflect.Pointer {
 		return errNonOptionalPointer
 	}
 
@@ -156,7 +156,7 @@ func marshalStruct(t reflect.Type, v reflect.Value, oscTag oscarTag, w io.Writer
 		for i := 0; i < t.NumField(); i++ {
 			field := t.Field(i)
 			value := v.Field(i)
-			if field.Type.Kind() == reflect.Ptr {
+			if field.Type.Kind() == reflect.Pointer {
 				if i != t.NumField()-1 {
 					return fmt.Errorf("pointer type found at non-final field %s", field.Name)
 				}

@@ -10,9 +10,9 @@ import (
 //goland:noinspection ALL
 func WeakMD5PasswordHash(pass, authKey string) []byte {
 	hash := md5.New()
-	io.WriteString(hash, authKey)
-	io.WriteString(hash, pass)
-	io.WriteString(hash, "AOL Instant Messenger (SM)")
+	_, _ = io.WriteString(hash, authKey)
+	_, _ = io.WriteString(hash, pass)
+	_, _ = io.WriteString(hash, "AOL Instant Messenger (SM)")
 	return hash.Sum(nil)
 }
 
@@ -21,11 +21,11 @@ func WeakMD5PasswordHash(pass, authKey string) []byte {
 //goland:noinspection ALL
 func StrongMD5PasswordHash(pass, authKey string) []byte {
 	top := md5.New()
-	io.WriteString(top, pass)
+	_, _ = io.WriteString(top, pass)
 	bottom := md5.New()
-	io.WriteString(bottom, authKey)
-	bottom.Write(top.Sum(nil))
-	io.WriteString(bottom, "AOL Instant Messenger (SM)")
+	_, _ = io.WriteString(bottom, authKey)
+	_, _ = bottom.Write(top.Sum(nil))
+	_, _ = io.WriteString(bottom, "AOL Instant Messenger (SM)")
 	return bottom.Sum(nil)
 }
 

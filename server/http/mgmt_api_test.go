@@ -294,7 +294,7 @@ func TestSessionHandlerScreenname_DELETE(t *testing.T) {
 			responseRecorder := httptest.NewRecorder()
 
 			sessionRetriever := newMockSessionRetriever(t)
-			for _, params := range tc.mockParams.sessionRetrieverParams.retrieveSessionByNameParams {
+			for _, params := range tc.mockParams.retrieveSessionByNameParams {
 				sessionRetriever.EXPECT().
 					RetrieveSession(params.screenName).
 					Return(params.result)
@@ -493,31 +493,31 @@ func TestUserAccountHandler_GET(t *testing.T) {
 			responseRecorder := httptest.NewRecorder()
 
 			userManager := newMockUserManager(t)
-			for _, params := range tc.mockParams.userManagerParams.getUserParams {
+			for _, params := range tc.mockParams.getUserParams {
 				userManager.EXPECT().
 					User(matchContext(), params.screenName).
 					Return(params.result, params.err)
 			}
 
 			accountManager := newMockAccountManager(t)
-			for _, params := range tc.mockParams.accountManagerParams.EmailAddressParams {
+			for _, params := range tc.mockParams.EmailAddressParams {
 				accountManager.EXPECT().
 					EmailAddress(matchContext(), params.screenName).
 					Return(params.result, params.err)
 			}
-			for _, params := range tc.mockParams.accountManagerParams.RegStatusParams {
+			for _, params := range tc.mockParams.RegStatusParams {
 				accountManager.EXPECT().
 					RegStatus(matchContext(), params.screenName).
 					Return(params.result, params.err)
 			}
-			for _, params := range tc.mockParams.accountManagerParams.ConfirmStatusParams {
+			for _, params := range tc.mockParams.ConfirmStatusParams {
 				accountManager.EXPECT().
 					ConfirmStatus(matchContext(), params.screenName).
 					Return(params.result, params.err)
 			}
 
 			profileRetriever := newMockProfileRetriever(t)
-			for _, params := range tc.mockParams.profileRetrieverParams.retrieveProfileParams {
+			for _, params := range tc.mockParams.retrieveProfileParams {
 				profileRetriever.EXPECT().
 					Profile(matchContext(), params.screenName).
 					Return(params.result, params.err)
@@ -747,19 +747,19 @@ func TestUserAccountHandler_PATCH(t *testing.T) {
 			responseRecorder := httptest.NewRecorder()
 
 			userManager := newMockUserManager(t)
-			for _, params := range tc.mockParams.userManagerParams.getUserParams {
+			for _, params := range tc.mockParams.getUserParams {
 				userManager.EXPECT().
 					User(matchContext(), params.screenName).
 					Return(params.result, params.err)
 			}
 
 			accountManager := newMockAccountManager(t)
-			for _, params := range tc.mockParams.accountManagerParams.updateSuspendedStatusParams {
+			for _, params := range tc.mockParams.updateSuspendedStatusParams {
 				accountManager.EXPECT().
 					UpdateSuspendedStatus(matchContext(), params.suspendedStatus, params.screenName).
 					Return(params.err)
 			}
-			for _, params := range tc.mockParams.accountManagerParams.setBotStatusParams {
+			for _, params := range tc.mockParams.setBotStatusParams {
 				accountManager.EXPECT().
 					SetBotStatus(matchContext(), params.isBot, params.screenName).
 					Return(params.err)
@@ -1007,21 +1007,21 @@ func TestUserBuddyIconHandler_GET(t *testing.T) {
 			responseRecorder := httptest.NewRecorder()
 
 			userManager := newMockUserManager(t)
-			for _, params := range tc.mockParams.userManagerParams.getUserParams {
+			for _, params := range tc.mockParams.getUserParams {
 				userManager.EXPECT().
 					User(matchContext(), params.screenName).
 					Return(params.result, params.err)
 			}
 
 			feedbagRetriever := newMockFeedBagRetriever(t)
-			for _, params := range tc.mockParams.feedBagRetrieverParams.buddyIconMetadataParams {
+			for _, params := range tc.mockParams.buddyIconMetadataParams {
 				feedbagRetriever.EXPECT().
 					BuddyIconMetadata(matchContext(), params.screenName).
 					Return(params.result, params.err)
 			}
 
 			bartRetriever := newMockBARTAssetManager(t)
-			for _, params := range tc.mockParams.bartAssetManagerParams.bartItemParams {
+			for _, params := range tc.mockParams.bartItemParams {
 				bartRetriever.EXPECT().
 					BARTItem(matchContext(), params.hash).
 					Return(params.result, params.err)
@@ -1118,7 +1118,7 @@ func TestUserHandler_GET(t *testing.T) {
 			responseRecorder := httptest.NewRecorder()
 
 			userManager := newMockUserManager(t)
-			for _, params := range tc.mockParams.userManagerParams.allUsersParams {
+			for _, params := range tc.mockParams.allUsersParams {
 				userManager.EXPECT().
 					AllUsers(matchContext()).
 					Return(params.result, params.err)
@@ -1328,7 +1328,7 @@ func TestUserHandler_DELETE(t *testing.T) {
 			responseRecorder := httptest.NewRecorder()
 
 			userManager := newMockUserManager(t)
-			for _, params := range tc.mockParams.userManagerParams.deleteUserParams {
+			for _, params := range tc.mockParams.deleteUserParams {
 				userManager.EXPECT().
 					DeleteUser(matchContext(), params.screenName).
 					Return(params.err)
@@ -1436,7 +1436,7 @@ func TestUserPasswordHandler_PUT(t *testing.T) {
 			responseRecorder := httptest.NewRecorder()
 
 			userManager := newMockUserManager(t)
-			for _, params := range tc.mockParams.userManagerParams.setUserPasswordParams {
+			for _, params := range tc.mockParams.setUserPasswordParams {
 				userManager.EXPECT().
 					SetUserPassword(matchContext(), params.screenName, params.newPassword).
 					Return(params.err)
@@ -1558,14 +1558,14 @@ func TestPublicChatHandler_GET(t *testing.T) {
 			responseRecorder := httptest.NewRecorder()
 
 			chatRoomRetriever := newMockChatRoomRetriever(t)
-			for _, params := range tc.mockParams.chatRoomRetrieverParams.allChatRoomsParams {
+			for _, params := range tc.mockParams.allChatRoomsParams {
 				chatRoomRetriever.EXPECT().
 					AllChatRooms(matchContext(), params.exchange).
 					Return(params.result, params.err)
 			}
 
 			chatSessionRetriever := newMockChatSessionRetriever(t)
-			for _, params := range tc.mockParams.chatSessionRetrieverParams.chatSessionRetrieverAllSessionsParams {
+			for _, params := range tc.mockParams.chatSessionRetrieverAllSessionsParams {
 				chatSessionRetriever.EXPECT().
 					AllSessions(params.cookie).
 					Return(params.result)
@@ -1661,7 +1661,7 @@ func TestDeletePublicChatHandler(t *testing.T) {
 			responseRecorder := httptest.NewRecorder()
 
 			chatRoomDeleter := newMockChatRoomDeleter(t)
-			for _, params := range tc.mockParams.chatRoomDeleterParams.deleteChatRoomsParams {
+			for _, params := range tc.mockParams.deleteChatRoomsParams {
 				chatRoomDeleter.EXPECT().
 					DeleteChatRooms(matchContext(), params.exchange, params.names).
 					Return(params.err)
@@ -1783,14 +1783,14 @@ func TestPrivateChatHandler_GET(t *testing.T) {
 			responseRecorder := httptest.NewRecorder()
 
 			chatRoomRetriever := newMockChatRoomRetriever(t)
-			for _, params := range tc.mockParams.chatRoomRetrieverParams.allChatRoomsParams {
+			for _, params := range tc.mockParams.allChatRoomsParams {
 				chatRoomRetriever.EXPECT().
 					AllChatRooms(matchContext(), params.exchange).
 					Return(params.result, params.err)
 			}
 
 			chatSessionRetriever := newMockChatSessionRetriever(t)
-			for _, params := range tc.mockParams.chatSessionRetrieverParams.chatSessionRetrieverAllSessionsParams {
+			for _, params := range tc.mockParams.chatSessionRetrieverAllSessionsParams {
 				chatSessionRetriever.EXPECT().
 					AllSessions(params.cookie).
 					Return(params.result)
@@ -1854,7 +1854,7 @@ func TestInstantMessageHandler_POST(t *testing.T) {
 			for _, params := range tc.relayToScreenNameInputs {
 				validateSNAC := func(msg wire.SNACMessage) bool {
 					body := msg.Body.(wire.SNAC_0x04_0x07_ICBMChannelMsgToClient)
-					assert.Equal(t, params.sender.String(), body.TLVUserInfo.ScreenName)
+					assert.Equal(t, params.sender.String(), body.ScreenName)
 
 					b, ok := body.Bytes(wire.ICBMTLVAOLIMData)
 					assert.True(t, ok)
@@ -2641,7 +2641,7 @@ func TestBARTByTypeHandler_GET(t *testing.T) {
 			responseRecorder := httptest.NewRecorder()
 
 			mockBARTManager := newMockBARTAssetManager(t)
-			for _, params := range tc.mockParams.bartAssetManagerParams.listBARTItemsParams {
+			for _, params := range tc.mockParams.listBARTItemsParams {
 				mockBARTManager.EXPECT().
 					ListBARTItems(matchContext(), params.itemType).
 					Return(params.result, params.err)
@@ -2740,7 +2740,7 @@ func TestBARTHandler_GET(t *testing.T) {
 			responseRecorder := httptest.NewRecorder()
 
 			mockBARTManager := newMockBARTAssetManager(t)
-			for _, params := range tc.mockParams.bartAssetManagerParams.bartItemParams {
+			for _, params := range tc.mockParams.bartItemParams {
 				mockBARTManager.EXPECT().
 					BARTItem(matchContext(), params.hash).
 					Return(params.result, params.err)
@@ -2894,7 +2894,7 @@ func TestBARTHandler_POST(t *testing.T) {
 			responseRecorder := httptest.NewRecorder()
 
 			mockBARTManager := newMockBARTAssetManager(t)
-			for _, params := range tc.mockParams.bartAssetManagerParams.insertBARTItemParams {
+			for _, params := range tc.mockParams.insertBARTItemParams {
 				mockBARTManager.EXPECT().
 					InsertBARTItem(matchContext(), params.hash, params.blob, params.itemType).
 					Return(params.err)
@@ -2988,7 +2988,7 @@ func TestBARTHandler_DELETE(t *testing.T) {
 			responseRecorder := httptest.NewRecorder()
 
 			mockBARTManager := newMockBARTAssetManager(t)
-			for _, params := range tc.mockParams.bartAssetManagerParams.deleteBARTItemParams {
+			for _, params := range tc.mockParams.deleteBARTItemParams {
 				mockBARTManager.EXPECT().
 					DeleteBARTItem(matchContext(), params.hash).
 					Return(params.err)
@@ -3158,7 +3158,7 @@ func TestFeedbagBuddyHandler_GET(t *testing.T) {
 			responseRecorder := httptest.NewRecorder()
 
 			feedbagManager := newMockFeedbagManager(t)
-			for _, params := range tc.mockParams.feedbagManagerParams.feedbagParams {
+			for _, params := range tc.mockParams.feedbagParams {
 				feedbagManager.EXPECT().
 					Feedbag(matchContext(), params.screenName).
 					Return(params.result, params.err)
@@ -3819,26 +3819,26 @@ func TestFeedbagBuddyHandler_PUT(t *testing.T) {
 			messageRelayer := newMockMessageRelayer(t)
 			buddyBroadcaster := newMockBuddyBroadcaster(t)
 
-			for _, params := range tc.mockParams.feedbagManagerParams.feedbagParams {
+			for _, params := range tc.mockParams.feedbagParams {
 				feedbagManager.EXPECT().
 					Feedbag(matchContext(), params.screenName).
 					Return(params.result, params.err)
 			}
-			for _, params := range tc.mockParams.feedbagManagerParams.feedbagUpsertParams {
+			for _, params := range tc.mockParams.feedbagUpsertParams {
 				feedbagManager.EXPECT().
 					FeedbagUpsert(matchContext(), params.screenName, params.items).
 					Return(params.err)
 			}
-			for _, params := range tc.mockParams.sessionRetrieverParams.retrieveSessionByNameParams {
+			for _, params := range tc.mockParams.retrieveSessionByNameParams {
 				sessionRetriever.EXPECT().
 					RetrieveSession(params.screenName).
 					Return(params.result)
 			}
-			for _, params := range tc.mockParams.messageRelayerParams.relayToScreenNameParams {
+			for _, params := range tc.mockParams.relayToScreenNameParams {
 				messageRelayer.EXPECT().
 					RelayToScreenName(matchContext(), params.screenName, params.msg)
 			}
-			for _, params := range tc.mockParams.buddyBroadcasterParams.broadcastVisibilityParams {
+			for _, params := range tc.mockParams.broadcastVisibilityParams {
 				// Use mock.MatchedBy to match any SessionInstance, since we're mainly verifying filter and sendDepartures
 				buddyBroadcaster.EXPECT().
 					BroadcastVisibility(
@@ -4547,31 +4547,31 @@ func TestFeedbagBuddyHandler_DELETE(t *testing.T) {
 			messageRelayer := newMockMessageRelayer(t)
 			buddyBroadcaster := newMockBuddyBroadcaster(t)
 
-			for _, params := range tc.mockParams.feedbagManagerParams.feedbagParams {
+			for _, params := range tc.mockParams.feedbagParams {
 				feedbagManager.EXPECT().
 					Feedbag(matchContext(), params.screenName).
 					Return(params.result, params.err)
 			}
-			for _, params := range tc.mockParams.feedbagManagerParams.feedbagUpsertParams {
+			for _, params := range tc.mockParams.feedbagUpsertParams {
 				feedbagManager.EXPECT().
 					FeedbagUpsert(matchContext(), params.screenName, params.items).
 					Return(params.err)
 			}
-			for _, params := range tc.mockParams.feedbagManagerParams.feedbagDeleteParams {
+			for _, params := range tc.mockParams.feedbagDeleteParams {
 				feedbagManager.EXPECT().
 					FeedbagDelete(matchContext(), params.screenName, params.items).
 					Return(params.err)
 			}
-			for _, params := range tc.mockParams.sessionRetrieverParams.retrieveSessionByNameParams {
+			for _, params := range tc.mockParams.retrieveSessionByNameParams {
 				sessionRetriever.EXPECT().
 					RetrieveSession(params.screenName).
 					Return(params.result)
 			}
-			for _, params := range tc.mockParams.messageRelayerParams.relayToScreenNameParams {
+			for _, params := range tc.mockParams.relayToScreenNameParams {
 				messageRelayer.EXPECT().
 					RelayToScreenName(matchContext(), params.screenName, params.msg)
 			}
-			for _, params := range tc.mockParams.buddyBroadcasterParams.broadcastVisibilityParams {
+			for _, params := range tc.mockParams.broadcastVisibilityParams {
 				buddyBroadcaster.EXPECT().
 					BroadcastVisibility(
 						matchContext(),

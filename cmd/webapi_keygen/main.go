@@ -192,8 +192,8 @@ func handleList(args []string) {
 
 	// Create a tabwriter for formatted output
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "DEV ID\tAPP NAME\tACTIVE\tRATE LIMIT\tCREATED\tLAST USED")
-	fmt.Fprintln(w, "------\t--------\t------\t----------\t-------\t---------")
+	_, _ = fmt.Fprintln(w, "DEV ID\tAPP NAME\tACTIVE\tRATE LIMIT\tCREATED\tLAST USED")
+	_, _ = fmt.Fprintln(w, "------\t--------\t------\t----------\t-------\t---------")
 
 	for _, key := range keys {
 		lastUsed := "Never"
@@ -201,7 +201,7 @@ func handleList(args []string) {
 			lastUsed = key.LastUsed.Format("2006-01-02 15:04")
 		}
 
-		fmt.Fprintf(w, "%s\t%s\t%v\t%d/min\t%s\t%s\n",
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%v\t%d/min\t%s\t%s\n",
 			truncateString(key.DevID, 20),
 			truncateString(key.AppName, 20),
 			key.IsActive,
@@ -210,7 +210,7 @@ func handleList(args []string) {
 			lastUsed,
 		)
 	}
-	w.Flush()
+	_ = w.Flush()
 }
 
 func handleShow(args []string) {

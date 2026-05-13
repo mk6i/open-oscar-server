@@ -695,7 +695,7 @@ func getUserBuddyIconHandler(w http.ResponseWriter, r *http.Request, u UserManag
 		return
 	}
 	w.Header().Set("Content-Type", http.DetectContentType(icon))
-	w.Write(icon)
+	_, _ = w.Write(icon)
 }
 
 // getUserAccountHandler handles the GET /user/{screenname}/account endpoint.
@@ -1480,7 +1480,7 @@ func getBARTHandler(w http.ResponseWriter, r *http.Request, bartAssetManager BAR
 	}
 
 	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Write(body)
+	_, _ = w.Write(body)
 }
 
 // postBARTHandler handles the POST /bart endpoint.
@@ -1533,7 +1533,7 @@ func postBARTHandler(w http.ResponseWriter, r *http.Request, bartAssetManager BA
 		Hash: hex.EncodeToString(hashBytes),
 		Type: bartType,
 	}
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(response)
 }
 
 // deleteBARTHandler handles the DELETE /bart/{hash} endpoint.
@@ -1564,7 +1564,7 @@ func deleteBARTHandler(w http.ResponseWriter, r *http.Request, bartAssetManager 
 	}
 
 	msg := messageBody{Message: "BART asset deleted successfully."}
-	json.NewEncoder(w).Encode(msg)
+	_ = json.NewEncoder(w).Encode(msg)
 }
 
 // getFeedbagBuddyHandler handles the GET /feedbag/{screen_name}/group endpoint.

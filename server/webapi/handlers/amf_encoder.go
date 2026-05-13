@@ -275,23 +275,6 @@ func (e *AMFEncoder) structToMap(v reflect.Value) map[string]interface{} {
 	return result
 }
 
-// sliceToArray converts a slice to an AMF3-compatible array
-func (e *AMFEncoder) sliceToArray(v reflect.Value) []interface{} {
-	length := v.Len()
-	result := make([]interface{}, length)
-
-	for i := 0; i < length; i++ {
-		elem := v.Index(i)
-		if elem.CanInterface() {
-			result[i] = e.toAMF3Compatible(elem.Interface())
-		} else {
-			result[i] = nil
-		}
-	}
-
-	return result
-}
-
 // mapToAMFMap converts a Go map to an AMF3-compatible map
 func (e *AMFEncoder) mapToAMFMap(v reflect.Value) map[string]interface{} {
 	result := make(map[string]interface{})
@@ -327,7 +310,7 @@ func (e *AMFEncoder) convertToMap(data interface{}) interface{} {
 	v := reflect.ValueOf(data)
 
 	// Handle pointers
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Pointer {
 		if v.IsNil() {
 			return nil
 		}
@@ -369,7 +352,7 @@ func (e *AMFEncoder) isZeroValue(v reflect.Value) bool {
 		return v.Uint() == 0
 	case reflect.Float32, reflect.Float64:
 		return v.Float() == 0
-	case reflect.Interface, reflect.Ptr:
+	case reflect.Interface, reflect.Pointer:
 		return v.IsNil()
 	case reflect.Struct:
 		// For time.Time, check if it's zero

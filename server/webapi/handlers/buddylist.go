@@ -46,18 +46,19 @@ func (h *BuddyListHandler) AddBuddy(w http.ResponseWriter, r *http.Request) {
 	// Get session
 	session, err := h.SessionManager.GetSession(r.Context(), aimsid)
 	if err != nil {
-		if err == state.ErrNoWebAPISession {
+		switch err {
+		case state.ErrNoWebAPISession:
 			h.sendError(w, http.StatusNotFound, "session not found")
-		} else if err == state.ErrWebAPISessionExpired {
+		case state.ErrWebAPISessionExpired:
 			h.sendError(w, http.StatusGone, "session expired")
-		} else {
+		default:
 			h.sendError(w, http.StatusInternalServerError, "internal server error")
 		}
 		return
 	}
 
 	// Touch the session
-	h.SessionManager.TouchSession(r.Context(), aimsid)
+	_ = h.SessionManager.TouchSession(r.Context(), aimsid)
 
 	// Get buddy and group parameters
 	buddyName := strings.TrimSpace(r.URL.Query().Get("buddy"))
@@ -211,18 +212,19 @@ func (h *BuddyListHandler) AddTempBuddy(w http.ResponseWriter, r *http.Request) 
 	// Get session
 	session, err := h.SessionManager.GetSession(r.Context(), aimsid)
 	if err != nil {
-		if err == state.ErrNoWebAPISession {
+		switch err {
+		case state.ErrNoWebAPISession:
 			h.sendError(w, http.StatusNotFound, "session not found")
-		} else if err == state.ErrWebAPISessionExpired {
+		case state.ErrWebAPISessionExpired:
 			h.sendError(w, http.StatusGone, "session expired")
-		} else {
+		default:
 			h.sendError(w, http.StatusInternalServerError, "internal server error")
 		}
 		return
 	}
 
 	// Touch the session
-	h.SessionManager.TouchSession(r.Context(), aimsid)
+	_ = h.SessionManager.TouchSession(r.Context(), aimsid)
 
 	// Get buddy names from parameters
 	// The WebAPI accepts multiple buddy names via &t= parameters

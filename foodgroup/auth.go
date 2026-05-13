@@ -123,10 +123,7 @@ func (s AuthService) RegisterBOSSession(ctx context.Context, authCookie state.Se
 
 	flag := wire.MultiConnFlag(authCookie.MultiConnFlag)
 
-	doMultiSess := false
-	if flag == wire.MultiConnFlagsRecentClient {
-		doMultiSess = true
-	}
+	doMultiSess := flag == wire.MultiConnFlagsRecentClient
 
 	cfg := func(sess *state.Session) {
 		sess.SetSignonTime(time.Now())

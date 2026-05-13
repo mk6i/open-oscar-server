@@ -2218,13 +2218,13 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			feedbagManager := newMockFeedbagManager(t)
-			for _, params := range tc.mockParams.feedbagManagerParams.feedbagUpsertParams {
+			for _, params := range tc.mockParams.feedbagUpsertParams {
 				feedbagManager.EXPECT().
 					FeedbagUpsert(matchContext(), params.screenName, params.items).
 					Return(nil)
 			}
 			messageRelayer := newMockMessageRelayer(t)
-			for _, params := range tc.mockParams.messageRelayerParams.relayToScreenNameParams {
+			for _, params := range tc.mockParams.relayToScreenNameParams {
 				if matcherFn, ok := params.message.Body.(func(val any) bool); ok {
 					messageRelayer.EXPECT().
 						RelayToScreenName(matchContext(), params.screenName, mock.MatchedBy(func(message wire.SNACMessage) bool {
@@ -2236,16 +2236,16 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 						RelayToScreenName(matchContext(), params.screenName, params.message)
 				}
 			}
-			for _, params := range tc.mockParams.messageRelayerParams.relayToOtherInstancesParams {
+			for _, params := range tc.mockParams.relayToOtherInstancesParams {
 				messageRelayer.EXPECT().
 					RelayToOtherInstances(mock.Anything, mock.Anything, params.message)
 			}
-			for _, params := range tc.mockParams.messageRelayerParams.relayToSelfParams {
+			for _, params := range tc.mockParams.relayToSelfParams {
 				messageRelayer.EXPECT().
 					RelayToSelf(mock.Anything, mock.Anything, params.message)
 			}
 			bartItemManager := newMockBARTItemManager(t)
-			for _, params := range tc.mockParams.bartItemManagerParams.bartItemManagerRetrieveParams {
+			for _, params := range tc.mockParams.bartItemManagerRetrieveParams {
 				bartItemManager.EXPECT().
 					BARTItem(matchContext(), params.itemHash).
 					Return(params.result, nil)
@@ -2271,7 +2271,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 				contactPreAuth.EXPECT().RequiresAuthorization(matchContext(), params.owner, params.requester).Return(params.result, params.err)
 			}
 			sessionRetriever := newMockSessionRetriever(t)
-			for _, params := range tc.mockParams.sessionRetrieverParams.retrieveSessionParams {
+			for _, params := range tc.mockParams.retrieveSessionParams {
 				sessionRetriever.EXPECT().
 					RetrieveSession(params.screenName).
 					Return(params.result)
@@ -2428,7 +2428,7 @@ func TestFeedbagService_DeleteItem(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			feedbagManager := newMockFeedbagManager(t)
-			for _, params := range tc.mockParams.feedbagManagerParams.feedbagDeleteParams {
+			for _, params := range tc.mockParams.feedbagDeleteParams {
 				feedbagManager.EXPECT().
 					FeedbagDelete(matchContext(), params.screenName, params.items).
 					Return(nil)
@@ -2440,11 +2440,11 @@ func TestFeedbagService_DeleteItem(t *testing.T) {
 					Return(params.err)
 			}
 			messageRelayer := newMockMessageRelayer(t)
-			for _, params := range tc.mockParams.messageRelayerParams.relayToOtherInstancesParams {
+			for _, params := range tc.mockParams.relayToOtherInstancesParams {
 				messageRelayer.EXPECT().
 					RelayToOtherInstances(mock.Anything, mock.Anything, params.message)
 			}
-			for _, params := range tc.mockParams.messageRelayerParams.relayToSelfParams {
+			for _, params := range tc.mockParams.relayToSelfParams {
 				messageRelayer.EXPECT().
 					RelayToSelf(mock.Anything, mock.Anything, params.message)
 			}
@@ -2922,11 +2922,11 @@ func TestFeedbagService_RequestAuthorizeToHost(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			sessionRetriever := newMockSessionRetriever(t)
-			for _, params := range tt.mockParams.sessionRetrieverParams.retrieveSessionParams {
+			for _, params := range tt.mockParams.retrieveSessionParams {
 				sessionRetriever.EXPECT().RetrieveSession(params.screenName).Return(tt.buddySess)
 			}
 			messageRelayer := newMockMessageRelayer(t)
-			for _, params := range tt.mockParams.messageRelayerParams.relayToScreenNameParams {
+			for _, params := range tt.mockParams.relayToScreenNameParams {
 				messageRelayer.EXPECT().RelayToScreenName(matchContext(), params.screenName, params.message)
 			}
 
@@ -3359,7 +3359,7 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 			sessionRetriever.EXPECT().
 				RetrieveSession(state.NewIdentScreenName(tt.bodyIn.ScreenName)).
 				Return(tt.buddySess)
-			for _, params := range tt.mockParams.sessionRetrieverParams.retrieveSessionParams {
+			for _, params := range tt.mockParams.retrieveSessionParams {
 				sessionRetriever.EXPECT().RetrieveSession(params.screenName).Return(params.result)
 			}
 
@@ -3369,20 +3369,20 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 			}
 
 			messageRelayer := newMockMessageRelayer(t)
-			for _, params := range tt.mockParams.messageRelayerParams.relayToScreenNameParams {
+			for _, params := range tt.mockParams.relayToScreenNameParams {
 				messageRelayer.EXPECT().RelayToScreenName(matchContext(), params.screenName, params.message)
 			}
 
 			feedbagManager := newMockFeedbagManager(t)
-			for _, params := range tt.mockParams.feedbagManagerParams.feedbagParams {
+			for _, params := range tt.mockParams.feedbagParams {
 				feedbagManager.EXPECT().Feedbag(matchContext(), params.screenName).Return(params.results, params.err)
 			}
-			for _, params := range tt.mockParams.feedbagManagerParams.feedbagUpsertParams {
+			for _, params := range tt.mockParams.feedbagUpsertParams {
 				feedbagManager.EXPECT().FeedbagUpsert(matchContext(), params.screenName, params.items).Return(nil)
 			}
 
 			relationshipFetcher := newMockRelationshipFetcher(t)
-			for _, params := range tt.mockParams.relationshipFetcherParams.relationshipParams {
+			for _, params := range tt.mockParams.relationshipParams {
 				relationshipFetcher.EXPECT().Relationship(matchContext(), params.me, params.them).Return(params.result, params.err)
 			}
 
@@ -3701,25 +3701,25 @@ func TestFeedbagService_PreAuthorizeBuddy(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			contactPreAuth := newMockContactPreAuthorizer(t)
-			for _, params := range tt.mockParams.contactPreAuthorizerParams.recordPreAuthParams {
+			for _, params := range tt.mockParams.recordPreAuthParams {
 				contactPreAuth.EXPECT().RecordPreAuth(matchContext(), params.owner, params.buddy).Return(params.err)
 			}
 			sessionRetriever := newMockSessionRetriever(t)
-			for _, params := range tt.mockParams.sessionRetrieverParams.retrieveSessionParams {
+			for _, params := range tt.mockParams.retrieveSessionParams {
 				sessionRetriever.EXPECT().RetrieveSession(params.screenName).Return(tt.buddySess)
 			}
 			feedbagManager := newMockFeedbagManager(t)
-			for _, params := range tt.mockParams.feedbagManagerParams.feedbagParams {
+			for _, params := range tt.mockParams.feedbagParams {
 				feedbagManager.EXPECT().
 					Feedbag(matchContext(), params.screenName).
 					Return(params.results, params.err)
 			}
 			relationshipFetcher := newMockRelationshipFetcher(t)
-			for _, params := range tt.mockParams.relationshipFetcherParams.relationshipParams {
+			for _, params := range tt.mockParams.relationshipParams {
 				relationshipFetcher.EXPECT().Relationship(matchContext(), params.me, params.them).Return(params.result, params.err)
 			}
 			messageRelayer := newMockMessageRelayer(t)
-			for _, params := range tt.mockParams.messageRelayerParams.relayToScreenNameParams {
+			for _, params := range tt.mockParams.relayToScreenNameParams {
 				messageRelayer.EXPECT().RelayToScreenName(matchContext(), params.screenName, params.message)
 			}
 
@@ -4225,23 +4225,23 @@ func TestFeedbagService_ForwardICQAuthEvents(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			sessionRetriever := newMockSessionRetriever(t)
-			for _, params := range tt.mockParams.sessionRetrieverParams.retrieveSessionParams {
+			for _, params := range tt.mockParams.retrieveSessionParams {
 				sessionRetriever.EXPECT().RetrieveSession(params.screenName).Return(tt.buddySess)
 			}
 			contactPreAuth := newMockContactPreAuthorizer(t)
-			for _, params := range tt.mockParams.contactPreAuthorizerParams.recordPreAuthParams {
+			for _, params := range tt.mockParams.recordPreAuthParams {
 				contactPreAuth.EXPECT().RecordPreAuth(matchContext(), params.owner, params.buddy).Return(params.err)
 			}
 			feedbagManager := newMockFeedbagManager(t)
-			for _, params := range tt.mockParams.feedbagManagerParams.feedbagParams {
+			for _, params := range tt.mockParams.feedbagParams {
 				feedbagManager.EXPECT().Feedbag(matchContext(), params.screenName).Return(params.results, params.err)
 			}
 			relationshipFetcher := newMockRelationshipFetcher(t)
-			for _, params := range tt.mockParams.relationshipFetcherParams.relationshipParams {
+			for _, params := range tt.mockParams.relationshipParams {
 				relationshipFetcher.EXPECT().Relationship(matchContext(), params.me, params.them).Return(params.result, params.err)
 			}
 			messageRelayer := newMockMessageRelayer(t)
-			for _, params := range tt.mockParams.messageRelayerParams.relayToScreenNameParams {
+			for _, params := range tt.mockParams.relayToScreenNameParams {
 				messageRelayer.EXPECT().RelayToScreenName(matchContext(), params.screenName, params.message)
 			}
 

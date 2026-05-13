@@ -52,7 +52,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "error creating file: %s\n", err.Error())
 		os.Exit(1)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	configType := reflect.TypeOf(config.Config{})
 	writeFields(f, configType, valueTag, keywords)

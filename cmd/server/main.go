@@ -84,20 +84,18 @@ func main() {
 		g.Go(icqLegacy.ListenAndServe)
 	}
 
-	select {
-	case <-ctx.Done():
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = oscar.Shutdown(shutdownCtx)
-		_ = kerb.Shutdown(shutdownCtx)
-		_ = api.Shutdown(shutdownCtx)
-		_ = toc.Shutdown(shutdownCtx)
-		if os.Getenv("ENABLE_WEBAPI") == "1" {
-			_ = webAPI.Shutdown(shutdownCtx)
-		}
-		if deps.cfg.ICQLegacy.Enabled {
-			_ = icqLegacy.Shutdown(shutdownCtx)
-		}
+	<-ctx.Done()
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = oscar.Shutdown(shutdownCtx)
+	_ = kerb.Shutdown(shutdownCtx)
+	_ = api.Shutdown(shutdownCtx)
+	_ = toc.Shutdown(shutdownCtx)
+	if os.Getenv("ENABLE_WEBAPI") == "1" {
+		_ = webAPI.Shutdown(shutdownCtx)
+	}
+	if deps.cfg.ICQLegacy.Enabled {
+		_ = icqLegacy.Shutdown(shutdownCtx)
 	}
 
 	if err = g.Wait(); err != nil {

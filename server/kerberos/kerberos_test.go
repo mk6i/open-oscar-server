@@ -228,7 +228,7 @@ func TestKerberosLoginHandler(t *testing.T) {
 				for attempt := 0; attempt < maxRetries; attempt++ {
 					conn, err := net.Dial("tcp", "localhost"+tt.listeners[i].KerberosListenAddress)
 					if err == nil {
-						conn.Close()
+						_ = conn.Close()
 						break
 					}
 					if attempt == maxRetries-1 {
@@ -250,7 +250,7 @@ func TestKerberosLoginHandler(t *testing.T) {
 
 				resp, err := http.Post(fmt.Sprintf("http://localhost:%s", listener.KerberosListenAddress[1:]), "application/x-snac", b)
 				assert.NoError(t, err)
-				defer resp.Body.Close()
+				defer func() { _ = resp.Body.Close() }()
 
 				assert.Equal(t, tt.wantStatus, resp.StatusCode, "listener %d at %s", i, listener.KerberosListenAddress)
 

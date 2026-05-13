@@ -153,6 +153,14 @@ command from the root of the repository in a terminal:
 go test -race ./...
 ```
 
+Before opening a PR, run the same lint checks used by CI:
+
+```shell
+make lint
+```
+
+Install `golangci-lint` locally if the command is not already available on your `PATH`.
+
 ## Config File Generation
 
 The config file `config/settings.env` is generated programmatically from the [Config](../config/config.go) struct using

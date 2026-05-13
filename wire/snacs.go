@@ -2769,11 +2769,11 @@ func (f *FeedbagItem) IsEqual(other FeedbagItem) bool {
 	if f.Name != other.Name || f.GroupID != other.GroupID || f.ClassID != other.ClassID {
 		return false
 	}
-	if len(f.TLVLBlock.TLVList) != len(other.TLVLBlock.TLVList) {
+	if len(f.TLVList) != len(other.TLVList) {
 		return false
 	}
-	for i, tlv := range f.TLVLBlock.TLVList {
-		o := other.TLVLBlock.TLVList[i]
+	for i, tlv := range f.TLVList {
+		o := other.TLVList[i]
 		if tlv.Tag != o.Tag || !bytes.Equal(tlv.Value, o.Value) {
 			return false
 		}

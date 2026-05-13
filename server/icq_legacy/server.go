@@ -126,7 +126,7 @@ func (s *LegacyServer) Stop() error {
 
 	// Close the UDP socket to unblock the receive loop
 	if s.conn != nil {
-		s.conn.Close()
+		_ = s.conn.Close()
 	}
 
 	// Wait for all goroutines to finish
@@ -150,7 +150,7 @@ func (s *LegacyServer) receiveLoop(ctx context.Context) {
 		}
 
 		// Set read deadline to allow periodic checking of stop signal
-		s.conn.SetReadDeadline(time.Now().Add(1 * time.Second))
+		_ = s.conn.SetReadDeadline(time.Now().Add(1 * time.Second))
 
 		n, addr, err := s.conn.ReadFromUDP(buf)
 		if err != nil {

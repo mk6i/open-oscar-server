@@ -203,11 +203,12 @@ func (h *PreferenceHandler) GetPreferences(w http.ResponseWriter, r *http.Reques
 		convertedPrefs := make(map[string]interface{})
 		for key, val := range prefs {
 			if strVal, ok := val.(string); ok {
-				if strVal == "1" {
+				switch strVal {
+				case "1":
 					convertedPrefs[key] = 1
-				} else if strVal == "0" {
+				case "0":
 					convertedPrefs[key] = 0
-				} else {
+				default:
 					// Keep non-boolean values as strings
 					convertedPrefs[key] = val
 				}

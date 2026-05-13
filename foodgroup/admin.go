@@ -98,7 +98,7 @@ func (s AdminService) InfoQuery(ctx context.Context, instance *state.SessionInst
 
 	tlvList := wire.TLVList{}
 
-	if _, hasRegStatus := inBody.TLVRestBlock.Bytes(wire.AdminTLVRegistrationStatus); hasRegStatus {
+	if _, hasRegStatus := inBody.Bytes(wire.AdminTLVRegistrationStatus); hasRegStatus {
 		regStatus, err := s.accountManager.RegStatus(ctx, instance.IdentScreenName())
 		if err != nil {
 			return wire.SNACMessage{}, err
@@ -107,7 +107,7 @@ func (s AdminService) InfoQuery(ctx context.Context, instance *state.SessionInst
 		return getAdminInfoReply(tlvList), nil
 	}
 
-	if _, hasEmail := inBody.TLVRestBlock.Bytes(wire.AdminTLVEmailAddress); hasEmail {
+	if _, hasEmail := inBody.Bytes(wire.AdminTLVEmailAddress); hasEmail {
 		e, err := s.accountManager.EmailAddress(ctx, instance.IdentScreenName())
 		if errors.Is(err, state.ErrNoEmailAddress) {
 			tlvList.Append(wire.NewTLVBE(wire.AdminTLVEmailAddress, ""))
@@ -119,7 +119,7 @@ func (s AdminService) InfoQuery(ctx context.Context, instance *state.SessionInst
 		return getAdminInfoReply(tlvList), nil
 	}
 
-	if _, hasNickName := inBody.TLVRestBlock.Bytes(wire.AdminTLVScreenNameFormatted); hasNickName {
+	if _, hasNickName := inBody.Bytes(wire.AdminTLVScreenNameFormatted); hasNickName {
 		tlvList.Append(wire.NewTLVBE(wire.AdminTLVScreenNameFormatted, instance.DisplayScreenName().String()))
 		return getAdminInfoReply(tlvList), nil
 	}
@@ -199,7 +199,7 @@ func (s AdminService) InfoChangeRequest(ctx context.Context, instance *state.Ses
 
 	tlvList := wire.TLVList{}
 
-	if sn, hasScreenNameFormatted := inBody.TLVRestBlock.Bytes(wire.AdminTLVScreenNameFormatted); hasScreenNameFormatted {
+	if sn, hasScreenNameFormatted := inBody.Bytes(wire.AdminTLVScreenNameFormatted); hasScreenNameFormatted {
 		proposedName := state.DisplayScreenName(sn)
 		if ok, errorCode := validateProposedName(proposedName); !ok {
 			tlvList.Append(wire.NewTLVBE(wire.AdminTLVErrorCode, errorCode))
@@ -224,7 +224,7 @@ func (s AdminService) InfoChangeRequest(ctx context.Context, instance *state.Ses
 		return getAdminChangeReply(tlvList), nil
 	}
 
-	if emailAddress, hasEmailAddress := inBody.TLVRestBlock.Bytes(wire.AdminTLVEmailAddress); hasEmailAddress {
+	if emailAddress, hasEmailAddress := inBody.Bytes(wire.AdminTLVEmailAddress); hasEmailAddress {
 		e, errorCode := validateProposedEmailAddress(emailAddress)
 		if errorCode != 0 {
 			tlvList.Append(wire.NewTLVBE(wire.AdminTLVErrorCode, errorCode))
@@ -239,7 +239,7 @@ func (s AdminService) InfoChangeRequest(ctx context.Context, instance *state.Ses
 		return getAdminChangeReply(tlvList), nil
 	}
 
-	if regStatus, hasRegStatus := inBody.TLVRestBlock.Uint16BE(wire.AdminTLVRegistrationStatus); hasRegStatus {
+	if regStatus, hasRegStatus := inBody.Uint16BE(wire.AdminTLVRegistrationStatus); hasRegStatus {
 		switch regStatus {
 		case
 			wire.AdminInfoRegStatusFullDisclosure,
@@ -257,10 +257,10 @@ func (s AdminService) InfoChangeRequest(ctx context.Context, instance *state.Ses
 	}
 
 	// change password
-	if newPass, hasPassStatus := inBody.TLVRestBlock.String(wire.AdminTLVNewPassword); hasPassStatus {
+	if newPass, hasPassStatus := inBody.String(wire.AdminTLVNewPassword); hasPassStatus {
 		tlvList.Append(wire.NewTLVBE(wire.AdminTLVNewPassword, []byte{}))
 
-		oldPass, ok := inBody.TLVRestBlock.String(wire.AdminTLVOldPassword)
+		oldPass, ok := inBody.String(wire.AdminTLVOldPassword)
 		if !ok {
 			tlvList.Append(wire.NewTLVBE(wire.AdminTLVErrorCode, wire.AdminInfoErrorNeedOldPassword))
 			return getAdminChangeReply(tlvList), nil

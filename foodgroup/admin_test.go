@@ -175,17 +175,17 @@ func TestAdminService_ConfirmRequest(t *testing.T) {
 			accountManager := newMockAccountManager(t)
 			buddyBroadcaster := newMockbuddyBroadcaster(t)
 
-			for _, params := range tc.mockParams.accountManagerParams.accountManagerEmailAddressParams {
+			for _, params := range tc.mockParams.accountManagerEmailAddressParams {
 				accountManager.EXPECT().
 					EmailAddress(matchContext(), params.screenName).
 					Return(params.emailAddress, params.err)
 			}
-			for _, params := range tc.mockParams.accountManagerParams.accountManagerConfirmStatusParams {
+			for _, params := range tc.mockParams.accountManagerConfirmStatusParams {
 				accountManager.EXPECT().
 					ConfirmStatus(matchContext(), params.screenName).
 					Return(params.confirmStatus, params.err)
 			}
-			for _, params := range tc.mockParams.accountManagerParams.accountManagerUpdateConfirmStatusParams {
+			for _, params := range tc.mockParams.accountManagerUpdateConfirmStatusParams {
 				accountManager.EXPECT().
 					UpdateConfirmStatus(matchContext(), params.screenName, params.confirmStatus).
 					Return(params.err)
@@ -426,13 +426,13 @@ func TestAdminService_InfoQuery(t *testing.T) {
 			accountManager := newMockAccountManager(t)
 			buddyBroadcaster := newMockbuddyBroadcaster(t)
 
-			for _, params := range tc.mockParams.accountManagerParams.accountManagerRegStatusParams {
+			for _, params := range tc.mockParams.accountManagerRegStatusParams {
 				accountManager.EXPECT().
 					RegStatus(matchContext(), params.screenName).
 					Return(params.regStatus, params.err)
 			}
 
-			for _, params := range tc.mockParams.accountManagerParams.accountManagerEmailAddressParams {
+			for _, params := range tc.mockParams.accountManagerEmailAddressParams {
 				accountManager.EXPECT().
 					EmailAddress(matchContext(), params.screenName).
 					Return(params.emailAddress, params.err)
@@ -704,7 +704,7 @@ func TestAdminService_InfoChangeRequest_ScreenName(t *testing.T) {
 			accountManager := newMockAccountManager(t)
 			mockBuddyBroadcaster := newMockbuddyBroadcaster(t)
 
-			for _, params := range tc.mockParams.accountManagerParams.accountManagerUpdateDisplayScreenNameParams {
+			for _, params := range tc.mockParams.accountManagerUpdateDisplayScreenNameParams {
 				accountManager.EXPECT().
 					UpdateDisplayScreenName(matchContext(), params.displayScreenName).
 					Return(params.err)
@@ -718,7 +718,7 @@ func TestAdminService_InfoChangeRequest_ScreenName(t *testing.T) {
 					Return(params.err)
 			}
 
-			for _, params := range tc.mockParams.messageRelayerParams.relayToScreenNameParams {
+			for _, params := range tc.mockParams.relayToScreenNameParams {
 				p := params
 				messageRelayer.EXPECT().
 					RelayToScreenName(mock.Anything, p.screenName, p.message)
@@ -884,7 +884,7 @@ func TestAdminService_InfoChangeRequest_EmailAddress(t *testing.T) {
 			accountManager := newMockAccountManager(t)
 			buddyBroadcaster := newMockbuddyBroadcaster(t)
 
-			for _, params := range tc.mockParams.accountManagerParams.accountManagerUpdateEmailAddressParams {
+			for _, params := range tc.mockParams.accountManagerUpdateEmailAddressParams {
 				accountManager.EXPECT().
 					UpdateEmailAddress(matchContext(), params.screenName, params.emailAddress).
 					Return(params.err)
@@ -1008,7 +1008,7 @@ func TestAdminService_InfoChangeRequest_RegStatus(t *testing.T) {
 			accountManager := newMockAccountManager(t)
 			buddyBroadcaster := newMockbuddyBroadcaster(t)
 
-			for _, params := range tc.mockParams.accountManagerParams.accountManagerUpdateRegStatusParams {
+			for _, params := range tc.mockParams.accountManagerUpdateRegStatusParams {
 				accountManager.EXPECT().
 					UpdateRegStatus(context.Background(), params.screenName, params.regStatus).
 					Return(params.err)

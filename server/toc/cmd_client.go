@@ -1035,7 +1035,7 @@ func (s OSCARProxy) FormatNickname(ctx context.Context, me *state.SessionInstanc
 			return []string{"ERROR:" + wire.TOCErrorAdminProcessingRequest}
 		}
 	}
-	val, hasVal := replyBody.TLVBlock.String(wire.AdminTLVScreenNameFormatted)
+	val, hasVal := replyBody.String(wire.AdminTLVScreenNameFormatted)
 	if !hasVal {
 		return s.runtimeErr(ctx, fmt.Errorf("AdminService.InfoChangeRequest: missing AdminTLVScreenNameFormatted %v", replyBody))
 	}

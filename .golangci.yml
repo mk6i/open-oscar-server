@@ -1,0 +1,9 @@
+version: "2"
+
+linters:
+  settings:
+    errcheck:
+      exclude-functions:
+        # Closing query rows and rolling back already-committed transactions are cleanup paths.
+        - "(*database/sql.Rows).Close"
+        - "(*database/sql.Tx).Rollback"

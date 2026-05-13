@@ -310,7 +310,7 @@ func (h *BuddyFeedHandler) sendRSSFeed(w http.ResponseWriter, feed *RSSFeed) {
 	w.Header().Set("Content-Type", "application/rss+xml; charset=utf-8")
 
 	// Add XML declaration
-	w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?>`))
+	_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?>`))
 
 	// Marshal and write the feed
 	encoder := xml.NewEncoder(w)
@@ -325,7 +325,7 @@ func (h *BuddyFeedHandler) sendAtomFeed(w http.ResponseWriter, feed *AtomFeed) {
 	w.Header().Set("Content-Type", "application/atom+xml; charset=utf-8")
 
 	// Add XML declaration
-	w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?>`))
+	_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?>`))
 
 	// Marshal and write the feed
 	encoder := xml.NewEncoder(w)
@@ -349,5 +349,5 @@ func (h *BuddyFeedHandler) sendEmptyRSSFeed(w http.ResponseWriter, screenName st
   </channel>
 </rss>`, screenName)
 
-	w.Write([]byte(emptyFeed))
+	_, _ = w.Write([]byte(emptyFeed))
 }

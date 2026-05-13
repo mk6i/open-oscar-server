@@ -171,7 +171,7 @@ func (b *LegacyMessageBridge) handleBuddyArrived(session *LegacySession, msg wir
 		return
 	}
 
-	oscarStatus, _ := arrived.TLVList.Uint32BE(wire.OServiceUserInfoStatus)
+	oscarStatus, _ := arrived.Uint32BE(wire.OServiceUserInfoStatus)
 	legacyStatus := oscarStatusToLegacy(oscarStatus)
 
 	b.logger.Debug("OSCAR->legacy buddy arrived",
@@ -355,8 +355,8 @@ func (b *LegacyMessageBridge) handleICBMMessage(session *LegacySession, msg wire
 	b.logger.Debug("handleICBMMessage: received",
 		"uin", session.UIN,
 		"channel_id", clientMsg.ChannelID,
-		"from_screen_name", clientMsg.TLVUserInfo.ScreenName,
-		"tlv_count", len(clientMsg.TLVRestBlock.TLVList),
+		"from_screen_name", clientMsg.ScreenName,
+		"tlv_count", len(clientMsg.TLVList),
 	)
 
 	// Handle channel 1 (IM) and channel 4 (ICQ) messages
@@ -369,11 +369,11 @@ func (b *LegacyMessageBridge) handleICBMMessage(session *LegacySession, msg wire
 		return
 	}
 
-	fromUIN, ok := parseUIN(clientMsg.TLVUserInfo.ScreenName)
+	fromUIN, ok := parseUIN(clientMsg.ScreenName)
 	if !ok {
 		b.logger.Debug("handleICBMMessage: parseUIN failed",
 			"uin", session.UIN,
-			"screen_name", clientMsg.TLVUserInfo.ScreenName,
+			"screen_name", clientMsg.ScreenName,
 		)
 		return // AIM screen name - can't represent as legacy UIN
 	}

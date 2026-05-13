@@ -26,6 +26,11 @@ jobs:
           gofmt -s -l .
           if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then exit 1; fi
 
+      - name: GolangCI-Lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.12.2
+
       - name: Go Vet
         run: go vet ./...
 

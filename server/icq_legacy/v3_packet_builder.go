@@ -78,19 +78,6 @@ func NewV3PacketBuilder(sessionManager *LegacySessionManager, directConnectionEn
 	}
 }
 
-// buildV3Header creates a standard V3 packet header (16 bytes).
-// Format: VERSION(2) + COMMAND(2) + SEQ1(2) + SEQ2(2) + UIN(4) + RESERVED(4)
-func (b *V3PacketBuilderImpl) buildV3Header(command uint16, seq1, seq2 uint16, uin uint32) []byte {
-	header := make([]byte, 16)
-	binary.LittleEndian.PutUint16(header[0:2], ICQLegacyVersionV3)
-	binary.LittleEndian.PutUint16(header[2:4], command)
-	binary.LittleEndian.PutUint16(header[4:6], seq1)
-	binary.LittleEndian.PutUint16(header[6:8], seq2)
-	binary.LittleEndian.PutUint32(header[8:12], uin)
-	binary.LittleEndian.PutUint32(header[12:16], 0) // reserved
-	return header
-}
-
 // BuildLoginReply constructs a login success (HELLO) response packet.
 // From iserverd v3_send_login_reply() - this is a complex packet!
 // V3 HELLO format:

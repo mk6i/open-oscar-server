@@ -12,6 +12,7 @@ SKIP_CODE_SIGN ?= 1
 SIGN_HTTP_URL ?=
 SIGN_SERVER_TOKEN ?=
 GORELEASER ?= goreleaser
+GOLANGCI_LINT ?= golangci-lint
 
 DOCKER_RUN_GO_RELEASER := @docker run \
 	--env CGO_ENABLED=0 \
@@ -33,6 +34,17 @@ config-ssl: ## Generate SSL config file template
 	go run ./cmd/config_generator unix config/ssl/settings.env ssl
 
 config: config-basic config-ssl ## Generate all config file templates from Config struct
+
+.PHONY: lint
+lint: ## Run formatting and static analysis checks
+	@fmt_output="$$(gofmt -s -l .)"; \
+	if [ -n "$$fmt_output" ]; then \
+		echo "The following files need formatting:"; \
+		echo "$$fmt_output"; \
+		exit 1; \
+	fi
+	$(GOLANGCI_LINT) run ./...
+	go vet ./...
 
 .PHONY: release
 release: ## Run a clean, full GoReleaser run (publish + validate)

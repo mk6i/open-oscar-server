@@ -272,7 +272,7 @@ func (h *V4Handler) handleFirstLogin(addr *net.UDPAddr, seq1, seq2 uint16, uin u
 	)
 
 	// Send ACK first
-	h.sendAck(addr, seq1, seq2, uin)
+	_ = h.sendAck(addr, seq1, seq2, uin)
 
 	// Send registration info with admin notes
 	// This tells the client that registration is enabled and provides any admin notes
@@ -290,7 +290,7 @@ func (h *V4Handler) handleRegRequestInfo(addr *net.UDPAddr, seq1, seq2 uint16, u
 	)
 
 	// Send ACK first
-	h.sendAck(addr, seq1, seq2, uin)
+	_ = h.sendAck(addr, seq1, seq2, uin)
 
 	// Send registration info
 	return h.sendRegisterInfo(addr, seq2, uin)
@@ -310,7 +310,7 @@ func (h *V4Handler) handleRegNewUserInfo(addr *net.UDPAddr, seq1, seq2 uint16, u
 	)
 
 	// Send ACK first
-	h.sendAck(addr, seq1, seq2, uin)
+	_ = h.sendAck(addr, seq1, seq2, uin)
 
 	// Parse registration data
 	// Format from client.html (0x05e6):
@@ -484,7 +484,7 @@ func (h *V4Handler) handleGetDeps(addr *net.UDPAddr, seq1, seq2 uint16, uin uint
 	}
 
 	// 3. Send ACK using packet builder
-	h.sender.SendPacket(addr, h.packetBuilder.BuildAck(seq1, seq2, uin))
+	_ = h.sender.SendPacket(addr, h.packetBuilder.BuildAck(seq1, seq2, uin))
 
 	// 4. Create session using dataUIN (the actual login UIN from the packet data),
 	// not the header UIN which may be 0 or stale from a previous session.
@@ -528,7 +528,7 @@ func (h *V4Handler) handleLogin(session *LegacySession, addr *net.UDPAddr, seq1,
 	ctx := context.Background()
 
 	// 1. Send ACK using packet builder
-	h.sender.SendPacket(addr, h.packetBuilder.BuildAck(seq1, seq2, uin))
+	_ = h.sender.SendPacket(addr, h.packetBuilder.BuildAck(seq1, seq2, uin))
 
 	// 2. Unmarshal packet to typed struct
 	// V4 login data format (from matt-v4.txt):
@@ -731,7 +731,7 @@ func (h *V4Handler) handleContactList(session *LegacySession, seq1, seq2 uint16,
 	ctx := context.Background()
 
 	// 1. Send ACK using packet builder
-	h.sender.SendPacket(session.Addr, h.packetBuilder.BuildAck(seq1, seq2, uin))
+	_ = h.sender.SendPacket(session.Addr, h.packetBuilder.BuildAck(seq1, seq2, uin))
 
 	// 2. Unmarshal packet to typed request struct
 	req, err := h.parseContactListPacket(data, uin)
@@ -762,7 +762,7 @@ func (h *V4Handler) handleContactList(session *LegacySession, seq1, seq2 uint16,
 		if contact.Online {
 			if h.dispatcher != nil {
 				// Use central dispatcher - routes to correct protocol based on session's version
-				h.dispatcher.SendUserOnline(session, contact.UIN, contact.Status)
+				_ = h.dispatcher.SendUserOnline(session, contact.UIN, contact.Status)
 			} else {
 				onlinePkt := h.packetBuilder.BuildUserOnline(
 					session.NextServerSeqNum(),
@@ -771,7 +771,7 @@ func (h *V4Handler) handleContactList(session *LegacySession, seq1, seq2 uint16,
 				)
 				// Set the recipient UIN in the packet (offset 8-11)
 				binary.LittleEndian.PutUint32(onlinePkt[8:12], session.UIN)
-				h.sender.SendToSession(session, onlinePkt)
+				_ = h.sender.SendToSession(session, onlinePkt)
 			}
 		}
 	}
@@ -828,7 +828,7 @@ func (h *V4Handler) handleSetStatus(session *LegacySession, seq1, seq2 uint16, u
 	ctx := context.Background()
 
 	// 1. Send ACK using packet builder
-	h.sender.SendPacket(session.Addr, h.packetBuilder.BuildAck(seq1, seq2, uin))
+	_ = h.sender.SendPacket(session.Addr, h.packetBuilder.BuildAck(seq1, seq2, uin))
 
 	// 2. Unmarshal packet to typed request struct
 	// V4 status change format (from licq CPU_SetStatus): STATUS(4)
@@ -873,9 +873,9 @@ func (h *V4Handler) handleSetStatus(session *LegacySession, seq1, seq2 uint16, u
 		targetSession := h.sessions.GetSession(target.UIN)
 		if targetSession != nil {
 			if h.dispatcher != nil {
-				h.dispatcher.SendStatusChange(targetSession, uin, newStatus)
+				_ = h.dispatcher.SendStatusChange(targetSession, uin, newStatus)
 			} else {
-				h.sendUserStatus(targetSession, uin, newStatus)
+				_ = h.sendUserStatus(targetSession, uin, newStatus)
 			}
 		}
 	}
@@ -896,7 +896,7 @@ func (h *V4Handler) handleMessage(session *LegacySession, seq1, seq2 uint16, uin
 	ctx := context.Background()
 
 	// 1. Send ACK using packet builder
-	h.sender.SendPacket(session.Addr, h.packetBuilder.BuildAck(seq1, seq2, uin))
+	_ = h.sender.SendPacket(session.Addr, h.packetBuilder.BuildAck(seq1, seq2, uin))
 
 	// 2. Unmarshal packet to typed request struct
 	req, err := h.parseMessagePacket(data, uin)
@@ -929,7 +929,7 @@ func (h *V4Handler) handleMessage(session *LegacySession, seq1, seq2 uint16, uin
 		targetSession := h.sessions.GetSession(req.ToUIN)
 		if targetSession != nil {
 			if h.dispatcher != nil {
-				h.dispatcher.SendOnlineMessage(targetSession, req.FromUIN, req.MsgType, req.Message)
+				_ = h.dispatcher.SendOnlineMessage(targetSession, req.FromUIN, req.MsgType, req.Message)
 			} else {
 				msgPkt := h.packetBuilder.BuildOnlineMessage(
 					targetSession.NextServerSeqNum(),
@@ -939,7 +939,7 @@ func (h *V4Handler) handleMessage(session *LegacySession, seq1, seq2 uint16, uin
 				)
 				// Set the recipient UIN in the packet (offset 8-11)
 				binary.LittleEndian.PutUint32(msgPkt[8:12], targetSession.UIN)
-				h.sender.SendToSession(targetSession, msgPkt)
+				_ = h.sender.SendToSession(targetSession, msgPkt)
 			}
 
 			h.logger.Debug("V4 message forwarded",
@@ -1009,7 +1009,7 @@ func (h *V4Handler) handleUserAdd(session *LegacySession, seq1, seq2 uint16, uin
 		return nil
 	}
 
-	h.sendAck(session.Addr, seq1, seq2, uin)
+	_ = h.sendAck(session.Addr, seq1, seq2, uin)
 
 	// V4 format (from licq CPU_AddUser): TARGET_UIN(4)
 	// Note: V4 does NOT have a timestamp prefix.
@@ -1040,9 +1040,9 @@ func (h *V4Handler) handleUserAdd(session *LegacySession, seq1, seq2 uint16, uin
 	if targetSession != nil {
 		// Send target's online status to the user who added them
 		if h.dispatcher != nil {
-			h.dispatcher.SendUserOnline(session, targetUIN, targetSession.GetStatus())
+			_ = h.dispatcher.SendUserOnline(session, targetUIN, targetSession.GetStatus())
 		} else {
-			h.sendUserOnline(session, targetUIN, targetSession.GetStatus())
+			_ = h.sendUserOnline(session, targetUIN, targetSession.GetStatus())
 		}
 
 		// Send "you were added" notification to target user
@@ -1050,9 +1050,9 @@ func (h *V4Handler) handleUserAdd(session *LegacySession, seq1, seq2 uint16, uin
 		youWereAddedMsg := fmt.Sprintf("%d\xFE\xFE\xFE\xFE0", uin)
 
 		if h.dispatcher != nil {
-			h.dispatcher.SendOnlineMessage(targetSession, uin, ICQLegacyMsgAdded, youWereAddedMsg)
+			_ = h.dispatcher.SendOnlineMessage(targetSession, uin, ICQLegacyMsgAdded, youWereAddedMsg)
 		} else {
-			h.sendOnlineMessage(targetSession, uin, ICQLegacyMsgAdded, youWereAddedMsg, 0)
+			_ = h.sendOnlineMessage(targetSession, uin, ICQLegacyMsgAdded, youWereAddedMsg, 0)
 		}
 
 		// Also send the adder's online status to the target.
@@ -1061,9 +1061,9 @@ func (h *V4Handler) handleUserAdd(session *LegacySession, seq1, seq2 uint16, uin
 		// this, the target's client shows the adder as offline
 		// even though they're connected.
 		if h.dispatcher != nil {
-			h.dispatcher.SendUserOnline(targetSession, uin, session.GetStatus())
+			_ = h.dispatcher.SendUserOnline(targetSession, uin, session.GetStatus())
 		} else {
-			h.sendUserOnline(targetSession, uin, session.GetStatus())
+			_ = h.sendUserOnline(targetSession, uin, session.GetStatus())
 		}
 
 		h.logger.Debug("V4 sent 'you were added' notification",
@@ -1081,7 +1081,7 @@ func (h *V4Handler) handleGetInfo(session *LegacySession, seq1, seq2 uint16, uin
 		return nil
 	}
 
-	h.sendAck(session.Addr, seq1, seq2, uin)
+	_ = h.sendAck(session.Addr, seq1, seq2, uin)
 
 	// V4 format (from licq CPU_GetUserBasicInfo): TARGET_UIN(4)
 	// Note: V4 does NOT have a timestamp/subsequence prefix (unlike V2).
@@ -1097,7 +1097,7 @@ func (h *V4Handler) handleGetInfo(session *LegacySession, seq1, seq2 uint16, uin
 	)
 
 	// Send basic info
-	h.sendBasicInfo(session, seq2, targetUIN)
+	_ = h.sendBasicInfo(session, seq2, targetUIN)
 
 	return nil
 }
@@ -1110,7 +1110,7 @@ func (h *V4Handler) handleInfoReq(session *LegacySession, seq1, seq2 uint16, uin
 		return nil
 	}
 
-	h.sendAck(session.Addr, seq1, seq2, uin)
+	_ = h.sendAck(session.Addr, seq1, seq2, uin)
 
 	// Parse - format: TARGET_UIN(4) only
 	if len(data) < 4 {
@@ -1137,7 +1137,7 @@ func (h *V4Handler) handleExtInfoReq(session *LegacySession, seq1, seq2 uint16, 
 		return nil
 	}
 
-	h.sendAck(session.Addr, seq1, seq2, uin)
+	_ = h.sendAck(session.Addr, seq1, seq2, uin)
 
 	// Parse - format: TARGET_UIN(4) only
 	if len(data) < 4 {
@@ -1167,7 +1167,7 @@ func (h *V4Handler) handleSearchByUIN(session *LegacySession, seq1, seq2 uint16,
 		return nil
 	}
 
-	h.sendAck(session.Addr, seq1, seq2, uin)
+	_ = h.sendAck(session.Addr, seq1, seq2, uin)
 
 	if len(data) < 4 {
 		h.logger.Debug("V4 search by UIN - data too short", "uin", uin)
@@ -1197,7 +1197,7 @@ func (h *V4Handler) handleSearchByUIN(session *LegacySession, seq1, seq2 uint16,
 		"nickname", result.Nickname,
 	)
 
-	h.sendSearchFound(session, seq2, result)
+	_ = h.sendSearchFound(session, seq2, result)
 	return h.sendSearchEnd(session, seq2, false)
 }
 
@@ -1209,7 +1209,7 @@ func (h *V4Handler) handleSearchByName(session *LegacySession, seq1, seq2 uint16
 		return nil
 	}
 
-	h.sendAck(session.Addr, seq1, seq2, uin)
+	_ = h.sendAck(session.Addr, seq1, seq2, uin)
 
 	h.logger.Info("V4 search by name", "uin", uin, "data_len", len(data))
 
@@ -1354,7 +1354,7 @@ func (h *V4Handler) handleUpdateBasic(session *LegacySession, seq1, seq2 uint16,
 		return nil
 	}
 
-	h.sendAck(session.Addr, seq1, seq2, uin)
+	_ = h.sendAck(session.Addr, seq1, seq2, uin)
 
 	// Parse: NICK_LEN(2)+NICK + FNAME_LEN(2)+FNAME + LNAME_LEN(2)+LNAME + EMAIL_LEN(2)+EMAIL + AUTH(1)
 	if len(data) >= 4 {
@@ -1364,7 +1364,7 @@ func (h *V4Handler) handleUpdateBasic(session *LegacySession, seq1, seq2 uint16,
 		last, _ := ParseLegacyString(r, true)
 		email, _ := ParseLegacyString(r, true)
 		var auth uint8
-		binary.Read(r, binary.LittleEndian, &auth)
+		_ = binary.Read(r, binary.LittleEndian, &auth)
 
 		ctx := context.Background()
 		info := state.ICQBasicInfo{
@@ -1405,7 +1405,7 @@ func (h *V4Handler) handleUpdateDetail(session *LegacySession, seq1, seq2 uint16
 		return nil
 	}
 
-	h.sendAck(session.Addr, seq1, seq2, uin)
+	_ = h.sendAck(session.Addr, seq1, seq2, uin)
 
 	// Parse: CITY_LEN(2)+CITY + COUNTRY(2) + TIMEZONE(1) + STATE_LEN(2)+STATE +
 	//        AGE(2) + SEX(1) + PHONE_LEN(2)+PHONE + HOMEPAGE_LEN(2)+HOMEPAGE +
@@ -1414,14 +1414,14 @@ func (h *V4Handler) handleUpdateDetail(session *LegacySession, seq1, seq2 uint16
 		r := bytes.NewReader(data)
 		city, _ := ParseLegacyString(r, true)
 		var country uint16
-		binary.Read(r, binary.LittleEndian, &country)
+		_ = binary.Read(r, binary.LittleEndian, &country)
 		var timezone uint8
-		binary.Read(r, binary.LittleEndian, &timezone)
+		_ = binary.Read(r, binary.LittleEndian, &timezone)
 		st, _ := ParseLegacyString(r, true)
 		var age uint16
-		binary.Read(r, binary.LittleEndian, &age)
+		_ = binary.Read(r, binary.LittleEndian, &age)
 		var sex uint8
-		binary.Read(r, binary.LittleEndian, &sex)
+		_ = binary.Read(r, binary.LittleEndian, &sex)
 		phone, _ := ParseLegacyString(r, true)
 		homepage, _ := ParseLegacyString(r, true)
 		about, _ := ParseLegacyString(r, true)
@@ -1476,7 +1476,7 @@ func (h *V4Handler) handleOfflineMsgReq(session *LegacySession, seq1, seq2 uint1
 		return nil
 	}
 
-	h.sendAck(session.Addr, seq1, seq2, uin)
+	_ = h.sendAck(session.Addr, seq1, seq2, uin)
 
 	h.logger.Debug("V4 offline message request", "uin", uin)
 
@@ -1492,7 +1492,7 @@ func (h *V4Handler) handleOfflineMsgReq(session *LegacySession, seq1, seq2 uint1
 
 	// Send each offline message as SYS_MSG_OFFLINE (0x00DC)
 	for _, msg := range messages {
-		h.sendOfflineMessage(session, msg)
+		_ = h.sendOfflineMessage(session, msg)
 	}
 
 	// Acknowledge (delete) offline messages after delivery
@@ -1685,7 +1685,7 @@ func (h *V4Handler) notifyContactsUserOnline(session *LegacySession) {
 	for _, contactUIN := range contactsToNotify {
 		contactSession := h.sessions.GetSession(contactUIN)
 		if contactSession != nil {
-			h.dispatcher.SendUserOnline(contactSession, session.UIN, session.GetStatus())
+			_ = h.dispatcher.SendUserOnline(contactSession, session.UIN, session.GetStatus())
 		}
 	}
 }
@@ -1706,7 +1706,7 @@ func (h *V4Handler) notifyContactsUserOffline(session *LegacySession) {
 	for _, contactUIN := range contactsToNotify {
 		contactSession := h.sessions.GetSession(contactUIN)
 		if contactSession != nil {
-			h.dispatcher.SendUserOffline(contactSession, session.UIN)
+			_ = h.dispatcher.SendUserOffline(contactSession, session.UIN)
 		}
 	}
 }

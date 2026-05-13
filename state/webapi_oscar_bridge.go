@@ -236,7 +236,7 @@ func (s *OSCARBridgeStore) CleanupExpiredSessions(ctx context.Context, maxAge ti
 // touchSession updates the last accessed time for a session (internal helper).
 func (s *OSCARBridgeStore) touchSession(ctx context.Context, webSessionID string) {
 	query := `UPDATE oscar_bridge_sessions SET last_accessed = ? WHERE web_session_id = ?`
-	s.store.db.ExecContext(ctx, query, time.Now(), webSessionID)
+	_, _ = s.store.db.ExecContext(ctx, query, time.Now(), webSessionID)
 }
 
 // GetAllBridgeSessions returns all active bridge sessions (for monitoring/admin).

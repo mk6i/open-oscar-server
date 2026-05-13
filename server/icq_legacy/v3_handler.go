@@ -266,7 +266,7 @@ func (h *V3Handler) handleGetDeps(addr *net.UDPAddr, seq1, seq2 uint16, data []b
 
 	// 3. Build and send responses using packet builder
 	// Send ACK
-	h.sender.SendPacket(addr, h.packetBuilder.BuildAck(seq1, seq2, uin))
+	_ = h.sender.SendPacket(addr, h.packetBuilder.BuildAck(seq1, seq2, uin))
 
 	// Send pre-auth response using packet builder
 	return h.sender.SendPacket(addr, h.packetBuilder.BuildDeptsList(seq2, uin))
@@ -282,7 +282,7 @@ func (h *V3Handler) handleLogin(session *LegacySession, addr *net.UDPAddr, seq1,
 	ctx := context.Background()
 
 	// First send ACK (iserverd does this immediately)
-	h.sender.SendPacket(addr, h.packetBuilder.BuildAck(seq1, seq2, uin))
+	_ = h.sender.SendPacket(addr, h.packetBuilder.BuildAck(seq1, seq2, uin))
 
 	// 1. Unmarshal packet to typed struct
 	// V3 login data format (from iserverd):
@@ -425,7 +425,7 @@ func (h *V3Handler) notifyContactsUserOffline(session *LegacySession) {
 		contactSession := h.sessions.GetSession(contactUIN)
 		if contactSession != nil {
 			// Use dispatcher to send offline notification in correct protocol format
-			h.dispatcher.SendUserOffline(contactSession, session.UIN)
+			_ = h.dispatcher.SendUserOffline(contactSession, session.UIN)
 		}
 	}
 }
@@ -441,7 +441,7 @@ func (h *V3Handler) handleContactList(session *LegacySession, seq1, seq2 uint16,
 	}
 
 	// 1. Send ACK using packet builder
-	h.sender.SendPacket(session.Addr, h.packetBuilder.BuildAck(seq1, seq2, uin))
+	_ = h.sender.SendPacket(session.Addr, h.packetBuilder.BuildAck(seq1, seq2, uin))
 
 	// 2. Unmarshal packet to typed request struct
 	req, err := h.parseContactListPacket(data, uin)
@@ -473,10 +473,10 @@ func (h *V3Handler) handleContactList(session *LegacySession, seq1, seq2 uint16,
 		if contact.Online {
 			if h.dispatcher != nil {
 				// Use central dispatcher - routes to correct protocol based on session's version
-				h.dispatcher.SendUserOnline(session, contact.UIN, contact.Status)
+				_ = h.dispatcher.SendUserOnline(session, contact.UIN, contact.Status)
 			} else {
 				// Fallback to V3 format if dispatcher not set
-				h.sendUserOnline(session, contact.UIN, contact.Status)
+				_ = h.sendUserOnline(session, contact.UIN, contact.Status)
 			}
 		}
 	}
@@ -542,7 +542,7 @@ func (h *V3Handler) notifyContactsUserOnline(session *LegacySession) {
 		contactSession := h.sessions.GetSession(contactUIN)
 		if contactSession != nil {
 			// Use dispatcher to send in correct protocol format for each contact
-			h.dispatcher.SendUserOnline(contactSession, session.UIN, session.GetStatus())
+			_ = h.dispatcher.SendUserOnline(contactSession, session.UIN, session.GetStatus())
 		}
 	}
 }
@@ -562,7 +562,7 @@ func (h *V3Handler) handleSetStatus(session *LegacySession, seq1, seq2 uint16, u
 	ctx := context.Background()
 
 	// 1. Send ACK using packet builder
-	h.sender.SendPacket(session.Addr, h.packetBuilder.BuildAck(seq1, seq2, uin))
+	_ = h.sender.SendPacket(session.Addr, h.packetBuilder.BuildAck(seq1, seq2, uin))
 
 	// 2. Unmarshal packet to typed request struct
 	// Parse status - format: TIMESTAMP(4) + STATUS(4)
@@ -607,7 +607,7 @@ func (h *V3Handler) handleSetStatus(session *LegacySession, seq1, seq2 uint16, u
 		if targetSession != nil {
 			if h.dispatcher != nil {
 				// Use central dispatcher - routes to correct protocol based on target's version
-				h.dispatcher.SendStatusChange(targetSession, uin, newStatus)
+				_ = h.dispatcher.SendStatusChange(targetSession, uin, newStatus)
 			} else {
 				// Fallback to V3 format if dispatcher not set
 				statusPkt := h.packetBuilder.BuildUserStatus(
@@ -615,7 +615,7 @@ func (h *V3Handler) handleSetStatus(session *LegacySession, seq1, seq2 uint16, u
 					uin,
 					newStatus,
 				)
-				h.sender.SendToSession(targetSession, statusPkt)
+				_ = h.sender.SendToSession(targetSession, statusPkt)
 			}
 		}
 	}
@@ -635,7 +635,7 @@ func (h *V3Handler) handleMessage(session *LegacySession, seq1, seq2 uint16, uin
 	}
 
 	// 1. Send ACK using packet builder
-	h.sender.SendPacket(session.Addr, h.packetBuilder.BuildAck(seq1, seq2, uin))
+	_ = h.sender.SendPacket(session.Addr, h.packetBuilder.BuildAck(seq1, seq2, uin))
 
 	// 2. Unmarshal packet to typed request struct
 	req, err := h.parseMessagePacket(data, uin)
@@ -670,10 +670,10 @@ func (h *V3Handler) handleMessage(session *LegacySession, seq1, seq2 uint16, uin
 		if targetSession != nil {
 			if h.dispatcher != nil {
 				// Use central dispatcher - routes to correct protocol based on target's version
-				h.dispatcher.SendOnlineMessage(targetSession, req.FromUIN, req.MsgType, req.Message)
+				_ = h.dispatcher.SendOnlineMessage(targetSession, req.FromUIN, req.MsgType, req.Message)
 			} else {
 				// Fallback to V3 format if dispatcher not set
-				h.sendOnlineMessage(targetSession, req.FromUIN, req.MsgType, req.Message, seq2)
+				_ = h.sendOnlineMessage(targetSession, req.FromUIN, req.MsgType, req.Message, seq2)
 			}
 			h.logger.Debug("V3 message forwarded",
 				"from", req.FromUIN,
@@ -744,7 +744,7 @@ func (h *V3Handler) handleUserAdd(session *LegacySession, seq1, seq2 uint16, uin
 	}
 
 	// 1. Send ACK using packet builder
-	h.sender.SendPacket(session.Addr, h.packetBuilder.BuildAck(seq1, seq2, uin))
+	_ = h.sender.SendPacket(session.Addr, h.packetBuilder.BuildAck(seq1, seq2, uin))
 
 	// 2. Unmarshal packet to typed request struct
 	req, err := h.parseUserAddPacket(data, uin)
@@ -774,7 +774,7 @@ func (h *V3Handler) handleUserAdd(session *LegacySession, seq1, seq2 uint16, uin
 	// 4. Send notifications based on service result
 	if result.TargetOnline {
 		// Send target's online status to the user who added them
-		h.sendUserOnline(session, req.TargetUIN, result.TargetStatus)
+		_ = h.sendUserOnline(session, req.TargetUIN, result.TargetStatus)
 
 		// Send "you were added" notification to target user if service says to
 		if result.SendYouWereAdded {
@@ -786,19 +786,19 @@ func (h *V3Handler) handleUserAdd(session *LegacySession, seq1, seq2 uint16, uin
 
 				if h.dispatcher != nil {
 					// Use dispatcher for cross-protocol support
-					h.dispatcher.SendOnlineMessage(targetSession, req.FromUIN, ICQLegacyMsgAdded, youWereAddedMsg)
+					_ = h.dispatcher.SendOnlineMessage(targetSession, req.FromUIN, ICQLegacyMsgAdded, youWereAddedMsg)
 				} else {
 					// Fallback to V3 format
-					h.sendOnlineMessage(targetSession, req.FromUIN, ICQLegacyMsgAdded, youWereAddedMsg, 0)
+					_ = h.sendOnlineMessage(targetSession, req.FromUIN, ICQLegacyMsgAdded, youWereAddedMsg, 0)
 				}
 
 				// Also send the adder's online status to the target.
 				// The target receives "you were added" but won't see the
 				// adder as online unless we explicitly tell them.
 				if h.dispatcher != nil {
-					h.dispatcher.SendUserOnline(targetSession, req.FromUIN, session.GetStatus())
+					_ = h.dispatcher.SendUserOnline(targetSession, req.FromUIN, session.GetStatus())
 				} else {
-					h.sendUserOnline(targetSession, req.FromUIN, session.GetStatus())
+					_ = h.sendUserOnline(targetSession, req.FromUIN, session.GetStatus())
 				}
 
 				h.logger.Debug("V3 sent 'you were added' notification",
@@ -841,7 +841,7 @@ func (h *V3Handler) handleGetInfo(session *LegacySession, seq1, seq2 uint16, uin
 	}
 
 	// 1. Send ACK using packet builder
-	h.sender.SendPacket(session.Addr, h.packetBuilder.BuildAck(seq1, seq2, uin))
+	_ = h.sender.SendPacket(session.Addr, h.packetBuilder.BuildAck(seq1, seq2, uin))
 
 	// 2. Unmarshal packet to extract target UIN
 	// Format: TIMESTAMP(4) + TARGET_UIN(4)
@@ -870,11 +870,11 @@ func (h *V3Handler) handleGetInfo(session *LegacySession, seq1, seq2 uint16, uin
 
 	// 4. Build and send all user info packets using packet builder
 	// (matching iserverd v3_process_getinfo which sends 5 packets)
-	h.sender.SendToSession(session, h.packetBuilder.BuildBasicInfo(session.NextServerSeqNum(), seq2, session.UIN, info))
-	h.sender.SendToSession(session, h.packetBuilder.BuildHomeInfo(session.NextServerSeqNum(), seq2, session.UIN, info))
-	h.sender.SendToSession(session, h.packetBuilder.BuildHomeWeb(session.NextServerSeqNum(), seq2, session.UIN, info))
-	h.sender.SendToSession(session, h.packetBuilder.BuildWorkInfo(session.NextServerSeqNum(), seq2, session.UIN, info))
-	h.sender.SendToSession(session, h.packetBuilder.BuildWorkWeb(session.NextServerSeqNum(), seq2, session.UIN, info))
+	_ = h.sender.SendToSession(session, h.packetBuilder.BuildBasicInfo(session.NextServerSeqNum(), seq2, session.UIN, info))
+	_ = h.sender.SendToSession(session, h.packetBuilder.BuildHomeInfo(session.NextServerSeqNum(), seq2, session.UIN, info))
+	_ = h.sender.SendToSession(session, h.packetBuilder.BuildHomeWeb(session.NextServerSeqNum(), seq2, session.UIN, info))
+	_ = h.sender.SendToSession(session, h.packetBuilder.BuildWorkInfo(session.NextServerSeqNum(), seq2, session.UIN, info))
+	_ = h.sender.SendToSession(session, h.packetBuilder.BuildWorkWeb(session.NextServerSeqNum(), seq2, session.UIN, info))
 
 	return nil
 }
@@ -984,7 +984,7 @@ func (h *V3Handler) handleOfflineMsgReq(session *LegacySession, seq1, seq2 uint1
 		return nil
 	}
 
-	h.sendAck(session.Addr, seq1, seq2, uin)
+	_ = h.sendAck(session.Addr, seq1, seq2, uin)
 
 	ctx := context.Background()
 
@@ -1022,7 +1022,7 @@ func (h *V3Handler) handleSetBasicInfo(session *LegacySession, seq1, seq2 uint16
 		return nil
 	}
 
-	h.sendAck(session.Addr, seq1, seq2, uin)
+	_ = h.sendAck(session.Addr, seq1, seq2, uin)
 
 	if len(data) < 6 {
 		return h.sendReplyOK(session, seq2, 0x01E0)
@@ -1055,7 +1055,7 @@ func (h *V3Handler) handleSetHomeInfo(session *LegacySession, seq1, seq2 uint16,
 		return nil
 	}
 
-	h.sendAck(session.Addr, seq1, seq2, uin)
+	_ = h.sendAck(session.Addr, seq1, seq2, uin)
 
 	if len(data) < 6 {
 		return h.sendReplyOK(session, seq2, 0x0280)
@@ -1066,17 +1066,17 @@ func (h *V3Handler) handleSetHomeInfo(session *LegacySession, seq1, seq2 uint16,
 	city, _ := ParseLegacyString(r, true)
 	st, _ := ParseLegacyString(r, true)
 	var country uint16
-	binary.Read(r, binary.LittleEndian, &country)
+	_ = binary.Read(r, binary.LittleEndian, &country)
 	phone, _ := ParseLegacyString(r, true)
 	fax, _ := ParseLegacyString(r, true)
 	cell, _ := ParseLegacyString(r, true)
 	var zipCode uint32
-	binary.Read(r, binary.LittleEndian, &zipCode)
+	_ = binary.Read(r, binary.LittleEndian, &zipCode)
 	var gmt uint16
-	binary.Read(r, binary.LittleEndian, &gmt)
+	_ = binary.Read(r, binary.LittleEndian, &gmt)
 	var auth, webaware uint8
-	binary.Read(r, binary.LittleEndian, &auth)
-	binary.Read(r, binary.LittleEndian, &webaware)
+	_ = binary.Read(r, binary.LittleEndian, &auth)
+	_ = binary.Read(r, binary.LittleEndian, &webaware)
 
 	// Read existing basic info to avoid overwriting nick/first/last/email
 	ctx := context.Background()
@@ -1109,7 +1109,7 @@ func (h *V3Handler) handleSetHomeWeb(session *LegacySession, seq1, seq2 uint16, 
 		return nil
 	}
 
-	h.sendAck(session.Addr, seq1, seq2, uin)
+	_ = h.sendAck(session.Addr, seq1, seq2, uin)
 
 	if len(data) < 7 {
 		return h.sendReplyOK(session, seq2, 0x0294)
@@ -1117,18 +1117,18 @@ func (h *V3Handler) handleSetHomeWeb(session *LegacySession, seq1, seq2 uint16, 
 
 	r := bytes.NewReader(data[4:]) // skip timestamp
 	var age uint16
-	binary.Read(r, binary.LittleEndian, &age)
+	_ = binary.Read(r, binary.LittleEndian, &age)
 	var sex uint8
-	binary.Read(r, binary.LittleEndian, &sex)
+	_ = binary.Read(r, binary.LittleEndian, &sex)
 	hp, _ := ParseLegacyString(r, true)
 	var birthYear uint16
-	binary.Read(r, binary.LittleEndian, &birthYear)
+	_ = binary.Read(r, binary.LittleEndian, &birthYear)
 	var birthMonth, birthDay, lang1, lang2, lang3 uint8
-	binary.Read(r, binary.LittleEndian, &birthMonth)
-	binary.Read(r, binary.LittleEndian, &birthDay)
-	binary.Read(r, binary.LittleEndian, &lang1)
-	binary.Read(r, binary.LittleEndian, &lang2)
-	binary.Read(r, binary.LittleEndian, &lang3)
+	_ = binary.Read(r, binary.LittleEndian, &birthMonth)
+	_ = binary.Read(r, binary.LittleEndian, &birthDay)
+	_ = binary.Read(r, binary.LittleEndian, &lang1)
+	_ = binary.Read(r, binary.LittleEndian, &lang2)
+	_ = binary.Read(r, binary.LittleEndian, &lang3)
 
 	ctx := context.Background()
 	info := state.ICQMoreInfo{
@@ -1155,7 +1155,7 @@ func (h *V3Handler) handleSetWorkInfo(session *LegacySession, seq1, seq2 uint16,
 		return nil
 	}
 
-	h.sendAck(session.Addr, seq1, seq2, uin)
+	_ = h.sendAck(session.Addr, seq1, seq2, uin)
 
 	if len(data) < 6 {
 		return h.sendReplyOK(session, seq2, 0x026C)
@@ -1166,17 +1166,17 @@ func (h *V3Handler) handleSetWorkInfo(session *LegacySession, seq1, seq2 uint16,
 	city, _ := ParseLegacyString(r, true)
 	st, _ := ParseLegacyString(r, true)
 	var country uint16
-	binary.Read(r, binary.LittleEndian, &country)
+	_ = binary.Read(r, binary.LittleEndian, &country)
 	company, _ := ParseLegacyString(r, true)
 	position, _ := ParseLegacyString(r, true)
 	var dept uint16
-	binary.Read(r, binary.LittleEndian, &dept)
+	_ = binary.Read(r, binary.LittleEndian, &dept)
 	phone, _ := ParseLegacyString(r, true)
 	fax, _ := ParseLegacyString(r, true)
 	// pager field — not stored in ICQWorkInfo, skip
-	ParseLegacyString(r, true)
+	_, _ = ParseLegacyString(r, true)
 	var zipCode uint32
-	binary.Read(r, binary.LittleEndian, &zipCode)
+	_ = binary.Read(r, binary.LittleEndian, &zipCode)
 
 	// Read existing work info to preserve WebPage (set separately via 0x05BE)
 	ctx := context.Background()
@@ -1206,7 +1206,7 @@ func (h *V3Handler) handleSetWorkWeb(session *LegacySession, seq1, seq2 uint16, 
 		return nil
 	}
 
-	h.sendAck(session.Addr, seq1, seq2, uin)
+	_ = h.sendAck(session.Addr, seq1, seq2, uin)
 
 	if len(data) < 6 {
 		return h.sendReplyOK(session, seq2, 0x0258)
@@ -1234,7 +1234,7 @@ func (h *V3Handler) handleVisibleList(session *LegacySession, seq1, seq2 uint16,
 		return nil
 	}
 
-	h.sendAck(session.Addr, seq1, seq2, uin)
+	_ = h.sendAck(session.Addr, seq1, seq2, uin)
 
 	h.logger.Debug("V3 visible list", "uin", uin)
 
@@ -1247,7 +1247,7 @@ func (h *V3Handler) handleInvisibleList(session *LegacySession, seq1, seq2 uint1
 		return nil
 	}
 
-	h.sendAck(session.Addr, seq1, seq2, uin)
+	_ = h.sendAck(session.Addr, seq1, seq2, uin)
 
 	h.logger.Debug("V3 invisible list", "uin", uin)
 
@@ -1260,7 +1260,7 @@ func (h *V3Handler) handleUnknownDep(session *LegacySession, seq1, seq2 uint16, 
 		return nil
 	}
 
-	h.sendAck(session.Addr, seq1, seq2, uin)
+	_ = h.sendAck(session.Addr, seq1, seq2, uin)
 
 	h.logger.Debug("V3 unknown dep request", "uin", uin)
 
@@ -1278,7 +1278,7 @@ func (h *V3Handler) handleSearchStart(session *LegacySession, seq1, seq2 uint16,
 		return nil
 	}
 
-	h.sendAck(session.Addr, seq1, seq2, uin)
+	_ = h.sendAck(session.Addr, seq1, seq2, uin)
 
 	// Parse search parameters - format: TIMESTAMP(4) + TYPE(2) + COMP(2) + LEN(2) + STRING
 	if len(data) < 10 {
@@ -1325,7 +1325,7 @@ func (h *V3Handler) handleSearchStart(session *LegacySession, seq1, seq2 uint16,
 				first := truncateField(result.FirstName, 64, h.logger, "first_name", result.UIN)
 				last := truncateField(result.LastName, 64, h.logger, "last_name", result.UIN)
 				email := truncateField(result.Email, 64, h.logger, "email", result.UIN)
-				h.sendSearchFound(session, seq2, result.UIN, nick, first, last, email, 0)
+				_ = h.sendSearchFound(session, seq2, result.UIN, nick, first, last, email, 0)
 				h.logger.Debug("V3 search found user in database",
 					"searcher", uin,
 					"found", result.UIN,
@@ -1354,7 +1354,7 @@ func (h *V3Handler) handleGetDeps1(session *LegacySession, seq1, seq2 uint16, ui
 		return nil
 	}
 
-	h.sendAck(session.Addr, seq1, seq2, uin)
+	_ = h.sendAck(session.Addr, seq1, seq2, uin)
 
 	h.logger.Debug("V3 get deps1 request", "uin", uin)
 
@@ -1749,7 +1749,7 @@ func (h *V3Handler) handleGetNotes(session *LegacySession, seq1, seq2 uint16, ui
 		return nil
 	}
 
-	h.sendAck(session.Addr, seq1, seq2, uin)
+	_ = h.sendAck(session.Addr, seq1, seq2, uin)
 
 	// Parse: TIMESTAMP(4) + TARGET_UIN(4)
 	if len(data) < 8 {
@@ -1781,7 +1781,7 @@ func (h *V3Handler) handleSetNotes(session *LegacySession, seq1, seq2 uint16, ui
 		return nil
 	}
 
-	h.sendAck(session.Addr, seq1, seq2, uin)
+	_ = h.sendAck(session.Addr, seq1, seq2, uin)
 
 	// Parse notes from packet
 	// Format: TIMESTAMP(4) + NOTES_LEN(2) + NOTES
@@ -1828,7 +1828,7 @@ func (h *V3Handler) handleSetPassword(session *LegacySession, seq1, seq2 uint16,
 		return nil
 	}
 
-	h.sendAck(session.Addr, seq1, seq2, uin)
+	_ = h.sendAck(session.Addr, seq1, seq2, uin)
 
 	// Parse password from data
 	// Format: TIMESTAMP(4) + PASSWORD_LEN(2) + NEW_PASSWORD
@@ -1894,7 +1894,7 @@ func (h *V3Handler) handleSetAuth(session *LegacySession, seq1, seq2 uint16, uin
 		return nil
 	}
 
-	h.sendAck(session.Addr, seq1, seq2, uin)
+	_ = h.sendAck(session.Addr, seq1, seq2, uin)
 
 	// Parse auth mode - format: TIMESTAMP(4) + AUTH_MODE(1)
 	// From iserverd v3_process_setauth():
@@ -1941,7 +1941,7 @@ func (h *V3Handler) handleSetState(session *LegacySession, seq1, seq2 uint16, ui
 		return nil
 	}
 
-	h.sendAck(session.Addr, seq1, seq2, uin)
+	_ = h.sendAck(session.Addr, seq1, seq2, uin)
 
 	// Parse status - format: TIMESTAMP(4) + STATUS(4) + ESTATUS(4)
 	// From iserverd v3_process_status():
@@ -2006,7 +2006,7 @@ func (h *V3Handler) broadcastStatusChange(session *LegacySession, newStatus uint
 		if contactSession != nil {
 			// Use dispatcher to send status change in correct protocol format
 			// This routes to V3 or V5 handler based on the contact's protocol version
-			h.dispatcher.SendStatusChange(contactSession, session.UIN, newStatus)
+			_ = h.dispatcher.SendStatusChange(contactSession, session.UIN, newStatus)
 		}
 	}
 }
@@ -2018,7 +2018,7 @@ func (h *V3Handler) handleUsageStats(session *LegacySession, seq1, seq2 uint16, 
 		return nil
 	}
 
-	h.sendAck(session.Addr, seq1, seq2, uin)
+	_ = h.sendAck(session.Addr, seq1, seq2, uin)
 
 	h.logger.Debug("V3 usage stats", "uin", uin)
 
@@ -2032,7 +2032,7 @@ func (h *V3Handler) handleGetExternals(session *LegacySession, seq1, seq2 uint16
 		return nil
 	}
 
-	h.sendAck(session.Addr, seq1, seq2, uin)
+	_ = h.sendAck(session.Addr, seq1, seq2, uin)
 
 	h.logger.Debug("V3 get externals", "uin", uin)
 
@@ -2048,7 +2048,7 @@ func (h *V3Handler) handleSysAck(session *LegacySession, seq1, seq2 uint16, uin 
 		return nil
 	}
 
-	h.sendAck(session.Addr, seq1, seq2, uin)
+	_ = h.sendAck(session.Addr, seq1, seq2, uin)
 
 	ctx := context.Background()
 
@@ -2069,7 +2069,7 @@ func (h *V3Handler) handleOnlineInfo(session *LegacySession, seq1, seq2 uint16, 
 		return nil
 	}
 
-	h.sendAck(session.Addr, seq1, seq2, uin)
+	_ = h.sendAck(session.Addr, seq1, seq2, uin)
 
 	h.logger.Debug("V3 online info", "uin", uin)
 
@@ -2087,7 +2087,7 @@ func (h *V3Handler) handleGetInfo1(session *LegacySession, seq1, seq2 uint16, ui
 	}
 
 	// 1. Send ACK using packet builder
-	h.sender.SendPacket(session.Addr, h.packetBuilder.BuildAck(seq1, seq2, uin))
+	_ = h.sender.SendPacket(session.Addr, h.packetBuilder.BuildAck(seq1, seq2, uin))
 
 	// 2. Unmarshal packet to extract target UIN
 	// Format: TIMESTAMP(4) + TARGET_UIN(4)

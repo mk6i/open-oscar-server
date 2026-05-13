@@ -302,7 +302,7 @@ func TestLocateService_UserInfoQuery(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			relationshipFetcher := newMockRelationshipFetcher(t)
-			for _, params := range tc.mockParams.relationshipFetcherParams.relationshipParams {
+			for _, params := range tc.mockParams.relationshipParams {
 				relationshipFetcher.EXPECT().
 					Relationship(matchContext(), params.me, params.them).
 					Return(params.result, params.err)

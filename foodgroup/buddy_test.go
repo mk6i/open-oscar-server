@@ -31,7 +31,7 @@ func TestBuddyService_RightsQuery(t *testing.T) {
 			},
 		},
 	}
-	have := svc.RightsQuery(nil, wire.SNACFrame{RequestID: 1234})
+	have := svc.RightsQuery(context.TODO(), wire.SNACFrame{RequestID: 1234})
 
 	assert.Equal(t, want, have)
 }
@@ -1313,7 +1313,7 @@ func newBuddyArrivedNotif(screenName state.DisplayScreenName) wire.SNACMessage {
 			if !ok {
 				return false
 			}
-			return snac.ScreenName == screenName.String() && len(snac.TLVUserInfo.TLVList) > 0
+			return snac.ScreenName == screenName.String() && len(snac.TLVList) > 0
 		},
 	}
 }

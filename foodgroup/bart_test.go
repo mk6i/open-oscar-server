@@ -496,7 +496,7 @@ func TestBARTService_RetrieveItem(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			bartItemManager := newMockBARTItemManager(t)
-			for _, params := range tc.mockParams.bartItemManagerParams.bartItemManagerRetrieveParams {
+			for _, params := range tc.mockParams.bartItemManagerRetrieveParams {
 				bartItemManager.EXPECT().
 					BARTItem(matchContext(), params.itemHash).
 					Return(params.result, params.err)
@@ -870,7 +870,7 @@ func TestBARTService_RetrieveItemV2(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			bartItemManager := newMockBARTItemManager(t)
-			for _, params := range tc.mockParams.bartItemManagerParams.bartItemManagerRetrieveParams {
+			for _, params := range tc.mockParams.bartItemManagerRetrieveParams {
 				bartItemManager.EXPECT().
 					BARTItem(matchContext(), params.itemHash).
 					Return(params.result, params.err)

@@ -131,8 +131,8 @@ func ICBMToWebAPIEvent(icbm wire.SNAC_0x04_0x07_ICBMChannelMsgToClient) (types.E
 
 	// Extract sender screen name from TLVUserInfo
 	senderScreenName := ""
-	if icbm.TLVUserInfo.ScreenName != "" {
-		senderScreenName = icbm.TLVUserInfo.ScreenName
+	if icbm.ScreenName != "" {
+		senderScreenName = icbm.ScreenName
 	}
 
 	// Create WebAPI event

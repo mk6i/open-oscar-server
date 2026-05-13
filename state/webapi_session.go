@@ -129,7 +129,7 @@ func (s *WebAPISession) handleIncomingIM(msg wire.SNACMessage) {
 
 	// Extract message text from TLV data
 	var messageText string
-	if msgData, hasMsg := body.TLVRestBlock.Bytes(wire.ICBMTLVAOLIMData); hasMsg {
+	if msgData, hasMsg := body.Bytes(wire.ICBMTLVAOLIMData); hasMsg {
 		if text, err := wire.UnmarshalICBMMessageText(msgData); err == nil {
 			messageText = text
 		}

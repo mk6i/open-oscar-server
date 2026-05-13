@@ -15,6 +15,26 @@ const (
 	LevelTrace = slog.Level(-8)
 )
 
+type contextKey string
+
+const (
+	ipContextKey         contextKey = "ip"
+	screenNameContextKey contextKey = "screenName"
+)
+
+func WithIP(ctx context.Context, ip string) context.Context {
+	return context.WithValue(ctx, ipContextKey, ip)
+}
+
+func IPFromContext(ctx context.Context) (string, bool) {
+	ip, ok := ctx.Value(ipContextKey).(string)
+	return ip, ok
+}
+
+func WithScreenName(ctx context.Context, screenName fmt.Stringer) context.Context {
+	return context.WithValue(ctx, screenNameContextKey, screenName)
+}
+
 var levelNames = map[slog.Leveler]string{
 	LevelTrace: "TRACE",
 }
@@ -59,10 +79,10 @@ type handler struct {
 }
 
 func (h handler) Handle(ctx context.Context, r slog.Record) error {
-	if sn := ctx.Value("screenName"); sn != nil {
+	if sn := ctx.Value(screenNameContextKey); sn != nil {
 		r.AddAttrs(slog.Attr{Key: "screenName", Value: slog.StringValue(sn.(fmt.Stringer).String())})
 	}
-	if ip := ctx.Value("ip"); ip != nil {
+	if ip := ctx.Value(ipContextKey); ip != nil {
 		r.AddAttrs(slog.Attr{Key: "ip", Value: slog.StringValue(ip.(string))})
 	}
 	return h.Handler.Handle(ctx, r)

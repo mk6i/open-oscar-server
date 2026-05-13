@@ -186,7 +186,7 @@ func (a *APIAnalytics) flush(ctx context.Context) {
 		a.logger.Error("failed to prepare analytics insert statement", "error", err)
 		return
 	}
-	defer stmt.Close()
+	defer func() { _ = stmt.Close() }()
 
 	for _, log := range logs {
 		_, err := stmt.Exec(

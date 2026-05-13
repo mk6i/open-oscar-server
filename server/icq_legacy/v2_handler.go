@@ -261,7 +261,7 @@ func (h *V2Handler) handleLogoff(session *LegacySession, pkt *V2ClientPacket) er
 
 	// Notify contacts that user is offline
 	h.sessions.BroadcastToContacts(session, func(contact *LegacySession) {
-		h.sendUserOffline(contact, session.UIN)
+		_ = h.sendUserOffline(contact, session.UIN)
 	})
 
 	// Notify OSCAR clients that this user went offline
@@ -358,7 +358,7 @@ func (h *V2Handler) handleContactList(session *LegacySession, pkt *V2ClientPacke
 				nil, // IP not available from service layer
 				0,   // Port not available from service layer
 			)
-			h.sender.SendToSession(session, onlinePkt)
+			_ = h.sender.SendToSession(session, onlinePkt)
 		}
 	}
 
@@ -430,9 +430,9 @@ func (h *V2Handler) handleSendMessage(session *LegacySession, pkt *V2ClientPacke
 			targetSession := h.sessions.GetSession(msg.ToUIN)
 			if targetSession != nil {
 				if h.dispatcher != nil {
-					h.dispatcher.SendOnlineMessage(targetSession, msg.FromUIN, msg.MsgType, msg.Message)
+					_ = h.dispatcher.SendOnlineMessage(targetSession, msg.FromUIN, msg.MsgType, msg.Message)
 				} else {
-					h.sendMessage(targetSession, msg.FromUIN, msg.MsgType, msg.Message)
+					_ = h.sendMessage(targetSession, msg.FromUIN, msg.MsgType, msg.Message)
 				}
 			}
 		}
@@ -500,14 +500,14 @@ func (h *V2Handler) handleSetStatus(session *LegacySession, pkt *V2ClientPacket)
 			targetSession := h.sessions.GetSession(target.UIN)
 			if targetSession != nil {
 				if h.dispatcher != nil {
-					h.dispatcher.SendStatusChange(targetSession, session.UIN, newStatus)
+					_ = h.dispatcher.SendStatusChange(targetSession, session.UIN, newStatus)
 				} else {
 					statusPkt := h.packetBuilder.BuildStatusUpdate(
 						targetSession.NextServerSeqNum(),
 						session.UIN,
 						newStatus,
 					)
-					h.sender.SendToSession(targetSession, statusPkt)
+					_ = h.sender.SendToSession(targetSession, statusPkt)
 				}
 			}
 		}
@@ -918,24 +918,24 @@ func (h *V2Handler) handleUserAdd(session *LegacySession, pkt *V2ClientPacket) e
 	targetSession := h.sessions.GetSession(targetUIN)
 	if targetSession != nil {
 		if h.dispatcher != nil {
-			h.dispatcher.SendUserOnline(session, targetUIN, targetSession.GetStatus())
+			_ = h.dispatcher.SendUserOnline(session, targetUIN, targetSession.GetStatus())
 		} else {
-			h.sendUserOnline(session, targetUIN, targetSession.GetStatus(), nil, 0)
+			_ = h.sendUserOnline(session, targetUIN, targetSession.GetStatus(), nil, 0)
 		}
 
 		// Also send the adder's online status to the target.
 		// The target won't see the adder as online unless we tell them.
 		if h.dispatcher != nil {
-			h.dispatcher.SendUserOnline(targetSession, session.UIN, session.GetStatus())
+			_ = h.dispatcher.SendUserOnline(targetSession, session.UIN, session.GetStatus())
 		} else {
-			h.sendUserOnline(targetSession, session.UIN, session.GetStatus(), nil, 0)
+			_ = h.sendUserOnline(targetSession, session.UIN, session.GetStatus(), nil, 0)
 		}
 	} else {
 		// Check if target is online via OSCAR session
 		info, err := h.service.GetUserInfoForProtocol(ctx, targetUIN)
 		if err == nil && info != nil && info.Online {
 			status := downgradeStatusForV2(info.Status)
-			h.sendUserOnline(session, targetUIN, status, nil, 0)
+			_ = h.sendUserOnline(session, targetUIN, status, nil, 0)
 		}
 	}
 
@@ -1207,14 +1207,14 @@ func (h *V2Handler) handleUpdateDetail(session *LegacySession, pkt *V2ClientPack
 
 	city, _ := ParseLegacyString(r, true)
 	var country uint16
-	binary.Read(r, binary.LittleEndian, &country)
+	_ = binary.Read(r, binary.LittleEndian, &country)
 	var countryStat uint8
-	binary.Read(r, binary.LittleEndian, &countryStat)
+	_ = binary.Read(r, binary.LittleEndian, &countryStat)
 	st, _ := ParseLegacyString(r, true)
 	var age uint16
-	binary.Read(r, binary.LittleEndian, &age)
+	_ = binary.Read(r, binary.LittleEndian, &age)
 	var sex uint8
-	binary.Read(r, binary.LittleEndian, &sex)
+	_ = binary.Read(r, binary.LittleEndian, &sex)
 	phone, _ := ParseLegacyString(r, true)
 	homepage, _ := ParseLegacyString(r, true)
 	about, _ := ParseLegacyString(r, true)

@@ -238,11 +238,12 @@ func (q *EventQueue) Close() {
 	q.closed = true
 
 	// Send multiple signals to unblock all potential waiters
+notifyWaiters:
 	for i := 0; i < 10; i++ {
 		select {
 		case q.waitChan <- struct{}{}:
 		default:
-			break
+			break notifyWaiters
 		}
 	}
 }

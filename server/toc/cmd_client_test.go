@@ -937,23 +937,23 @@ func TestOSCARProxy_RecvClientCmd_ChatAccept(t *testing.T) {
 					Return(params.msg, params.err)
 			}
 			oServiceSvc := newMockOServiceService(t)
-			for _, params := range tc.mockParams.oServiceParams.serviceRequestParams {
+			for _, params := range tc.mockParams.serviceRequestParams {
 				oServiceSvc.EXPECT().
 					ServiceRequest(ctx, wire.BOS, matchSession(params.me), wire.SNACFrame{}, params.bodyIn, config.Listener{}).
 					Return(params.msg, params.err)
 			}
-			for _, params := range tc.mockParams.oServiceParams.clientOnlineParams {
+			for _, params := range tc.mockParams.clientOnlineParams {
 				oServiceSvc.EXPECT().
 					ClientOnline(ctx, wire.Chat, params.body, matchSession(params.me)).
 					Return(params.err)
 			}
 			authSvc := newMockAuthService(t)
-			for _, params := range tc.mockParams.authParams.registerChatSessionParams {
+			for _, params := range tc.mockParams.registerChatSessionParams {
 				authSvc.EXPECT().
 					RegisterChatSession(ctx, params.authCookie, mock.Anything).
 					Return(params.instance, params.err)
 			}
-			for _, params := range tc.mockParams.authParams.crackCookieParams {
+			for _, params := range tc.mockParams.crackCookieParams {
 				authSvc.EXPECT().
 					CrackCookie(params.cookieIn).
 					Return(params.cookieOut, params.err)
@@ -1469,23 +1469,23 @@ func TestOSCARProxy_RecvClientCmd_ChatJoin(t *testing.T) {
 					Return(params.msg, params.err)
 			}
 			bosOServiceSvc := newMockOServiceService(t)
-			for _, params := range tc.mockParams.oServiceParams.serviceRequestParams {
+			for _, params := range tc.mockParams.serviceRequestParams {
 				bosOServiceSvc.EXPECT().
 					ServiceRequest(ctx, wire.BOS, matchSession(params.me), wire.SNACFrame{}, params.bodyIn, config.Listener{}).
 					Return(params.msg, params.err)
 			}
-			for _, params := range tc.mockParams.oServiceParams.clientOnlineParams {
+			for _, params := range tc.mockParams.clientOnlineParams {
 				bosOServiceSvc.EXPECT().
 					ClientOnline(ctx, wire.Chat, params.body, matchSession(params.me)).
 					Return(params.err)
 			}
 			authSvc := newMockAuthService(t)
-			for _, params := range tc.mockParams.authParams.registerChatSessionParams {
+			for _, params := range tc.mockParams.registerChatSessionParams {
 				authSvc.EXPECT().
 					RegisterChatSession(ctx, params.authCookie, mock.Anything).
 					Return(params.instance, params.err)
 			}
-			for _, params := range tc.mockParams.authParams.crackCookieParams {
+			for _, params := range tc.mockParams.crackCookieParams {
 				authSvc.EXPECT().
 					CrackCookie(params.cookieIn).
 					Return(params.cookieOut, params.err)
@@ -2983,14 +2983,14 @@ func TestOSCARProxy_RecvClientCmd_InitDone(t *testing.T) {
 			ctx := context.Background()
 
 			oSvc := newMockOServiceService(t)
-			for _, params := range tc.mockParams.oServiceParams.clientOnlineParams {
+			for _, params := range tc.mockParams.clientOnlineParams {
 				oSvc.EXPECT().
 					ClientOnline(ctx, params.service, params.body, matchSession(params.me)).
 					Return(params.err)
 			}
 
 			fbMgr := newMockFeedbagManager(t)
-			for _, params := range tc.mockParams.feedBagParams.useFeedbagParams {
+			for _, params := range tc.mockParams.useFeedbagParams {
 				fbMgr.EXPECT().
 					UseFeedbag(ctx, params.me).
 					Return(params.err)
@@ -3599,13 +3599,13 @@ func TestOSCARProxy_RecvClientCmd_NewBuddies(t *testing.T) {
 			ctx := context.Background()
 
 			fbMgr := newMockFeedbagManager(t)
-			for _, params := range tc.mockParams.feedBagParams.feedbagParams {
+			for _, params := range tc.mockParams.feedbagParams {
 				fbMgr.EXPECT().
 					Feedbag(ctx, params.screenName).
 					Return(params.results, params.err)
 			}
 			fbSvc := newMockFeedbagService(t)
-			for _, params := range tc.mockParams.feedBagParams.feedbagServiceUpsertItemParams {
+			for _, params := range tc.mockParams.feedbagServiceUpsertItemParams {
 				fbSvc.EXPECT().
 					UpsertItem(ctx, matchSession(tc.me.IdentScreenName()), params.frame, params.items).
 					Return(params.msg, params.err)
@@ -3804,13 +3804,13 @@ func TestOSCARProxy_RecvClientCmd_NewGroup(t *testing.T) {
 			ctx := context.Background()
 
 			fbMgr := newMockFeedbagManager(t)
-			for _, params := range tc.mockParams.feedBagParams.feedbagParams {
+			for _, params := range tc.mockParams.feedbagParams {
 				fbMgr.EXPECT().
 					Feedbag(ctx, params.screenName).
 					Return(params.results, params.err)
 			}
 			fbSvc := newMockFeedbagService(t)
-			for _, params := range tc.mockParams.feedBagParams.feedbagServiceUpsertItemParams {
+			for _, params := range tc.mockParams.feedbagServiceUpsertItemParams {
 				fbSvc.EXPECT().
 					UpsertItem(ctx, matchSession(tc.me.IdentScreenName()), params.frame, params.items).
 					Return(params.msg, params.err)
@@ -4007,18 +4007,18 @@ func TestOSCARProxy_RecvClientCmd_DelGroup(t *testing.T) {
 			ctx := context.Background()
 
 			fbMgr := newMockFeedbagManager(t)
-			for _, params := range tc.mockParams.feedBagParams.feedbagParams {
+			for _, params := range tc.mockParams.feedbagParams {
 				fbMgr.EXPECT().
 					Feedbag(ctx, params.screenName).
 					Return(params.results, params.err)
 			}
 			fbSvc := newMockFeedbagService(t)
-			for _, params := range tc.mockParams.feedBagParams.feedbagServiceDeleteItemParams {
+			for _, params := range tc.mockParams.feedbagServiceDeleteItemParams {
 				fbSvc.EXPECT().
 					DeleteItem(ctx, matchSession(tc.me.IdentScreenName()), params.frame, params.inBody).
 					Return(params.msg, params.err)
 			}
-			for _, params := range tc.mockParams.feedBagParams.feedbagServiceUpsertItemParams {
+			for _, params := range tc.mockParams.feedbagServiceUpsertItemParams {
 				fbSvc.EXPECT().
 					UpsertItem(ctx, matchSession(tc.me.IdentScreenName()), params.frame, params.items).
 					Return(params.msg, params.err)
@@ -4204,13 +4204,13 @@ func TestOSCARProxy_RecvClientCmd_SetPDMode(t *testing.T) {
 			ctx := context.Background()
 
 			fbMgr := newMockFeedbagManager(t)
-			for _, params := range tc.mockParams.feedBagParams.feedbagParams {
+			for _, params := range tc.mockParams.feedbagParams {
 				fbMgr.EXPECT().
 					Feedbag(ctx, params.screenName).
 					Return(params.results, params.err)
 			}
 			fbSvc := newMockFeedbagService(t)
-			for _, params := range tc.mockParams.feedBagParams.feedbagServiceUpsertItemParams {
+			for _, params := range tc.mockParams.feedbagServiceUpsertItemParams {
 				fbSvc.EXPECT().
 					UpsertItem(ctx, matchSession(tc.me.IdentScreenName()), params.frame, params.items).
 					Return(params.msg, params.err)
@@ -4372,13 +4372,13 @@ func TestOSCARProxy_RecvClientCmd_AddPermit2(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := context.Background()
 			fbMgr := newMockFeedbagManager(t)
-			for _, params := range tc.mockParams.feedBagParams.feedbagParams {
+			for _, params := range tc.mockParams.feedbagParams {
 				fbMgr.EXPECT().
 					Feedbag(ctx, params.screenName).
 					Return(params.results, params.err)
 			}
 			fbSvc := newMockFeedbagService(t)
-			for _, params := range tc.mockParams.feedBagParams.feedbagServiceUpsertItemParams {
+			for _, params := range tc.mockParams.feedbagServiceUpsertItemParams {
 				fbSvc.EXPECT().
 					UpsertItem(ctx, matchSession(tc.me.IdentScreenName()), params.frame, params.items).
 					Return(params.msg, params.err)
@@ -4538,13 +4538,13 @@ func TestOSCARProxy_RecvClientCmd_AddDeny2(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := context.Background()
 			fbMgr := newMockFeedbagManager(t)
-			for _, params := range tc.mockParams.feedBagParams.feedbagParams {
+			for _, params := range tc.mockParams.feedbagParams {
 				fbMgr.EXPECT().
 					Feedbag(ctx, params.screenName).
 					Return(params.results, params.err)
 			}
 			fbSvc := newMockFeedbagService(t)
-			for _, params := range tc.mockParams.feedBagParams.feedbagServiceUpsertItemParams {
+			for _, params := range tc.mockParams.feedbagServiceUpsertItemParams {
 				fbSvc.EXPECT().
 					UpsertItem(ctx, matchSession(tc.me.IdentScreenName()), params.frame, params.items).
 					Return(params.msg, params.err)
@@ -4706,18 +4706,18 @@ func TestOSCARProxy_RecvClientCmd_RemoveBuddy2(t *testing.T) {
 			ctx := context.Background()
 
 			fbMgr := newMockFeedbagManager(t)
-			for _, params := range tc.mockParams.feedBagParams.feedbagParams {
+			for _, params := range tc.mockParams.feedbagParams {
 				fbMgr.EXPECT().
 					Feedbag(ctx, params.screenName).
 					Return(params.results, params.err)
 			}
 			fbSvc := newMockFeedbagService(t)
-			for _, params := range tc.mockParams.feedBagParams.feedbagServiceDeleteItemParams {
+			for _, params := range tc.mockParams.feedbagServiceDeleteItemParams {
 				fbSvc.EXPECT().
 					DeleteItem(ctx, matchSession(tc.me.IdentScreenName()), params.frame, params.inBody).
 					Return(params.msg, params.err)
 			}
-			for _, params := range tc.mockParams.feedBagParams.feedbagServiceUpsertItemParams {
+			for _, params := range tc.mockParams.feedbagServiceUpsertItemParams {
 				fbSvc.EXPECT().
 					UpsertItem(ctx, matchSession(tc.me.IdentScreenName()), params.frame, params.items).
 					Return(params.msg, params.err)
@@ -4882,13 +4882,13 @@ func TestOSCARProxy_RecvClientCmd_RemovePermit2(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := context.Background()
 			fbMgr := newMockFeedbagManager(t)
-			for _, params := range tc.mockParams.feedBagParams.feedbagParams {
+			for _, params := range tc.mockParams.feedbagParams {
 				fbMgr.EXPECT().
 					Feedbag(ctx, params.screenName).
 					Return(params.results, params.err)
 			}
 			fbSvc := newMockFeedbagService(t)
-			for _, params := range tc.mockParams.feedBagParams.feedbagServiceDeleteItemParams {
+			for _, params := range tc.mockParams.feedbagServiceDeleteItemParams {
 				fbSvc.EXPECT().
 					DeleteItem(ctx, matchSession(tc.me.IdentScreenName()), params.frame, params.inBody).
 					Return(params.msg, params.err)
@@ -5052,13 +5052,13 @@ func TestOSCARProxy_RecvClientCmd_RemoveDeny2(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := context.Background()
 			fbMgr := newMockFeedbagManager(t)
-			for _, params := range tc.mockParams.feedBagParams.feedbagParams {
+			for _, params := range tc.mockParams.feedbagParams {
 				fbMgr.EXPECT().
 					Feedbag(ctx, params.screenName).
 					Return(params.results, params.err)
 			}
 			fbSvc := newMockFeedbagService(t)
-			for _, params := range tc.mockParams.feedBagParams.feedbagServiceDeleteItemParams {
+			for _, params := range tc.mockParams.feedbagServiceDeleteItemParams {
 				fbSvc.EXPECT().
 					DeleteItem(ctx, matchSession(tc.me.IdentScreenName()), params.frame, params.inBody).
 					Return(params.msg, params.err)
@@ -6266,7 +6266,7 @@ func TestOSCARProxy_RecvClientCmd_SetIdle(t *testing.T) {
 			ctx := context.Background()
 
 			oServiceSvc := newMockOServiceService(t)
-			for _, params := range tc.mockParams.oServiceParams.idleNotificationParams {
+			for _, params := range tc.mockParams.idleNotificationParams {
 				oServiceSvc.EXPECT().
 					IdleNotification(ctx, matchSession(params.me), params.bodyIn).
 					Return(params.err)
@@ -6954,13 +6954,13 @@ func TestOSCARProxy_Signon(t *testing.T) {
 					Return(params.returnedUser, params.err)
 			}
 			fbSvc := newMockFeedbagService(t)
-			for _, params := range tc.mockParams.feedBagParams.feedbagServiceUseParams {
+			for _, params := range tc.mockParams.feedbagServiceUseParams {
 				fbSvc.EXPECT().
 					Use(matchContext(), mock.Anything).
 					Return(params.err)
 			}
 			fbMgr := newMockFeedbagManager(t)
-			for _, params := range tc.mockParams.feedBagParams.feedbagParams {
+			for _, params := range tc.mockParams.feedbagParams {
 				fbMgr.EXPECT().
 					Feedbag(matchContext(), params.screenName).
 					Return(params.results, params.err)

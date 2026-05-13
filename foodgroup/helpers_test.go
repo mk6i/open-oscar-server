@@ -143,17 +143,8 @@ type icqUserFinderParams struct {
 	findByDetailsParams
 	findByEmailParams
 	findByInterestsParams
-	findByKeywordParams
 	findByUINParams
 	searchICQUsersParams
-}
-
-// findByKeywordParams is the list of parameters passed at the mock
-// ICQUserFinder.FindByKeyword call site
-type findByKeywordParams []struct {
-	keyword string
-	result  []state.User
-	err     error
 }
 
 // findByUINParams is the list of parameters passed at the mock
@@ -205,7 +196,6 @@ type icqUserUpdaterParams struct {
 	setAffiliationsParams
 	setBasicInfoParams
 	setFullInfoParams
-	setHomepageCategoryParams
 	setInterestsParams
 	setMoreInfoParams
 	setPermissionsParams
@@ -274,14 +264,6 @@ type setMoreInfoParams []struct {
 type setPermissionsParams []struct {
 	name state.IdentScreenName
 	data state.ICQPermissions
-	err  error
-}
-
-// setHomepageCategoryParams is the list of parameters passed at the mock
-// ICQUserUpdater.SetHomepageCategory call site
-type setHomepageCategoryParams []struct {
-	name state.IdentScreenName
-	data state.ICQHomepageCategory
 	err  error
 }
 
@@ -359,7 +341,6 @@ type removeSessionParams []struct {
 type feedbagManagerParams struct {
 	adjacentUsersParams
 	feedbagUpsertParams
-	buddiesParams
 	feedbagParams
 	feedbagLastModifiedParams
 	feedbagDeleteParams
@@ -379,13 +360,6 @@ type adjacentUsersParams []struct {
 type feedbagUpsertParams []struct {
 	screenName state.IdentScreenName
 	items      []wire.FeedbagItem
-}
-
-// buddiesParams is the list of parameters passed at the mock
-// FeedbagManager.Buddies call site
-type buddiesParams []struct {
-	screenName state.IdentScreenName
-	results    []state.IdentScreenName
 }
 
 // useParams is the list of parameters passed at the mock
@@ -642,16 +616,7 @@ type setPDModeParams []struct {
 // cookieBakerParams is a helper struct that contains mock parameters for
 // CookieBaker methods
 type cookieBakerParams struct {
-	cookieCrackParams
 	cookieIssueParams
-}
-
-// cookieCrackParams is the list of parameters passed at the mock
-// CookieBaker.Crack call site
-type cookieCrackParams []struct {
-	cookieIn []byte
-	dataOut  []byte
-	err      error
 }
 
 // cookieIssueParams is the list of parameters passed at the mock
@@ -995,12 +960,6 @@ func newTestInstance(screenName state.DisplayScreenName, options ...func(instanc
 		op(instance)
 	}
 	return instance
-}
-
-func userInfoWithBARTIcon(instance *state.SessionInstance, bid wire.BARTID) wire.TLVUserInfo {
-	info := instance.Session().TLVUserInfo()
-	info.Append(wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, bid))
-	return info
 }
 
 // matchSession matches a mock call based session ident screen name.

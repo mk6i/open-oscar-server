@@ -828,7 +828,7 @@ func TestSQLiteUserStore_SetUserPassword_UserExists(t *testing.T) {
 	assert.NoError(t, err)
 
 	wantUser := User{}
-	wantUser.HashPassword("theNEWpassword")
+	_ = wantUser.HashPassword("theNEWpassword")
 
 	valid := gotUser.ValidateHash(wantUser.StrongMD5Pass)
 	assert.True(t, valid)
@@ -2779,7 +2779,7 @@ func TestSQLiteUserStore_BuddyIconMetadataExistingRef(t *testing.T) {
 	b, err := feedbagStore.BuddyIconMetadata(context.Background(), screenName)
 	assert.NoError(t, err)
 
-	if !reflect.DeepEqual(b.BARTInfo.Hash, testHash) {
+	if !reflect.DeepEqual(b.Hash, testHash) {
 		t.Fatalf("expected hash did not match")
 	}
 }

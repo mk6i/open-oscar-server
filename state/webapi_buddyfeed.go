@@ -193,7 +193,9 @@ func (m *BuddyFeedManager) GetUserFeedItems(ctx context.Context, screenName stri
 		item.CreatedAt = time.Unix(createdAt, 0)
 
 		if categoriesJSON.Valid {
-			json.Unmarshal([]byte(categoriesJSON.String), &item.Categories)
+			if err := json.Unmarshal([]byte(categoriesJSON.String), &item.Categories); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal feed item categories: %w", err)
+			}
 		}
 
 		items = append(items, item)
@@ -243,7 +245,9 @@ func (m *BuddyFeedManager) scanFeedItems(rows *sql.Rows) ([]BuddyFeedItem, error
 		item.CreatedAt = time.Unix(createdAt, 0)
 
 		if categoriesJSON.Valid {
-			json.Unmarshal([]byte(categoriesJSON.String), &item.Categories)
+			if err := json.Unmarshal([]byte(categoriesJSON.String), &item.Categories); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal feed item categories: %w", err)
+			}
 		}
 
 		items = append(items, item)
@@ -281,7 +285,9 @@ func (m *BuddyFeedManager) AddFeedItem(ctx context.Context, feedID int64, item B
 
 	// Update feed's updated_at timestamp
 	updateQuery := `UPDATE buddy_feeds SET updated_at = ? WHERE id = ?`
-	m.db.ExecContext(ctx, updateQuery, now.Unix(), feedID)
+	if _, err := m.db.ExecContext(ctx, updateQuery, now.Unix(), feedID); err != nil {
+		return nil, fmt.Errorf("failed to update feed timestamp: %w", err)
+	}
 
 	return &item, nil
 }

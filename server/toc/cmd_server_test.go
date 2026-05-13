@@ -1077,7 +1077,7 @@ func TestOSCARProxy_RecvBOS_Inserted2(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 
 			fbMgr := newMockFeedbagManager(t)
-			for _, params := range tc.mockParams.feedBagParams.feedbagParams {
+			for _, params := range tc.mockParams.feedbagParams {
 				fbMgr.EXPECT().
 					Feedbag(mock.Anything, params.screenName).
 					Return(params.results, params.err)
@@ -1253,7 +1253,7 @@ func TestOSCARProxy_RecvBOS_Deleted2(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 
 			fbMgr := newMockFeedbagManager(t)
-			for _, params := range tc.mockParams.feedBagParams.feedbagParams {
+			for _, params := range tc.mockParams.feedbagParams {
 				fbMgr.EXPECT().
 					Feedbag(mock.Anything, params.screenName).
 					Return(params.results, params.err)

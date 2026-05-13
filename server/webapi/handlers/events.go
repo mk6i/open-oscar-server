@@ -64,18 +64,19 @@ func (h *EventsHandler) FetchEvents(w http.ResponseWriter, r *http.Request) {
 	// Get session
 	session, err := h.SessionManager.GetSession(r.Context(), aimsid)
 	if err != nil {
-		if err == state.ErrNoWebAPISession {
+		switch err {
+		case state.ErrNoWebAPISession:
 			h.sendError(w, http.StatusNotFound, "session not found")
-		} else if err == state.ErrWebAPISessionExpired {
+		case state.ErrWebAPISessionExpired:
 			h.sendError(w, http.StatusGone, "session expired")
-		} else {
+		default:
 			h.sendError(w, http.StatusInternalServerError, "internal server error")
 		}
 		return
 	}
 
 	// Touch the session to update last accessed time
-	h.SessionManager.TouchSession(r.Context(), aimsid)
+	_ = h.SessionManager.TouchSession(r.Context(), aimsid)
 
 	// Get sequence number parameter
 	var lastSeqNum uint64
@@ -116,7 +117,7 @@ func (h *EventsHandler) FetchEvents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Determine the last sequence number
-	var newLastSeqNum uint64 = lastSeqNum
+	newLastSeqNum := lastSeqNum
 	if len(events) > 0 {
 		newLastSeqNum = events[len(events)-1].SeqNum
 	}
@@ -135,7 +136,8 @@ func (h *EventsHandler) FetchEvents(w http.ResponseWriter, r *http.Request) {
 	// Check response format
 	format := strings.ToLower(r.URL.Query().Get("f"))
 
-	if format == "xml" {
+	switch format {
+	case "xml":
 		// Send XML response
 		xmlResp := FetchEventsXMLResponse{}
 		xmlResp.StatusCode = 200
@@ -147,11 +149,11 @@ func (h *EventsHandler) FetchEvents(w http.ResponseWriter, r *http.Request) {
 			r.Host, aimsid, newLastSeqNum)
 
 		w.Header().Set("Content-Type", "text/xml")
-		fmt.Fprint(w, `<?xml version="1.0" encoding="UTF-8"?>`)
+		_, _ = fmt.Fprint(w, `<?xml version="1.0" encoding="UTF-8"?>`)
 		if err := xml.NewEncoder(w).Encode(xmlResp); err != nil {
 			h.Logger.Error("failed to encode XML response", "error", err)
 		}
-	} else if format == "amf" || format == "amf3" {
+	case "amf", "amf3":
 		// For AMF3, build the response with fields in the correct order
 		// The working implementation has: response { data {...}, statusCode, statusText, statusDetailCode }
 		// Convert events to ensure timestamps are float64 for AMF3
@@ -176,7 +178,7 @@ func (h *EventsHandler) FetchEvents(w http.ResponseWriter, r *http.Request) {
 
 		// Use SendResponse which will detect AMF format and encode properly
 		SendResponse(w, r, amfResp, h.Logger)
-	} else {
+	default:
 		// Send JSON/JSONP response with standard structure
 		SendResponse(w, r, resp, h.Logger)
 	}

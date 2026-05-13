@@ -55,7 +55,7 @@ func (s *WebAPITokenStore) ValidateToken(ctx context.Context, token string) (Ide
 	// Check if token has expired
 	if time.Now().After(expiresAt) {
 		// Clean up expired token
-		s.DeleteToken(ctx, token)
+		_ = s.DeleteToken(ctx, token)
 		return NewIdentScreenName(""), errors.New("token expired")
 	}
 

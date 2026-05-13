@@ -260,7 +260,7 @@ func (s *Server) ListenAndServe() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	g, ctx := errgroup.WithContext(ctx)
+	g, _ := errgroup.WithContext(ctx)
 	for _, server := range s.servers {
 		g.Go(func() error {
 			s.logger.Info("starting server", "addr", server.Addr)

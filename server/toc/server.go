@@ -34,6 +34,13 @@ var (
 	errTOCProcessing = errors.New("failed to process TOC request")
 )
 
+type contextKey string
+
+const (
+	ipContextKey         contextKey = "ip"
+	screenNameContextKey contextKey = "screenName"
+)
+
 // bufferedConn is a wrapper around net.Conn that allows peeking into the
 // incoming connection without consuming data. It is useful for multiplexing
 // TOC/HTTP and TOC/FLAP connections.
@@ -339,7 +346,7 @@ func (s *Server) dispatchFLAP(ctx context.Context, conn net.Conn) error {
 	}
 	defer closeConn()
 
-	ctx = context.WithValue(ctx, "ip", conn.RemoteAddr().String())
+	ctx = context.WithValue(ctx, ipContextKey, conn.RemoteAddr().String())
 
 	clientFlap, err := s.initFLAP(ctx, conn)
 	if err != nil {
@@ -370,9 +377,9 @@ func (s *Server) dispatchFLAP(ctx context.Context, conn net.Conn) error {
 		return nil // user not found
 	}
 
-	ctx = context.WithValue(ctx, "screenName", sessBOS.IdentScreenName())
+	ctx = context.WithValue(ctx, screenNameContextKey, sessBOS.IdentScreenName())
 
-	remoteAddr, ok := ctx.Value("ip").(string)
+	remoteAddr, ok := ctx.Value(ipContextKey).(string)
 	if ok {
 		ip, err := netip.ParseAddrPort(remoteAddr)
 		if err != nil {

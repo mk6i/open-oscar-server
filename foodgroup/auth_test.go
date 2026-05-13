@@ -773,7 +773,7 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 			}
 
 			sessionRetriever := newMockSessionRetriever(t)
-			for _, params := range tc.mockParams.sessionRetrieverParams.retrieveSessionParams {
+			for _, params := range tc.mockParams.retrieveSessionParams {
 				sessionRetriever.EXPECT().
 					RetrieveSession(params.screenName).
 					Return(params.result)
@@ -1548,7 +1548,7 @@ func TestAuthService_KerberosLogin(t *testing.T) {
 					Return(params.cookieOut, params.err)
 			}
 			sessionRetriever := newMockSessionRetriever(t)
-			for _, params := range tc.mockParams.sessionRetrieverParams.retrieveSessionParams {
+			for _, params := range tc.mockParams.retrieveSessionParams {
 				sessionRetriever.EXPECT().
 					RetrieveSession(params.screenName).
 					Return(params.result)

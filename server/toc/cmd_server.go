@@ -218,7 +218,7 @@ func (s OSCARProxy) IMIn(ctx context.Context, chatRegistry *ChatRegistry, me *st
 
 // convertICBMInstantMsg converts an ICBM instant message SNAC to a TOC IM_IN or TOC2 IM_IN2, or TOC2Enhanced IM_IN_ENC2 response.
 func (s OSCARProxy) convertICBMInstantMsg(ctx context.Context, me *state.SessionInstance, snac wire.SNAC_0x04_0x07_ICBMChannelMsgToClient) string {
-	buf, ok := snac.TLVRestBlock.Bytes(wire.ICBMTLVAOLIMData)
+	buf, ok := snac.Bytes(wire.ICBMTLVAOLIMData)
 	if !ok {
 		return s.runtimeErr(ctx, errors.New("TLVRestBlock.Bytes: missing wire.ICBMTLVAOLIMData"))[0]
 	}
@@ -228,12 +228,12 @@ func (s OSCARProxy) convertICBMInstantMsg(ctx context.Context, me *state.Session
 	}
 
 	autoResp := "F"
-	if _, isAutoReply := snac.TLVRestBlock.Bytes(wire.ICBMTLVAutoResponse); isAutoReply {
+	if _, isAutoReply := snac.Bytes(wire.ICBMTLVAutoResponse); isAutoReply {
 		autoResp = "T"
 	}
 
 	if me.SupportsTOC2MsgEnc() {
-		uFlags, _ := snac.TLVUserInfo.TLVList.Uint16BE(wire.OServiceUserInfoUserFlags)
+		uFlags, _ := snac.TLVUserInfo.Uint16BE(wire.OServiceUserInfoUserFlags)
 		classStr := userClassString(uFlags, snac.IsAway())
 		// from a packet dump found in this russian zine: https://xn--lcss68aj21b.xn--w8je.xn--tckwe/books/xakep/spec65.pdf
 		// interesting that "L" is a value, not sure what it's for.
@@ -252,7 +252,7 @@ func (s OSCARProxy) convertICBMInstantMsg(ctx context.Context, me *state.Session
 //   - file transfer, return RVOUS_PROPOSE
 //   - don't respond for other rendezvous types
 func (s OSCARProxy) convertICBMRendezvous(ctx context.Context, chatRegistry *ChatRegistry, snac wire.SNAC_0x04_0x07_ICBMChannelMsgToClient) string {
-	rdinfo, has := snac.TLVRestBlock.Bytes(wire.ICBMTLVData)
+	rdinfo, has := snac.Bytes(wire.ICBMTLVData)
 	if !has {
 		return s.runtimeErr(ctx, errors.New("TLVRestBlock.Bytes: missing rendezvous block"))[0]
 	}
@@ -293,7 +293,7 @@ func (s OSCARProxy) convertICBMRendezvous(ctx context.Context, chatRegistry *Cha
 
 		return fmt.Sprintf("CHAT_INVITE:%s:%d:%s:%s", roomName, chatID, snac.ScreenName, prompt)
 	case wire.CapFileTransfer:
-		user := snac.TLVUserInfo.ScreenName
+		user := snac.ScreenName
 		capability := strings.ToUpper(wire.CapFileTransfer.String()) // TiK requires upper-case UUID characters
 		cookie := base64.StdEncoding.EncodeToString(frag.Cookie[:])
 		seq, _ := frag.Uint16BE(wire.ICBMRdvTLVTagsSeqNum)
@@ -578,7 +578,7 @@ func userInfoToUpdateBuddy(snac wire.TLVUserInfo, me *state.SessionInstance) str
 	online, _ := snac.Uint32BE(wire.OServiceUserInfoSignonTOD)
 	idle, _ := snac.Uint16BE(wire.OServiceUserInfoIdleTime)
 
-	uFlags, _ := snac.TLVList.Uint16BE(wire.OServiceUserInfoUserFlags)
+	uFlags, _ := snac.Uint16BE(wire.OServiceUserInfoUserFlags)
 	uc := userClassString(uFlags, snac.IsAway())
 	warning := fmt.Sprintf("%d", snac.WarningLevel/10)
 
@@ -607,7 +607,7 @@ func userInfoToBuddyCaps(snac wire.TLVUserInfo, me *state.SessionInstance, logge
 	if !me.IsTOC2() {
 		return ""
 	}
-	b, hasCaps := snac.TLVList.Bytes(wire.OServiceUserInfoOscarCaps)
+	b, hasCaps := snac.Bytes(wire.OServiceUserInfoOscarCaps)
 	if !hasCaps {
 		logger.DebugContext(context.Background(), "userInfoToBuddyCaps: no buddy caps found")
 		return ""

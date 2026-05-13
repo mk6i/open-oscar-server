@@ -2061,13 +2061,13 @@ func TestICBMService_ChannelMsgToHost(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			discardLogger := slog.New(slog.NewTextHandler(io.Discard, nil))
 			relationshipFetcher := newMockRelationshipFetcher(t)
-			for _, item := range tc.mockParams.relationshipFetcherParams.relationshipParams {
+			for _, item := range tc.mockParams.relationshipParams {
 				relationshipFetcher.EXPECT().
 					Relationship(matchContext(), item.me, item.them).
 					Return(item.result, item.err)
 			}
 			sessionRetriever := newMockSessionRetriever(t)
-			for _, item := range tc.mockParams.sessionRetrieverParams.retrieveSessionParams {
+			for _, item := range tc.mockParams.retrieveSessionParams {
 				sessionRetriever.EXPECT().
 					RetrieveSession(item.screenName).
 					Return(item.result)
@@ -2422,7 +2422,7 @@ func TestICBMService_ClientEvent(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			relationshipFetcher := newMockRelationshipFetcher(t)
-			for _, item := range tc.mockParams.relationshipFetcherParams.relationshipParams {
+			for _, item := range tc.mockParams.relationshipParams {
 				relationshipFetcher.EXPECT().
 					Relationship(matchContext(), item.me, item.them).
 					Return(item.result, item.err)
@@ -2868,13 +2868,13 @@ func TestICBMService_EvilRequest(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			relationshipFetcher := newMockRelationshipFetcher(t)
-			for _, item := range tc.mockParams.relationshipFetcherParams.relationshipParams {
+			for _, item := range tc.mockParams.relationshipParams {
 				relationshipFetcher.EXPECT().
 					Relationship(matchContext(), item.me, item.them).
 					Return(item.result, item.err)
 			}
 			sessionRetriever := newMockSessionRetriever(t)
-			for _, item := range tc.mockParams.sessionRetrieverParams.retrieveSessionParams {
+			for _, item := range tc.mockParams.retrieveSessionParams {
 				sessionRetriever.EXPECT().
 					RetrieveSession(item.screenName).
 					Return(item.result)
@@ -2915,7 +2915,7 @@ func TestICBMService_EvilRequest(t *testing.T) {
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
-					for _, sess := range tc.mockParams.sessionRetrieverParams.retrieveSessionParams {
+					for _, sess := range tc.mockParams.retrieveSessionParams {
 						<-sess.result.WarningCh()
 					}
 				}()
@@ -2933,7 +2933,7 @@ func TestICBMService_EvilRequest(t *testing.T) {
 func TestICBMService_ParameterQuery(t *testing.T) {
 	svc := NewICBMService(nil, nil, nil, nil, nil, nil, nil, nil, wire.DefaultSNACRateLimits(), slog.Default())
 
-	have := svc.ParameterQuery(nil, wire.SNACFrame{RequestID: 1234})
+	have := svc.ParameterQuery(context.TODO(), wire.SNACFrame{RequestID: 1234})
 	want := wire.SNACMessage{
 		Frame: wire.SNACFrame{
 			FoodGroup: wire.ICBM,

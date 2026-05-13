@@ -27,11 +27,6 @@ type addBuddiesParams []struct {
 	err    error
 }
 
-type broadcastBuddyDepartedParams []struct {
-	me  state.IdentScreenName
-	err error
-}
-
 type delBuddiesParams []struct {
 	me     state.IdentScreenName
 	inBody wire.SNAC_0x03_0x05_BuddyDelBuddies
@@ -40,7 +35,6 @@ type delBuddiesParams []struct {
 
 type buddyParams struct {
 	addBuddiesParams
-	broadcastBuddyDepartedParams
 	delBuddiesParams
 }
 
@@ -144,21 +138,11 @@ type registerChatSessionParams []struct {
 	err        error
 }
 
-type signoutParams []struct {
-	me state.IdentScreenName
-}
-
-type signoutChatParams []struct {
-	me state.IdentScreenName
-}
-
 type authParams struct {
 	crackCookieParams
 	flapLoginParams
 	registerBOSSessionParams
 	registerChatSessionParams
-	signoutParams
-	signoutChatParams
 }
 
 type crackCookieParams []struct {
@@ -232,14 +216,8 @@ type registerBuddyListParams []struct {
 	err  error
 }
 
-type unregisterBuddyListParams []struct {
-	user state.IdentScreenName
-	err  error
-}
-
 type buddyListRegistryParams struct {
 	registerBuddyListParams
-	unregisterBuddyListParams
 }
 
 type setTOCConfigParams []struct {

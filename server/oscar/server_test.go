@@ -94,7 +94,7 @@ func TestServer_ListenAndServeAndShutdown(t *testing.T) {
 		for attempt := 0; attempt < maxRetries; attempt++ {
 			conn, err := net.Dial("tcp", "localhost"+cfg[i].BOSListenAddress)
 			if err == nil {
-				conn.Close()
+				_ = conn.Close()
 				break
 			}
 			if attempt == maxRetries-1 {
@@ -234,9 +234,9 @@ func TestOscarServer_RouteConnection_Auth_BUCP(t *testing.T) {
 		}, nil)
 
 	rt := oscarServer{
-		AuthService:   authService,
-		Logger:        slog.Default(),
-		IPRateLimiter: NewIPRateLimiter(rate.Every(1*time.Minute), 10, 1*time.Minute),
+		authService:   authService,
+		logger:        slog.Default(),
+		ipRateLimiter: NewIPRateLimiter(rate.Every(1*time.Minute), 10, 1*time.Minute),
 	}
 	assert.NoError(t, rt.routeConnection(context.Background(), clientFake, config.Listener{BOSAdvertisedHostPlain: "localhost:5190"}))
 
@@ -309,9 +309,9 @@ func TestOscarServer_RouteConnection_Auth_FLAP(t *testing.T) {
 		}, nil)
 
 	rt := oscarServer{
-		AuthService:   authService,
-		Logger:        slog.Default(),
-		IPRateLimiter: NewIPRateLimiter(rate.Every(1*time.Minute), 10, 1*time.Minute),
+		authService:   authService,
+		logger:        slog.Default(),
+		ipRateLimiter: NewIPRateLimiter(rate.Every(1*time.Minute), 10, 1*time.Minute),
 	}
 	assert.NoError(t, rt.routeConnection(context.Background(), clientFake, config.Listener{BOSAdvertisedHostPlain: "localhost:5190"}))
 
@@ -425,13 +425,13 @@ func TestOscarServer_RouteConnection_BOS(t *testing.T) {
 	}
 
 	rt := oscarServer{
-		AuthService:        authService,
-		SNACHandler:        handler,
-		Logger:             slog.Default(),
-		OnlineNotifier:     onlineNotifier,
-		BuddyListRegistry:  buddyListRegistry,
-		ChatSessionManager: chatSessionManager,
-		DepartureNotifier:  departureNotifier,
+		authService:        authService,
+		snacHandler:        handler,
+		logger:             slog.Default(),
+		onlineNotifier:     onlineNotifier,
+		buddyListRegistry:  buddyListRegistry,
+		chatSessionManager: chatSessionManager,
+		departureNotifier:  departureNotifier,
 		recalcWarning: func(ctx context.Context, instance *state.SessionInstance) error {
 			return nil
 		},
@@ -538,13 +538,13 @@ func TestOscarServer_RouteConnection_BOS_MultiSessionSignoff(t *testing.T) {
 	}
 
 	rt := oscarServer{
-		AuthService:        authService,
-		SNACHandler:        handler,
-		Logger:             slog.Default(),
-		OnlineNotifier:     onlineNotifier,
-		BuddyListRegistry:  buddyListRegistry,
-		ChatSessionManager: chatSessionManager,
-		DepartureNotifier:  departureNotifier,
+		authService:        authService,
+		snacHandler:        handler,
+		logger:             slog.Default(),
+		onlineNotifier:     onlineNotifier,
+		buddyListRegistry:  buddyListRegistry,
+		chatSessionManager: chatSessionManager,
+		departureNotifier:  departureNotifier,
 		recalcWarning: func(ctx context.Context, instance *state.SessionInstance) error {
 			return nil
 		},
@@ -611,8 +611,8 @@ func TestOscarServer_RouteConnection_BOS_MaxConcurrentSessionsReached(t *testing
 		Return(state.ServerCookie{Service: wire.BOS}, nil)
 
 	rt := oscarServer{
-		AuthService: authService,
-		Logger:      slog.Default(),
+		authService: authService,
+		logger:      slog.Default(),
 	}
 	assert.NoError(t, rt.routeConnection(context.Background(), clientFake, config.Listener{}))
 
@@ -713,13 +713,13 @@ func TestOscarServer_RouteConnection_Chat(t *testing.T) {
 	}
 
 	rt := oscarServer{
-		AuthService:        authService,
-		SNACHandler:        handler,
-		Logger:             slog.Default(),
-		OnlineNotifier:     onlineNotifier,
-		BuddyListRegistry:  buddyListRegistry,
-		ChatSessionManager: chatSessionManager,
-		DepartureNotifier:  departureNotifier,
+		authService:        authService,
+		snacHandler:        handler,
+		logger:             slog.Default(),
+		onlineNotifier:     onlineNotifier,
+		buddyListRegistry:  buddyListRegistry,
+		chatSessionManager: chatSessionManager,
+		departureNotifier:  departureNotifier,
 	}
 	assert.NoError(t, rt.routeConnection(context.Background(), clientFake, config.Listener{}))
 
@@ -808,13 +808,13 @@ func TestOscarServer_RouteConnection_Admin(t *testing.T) {
 	}
 
 	rt := oscarServer{
-		AuthService:        authService,
-		SNACHandler:        handler,
-		Logger:             slog.Default(),
-		OnlineNotifier:     onlineNotifier,
-		BuddyListRegistry:  buddyListRegistry,
-		ChatSessionManager: chatSessionManager,
-		DepartureNotifier:  departureNotifier,
+		authService:        authService,
+		snacHandler:        handler,
+		logger:             slog.Default(),
+		onlineNotifier:     onlineNotifier,
+		buddyListRegistry:  buddyListRegistry,
+		chatSessionManager: chatSessionManager,
+		departureNotifier:  departureNotifier,
 	}
 	assert.NoError(t, rt.routeConnection(context.Background(), clientFake, config.Listener{}))
 
@@ -832,7 +832,7 @@ func Test_oscarServer_dispatchIncomingMessages_shutdownSignoff(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		srv := oscarServer{
-			Logger: slog.Default(),
+			logger: slog.Default(),
 		}
 		instance := state.NewSession().AddInstance()
 		instance.SetMultiConnFlag(wire.MultiConnFlagsRecentClient)
@@ -863,7 +863,7 @@ func Test_oscarServer_dispatchIncomingMessages_disconnect_old_client(t *testing.
 	go func() {
 		defer wg.Done()
 		srv := oscarServer{
-			Logger: slog.Default(),
+			logger: slog.Default(),
 		}
 		flapc := wire.NewFlapClient(0, serverConn, serverConn)
 		err := srv.dispatchIncomingMessages(ctx, wire.BOS, instance, flapc, serverConn, config.Listener{})
@@ -892,7 +892,7 @@ func Test_oscarServer_dispatchIncomingMessages_disconnect_new_client(t *testing.
 	go func() {
 		defer wg.Done()
 		srv := oscarServer{
-			Logger: slog.Default(),
+			logger: slog.Default(),
 		}
 		flapc := wire.NewFlapClient(0, serverConn, serverConn)
 		err := srv.dispatchIncomingMessages(ctx, wire.BOS, instance, flapc, serverConn, config.Listener{})
@@ -911,8 +911,8 @@ func Test_oscarServer_dispatchIncomingMessages_disconnect_new_client(t *testing.
 
 func Test_oscarServer_receiveSessMessages_BOS_integration(t *testing.T) {
 	serverConn, clientConn := net.Pipe()
-	defer serverConn.Close()
-	defer clientConn.Close()
+	defer func() { _ = serverConn.Close() }()
+	defer func() { _ = clientConn.Close() }()
 
 	// Prepare session and mocks so we can exercise through routeConnection
 	instance := state.NewSession().AddInstance()
@@ -956,12 +956,12 @@ func Test_oscarServer_receiveSessMessages_BOS_integration(t *testing.T) {
 	chatSessionManager.EXPECT().RemoveUserFromAllChats(mock.Anything)
 
 	server := oscarServer{
-		AuthService:        authService,
-		BuddyListRegistry:  buddyListRegistry,
-		ChatSessionManager: chatSessionManager,
-		DepartureNotifier:  departureNotifier,
-		OnlineNotifier:     onlineNotifier,
-		Logger:             slog.New(slog.NewTextHandler(io.Discard, nil)),
+		authService:        authService,
+		buddyListRegistry:  buddyListRegistry,
+		chatSessionManager: chatSessionManager,
+		departureNotifier:  departureNotifier,
+		onlineNotifier:     onlineNotifier,
+		logger:             slog.New(slog.NewTextHandler(io.Discard, nil)),
 		recalcWarning:      func(ctx context.Context, instance *state.SessionInstance) error { return nil },
 		lowerWarnLevel:     func(ctx context.Context, instance *state.SessionInstance) {},
 	}
@@ -1062,8 +1062,8 @@ func Test_oscarServer_receiveSessMessages_BOS_integration(t *testing.T) {
 
 func Test_oscarServer_receiveSessMessages_Chat_integration(t *testing.T) {
 	serverConn, clientConn := net.Pipe()
-	defer serverConn.Close()
-	defer clientConn.Close()
+	defer func() { _ = serverConn.Close() }()
+	defer func() { _ = clientConn.Close() }()
 
 	// Prepare session and mocks so we can exercise through routeConnection
 	instance := state.NewSession().AddInstance()
@@ -1097,9 +1097,9 @@ func Test_oscarServer_receiveSessMessages_Chat_integration(t *testing.T) {
 		})
 
 	server := oscarServer{
-		AuthService:    authService,
-		OnlineNotifier: onlineNotifier,
-		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+		authService:    authService,
+		onlineNotifier: onlineNotifier,
+		logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 
 	// Fake client connection with address

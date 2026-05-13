@@ -652,14 +652,14 @@ func BuildV2Ack(seqNum uint16) *V2ServerPacket {
 // which the client treats as "received now".
 func BuildV2OfflineMessage(seqNum uint16, fromUIN uint32, msgType uint16, message string, timestamp time.Time) *V2ServerPacket {
 	buf := new(bytes.Buffer)
-	binary.Write(buf, binary.LittleEndian, fromUIN)
-	binary.Write(buf, binary.LittleEndian, uint16(timestamp.Year()))
+	_ = binary.Write(buf, binary.LittleEndian, fromUIN)
+	_ = binary.Write(buf, binary.LittleEndian, uint16(timestamp.Year()))
 	buf.WriteByte(byte(timestamp.Month()))
 	buf.WriteByte(byte(timestamp.Day()))
 	buf.WriteByte(byte(timestamp.Hour()))
 	buf.WriteByte(byte(timestamp.Minute()))
-	binary.Write(buf, binary.LittleEndian, msgType)
-	WriteLegacyString(buf, message)
+	_ = binary.Write(buf, binary.LittleEndian, msgType)
+	_ = WriteLegacyString(buf, message)
 
 	return &V2ServerPacket{
 		Version: ICQLegacyVersionV2,
@@ -672,9 +672,9 @@ func BuildV2OfflineMessage(seqNum uint16, fromUIN uint32, msgType uint16, messag
 // BuildV2Message creates a message delivery packet
 func BuildV2Message(seqNum uint16, fromUIN uint32, msgType uint16, message string) *V2ServerPacket {
 	buf := new(bytes.Buffer)
-	binary.Write(buf, binary.LittleEndian, fromUIN)
-	binary.Write(buf, binary.LittleEndian, msgType)
-	WriteLegacyString(buf, message)
+	_ = binary.Write(buf, binary.LittleEndian, fromUIN)
+	_ = binary.Write(buf, binary.LittleEndian, msgType)
+	_ = WriteLegacyString(buf, message)
 
 	return &V2ServerPacket{
 		Version: ICQLegacyVersionV2,
@@ -718,7 +718,7 @@ func BuildV2ContactListDone(seqNum uint16, uin uint32) *V2ServerPacket {
 // V2 search done format (from licq): SEQ(2) + MORE(1)
 func BuildV2SearchResult(seqNum uint16, user *LegacyUserInfo, isLast bool) *V2ServerPacket {
 	buf := new(bytes.Buffer)
-	binary.Write(buf, binary.LittleEndian, seqNum)
+	_ = binary.Write(buf, binary.LittleEndian, seqNum)
 
 	if user.UIN == 0 && isLast {
 		// No results — just send search done with more=0
@@ -732,11 +732,11 @@ func BuildV2SearchResult(seqNum uint16, user *LegacyUserInfo, isLast bool) *V2Se
 	}
 
 	// Send search found with user data
-	binary.Write(buf, binary.LittleEndian, user.UIN)
-	WriteLegacyString(buf, user.Nickname)
-	WriteLegacyString(buf, user.FirstName)
-	WriteLegacyString(buf, user.LastName)
-	WriteLegacyString(buf, user.Email)
+	_ = binary.Write(buf, binary.LittleEndian, user.UIN)
+	_ = WriteLegacyString(buf, user.Nickname)
+	_ = WriteLegacyString(buf, user.FirstName)
+	_ = WriteLegacyString(buf, user.LastName)
+	_ = WriteLegacyString(buf, user.Email)
 	buf.WriteByte(user.Auth)
 
 	return &V2ServerPacket{
@@ -754,17 +754,17 @@ func BuildV2SearchResult(seqNum uint16, user *LegacyUserInfo, isLast bool) *V2Se
 func BuildV2InfoReply(serverSeq uint16, checkSeq uint16, user *LegacyUserInfo) *V2ServerPacket {
 	buf := new(bytes.Buffer)
 	// checkSequence - echoes the client's info sub-sequence so DoneExtendedEvent can match
-	binary.Write(buf, binary.LittleEndian, checkSeq)
-	binary.Write(buf, binary.LittleEndian, user.UIN)
-	WriteLegacyString(buf, user.Nickname)
-	WriteLegacyString(buf, user.FirstName)
-	WriteLegacyString(buf, user.LastName)
-	WriteLegacyString(buf, user.Email)
+	_ = binary.Write(buf, binary.LittleEndian, checkSeq)
+	_ = binary.Write(buf, binary.LittleEndian, user.UIN)
+	_ = WriteLegacyString(buf, user.Nickname)
+	_ = WriteLegacyString(buf, user.FirstName)
+	_ = WriteLegacyString(buf, user.LastName)
+	_ = WriteLegacyString(buf, user.Email)
 	// AUTH byte (0 = auth not required, 1 = auth required)
 	buf.WriteByte(user.Auth)
 	// Trailing padding (observed in licq example packets)
-	binary.Write(buf, binary.LittleEndian, uint16(0))
-	binary.Write(buf, binary.LittleEndian, uint16(0))
+	_ = binary.Write(buf, binary.LittleEndian, uint16(0))
+	_ = binary.Write(buf, binary.LittleEndian, uint16(0))
 
 	return &V2ServerPacket{
 		Version: ICQLegacyVersionV2,
@@ -781,27 +781,27 @@ func BuildV2InfoReply(serverSeq uint16, checkSeq uint16, user *LegacyUserInfo) *
 func BuildV2ExtInfoReply(serverSeq uint16, checkSeq uint16, user *LegacyUserInfo) *V2ServerPacket {
 	buf := new(bytes.Buffer)
 	// checkSequence - echoes the client's info sub-sequence
-	binary.Write(buf, binary.LittleEndian, checkSeq)
+	_ = binary.Write(buf, binary.LittleEndian, checkSeq)
 	// UIN
-	binary.Write(buf, binary.LittleEndian, user.UIN)
+	_ = binary.Write(buf, binary.LittleEndian, user.UIN)
 	// City (length-prefixed string)
-	WriteLegacyString(buf, user.City)
+	_ = WriteLegacyString(buf, user.City)
 	// Country code (2 bytes)
-	binary.Write(buf, binary.LittleEndian, user.Country)
+	_ = binary.Write(buf, binary.LittleEndian, user.Country)
 	// Country stat (1 byte) - 0 = not specified
 	buf.WriteByte(0)
 	// State (length-prefixed string)
-	WriteLegacyString(buf, user.State)
+	_ = WriteLegacyString(buf, user.State)
 	// Age (2 bytes)
-	binary.Write(buf, binary.LittleEndian, user.Age)
+	_ = binary.Write(buf, binary.LittleEndian, user.Age)
 	// Gender (1 byte)
 	buf.WriteByte(user.Gender)
 	// Phone (length-prefixed string)
-	WriteLegacyString(buf, user.Phone)
+	_ = WriteLegacyString(buf, user.Phone)
 	// Homepage (length-prefixed string)
-	WriteLegacyString(buf, user.Homepage)
+	_ = WriteLegacyString(buf, user.Homepage)
 	// About (length-prefixed string)
-	WriteLegacyString(buf, user.About)
+	_ = WriteLegacyString(buf, user.About)
 
 	return &V2ServerPacket{
 		Version: ICQLegacyVersionV2,

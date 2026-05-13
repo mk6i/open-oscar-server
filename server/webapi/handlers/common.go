@@ -102,7 +102,7 @@ func SendResponse(w http.ResponseWriter, r *http.Request, data interface{}, logg
 
 	// If format not in URL query, check form values (for POST requests)
 	if format == "" && r.Method == "POST" {
-		r.ParseForm()
+		_ = r.ParseForm()
 		format = strings.ToLower(r.FormValue("f"))
 		if callback == "" {
 			callback = r.FormValue("callback")
@@ -161,7 +161,7 @@ func SendJSONError(w http.ResponseWriter, statusCode int, message string) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 // SendXMLError sends an XML error response.
@@ -182,7 +182,7 @@ func SendXMLError(w http.ResponseWriter, statusCode int, message string) {
 	}
 
 	xmlOutput := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>%s`, xmlData)
-	w.Write([]byte(xmlOutput))
+	_, _ = w.Write([]byte(xmlOutput))
 }
 
 // SendJSON sends a JSON response.
@@ -219,7 +219,7 @@ func SendXML(w http.ResponseWriter, data interface{}, logger *slog.Logger) {
 
 	// Set content length for proper response handling
 	w.Header().Set("Content-Length", strconv.Itoa(len(xmlOutput)))
-	w.Write([]byte(xmlOutput))
+	_, _ = w.Write([]byte(xmlOutput))
 }
 
 // SendJSONP sends a JSONP response with the specified callback.
@@ -240,10 +240,10 @@ func SendJSONP(w http.ResponseWriter, callback string, data interface{}, logger 
 	}
 
 	w.Header().Set("Content-Type", "application/javascript")
-	w.Write([]byte(callback))
-	w.Write([]byte("("))
-	w.Write(jsonData)
-	w.Write([]byte(");"))
+	_, _ = w.Write([]byte(callback))
+	_, _ = w.Write([]byte("("))
+	_, _ = w.Write(jsonData)
+	_, _ = w.Write([]byte(");"))
 }
 
 // IsValidCallback validates a JSONP callback name to prevent XSS.
@@ -254,10 +254,10 @@ func IsValidCallback(callback string) bool {
 
 	// Allow alphanumeric, underscore, dollar sign, and dot (for namespace)
 	for _, r := range callback {
-		if !((r >= 'a' && r <= 'z') ||
-			(r >= 'A' && r <= 'Z') ||
-			(r >= '0' && r <= '9') ||
-			r == '_' || r == '$' || r == '.') {
+		if (r < 'a' || r > 'z') &&
+			(r < 'A' || r > 'Z') &&
+			(r < '0' || r > '9') &&
+			r != '_' && r != '$' && r != '.' {
 			return false
 		}
 	}
@@ -391,5 +391,5 @@ func SendAMFError(w http.ResponseWriter, r *http.Request, statusCode int, messag
 	w.Header().Set("Content-Type", "application/x-amf")
 	w.Header().Set("Content-Length", strconv.Itoa(len(amfData)))
 	w.WriteHeader(statusCode)
-	w.Write(amfData)
+	_, _ = w.Write(amfData)
 }

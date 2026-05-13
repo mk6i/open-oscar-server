@@ -177,9 +177,9 @@ func newChatTLVBlock(body wire.SNAC_0x0E_0x05_ChatChannelMsgToHost, instance *st
 func (s ChatService) rollDice(instance *state.SessionInstance, dice int, sides int) wire.TLVRestBlock {
 	sb := strings.Builder{}
 	sb.WriteString("<HTML><BODY BGCOLOR=\"#ffffff\"><FONT LANG=\"0\">")
-	sb.WriteString(fmt.Sprintf("%s rolled %d %d-sided dice:", instance.DisplayScreenName().String(), dice, sides))
+	fmt.Fprintf(&sb, "%s rolled %d %d-sided dice:", instance.DisplayScreenName().String(), dice, sides)
 	for i := 0; i < dice; i++ {
-		sb.WriteString(fmt.Sprintf(" %d", s.randRollDie(sides)))
+		fmt.Fprintf(&sb, " %d", s.randRollDie(sides))
 	}
 	sb.WriteString("</FONT></BODY></HTML>")
 

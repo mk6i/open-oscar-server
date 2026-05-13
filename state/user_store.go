@@ -211,7 +211,7 @@ func (f SQLiteUserStore) FindByICQName(ctx context.Context, firstName, lastName,
 
 	users, err := f.queryUsers(ctx, whereClause, args)
 	if err != nil {
-		err = fmt.Errorf("FindByICQName: %w", err)
+		return nil, fmt.Errorf("FindByICQName: %w", err)
 	}
 
 	return users, nil
@@ -275,7 +275,7 @@ func (f SQLiteUserStore) FindByAIMNameAndAddr(ctx context.Context, info AIMNameA
 
 	users, err := f.queryUsers(ctx, whereClause, args)
 	if err != nil {
-		err = fmt.Errorf("FindByAIMNameAndAddr: %w", err)
+		return nil, fmt.Errorf("FindByAIMNameAndAddr: %w", err)
 	}
 
 	return users, nil
@@ -337,7 +337,7 @@ func (f SQLiteUserStore) FindByICQKeyword(ctx context.Context, keyword string) (
 
 	users, err := f.queryUsers(ctx, whereClause, args)
 	if err != nil {
-		err = fmt.Errorf("FindByICQKeyword: %w", err)
+		return nil, fmt.Errorf("FindByICQKeyword: %w", err)
 	}
 
 	return users, nil

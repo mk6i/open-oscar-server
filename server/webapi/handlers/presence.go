@@ -72,11 +72,12 @@ func (h *PresenceHandler) GetPresence(w http.ResponseWriter, r *http.Request) {
 	// Get session
 	session, err := h.SessionManager.GetSession(r.Context(), aimsid)
 	if err != nil {
-		if err == state.ErrNoWebAPISession {
+		switch err {
+		case state.ErrNoWebAPISession:
 			h.sendError(w, http.StatusNotFound, "session not found")
-		} else if err == state.ErrWebAPISessionExpired {
+		case state.ErrWebAPISessionExpired:
 			h.sendError(w, http.StatusGone, "session expired")
-		} else {
+		default:
 			h.sendError(w, http.StatusInternalServerError, "internal server error")
 		}
 		return
@@ -618,7 +619,7 @@ func (h *PresenceHandler) Icon(w http.ResponseWriter, r *http.Request) {
 
 	// For now, redirect to a placeholder icon
 	// In production, this would redirect to actual icon storage/CDN
-	iconURL := "/static/icons/default_" + iconType + "_" + size + ".png"
+	var iconURL string
 
 	// If it's an email lookup, extract username
 	if strings.Contains(name, "@") {

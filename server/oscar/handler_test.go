@@ -2822,11 +2822,8 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 		MetaRequest any
 	}
 	type reqParams struct {
-		ctx      context.Context
 		instance *state.SessionInstance
-		inFrame  wire.SNACFrame
 		inBody   wire.SNAC_0x15_0x02_BQuery
-		rw       ResponseWriter
 		seq      uint16
 		wantErr  error
 	}
@@ -3919,7 +3916,7 @@ func TestHandler_ICQDBQuery_QIP2005UINSearchBug(t *testing.T) {
 	b := buf.Bytes()
 	b[18] = 6 // incorrectly set TLV length to 6 (should be 4)
 
-	err := h.ICQDBQuery(nil, instance, wire.SNACFrame{}, buf, nil)
+	err := h.ICQDBQuery(context.TODO(), instance, wire.SNACFrame{}, buf, nil)
 	assert.NoError(t, err)
 }
 

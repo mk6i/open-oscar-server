@@ -65,7 +65,6 @@ func (h *AuthHandler) ClientLogin(w http.ResponseWriter, r *http.Request) {
 		}
 		username = req.Username
 		password = req.Password
-		devID = req.DevID
 	} else {
 		// Parse form-encoded or URL parameters
 		if err := r.ParseForm(); err != nil {

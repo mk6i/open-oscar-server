@@ -102,9 +102,7 @@ func (s OServiceService) ClientVersions(ctx context.Context, instance *state.Ses
 				SubGroup:  wire.OServiceHostVersions,
 				RequestID: inFrame.RequestID,
 			},
-			Body: wire.SNAC_0x01_0x18_OServiceHostVersions{
-				Versions: inBody.Versions,
-			},
+			Body: wire.SNAC_0x01_0x18_OServiceHostVersions(inBody),
 		},
 		{
 			Frame: wire.SNACFrame{

@@ -105,7 +105,6 @@ func (s ChatNavService) CreateRoom(ctx context.Context, instance *state.SessionI
 		if err := s.chatRoomManager.CreateChatRoom(ctx, &room); err != nil {
 			return wire.SNACMessage{}, fmt.Errorf("%w: %w", errChatNavRoomCreateFailed, err)
 		}
-		break
 	case err != nil:
 		return wire.SNACMessage{}, fmt.Errorf("%w: %w", errChatNavRetrieveFailed, err)
 	}
@@ -214,7 +213,7 @@ func sendChatNavErrorSNAC(inFrame wire.SNACFrame, errorCode uint16) (wire.SNACMe
 }
 
 func validateExchange(exchange uint16) error {
-	if !(exchange == state.PrivateExchange || exchange == state.PublicExchange) {
+	if exchange != state.PrivateExchange && exchange != state.PublicExchange {
 		return fmt.Errorf("only exchanges %d and %d are supported", state.PrivateExchange, state.PublicExchange)
 	}
 	return nil
