@@ -207,12 +207,7 @@ func (s oscarServer) routeConnection(ctx context.Context, conn net.Conn, listene
 	flapc := wire.NewFlapClient(100, conn, conn)
 
 	// send flap signon with server capabilities
-	signonTLVs := []wire.TLV{
-		wire.NewTLVBE(wire.LoginTLVTagsMaxSendSize, wire.FLAPMaxDataSize),
-		wire.NewTLVBE(wire.LoginTLVTagsMaxRecvSize, wire.FLAPMaxDataSize),
-		wire.NewTLVBE(wire.LoginTLVTagsUseBigTime, []byte{}), // empty TLV indicates support
-	}
-	if err := flapc.SendSignonFrame(signonTLVs); err != nil {
+	if err := flapc.SendSignonFrame(nil); err != nil {
 		return err
 	}
 	flap, err := flapc.ReceiveSignonFrame()
