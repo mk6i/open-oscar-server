@@ -224,3 +224,141 @@ func TestAuthHandler_ClientLogin(t *testing.T) {
 		})
 	}
 }
+
+func TestAuthHandler_GetChallenge(t *testing.T) {
+	tests := []struct {
+		name               string
+		contentType        string
+		body               string
+		setupMocks         func(*MockUserManager)
+		disableAuth        bool
+		expectedStatusCode int
+		checkResponse      func(*testing.T, string)
+	}{
+		{
+			name:        "Success_FormEncoded_XML",
+			contentType: "application/x-www-form-urlencoded",
+			body:        "devId=ic7Hmb2RtzN3T5Ub&f=xml&s=testuser",
+			setupMocks: func(um *MockUserManager) {
+				user := &state.User{
+					IdentScreenName:   state.NewIdentScreenName("testuser"),
+					DisplayScreenName: state.DisplayScreenName("testuser"),
+					AuthKey:           "test-auth-key",
+				}
+				um.On("FindUserByScreenName", mock.Anything, state.NewIdentScreenName("testuser")).Return(user, nil)
+			},
+			expectedStatusCode: http.StatusOK,
+			checkResponse: func(t *testing.T, body string) {
+				assert.Contains(t, body, "<statusCode>200</statusCode>")
+				assert.Contains(t, body, "<realm>AOL Instant Messenger (SM)</realm>")
+				assert.Contains(t, body, "<challengeword>test-auth-key</challengeword>")
+				assert.Contains(t, body, "<normalize>false</normalize>")
+				assert.Contains(t, body, "<truncate>true</truncate>")
+				assert.Contains(t, body, "<tid>")
+			},
+		},
+		{
+			name:        "Success_JSON",
+			contentType: "application/json",
+			body:        `{"s":"testuser","devId":"ic7Hmb2RtzN3T5Ub"}`,
+			setupMocks: func(um *MockUserManager) {
+				user := &state.User{
+					IdentScreenName:   state.NewIdentScreenName("testuser"),
+					DisplayScreenName: state.DisplayScreenName("testuser"),
+					AuthKey:           "test-auth-key",
+				}
+				um.On("FindUserByScreenName", mock.Anything, state.NewIdentScreenName("testuser")).Return(user, nil)
+			},
+			expectedStatusCode: http.StatusOK,
+			checkResponse: func(t *testing.T, body string) {
+				assert.Contains(t, body, `"statusCode":200`)
+				assert.Contains(t, body, `"challengeword":"test-auth-key"`)
+				assert.Contains(t, body, `"realm":"AOL Instant Messenger (SM)"`)
+				assert.Contains(t, body, `"normalize":false`)
+				assert.Contains(t, body, `"truncate":true`)
+				assert.Contains(t, body, `"tid":`)
+			},
+		},
+		{
+			name:        "Success_DisableAuth_StubKey",
+			contentType: "application/x-www-form-urlencoded",
+			body:        "s=newuser&devId=dev1",
+			disableAuth: true,
+			setupMocks: func(um *MockUserManager) {
+				um.On("FindUserByScreenName", mock.Anything, state.NewIdentScreenName("newuser")).Return(nil, errors.New("user not found"))
+			},
+			expectedStatusCode: http.StatusOK,
+			checkResponse: func(t *testing.T, body string) {
+				assert.Contains(t, body, `"statusCode":200`)
+				assert.Contains(t, body, `"challengeword":"`)
+				assert.NotContains(t, body, `"challengeword":""`)
+			},
+		},
+		{
+			name:        "Error_UserNotFound",
+			contentType: "application/x-www-form-urlencoded",
+			body:        "s=ghost&devId=dev1",
+			setupMocks: func(um *MockUserManager) {
+				um.On("FindUserByScreenName", mock.Anything, state.NewIdentScreenName("ghost")).Return(nil, errors.New("user not found"))
+			},
+			expectedStatusCode: http.StatusUnauthorized,
+			checkResponse: func(t *testing.T, body string) {
+				assert.Contains(t, body, "authentication failed")
+			},
+		},
+		{
+			name:               "Error_MissingScreenName",
+			contentType:        "application/x-www-form-urlencoded",
+			body:               "devId=dev1",
+			setupMocks:         func(um *MockUserManager) {},
+			expectedStatusCode: http.StatusBadRequest,
+			checkResponse: func(t *testing.T, body string) {
+				assert.Contains(t, body, "screen name required")
+			},
+		},
+		{
+			name:               "Error_InvalidJSON",
+			contentType:        "application/json",
+			body:               `{invalid json`,
+			setupMocks:         func(um *MockUserManager) {},
+			expectedStatusCode: http.StatusBadRequest,
+			checkResponse: func(t *testing.T, body string) {
+				assert.Contains(t, body, "invalid JSON format")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			userManager := &MockUserManager{}
+			tokenStore := &MockTokenStore{}
+			logger := slog.Default()
+
+			handler := &AuthHandler{
+				UserManager: userManager,
+				TokenStore:  tokenStore,
+				Logger:      logger,
+				DisableAuth: tt.disableAuth,
+			}
+
+			tt.setupMocks(userManager)
+
+			req, err := http.NewRequest("POST", "/auth/getChallenge", strings.NewReader(tt.body))
+			assert.NoError(t, err)
+			req.Header.Set("Content-Type", tt.contentType)
+
+			rr := httptest.NewRecorder()
+
+			handler.GetChallenge(rr, req)
+
+			assert.Equal(t, tt.expectedStatusCode, rr.Code)
+
+			responseBody := strings.TrimSpace(rr.Body.String())
+			if tt.checkResponse != nil {
+				tt.checkResponse(t, responseBody)
+			}
+
+			userManager.AssertExpectations(t)
+		})
+	}
+}

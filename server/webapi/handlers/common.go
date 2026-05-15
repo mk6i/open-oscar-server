@@ -76,6 +76,13 @@ type XMLData struct {
 	HostTime       int64     `xml:"hostTime,omitempty"`
 	TokenExpiresIn int       `xml:"tokenExpiresIn,omitempty"`
 
+	// Challenge response fields
+	TID           string `xml:"tid,omitempty"`
+	Normalize     *bool  `xml:"normalize,omitempty"`
+	Truncate      *bool  `xml:"truncate,omitempty"`
+	Realm         string `xml:"realm,omitempty"`
+	ChallengeWord string `xml:"challengeword,omitempty"`
+
 	// Generic fields for other responses
 	AimSID   string `xml:"aimsid,omitempty"`
 	FetchURL string `xml:"fetchUrl,omitempty"`
@@ -348,6 +355,23 @@ func convertBaseResponseForXML(resp BaseResponse) XMLMapResponse {
 		}
 		if tokenExpiresIn, ok := dataMap["tokenExpiresIn"].(int); ok {
 			xmlData.TokenExpiresIn = tokenExpiresIn
+		}
+
+		// Handle challenge response fields
+		if tid, ok := dataMap["tid"].(string); ok {
+			xmlData.TID = tid
+		}
+		if normalize, ok := dataMap["normalize"].(bool); ok {
+			xmlData.Normalize = &normalize
+		}
+		if truncate, ok := dataMap["truncate"].(bool); ok {
+			xmlData.Truncate = &truncate
+		}
+		if realm, ok := dataMap["realm"].(string); ok {
+			xmlData.Realm = realm
+		}
+		if challengeWord, ok := dataMap["challengeword"].(string); ok {
+			xmlData.ChallengeWord = challengeWord
 		}
 
 		// Handle session response fields
