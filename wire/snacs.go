@@ -562,7 +562,7 @@ type SNAC_0x02_0x03_LocateRightsReply struct {
 }
 
 type SNAC_0x02_0x04_LocateSetInfo struct {
-	TLVRestBlock
+	TLVRestBlock `oscar:"quirk=jimm_locate_set_info"`
 }
 
 type SNAC_0x02_0x06_LocateUserInfoReply struct {

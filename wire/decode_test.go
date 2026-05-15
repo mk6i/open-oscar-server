@@ -711,7 +711,7 @@ func TestUnmarshal(t *testing.T) {
 
 // TestUnmarshalLE_ICQ2003bSaveInfoEmailTLVLengthQuirk checks ICQ 2003b "save info" / META
 // CLI_SET_FULLINFO: INF_TLV_EMAIL (ICQTLVTagsEmail, 0x015E) declares length 3 but writes 4 bytes
-// on the wire; unmarshal with oscar:"quirk=icq2003b_set_fullinfo" matches iserverd tlv_chain_c::readXXX.
+// on the wire; unmarshal with oscar:"quirk=icq2003b_set_fullinfo"
 func TestUnmarshalLE_ICQ2003bSaveInfoEmailTLVLengthQuirk(t *testing.T) {
 	b := []byte{
 		0x5E, 0x01, 0x03, 0x00, 0x01, 0x00, 0x00, 0x00, // ICQTLVTagsEmail: LE len 3, 4 bytes on wire
@@ -729,7 +729,6 @@ func TestUnmarshalLE_ICQ2003bSaveInfoEmailTLVLengthQuirk(t *testing.T) {
 
 // TestUnmarshalLE_QIP2005SearchByUIN2TLVLengthQuirk checks QIP 2005 META SearchByUIN2: TLV ICQTLVTagsUIN
 // declares length 6 but only 4 bytes (UIN) follow; unmarshal with oscar:"quirk=qip_2005_search_by_uin2"
-// matches iserverd tlv.cpp rewrite for type 0x0136.
 func TestUnmarshalLE_QIP2005SearchByUIN2TLVLengthQuirk(t *testing.T) {
 	b := []byte{
 		0x36, 0x01, 0x06, 0x00, 0x01, 0x00, 0x00, 0x00, // ICQTLVTagsUIN: LE len 6 (wrong), 4-byte UIN on wire
@@ -740,4 +739,21 @@ func TestUnmarshalLE_QIP2005SearchByUIN2TLVLengthQuirk(t *testing.T) {
 	assert.Len(t, got.TLVList, 1)
 	assert.Equal(t, ICQTLVTagsUIN, got.TLVList[0].Tag)
 	assert.Equal(t, []byte{0x01, 0x00, 0x00, 0x00}, got.TLVList[0].Value)
+}
+
+// TestUnmarshalBE_JimmSetInfoTLVLengthQuirk checks that UnmarshalBE gracefully
+// handles SNAC_0x02_0x04_LocateSetInfo with TLV 0x05 containing length param
+// that exceeds value length.
+func TestUnmarshalBE_JimmSetInfoTLVLengthQuirk(t *testing.T) {
+	b := []byte{
+		0x0, 0x5,
+		0x0, 0x4, // TLV len 4 exceeds value length 3
+		0x1, 0x2, 0x3,
+	}
+	var got SNAC_0x02_0x04_LocateSetInfo
+	err := UnmarshalBE(&got, bytes.NewReader(b))
+	assert.NoError(t, err)
+	assert.Len(t, got.TLVList, 1)
+	assert.Equal(t, uint16(5), got.TLVList[0].Tag)
+	assert.Equal(t, []byte{0x1, 0x2, 0x3}, got.TLVList[0].Value)
 }

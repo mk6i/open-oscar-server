@@ -160,7 +160,7 @@ func unmarshalSlice(v reflect.Value, oscTag oscarTag, r io.Reader, order binary.
 	return nil
 }
 
-// unmarshalSliceElement reads one element of a slice; for TLV under LE with decode quirks,
+// unmarshalSliceElement reads one element of a slice; for TLV with decode quirks,
 // applies client-specific length workarounds (see unmarshalTLV* helpers).
 func unmarshalSliceElement(elemType reflect.Type, elem reflect.Value, r io.Reader, order binary.ByteOrder, activeQuirk string) error {
 	if activeQuirk != "" {
@@ -169,6 +169,8 @@ func unmarshalSliceElement(elemType reflect.Type, elem reflect.Value, r io.Reade
 			return unmarshalTLVICQ2003bSetFullInfo(elem, r, order)
 		case activeQuirk == "qip_2005_search_by_uin2" && order == binary.LittleEndian && elemType == reflect.TypeOf(TLV{}):
 			return unmarshalTLVQIP2005SearchByUIN2(elem, r, order)
+		case activeQuirk == "jimm_locate_set_info" && order == binary.BigEndian && elemType == reflect.TypeOf(TLV{}):
+			return unmarshalTLVJimmSetInfo(elem, r, order)
 		}
 	}
 	return unmarshal(elemType, elem, "", r, order, activeQuirk)
@@ -216,6 +218,32 @@ func unmarshalTLVQIP2005SearchByUIN2(elem reflect.Value, r io.Reader, order bina
 	if n > 0 {
 		if _, err := io.ReadFull(r, buf); err != nil {
 			return err
+		}
+	}
+	elem.Field(0).Set(reflect.ValueOf(tag))
+	elem.Field(1).SetBytes(buf)
+	return nil
+}
+
+// unmarshalTLVJimmSetInfo handles Jimm quirk where TLV 0x05 in SNAC_0x02_0x04_LocateSetInfo
+// has a length that exceeds the payload size, which would otherwise cause an unexpected EOF.
+func unmarshalTLVJimmSetInfo(elem reflect.Value, r io.Reader, order binary.ByteOrder) error {
+	var tag uint16
+	if err := binary.Read(r, order, &tag); err != nil {
+		return err
+	}
+	var n uint16
+	if err := binary.Read(r, order, &n); err != nil {
+		return err
+	}
+	buf := make([]byte, n)
+	if n > 0 {
+		read, err := io.ReadFull(r, buf)
+		if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) {
+			return err
+		}
+		if read < int(n) {
+			buf = buf[0:read] // trim excess
 		}
 	}
 	elem.Field(0).Set(reflect.ValueOf(tag))
