@@ -103,16 +103,16 @@ func (_c *mockICQService_DeleteMsgReq_Call) RunAndReturn(run func(ctx context.Co
 }
 
 // FindByEmail3 provides a mock function for the type mockICQService
-func (_mock *mockICQService) FindByEmail3(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x0573_DBQueryMetaReqSearchByEmail3, seq uint16) error {
-	ret := _mock.Called(ctx, instance, inBody, seq)
+func (_mock *mockICQService) FindByEmail3(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x0573_DBQueryMetaReqSearchByEmail3, seq uint16) error {
+	ret := _mock.Called(ctx, instance, inFrame, inBody, seq)
 
 	if len(ret) == 0 {
 		panic("no return value specified for FindByEmail3")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.ICQ_0x07D0_0x0573_DBQueryMetaReqSearchByEmail3, uint16) error); ok {
-		r0 = returnFunc(ctx, instance, inBody, seq)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.ICQ_0x07D0_0x0573_DBQueryMetaReqSearchByEmail3, uint16) error); ok {
+		r0 = returnFunc(ctx, instance, inFrame, inBody, seq)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -127,13 +127,14 @@ type mockICQService_FindByEmail3_Call struct {
 // FindByEmail3 is a helper method to define mock.On call
 //   - ctx context.Context
 //   - instance *state.SessionInstance
+//   - inFrame wire.SNACFrame
 //   - inBody wire.ICQ_0x07D0_0x0573_DBQueryMetaReqSearchByEmail3
 //   - seq uint16
-func (_e *mockICQService_Expecter) FindByEmail3(ctx interface{}, instance interface{}, inBody interface{}, seq interface{}) *mockICQService_FindByEmail3_Call {
-	return &mockICQService_FindByEmail3_Call{Call: _e.mock.On("FindByEmail3", ctx, instance, inBody, seq)}
+func (_e *mockICQService_Expecter) FindByEmail3(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}, seq interface{}) *mockICQService_FindByEmail3_Call {
+	return &mockICQService_FindByEmail3_Call{Call: _e.mock.On("FindByEmail3", ctx, instance, inFrame, inBody, seq)}
 }
 
-func (_c *mockICQService_FindByEmail3_Call) Run(run func(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x0573_DBQueryMetaReqSearchByEmail3, seq uint16)) *mockICQService_FindByEmail3_Call {
+func (_c *mockICQService_FindByEmail3_Call) Run(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x0573_DBQueryMetaReqSearchByEmail3, seq uint16)) *mockICQService_FindByEmail3_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -143,19 +144,24 @@ func (_c *mockICQService_FindByEmail3_Call) Run(run func(ctx context.Context, in
 		if args[1] != nil {
 			arg1 = args[1].(*state.SessionInstance)
 		}
-		var arg2 wire.ICQ_0x07D0_0x0573_DBQueryMetaReqSearchByEmail3
+		var arg2 wire.SNACFrame
 		if args[2] != nil {
-			arg2 = args[2].(wire.ICQ_0x07D0_0x0573_DBQueryMetaReqSearchByEmail3)
+			arg2 = args[2].(wire.SNACFrame)
 		}
-		var arg3 uint16
+		var arg3 wire.ICQ_0x07D0_0x0573_DBQueryMetaReqSearchByEmail3
 		if args[3] != nil {
-			arg3 = args[3].(uint16)
+			arg3 = args[3].(wire.ICQ_0x07D0_0x0573_DBQueryMetaReqSearchByEmail3)
+		}
+		var arg4 uint16
+		if args[4] != nil {
+			arg4 = args[4].(uint16)
 		}
 		run(
 			arg0,
 			arg1,
 			arg2,
 			arg3,
+			arg4,
 		)
 	})
 	return _c
@@ -166,13 +172,13 @@ func (_c *mockICQService_FindByEmail3_Call) Return(err error) *mockICQService_Fi
 	return _c
 }
 
-func (_c *mockICQService_FindByEmail3_Call) RunAndReturn(run func(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x0573_DBQueryMetaReqSearchByEmail3, seq uint16) error) *mockICQService_FindByEmail3_Call {
+func (_c *mockICQService_FindByEmail3_Call) RunAndReturn(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x0573_DBQueryMetaReqSearchByEmail3, seq uint16) error) *mockICQService_FindByEmail3_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // FindByICQEmail provides a mock function for the type mockICQService
-func (_mock *mockICQService) FindByICQEmail(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x0529_DBQueryMetaReqSearchByEmail, seq uint16) error {
+func (_mock *mockICQService) FindByICQEmail(ctx context.Context, instance *state.SessionInstance, frame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x0529_DBQueryMetaReqSearchByEmail, seq uint16) error {
 	ret := _mock.Called(ctx, instance, inBody, seq)
 
 	if len(ret) == 0 {
@@ -241,7 +247,7 @@ func (_c *mockICQService_FindByICQEmail_Call) RunAndReturn(run func(ctx context.
 }
 
 // FindByICQInterests provides a mock function for the type mockICQService
-func (_mock *mockICQService) FindByICQInterests(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x0533_DBQueryMetaReqSearchWhitePages, seq uint16) error {
+func (_mock *mockICQService) FindByICQInterests(ctx context.Context, instance *state.SessionInstance, frame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x0533_DBQueryMetaReqSearchWhitePages, seq uint16) error {
 	ret := _mock.Called(ctx, instance, inBody, seq)
 
 	if len(ret) == 0 {
@@ -310,7 +316,7 @@ func (_c *mockICQService_FindByICQInterests_Call) RunAndReturn(run func(ctx cont
 }
 
 // FindByICQName provides a mock function for the type mockICQService
-func (_mock *mockICQService) FindByICQName(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x0515_DBQueryMetaReqSearchByDetails, seq uint16) error {
+func (_mock *mockICQService) FindByICQName(ctx context.Context, instance *state.SessionInstance, frame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x0515_DBQueryMetaReqSearchByDetails, seq uint16) error {
 	ret := _mock.Called(ctx, instance, inBody, seq)
 
 	if len(ret) == 0 {
@@ -379,7 +385,7 @@ func (_c *mockICQService_FindByICQName_Call) RunAndReturn(run func(ctx context.C
 }
 
 // FindByUIN provides a mock function for the type mockICQService
-func (_mock *mockICQService) FindByUIN(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x051F_DBQueryMetaReqSearchByUIN, seq uint16) error {
+func (_mock *mockICQService) FindByUIN(ctx context.Context, instance *state.SessionInstance, frame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x051F_DBQueryMetaReqSearchByUIN, seq uint16) error {
 	ret := _mock.Called(ctx, instance, inBody, seq)
 
 	if len(ret) == 0 {
@@ -448,16 +454,16 @@ func (_c *mockICQService_FindByUIN_Call) RunAndReturn(run func(ctx context.Conte
 }
 
 // FindByUIN2 provides a mock function for the type mockICQService
-func (_mock *mockICQService) FindByUIN2(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x0569_DBQueryMetaReqSearchByUIN2, seq uint16) error {
-	ret := _mock.Called(ctx, instance, inBody, seq)
+func (_mock *mockICQService) FindByUIN2(ctx context.Context, instance *state.SessionInstance, frame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x0569_DBQueryMetaReqSearchByUIN2, seq uint16) error {
+	ret := _mock.Called(ctx, instance, frame, inBody, seq)
 
 	if len(ret) == 0 {
 		panic("no return value specified for FindByUIN2")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.ICQ_0x07D0_0x0569_DBQueryMetaReqSearchByUIN2, uint16) error); ok {
-		r0 = returnFunc(ctx, instance, inBody, seq)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.ICQ_0x07D0_0x0569_DBQueryMetaReqSearchByUIN2, uint16) error); ok {
+		r0 = returnFunc(ctx, instance, frame, inBody, seq)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -472,13 +478,14 @@ type mockICQService_FindByUIN2_Call struct {
 // FindByUIN2 is a helper method to define mock.On call
 //   - ctx context.Context
 //   - instance *state.SessionInstance
+//   - frame wire.SNACFrame
 //   - inBody wire.ICQ_0x07D0_0x0569_DBQueryMetaReqSearchByUIN2
 //   - seq uint16
-func (_e *mockICQService_Expecter) FindByUIN2(ctx interface{}, instance interface{}, inBody interface{}, seq interface{}) *mockICQService_FindByUIN2_Call {
-	return &mockICQService_FindByUIN2_Call{Call: _e.mock.On("FindByUIN2", ctx, instance, inBody, seq)}
+func (_e *mockICQService_Expecter) FindByUIN2(ctx interface{}, instance interface{}, frame interface{}, inBody interface{}, seq interface{}) *mockICQService_FindByUIN2_Call {
+	return &mockICQService_FindByUIN2_Call{Call: _e.mock.On("FindByUIN2", ctx, instance, frame, inBody, seq)}
 }
 
-func (_c *mockICQService_FindByUIN2_Call) Run(run func(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x0569_DBQueryMetaReqSearchByUIN2, seq uint16)) *mockICQService_FindByUIN2_Call {
+func (_c *mockICQService_FindByUIN2_Call) Run(run func(ctx context.Context, instance *state.SessionInstance, frame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x0569_DBQueryMetaReqSearchByUIN2, seq uint16)) *mockICQService_FindByUIN2_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -488,19 +495,24 @@ func (_c *mockICQService_FindByUIN2_Call) Run(run func(ctx context.Context, inst
 		if args[1] != nil {
 			arg1 = args[1].(*state.SessionInstance)
 		}
-		var arg2 wire.ICQ_0x07D0_0x0569_DBQueryMetaReqSearchByUIN2
+		var arg2 wire.SNACFrame
 		if args[2] != nil {
-			arg2 = args[2].(wire.ICQ_0x07D0_0x0569_DBQueryMetaReqSearchByUIN2)
+			arg2 = args[2].(wire.SNACFrame)
 		}
-		var arg3 uint16
+		var arg3 wire.ICQ_0x07D0_0x0569_DBQueryMetaReqSearchByUIN2
 		if args[3] != nil {
-			arg3 = args[3].(uint16)
+			arg3 = args[3].(wire.ICQ_0x07D0_0x0569_DBQueryMetaReqSearchByUIN2)
+		}
+		var arg4 uint16
+		if args[4] != nil {
+			arg4 = args[4].(uint16)
 		}
 		run(
 			arg0,
 			arg1,
 			arg2,
 			arg3,
+			arg4,
 		)
 	})
 	return _c
@@ -511,22 +523,22 @@ func (_c *mockICQService_FindByUIN2_Call) Return(err error) *mockICQService_Find
 	return _c
 }
 
-func (_c *mockICQService_FindByUIN2_Call) RunAndReturn(run func(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x0569_DBQueryMetaReqSearchByUIN2, seq uint16) error) *mockICQService_FindByUIN2_Call {
+func (_c *mockICQService_FindByUIN2_Call) RunAndReturn(run func(ctx context.Context, instance *state.SessionInstance, frame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x0569_DBQueryMetaReqSearchByUIN2, seq uint16) error) *mockICQService_FindByUIN2_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // FindByWhitePages2 provides a mock function for the type mockICQService
-func (_mock *mockICQService) FindByWhitePages2(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x055F_DBQueryMetaReqSearchWhitePages2, seq uint16) error {
-	ret := _mock.Called(ctx, instance, inBody, seq)
+func (_mock *mockICQService) FindByWhitePages2(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x055F_DBQueryMetaReqSearchWhitePages2, seq uint16) error {
+	ret := _mock.Called(ctx, instance, inFrame, inBody, seq)
 
 	if len(ret) == 0 {
 		panic("no return value specified for FindByWhitePages2")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.ICQ_0x07D0_0x055F_DBQueryMetaReqSearchWhitePages2, uint16) error); ok {
-		r0 = returnFunc(ctx, instance, inBody, seq)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.ICQ_0x07D0_0x055F_DBQueryMetaReqSearchWhitePages2, uint16) error); ok {
+		r0 = returnFunc(ctx, instance, inFrame, inBody, seq)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -541,13 +553,14 @@ type mockICQService_FindByWhitePages2_Call struct {
 // FindByWhitePages2 is a helper method to define mock.On call
 //   - ctx context.Context
 //   - instance *state.SessionInstance
+//   - inFrame wire.SNACFrame
 //   - inBody wire.ICQ_0x07D0_0x055F_DBQueryMetaReqSearchWhitePages2
 //   - seq uint16
-func (_e *mockICQService_Expecter) FindByWhitePages2(ctx interface{}, instance interface{}, inBody interface{}, seq interface{}) *mockICQService_FindByWhitePages2_Call {
-	return &mockICQService_FindByWhitePages2_Call{Call: _e.mock.On("FindByWhitePages2", ctx, instance, inBody, seq)}
+func (_e *mockICQService_Expecter) FindByWhitePages2(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}, seq interface{}) *mockICQService_FindByWhitePages2_Call {
+	return &mockICQService_FindByWhitePages2_Call{Call: _e.mock.On("FindByWhitePages2", ctx, instance, inFrame, inBody, seq)}
 }
 
-func (_c *mockICQService_FindByWhitePages2_Call) Run(run func(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x055F_DBQueryMetaReqSearchWhitePages2, seq uint16)) *mockICQService_FindByWhitePages2_Call {
+func (_c *mockICQService_FindByWhitePages2_Call) Run(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x055F_DBQueryMetaReqSearchWhitePages2, seq uint16)) *mockICQService_FindByWhitePages2_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -557,19 +570,24 @@ func (_c *mockICQService_FindByWhitePages2_Call) Run(run func(ctx context.Contex
 		if args[1] != nil {
 			arg1 = args[1].(*state.SessionInstance)
 		}
-		var arg2 wire.ICQ_0x07D0_0x055F_DBQueryMetaReqSearchWhitePages2
+		var arg2 wire.SNACFrame
 		if args[2] != nil {
-			arg2 = args[2].(wire.ICQ_0x07D0_0x055F_DBQueryMetaReqSearchWhitePages2)
+			arg2 = args[2].(wire.SNACFrame)
 		}
-		var arg3 uint16
+		var arg3 wire.ICQ_0x07D0_0x055F_DBQueryMetaReqSearchWhitePages2
 		if args[3] != nil {
-			arg3 = args[3].(uint16)
+			arg3 = args[3].(wire.ICQ_0x07D0_0x055F_DBQueryMetaReqSearchWhitePages2)
+		}
+		var arg4 uint16
+		if args[4] != nil {
+			arg4 = args[4].(uint16)
 		}
 		run(
 			arg0,
 			arg1,
 			arg2,
 			arg3,
+			arg4,
 		)
 	})
 	return _c
@@ -580,13 +598,13 @@ func (_c *mockICQService_FindByWhitePages2_Call) Return(err error) *mockICQServi
 	return _c
 }
 
-func (_c *mockICQService_FindByWhitePages2_Call) RunAndReturn(run func(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x055F_DBQueryMetaReqSearchWhitePages2, seq uint16) error) *mockICQService_FindByWhitePages2_Call {
+func (_c *mockICQService_FindByWhitePages2_Call) RunAndReturn(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x055F_DBQueryMetaReqSearchWhitePages2, seq uint16) error) *mockICQService_FindByWhitePages2_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // FullUserInfo provides a mock function for the type mockICQService
-func (_mock *mockICQService) FullUserInfo(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x051F_DBQueryMetaReqSearchByUIN, seq uint16) error {
+func (_mock *mockICQService) FullUserInfo(ctx context.Context, instance *state.SessionInstance, frame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x051F_DBQueryMetaReqSearchByUIN, seq uint16) error {
 	ret := _mock.Called(ctx, instance, inBody, seq)
 
 	if len(ret) == 0 {
@@ -655,7 +673,7 @@ func (_c *mockICQService_FullUserInfo_Call) RunAndReturn(run func(ctx context.Co
 }
 
 // OfflineMsgReq provides a mock function for the type mockICQService
-func (_mock *mockICQService) OfflineMsgReq(ctx context.Context, instance *state.SessionInstance, seq uint16) error {
+func (_mock *mockICQService) OfflineMsgReq(ctx context.Context, id wire.SNACFrame, instance *state.SessionInstance, seq uint16) error {
 	ret := _mock.Called(ctx, instance, seq)
 
 	if len(ret) == 0 {
@@ -1408,7 +1426,7 @@ func (_c *mockICQService_SetWorkInfo_Call) RunAndReturn(run func(ctx context.Con
 }
 
 // ShortUserInfo provides a mock function for the type mockICQService
-func (_mock *mockICQService) ShortUserInfo(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x04BA_DBQueryMetaReqShortInfo, seq uint16) error {
+func (_mock *mockICQService) ShortUserInfo(ctx context.Context, instance *state.SessionInstance, frame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x04BA_DBQueryMetaReqShortInfo, seq uint16) error {
 	ret := _mock.Called(ctx, instance, inBody, seq)
 
 	if len(ret) == 0 {
@@ -1477,7 +1495,7 @@ func (_c *mockICQService_ShortUserInfo_Call) RunAndReturn(run func(ctx context.C
 }
 
 // XMLReqData provides a mock function for the type mockICQService
-func (_mock *mockICQService) XMLReqData(ctx context.Context, instance *state.SessionInstance, inBody wire.ICQ_0x07D0_0x0898_DBQueryMetaReqXMLReq, seq uint16) error {
+func (_mock *mockICQService) XMLReqData(ctx context.Context, instance *state.SessionInstance, frame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x0898_DBQueryMetaReqXMLReq, seq uint16) error {
 	ret := _mock.Called(ctx, instance, inBody, seq)
 
 	if len(ret) == 0 {

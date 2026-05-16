@@ -645,11 +645,6 @@ func (s AuthService) loginSuccessResponse(props loginProperties, advertisedHost 
 	reconnectHost := advertisedHost
 	sslState := wire.OServiceServiceResponseSSLStateNotUsed
 
-	s.logger.Debug("loginSuccessResponse: returning login response",
-		"screen_name", props.screenName,
-		"reconnect_host", reconnectHost,
-		"ssl_state", sslState)
-
 	return wire.TLVRestBlock{
 		TLVList: []wire.TLV{
 			wire.NewTLVBE(wire.LoginTLVTagsScreenName, props.screenName),

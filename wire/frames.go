@@ -50,6 +50,12 @@ type SNACFrame struct {
 	RequestID uint32
 }
 
+// SNACFlagsMoreToCome is set on SNAC frames that are part of a multi-packet
+// response (bit 0). ICQ search replies keep this flag set on every hit,
+// including the last; the client uses the meta subtype (0x01A4 vs 0x01AE) to
+// detect the final result.
+const SNACFlagsMoreToCome uint16 = 0x0001
+
 // ReqIDFromServer is the SNAC frame Request ID value that indicates the SNAC
 // is initiated by the server. Some clients, such as the Java AIM 1.1.19,
 // completely fail to process some server SNACs if the high bit is not set on

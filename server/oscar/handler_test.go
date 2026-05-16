@@ -2816,6 +2816,10 @@ func TestHandler_ICBMParameterQuery(t *testing.T) {
 }
 
 func TestHandler_ICQDBQuery(t *testing.T) {
+	frame := wire.SNACFrame{
+		FoodGroup: wire.ICQ,
+		SubGroup:  wire.ICQDBQuery,
+	}
 	type ICQMetaRequest struct {
 		wire.ICQMetadata
 		ReqSubType  uint16
@@ -2823,11 +2827,13 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 	}
 	type reqParams struct {
 		instance *state.SessionInstance
+		inFrame  wire.SNACFrame
 		inBody   wire.SNAC_0x15_0x02_BQuery
 		seq      uint16
 		wantErr  error
 	}
 	type mockParam struct {
+		frame   any
 		req     any
 		wantErr error
 	}
@@ -3084,6 +3090,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 			name: "MetaReqSearchByUIN2 - happy path",
 			reqParams: reqParams{
 				instance: state.NewSession().AddInstance(),
+				inFrame:  frame,
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3110,6 +3117,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 			},
 			allMockParams: allMockParams{
 				findByUIN2: &mockParam{
+					frame: frame,
 					req: wire.ICQ_0x07D0_0x0569_DBQueryMetaReqSearchByUIN2{
 						TLVRestBlock: wire.TLVRestBlock{
 							TLVList: wire.TLVList{
@@ -3156,6 +3164,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 			name: "MetaReqSearchByEmail3 - happy path",
 			reqParams: reqParams{
 				instance: state.NewSession().AddInstance(),
+				inFrame:  frame,
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3182,6 +3191,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 			},
 			allMockParams: allMockParams{
 				findByEmail3: &mockParam{
+					frame: frame,
 					req: wire.ICQ_0x07D0_0x0573_DBQueryMetaReqSearchByEmail3{
 						TLVRestBlock: wire.TLVRestBlock{
 							TLVList: wire.TLVList{
@@ -3260,6 +3270,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 			name: "MetaReqSearchWhitePages2 - happy path",
 			reqParams: reqParams{
 				instance: state.NewSession().AddInstance(),
+				inFrame:  frame,
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3286,6 +3297,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 			},
 			allMockParams: allMockParams{
 				findByWhitePages2: &mockParam{
+					frame: frame,
 					req: wire.ICQ_0x07D0_0x055F_DBQueryMetaReqSearchWhitePages2{
 						TLVRestBlock: wire.TLVRestBlock{
 							TLVList: wire.TLVList{
@@ -3773,7 +3785,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 					Return(tt.allMockParams.findByUIN.wantErr)
 			case tt.allMockParams.findByUIN2 != nil:
 				icqService.EXPECT().
-					FindByUIN2(mock.Anything, tt.reqParams.instance, tt.allMockParams.findByUIN2.req, tt.reqParams.seq).
+					FindByUIN2(mock.Anything, tt.reqParams.instance, tt.allMockParams.findByUIN2.frame, tt.allMockParams.findByUIN2.req, tt.reqParams.seq).
 					Return(tt.allMockParams.findByUIN2.wantErr)
 			case tt.allMockParams.findByEmail != nil:
 				icqService.EXPECT().
@@ -3781,7 +3793,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 					Return(tt.allMockParams.findByEmail.wantErr)
 			case tt.allMockParams.findByEmail3 != nil:
 				icqService.EXPECT().
-					FindByEmail3(mock.Anything, tt.reqParams.instance, tt.allMockParams.findByEmail3.req, tt.reqParams.seq).
+					FindByEmail3(mock.Anything, tt.reqParams.instance, tt.allMockParams.findByEmail3.frame, tt.allMockParams.findByEmail3.req, tt.reqParams.seq).
 					Return(tt.allMockParams.findByEmail3.wantErr)
 			case tt.allMockParams.findByDetails != nil:
 				icqService.EXPECT().
@@ -3793,7 +3805,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 					Return(tt.allMockParams.findByInterests.wantErr)
 			case tt.allMockParams.findByWhitePages2 != nil:
 				icqService.EXPECT().
-					FindByWhitePages2(mock.Anything, tt.reqParams.instance, tt.allMockParams.findByWhitePages2.req, tt.reqParams.seq).
+					FindByWhitePages2(mock.Anything, tt.reqParams.instance, tt.allMockParams.findByWhitePages2.frame, tt.allMockParams.findByWhitePages2.req, tt.reqParams.seq).
 					Return(tt.allMockParams.findByWhitePages2.wantErr)
 			case tt.allMockParams.setBasicInfo != nil:
 				icqService.EXPECT().
@@ -3847,10 +3859,6 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 			buf := &bytes.Buffer{}
 			assert.NoError(t, wire.MarshalBE(tt.reqParams.inBody, buf))
 
-			frame := wire.SNACFrame{
-				FoodGroup: wire.ICQ,
-				SubGroup:  wire.ICQDBQuery,
-			}
 			err := h.Handle(context.TODO(), wire.BOS, tt.reqParams.instance, frame, buf, nil, config.Listener{})
 			assert.ErrorIs(t, err, tt.reqParams.wantErr)
 		})
@@ -3877,7 +3885,7 @@ func TestHandler_ICQDBQuery_QIP2005UINSearchBug(t *testing.T) {
 
 	instance := state.NewSession().AddInstance()
 	icqService.EXPECT().
-		FindByUIN2(mock.Anything, instance, expect, uint16(1)).
+		FindByUIN2(mock.Anything, instance, wire.SNACFrame{}, expect, uint16(1)).
 		Return(nil)
 
 	h := Handler{
