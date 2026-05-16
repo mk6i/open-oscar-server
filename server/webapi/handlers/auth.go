@@ -278,9 +278,9 @@ func (h *AuthHandler) GetChallenge(w http.ResponseWriter, r *http.Request) {
 	resp.Response.Data = map[string]interface{}{
 		"tid":           tid,
 		"normalize":     false,
-		"truncate":      true,
+		"truncate":      false,
 		"realm":         "AOL Instant Messenger (SM)",
-		"challengeword": challengeWord,
+		"challengeWord": challengeWord,
 	}
 
 	SendResponse(w, r, resp, h.Logger)

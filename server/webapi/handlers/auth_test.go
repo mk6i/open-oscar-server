@@ -249,11 +249,12 @@ func TestAuthHandler_GetChallenge(t *testing.T) {
 			},
 			expectedStatusCode: http.StatusOK,
 			checkResponse: func(t *testing.T, body string) {
+				assert.Contains(t, body, `xmlns="https://api.login.aol.com"`)
 				assert.Contains(t, body, "<statusCode>200</statusCode>")
 				assert.Contains(t, body, "<realm>AOL Instant Messenger (SM)</realm>")
-				assert.Contains(t, body, "<challengeword>test-auth-key</challengeword>")
+				assert.Contains(t, body, "<challengeWord>test-auth-key</challengeWord>")
 				assert.Contains(t, body, "<normalize>false</normalize>")
-				assert.Contains(t, body, "<truncate>true</truncate>")
+				assert.Contains(t, body, "<truncate>false</truncate>")
 				assert.Contains(t, body, "<tid>")
 			},
 		},
@@ -272,10 +273,10 @@ func TestAuthHandler_GetChallenge(t *testing.T) {
 			expectedStatusCode: http.StatusOK,
 			checkResponse: func(t *testing.T, body string) {
 				assert.Contains(t, body, `"statusCode":200`)
-				assert.Contains(t, body, `"challengeword":"test-auth-key"`)
+				assert.Contains(t, body, `"challengeWord":"test-auth-key"`)
 				assert.Contains(t, body, `"realm":"AOL Instant Messenger (SM)"`)
 				assert.Contains(t, body, `"normalize":false`)
-				assert.Contains(t, body, `"truncate":true`)
+				assert.Contains(t, body, `"truncate":false`)
 				assert.Contains(t, body, `"tid":`)
 			},
 		},
@@ -290,8 +291,8 @@ func TestAuthHandler_GetChallenge(t *testing.T) {
 			expectedStatusCode: http.StatusOK,
 			checkResponse: func(t *testing.T, body string) {
 				assert.Contains(t, body, `"statusCode":200`)
-				assert.Contains(t, body, `"challengeword":"`)
-				assert.NotContains(t, body, `"challengeword":""`)
+				assert.Contains(t, body, `"challengeWord":"`)
+				assert.NotContains(t, body, `"challengeWord":""`)
 			},
 		},
 		{

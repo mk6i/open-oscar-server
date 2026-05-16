@@ -61,6 +61,7 @@ type ErrorResponse struct {
 // XMLMapResponse is a helper struct for converting map-based responses to XML
 type XMLMapResponse struct {
 	XMLName    xml.Name `xml:"response"`
+	XMLNS      string   `xml:"xmlns,attr"`
 	StatusCode int      `xml:"statusCode"`
 	StatusText string   `xml:"statusText"`
 	Data       XMLData  `xml:"data,omitempty"`
@@ -81,7 +82,7 @@ type XMLData struct {
 	Normalize     *bool  `xml:"normalize,omitempty"`
 	Truncate      *bool  `xml:"truncate,omitempty"`
 	Realm         string `xml:"realm,omitempty"`
-	ChallengeWord string `xml:"challengeword,omitempty"`
+	ChallengeWord string `xml:"challengeWord,omitempty"`
 
 	// Generic fields for other responses
 	AimSID   string `xml:"aimsid,omitempty"`
@@ -208,7 +209,9 @@ func SendXML(w http.ResponseWriter, data interface{}, logger *slog.Logger) {
 
 	// Convert BaseResponse with map data to a format XML can handle
 	if baseResp, ok := data.(BaseResponse); ok {
-		data = convertBaseResponseForXML(baseResp)
+		xmlResp := convertBaseResponseForXML(baseResp)
+		xmlResp.XMLNS = "https://api.login.aol.com"
+		data = xmlResp
 	}
 
 	// Marshal the data
@@ -370,7 +373,7 @@ func convertBaseResponseForXML(resp BaseResponse) XMLMapResponse {
 		if realm, ok := dataMap["realm"].(string); ok {
 			xmlData.Realm = realm
 		}
-		if challengeWord, ok := dataMap["challengeword"].(string); ok {
+		if challengeWord, ok := dataMap["challengeWord"].(string); ok {
 			xmlData.ChallengeWord = challengeWord
 		}
 
