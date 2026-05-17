@@ -348,5 +348,5 @@ func (h *OSCARBridgeHandler) sendResponse(w http.ResponseWriter, r *http.Request
 // sendError sends an error response in the appropriate format.
 func (h *OSCARBridgeHandler) sendError(w http.ResponseWriter, r *http.Request, statusCode int, message string) {
 	// SendError already detects format from Content-Type header
-	SendError(w, statusCode, message)
+	SendError(w, r, statusCode, message)
 }

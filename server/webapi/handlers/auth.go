@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/mk6i/open-oscar-server/state"
 )
 
@@ -60,7 +62,7 @@ func (h *AuthHandler) ClientLogin(w http.ResponseWriter, r *http.Request) {
 		var req ClientLoginRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			h.Logger.Error("failed to parse JSON clientLogin request", "error", err)
-			SendError(w, http.StatusBadRequest, "invalid JSON format")
+			SendError(w, r, http.StatusBadRequest, "invalid JSON format")
 			return
 		}
 		username = req.Username
@@ -69,7 +71,7 @@ func (h *AuthHandler) ClientLogin(w http.ResponseWriter, r *http.Request) {
 		// Parse form-encoded or URL parameters
 		if err := r.ParseForm(); err != nil {
 			h.Logger.Error("failed to parse form data", "error", err)
-			SendError(w, http.StatusBadRequest, "invalid form data")
+			SendError(w, r, http.StatusBadRequest, "invalid form data")
 			return
 		}
 
@@ -93,7 +95,7 @@ func (h *AuthHandler) ClientLogin(w http.ResponseWriter, r *http.Request) {
 
 	// Validate required fields
 	if username == "" || password == "" {
-		SendError(w, http.StatusBadRequest, "username and password required")
+		SendError(w, r, http.StatusBadRequest, "username and password required")
 		return
 	}
 
@@ -116,7 +118,7 @@ func (h *AuthHandler) ClientLogin(w http.ResponseWriter, r *http.Request) {
 				h.Logger.Error("failed to create user",
 					"username", username,
 					"error", err)
-				SendError(w, http.StatusInternalServerError, "failed to create user")
+				SendError(w, r, http.StatusInternalServerError, "failed to create user")
 				return
 			}
 
@@ -126,14 +128,14 @@ func (h *AuthHandler) ClientLogin(w http.ResponseWriter, r *http.Request) {
 				h.Logger.Error("failed to authenticate after creating user",
 					"username", username,
 					"error", err)
-				SendError(w, http.StatusInternalServerError, "internal server error")
+				SendError(w, r, http.StatusInternalServerError, "internal server error")
 				return
 			}
 		} else {
 			h.Logger.Warn("authentication failed",
 				"username", username,
 				"error", err)
-			SendError(w, http.StatusUnauthorized, "authentication failed")
+			SendError(w, r, http.StatusUnauthorized, "authentication failed")
 			return
 		}
 	}
@@ -142,7 +144,7 @@ func (h *AuthHandler) ClientLogin(w http.ResponseWriter, r *http.Request) {
 	token, err := h.generateToken()
 	if err != nil {
 		h.Logger.Error("failed to generate token", "error", err)
-		SendError(w, http.StatusInternalServerError, "internal server error")
+		SendError(w, r, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
@@ -150,7 +152,7 @@ func (h *AuthHandler) ClientLogin(w http.ResponseWriter, r *http.Request) {
 	expiresAt := time.Now().Add(24 * time.Hour)
 	if err := h.TokenStore.StoreToken(r.Context(), token, user.IdentScreenName, expiresAt); err != nil {
 		h.Logger.Error("failed to store token", "error", err)
-		SendError(w, http.StatusInternalServerError, "internal server error")
+		SendError(w, r, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
@@ -158,7 +160,7 @@ func (h *AuthHandler) ClientLogin(w http.ResponseWriter, r *http.Request) {
 	sessionSecret, err := h.generateToken()
 	if err != nil {
 		h.Logger.Error("failed to generate session secret", "error", err)
-		SendError(w, http.StatusInternalServerError, "internal server error")
+		SendError(w, r, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
@@ -189,6 +191,108 @@ func (h *AuthHandler) ClientLogin(w http.ResponseWriter, r *http.Request) {
 // generateToken generates a secure random token.
 func (h *AuthHandler) generateToken() (string, error) {
 	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.URLEncoding.EncodeToString(b), nil
+}
+
+// GetChallengeRequest represents the request body for getChallenge.
+type GetChallengeRequest struct {
+	ScreenName string `json:"s"`
+	DevID      string `json:"devId"`
+}
+
+// GetChallenge handles POST /auth/getChallenge requests.
+// The client computes md5(challengeword + password + realm) and submits the hash as `pwd` to
+// /auth/clientLogin. The challengeword we return is the user's AuthKey, so
+// the hash matches the user's stored password
+func (h *AuthHandler) GetChallenge(w http.ResponseWriter, r *http.Request) {
+	var screenName, devID string
+
+	contentType := r.Header.Get("Content-Type")
+
+	if contentType == "application/json" {
+		var req GetChallengeRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			h.Logger.Error("failed to parse JSON getChallenge request", "error", err)
+			SendError(w, r, http.StatusBadRequest, "invalid JSON format")
+			return
+		}
+		screenName = req.ScreenName
+		devID = req.DevID
+	} else {
+		if err := r.ParseForm(); err != nil {
+			h.Logger.Error("failed to parse form data", "error", err)
+			SendError(w, r, http.StatusBadRequest, "invalid form data")
+			return
+		}
+
+		screenName = r.FormValue("s")
+		if screenName == "" {
+			screenName = r.FormValue("username")
+		}
+		devID = r.FormValue("devId")
+	}
+
+	if screenName == "" {
+		SendError(w, r, http.StatusBadRequest, "screen name required")
+		return
+	}
+
+	var challengeWord string
+
+	user, err := h.UserManager.FindUserByScreenName(r.Context(), state.NewIdentScreenName(screenName))
+	if err != nil && err.Error() != "user not found" {
+		h.Logger.Error("getChallenge: user lookup failed",
+			"screenName", screenName,
+			"error", err)
+		SendError(w, r, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	switch {
+	case user != nil:
+		challengeWord = user.AuthKey
+	case h.DisableAuth:
+		challengeWord = uuid.New().String()
+		h.Logger.Debug("getChallenge: user not found, auth disabled, generating stub challenge",
+			"screenName", screenName)
+	default:
+		h.Logger.Warn("getChallenge: user not found",
+			"screenName", screenName)
+		SendError(w, r, http.StatusUnauthorized, "authentication failed")
+		return
+	}
+
+	tid, err := generateTID()
+	if err != nil {
+		h.Logger.Error("failed to generate tid", "error", err)
+		SendError(w, r, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	resp := BaseResponse{}
+	resp.Response.StatusCode = 200
+	resp.Response.StatusText = "OK"
+	resp.Response.Data = map[string]interface{}{
+		"tid":           tid,
+		"normalize":     false,
+		"truncate":      false,
+		"realm":         "AOL Instant Messenger (SM)",
+		"challengeWord": challengeWord,
+	}
+
+	SendResponse(w, r, resp, h.Logger)
+
+	h.Logger.Info("getChallenge issued",
+		"screenName", screenName,
+		"devId", devID)
+}
+
+// generateTID generates a short transaction id
+func generateTID() (string, error) {
+	b := make([]byte, 12)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}

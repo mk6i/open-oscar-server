@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -149,7 +150,7 @@ func (m *AuthMiddleware) Authenticate(next http.Handler) http.Handler {
 		}
 
 		if apiKey == "" {
-			m.sendErrorResponse(w, http.StatusBadRequest, "required parameter 'k' is missing")
+			m.sendErrorResponse(w, r, http.StatusBadRequest, "required parameter 'k' is missing")
 			return
 		}
 
@@ -159,18 +160,18 @@ func (m *AuthMiddleware) Authenticate(next http.Handler) http.Handler {
 		if err != nil {
 			if err == state.ErrNoAPIKey {
 				m.Logger.DebugContext(ctx, "invalid API key attempted", "key", apiKey[:min(8, len(apiKey))]+"...")
-				m.sendErrorResponse(w, http.StatusForbidden, "invalid API key")
+				m.sendErrorResponse(w, r, http.StatusForbidden, "invalid API key")
 				return
 			}
 			m.Logger.ErrorContext(ctx, "error validating API key", "err", err.Error())
-			m.sendErrorResponse(w, http.StatusInternalServerError, "internal server error")
+			m.sendErrorResponse(w, r, http.StatusInternalServerError, "internal server error")
 			return
 		}
 
 		// Check if key is active
 		if !key.IsActive {
 			m.Logger.DebugContext(ctx, "inactive API key used", "dev_id", key.DevID)
-			m.sendErrorResponse(w, http.StatusForbidden, "API key is inactive")
+			m.sendErrorResponse(w, r, http.StatusForbidden, "API key is inactive")
 			return
 		}
 
@@ -190,7 +191,7 @@ func (m *AuthMiddleware) Authenticate(next http.Handler) http.Handler {
 				retryAfter = 1
 			}
 			w.Header().Set("Retry-After", fmt.Sprintf("%d", retryAfter))
-			m.sendErrorResponse(w, http.StatusTooManyRequests, "rate limit exceeded")
+			m.sendErrorResponse(w, r, http.StatusTooManyRequests, "rate limit exceeded")
 			return
 		}
 
@@ -299,7 +300,7 @@ func (m *AuthMiddleware) CapabilitiesMiddleware(requiredCapability string) func(
 					"required", requiredCapability,
 					"available", key.Capabilities,
 				)
-				m.sendErrorResponse(w, http.StatusForbidden, fmt.Sprintf("missing required capability: %s", requiredCapability))
+				m.sendErrorResponse(w, r, http.StatusForbidden, fmt.Sprintf("missing required capability: %s", requiredCapability))
 				return
 			}
 
@@ -342,18 +343,49 @@ func (m *AuthMiddleware) isOriginAllowed(origin string, allowedOrigins []string)
 	return false
 }
 
-// sendErrorResponse sends a JSON error response.
-func (m *AuthMiddleware) sendErrorResponse(w http.ResponseWriter, statusCode int, message string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
+// errorEnvelope is the response shape used by both JSON and XML error responses.
+type errorEnvelope struct {
+	XMLName  xml.Name `xml:"response" json:"-"`
+	Response struct {
+		StatusCode int    `json:"statusCode" xml:"statusCode"`
+		StatusText string `json:"statusText" xml:"statusText"`
+	} `json:"response"`
+	// Flattened for XML marshaling.
+	StatusCode int    `json:"-" xml:"statusCode"`
+	StatusText string `json:"-" xml:"statusText"`
+}
 
-	response := map[string]interface{}{
-		"error": message,
-		"code":  statusCode,
+// sendErrorResponse writes an error response in the format the client requested
+func (m *AuthMiddleware) sendErrorResponse(w http.ResponseWriter, r *http.Request, statusCode int, message string) {
+	format := strings.ToLower(r.URL.Query().Get("f"))
+	if format == "" && r.Method == "POST" {
+		_ = r.ParseForm()
+		format = strings.ToLower(r.FormValue("f"))
 	}
 
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		m.Logger.Error("failed to encode error response", "err", err.Error())
+	env := errorEnvelope{}
+	env.Response.StatusCode = statusCode
+	env.Response.StatusText = message
+	env.StatusCode = statusCode
+	env.StatusText = message
+
+	if format == "xml" {
+		w.Header().Set("Content-Type", "text/xml; charset=utf-8")
+		w.WriteHeader(statusCode)
+		body, err := xml.Marshal(env)
+		if err != nil {
+			m.Logger.Error("failed to marshal XML error response", "err", err.Error())
+			return
+		}
+		_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?>`))
+		_, _ = w.Write(body)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	if err := json.NewEncoder(w).Encode(env); err != nil {
+		m.Logger.Error("failed to encode JSON error response", "err", err.Error())
 	}
 }
 
@@ -424,7 +456,7 @@ func (m *AuthMiddleware) AuthenticateFlexible(next http.Handler) http.Handler {
 		}
 
 		if apiKey == "" {
-			m.sendErrorResponse(w, http.StatusBadRequest, "authentication required: provide aimsid or k parameter")
+			m.sendErrorResponse(w, r, http.StatusBadRequest, "authentication required: provide aimsid or k parameter")
 			return
 		}
 
@@ -433,18 +465,18 @@ func (m *AuthMiddleware) AuthenticateFlexible(next http.Handler) http.Handler {
 		if err != nil {
 			if err == state.ErrNoAPIKey {
 				m.Logger.DebugContext(ctx, "invalid API key attempted", "key", apiKey[:min(8, len(apiKey))]+"...")
-				m.sendErrorResponse(w, http.StatusForbidden, "invalid API key")
+				m.sendErrorResponse(w, r, http.StatusForbidden, "invalid API key")
 				return
 			}
 			m.Logger.ErrorContext(ctx, "error validating API key", "err", err.Error())
-			m.sendErrorResponse(w, http.StatusInternalServerError, "internal server error")
+			m.sendErrorResponse(w, r, http.StatusInternalServerError, "internal server error")
 			return
 		}
 
 		// Check if key is active
 		if !key.IsActive {
 			m.Logger.DebugContext(ctx, "inactive API key used", "dev_id", key.DevID)
-			m.sendErrorResponse(w, http.StatusForbidden, "API key is inactive")
+			m.sendErrorResponse(w, r, http.StatusForbidden, "API key is inactive")
 			return
 		}
 
@@ -464,7 +496,7 @@ func (m *AuthMiddleware) AuthenticateFlexible(next http.Handler) http.Handler {
 				retryAfter = 1
 			}
 			w.Header().Set("Retry-After", fmt.Sprintf("%d", retryAfter))
-			m.sendErrorResponse(w, http.StatusTooManyRequests, "rate limit exceeded")
+			m.sendErrorResponse(w, r, http.StatusTooManyRequests, "rate limit exceeded")
 			return
 		}
 

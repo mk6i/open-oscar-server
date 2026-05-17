@@ -27,13 +27,13 @@ func (h *ChatHandler) CreateAndJoinChat(w http.ResponseWriter, r *http.Request) 
 	session, err := h.SessionManager.GetSession(r.Context(), aimsid)
 	if err != nil {
 		h.Logger.Error("invalid session", "aimsid", aimsid, "error", err)
-		SendError(w, http.StatusUnauthorized, "Authentication Required")
+		SendError(w, r, http.StatusUnauthorized, "Authentication Required")
 		return
 	}
 
 	// Validate parameters - exactly one of roomId or roomName must be provided
 	if (roomID == "" && roomName == "") || (roomID != "" && roomName != "") {
-		SendError(w, http.StatusBadRequest, "Exactly one of roomId or roomName must be provided")
+		SendError(w, r, http.StatusBadRequest, "Exactly one of roomId or roomName must be provided")
 		return
 	}
 
@@ -53,7 +53,7 @@ func (h *ChatHandler) CreateAndJoinChat(w http.ResponseWriter, r *http.Request) 
 			message = err.Error()
 		}
 
-		SendError(w, statusCode, message)
+		SendError(w, r, statusCode, message)
 		return
 	}
 
@@ -105,18 +105,18 @@ func (h *ChatHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	_, err := h.SessionManager.GetSession(r.Context(), aimsid)
 	if err != nil {
 		h.Logger.Error("invalid session", "aimsid", aimsid, "error", err)
-		SendError(w, http.StatusUnauthorized, "Authentication Required")
+		SendError(w, r, http.StatusUnauthorized, "Authentication Required")
 		return
 	}
 
 	// Validate required parameters
 	if chatsid == "" {
-		SendError(w, http.StatusBadRequest, "chatsid is required")
+		SendError(w, r, http.StatusBadRequest, "chatsid is required")
 		return
 	}
 
 	if message == "" {
-		SendError(w, http.StatusBadRequest, "message is required")
+		SendError(w, r, http.StatusBadRequest, "message is required")
 		return
 	}
 
@@ -133,7 +133,7 @@ func (h *ChatHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 			message = "Chat session not found"
 		}
 
-		SendError(w, statusCode, message)
+		SendError(w, r, statusCode, message)
 		return
 	}
 
@@ -168,18 +168,18 @@ func (h *ChatHandler) SetTyping(w http.ResponseWriter, r *http.Request) {
 	_, err := h.SessionManager.GetSession(r.Context(), aimsid)
 	if err != nil {
 		h.Logger.Error("invalid session", "aimsid", aimsid, "error", err)
-		SendError(w, http.StatusUnauthorized, "Authentication Required")
+		SendError(w, r, http.StatusUnauthorized, "Authentication Required")
 		return
 	}
 
 	// Validate required parameters
 	if chatsid == "" {
-		SendError(w, http.StatusBadRequest, "chatsid is required")
+		SendError(w, r, http.StatusBadRequest, "chatsid is required")
 		return
 	}
 
 	if typingStatus == "" {
-		SendError(w, http.StatusBadRequest, "typingStatus is required")
+		SendError(w, r, http.StatusBadRequest, "typingStatus is required")
 		return
 	}
 
@@ -190,7 +190,7 @@ func (h *ChatHandler) SetTyping(w http.ResponseWriter, r *http.Request) {
 		"typed":  true,
 	}
 	if !validStatuses[typingStatus] {
-		SendError(w, http.StatusBadRequest, "Invalid typingStatus value")
+		SendError(w, r, http.StatusBadRequest, "Invalid typingStatus value")
 		return
 	}
 
@@ -207,7 +207,7 @@ func (h *ChatHandler) SetTyping(w http.ResponseWriter, r *http.Request) {
 			errMessage = "Chat session not found"
 		}
 
-		SendError(w, statusCode, errMessage)
+		SendError(w, r, statusCode, errMessage)
 		return
 	}
 
@@ -237,13 +237,13 @@ func (h *ChatHandler) LeaveChat(w http.ResponseWriter, r *http.Request) {
 	session, err := h.SessionManager.GetSession(r.Context(), aimsid)
 	if err != nil {
 		h.Logger.Error("invalid session", "aimsid", aimsid, "error", err)
-		SendError(w, http.StatusUnauthorized, "Authentication Required")
+		SendError(w, r, http.StatusUnauthorized, "Authentication Required")
 		return
 	}
 
 	// Validate required parameters
 	if chatsid == "" {
-		SendError(w, http.StatusBadRequest, "chatsid is required")
+		SendError(w, r, http.StatusBadRequest, "chatsid is required")
 		return
 	}
 
@@ -260,7 +260,7 @@ func (h *ChatHandler) LeaveChat(w http.ResponseWriter, r *http.Request) {
 			message = "Chat session not found"
 		}
 
-		SendError(w, statusCode, message)
+		SendError(w, r, statusCode, message)
 		return
 	}
 

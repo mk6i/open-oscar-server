@@ -61,6 +61,7 @@ type ErrorResponse struct {
 // XMLMapResponse is a helper struct for converting map-based responses to XML
 type XMLMapResponse struct {
 	XMLName    xml.Name `xml:"response"`
+	XMLNS      string   `xml:"xmlns,attr"`
 	StatusCode int      `xml:"statusCode"`
 	StatusText string   `xml:"statusText"`
 	Data       XMLData  `xml:"data,omitempty"`
@@ -75,6 +76,13 @@ type XMLData struct {
 	SessionSecret  string    `xml:"sessionSecret,omitempty"`
 	HostTime       int64     `xml:"hostTime,omitempty"`
 	TokenExpiresIn int       `xml:"tokenExpiresIn,omitempty"`
+
+	// Challenge response fields
+	TID           string `xml:"tid,omitempty"`
+	Normalize     *bool  `xml:"normalize,omitempty"`
+	Truncate      *bool  `xml:"truncate,omitempty"`
+	Realm         string `xml:"realm,omitempty"`
+	ChallengeWord string `xml:"challengeWord,omitempty"`
 
 	// Generic fields for other responses
 	AimSID   string `xml:"aimsid,omitempty"`
@@ -92,21 +100,25 @@ type XMLToken struct {
 	ExpiresIn int    `xml:"expiresIn"`
 }
 
-// SendResponse sends a response in the requested format (JSON, JSONP, XML, or AMF).
-// This is the centralized function that all handlers should use for responses.
-func SendResponse(w http.ResponseWriter, r *http.Request, data interface{}, logger *slog.Logger) {
-	// Check for format parameter (f for format or callback for JSONP)
-	// First check URL query parameters
+// DetectFormat returns the response format requested by the client.
+// Returns JSON by default.
+func DetectFormat(r *http.Request) string {
 	format := strings.ToLower(r.URL.Query().Get("f"))
-	callback := r.URL.Query().Get("callback")
-
-	// If format not in URL query, check form values (for POST requests)
 	if format == "" && r.Method == "POST" {
 		_ = r.ParseForm()
 		format = strings.ToLower(r.FormValue("f"))
-		if callback == "" {
-			callback = r.FormValue("callback")
-		}
+	}
+	return format
+}
+
+// SendResponse sends a response in the requested format (JSON, JSONP, XML, or AMF).
+// This is the centralized function that all handlers should use for responses.
+func SendResponse(w http.ResponseWriter, r *http.Request, data interface{}, logger *slog.Logger) {
+	format := DetectFormat(r)
+	callback := r.URL.Query().Get("callback")
+	if callback == "" && r.Method == "POST" {
+		_ = r.ParseForm()
+		callback = r.FormValue("callback")
 	}
 
 	// Check for AMF format first
@@ -139,16 +151,15 @@ func SendResponse(w http.ResponseWriter, r *http.Request, data interface{}, logg
 	SendJSON(w, data, logger)
 }
 
-// SendError sends an error response in the appropriate format.
-func SendError(w http.ResponseWriter, statusCode int, message string) {
-	// Try to detect format from Content-Type header if already set
-	contentType := w.Header().Get("Content-Type")
-
-	if strings.Contains(contentType, "amf") {
-		SendAMFError(w, nil, statusCode, message, nil)
-	} else if strings.Contains(contentType, "xml") {
+// SendError sends an error response in the format requested by the client
+// Falls back to JSON if no format requested.
+func SendError(w http.ResponseWriter, r *http.Request, statusCode int, message string) {
+	switch DetectFormat(r) {
+	case "amf", "amf3":
+		SendAMFError(w, r, statusCode, message, nil)
+	case "xml":
 		SendXMLError(w, statusCode, message)
-	} else {
+	default:
 		SendJSONError(w, statusCode, message)
 	}
 }
@@ -201,7 +212,9 @@ func SendXML(w http.ResponseWriter, data interface{}, logger *slog.Logger) {
 
 	// Convert BaseResponse with map data to a format XML can handle
 	if baseResp, ok := data.(BaseResponse); ok {
-		data = convertBaseResponseForXML(baseResp)
+		xmlResp := convertBaseResponseForXML(baseResp)
+		xmlResp.XMLNS = "https://api.login.aol.com"
+		data = xmlResp
 	}
 
 	// Marshal the data
@@ -348,6 +361,23 @@ func convertBaseResponseForXML(resp BaseResponse) XMLMapResponse {
 		}
 		if tokenExpiresIn, ok := dataMap["tokenExpiresIn"].(int); ok {
 			xmlData.TokenExpiresIn = tokenExpiresIn
+		}
+
+		// Handle challenge response fields
+		if tid, ok := dataMap["tid"].(string); ok {
+			xmlData.TID = tid
+		}
+		if normalize, ok := dataMap["normalize"].(bool); ok {
+			xmlData.Normalize = &normalize
+		}
+		if truncate, ok := dataMap["truncate"].(bool); ok {
+			xmlData.Truncate = &truncate
+		}
+		if realm, ok := dataMap["realm"].(string); ok {
+			xmlData.Realm = realm
+		}
+		if challengeWord, ok := dataMap["challengeWord"].(string); ok {
+			xmlData.ChallengeWord = challengeWord
 		}
 
 		// Handle session response fields
