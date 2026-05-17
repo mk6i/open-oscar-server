@@ -2816,6 +2816,10 @@ func TestHandler_ICBMParameterQuery(t *testing.T) {
 }
 
 func TestHandler_ICQDBQuery(t *testing.T) {
+	frame := wire.SNACFrame{
+		FoodGroup: wire.ICQ,
+		SubGroup:  wire.ICQDBQuery,
+	}
 	type ICQMetaRequest struct {
 		wire.ICQMetadata
 		ReqSubType  uint16
@@ -2823,11 +2827,13 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 	}
 	type reqParams struct {
 		instance *state.SessionInstance
+		inFrame  wire.SNACFrame
 		inBody   wire.SNAC_0x15_0x02_BQuery
 		seq      uint16
 		wantErr  error
 	}
 	type mockParam struct {
+		frame   any
 		req     any
 		wantErr error
 	}
@@ -3084,6 +3090,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 			name: "MetaReqSearchByUIN2 - happy path",
 			reqParams: reqParams{
 				instance: state.NewSession().AddInstance(),
+				inFrame:  frame,
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3110,6 +3117,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 			},
 			allMockParams: allMockParams{
 				findByUIN2: &mockParam{
+					frame: frame,
 					req: wire.ICQ_0x07D0_0x0569_DBQueryMetaReqSearchByUIN2{
 						TLVRestBlock: wire.TLVRestBlock{
 							TLVList: wire.TLVList{
@@ -3156,6 +3164,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 			name: "MetaReqSearchByEmail3 - happy path",
 			reqParams: reqParams{
 				instance: state.NewSession().AddInstance(),
+				inFrame:  frame,
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3182,6 +3191,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 			},
 			allMockParams: allMockParams{
 				findByEmail3: &mockParam{
+					frame: frame,
 					req: wire.ICQ_0x07D0_0x0573_DBQueryMetaReqSearchByEmail3{
 						TLVRestBlock: wire.TLVRestBlock{
 							TLVList: wire.TLVList{
@@ -3260,6 +3270,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 			name: "MetaReqSearchWhitePages2 - happy path",
 			reqParams: reqParams{
 				instance: state.NewSession().AddInstance(),
+				inFrame:  frame,
 				inBody: wire.SNAC_0x15_0x02_BQuery{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
@@ -3286,6 +3297,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 			},
 			allMockParams: allMockParams{
 				findByWhitePages2: &mockParam{
+					frame: frame,
 					req: wire.ICQ_0x07D0_0x055F_DBQueryMetaReqSearchWhitePages2{
 						TLVRestBlock: wire.TLVRestBlock{
 							TLVList: wire.TLVList{
@@ -3749,87 +3761,87 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 			switch {
 			case tt.allMockParams.fullUserInfo != nil:
 				icqService.EXPECT().
-					FullUserInfo(mock.Anything, tt.reqParams.instance, tt.allMockParams.fullUserInfo.req, tt.reqParams.seq).
+					FullUserInfo(mock.Anything, tt.reqParams.instance, frame, tt.allMockParams.fullUserInfo.req, tt.reqParams.seq).
 					Return(tt.allMockParams.fullUserInfo.wantErr)
 			case tt.allMockParams.shortUserInfo != nil:
 				icqService.EXPECT().
-					ShortUserInfo(mock.Anything, tt.reqParams.instance, tt.allMockParams.shortUserInfo.req, tt.reqParams.seq).
+					ShortUserInfo(mock.Anything, tt.reqParams.instance, frame, tt.allMockParams.shortUserInfo.req, tt.reqParams.seq).
 					Return(tt.allMockParams.shortUserInfo.wantErr)
 			case tt.allMockParams.xmlReqData != nil:
 				icqService.EXPECT().
-					XMLReqData(mock.Anything, tt.reqParams.instance, tt.allMockParams.xmlReqData.req, tt.reqParams.seq).
+					XMLReqData(mock.Anything, tt.reqParams.instance, frame, tt.allMockParams.xmlReqData.req, tt.reqParams.seq).
 					Return(tt.allMockParams.xmlReqData.wantErr)
 			case tt.allMockParams.setPermissions != nil:
 				icqService.EXPECT().
-					SetPermissions(mock.Anything, tt.reqParams.instance, tt.allMockParams.setPermissions.req, tt.reqParams.seq).
+					SetPermissions(mock.Anything, tt.reqParams.instance, frame, tt.allMockParams.setPermissions.req, tt.reqParams.seq).
 					Return(tt.allMockParams.setPermissions.wantErr)
 			case tt.allMockParams.setICQPhone != nil:
 				icqService.EXPECT().
-					SetICQPhone(mock.Anything, tt.reqParams.instance, tt.allMockParams.setICQPhone.req, tt.reqParams.seq).
+					SetICQPhone(mock.Anything, tt.reqParams.instance, frame, tt.allMockParams.setICQPhone.req, tt.reqParams.seq).
 					Return(tt.allMockParams.setICQPhone.wantErr)
 			case tt.allMockParams.findByUIN != nil:
 				icqService.EXPECT().
-					FindByUIN(mock.Anything, tt.reqParams.instance, tt.allMockParams.findByUIN.req, tt.reqParams.seq).
+					FindByUIN(mock.Anything, tt.reqParams.instance, frame, tt.allMockParams.findByUIN.req, tt.reqParams.seq).
 					Return(tt.allMockParams.findByUIN.wantErr)
 			case tt.allMockParams.findByUIN2 != nil:
 				icqService.EXPECT().
-					FindByUIN2(mock.Anything, tt.reqParams.instance, tt.allMockParams.findByUIN2.req, tt.reqParams.seq).
+					FindByUIN2(mock.Anything, tt.reqParams.instance, tt.allMockParams.findByUIN2.frame, tt.allMockParams.findByUIN2.req, tt.reqParams.seq).
 					Return(tt.allMockParams.findByUIN2.wantErr)
 			case tt.allMockParams.findByEmail != nil:
 				icqService.EXPECT().
-					FindByICQEmail(mock.Anything, tt.reqParams.instance, tt.allMockParams.findByEmail.req, tt.reqParams.seq).
+					FindByICQEmail(mock.Anything, tt.reqParams.instance, frame, tt.allMockParams.findByEmail.req, tt.reqParams.seq).
 					Return(tt.allMockParams.findByEmail.wantErr)
 			case tt.allMockParams.findByEmail3 != nil:
 				icqService.EXPECT().
-					FindByEmail3(mock.Anything, tt.reqParams.instance, tt.allMockParams.findByEmail3.req, tt.reqParams.seq).
+					FindByEmail3(mock.Anything, tt.reqParams.instance, tt.allMockParams.findByEmail3.frame, tt.allMockParams.findByEmail3.req, tt.reqParams.seq).
 					Return(tt.allMockParams.findByEmail3.wantErr)
 			case tt.allMockParams.findByDetails != nil:
 				icqService.EXPECT().
-					FindByICQName(mock.Anything, tt.reqParams.instance, tt.allMockParams.findByDetails.req, tt.reqParams.seq).
+					FindByICQName(mock.Anything, tt.reqParams.instance, frame, tt.allMockParams.findByDetails.req, tt.reqParams.seq).
 					Return(tt.allMockParams.findByDetails.wantErr)
 			case tt.allMockParams.findByInterests != nil:
 				icqService.EXPECT().
-					FindByICQInterests(mock.Anything, tt.reqParams.instance, tt.allMockParams.findByInterests.req, tt.reqParams.seq).
+					FindByICQInterests(mock.Anything, tt.reqParams.instance, frame, tt.allMockParams.findByInterests.req, tt.reqParams.seq).
 					Return(tt.allMockParams.findByInterests.wantErr)
 			case tt.allMockParams.findByWhitePages2 != nil:
 				icqService.EXPECT().
-					FindByWhitePages2(mock.Anything, tt.reqParams.instance, tt.allMockParams.findByWhitePages2.req, tt.reqParams.seq).
+					FindByWhitePages2(mock.Anything, tt.reqParams.instance, tt.allMockParams.findByWhitePages2.frame, tt.allMockParams.findByWhitePages2.req, tt.reqParams.seq).
 					Return(tt.allMockParams.findByWhitePages2.wantErr)
 			case tt.allMockParams.setBasicInfo != nil:
 				icqService.EXPECT().
-					SetBasicInfo(mock.Anything, tt.reqParams.instance, tt.allMockParams.setBasicInfo.req, tt.reqParams.seq).
+					SetBasicInfo(mock.Anything, tt.reqParams.instance, frame, tt.allMockParams.setBasicInfo.req, tt.reqParams.seq).
 					Return(tt.allMockParams.setBasicInfo.wantErr)
 			case tt.allMockParams.setWorkInfo != nil:
 				icqService.EXPECT().
-					SetWorkInfo(mock.Anything, tt.reqParams.instance, tt.allMockParams.setWorkInfo.req, tt.reqParams.seq).
+					SetWorkInfo(mock.Anything, tt.reqParams.instance, frame, tt.allMockParams.setWorkInfo.req, tt.reqParams.seq).
 					Return(tt.allMockParams.setWorkInfo.wantErr)
 			case tt.allMockParams.setMoreInfo != nil:
 				icqService.EXPECT().
-					SetMoreInfo(mock.Anything, tt.reqParams.instance, tt.allMockParams.setMoreInfo.req, tt.reqParams.seq).
+					SetMoreInfo(mock.Anything, tt.reqParams.instance, frame, tt.allMockParams.setMoreInfo.req, tt.reqParams.seq).
 					Return(tt.allMockParams.setMoreInfo.wantErr)
 			case tt.allMockParams.setUserNotes != nil:
 				icqService.EXPECT().
-					SetUserNotes(mock.Anything, tt.reqParams.instance, tt.allMockParams.setUserNotes.req, tt.reqParams.seq).
+					SetUserNotes(mock.Anything, tt.reqParams.instance, frame, tt.allMockParams.setUserNotes.req, tt.reqParams.seq).
 					Return(tt.allMockParams.setUserNotes.wantErr)
 			case tt.allMockParams.setEmails != nil:
 				icqService.EXPECT().
-					SetEmails(mock.Anything, tt.reqParams.instance, tt.allMockParams.setEmails.req, tt.reqParams.seq).
+					SetEmails(mock.Anything, tt.reqParams.instance, frame, tt.allMockParams.setEmails.req, tt.reqParams.seq).
 					Return(tt.allMockParams.setEmails.wantErr)
 			case tt.allMockParams.setInterests != nil:
 				icqService.EXPECT().
-					SetInterests(mock.Anything, tt.reqParams.instance, tt.allMockParams.setInterests.req, tt.reqParams.seq).
+					SetInterests(mock.Anything, tt.reqParams.instance, frame, tt.allMockParams.setInterests.req, tt.reqParams.seq).
 					Return(tt.allMockParams.setInterests.wantErr)
 			case tt.allMockParams.setAffiliations != nil:
 				icqService.EXPECT().
-					SetAffiliations(mock.Anything, tt.reqParams.instance, tt.allMockParams.setAffiliations.req, tt.reqParams.seq).
+					SetAffiliations(mock.Anything, tt.reqParams.instance, frame, tt.allMockParams.setAffiliations.req, tt.reqParams.seq).
 					Return(tt.allMockParams.setAffiliations.wantErr)
 			case tt.allMockParams.setFullInfo != nil:
 				icqService.EXPECT().
-					SetICQInfo(mock.Anything, tt.reqParams.instance, tt.allMockParams.setFullInfo.req, tt.reqParams.seq).
+					SetICQInfo(mock.Anything, tt.reqParams.instance, frame, tt.allMockParams.setFullInfo.req, tt.reqParams.seq).
 					Return(tt.allMockParams.setFullInfo.wantErr)
 			case tt.allMockParams.offlineMsgReq != nil:
 				icqService.EXPECT().
-					OfflineMsgReq(mock.Anything, tt.reqParams.instance, tt.reqParams.seq).
+					OfflineMsgReq(mock.Anything, frame, tt.reqParams.instance, tt.reqParams.seq).
 					Return(tt.allMockParams.offlineMsgReq.wantErr)
 			case tt.allMockParams.deleteMsgReq != nil:
 				icqService.EXPECT().
@@ -3847,10 +3859,6 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 			buf := &bytes.Buffer{}
 			assert.NoError(t, wire.MarshalBE(tt.reqParams.inBody, buf))
 
-			frame := wire.SNACFrame{
-				FoodGroup: wire.ICQ,
-				SubGroup:  wire.ICQDBQuery,
-			}
 			err := h.Handle(context.TODO(), wire.BOS, tt.reqParams.instance, frame, buf, nil, config.Listener{})
 			assert.ErrorIs(t, err, tt.reqParams.wantErr)
 		})
@@ -3877,7 +3885,7 @@ func TestHandler_ICQDBQuery_QIP2005UINSearchBug(t *testing.T) {
 
 	instance := state.NewSession().AddInstance()
 	icqService.EXPECT().
-		FindByUIN2(mock.Anything, instance, expect, uint16(1)).
+		FindByUIN2(mock.Anything, instance, wire.SNACFrame{}, expect, uint16(1)).
 		Return(nil)
 
 	h := Handler{

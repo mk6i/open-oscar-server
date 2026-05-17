@@ -136,12 +136,14 @@ func TestICQService_FindByICQName(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
+									Flags:     wire.SNACFlagsMoreToCome,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
 										TLVList: wire.TLVList{
 											wire.NewTLVBE(wire.ICQTLVTagsMetadata, wire.ICQMessageReplyEnvelope{
-												Message: wire.ICQ_0x07DA_0x01AE_DBQueryMetaReplyLastUserFound{
+												Message: wire.ICQ_0x07DA_0x01A4_DBQueryMetaReplyUserFound{
 													ICQMetadata: wire.ICQMetadata{
 														UIN:     11111111,
 														ReqType: wire.ICQDBQueryMetaReply,
@@ -173,6 +175,7 @@ func TestICQService_FindByICQName(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -196,11 +199,6 @@ func TestICQService_FindByICQName(t *testing.T) {
 														OnlineStatus:  1,
 														Gender:        1,
 														Age:           21,
-													},
-													LastMessageFooter: &struct {
-														FoundUsersLeft uint32
-													}{
-														FoundUsersLeft: 0,
 													},
 												},
 											}),
@@ -254,7 +252,7 @@ func TestICQService_FindByICQName(t *testing.T) {
 				timeNow:          tt.timeNow,
 				userFinder:       userFinder,
 			}
-			err := s.FindByICQName(context.Background(), tt.instance, tt.req, tt.seq)
+			err := s.FindByICQName(context.Background(), tt.instance, wire.SNACFrame{RequestID: 1234}, tt.req, tt.seq)
 			assert.NoError(t, err)
 		})
 	}
@@ -316,6 +314,7 @@ func TestICQService_FindByICQEmail(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -339,11 +338,6 @@ func TestICQService_FindByICQEmail(t *testing.T) {
 														OnlineStatus:  1,
 														Gender:        1,
 														Age:           21,
-													},
-													LastMessageFooter: &struct {
-														FoundUsersLeft uint32
-													}{
-														FoundUsersLeft: 0,
 													},
 												},
 											}),
@@ -393,7 +387,7 @@ func TestICQService_FindByICQEmail(t *testing.T) {
 				timeNow:          tt.timeNow,
 				userFinder:       userFinder,
 			}
-			err := s.FindByICQEmail(context.Background(), tt.instance, tt.req, tt.seq)
+			err := s.FindByICQEmail(context.Background(), tt.instance, wire.SNACFrame{RequestID: 1234}, tt.req, tt.seq)
 			assert.NoError(t, err)
 		})
 	}
@@ -461,6 +455,7 @@ func TestICQService_FindByEmail3(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -484,11 +479,6 @@ func TestICQService_FindByEmail3(t *testing.T) {
 														OnlineStatus:  1,
 														Gender:        1,
 														Age:           21,
-													},
-													LastMessageFooter: &struct {
-														FoundUsersLeft uint32
-													}{
-														FoundUsersLeft: 0,
 													},
 												},
 											}),
@@ -538,7 +528,7 @@ func TestICQService_FindByEmail3(t *testing.T) {
 				timeNow:          tt.timeNow,
 				userFinder:       userFinder,
 			}
-			err := s.FindByEmail3(context.Background(), tt.instance, tt.req, tt.seq)
+			err := s.FindByEmail3(context.Background(), tt.instance, wire.SNACFrame{RequestID: 1234}, tt.req, tt.seq)
 			assert.NoError(t, err)
 		})
 	}
@@ -600,6 +590,7 @@ func TestICQService_FindByUIN(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -623,11 +614,6 @@ func TestICQService_FindByUIN(t *testing.T) {
 														OnlineStatus:  1,
 														Gender:        1,
 														Age:           21,
-													},
-													LastMessageFooter: &struct {
-														FoundUsersLeft uint32
-													}{
-														FoundUsersLeft: 0,
 													},
 												},
 											}),
@@ -677,7 +663,7 @@ func TestICQService_FindByUIN(t *testing.T) {
 				timeNow:          tt.timeNow,
 				userFinder:       userFinder,
 			}
-			err := s.FindByUIN(context.Background(), tt.instance, tt.req, tt.seq)
+			err := s.FindByUIN(context.Background(), tt.instance, wire.SNACFrame{RequestID: 1234}, tt.req, tt.seq)
 			assert.NoError(t, err)
 		})
 	}
@@ -743,6 +729,7 @@ func TestICQService_FindByUIN2(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -766,11 +753,6 @@ func TestICQService_FindByUIN2(t *testing.T) {
 														OnlineStatus:  1,
 														Gender:        1,
 														Age:           21,
-													},
-													LastMessageFooter: &struct {
-														FoundUsersLeft uint32
-													}{
-														FoundUsersLeft: 0,
 													},
 												},
 											}),
@@ -820,7 +802,7 @@ func TestICQService_FindByUIN2(t *testing.T) {
 				timeNow:          tt.timeNow,
 				userFinder:       userFinder,
 			}
-			err := s.FindByUIN2(context.Background(), tt.instance, tt.req, tt.seq)
+			err := s.FindByUIN2(context.Background(), tt.instance, wire.SNACFrame{RequestID: 1234}, tt.req, tt.seq)
 			assert.NoError(t, err)
 		})
 	}
@@ -906,12 +888,14 @@ func TestICQService_FindByWhitePages(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
+									Flags:     wire.SNACFlagsMoreToCome,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
 										TLVList: wire.TLVList{
 											wire.NewTLVBE(wire.ICQTLVTagsMetadata, wire.ICQMessageReplyEnvelope{
-												Message: wire.ICQ_0x07DA_0x01AE_DBQueryMetaReplyLastUserFound{
+												Message: wire.ICQ_0x07DA_0x01A4_DBQueryMetaReplyUserFound{
 													ICQMetadata: wire.ICQMetadata{
 														UIN:     11111111,
 														ReqType: wire.ICQDBQueryMetaReply,
@@ -943,6 +927,7 @@ func TestICQService_FindByWhitePages(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -966,11 +951,6 @@ func TestICQService_FindByWhitePages(t *testing.T) {
 														OnlineStatus:  1,
 														Gender:        1,
 														Age:           21,
-													},
-													LastMessageFooter: &struct {
-														FoundUsersLeft uint32
-													}{
-														FoundUsersLeft: 0,
 													},
 												},
 											}),
@@ -1024,7 +1004,7 @@ func TestICQService_FindByWhitePages(t *testing.T) {
 				timeNow:          tt.timeNow,
 				userFinder:       userFinder,
 			}
-			err := s.FindByICQInterests(context.Background(), tt.instance, tt.req, tt.seq)
+			err := s.FindByICQInterests(context.Background(), tt.instance, wire.SNACFrame{RequestID: 1234}, tt.req, tt.seq)
 			assert.NoError(t, err)
 		})
 	}
@@ -1118,12 +1098,14 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
+									Flags:     wire.SNACFlagsMoreToCome,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
 										TLVList: wire.TLVList{
 											wire.NewTLVBE(wire.ICQTLVTagsMetadata, wire.ICQMessageReplyEnvelope{
-												Message: wire.ICQ_0x07DA_0x01AE_DBQueryMetaReplyLastUserFound{
+												Message: wire.ICQ_0x07DA_0x01A4_DBQueryMetaReplyUserFound{
 													ICQMetadata: wire.ICQMetadata{
 														UIN:     11111111,
 														ReqType: wire.ICQDBQueryMetaReply,
@@ -1155,6 +1137,7 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -1178,11 +1161,6 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 														OnlineStatus:  1,
 														Gender:        1,
 														Age:           21,
-													},
-													LastMessageFooter: &struct {
-														FoundUsersLeft uint32
-													}{
-														FoundUsersLeft: 0,
 													},
 												},
 											}),
@@ -1277,6 +1255,7 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -1300,11 +1279,6 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 														OnlineStatus:  0,
 														Gender:        2,
 														Age:           25,
-													},
-													LastMessageFooter: &struct {
-														FoundUsersLeft uint32
-													}{
-														FoundUsersLeft: 0,
 													},
 												},
 											}),
@@ -1467,6 +1441,7 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -1490,11 +1465,6 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 														OnlineStatus:  0,
 														Gender:        2,
 														Age:           25,
-													},
-													LastMessageFooter: &struct {
-														FoundUsersLeft uint32
-													}{
-														FoundUsersLeft: 0,
 													},
 												},
 											}),
@@ -1552,6 +1522,7 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -1606,6 +1577,7 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -1670,6 +1642,7 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -1776,6 +1749,7 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -1799,11 +1773,6 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 														OnlineStatus:  1,
 														Gender:        1,
 														Age:           21,
-													},
-													LastMessageFooter: &struct {
-														FoundUsersLeft uint32
-													}{
-														FoundUsersLeft: 0,
 													},
 												},
 											}),
@@ -1863,7 +1832,7 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 				timeNow:          tt.timeNow,
 				userFinder:       userFinder,
 			}
-			err := s.FindByWhitePages2(context.Background(), tt.instance, tt.req, tt.seq)
+			err := s.FindByWhitePages2(context.Background(), tt.instance, wire.SNACFrame{RequestID: 1234}, tt.req, tt.seq)
 			assert.NoError(t, err)
 		})
 	}
@@ -1980,6 +1949,8 @@ func TestICQService_FullUserInfo(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
+									Flags:     wire.SNACFlagsMoreToCome,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -2024,6 +1995,8 @@ func TestICQService_FullUserInfo(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
+									Flags:     wire.SNACFlagsMoreToCome,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -2063,6 +2036,8 @@ func TestICQService_FullUserInfo(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
+									Flags:     wire.SNACFlagsMoreToCome,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -2089,6 +2064,8 @@ func TestICQService_FullUserInfo(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
+									Flags:     wire.SNACFlagsMoreToCome,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -2115,6 +2092,8 @@ func TestICQService_FullUserInfo(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
+									Flags:     wire.SNACFlagsMoreToCome,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -2155,6 +2134,8 @@ func TestICQService_FullUserInfo(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
+									Flags:     wire.SNACFlagsMoreToCome,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -2184,6 +2165,8 @@ func TestICQService_FullUserInfo(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
+									Flags:     wire.SNACFlagsMoreToCome,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -2231,6 +2214,7 @@ func TestICQService_FullUserInfo(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -2319,7 +2303,7 @@ func TestICQService_FullUserInfo(t *testing.T) {
 				timeNow:        tt.timeNow,
 				userFinder:     userFinder,
 			}
-			err := s.FullUserInfo(context.Background(), tt.instance, tt.req, tt.seq)
+			err := s.FullUserInfo(context.Background(), tt.instance, wire.SNACFrame{RequestID: 1234}, tt.req, tt.seq)
 			assert.NoError(t, err)
 		})
 	}
@@ -2396,6 +2380,7 @@ func TestICQService_OfflineMsgReq(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -2428,6 +2413,7 @@ func TestICQService_OfflineMsgReq(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -2460,6 +2446,7 @@ func TestICQService_OfflineMsgReq(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -2529,6 +2516,7 @@ func TestICQService_OfflineMsgReq(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -2575,7 +2563,7 @@ func TestICQService_OfflineMsgReq(t *testing.T) {
 				feedbagSenderCalls++
 				return nil
 			}
-			err := s.OfflineMsgReq(context.Background(), tt.instance, tt.seq)
+			err := s.OfflineMsgReq(context.Background(), wire.SNACFrame{RequestID: 1234}, tt.instance, tt.seq)
 			assert.NoError(t, err)
 			assert.Equal(t, tt.wantICBMSenderCalls, feedbagSenderCalls)
 		})
@@ -2661,6 +2649,7 @@ func TestICQService_SetAffiliations(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -2730,7 +2719,7 @@ func TestICQService_SetAffiliations(t *testing.T) {
 				userUpdater:    userUpdater,
 				messageRelayer: messageRelayer,
 			}
-			err := s.SetAffiliations(context.Background(), tt.instance, tt.req, tt.seq)
+			err := s.SetAffiliations(context.Background(), tt.instance, wire.SNACFrame{RequestID: 1234}, tt.req, tt.seq)
 			assert.ErrorIs(t, err, tt.wantErr)
 		})
 	}
@@ -2769,6 +2758,7 @@ func TestICQService_SetEmails(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -2805,7 +2795,7 @@ func TestICQService_SetEmails(t *testing.T) {
 				logger:         slog.Default(),
 				messageRelayer: messageRelayer,
 			}
-			err := s.SetEmails(context.Background(), tt.instance, tt.req, tt.seq)
+			err := s.SetEmails(context.Background(), tt.instance, wire.SNACFrame{RequestID: 1234}, tt.req, tt.seq)
 			assert.NoError(t, err)
 		})
 	}
@@ -2999,6 +2989,7 @@ func TestICQService_SetICQInfo(t *testing.T) {
 		Frame: wire.SNACFrame{
 			FoodGroup: wire.ICQ,
 			SubGroup:  wire.ICQDBReply,
+			RequestID: 1234,
 		},
 		Body: wire.SNAC_0x15_0x02_DBReply{
 			TLVRestBlock: wire.TLVRestBlock{
@@ -3285,7 +3276,7 @@ func TestICQService_SetICQInfo(t *testing.T) {
 				userUpdater:    userUpdater,
 				messageRelayer: messageRelayer,
 			}
-			err := s.SetICQInfo(context.Background(), tt.instance, tt.req, tt.seq)
+			err := s.SetICQInfo(context.Background(), tt.instance, wire.SNACFrame{RequestID: 1234}, tt.req, tt.seq)
 			if tt.wantErr != nil {
 				assert.ErrorIs(t, err, tt.wantErr)
 			} else {
@@ -3318,6 +3309,7 @@ func TestICQService_SetICQPhone(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -3354,7 +3346,7 @@ func TestICQService_SetICQPhone(t *testing.T) {
 				logger:         slog.Default(),
 				messageRelayer: messageRelayer,
 			}
-			err := s.SetICQPhone(context.Background(), tt.instance, tt.req, tt.seq)
+			err := s.SetICQPhone(context.Background(), tt.instance, wire.SNACFrame{RequestID: 1234}, tt.req, tt.seq)
 			assert.NoError(t, err)
 		})
 	}
@@ -3421,6 +3413,7 @@ func TestICQService_SetBasicInfo(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -3464,7 +3457,7 @@ func TestICQService_SetBasicInfo(t *testing.T) {
 				userUpdater:    userUpdater,
 				messageRelayer: messageRelayer,
 			}
-			err := s.SetBasicInfo(context.Background(), tt.instance, tt.req, tt.seq)
+			err := s.SetBasicInfo(context.Background(), tt.instance, wire.SNACFrame{RequestID: 1234}, tt.req, tt.seq)
 			assert.NoError(t, err)
 		})
 	}
@@ -3532,6 +3525,7 @@ func TestICQService_SetInterests(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -3596,7 +3590,7 @@ func TestICQService_SetInterests(t *testing.T) {
 				userUpdater:    userUpdater,
 				messageRelayer: messageRelayer,
 			}
-			err := s.SetInterests(context.Background(), tt.instance, tt.req, tt.seq)
+			err := s.SetInterests(context.Background(), tt.instance, wire.SNACFrame{RequestID: 1234}, tt.req, tt.seq)
 			assert.ErrorIs(t, err, tt.wantErr)
 		})
 	}
@@ -3652,6 +3646,7 @@ func TestICQService_SetMoreInfo(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -3695,7 +3690,7 @@ func TestICQService_SetMoreInfo(t *testing.T) {
 				userUpdater:    userUpdater,
 				messageRelayer: messageRelayer,
 			}
-			err := s.SetMoreInfo(context.Background(), tt.instance, tt.req, tt.seq)
+			err := s.SetMoreInfo(context.Background(), tt.instance, wire.SNACFrame{RequestID: 1234}, tt.req, tt.seq)
 			assert.NoError(t, err)
 		})
 	}
@@ -3738,6 +3733,7 @@ func TestICQService_SetPermissions(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -3790,6 +3786,7 @@ func TestICQService_SetPermissions(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -3833,7 +3830,7 @@ func TestICQService_SetPermissions(t *testing.T) {
 				userUpdater:    userUpdater,
 				messageRelayer: messageRelayer,
 			}
-			err := s.SetPermissions(context.Background(), tt.instance, tt.req, tt.seq)
+			err := s.SetPermissions(context.Background(), tt.instance, wire.SNACFrame{RequestID: 1234}, tt.req, tt.seq)
 			assert.NoError(t, err)
 		})
 	}
@@ -3874,6 +3871,7 @@ func TestICQService_SetUserNotes(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -3917,7 +3915,7 @@ func TestICQService_SetUserNotes(t *testing.T) {
 				userUpdater:    userUpdater,
 				messageRelayer: messageRelayer,
 			}
-			err := s.SetUserNotes(context.Background(), tt.instance, tt.req, tt.seq)
+			err := s.SetUserNotes(context.Background(), tt.instance, wire.SNACFrame{RequestID: 1234}, tt.req, tt.seq)
 			assert.NoError(t, err)
 		})
 	}
@@ -3980,6 +3978,7 @@ func TestICQService_SetWorkInfo(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -4023,7 +4022,7 @@ func TestICQService_SetWorkInfo(t *testing.T) {
 				userUpdater:    userUpdater,
 				messageRelayer: messageRelayer,
 			}
-			err := s.SetWorkInfo(context.Background(), tt.instance, tt.req, tt.seq)
+			err := s.SetWorkInfo(context.Background(), tt.instance, wire.SNACFrame{RequestID: 1234}, tt.req, tt.seq)
 			assert.NoError(t, err)
 		})
 	}
@@ -4082,6 +4081,7 @@ func TestICQService_ShortUserInfo(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -4140,7 +4140,7 @@ func TestICQService_ShortUserInfo(t *testing.T) {
 				timeNow:        tt.timeNow,
 				userFinder:     userFinder,
 			}
-			err := s.ShortUserInfo(context.Background(), tt.instance, tt.req, tt.seq)
+			err := s.ShortUserInfo(context.Background(), tt.instance, wire.SNACFrame{RequestID: 1234}, tt.req, tt.seq)
 			assert.NoError(t, err)
 		})
 	}
@@ -4175,6 +4175,7 @@ func TestICQService_XMLReqData(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
 									TLVRestBlock: wire.TLVRestBlock{
@@ -4210,7 +4211,7 @@ func TestICQService_XMLReqData(t *testing.T) {
 				messageRelayer: messageRelayer,
 				timeNow:        tt.timeNow,
 			}
-			err := s.XMLReqData(context.Background(), tt.instance, tt.req, tt.seq)
+			err := s.XMLReqData(context.Background(), tt.instance, wire.SNACFrame{RequestID: 1234}, tt.req, tt.seq)
 			assert.NoError(t, err)
 		})
 	}

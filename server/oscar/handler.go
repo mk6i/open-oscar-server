@@ -523,7 +523,7 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 
 	switch icqMD.ReqType {
 	case wire.ICQDBQueryOfflineMsgReq:
-		return rt.OfflineMsgReq(ctx, instance, icqMD.Seq)
+		return rt.OfflineMsgReq(ctx, inFrame, instance, icqMD.Seq)
 	case wire.ICQDBQueryDeleteMsgReq:
 		return rt.DeleteMsgReq(ctx, instance, icqMD.Seq)
 	case wire.ICQDBQueryMetaReq:
@@ -541,19 +541,19 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 			if err := binary.Read(buf, binary.LittleEndian, &userInfo); err != nil {
 				return nil
 			}
-			return rt.ShortUserInfo(ctx, instance, userInfo, icqMD.Seq)
+			return rt.ShortUserInfo(ctx, instance, inFrame, userInfo, icqMD.Seq)
 		case wire.ICQDBQueryMetaReqFullInfo, wire.ICQDBQueryMetaReqFullInfo2:
 			userInfo := wire.ICQ_0x07D0_0x051F_DBQueryMetaReqSearchByUIN{}
 			if err := binary.Read(buf, binary.LittleEndian, &userInfo); err != nil {
 				return nil
 			}
-			return rt.FullUserInfo(ctx, instance, userInfo, icqMD.Seq)
+			return rt.FullUserInfo(ctx, instance, inFrame, userInfo, icqMD.Seq)
 		case wire.ICQDBQueryMetaReqXMLReq:
 			req := wire.ICQ_0x07D0_0x0898_DBQueryMetaReqXMLReq{}
 			if err := wire.UnmarshalLE(&req, buf); err != nil {
 				return err
 			}
-			if err := rt.XMLReqData(ctx, instance, req, icqMD.Seq); err != nil {
+			if err := rt.XMLReqData(ctx, instance, inFrame, req, icqMD.Seq); err != nil {
 				return err
 			}
 		case wire.ICQDBQueryMetaReqSetPermissions:
@@ -561,7 +561,7 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 			if err := wire.UnmarshalLE(&req, buf); err != nil {
 				return err
 			}
-			if err := rt.SetPermissions(ctx, instance, req, icqMD.Seq); err != nil {
+			if err := rt.SetPermissions(ctx, instance, inFrame, req, icqMD.Seq); err != nil {
 				return err
 			}
 		case wire.ICQDBQueryMetaReqSetICQPhone:
@@ -569,7 +569,7 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 			if err := wire.UnmarshalLE(&req, buf); err != nil {
 				return err
 			}
-			if err := rt.SetICQPhone(ctx, instance, req, icqMD.Seq); err != nil {
+			if err := rt.SetICQPhone(ctx, instance, inFrame, req, icqMD.Seq); err != nil {
 				return err
 			}
 		case wire.ICQDBQueryMetaReqSearchByUIN:
@@ -577,7 +577,7 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 			if err := wire.UnmarshalLE(&req, buf); err != nil {
 				return err
 			}
-			if err := rt.FindByUIN(ctx, instance, req, icqMD.Seq); err != nil {
+			if err := rt.FindByUIN(ctx, instance, inFrame, req, icqMD.Seq); err != nil {
 				return err
 			}
 		case wire.ICQDBQueryMetaReqSearchByUIN2:
@@ -585,7 +585,7 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 			if err := wire.UnmarshalLE(&req, buf); err != nil {
 				return err
 			}
-			if err := rt.FindByUIN2(ctx, instance, req, icqMD.Seq); err != nil {
+			if err := rt.FindByUIN2(ctx, instance, inFrame, req, icqMD.Seq); err != nil {
 				return err
 			}
 		case wire.ICQDBQueryMetaReqSearchByEmail:
@@ -593,7 +593,7 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 			if err := wire.UnmarshalLE(&req, buf); err != nil {
 				return err
 			}
-			if err := rt.FindByICQEmail(ctx, instance, req, icqMD.Seq); err != nil {
+			if err := rt.FindByICQEmail(ctx, instance, inFrame, req, icqMD.Seq); err != nil {
 				return err
 			}
 		case wire.ICQDBQueryMetaReqSearchByEmail3:
@@ -601,7 +601,7 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 			if err := wire.UnmarshalLE(&req, buf); err != nil {
 				return err
 			}
-			if err := rt.FindByEmail3(ctx, instance, req, icqMD.Seq); err != nil {
+			if err := rt.FindByEmail3(ctx, instance, inFrame, req, icqMD.Seq); err != nil {
 				return err
 			}
 		case wire.ICQDBQueryMetaReqSearchByDetails:
@@ -609,7 +609,7 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 			if err := wire.UnmarshalLE(&req, buf); err != nil {
 				return err
 			}
-			if err := rt.FindByICQName(ctx, instance, req, icqMD.Seq); err != nil {
+			if err := rt.FindByICQName(ctx, instance, inFrame, req, icqMD.Seq); err != nil {
 				return err
 			}
 		case wire.ICQDBQueryMetaReqSearchWhitePages:
@@ -617,7 +617,7 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 			if err := wire.UnmarshalLE(&req, buf); err != nil {
 				return err
 			}
-			if err := rt.FindByICQInterests(ctx, instance, req, icqMD.Seq); err != nil {
+			if err := rt.FindByICQInterests(ctx, instance, inFrame, req, icqMD.Seq); err != nil {
 				return err
 			}
 		case wire.ICQDBQueryMetaReqSearchWhitePages2:
@@ -625,7 +625,7 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 			if err := wire.UnmarshalLE(&req, buf); err != nil {
 				return err
 			}
-			if err := rt.FindByWhitePages2(ctx, instance, req, icqMD.Seq); err != nil {
+			if err := rt.FindByWhitePages2(ctx, instance, inFrame, req, icqMD.Seq); err != nil {
 				return err
 			}
 		case wire.ICQDBQueryMetaReqSetBasicInfo:
@@ -633,7 +633,7 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 			if err := wire.UnmarshalLE(&req, buf); err != nil {
 				return err
 			}
-			if err := rt.SetBasicInfo(ctx, instance, req, icqMD.Seq); err != nil {
+			if err := rt.SetBasicInfo(ctx, instance, inFrame, req, icqMD.Seq); err != nil {
 				return err
 			}
 		case wire.ICQDBQueryMetaReqSetWorkInfo:
@@ -641,7 +641,7 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 			if err := wire.UnmarshalLE(&req, buf); err != nil {
 				return err
 			}
-			if err := rt.SetWorkInfo(ctx, instance, req, icqMD.Seq); err != nil {
+			if err := rt.SetWorkInfo(ctx, instance, inFrame, req, icqMD.Seq); err != nil {
 				return err
 			}
 		case wire.ICQDBQueryMetaReqSetMoreInfo:
@@ -649,7 +649,7 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 			if err := wire.UnmarshalLE(&req, buf); err != nil {
 				return err
 			}
-			if err := rt.SetMoreInfo(ctx, instance, req, icqMD.Seq); err != nil {
+			if err := rt.SetMoreInfo(ctx, instance, inFrame, req, icqMD.Seq); err != nil {
 				return err
 			}
 		case wire.ICQDBQueryMetaReqSetNotes:
@@ -657,7 +657,7 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 			if err := wire.UnmarshalLE(&req, buf); err != nil {
 				return err
 			}
-			if err := rt.SetUserNotes(ctx, instance, req, icqMD.Seq); err != nil {
+			if err := rt.SetUserNotes(ctx, instance, inFrame, req, icqMD.Seq); err != nil {
 				return err
 			}
 		case wire.ICQDBQueryMetaReqSetEmails:
@@ -665,7 +665,7 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 			if err := wire.UnmarshalLE(&req, buf); err != nil {
 				return err
 			}
-			if err := rt.SetEmails(ctx, instance, req, icqMD.Seq); err != nil {
+			if err := rt.SetEmails(ctx, instance, inFrame, req, icqMD.Seq); err != nil {
 				return err
 			}
 		case wire.ICQDBQueryMetaReqSetInterests:
@@ -673,7 +673,7 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 			if err := wire.UnmarshalLE(&req, buf); err != nil {
 				return err
 			}
-			if err := rt.SetInterests(ctx, instance, req, icqMD.Seq); err != nil {
+			if err := rt.SetInterests(ctx, instance, inFrame, req, icqMD.Seq); err != nil {
 				return err
 			}
 		case wire.ICQDBQueryMetaReqSetAffiliations:
@@ -681,7 +681,7 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 			if err := wire.UnmarshalLE(&req, buf); err != nil {
 				return err
 			}
-			if err := rt.SetAffiliations(ctx, instance, req, icqMD.Seq); err != nil {
+			if err := rt.SetAffiliations(ctx, instance, inFrame, req, icqMD.Seq); err != nil {
 				return err
 			}
 		case wire.ICQDBQueryMetaReqSetFullInfo:
@@ -689,7 +689,7 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 			if err := wire.UnmarshalLE(&req, buf); err != nil {
 				return err
 			}
-			if err := rt.SetICQInfo(ctx, instance, req, icqMD.Seq); err != nil {
+			if err := rt.SetICQInfo(ctx, instance, inFrame, req, icqMD.Seq); err != nil {
 				return err
 			}
 		case wire.ICQDBQueryMetaReqStat0a8c,

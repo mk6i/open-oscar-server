@@ -2339,25 +2339,20 @@ type ICQ_0x07DA_0x00C8_DBQueryMetaReplyBasicInfo struct {
 	PublishEmail uint8
 }
 
+type ICQ_0x07DA_0x01A4_DBQueryMetaReplyUserFound struct {
+	ICQMetadata
+	ReqSubType uint16
+	Success    uint8
+	Details    ICQUserSearchRecord `oscar:"len_prefix=uint16"`
+	Buffer     uint16
+}
+
 type ICQ_0x07DA_0x01AE_DBQueryMetaReplyLastUserFound struct {
 	ICQMetadata
 	ReqSubType uint16
 	Success    uint8
 	Details    ICQUserSearchRecord `oscar:"len_prefix=uint16"`
-	// LastMessageFooter is set only on the last message in the batch
-	LastMessageFooter *struct {
-		FoundUsersLeft uint32
-	} `oscar:"optional"`
-}
-
-// LastResult flags the message as the last message in the search results.
-func (s *ICQ_0x07DA_0x01AE_DBQueryMetaReplyLastUserFound) LastResult() {
-	s.ReqSubType = ICQDBQueryMetaReplyLastUserFound
-	s.LastMessageFooter = &struct {
-		FoundUsersLeft uint32
-	}{
-		FoundUsersLeft: 0,
-	}
+	UsersLeft  uint32
 }
 
 type ICQ_0x07DA_0x0104_DBQueryMetaReplyShortInfo struct {
