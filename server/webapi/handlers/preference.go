@@ -51,14 +51,14 @@ func (h *PreferenceHandler) SetPreferences(w http.ResponseWriter, r *http.Reques
 	// Get session ID from parameters
 	aimsid := r.URL.Query().Get("aimsid")
 	if aimsid == "" {
-		h.sendError(w, http.StatusBadRequest, "missing aimsid parameter")
+		h.sendError(w, r, http.StatusBadRequest, "missing aimsid parameter")
 		return
 	}
 
 	// Get session
 	session, err := h.SessionManager.GetSession(r.Context(), aimsid)
 	if err != nil {
-		h.sendError(w, http.StatusUnauthorized, "invalid or expired session")
+		h.sendError(w, r, http.StatusUnauthorized, "invalid or expired session")
 		return
 	}
 
@@ -107,7 +107,7 @@ func (h *PreferenceHandler) SetPreferences(w http.ResponseWriter, r *http.Reques
 	// Save preferences
 	if err := h.PreferenceManager.SetPreferences(ctx, session.ScreenName.IdentScreenName(), prefs); err != nil {
 		h.Logger.ErrorContext(ctx, "failed to set preferences", "err", err.Error())
-		h.sendError(w, http.StatusInternalServerError, "failed to save preferences")
+		h.sendError(w, r, http.StatusInternalServerError, "failed to save preferences")
 		return
 	}
 
@@ -131,14 +131,14 @@ func (h *PreferenceHandler) GetPreferences(w http.ResponseWriter, r *http.Reques
 	// Get session ID from parameters
 	aimsid := r.URL.Query().Get("aimsid")
 	if aimsid == "" {
-		h.sendError(w, http.StatusBadRequest, "missing aimsid parameter")
+		h.sendError(w, r, http.StatusBadRequest, "missing aimsid parameter")
 		return
 	}
 
 	// Get session
 	session, err := h.SessionManager.GetSession(r.Context(), aimsid)
 	if err != nil {
-		h.sendError(w, http.StatusUnauthorized, "invalid or expired session")
+		h.sendError(w, r, http.StatusUnauthorized, "invalid or expired session")
 		return
 	}
 
@@ -261,14 +261,14 @@ func (h *PreferenceHandler) SetPermitDeny(w http.ResponseWriter, r *http.Request
 	// Get session ID from parameters
 	aimsid := r.URL.Query().Get("aimsid")
 	if aimsid == "" {
-		h.sendError(w, http.StatusBadRequest, "missing aimsid parameter")
+		h.sendError(w, r, http.StatusBadRequest, "missing aimsid parameter")
 		return
 	}
 
 	// Get session
 	session, err := h.SessionManager.GetSession(r.Context(), aimsid)
 	if err != nil {
-		h.sendError(w, http.StatusUnauthorized, "invalid or expired session")
+		h.sendError(w, r, http.StatusUnauthorized, "invalid or expired session")
 		return
 	}
 
@@ -282,14 +282,14 @@ func (h *PreferenceHandler) SetPermitDeny(w http.ResponseWriter, r *http.Request
 	if pdModeStr != "" {
 		pdMode, err := strconv.Atoi(pdModeStr)
 		if err != nil || pdMode < 0 || pdMode > 5 {
-			h.sendError(w, http.StatusBadRequest, "invalid pdMode value (must be 0-5)")
+			h.sendError(w, r, http.StatusBadRequest, "invalid pdMode value (must be 0-5)")
 			return
 		}
 
 		// Set the PD mode
 		if err := h.PermitDenyManager.SetPDMode(ctx, session.ScreenName.IdentScreenName(), wire.FeedbagPDMode(pdMode)); err != nil {
 			h.Logger.ErrorContext(ctx, "failed to set PD mode", "err", err.Error())
-			h.sendError(w, http.StatusInternalServerError, "failed to update PD mode")
+			h.sendError(w, r, http.StatusInternalServerError, "failed to update PD mode")
 			return
 		}
 	}
@@ -396,14 +396,14 @@ func (h *PreferenceHandler) GetPermitDeny(w http.ResponseWriter, r *http.Request
 	// Get session ID from parameters
 	aimsid := r.URL.Query().Get("aimsid")
 	if aimsid == "" {
-		h.sendError(w, http.StatusBadRequest, "missing aimsid parameter")
+		h.sendError(w, r, http.StatusBadRequest, "missing aimsid parameter")
 		return
 	}
 
 	// Get session
 	session, err := h.SessionManager.GetSession(r.Context(), aimsid)
 	if err != nil {
-		h.sendError(w, http.StatusUnauthorized, "invalid or expired session")
+		h.sendError(w, r, http.StatusUnauthorized, "invalid or expired session")
 		return
 	}
 
@@ -478,6 +478,6 @@ func (h *PreferenceHandler) getDefaultPreferences() map[string]interface{} {
 	}
 }
 
-func (h *PreferenceHandler) sendError(w http.ResponseWriter, statusCode int, message string) {
-	SendError(w, statusCode, message)
+func (h *PreferenceHandler) sendError(w http.ResponseWriter, r *http.Request, statusCode int, message string) {
+	SendError(w, r, statusCode, message)
 }

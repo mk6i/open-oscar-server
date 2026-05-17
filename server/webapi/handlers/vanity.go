@@ -26,7 +26,7 @@ func (h *VanityHandler) GetVanityInfo(w http.ResponseWriter, r *http.Request) {
 
 	// Validate timestamp if provided
 	if ts != "" && sig == "" {
-		SendError(w, http.StatusBadRequest, "signature required when timestamp provided")
+		SendError(w, r, http.StatusBadRequest, "signature required when timestamp provided")
 		return
 	}
 
@@ -49,7 +49,7 @@ func (h *VanityHandler) GetVanityInfo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if targetUser == "" {
-		SendError(w, http.StatusBadRequest, "missing target user")
+		SendError(w, r, http.StatusBadRequest, "missing target user")
 		return
 	}
 
@@ -67,7 +67,7 @@ func (h *VanityHandler) GetVanityInfo(w http.ResponseWriter, r *http.Request) {
 			h.Logger.ErrorContext(ctx, "failed to get vanity info",
 				"error", err,
 			)
-			SendError(w, http.StatusInternalServerError, "failed to retrieve vanity info")
+			SendError(w, r, http.StatusInternalServerError, "failed to retrieve vanity info")
 			return
 		}
 
@@ -128,14 +128,14 @@ func (h *VanityHandler) SetVanityURL(w http.ResponseWriter, r *http.Request) {
 	// Authentication required
 	aimsid := r.URL.Query().Get("aimsid")
 	if aimsid == "" {
-		SendError(w, http.StatusBadRequest, "missing aimsid parameter")
+		SendError(w, r, http.StatusBadRequest, "missing aimsid parameter")
 		return
 	}
 
 	// Get session
 	session, err := h.SessionManager.GetSession(r.Context(), aimsid)
 	if err != nil {
-		SendError(w, http.StatusUnauthorized, "invalid or expired session")
+		SendError(w, r, http.StatusUnauthorized, "invalid or expired session")
 		return
 	}
 
@@ -147,7 +147,7 @@ func (h *VanityHandler) SetVanityURL(w http.ResponseWriter, r *http.Request) {
 	// Get vanity URL from parameters
 	vanityURL := r.URL.Query().Get("vanityUrl")
 	if vanityURL == "" {
-		SendError(w, http.StatusBadRequest, "missing vanityUrl parameter")
+		SendError(w, r, http.StatusBadRequest, "missing vanityUrl parameter")
 		return
 	}
 
@@ -184,11 +184,11 @@ func (h *VanityHandler) SetVanityURL(w http.ResponseWriter, r *http.Request) {
 			strings.Contains(err.Error(), "already taken") ||
 			strings.Contains(err.Error(), "must be") ||
 			strings.Contains(err.Error(), "cannot") {
-			SendError(w, http.StatusBadRequest, err.Error())
+			SendError(w, r, http.StatusBadRequest, err.Error())
 			return
 		}
 
-		SendError(w, http.StatusInternalServerError, "failed to set vanity URL")
+		SendError(w, r, http.StatusInternalServerError, "failed to set vanity URL")
 		return
 	}
 
@@ -220,7 +220,7 @@ func (h *VanityHandler) CheckAvailability(w http.ResponseWriter, r *http.Request
 	// Get vanity URL from parameters
 	vanityURL := r.URL.Query().Get("vanityUrl")
 	if vanityURL == "" {
-		SendError(w, http.StatusBadRequest, "missing vanityUrl parameter")
+		SendError(w, r, http.StatusBadRequest, "missing vanityUrl parameter")
 		return
 	}
 
@@ -250,7 +250,7 @@ func (h *VanityHandler) CheckAvailability(w http.ResponseWriter, r *http.Request
 			"vanityUrl", vanityURL,
 			"error", err,
 		)
-		SendError(w, http.StatusInternalServerError, "failed to check availability")
+		SendError(w, r, http.StatusInternalServerError, "failed to check availability")
 		return
 	}
 
@@ -279,14 +279,14 @@ func (h *VanityHandler) DeleteVanityURL(w http.ResponseWriter, r *http.Request) 
 	// Authentication required
 	aimsid := r.URL.Query().Get("aimsid")
 	if aimsid == "" {
-		SendError(w, http.StatusBadRequest, "missing aimsid parameter")
+		SendError(w, r, http.StatusBadRequest, "missing aimsid parameter")
 		return
 	}
 
 	// Get session
 	session, err := h.SessionManager.GetSession(r.Context(), aimsid)
 	if err != nil {
-		SendError(w, http.StatusUnauthorized, "invalid or expired session")
+		SendError(w, r, http.StatusUnauthorized, "invalid or expired session")
 		return
 	}
 
@@ -305,7 +305,7 @@ func (h *VanityHandler) DeleteVanityURL(w http.ResponseWriter, r *http.Request) 
 			"screenName", session.ScreenName.String(),
 			"error", err,
 		)
-		SendError(w, http.StatusInternalServerError, "failed to delete vanity URL")
+		SendError(w, r, http.StatusInternalServerError, "failed to delete vanity URL")
 		return
 	}
 

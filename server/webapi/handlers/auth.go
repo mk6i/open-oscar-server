@@ -62,7 +62,7 @@ func (h *AuthHandler) ClientLogin(w http.ResponseWriter, r *http.Request) {
 		var req ClientLoginRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			h.Logger.Error("failed to parse JSON clientLogin request", "error", err)
-			SendError(w, http.StatusBadRequest, "invalid JSON format")
+			SendError(w, r, http.StatusBadRequest, "invalid JSON format")
 			return
 		}
 		username = req.Username
@@ -71,7 +71,7 @@ func (h *AuthHandler) ClientLogin(w http.ResponseWriter, r *http.Request) {
 		// Parse form-encoded or URL parameters
 		if err := r.ParseForm(); err != nil {
 			h.Logger.Error("failed to parse form data", "error", err)
-			SendError(w, http.StatusBadRequest, "invalid form data")
+			SendError(w, r, http.StatusBadRequest, "invalid form data")
 			return
 		}
 
@@ -95,7 +95,7 @@ func (h *AuthHandler) ClientLogin(w http.ResponseWriter, r *http.Request) {
 
 	// Validate required fields
 	if username == "" || password == "" {
-		SendError(w, http.StatusBadRequest, "username and password required")
+		SendError(w, r, http.StatusBadRequest, "username and password required")
 		return
 	}
 
@@ -118,7 +118,7 @@ func (h *AuthHandler) ClientLogin(w http.ResponseWriter, r *http.Request) {
 				h.Logger.Error("failed to create user",
 					"username", username,
 					"error", err)
-				SendError(w, http.StatusInternalServerError, "failed to create user")
+				SendError(w, r, http.StatusInternalServerError, "failed to create user")
 				return
 			}
 
@@ -128,14 +128,14 @@ func (h *AuthHandler) ClientLogin(w http.ResponseWriter, r *http.Request) {
 				h.Logger.Error("failed to authenticate after creating user",
 					"username", username,
 					"error", err)
-				SendError(w, http.StatusInternalServerError, "internal server error")
+				SendError(w, r, http.StatusInternalServerError, "internal server error")
 				return
 			}
 		} else {
 			h.Logger.Warn("authentication failed",
 				"username", username,
 				"error", err)
-			SendError(w, http.StatusUnauthorized, "authentication failed")
+			SendError(w, r, http.StatusUnauthorized, "authentication failed")
 			return
 		}
 	}
@@ -144,7 +144,7 @@ func (h *AuthHandler) ClientLogin(w http.ResponseWriter, r *http.Request) {
 	token, err := h.generateToken()
 	if err != nil {
 		h.Logger.Error("failed to generate token", "error", err)
-		SendError(w, http.StatusInternalServerError, "internal server error")
+		SendError(w, r, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
@@ -152,7 +152,7 @@ func (h *AuthHandler) ClientLogin(w http.ResponseWriter, r *http.Request) {
 	expiresAt := time.Now().Add(24 * time.Hour)
 	if err := h.TokenStore.StoreToken(r.Context(), token, user.IdentScreenName, expiresAt); err != nil {
 		h.Logger.Error("failed to store token", "error", err)
-		SendError(w, http.StatusInternalServerError, "internal server error")
+		SendError(w, r, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
@@ -160,7 +160,7 @@ func (h *AuthHandler) ClientLogin(w http.ResponseWriter, r *http.Request) {
 	sessionSecret, err := h.generateToken()
 	if err != nil {
 		h.Logger.Error("failed to generate session secret", "error", err)
-		SendError(w, http.StatusInternalServerError, "internal server error")
+		SendError(w, r, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
@@ -216,7 +216,7 @@ func (h *AuthHandler) GetChallenge(w http.ResponseWriter, r *http.Request) {
 		var req GetChallengeRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			h.Logger.Error("failed to parse JSON getChallenge request", "error", err)
-			SendError(w, http.StatusBadRequest, "invalid JSON format")
+			SendError(w, r, http.StatusBadRequest, "invalid JSON format")
 			return
 		}
 		screenName = req.ScreenName
@@ -224,7 +224,7 @@ func (h *AuthHandler) GetChallenge(w http.ResponseWriter, r *http.Request) {
 	} else {
 		if err := r.ParseForm(); err != nil {
 			h.Logger.Error("failed to parse form data", "error", err)
-			SendError(w, http.StatusBadRequest, "invalid form data")
+			SendError(w, r, http.StatusBadRequest, "invalid form data")
 			return
 		}
 
@@ -236,7 +236,7 @@ func (h *AuthHandler) GetChallenge(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if screenName == "" {
-		SendError(w, http.StatusBadRequest, "screen name required")
+		SendError(w, r, http.StatusBadRequest, "screen name required")
 		return
 	}
 
@@ -247,7 +247,7 @@ func (h *AuthHandler) GetChallenge(w http.ResponseWriter, r *http.Request) {
 		h.Logger.Error("getChallenge: user lookup failed",
 			"screenName", screenName,
 			"error", err)
-		SendError(w, http.StatusInternalServerError, "internal server error")
+		SendError(w, r, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
@@ -261,14 +261,14 @@ func (h *AuthHandler) GetChallenge(w http.ResponseWriter, r *http.Request) {
 	default:
 		h.Logger.Warn("getChallenge: user not found",
 			"screenName", screenName)
-		SendError(w, http.StatusUnauthorized, "authentication failed")
+		SendError(w, r, http.StatusUnauthorized, "authentication failed")
 		return
 	}
 
 	tid, err := generateTID()
 	if err != nil {
 		h.Logger.Error("failed to generate tid", "error", err)
-		SendError(w, http.StatusInternalServerError, "internal server error")
+		SendError(w, r, http.StatusInternalServerError, "internal server error")
 		return
 	}
 

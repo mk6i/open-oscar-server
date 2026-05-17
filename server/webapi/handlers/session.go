@@ -130,7 +130,7 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 	// Get API key info from context (set by auth middleware)
 	apiKey, ok := ctx.Value(middleware.ContextKeyAPIKey).(*state.WebAPIKey)
 	if !ok {
-		h.sendError(w, http.StatusInternalServerError, "internal server error")
+		h.sendError(w, r, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
@@ -182,14 +182,14 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 		// Validate auth token and get screen name
 		if h.TokenStore == nil {
 			h.Logger.Error("TokenStore not configured")
-			h.sendError(w, http.StatusInternalServerError, "authentication not configured")
+			h.sendError(w, r, http.StatusInternalServerError, "authentication not configured")
 			return
 		}
 		identScreenName, err := h.TokenStore.ValidateToken(r.Context(), authToken)
 		if err != nil {
 			h.Logger.Warn("invalid authentication token",
 				"error", err)
-			h.sendError(w, http.StatusUnauthorized, "invalid or expired token")
+			h.sendError(w, r, http.StatusUnauthorized, "invalid or expired token")
 			return
 		}
 		// For WebAPI sessions, we can use the IdentScreenName directly as DisplayScreenName
@@ -242,7 +242,7 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 	session, err := h.SessionManager.CreateSession(r.Context(), screenName, apiKey.DevID, events, oscarInstance, h.Logger)
 	if err != nil {
 		h.Logger.ErrorContext(ctx, "failed to create session", "err", err.Error())
-		h.sendError(w, http.StatusInternalServerError, "failed to create session")
+		h.sendError(w, r, http.StatusInternalServerError, "failed to create session")
 		return
 	}
 
@@ -461,7 +461,7 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 		xmlData, err := xml.Marshal(xmlResp)
 		if err != nil {
 			h.Logger.Error("failed to marshal XML response", "error", err)
-			h.sendError(w, http.StatusInternalServerError, "internal server error")
+			h.sendError(w, r, http.StatusInternalServerError, "internal server error")
 			return
 		}
 
@@ -490,7 +490,7 @@ func (h *SessionHandler) EndSession(w http.ResponseWriter, r *http.Request) {
 	// Get session ID from parameters
 	aimsid := r.URL.Query().Get("aimsid")
 	if aimsid == "" {
-		h.sendError(w, http.StatusBadRequest, "missing aimsid parameter")
+		h.sendError(w, r, http.StatusBadRequest, "missing aimsid parameter")
 		return
 	}
 
@@ -499,11 +499,11 @@ func (h *SessionHandler) EndSession(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch err {
 		case state.ErrNoWebAPISession:
-			h.sendError(w, http.StatusNotFound, "session not found")
+			h.sendError(w, r, http.StatusNotFound, "session not found")
 		case state.ErrWebAPISessionExpired:
-			h.sendError(w, http.StatusGone, "session expired")
+			h.sendError(w, r, http.StatusGone, "session expired")
 		default:
-			h.sendError(w, http.StatusInternalServerError, "internal server error")
+			h.sendError(w, r, http.StatusInternalServerError, "internal server error")
 		}
 		return
 	}
@@ -532,7 +532,7 @@ func (h *SessionHandler) EndSession(w http.ResponseWriter, r *http.Request) {
 	// Remove session
 	if err := h.SessionManager.RemoveSession(r.Context(), aimsid); err != nil {
 		h.Logger.ErrorContext(ctx, "failed to remove session", "err", err.Error())
-		h.sendError(w, http.StatusInternalServerError, "failed to end session")
+		h.sendError(w, r, http.StatusInternalServerError, "failed to end session")
 		return
 	}
 
@@ -551,6 +551,6 @@ func (h *SessionHandler) EndSession(w http.ResponseWriter, r *http.Request) {
 }
 
 // sendError is a convenience method that wraps the common SendError function.
-func (h *SessionHandler) sendError(w http.ResponseWriter, statusCode int, message string) {
-	SendError(w, statusCode, message)
+func (h *SessionHandler) sendError(w http.ResponseWriter, r *http.Request, statusCode int, message string) {
+	SendError(w, r, statusCode, message)
 }
