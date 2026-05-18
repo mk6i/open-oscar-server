@@ -666,7 +666,10 @@ func (s OServiceService) ServiceRequest(ctx context.Context, service uint16, ins
 
 // ClientOnline runs when the current user is ready to join.
 // If BOS:
-//   - Announce current user's arrival to users who have the current user on their buddy list
+//   - Announce current user's arrival to users who have the current user on their buddy list,
+//     but only when the contact list is ready (feedbag initialized or client-side buddy
+//     list loaded). Clients that send ClientOnline before feedbag activation get the
+//     initial broadcast from FeedbagService.Use instead.
 //
 // If Chat:
 //   - Send current user the chat room metadata
@@ -677,8 +680,11 @@ func (s OServiceService) ClientOnline(ctx context.Context, service uint16, inBod
 
 	switch service {
 	case wire.BOS:
-		if err := s.buddyBroadcaster.BroadcastVisibility(ctx, instance, nil, false); err != nil {
-			return fmt.Errorf("unable to send buddy arrival notification: %w", err)
+		// AIM order: feedbag or client-side buddy list before ClientOnline.
+		if instance.ContactsInit() {
+			if err := s.buddyBroadcaster.BroadcastVisibility(ctx, instance, nil, false); err != nil {
+				return fmt.Errorf("unable to send buddy arrival notification: %w", err)
+			}
 		}
 
 		msg := wire.SNACMessage{

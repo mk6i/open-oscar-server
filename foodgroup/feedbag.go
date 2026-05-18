@@ -222,7 +222,7 @@ func (s *FeedbagService) UpsertItem(ctx context.Context, instance *state.Session
 	authRequired := make(map[string]bool)
 
 	for _, item := range items {
-		if item.ClassID == wire.FeedbagClassIdBuddy && !item.HasTag(wire.FeedbagAttributesPending) {
+		if item.ClassID == wire.FeedbagClassIdBuddy {
 			sn := state.NewIdentScreenName(item.Name)
 			switch {
 			case instance.UIN() != 0 && sn.UIN() == 0:
@@ -239,9 +239,17 @@ func (s *FeedbagService) UpsertItem(ctx context.Context, instance *state.Session
 				if err != nil {
 					return nil, fmt.Errorf("contactPreAuthorizer.RequiresAuthorization: %w", err)
 				}
-				if blocked {
+				hasPending := item.HasTag(wire.FeedbagAttributesPending)
+				if blocked && !hasPending {
 					authRequired[item.Name] = true
 					continue
+				} else if hasPending && !blocked {
+					// Authorization has since been granted (IServerd strips
+					// SSI_TLV_AUTH before inserting when auth is already recorded).
+					// Clear the pending flag so the row is stored as a normal buddy.
+					item.TLVList = slices.DeleteFunc(item.TLVList, func(t wire.TLV) bool {
+						return t.Tag == wire.FeedbagAttributesPending
+					})
 				}
 			case instance.UIN() == 0 && sn.UIN() != 0:
 				// sender:aim, recipient: icq
@@ -495,9 +503,9 @@ func (s *FeedbagService) EndCluster(ctx context.Context, instance *state.Session
 	})
 }
 
-// Use sends a user the contents of their buddy list. It's invoked at sign-on
-// by AIM clients that use the feedbag food group for buddy list management (as
-// opposed to client-side management).
+// Use activates server-side buddy list state for feedbag clients at sign-on.
+// FeedbagUse and ClientOnline can arrive in either order; whichever handler runs
+// second performs the initial buddy presence broadcast when both are satisfied.
 func (s *FeedbagService) Use(ctx context.Context, instance *state.SessionInstance) error {
 	if err := s.feedbagManager.UseFeedbag(ctx, instance.IdentScreenName()); err != nil {
 		return fmt.Errorf("could not use feedbag: %w", err)
@@ -508,6 +516,15 @@ func (s *FeedbagService) Use(ctx context.Context, instance *state.SessionInstanc
 	}
 	setSessionBuddyPrefs(items, instance)
 	instance.Session().SetUsesFeedbag()
+	instance.SetContactsInit()
+
+	// ICQ Lite order: ClientOnline before FeedbagUse — broadcast here.
+	if instance.SignonComplete() {
+		if err := s.buddyBroadcaster.BroadcastVisibility(ctx, instance, nil, false); err != nil {
+			return fmt.Errorf("buddyBroadcaster.BroadcastVisibility: %w", err)
+		}
+	}
+
 	return nil
 }
 

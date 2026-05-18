@@ -898,6 +898,8 @@ type SessionInstance struct {
 	awayMsg           string
 	userInfoBitmask   uint16
 	userStatusBitmask uint32
+	// contactsInit indicates whether the client-side buddy list or feedbag has been initialized
+	contactsInit bool
 
 	// Per-session profile
 	profile           UserProfile
@@ -1132,6 +1134,22 @@ func (s *SessionInstance) OnClose(fn func()) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	s.onInstanceCloseFn = fn
+}
+
+// ContactsInit returns whether the client-side buddy list has been loaded or
+// the feedbag has been initialized.
+func (s *SessionInstance) ContactsInit() bool {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.contactsInit
+}
+
+// SetContactsInit indicates that the client-side buddy list has been loaded or
+// the feedbag has been initialized.
+func (s *SessionInstance) SetContactsInit() {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.contactsInit = true
 }
 
 // CloseInstance shuts down the instance's ability to relay messages.

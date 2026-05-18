@@ -2196,7 +2196,7 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 	}{
 		{
 			name:     "notify that BOS user is online",
-			instance: newTestInstance("me", sessOptCannedSignonTime),
+			instance: newTestInstance("me", sessOptCannedSignonTime, sessOptContactsInit),
 			bodyIn:   wire.SNAC_0x01_0x02_OServiceClientOnline{},
 			service:  wire.BOS,
 			mockParams: mockParams{
@@ -2232,8 +2232,37 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 			},
 		},
 		{
+			name:     "ICQ Lite order: ClientOnline before feedbag use",
+			instance: newTestInstance("me", sessOptCannedSignonTime),
+			bodyIn:   wire.SNAC_0x01_0x02_OServiceClientOnline{},
+			service:  wire.BOS,
+			mockParams: mockParams{
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Stats,
+									SubGroup:  wire.StatsSetMinReportInterval,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x0B_0x02_StatsSetMinReportInterval{
+									MinReportInterval: 1,
+								},
+							},
+						},
+					},
+				},
+			},
+			validateSess: func(t *testing.T, instance *state.SessionInstance) {
+				assert.True(t, instance.SignonComplete())
+				assert.False(t, instance.ContactsInit())
+			},
+		},
+		{
 			name:     "notify that BOS user is online via Kerberos auth, does not have stored profile",
-			instance: newTestInstance("me", sessOptCannedSignonTime, sessOptKerberosAuth),
+			instance: newTestInstance("me", sessOptCannedSignonTime, sessOptKerberosAuth, sessOptContactsInit),
 			bodyIn:   wire.SNAC_0x01_0x02_OServiceClientOnline{},
 			service:  wire.BOS,
 			mockParams: mockParams{
@@ -2279,7 +2308,7 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 		},
 		{
 			name:     "notify that BOS user is online via Kerberos auth, has stored profile",
-			instance: newTestInstance("me", sessOptCannedSignonTime, sessOptKerberosAuth),
+			instance: newTestInstance("me", sessOptCannedSignonTime, sessOptKerberosAuth, sessOptContactsInit),
 			bodyIn:   wire.SNAC_0x01_0x02_OServiceClientOnline{},
 			service:  wire.BOS,
 			mockParams: mockParams{
@@ -2349,7 +2378,7 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 		},
 		{
 			name:     "notify that BOS user is online with 0 offline messages, no notification sent",
-			instance: newTestInstance("me", sessOptCannedSignonTime, sessOptOfflineMsgCount(0)),
+			instance: newTestInstance("me", sessOptCannedSignonTime, sessOptOfflineMsgCount(0), sessOptContactsInit),
 			bodyIn:   wire.SNAC_0x01_0x02_OServiceClientOnline{},
 			service:  wire.BOS,
 			mockParams: mockParams{
@@ -2387,7 +2416,7 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 		},
 		{
 			name:     "notify that BOS user is online with offline messages, send notification and reset count",
-			instance: newTestInstance("me", sessOptCannedSignonTime, sessOptOfflineMsgCount(3)),
+			instance: newTestInstance("me", sessOptCannedSignonTime, sessOptOfflineMsgCount(3), sessOptContactsInit),
 			bodyIn:   wire.SNAC_0x01_0x02_OServiceClientOnline{},
 			service:  wire.BOS,
 			mockParams: mockParams{
@@ -2450,6 +2479,7 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 				instance2 := instance1.Session().AddInstance()
 				instance2.SetSignonComplete()
 				instance3 := instance1.Session().AddInstance()
+				instance3.SetContactsInit()
 				// instance 3 is not yet signed on
 				return instance3
 			}(),
@@ -2507,6 +2537,7 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 				instance2 := instance1.Session().AddInstance()
 				instance2.SetSignonComplete()
 				instance3 := instance1.Session().AddInstance()
+				instance3.SetContactsInit()
 				// instance 3 is not yet signed on
 				return instance3
 			}(),
@@ -2550,7 +2581,7 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 		},
 		{
 			name:     "notify that BOS user is online with offline messages, SetOfflineMsgCount fails",
-			instance: newTestInstance("me", sessOptCannedSignonTime, sessOptOfflineMsgCount(2)),
+			instance: newTestInstance("me", sessOptCannedSignonTime, sessOptOfflineMsgCount(2), sessOptContactsInit),
 			bodyIn:   wire.SNAC_0x01_0x02_OServiceClientOnline{},
 			service:  wire.BOS,
 			wantErr:  assert.AnError,

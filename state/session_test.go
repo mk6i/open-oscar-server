@@ -723,6 +723,17 @@ func TestSession_SetAndGetLastWarnLevel(t *testing.T) {
 	assert.Equal(t, level, s.Warning())
 }
 
+func TestSessionInstance_ContactsInit(t *testing.T) {
+	instance := NewSession().AddInstance()
+	assert.False(t, instance.ContactsInit())
+
+	instance.SetContactsInit()
+	assert.True(t, instance.ContactsInit())
+
+	instance.SetContactsInit()
+	assert.True(t, instance.ContactsInit())
+}
+
 func TestInstance_Active(t *testing.T) {
 	tests := []struct {
 		name           string

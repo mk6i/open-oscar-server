@@ -2213,6 +2213,138 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 				},
 			},
 		},
+		{
+			// ICQ Lite re-sends a FeedbagUpsert with FeedbagAttributesPending still
+			// set after the user clicks OK on the "you were added" notification that
+			// arrives when the contact grants authorization. IServerd handles this by
+			// stripping SSI_TLV_AUTH from the item before the DB insert (ssi_db.cpp
+			// ssi_db_add_item lines 304-308). We do the same: when the client sends
+			// a pending-tagged item but RequiresAuthorization returns false (auth was
+			// already granted), strip the tag and treat the item as a normal add.
+			name:     "ICQ user re-upserts ICQ buddy with pending tag after authorization already granted: strip pending tag",
+			instance: newTestInstance("100001", sessOptUIN(100001)),
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagInsertItem,
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x13_0x08_FeedbagInsertItem{
+					Items: []wire.FeedbagItem{
+						{
+							ClassID: wire.FeedbagClassIdBuddy,
+							Name:    "990011",
+							TLVLBlock: wire.TLVLBlock{
+								TLVList: wire.TLVList{
+									wire.NewTLVBE(wire.FeedbagAttributesPending, []byte{}),
+								},
+							},
+						},
+					},
+				},
+			},
+			mockParams: mockParams{
+				contactPreAuthorizerParams: contactPreAuthorizerParams{
+					requiresAuthorizationParams: requiresAuthorizationParams{
+						{
+							owner:     state.NewIdentScreenName("990011"),
+							requester: state.NewIdentScreenName("100001"),
+							result:    false, // already authorized
+						},
+					},
+				},
+				feedbagManagerParams: feedbagManagerParams{
+					feedbagUpsertParams: feedbagUpsertParams{
+						{
+							screenName: state.NewIdentScreenName("100001"),
+							// pending TLV must be stripped before storage
+							items: []wire.FeedbagItem{
+								{
+									ClassID: wire.FeedbagClassIdBuddy,
+									Name:    "990011",
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{},
+									},
+								},
+							},
+						},
+					},
+				},
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams: retrieveSessionParams{
+						{
+							screenName: state.NewIdentScreenName("990011"),
+							result:     nil,
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToOtherInstancesParams: relayToOtherInstancesParams{
+						{
+							screenName: state.NewIdentScreenName("100001"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagInsertItem,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
+									Items: []wire.FeedbagItem{
+										{
+											ClassID: wire.FeedbagClassIdBuddy,
+											Name:    "990011",
+											TLVLBlock: wire.TLVLBlock{
+												TLVList: wire.TLVList{},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+					relayToSelfParams: relayToSelfParams{
+						{
+							screenName: state.NewIdentScreenName("100001"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagStatus,
+									RequestID: 1234,
+								},
+								Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
+									Results: []uint16{0x0000},
+								},
+							},
+						},
+					},
+				},
+				buddyBroadcasterParams: buddyBroadcasterParams{
+					broadcastVisibilityParams: broadcastVisibilityParams{
+						{
+							from: state.NewIdentScreenName("100001"),
+							filter: []state.IdentScreenName{
+								state.NewIdentScreenName("990011"),
+							},
+						},
+					},
+				},
+			},
+			expectOutput: nil,
+			expectICBM:   true,
+			wantICBMBody: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
+				ChannelID:  wire.ICBMChannelICQ,
+				ScreenName: "990011",
+				TLVRestBlock: wire.TLVRestBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVLE(wire.ICBMTLVData, wire.ICBMCh4Message{
+							UIN:         100001,
+							MessageType: wire.ICBMMsgTypeAdded,
+						}),
+						wire.NewTLVBE(wire.ICBMTLVStore, []byte{}),
+					},
+				},
+			},
+		},
 	}
 
 	for _, tc := range cases {
@@ -2468,21 +2600,17 @@ func TestFeedbagService_Use(t *testing.T) {
 		name string
 		// instance is the user's session
 		instance *state.SessionInstance
-		// bodyIn is the SNAC body sent from the arriving user's client to the
-		// server
-		bodyIn wire.SNAC_0x01_0x02_OServiceClientOnline
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
-		// checkSession validates the state of the session after the call
-		checkSession func(*testing.T, *state.Session)
+		// checkSession validates session and instance state after the call
+		checkSession func(*testing.T, *state.SessionInstance)
 		// wantErr indicates an error is expected
 		wantErr error
 	}{
 		{
 			name:     "enable user's feedbag, no feedbag buddy params item",
 			instance: newTestInstance("me"),
-			bodyIn:   wire.SNAC_0x01_0x02_OServiceClientOnline{},
 			mockParams: mockParams{
 				feedbagManagerParams: feedbagManagerParams{
 					useParams: useParams{
@@ -2497,15 +2625,15 @@ func TestFeedbagService_Use(t *testing.T) {
 					},
 				},
 			},
-			checkSession: func(t *testing.T, s *state.Session) {
-				assert.True(t, s.UsesFeedbag())
-				assert.False(t, s.TypingEventsEnabled())
+			checkSession: func(t *testing.T, instance *state.SessionInstance) {
+				assert.True(t, instance.ContactsInit())
+				assert.True(t, instance.Session().UsesFeedbag())
+				assert.False(t, instance.Session().TypingEventsEnabled())
 			},
 		},
 		{
 			name:     "enable user's feedbag and set typing events disabled",
 			instance: newTestInstance("me"),
-			bodyIn:   wire.SNAC_0x01_0x02_OServiceClientOnline{},
 			mockParams: mockParams{
 				feedbagManagerParams: feedbagManagerParams{
 					useParams: useParams{
@@ -2530,15 +2658,15 @@ func TestFeedbagService_Use(t *testing.T) {
 					},
 				},
 			},
-			checkSession: func(t *testing.T, s *state.Session) {
-				assert.True(t, s.UsesFeedbag())
-				assert.False(t, s.TypingEventsEnabled())
+			checkSession: func(t *testing.T, instance *state.SessionInstance) {
+				assert.True(t, instance.ContactsInit())
+				assert.True(t, instance.Session().UsesFeedbag())
+				assert.False(t, instance.Session().TypingEventsEnabled())
 			},
 		},
 		{
 			name:     "enable user's feedbag and set typing events enabled",
 			instance: newTestInstance("me"),
-			bodyIn:   wire.SNAC_0x01_0x02_OServiceClientOnline{},
 			mockParams: mockParams{
 				feedbagManagerParams: feedbagManagerParams{
 					useParams: useParams{
@@ -2563,9 +2691,74 @@ func TestFeedbagService_Use(t *testing.T) {
 					},
 				},
 			},
-			checkSession: func(t *testing.T, s *state.Session) {
-				assert.True(t, s.UsesFeedbag())
-				assert.True(t, s.TypingEventsEnabled())
+			checkSession: func(t *testing.T, instance *state.SessionInstance) {
+				assert.True(t, instance.ContactsInit())
+				assert.True(t, instance.Session().UsesFeedbag())
+				assert.True(t, instance.Session().TypingEventsEnabled())
+			},
+		},
+		{
+			name:     "ICQ Lite order: feedbag use after ClientOnline broadcasts presence",
+			instance: newTestInstance("me", sessOptSignonComplete),
+			mockParams: mockParams{
+				feedbagManagerParams: feedbagManagerParams{
+					useParams: useParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+						},
+					},
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+						},
+					},
+				},
+				buddyBroadcasterParams: buddyBroadcasterParams{
+					broadcastVisibilityParams: broadcastVisibilityParams{
+						{
+							from:             state.NewIdentScreenName("me"),
+							filter:           nil,
+							doSendDepartures: false,
+						},
+					},
+				},
+			},
+			checkSession: func(t *testing.T, instance *state.SessionInstance) {
+				assert.True(t, instance.ContactsInit())
+				assert.True(t, instance.Session().UsesFeedbag())
+			},
+		},
+		{
+			name:     "ICQ Lite order: feedbag use after ClientOnline, BroadcastVisibility fails",
+			instance: newTestInstance("me", sessOptSignonComplete),
+			mockParams: mockParams{
+				feedbagManagerParams: feedbagManagerParams{
+					useParams: useParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+						},
+					},
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+						},
+					},
+				},
+				buddyBroadcasterParams: buddyBroadcasterParams{
+					broadcastVisibilityParams: broadcastVisibilityParams{
+						{
+							from:             state.NewIdentScreenName("me"),
+							filter:           nil,
+							doSendDepartures: false,
+							err:              assert.AnError,
+						},
+					},
+				},
+			},
+			wantErr: assert.AnError,
+			checkSession: func(t *testing.T, instance *state.SessionInstance) {
+				assert.True(t, instance.ContactsInit())
+				assert.True(t, instance.Session().UsesFeedbag())
 			},
 		},
 	}
@@ -2583,11 +2776,21 @@ func TestFeedbagService_Use(t *testing.T) {
 					Return(params.results, nil)
 			}
 
+			buddyUpdateBroadcaster := newMockbuddyBroadcaster(t)
+			for _, params := range tt.mockParams.broadcastVisibilityParams {
+				buddyUpdateBroadcaster.EXPECT().
+					BroadcastVisibility(matchContext(), matchSession(params.from), params.filter, params.doSendDepartures).
+					Return(params.err)
+			}
+
 			svc := NewFeedbagService(slog.Default(), nil, feedbagManager, nil, nil, nil, nil, nil)
+			svc.buddyBroadcaster = buddyUpdateBroadcaster
 
 			haveErr := svc.Use(context.Background(), tt.instance)
-			assert.ErrorIs(t, tt.wantErr, haveErr)
-			tt.checkSession(t, tt.instance.Session())
+			assert.ErrorIs(t, haveErr, tt.wantErr)
+			if tt.checkSession != nil {
+				tt.checkSession(t, tt.instance)
+			}
 		})
 	}
 }

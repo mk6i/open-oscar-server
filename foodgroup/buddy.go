@@ -91,6 +91,8 @@ func (s BuddyService) AddBuddies(ctx context.Context, instance *state.SessionIns
 		added = append(added, them)
 	}
 
+	instance.SetContactsInit()
+
 	if !instance.SignonComplete() {
 		// client has not completed sign-on sequence, so any arrival
 		// messages sent at this point would be ignored by the client.

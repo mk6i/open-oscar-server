@@ -833,6 +833,11 @@ func sessOptSignonComplete(instance *state.SessionInstance) {
 	instance.SetSignonComplete()
 }
 
+// sessOptContactsInit sets the contacts-init flag to true
+func sessOptContactsInit(instance *state.SessionInstance) {
+	instance.SetContactsInit()
+}
+
 // sessOptCaps sets caps
 func sessOptUIN(UIN uint32) func(instance *state.SessionInstance) {
 	return func(instance *state.SessionInstance) {

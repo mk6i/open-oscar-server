@@ -344,6 +344,7 @@ func TestBuddyService_AddBuddies(t *testing.T) {
 			rejectSNAC, haveErr := svc.AddBuddies(context.Background(), tt.instance, wire.SNACFrame{RequestID: 42}, tt.bodyIn)
 			assert.Equal(t, tt.wantSNAC, rejectSNAC)
 			assert.ErrorIs(t, haveErr, tt.wantErr)
+			assert.True(t, tt.instance.ContactsInit(), "AddBuddies marks client-side buddy list loaded")
 		})
 	}
 }
