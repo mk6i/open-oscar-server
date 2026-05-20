@@ -71,6 +71,10 @@ Follow [this guide](./docs/BUILD.md) to learn how to compile and run Open OSCAR 
 Check out the Open OSCAR Server [Discord server](https://discord.gg/zjFGGTa8mu) to get help or find out how to get
 involved.
 
+### Tooling Provided By
+
+[![JetBrains logo.](https://resources.jetbrains.com/storage/products/company/brand/logos/jetbrains.svg)](https://jb.gg/OpenSource)
+
 ## 👤 Management API
 
 The Management API provides functionality for administering the server (see [OpenAPI spec](./api.yml)). The following
