@@ -165,6 +165,36 @@ func TestSession_TLVUserInfo(t *testing.T) {
 			},
 		},
 		{
+			name: "user is on ICQ with direct connect info from client",
+			givenSessionFn: func() *SessionInstance {
+				s := NewSession().AddInstance()
+				s.Session().SetSignonTime(time.Unix(1, 0))
+				s.Session().SetIdentScreenName(NewIdentScreenName("1000003"))
+				s.Session().SetDisplayScreenName("1000003")
+				s.SetUserInfoFlag(wire.OServiceUserFlagICQ)
+				s.SetICQDCInfo(wire.ICQDCInfo{
+					DCType:       4,
+					ProtoVersion: 10,
+				})
+				return s
+			},
+			want: wire.TLVUserInfo{
+				ScreenName: "1000003",
+				TLVBlock: wire.TLVBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.OServiceUserInfoSignonTOD, uint32(1)),
+						wire.NewTLVBE(wire.OServiceUserInfoUserFlags, wire.OServiceUserFlagOSCARFree|wire.OServiceUserFlagICQ),
+						wire.NewTLVBE(wire.OServiceUserInfoStatus, uint32(0x0000)),
+						wire.NewTLVBE(wire.OServiceUserInfoICQDC, wire.ICQDCInfo{
+							DCType:       4,
+							ProtoVersion: 10,
+						}),
+						wire.NewTLVBE(wire.OServiceUserInfoMySubscriptions, uint32(0)),
+					},
+				},
+			},
+		},
+		{
 			name: "user has away message set - all instances away",
 			givenSessionFn: func() *SessionInstance {
 				sg := NewSession()

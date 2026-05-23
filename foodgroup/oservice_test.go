@@ -1,6 +1,7 @@
 package foodgroup
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"log/slog"
@@ -1051,6 +1052,52 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 			},
 			checkSession: func(t *testing.T, session *state.Session) {
 				assert.True(t, session.Invisible())
+			},
+		},
+		{
+			name:     "set ICQ direct connect info",
+			instance: newTestInstance("1000003", sessOptUserInfoFlag(wire.OServiceUserFlagICQ)),
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields{
+					TLVRestBlock: wire.TLVRestBlock{
+						TLVList: wire.TLVList{
+							wire.NewTLVBE(wire.OServiceUserInfoICQDC, wire.ICQDCInfo{
+								DCType:       4,
+								ProtoVersion: 10,
+							}),
+						},
+					},
+				},
+			},
+			expectOutput: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.OService,
+					SubGroup:  wire.OServiceUserInfoUpdate,
+					RequestID: 1234,
+				},
+				Body: func(val any) bool {
+					snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
+					if !ok || len(snac.UserInfo) == 0 {
+						return false
+					}
+					dc, hasDC := snac.UserInfo[0].Bytes(wire.OServiceUserInfoICQDC)
+					if !hasDC {
+						return false
+					}
+					var got wire.ICQDCInfo
+					if err := wire.UnmarshalBE(&got, bytes.NewReader(dc)); err != nil {
+						return false
+					}
+					return got.DCType == 4 && got.ProtoVersion == 10
+				},
+			},
+			checkSession: func(t *testing.T, session *state.Session) {
+				info := session.Instances()[0].ICQDCInfo()
+				assert.Equal(t, uint8(4), info.DCType)
+				assert.Equal(t, uint16(10), info.ProtoVersion)
 			},
 		},
 	}

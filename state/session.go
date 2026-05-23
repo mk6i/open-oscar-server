@@ -844,7 +844,9 @@ func (s *Session) userInfo() wire.TLVList {
 	// ICQ direct-connect info. The TLV is required for buddy arrival events to
 	// work in ICQ, even if the values are set to default.
 	if baseUserFlags&wire.OServiceUserFlagICQ == wire.OServiceUserFlagICQ {
-		tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoICQDC, wire.ICQDCInfo{}))
+		if len(instances) > 0 {
+			tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoICQDC, instances[0].ICQDCInfo()))
+		}
 	}
 
 	caps := s.Caps()
@@ -891,6 +893,7 @@ type SessionInstance struct {
 	multiConnFlag     wire.MultiConnFlag
 	toc2              bool
 	toc2MsgEnc        bool
+	icqDCInfo         wire.ICQDCInfo
 
 	// Per-session state
 	idle              bool
@@ -1318,6 +1321,20 @@ func (s *SessionInstance) UserStatusBitmask() uint32 {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 	return s.userStatusBitmask
+}
+
+// SetICQDCInfo stores ICQ direct-connect settings from TLV 0x0C on SNAC(01,1E).
+func (s *SessionInstance) SetICQDCInfo(info wire.ICQDCInfo) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.icqDCInfo = info
+}
+
+// ICQDCInfo returns stored ICQ direct-connect settings.
+func (s *SessionInstance) ICQDCInfo() wire.ICQDCInfo {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.icqDCInfo
 }
 
 // caps retrieves instance capabilities.

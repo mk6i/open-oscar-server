@@ -258,6 +258,14 @@ func (s OServiceService) SetUserInfoFields(ctx context.Context, instance *state.
 		}
 	}
 
+	if dcBytes, hasDC := inBody.Bytes(wire.OServiceUserInfoICQDC); hasDC {
+		var dc wire.ICQDCInfo
+		if err := wire.UnmarshalBE(&dc, bytes.NewReader(dcBytes)); err != nil {
+			return wire.SNACMessage{}, err
+		}
+		instance.SetICQDCInfo(dc)
+	}
+
 	// reflect the status of this instance back to the caller, even though
 	// it does not reflect aggregated state of the session. this is necessary
 	// for the "invisible" button to properly toggle on the client.
