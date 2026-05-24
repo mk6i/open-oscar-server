@@ -2344,7 +2344,8 @@ type ICQ_0x07DA_0x01A4_DBQueryMetaReplyUserFound struct {
 	ReqSubType uint16
 	Success    uint8
 	Details    ICQUserSearchRecord `oscar:"len_prefix=uint16"`
-	Buffer     uint16
+	// Buffer allows intermediate search results to appear in ICQ 5
+	Buffer [12]byte
 }
 
 type ICQ_0x07DA_0x01AE_DBQueryMetaReplyLastUserFound struct {
@@ -2353,6 +2354,8 @@ type ICQ_0x07DA_0x01AE_DBQueryMetaReplyLastUserFound struct {
 	Success    uint8
 	Details    ICQUserSearchRecord `oscar:"len_prefix=uint16"`
 	UsersLeft  uint32
+	// Buffer fixes ICQ 5 search hanging
+	Buffer [8]byte
 }
 
 type ICQ_0x07DA_0x0104_DBQueryMetaReplyShortInfo struct {
