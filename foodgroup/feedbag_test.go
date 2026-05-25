@@ -497,6 +497,76 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 			expectOutput: nil,
 		},
 		{
+			name: "defer visibility during notify txn",
+			instance: func() *state.SessionInstance {
+				inst := newTestInstance("me")
+				inst.BeginNotifyTxn()
+				return inst
+			}(),
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagInsertItem,
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x13_0x08_FeedbagInsertItem{
+					Items: []wire.FeedbagItem{
+						{ClassID: wire.FeedbagClassIDPermit, Name: "buddy1"},
+					},
+				},
+			},
+			mockParams: mockParams{
+				feedbagManagerParams: feedbagManagerParams{
+					feedbagUpsertParams: feedbagUpsertParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							items: []wire.FeedbagItem{
+								{ClassID: wire.FeedbagClassIDPermit, Name: "buddy1"},
+							},
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToOtherInstancesParams: relayToOtherInstancesParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagInsertItem,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
+									Items: []wire.FeedbagItem{
+										{ClassID: wire.FeedbagClassIDPermit, Name: "buddy1"},
+									},
+								},
+							},
+						},
+					},
+					relayToSelfParams: relayToSelfParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagStatus,
+									RequestID: 1234,
+								},
+								Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
+									Results: []uint16{0x0000},
+								},
+							},
+						},
+					},
+				},
+			},
+			instanceMatch: func(instance *state.SessionInstance) {
+				assert.True(t, instance.InNotifyTxn())
+			},
+			expectOutput: nil,
+		},
+		{
 			name:     "add 2 ICQ buddies one that requires authorization",
 			instance: newTestInstance("100001", sessOptUIN(100001)),
 			inputSNAC: wire.SNACMessage{
@@ -2447,6 +2517,8 @@ func TestFeedbagService_DeleteItem(t *testing.T) {
 		mockParams mockParams
 		// expectOutput is the SNAC sent from the server to client
 		expectOutput *wire.SNACMessage
+		// checkInstance validates instance state after the call
+		checkInstance func(*testing.T, *state.SessionInstance)
 	}{
 		{
 			name:     "delete buddies",
@@ -2555,6 +2627,76 @@ func TestFeedbagService_DeleteItem(t *testing.T) {
 			},
 			expectOutput: nil,
 		},
+		{
+			name: "defer visibility during notify txn",
+			instance: func() *state.SessionInstance {
+				inst := newTestInstance("me")
+				inst.BeginNotifyTxn()
+				return inst
+			}(),
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagDeleteItem,
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
+					Items: []wire.FeedbagItem{
+						{ClassID: wire.FeedbagClassIdBuddy, Name: "buddy1"},
+					},
+				},
+			},
+			mockParams: mockParams{
+				feedbagManagerParams: feedbagManagerParams{
+					feedbagDeleteParams: feedbagDeleteParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							items: []wire.FeedbagItem{
+								{ClassID: wire.FeedbagClassIdBuddy, Name: "buddy1"},
+							},
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToOtherInstancesParams: relayToOtherInstancesParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagDeleteItem,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
+									Items: []wire.FeedbagItem{
+										{ClassID: wire.FeedbagClassIdBuddy, Name: "buddy1"},
+									},
+								},
+							},
+						},
+					},
+					relayToSelfParams: relayToSelfParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagStatus,
+									RequestID: 1234,
+								},
+								Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
+									Results: []uint16{0x0000},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectOutput: nil,
+			checkInstance: func(t *testing.T, instance *state.SessionInstance) {
+				assert.True(t, instance.InNotifyTxn())
+			},
+		},
 	}
 
 	for _, tc := range cases {
@@ -2590,6 +2732,10 @@ func TestFeedbagService_DeleteItem(t *testing.T) {
 				tc.inputSNAC.Body.(wire.SNAC_0x13_0x0A_FeedbagDeleteItem))
 			assert.NoError(t, err)
 			assert.Equal(t, output, tc.expectOutput)
+
+			if tc.checkInstance != nil {
+				tc.checkInstance(t, tc.instance)
+			}
 		})
 	}
 }
@@ -4170,25 +4316,227 @@ func TestFeedbagService_StartCluster(t *testing.T) {
 
 	svc := NewFeedbagService(slog.Default(), messageRelayer, nil, nil, nil, nil, nil, nil)
 	svc.StartCluster(context.Background(), instance, inFrame, inBody)
+
+	assert.True(t, instance.InNotifyTxn())
 }
 
 func TestFeedbagService_EndCluster(t *testing.T) {
-	instance := newTestInstance("me")
-	inFrame := wire.SNACFrame{
+	endFrame := wire.SNACFrame{
 		FoodGroup: wire.Feedbag,
 		SubGroup:  wire.FeedbagEndCluster,
 		RequestID: 1234,
 	}
+	endRelay := wire.SNACMessage{
+		Frame: endFrame,
+		Body:  wire.SNAC_0x13_0x12_FeedbagEndCluster{},
+	}
 
-	messageRelayer := newMockMessageRelayer(t)
-	messageRelayer.EXPECT().
-		RelayToOtherInstances(matchContext(), instance, wire.SNACMessage{
-			Frame: inFrame,
-			Body:  wire.SNAC_0x13_0x12_FeedbagEndCluster{},
+	cases := []struct {
+		name                      string
+		instance                  *state.SessionInstance
+		broadcastVisibilityParams broadcastVisibilityParams
+	}{
+		{
+			name: "open txn without accumulated notify skips broadcast",
+			instance: func() *state.SessionInstance {
+				inst := newTestInstance("me")
+				inst.BeginNotifyTxn()
+				return inst
+			}(),
+		},
+		{
+			name: "broadcasts accumulated screen names",
+			instance: func() *state.SessionInstance {
+				inst := newTestInstance("me")
+				inst.BeginNotifyTxn()
+				_ = inst.NotifyTxn(state.NewIdentScreenName("buddy1"))
+				return inst
+			}(),
+			broadcastVisibilityParams: broadcastVisibilityParams{
+				{
+					from: state.NewIdentScreenName("me"),
+					filter: []state.IdentScreenName{
+						state.NewIdentScreenName("buddy1"),
+					},
+				},
+			},
+		},
+		{
+			name: "broadcasts after notify without name filter",
+			instance: func() *state.SessionInstance {
+				inst := newTestInstance("me")
+				inst.BeginNotifyTxn()
+				_ = inst.NotifyTxn()
+				return inst
+			}(),
+			broadcastVisibilityParams: broadcastVisibilityParams{
+				{
+					from:   state.NewIdentScreenName("me"),
+					filter: nil,
+				},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			messageRelayer := newMockMessageRelayer(t)
+			messageRelayer.EXPECT().
+				RelayToOtherInstances(matchContext(), tc.instance, endRelay)
+
+			buddyBroadcaster := newMockbuddyBroadcaster(t)
+			for _, params := range tc.broadcastVisibilityParams {
+				buddyBroadcaster.EXPECT().
+					BroadcastVisibility(matchContext(), matchSession(params.from), params.filter, true).
+					Return(params.err)
+			}
+
+			svc := NewFeedbagService(slog.Default(), messageRelayer, nil, nil, nil, nil, nil, nil)
+			svc.buddyBroadcaster = buddyBroadcaster
+			err := svc.EndCluster(context.Background(), tc.instance, endFrame)
+			assert.NoError(t, err)
+			assert.False(t, tc.instance.InNotifyTxn())
 		})
+	}
+}
 
-	svc := NewFeedbagService(slog.Default(), messageRelayer, nil, nil, nil, nil, nil, nil)
-	svc.EndCluster(context.Background(), instance, inFrame)
+func TestFeedbagService_notifyTxnCluster(t *testing.T) {
+	me := state.NewIdentScreenName("me")
+	buddy1 := state.NewIdentScreenName("buddy1")
+
+	startFrame := wire.SNACFrame{
+		FoodGroup: wire.Feedbag,
+		SubGroup:  wire.FeedbagStartCluster,
+		RequestID: 1,
+	}
+	startBody := wire.SNAC_0x13_0x11_FeedbagStartCluster{}
+	endFrame := wire.SNACFrame{
+		FoodGroup: wire.Feedbag,
+		SubGroup:  wire.FeedbagEndCluster,
+		RequestID: 2,
+	}
+	upsertFrame := wire.SNACFrame{
+		FoodGroup: wire.Feedbag,
+		SubGroup:  wire.FeedbagInsertItem,
+		RequestID: 3,
+	}
+	upsertItems := []wire.FeedbagItem{
+		{ClassID: wire.FeedbagClassIDPermit, Name: "buddy1"},
+	}
+
+	t.Run("upsert defers visibility until end cluster", func(t *testing.T) {
+		instance := newTestInstance("me")
+
+		messageRelayer := newMockMessageRelayer(t)
+		messageRelayer.EXPECT().
+			RelayToOtherInstances(matchContext(), instance, mock.Anything).
+			Times(3)
+		messageRelayer.EXPECT().
+			RelayToSelf(matchContext(), instance, mock.Anything).
+			Once()
+
+		feedbagManager := newMockFeedbagManager(t)
+		feedbagManager.EXPECT().
+			FeedbagUpsert(matchContext(), me, upsertItems).
+			Return(nil)
+
+		buddyBroadcaster := newMockbuddyBroadcaster(t)
+		buddyBroadcaster.EXPECT().
+			BroadcastVisibility(matchContext(), matchSession(me), []state.IdentScreenName{buddy1}, true).
+			Return(nil).
+			Once()
+
+		svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, nil, nil, nil, nil, nil)
+		svc.buddyBroadcaster = buddyBroadcaster
+
+		svc.StartCluster(context.Background(), instance, startFrame, startBody)
+		assert.True(t, instance.InNotifyTxn())
+
+		_, err := svc.UpsertItem(context.Background(), instance, upsertFrame, upsertItems)
+		assert.NoError(t, err)
+		assert.True(t, instance.InNotifyTxn())
+
+		err = svc.EndCluster(context.Background(), instance, endFrame)
+		assert.NoError(t, err)
+		assert.False(t, instance.InNotifyTxn())
+	})
+
+	t.Run("delete defers visibility until end cluster", func(t *testing.T) {
+		instance := newTestInstance("me")
+		deleteBody := wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
+			Items: []wire.FeedbagItem{
+				{ClassID: wire.FeedbagClassIdBuddy, Name: "buddy1"},
+			},
+		}
+
+		messageRelayer := newMockMessageRelayer(t)
+		messageRelayer.EXPECT().
+			RelayToOtherInstances(matchContext(), instance, mock.Anything).
+			Times(3)
+		messageRelayer.EXPECT().
+			RelayToSelf(matchContext(), instance, mock.Anything).
+			Once()
+
+		feedbagManager := newMockFeedbagManager(t)
+		feedbagManager.EXPECT().
+			FeedbagDelete(matchContext(), me, deleteBody.Items).
+			Return(nil)
+
+		buddyBroadcaster := newMockbuddyBroadcaster(t)
+		buddyBroadcaster.EXPECT().
+			BroadcastVisibility(matchContext(), matchSession(me), []state.IdentScreenName{buddy1}, true).
+			Return(nil).
+			Once()
+
+		svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, nil, nil, nil, nil, nil)
+		svc.buddyBroadcaster = buddyBroadcaster
+
+		svc.StartCluster(context.Background(), instance, startFrame, startBody)
+		_, err := svc.DeleteItem(context.Background(), instance, upsertFrame, deleteBody)
+		assert.NoError(t, err)
+
+		err = svc.EndCluster(context.Background(), instance, endFrame)
+		assert.NoError(t, err)
+	})
+
+	t.Run("pdinfo upsert defers broadcast all until end cluster", func(t *testing.T) {
+		instance := newTestInstance("me")
+		pdinfoItems := []wire.FeedbagItem{{ClassID: wire.FeedbagClassIdPdinfo}}
+
+		messageRelayer := newMockMessageRelayer(t)
+		messageRelayer.EXPECT().
+			RelayToOtherInstances(matchContext(), instance, mock.Anything).
+			Times(3)
+		messageRelayer.EXPECT().
+			RelayToSelf(matchContext(), instance, mock.Anything).
+			Once()
+
+		feedbagManager := newMockFeedbagManager(t)
+		feedbagManager.EXPECT().
+			FeedbagUpsert(matchContext(), me, pdinfoItems).
+			Return(nil)
+
+		buddyBroadcaster := newMockbuddyBroadcaster(t)
+		buddyBroadcaster.EXPECT().
+			BroadcastVisibility(
+				matchContext(),
+				matchSession(me),
+				mock.MatchedBy(func(filter []state.IdentScreenName) bool { return len(filter) == 0 }),
+				true,
+			).
+			Return(nil).
+			Once()
+
+		svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, nil, nil, nil, nil, nil)
+		svc.buddyBroadcaster = buddyBroadcaster
+
+		svc.StartCluster(context.Background(), instance, startFrame, startBody)
+		_, err := svc.UpsertItem(context.Background(), instance, upsertFrame, pdinfoItems)
+		assert.NoError(t, err)
+
+		err = svc.EndCluster(context.Background(), instance, endFrame)
+		assert.NoError(t, err)
+	})
 }
 
 func TestFeedbagService_ForwardICQAuthEvents(t *testing.T) {

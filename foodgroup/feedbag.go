@@ -350,8 +350,14 @@ func (s *FeedbagService) UpsertItem(ctx context.Context, instance *state.Session
 	}
 
 	if alertAll || len(filter) > 0 {
-		if err := s.buddyBroadcaster.BroadcastVisibility(ctx, instance, filter, true); err != nil {
-			return nil, err
+		if instance.InNotifyTxn() {
+			if err := instance.NotifyTxn(filter...); err != nil {
+				return nil, fmt.Errorf("NotifyTxn: %w", err)
+			}
+		} else {
+			if err := s.buddyBroadcaster.BroadcastVisibility(ctx, instance, filter, true); err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -477,8 +483,14 @@ func (s *FeedbagService) DeleteItem(ctx context.Context, instance *state.Session
 		}
 	}
 
-	if err := s.buddyBroadcaster.BroadcastVisibility(ctx, instance, filter, true); err != nil {
-		return nil, err
+	if instance.InNotifyTxn() {
+		if err := instance.NotifyTxn(filter...); err != nil {
+			return nil, fmt.Errorf("NotifyTxn: %w", err)
+		}
+	} else {
+		if err := s.buddyBroadcaster.BroadcastVisibility(ctx, instance, filter, true); err != nil {
+			return nil, err
+		}
 	}
 
 	return nil, nil
@@ -486,8 +498,10 @@ func (s *FeedbagService) DeleteItem(ctx context.Context, instance *state.Session
 
 // StartCluster signals the beginning of a batch of feedbag operations that clients should
 // process together to prevent UI flicker during rapid updates. It transmits the start message
-// to other session instances.
+// to other session instances. It starts a new notification transaction, which records users
+// that should receive presence notifications when the transaction ends.
 func (s *FeedbagService) StartCluster(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x11_FeedbagStartCluster) {
+	instance.BeginNotifyTxn()
 	s.messageRelayer.RelayToOtherInstances(ctx, instance, wire.SNACMessage{
 		Frame: inFrame,
 		Body:  inBody,
@@ -495,12 +509,23 @@ func (s *FeedbagService) StartCluster(ctx context.Context, instance *state.Sessi
 }
 
 // EndCluster signals the completion of a batched feedbag operation group. It transmits the end
-// message to other session instances.
-func (s *FeedbagService) EndCluster(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame) {
+// message to other session instances. It broadcast presence notifications if any relevant
+// changes accumulated during the transaction.
+func (s *FeedbagService) EndCluster(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame) error {
 	s.messageRelayer.RelayToOtherInstances(ctx, instance, wire.SNACMessage{
 		Frame: inFrame,
 		Body:  wire.SNAC_0x13_0x12_FeedbagEndCluster{},
 	})
+
+	shouldNotify, filter := instance.EndNotifyTxn()
+	if !shouldNotify {
+		return nil
+	}
+
+	if err := s.buddyBroadcaster.BroadcastVisibility(ctx, instance, filter, true); err != nil {
+		return err
+	}
+	return nil
 }
 
 // Use activates server-side buddy list state for feedbag clients at sign-on.

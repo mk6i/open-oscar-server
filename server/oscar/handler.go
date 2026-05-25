@@ -384,7 +384,9 @@ func (rt Handler) FeedbagStartCluster(ctx context.Context, instance *state.Sessi
 }
 
 func (rt Handler) FeedbagEndCluster(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
-	rt.EndCluster(ctx, instance, inFrame)
+	if err := rt.EndCluster(ctx, instance, inFrame); err != nil {
+		return err
+	}
 	rt.LogRequest(ctx, inFrame, nil)
 	return nil
 }

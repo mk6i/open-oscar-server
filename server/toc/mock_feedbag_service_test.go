@@ -120,9 +120,20 @@ func (_c *mockFeedbagService_DeleteItem_Call) RunAndReturn(run func(ctx context.
 }
 
 // EndCluster provides a mock function for the type mockFeedbagService
-func (_mock *mockFeedbagService) EndCluster(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame) {
-	_mock.Called(ctx, instance, inFrame)
-	return
+func (_mock *mockFeedbagService) EndCluster(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame) error {
+	ret := _mock.Called(ctx, instance, inFrame)
+
+	if len(ret) == 0 {
+		panic("no return value specified for EndCluster")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame) error); ok {
+		r0 = returnFunc(ctx, instance, inFrame)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
 }
 
 // mockFeedbagService_EndCluster_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'EndCluster'
@@ -161,13 +172,13 @@ func (_c *mockFeedbagService_EndCluster_Call) Run(run func(ctx context.Context, 
 	return _c
 }
 
-func (_c *mockFeedbagService_EndCluster_Call) Return() *mockFeedbagService_EndCluster_Call {
-	_c.Call.Return()
+func (_c *mockFeedbagService_EndCluster_Call) Return(err error) *mockFeedbagService_EndCluster_Call {
+	_c.Call.Return(err)
 	return _c
 }
 
-func (_c *mockFeedbagService_EndCluster_Call) RunAndReturn(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame)) *mockFeedbagService_EndCluster_Call {
-	_c.Run(run)
+func (_c *mockFeedbagService_EndCluster_Call) RunAndReturn(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame) error) *mockFeedbagService_EndCluster_Call {
+	_c.Call.Return(run)
 	return _c
 }
 

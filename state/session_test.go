@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"net/netip"
 	"sync"
@@ -11,6 +12,7 @@ import (
 	"github.com/mk6i/open-oscar-server/wire"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSession_UsesFeedbag(t *testing.T) {
@@ -31,6 +33,87 @@ func TestSession_UsesFeedbag(t *testing.T) {
 	if !s.UsesFeedbag() {
 		t.Fatalf("UsesFeedbag() = false after second SetUsesFeedbag; want true")
 	}
+}
+
+func TestSessionInstance_NotifyTxn(t *testing.T) {
+	alice := NewIdentScreenName("Alice")
+	bob := NewIdentScreenName("Bob")
+
+	t.Run("lifecycle", func(t *testing.T) {
+		inst := NewSession().AddInstance()
+		inst.BeginNotifyTxn()
+		assert.True(t, inst.InNotifyTxn())
+
+		require.NoError(t, inst.NotifyTxn(alice, bob))
+		shouldNotify, screenNames := inst.EndNotifyTxn()
+		assert.True(t, shouldNotify)
+		assert.ElementsMatch(t, []IdentScreenName{alice, bob}, screenNames)
+		assert.False(t, inst.InNotifyTxn())
+
+		shouldNotify, screenNames = inst.EndNotifyTxn()
+		assert.False(t, shouldNotify)
+		assert.Nil(t, screenNames)
+	})
+
+	t.Run("clear on begin", func(t *testing.T) {
+		inst := NewSession().AddInstance()
+		inst.BeginNotifyTxn()
+		require.NoError(t, inst.NotifyTxn(alice))
+		inst.BeginNotifyTxn()
+
+		shouldNotify, screenNames := inst.EndNotifyTxn()
+		assert.False(t, shouldNotify)
+		assert.Empty(t, screenNames)
+	})
+
+	t.Run("notify without names", func(t *testing.T) {
+		inst := NewSession().AddInstance()
+		inst.BeginNotifyTxn()
+		require.NoError(t, inst.NotifyTxn())
+
+		shouldNotify, screenNames := inst.EndNotifyTxn()
+		assert.True(t, shouldNotify)
+		assert.Empty(t, screenNames)
+	})
+
+	t.Run("inactive notify", func(t *testing.T) {
+		inst := NewSession().AddInstance()
+		assert.ErrorIs(t, inst.NotifyTxn(alice), errNotifyTxnNotActive)
+
+		inst.BeginNotifyTxn()
+		shouldNotify, screenNames := inst.EndNotifyTxn()
+		assert.False(t, shouldNotify)
+		assert.Empty(t, screenNames)
+	})
+
+	t.Run("dedup", func(t *testing.T) {
+		inst := NewSession().AddInstance()
+		inst.BeginNotifyTxn()
+		require.NoError(t, inst.NotifyTxn(alice, alice))
+
+		shouldNotify, screenNames := inst.EndNotifyTxn()
+		assert.True(t, shouldNotify)
+		assert.Equal(t, []IdentScreenName{alice}, screenNames)
+	})
+
+	t.Run("exceeds max names", func(t *testing.T) {
+		inst := NewSession().AddInstance()
+		inst.BeginNotifyTxn()
+
+		names := make([]IdentScreenName, maxNotifyTxnNames)
+		for i := range names {
+			names[i] = NewIdentScreenName(fmt.Sprintf("user%d", i))
+		}
+		require.NoError(t, inst.NotifyTxn(names...))
+
+		shouldNotify, screenNames := inst.EndNotifyTxn()
+		assert.True(t, shouldNotify)
+		assert.Len(t, screenNames, maxNotifyTxnNames)
+
+		inst.BeginNotifyTxn()
+		require.NoError(t, inst.NotifyTxn(names...))
+		assert.ErrorIs(t, inst.NotifyTxn(NewIdentScreenName("overflow")), errNotifyTxnTooManyNames)
+	})
 }
 
 func TestSession_IncrementAndGetWarning(t *testing.T) {

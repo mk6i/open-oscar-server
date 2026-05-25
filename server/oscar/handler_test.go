@@ -1617,7 +1617,8 @@ func TestHandler_FeedbagEndCluster(t *testing.T) {
 
 			svc := newMockFeedbagService(t)
 			svc.EXPECT().
-				EndCluster(mock.Anything, mock.Anything, input.Frame)
+				EndCluster(mock.Anything, mock.Anything, input.Frame).
+				Return(nil)
 
 			h := Handler{
 				FeedbagService: svc,

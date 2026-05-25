@@ -1,6 +1,8 @@
 package state
 
 import (
+	"errors"
+	"fmt"
 	"net/netip"
 	"slices"
 	"sync"
@@ -45,6 +47,15 @@ const (
 	// SessQueueFull indicates send failed due to full queue -- client is likely
 	// dead
 	SessQueueFull
+)
+
+// maxNotifyTxnNames is the maximum number of distinct screen names accumulated in
+// a single notify transaction.
+const maxNotifyTxnNames = 1000
+
+var (
+	errNotifyTxnNotActive    = errors.New("notify transaction is not active")
+	errNotifyTxnTooManyNames = errors.New("notify transaction exceeds maximum screen names")
 )
 
 // Session represents shared user-level state that persists across all concurrent
@@ -904,6 +915,11 @@ type SessionInstance struct {
 	// contactsInit indicates whether the client-side buddy list or feedbag has been initialized
 	contactsInit bool
 
+	// notify transaction: accumulate visibility notification targets during feedbag batches
+	notifyTxnActive     bool
+	notifyTxnShouldSend bool
+	notifyTxnNames      map[IdentScreenName]struct{}
+
 	// Per-session profile
 	profile           UserProfile
 	awayTime          time.Time
@@ -1153,6 +1169,72 @@ func (s *SessionInstance) SetContactsInit() {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	s.contactsInit = true
+}
+
+// BeginNotifyTxn starts accumulating notification targets during feedbag transactions.
+func (s *SessionInstance) BeginNotifyTxn() {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.notifyTxnShouldSend = false
+	s.notifyTxnNames = nil
+	s.notifyTxnActive = true
+}
+
+// InNotifyTxn reports whether a notification transaction is open.
+func (s *SessionInstance) InNotifyTxn() bool {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.notifyTxnActive
+}
+
+// NotifyTxn records that a visibility notification should be sent when the transaction
+// ends, optionally limiting it to the given ident screen names. If no names are provided,
+// all buddies will be notified.
+func (s *SessionInstance) NotifyTxn(names ...IdentScreenName) error {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	if !s.notifyTxnActive {
+		return fmt.Errorf("notify transaction: %w", errNotifyTxnNotActive)
+	}
+	if len(s.notifyTxnNames)+len(names) > maxNotifyTxnNames {
+		return fmt.Errorf("notify transaction: %w", errNotifyTxnTooManyNames)
+	}
+
+	s.notifyTxnShouldSend = true
+	if s.notifyTxnNames == nil {
+		s.notifyTxnNames = make(map[IdentScreenName]struct{})
+	}
+	for _, name := range names {
+		s.notifyTxnNames[name] = struct{}{}
+	}
+
+	return nil
+}
+
+// EndNotifyTxn returns whether to send a notification and accumulated notification targets,
+// then clears transaction state.
+func (s *SessionInstance) EndNotifyTxn() (shouldNotify bool, screenNames []IdentScreenName) {
+	s.mutex.Lock()
+	defer func() {
+		s.notifyTxnActive = false
+		s.notifyTxnShouldSend = false
+		s.notifyTxnNames = nil
+		s.mutex.Unlock()
+	}()
+
+	if !s.notifyTxnActive {
+		return false, nil
+	}
+
+	shouldNotify = s.notifyTxnShouldSend
+	if len(s.notifyTxnNames) > 0 {
+		screenNames = make([]IdentScreenName, 0, len(s.notifyTxnNames))
+		for name := range s.notifyTxnNames {
+			screenNames = append(screenNames, name)
+		}
+	}
+	return shouldNotify, screenNames
 }
 
 // CloseInstance shuts down the instance's ability to relay messages.
