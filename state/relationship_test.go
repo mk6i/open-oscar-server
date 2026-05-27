@@ -3136,7 +3136,7 @@ func TestSQLiteUserStore_AllRelationships(t *testing.T) {
 			},
 		},
 		{
-			name:            "feedbag server-side: buddy with auth pending does not count on your list",
+			name:            "feedbag server-side: I have a buddy that I have not yet authorized, don't show on list",
 			me:              NewIdentScreenName("me"),
 			clientSideLists: map[IdentScreenName]buddyList{},
 			serverSideLists: map[IdentScreenName]buddyList{
@@ -3152,6 +3152,36 @@ func TestSQLiteUserStore_AllRelationships(t *testing.T) {
 					buddyList:   []IdentScreenName{},
 					permitList:  []IdentScreenName{},
 					denyList:    []IdentScreenName{},
+				},
+			},
+			expect: []Relationship{
+				{
+					User:          NewIdentScreenName("them"),
+					BlocksYou:     false,
+					YouBlock:      false,
+					IsOnTheirList: false,
+					IsOnYourList:  false,
+				},
+			},
+		},
+		{
+			name:            "feedbag server-side: A user has me on their list and I have not yet authorized them, don't show on list",
+			me:              NewIdentScreenName("me"),
+			clientSideLists: map[IdentScreenName]buddyList{},
+			serverSideLists: map[IdentScreenName]buddyList{
+				NewIdentScreenName("me"): {
+					privacyMode:      wire.FeedbagPDModePermitAll,
+					buddyList:        []IdentScreenName{},
+					buddyPendingAuth: []IdentScreenName{},
+					permitList:       []IdentScreenName{},
+					denyList:         []IdentScreenName{},
+				},
+				NewIdentScreenName("them"): {
+					privacyMode:      wire.FeedbagPDModePermitAll,
+					buddyList:        []IdentScreenName{NewIdentScreenName("me")},
+					buddyPendingAuth: []IdentScreenName{NewIdentScreenName("me")},
+					permitList:       []IdentScreenName{},
+					denyList:         []IdentScreenName{},
 				},
 			},
 			expect: []Relationship{
