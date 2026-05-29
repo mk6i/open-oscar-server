@@ -2983,7 +2983,7 @@ func TestFeedbagService_RequestAuthorizeToHost(t *testing.T) {
 				},
 				Body: wire.SNAC_0x13_0x18_FeedbagRequestAuthorizationToHost{
 					ScreenName: "100002",
-					Reason:     "please add me",
+					Reason:     "please add me.",
 				},
 			},
 			buddySess: func() *state.Session {
@@ -3007,9 +3007,55 @@ func TestFeedbagService_RequestAuthorizeToHost(t *testing.T) {
 									FoodGroup: wire.Feedbag,
 									SubGroup:  wire.FeedbagRequestAuthorizeToClient,
 								},
-								Body: wire.SNAC_0x13_0x18_FeedbagRequestAuthorizationToHost{
+								Body: wire.SNAC_0x13_0x19_FeedbagRequestAuthorizeToClient{
 									ScreenName: "100001",
-									Reason:     "please add me",
+									Reason:     "please add me.",
+								},
+							},
+						},
+					},
+				},
+			},
+			expectICBM: false,
+		},
+		{
+			name:     "ICQ 5 authorization failure workaround: remove periods following first from reason",
+			instance: newTestInstance("100001", sessOptUIN(100001)),
+			inSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagRequestAuthorizeToHost,
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x13_0x18_FeedbagRequestAuthorizationToHost{
+					ScreenName: "100002",
+					Reason:     "Please authorize my request and add me to your Contact List. yuki.tanaka ICQ#: 123405",
+				},
+			},
+			buddySess: func() *state.Session {
+				s := state.NewSession()
+				s.SetIdentScreenName(state.NewIdentScreenName("100002"))
+				s.SetUsesFeedbag()
+				return s
+			}(),
+			mockParams: mockParams{
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams: retrieveSessionParams{
+						{screenName: state.NewIdentScreenName("100002")},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("100002"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagRequestAuthorizeToClient,
+								},
+								Body: wire.SNAC_0x13_0x19_FeedbagRequestAuthorizeToClient{
+									ScreenName: "100001",
+									Reason:     "Please authorize my request and add me to your Contact List. yukitanaka ICQ#: 123405",
 								},
 							},
 						},

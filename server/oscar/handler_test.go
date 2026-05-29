@@ -3679,7 +3679,7 @@ func TestHandler_ICQDBQuery(t *testing.T) {
 					},
 				},
 				seq:     1,
-				wantErr: errUnknownICQMetaReqSubType,
+				wantErr: nil,
 			},
 		},
 		{

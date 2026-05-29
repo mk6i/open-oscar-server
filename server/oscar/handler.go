@@ -18,9 +18,8 @@ import (
 var (
 	// ErrRouteNotFound is an error that indicates a failure to find a matching
 	// route for an OSCAR protocol request.
-	ErrRouteNotFound            = errors.New("route not found")
-	errUnknownICQMetaReqType    = errors.New("unknown ICQ request type")
-	errUnknownICQMetaReqSubType = errors.New("unknown ICQ metadata request subtype")
+	ErrRouteNotFound         = errors.New("route not found")
+	errUnknownICQMetaReqType = errors.New("unknown ICQ request type")
 )
 
 // ResponseWriter is the interface for sending a SNAC response to the client
@@ -694,22 +693,9 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 			if err := rt.SetICQInfo(ctx, instance, inFrame, req, icqMD.Seq); err != nil {
 				return err
 			}
-		case wire.ICQDBQueryMetaReqStat0a8c,
-			wire.ICQDBQueryMetaReqStat0a96,
-			wire.ICQDBQueryMetaReqStat0aaa,
-			wire.ICQDBQueryMetaReqStat0ab4,
-			wire.ICQDBQueryMetaReqStat0ab9,
-			wire.ICQDBQueryMetaReqStat0abe,
-			wire.ICQDBQueryMetaReqStat0ac8,
-			wire.ICQDBQueryMetaReqStat0acd,
-			wire.ICQDBQueryMetaReqStat0ad2,
-			wire.ICQDBQueryMetaReqStat0ad7,
-			wire.ICQDBQueryMetaReqStat0758:
-			rt.Logger.Debug("got a request for stats, not doing anything right now")
-		case wire.ICQDBQueryMetaReqDirectoryQuery, wire.ICQDBQueryMetaReqDirectoryUpdate:
-			rt.Logger.Debug("got a directory query/update request, not implemented yet")
 		default:
-			return fmt.Errorf("%w: %X", errUnknownICQMetaReqSubType, icqMD.Optional.ReqSubType)
+			rt.Logger.Debug("unsupported ICQDBQueryMetaReqType", "type", icqMD.Optional.ReqSubType)
+			return nil
 		}
 	default:
 		return fmt.Errorf("%w: %X", errUnknownICQMetaReqType, icqMD.ReqType)

@@ -564,12 +564,18 @@ func (s *FeedbagService) RequestAuthorizeToHost(ctx context.Context, instance *s
 	useFeedbag := recipSess != nil && recipSess.UsesFeedbag()
 
 	if useFeedbag {
+		firstDot := strings.IndexByte(inBody.Reason, '.')
+		if firstDot >= 0 {
+			// ICQ 5 ignores authorization requests with multiple periods. Strip
+			// all periods following the first so that the message arrives.
+			inBody.Reason = inBody.Reason[:firstDot+1] + strings.ReplaceAll(inBody.Reason[firstDot+1:], ".", "")
+		}
 		s.messageRelayer.RelayToScreenName(ctx, recipient, wire.SNACMessage{
 			Frame: wire.SNACFrame{
 				FoodGroup: wire.Feedbag,
 				SubGroup:  wire.FeedbagRequestAuthorizeToClient,
 			},
-			Body: wire.SNAC_0x13_0x18_FeedbagRequestAuthorizationToHost{
+			Body: wire.SNAC_0x13_0x19_FeedbagRequestAuthorizeToClient{
 				ScreenName: instance.IdentScreenName().String(),
 				Reason:     inBody.Reason,
 			},
