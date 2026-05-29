@@ -2273,6 +2273,8 @@ type ICQ_0x07DA_0x00DC_DBQueryMetaReplyMoreInfo struct {
 	State        string `oscar:"len_prefix=uint16,nullterm"`
 	CountryCode  uint16
 	TimeZone     uint8
+	// Buffer fixes ICQ 5 user info request "error 117"
+	Buffer [4]byte
 }
 
 type ICQ_0x07DA_0x00EB_DBQueryMetaReplyExtEmailInfo struct {
