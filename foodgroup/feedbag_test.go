@@ -804,7 +804,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 							ClassID: wire.FeedbagClassIdBuddyPrefs,
 							TLVLBlock: wire.TLVLBlock{
 								TLVList: wire.TLVList{
-									wire.NewTLVBE(wire.FeedbagAttributesBuddyPrefs, uint32(0x8000)),
+									wire.NewTLVBE(wire.FeedbagAttributesBuddyPrefs, uint32(wire.SNACFlagsExtendedInfo)),
 								},
 							},
 						},
@@ -821,7 +821,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 									ClassID: wire.FeedbagClassIdBuddyPrefs,
 									TLVLBlock: wire.TLVLBlock{
 										TLVList: wire.TLVList{
-											wire.NewTLVBE(wire.FeedbagAttributesBuddyPrefs, uint32(0x8000)),
+											wire.NewTLVBE(wire.FeedbagAttributesBuddyPrefs, uint32(wire.SNACFlagsExtendedInfo)),
 										},
 									},
 								},
@@ -845,7 +845,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 											ClassID: wire.FeedbagClassIdBuddyPrefs,
 											TLVLBlock: wire.TLVLBlock{
 												TLVList: wire.TLVList{
-													wire.NewTLVBE(wire.FeedbagAttributesBuddyPrefs, uint32(0x8000)),
+													wire.NewTLVBE(wire.FeedbagAttributesBuddyPrefs, uint32(wire.SNACFlagsExtendedInfo)),
 												},
 											},
 										},
@@ -1906,10 +1906,14 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
 									SubGroup:  wire.FeedbagBuddyAdded,
-									Flags:     0x8000,
+									Flags:     wire.SNACFlagsExtendedInfo,
 								},
 								Body: wire.SNAC_0x13_0x1C_FeedbagBuddyAdded{
-									TLV:        wire.NewTLVBE(6, uint32(0x00020004)),
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.FeedbagTLVVersion, uint16(4)),
+										},
+									},
 									ScreenName: "me",
 								},
 							},
@@ -2795,7 +2799,7 @@ func TestFeedbagService_Use(t *testing.T) {
 									ClassID: wire.FeedbagClassIdBuddyPrefs,
 									TLVLBlock: wire.TLVLBlock{
 										TLVList: wire.TLVList{
-											wire.NewTLVBE(wire.FeedbagAttributesBuddyPrefs, uint32(0x8000)),
+											wire.NewTLVBE(wire.FeedbagAttributesBuddyPrefs, uint32(wire.SNACFlagsExtendedInfo)),
 										},
 									},
 								},
@@ -3006,8 +3010,14 @@ func TestFeedbagService_RequestAuthorizeToHost(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
 									SubGroup:  wire.FeedbagRequestAuthorizeToClient,
+									Flags:     wire.SNACFlagsExtendedInfo,
 								},
 								Body: wire.SNAC_0x13_0x19_FeedbagRequestAuthorizeToClient{
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.FeedbagTLVVersion, uint16(2)),
+										},
+									},
 									ScreenName: "100001",
 									Reason:     "please add me.",
 								},
@@ -3052,8 +3062,14 @@ func TestFeedbagService_RequestAuthorizeToHost(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
 									SubGroup:  wire.FeedbagRequestAuthorizeToClient,
+									Flags:     wire.SNACFlagsExtendedInfo,
 								},
 								Body: wire.SNAC_0x13_0x19_FeedbagRequestAuthorizeToClient{
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.FeedbagTLVVersion, uint16(2)),
+										},
+									},
 									ScreenName: "100001",
 									Reason:     "Please authorize my request and add me to your Contact List. yukitanaka ICQ#: 123405",
 								},
@@ -3559,10 +3575,14 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
 									SubGroup:  wire.FeedbagBuddyAdded,
-									Flags:     0x8000,
+									Flags:     wire.SNACFlagsExtendedInfo,
 								},
 								Body: wire.SNAC_0x13_0x1C_FeedbagBuddyAdded{
-									TLV:        wire.NewTLVBE(6, uint32(0x00020004)),
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.FeedbagTLVVersion, uint16(4)),
+										},
+									},
 									ScreenName: "100003",
 								},
 							},
@@ -3573,7 +3593,6 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
 									SubGroup:  wire.FeedbagUpdateItem,
-									Flags:     0x8000,
 								},
 								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
 									Items: []wire.FeedbagItem{
@@ -3588,10 +3607,14 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
 									SubGroup:  wire.FeedbagRespondAuthorizeToClient,
-									Flags:     0x8000,
+									Flags:     wire.SNACFlagsExtendedInfo,
 								},
 								Body: wire.SNAC_0x13_0x1B_FeedbagRespondAuthorizeToClient{
-									TLV:        wire.NewTLVBE(6, uint32(0x00020004)),
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.FeedbagTLVVersion, uint16(2)),
+										},
+									},
 									ScreenName: "100001",
 									Accepted:   1,
 								},
@@ -3668,7 +3691,6 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
 									SubGroup:  wire.FeedbagUpdateItem,
-									Flags:     0x8000,
 								},
 								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
 									Items: []wire.FeedbagItem{
@@ -3683,10 +3705,14 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
 									SubGroup:  wire.FeedbagRespondAuthorizeToClient,
-									Flags:     0x8000,
+									Flags:     wire.SNACFlagsExtendedInfo,
 								},
 								Body: wire.SNAC_0x13_0x1B_FeedbagRespondAuthorizeToClient{
-									TLV:        wire.NewTLVBE(6, uint32(0x00020004)),
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.FeedbagTLVVersion, uint16(2)),
+										},
+									},
 									ScreenName: "100001",
 									Accepted:   1,
 								},
@@ -3733,10 +3759,14 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
 									SubGroup:  wire.FeedbagRespondAuthorizeToClient,
-									Flags:     0x8000,
+									Flags:     wire.SNACFlagsExtendedInfo,
 								},
 								Body: wire.SNAC_0x13_0x1B_FeedbagRespondAuthorizeToClient{
-									TLV:        wire.NewTLVBE(6, uint32(0x00020004)),
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.FeedbagTLVVersion, uint16(2)),
+										},
+									},
 									ScreenName: "100001",
 									Accepted:   0,
 									Reason:     "I don't know you!",
@@ -4715,10 +4745,14 @@ func TestFeedbagService_ForwardICQAuthEvents(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
 									SubGroup:  wire.FeedbagRespondAuthorizeToClient,
-									Flags:     0x8000,
+									Flags:     wire.SNACFlagsExtendedInfo,
 								},
 								Body: wire.SNAC_0x13_0x1B_FeedbagRespondAuthorizeToClient{
-									TLV:        wire.NewTLVBE(6, uint32(0x00020004)),
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.FeedbagTLVVersion, uint16(2)),
+										},
+									},
 									ScreenName: sender.DisplayScreenName().String(),
 									Accepted:   0,
 									Reason:     "no thanks",
@@ -4772,10 +4806,14 @@ func TestFeedbagService_ForwardICQAuthEvents(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
 									SubGroup:  wire.FeedbagBuddyAdded,
-									Flags:     0x8000,
+									Flags:     wire.SNACFlagsExtendedInfo,
 								},
 								Body: wire.SNAC_0x13_0x1C_FeedbagBuddyAdded{
-									TLV:        wire.NewTLVBE(6, uint32(0x00020004)),
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.FeedbagTLVVersion, uint16(4)),
+										},
+									},
 									ScreenName: sender.IdentScreenName().String(),
 								},
 							},
@@ -4799,10 +4837,14 @@ func TestFeedbagService_ForwardICQAuthEvents(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
 									SubGroup:  wire.FeedbagRequestAuthorizeToClient,
-									Flags:     0x8000,
+									Flags:     wire.SNACFlagsExtendedInfo,
 								},
 								Body: wire.SNAC_0x13_0x19_FeedbagRequestAuthorizeToClient{
-									TLV:        wire.NewTLVBE(6, uint32(0x00020004)),
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.FeedbagTLVVersion, uint16(2)),
+										},
+									},
 									ScreenName: sender.IdentScreenName().String(),
 									Reason:     "please add me",
 								},

@@ -333,10 +333,14 @@ func (s *FeedbagService) UpsertItem(ctx context.Context, instance *state.Session
 						Frame: wire.SNACFrame{
 							FoodGroup: wire.Feedbag,
 							SubGroup:  wire.FeedbagBuddyAdded,
-							Flags:     0x8000,
+							Flags:     wire.SNACFlagsExtendedInfo,
 						},
 						Body: wire.SNAC_0x13_0x1C_FeedbagBuddyAdded{
-							TLV:        wire.NewTLVBE(6, uint32(0x00020004)),
+							TLVLBlock: wire.TLVLBlock{
+								TLVList: wire.TLVList{
+									wire.NewTLVBE(wire.FeedbagTLVVersion, uint16(4)),
+								},
+							},
 							ScreenName: instance.DisplayScreenName().String(),
 						},
 					})
@@ -574,8 +578,14 @@ func (s *FeedbagService) RequestAuthorizeToHost(ctx context.Context, instance *s
 			Frame: wire.SNACFrame{
 				FoodGroup: wire.Feedbag,
 				SubGroup:  wire.FeedbagRequestAuthorizeToClient,
+				Flags:     wire.SNACFlagsExtendedInfo,
 			},
 			Body: wire.SNAC_0x13_0x19_FeedbagRequestAuthorizeToClient{
+				TLVLBlock: wire.TLVLBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.FeedbagTLVVersion, uint16(2)),
+					},
+				},
 				ScreenName: instance.IdentScreenName().String(),
 				Reason:     inBody.Reason,
 			},
@@ -828,10 +838,14 @@ func (s *FeedbagService) clearPendingAuth(ctx context.Context, from state.IdentS
 			Frame: wire.SNACFrame{
 				FoodGroup: wire.Feedbag,
 				SubGroup:  wire.FeedbagBuddyAdded,
-				Flags:     0x8000,
+				Flags:     wire.SNACFlagsExtendedInfo,
 			},
 			Body: wire.SNAC_0x13_0x1C_FeedbagBuddyAdded{
-				TLV:        wire.NewTLVBE(6, uint32(0x00020004)),
+				TLVLBlock: wire.TLVLBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.FeedbagTLVVersion, uint16(4)),
+					},
+				},
 				ScreenName: to.String(),
 			},
 		})
@@ -849,7 +863,6 @@ func (s *FeedbagService) clearPendingAuth(ctx context.Context, from state.IdentS
 		Frame: wire.SNACFrame{
 			FoodGroup: wire.Feedbag,
 			SubGroup:  wire.FeedbagUpdateItem,
-			Flags:     0x8000,
 		},
 		Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
 			Items: updates,
@@ -861,10 +874,14 @@ func (s *FeedbagService) clearPendingAuth(ctx context.Context, from state.IdentS
 		Frame: wire.SNACFrame{
 			FoodGroup: wire.Feedbag,
 			SubGroup:  wire.FeedbagRespondAuthorizeToClient,
-			Flags:     0x8000,
+			Flags:     wire.SNACFlagsExtendedInfo,
 		},
 		Body: wire.SNAC_0x13_0x1B_FeedbagRespondAuthorizeToClient{
-			TLV:        wire.NewTLVBE(6, uint32(0x00020004)),
+			TLVLBlock: wire.TLVLBlock{
+				TLVList: wire.TLVList{
+					wire.NewTLVBE(wire.FeedbagTLVVersion, uint16(2)),
+				},
+			},
 			ScreenName: from.String(),
 			Accepted:   1,
 		},
@@ -913,10 +930,14 @@ func (s *FeedbagService) rejectContact(ctx context.Context, from state.IdentScre
 			Frame: wire.SNACFrame{
 				FoodGroup: wire.Feedbag,
 				SubGroup:  wire.FeedbagRespondAuthorizeToClient,
-				Flags:     0x8000,
+				Flags:     wire.SNACFlagsExtendedInfo,
 			},
 			Body: wire.SNAC_0x13_0x1B_FeedbagRespondAuthorizeToClient{
-				TLV:        wire.NewTLVBE(6, uint32(0x00020004)),
+				TLVLBlock: wire.TLVLBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.FeedbagTLVVersion, uint16(2)),
+					},
+				},
 				ScreenName: from.String(),
 				Accepted:   0,
 				Reason:     reason,
@@ -1106,10 +1127,14 @@ func (s *FeedbagService) ForwardICQAuthEvents(ctx context.Context, sender state.
 			Frame: wire.SNACFrame{
 				FoodGroup: wire.Feedbag,
 				SubGroup:  wire.FeedbagBuddyAdded,
-				Flags:     0x8000,
+				Flags:     wire.SNACFlagsExtendedInfo,
 			},
 			Body: wire.SNAC_0x13_0x1C_FeedbagBuddyAdded{
-				TLV:        wire.NewTLVBE(6, uint32(0x00020004)),
+				TLVLBlock: wire.TLVLBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.FeedbagTLVVersion, uint16(4)),
+					},
+				},
 				ScreenName: sender.String(),
 			},
 		})
@@ -1123,10 +1148,14 @@ func (s *FeedbagService) ForwardICQAuthEvents(ctx context.Context, sender state.
 			Frame: wire.SNACFrame{
 				FoodGroup: wire.Feedbag,
 				SubGroup:  wire.FeedbagRequestAuthorizeToClient,
-				Flags:     0x8000,
+				Flags:     wire.SNACFlagsExtendedInfo,
 			},
 			Body: wire.SNAC_0x13_0x19_FeedbagRequestAuthorizeToClient{
-				TLV:        wire.NewTLVBE(6, uint32(0x00020004)),
+				TLVLBlock: wire.TLVLBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.FeedbagTLVVersion, uint16(2)),
+					},
+				},
 				ScreenName: sender.String(),
 				Reason:     reasonText,
 			},

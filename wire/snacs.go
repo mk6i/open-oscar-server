@@ -1637,6 +1637,8 @@ type SNAC_0x10_0x07_BARTDownload2Reply struct {
 //
 
 const (
+	FeedbagTLVVersion uint16 = 1 // indicates SSI/Feedbag version in SNAC TLVLBlock
+
 	FeedbagClassIdBuddy            uint16 = 0x0000
 	FeedbagClassIdGroup            uint16 = 0x0001
 	FeedbagClassIDPermit           uint16 = 0x0002
@@ -1858,8 +1860,18 @@ type SNAC_0x13_0x18_FeedbagRequestAuthorizationToHost struct {
 	Unknown    uint16
 }
 
+type FeedbagExtendedInfo struct {
+	//	    arpack << (unsigned short)0x0006 /* extinfo size */
+	//	           << (unsigned short)0x0001 /* TLV(1)   */
+	//		   << (unsigned short)0x0002 /* tlv size */
+	//		   << (unsigned short)user->ssi_version;
+
+}
+
 type SNAC_0x13_0x19_FeedbagRequestAuthorizeToClient struct {
-	TLV
+	// TLVLBlock contains the feedbag extended info for compatibility with
+	// clients that require extended info
+	TLVLBlock
 	ScreenName string `oscar:"len_prefix=uint8"`
 	Reason     string `oscar:"len_prefix=uint16"`
 	Unknown    uint16
@@ -1872,7 +1884,9 @@ type SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost struct {
 }
 
 type SNAC_0x13_0x1B_FeedbagRespondAuthorizeToClient struct {
-	TLV
+	// TLVLBlock contains the feedbag extended info for compatibility with
+	// clients that require extended info
+	TLVLBlock
 	ScreenName string `oscar:"len_prefix=uint8"`
 	Accepted   uint8
 	Reason     string `oscar:"len_prefix=uint16"`
@@ -1880,7 +1894,9 @@ type SNAC_0x13_0x1B_FeedbagRespondAuthorizeToClient struct {
 }
 
 type SNAC_0x13_0x1C_FeedbagBuddyAdded struct {
-	TLV
+	// TLVLBlock contains the feedbag extended info for compatibility with
+	// clients that require extended info
+	TLVLBlock
 	ScreenName string `oscar:"len_prefix=uint8"`
 	Nullterm   uint16
 }
