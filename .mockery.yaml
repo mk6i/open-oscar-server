@@ -115,6 +115,9 @@ packages:
       BARTItemManager:
         config:
           filename: "mock_bart_item_manager_test.go"
+      BuddyAddedNotifierDeduper:
+        config:
+          filename: "mock_buddy_added_notifier_deduper_test.go"
       buddyBroadcaster:
         config:
           filename: "mock_buddy_broadcaster_test.go"

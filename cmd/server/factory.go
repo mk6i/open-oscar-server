@@ -92,6 +92,7 @@ func MakeCommonDeps() (Container, error) {
 		c.inMemorySessionManager,
 		c.sqLiteUserStore,
 		c.sqLiteUserStore,
+		c.sqLiteUserStore,
 	)
 
 	c.icbmSvc = foodgroup.NewICBMService(

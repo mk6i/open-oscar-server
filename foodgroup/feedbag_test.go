@@ -328,7 +328,7 @@ func TestFeedbagService_QueryIfModified(t *testing.T) {
 }
 
 func TestFeedbagService_RightsQuery(t *testing.T) {
-	svc := NewFeedbagService(nil, nil, nil, nil, nil, nil, nil, nil)
+	svc := NewFeedbagService(nil, nil, nil, nil, nil, nil, nil, nil, newMockBuddyAddedNotifierDeduper(t))
 
 	outputSNAC := svc.RightsQuery(context.Background(), wire.SNACFrame{RequestID: 1234})
 	expectSNAC := wire.SNACMessage{
@@ -663,6 +663,11 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 						{owner: state.NewIdentScreenName("123401"), requester: state.NewIdentScreenName("100001"), result: false},
 					},
 				},
+				buddyAddedNotifierDeduperParams: buddyAddedNotifierDeduperParams{
+					hasBuddyAddedNotificationParams: hasBuddyAddedNotificationParams{
+						{granter: state.NewIdentScreenName("100001"), requester: state.NewIdentScreenName("123401"), result: false},
+					},
+				},
 			},
 			expectOutput: nil,
 			expectICBM:   true,
@@ -770,6 +775,11 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 				contactPreAuthorizerParams: contactPreAuthorizerParams{
 					requiresAuthorizationParams: requiresAuthorizationParams{
 						{owner: state.NewIdentScreenName("123400"), requester: state.NewIdentScreenName("me"), result: false},
+					},
+				},
+				buddyAddedNotifierDeduperParams: buddyAddedNotifierDeduperParams{
+					hasBuddyAddedNotificationParams: hasBuddyAddedNotificationParams{
+						{granter: state.NewIdentScreenName("me"), requester: state.NewIdentScreenName("123400"), result: false},
 					},
 				},
 			},
@@ -1885,6 +1895,14 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 						{owner: state.NewIdentScreenName("123400"), requester: state.NewIdentScreenName("me"), result: false},
 					},
 				},
+				buddyAddedNotifierDeduperParams: buddyAddedNotifierDeduperParams{
+					hasBuddyAddedNotificationParams: hasBuddyAddedNotificationParams{
+						{granter: state.NewIdentScreenName("me"), requester: state.NewIdentScreenName("123400"), result: false},
+					},
+					recordBuddyAddedNotificationParams: recordBuddyAddedNotificationParams{
+						{granter: state.NewIdentScreenName("me"), requester: state.NewIdentScreenName("123400")},
+					},
+				},
 				sessionRetrieverParams: sessionRetrieverParams{
 					retrieveSessionParams: retrieveSessionParams{
 						{
@@ -1969,6 +1987,98 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 			expectOutput: nil,
 		},
 		{
+			name:     "add ICQ buddy online with feedbag: skip FeedbagBuddyAdded when already sent",
+			instance: newTestInstance("me"),
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagInsertItem,
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x13_0x08_FeedbagInsertItem{
+					Items: []wire.FeedbagItem{
+						{
+							ClassID: wire.FeedbagClassIdBuddy,
+							Name:    "123400",
+						},
+					},
+				},
+			},
+			mockParams: mockParams{
+				feedbagManagerParams: feedbagManagerParams{
+					feedbagUpsertParams: feedbagUpsertParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							items: []wire.FeedbagItem{
+								{
+									ClassID: wire.FeedbagClassIdBuddy,
+									Name:    "123400",
+								},
+							},
+						},
+					},
+				},
+				contactPreAuthorizerParams: contactPreAuthorizerParams{
+					requiresAuthorizationParams: requiresAuthorizationParams{
+						{owner: state.NewIdentScreenName("123400"), requester: state.NewIdentScreenName("me"), result: false},
+					},
+				},
+				buddyAddedNotifierDeduperParams: buddyAddedNotifierDeduperParams{
+					hasBuddyAddedNotificationParams: hasBuddyAddedNotificationParams{
+						{granter: state.NewIdentScreenName("me"), requester: state.NewIdentScreenName("123400"), result: true},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToOtherInstancesParams: relayToOtherInstancesParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagInsertItem,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
+									Items: []wire.FeedbagItem{
+										{
+											ClassID: wire.FeedbagClassIdBuddy,
+											Name:    "123400",
+										},
+									},
+								},
+							},
+						},
+					},
+					relayToSelfParams: relayToSelfParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagStatus,
+									RequestID: 1234,
+								},
+								Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
+									Results: []uint16{0x0000},
+								},
+							},
+						},
+					},
+				},
+				buddyBroadcasterParams: buddyBroadcasterParams{
+					broadcastVisibilityParams: broadcastVisibilityParams{
+						{
+							from: state.NewIdentScreenName("me"),
+							filter: []state.IdentScreenName{
+								state.NewIdentScreenName("123400"),
+							},
+						},
+					},
+				},
+			},
+			expectOutput: nil,
+		},
+		{
 			name:     "add ICQ buddy online without feedbag: send legacy ICBM added",
 			instance: newTestInstance("me"),
 			inputSNAC: wire.SNACMessage{
@@ -2003,6 +2113,11 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 				contactPreAuthorizerParams: contactPreAuthorizerParams{
 					requiresAuthorizationParams: requiresAuthorizationParams{
 						{owner: state.NewIdentScreenName("123400"), requester: state.NewIdentScreenName("me"), result: false},
+					},
+				},
+				buddyAddedNotifierDeduperParams: buddyAddedNotifierDeduperParams{
+					hasBuddyAddedNotificationParams: hasBuddyAddedNotificationParams{
+						{granter: state.NewIdentScreenName("me"), requester: state.NewIdentScreenName("123400"), result: false},
 					},
 				},
 				sessionRetrieverParams: sessionRetrieverParams{
@@ -2352,6 +2467,11 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 						},
 					},
 				},
+				buddyAddedNotifierDeduperParams: buddyAddedNotifierDeduperParams{
+					hasBuddyAddedNotificationParams: hasBuddyAddedNotificationParams{
+						{granter: state.NewIdentScreenName("100001"), requester: state.NewIdentScreenName("990011"), result: false},
+					},
+				},
 				messageRelayerParams: messageRelayerParams{
 					relayToOtherInstancesParams: relayToOtherInstancesParams{
 						{
@@ -2476,6 +2596,17 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 			for _, params := range tc.mockParams.requiresAuthorizationParams {
 				contactPreAuth.EXPECT().RequiresAuthorization(matchContext(), params.owner, params.requester).Return(params.result, params.err)
 			}
+			buddyAddedDeduper := newMockBuddyAddedNotifierDeduper(t)
+			for _, params := range tc.mockParams.hasBuddyAddedNotificationParams {
+				buddyAddedDeduper.EXPECT().
+					HasBuddyAddedNotification(matchContext(), params.granter, params.requester).
+					Return(params.result, params.err)
+			}
+			for _, params := range tc.mockParams.recordBuddyAddedNotificationParams {
+				buddyAddedDeduper.EXPECT().
+					RecordBuddyAddedNotification(matchContext(), params.granter, params.requester).
+					Return(params.err)
+			}
 			sessionRetriever := newMockSessionRetriever(t)
 			for _, params := range tc.mockParams.retrieveSessionParams {
 				sessionRetriever.EXPECT().
@@ -2493,7 +2624,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 				assert.Equal(t, wantBody, haveBody)
 				return nil, nil
 			}
-			svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, bartItemManager, nil, sessionRetriever, contactPreAuth, nil)
+			svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, bartItemManager, nil, sessionRetriever, contactPreAuth, nil, buddyAddedDeduper)
 			svc.buddyBroadcaster = buddyUpdateBroadcaster
 			svc.icbmSender = icbmSender
 			output, err := svc.UpsertItem(context.Background(), tc.instance, tc.inputSNAC.Frame,
@@ -2933,7 +3064,7 @@ func TestFeedbagService_Use(t *testing.T) {
 					Return(params.err)
 			}
 
-			svc := NewFeedbagService(slog.Default(), nil, feedbagManager, nil, nil, nil, nil, nil)
+			svc := NewFeedbagService(slog.Default(), nil, feedbagManager, nil, nil, nil, nil, nil, newMockBuddyAddedNotifierDeduper(t))
 			svc.buddyBroadcaster = buddyUpdateBroadcaster
 
 			haveErr := svc.Use(context.Background(), tt.instance)
@@ -3366,7 +3497,7 @@ func TestFeedbagService_RequestAuthorizeToHost(t *testing.T) {
 					Return(params.result, params.err)
 			}
 
-			svc := NewFeedbagService(slog.Default(), messageRelayer, nil, nil, nil, sessionRetriever, contactPreAuth, userManager)
+			svc := NewFeedbagService(slog.Default(), messageRelayer, nil, nil, nil, sessionRetriever, contactPreAuth, userManager, newMockBuddyAddedNotifierDeduper(t))
 			svc.icbmSender = icbmSender
 
 			haveErr := svc.RequestAuthorizeToHost(
@@ -3831,7 +3962,7 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 				return nil, tt.wantErr
 			}
 
-			svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, nil, relationshipFetcher, sessionRetriever, contactPreAuth, nil)
+			svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, nil, relationshipFetcher, sessionRetriever, contactPreAuth, nil, newMockBuddyAddedNotifierDeduper(t))
 			svc.buddyBroadcaster = buddyBroadcaster
 			svc.icbmSender = icbmSender
 
@@ -4161,7 +4292,7 @@ func TestFeedbagService_PreAuthorizeBuddy(t *testing.T) {
 				return nil, nil
 			}
 
-			svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, nil, relationshipFetcher, sessionRetriever, contactPreAuth, nil)
+			svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, nil, relationshipFetcher, sessionRetriever, contactPreAuth, nil, newMockBuddyAddedNotifierDeduper(t))
 			svc.icbmSender = icbmSender
 
 			out, err := svc.PreAuthorizeBuddy(context.Background(), alice, tt.inFrame, tt.inBody)
@@ -4390,7 +4521,7 @@ func TestFeedbagService_StartCluster(t *testing.T) {
 			Body:  inBody,
 		})
 
-	svc := NewFeedbagService(slog.Default(), messageRelayer, nil, nil, nil, nil, nil, nil)
+	svc := NewFeedbagService(slog.Default(), messageRelayer, nil, nil, nil, nil, nil, nil, newMockBuddyAddedNotifierDeduper(t))
 	svc.StartCluster(context.Background(), instance, inFrame, inBody)
 
 	assert.True(t, instance.InNotifyTxn())
@@ -4467,7 +4598,7 @@ func TestFeedbagService_EndCluster(t *testing.T) {
 					Return(params.err)
 			}
 
-			svc := NewFeedbagService(slog.Default(), messageRelayer, nil, nil, nil, nil, nil, nil)
+			svc := NewFeedbagService(slog.Default(), messageRelayer, nil, nil, nil, nil, nil, nil, newMockBuddyAddedNotifierDeduper(t))
 			svc.buddyBroadcaster = buddyBroadcaster
 			err := svc.EndCluster(context.Background(), tc.instance, endFrame)
 			assert.NoError(t, err)
@@ -4522,7 +4653,7 @@ func TestFeedbagService_notifyTxnCluster(t *testing.T) {
 			Return(nil).
 			Once()
 
-		svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, nil, nil, nil, nil, nil)
+		svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, nil, nil, nil, nil, nil, newMockBuddyAddedNotifierDeduper(t))
 		svc.buddyBroadcaster = buddyBroadcaster
 
 		svc.StartCluster(context.Background(), instance, startFrame, startBody)
@@ -4564,7 +4695,7 @@ func TestFeedbagService_notifyTxnCluster(t *testing.T) {
 			Return(nil).
 			Once()
 
-		svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, nil, nil, nil, nil, nil)
+		svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, nil, nil, nil, nil, nil, newMockBuddyAddedNotifierDeduper(t))
 		svc.buddyBroadcaster = buddyBroadcaster
 
 		svc.StartCluster(context.Background(), instance, startFrame, startBody)
@@ -4603,7 +4734,7 @@ func TestFeedbagService_notifyTxnCluster(t *testing.T) {
 			Return(nil).
 			Once()
 
-		svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, nil, nil, nil, nil, nil)
+		svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, nil, nil, nil, nil, nil, newMockBuddyAddedNotifierDeduper(t))
 		svc.buddyBroadcaster = buddyBroadcaster
 
 		svc.StartCluster(context.Background(), instance, startFrame, startBody)
@@ -4898,7 +5029,7 @@ func TestFeedbagService_ForwardICQAuthEvents(t *testing.T) {
 				return nil, tt.wantErr
 			}
 
-			svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, nil, relationshipFetcher, sessionRetriever, contactPreAuth, nil)
+			svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, nil, relationshipFetcher, sessionRetriever, contactPreAuth, nil, newMockBuddyAddedNotifierDeduper(t))
 			svc.icbmSender = icbmSender
 
 			err := svc.ForwardICQAuthEvents(context.Background(), sender.IdentScreenName(), recipient, tt.authMsg)

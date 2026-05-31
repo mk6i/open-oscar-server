@@ -25,17 +25,19 @@ func NewFeedbagService(
 	sessionRetriever SessionRetriever,
 	contactPreAuthorizer ContactPreAuthorizer,
 	userManager UserManager,
+	buddyAddedNotifierDeduper BuddyAddedNotifierDeduper,
 ) *FeedbagService {
 	return &FeedbagService{
-		bartItemManager:      bartItemManager,
-		buddyBroadcaster:     newBuddyNotifier(bartItemManager, relationshipFetcher, messageRelayer, sessionRetriever),
-		feedbagManager:       feedbagManager,
-		logger:               logger,
-		messageRelayer:       messageRelayer,
-		relationshipFetcher:  relationshipFetcher,
-		sessionRetriever:     sessionRetriever,
-		contactPreAuthorizer: contactPreAuthorizer,
-		userManager:          userManager,
+		bartItemManager:           bartItemManager,
+		buddyBroadcaster:          newBuddyNotifier(bartItemManager, relationshipFetcher, messageRelayer, sessionRetriever),
+		buddyAddedNotifierDeduper: buddyAddedNotifierDeduper,
+		feedbagManager:            feedbagManager,
+		logger:                    logger,
+		messageRelayer:            messageRelayer,
+		relationshipFetcher:       relationshipFetcher,
+		sessionRetriever:          sessionRetriever,
+		contactPreAuthorizer:      contactPreAuthorizer,
+		userManager:               userManager,
 		icbmSender: func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) (*wire.SNACMessage, error) {
 			return nil, errors.New("icbmSender not implemented")
 		},
@@ -45,16 +47,17 @@ func NewFeedbagService(
 // FeedbagService provides functionality for the Feedbag food group, which
 // handles buddy list management.
 type FeedbagService struct {
-	bartItemManager      BARTItemManager
-	buddyBroadcaster     buddyBroadcaster
-	feedbagManager       FeedbagManager
-	logger               *slog.Logger
-	messageRelayer       MessageRelayer
-	relationshipFetcher  RelationshipFetcher
-	sessionRetriever     SessionRetriever
-	contactPreAuthorizer ContactPreAuthorizer
-	userManager          UserManager
-	icbmSender           func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) (*wire.SNACMessage, error)
+	bartItemManager           BARTItemManager
+	buddyBroadcaster          buddyBroadcaster
+	buddyAddedNotifierDeduper BuddyAddedNotifierDeduper
+	feedbagManager            FeedbagManager
+	logger                    *slog.Logger
+	messageRelayer            MessageRelayer
+	relationshipFetcher       RelationshipFetcher
+	sessionRetriever          SessionRetriever
+	contactPreAuthorizer      ContactPreAuthorizer
+	userManager               UserManager
+	icbmSender                func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) (*wire.SNACMessage, error)
 }
 
 // BridgeICBMService enables the FeedbagService to send instant messages via the
@@ -326,28 +329,43 @@ func (s *FeedbagService) UpsertItem(ctx context.Context, instance *state.Session
 	// send ICQ "you were added" messages
 	for _, item := range toUpsert {
 		if item.ClassID == wire.FeedbagClassIdBuddy && !item.HasTag(wire.FeedbagAttributesPending) {
-			user := state.NewIdentScreenName(item.Name)
-			if user.UIN() != 0 {
-				if fromSess := s.sessionRetriever.RetrieveSession(user); fromSess != nil && fromSess.UsesFeedbag() {
-					s.messageRelayer.RelayToScreenName(ctx, user, wire.SNACMessage{
-						Frame: wire.SNACFrame{
-							FoodGroup: wire.Feedbag,
-							SubGroup:  wire.FeedbagBuddyAdded,
-							Flags:     wire.SNACFlagsExtendedInfo,
-						},
-						Body: wire.SNAC_0x13_0x1C_FeedbagBuddyAdded{
-							TLVLBlock: wire.TLVLBlock{
-								TLVList: wire.TLVList{
-									wire.NewTLVBE(wire.FeedbagTLVVersion, uint16(4)),
-								},
+			buddyScreenName := state.NewIdentScreenName(item.Name)
+			if buddyScreenName.UIN() == 0 {
+				continue // icq users only
+			}
+
+			// make sure this user hasn't already been notified
+			alreadySent, err := s.buddyAddedNotifierDeduper.HasBuddyAddedNotification(ctx, instance.IdentScreenName(), buddyScreenName)
+			if err != nil {
+				return nil, fmt.Errorf("buddyAddedNotifierDeduper.HasBuddyAddedNotification: %w", err)
+			}
+			if alreadySent {
+				continue
+			}
+
+			buddySess := s.sessionRetriever.RetrieveSession(buddyScreenName)
+			if buddySess != nil && buddySess.UsesFeedbag() {
+				s.messageRelayer.RelayToScreenName(ctx, buddyScreenName, wire.SNACMessage{
+					Frame: wire.SNACFrame{
+						FoodGroup: wire.Feedbag,
+						SubGroup:  wire.FeedbagBuddyAdded,
+						Flags:     wire.SNACFlagsExtendedInfo,
+					},
+					Body: wire.SNAC_0x13_0x1C_FeedbagBuddyAdded{
+						TLVLBlock: wire.TLVLBlock{
+							TLVList: wire.TLVList{
+								wire.NewTLVBE(wire.FeedbagTLVVersion, uint16(4)),
 							},
-							ScreenName: instance.DisplayScreenName().String(),
 						},
-					})
-				} else {
-					if err := s.sendLegacyBuddyAddedMsg(ctx, instance, user); err != nil {
-						return nil, fmt.Errorf("sendLegacyBuddyAddedMsg: %w", err)
-					}
+						ScreenName: instance.DisplayScreenName().String(),
+					},
+				})
+				if err := s.buddyAddedNotifierDeduper.RecordBuddyAddedNotification(ctx, instance.IdentScreenName(), buddyScreenName); err != nil {
+					return nil, fmt.Errorf("buddyAddedNotifierDeduper.RecordBuddyAddedNotification: %w", err)
+				}
+			} else {
+				if err := s.sendLegacyBuddyAddedMsg(ctx, instance, buddyScreenName); err != nil {
+					return nil, fmt.Errorf("sendLegacyBuddyAddedMsg: %w", err)
 				}
 			}
 		}

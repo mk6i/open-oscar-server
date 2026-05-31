@@ -125,9 +125,22 @@ type ContactPreAuthorizer interface {
 	RequiresAuthorization(ctx context.Context, owner, requester state.IdentScreenName) (bool, error)
 
 	// RecordPreAuth records that owner has pre-authorized requester to add
-	// owner as a buddy without an authorization prompt. Returns
-	// state.ErrNoUser if requester does not exist.
+	// owner as a buddy without an authorization prompt. No-ops when either
+	// user is not registered.
 	RecordPreAuth(ctx context.Context, owner, requester state.IdentScreenName) error
+}
+
+// BuddyAddedNotifierDeduper suppresses duplicate "you were added" notifications.
+// A record indicates requesterScreenName was added to granterScreenName's list.
+type BuddyAddedNotifierDeduper interface {
+	// HasBuddyAddedNotification reports whether a "you were added" notification
+	// has already been sent for requester being added by granter.
+	HasBuddyAddedNotification(ctx context.Context, granter, requester state.IdentScreenName) (bool, error)
+
+	// RecordBuddyAddedNotification records that a "you were added" notification
+	// has been sent for requester being added by granter. No-ops when either
+	// user is not registered.
+	RecordBuddyAddedNotification(ctx context.Context, granter, requester state.IdentScreenName) error
 }
 
 // RelationshipFetcher is the interface for retrieving relationships between users.

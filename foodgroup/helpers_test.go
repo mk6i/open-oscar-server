@@ -19,6 +19,7 @@ type mockParams struct {
 	bartItemManagerParams
 	buddyBroadcasterParams
 	contactPreAuthorizerParams
+	buddyAddedNotifierDeduperParams
 	relationshipFetcherParams
 	chatMessageRelayerParams
 	chatRoomRegistryParams
@@ -56,6 +57,30 @@ type requiresAuthorizationParams []struct {
 	owner     state.IdentScreenName
 	requester state.IdentScreenName
 	result    bool
+	err       error
+}
+
+// buddyAddedNotifierDeduperParams is a helper struct that contains mock parameters
+// for BuddyAddedNotifierDeduper methods.
+type buddyAddedNotifierDeduperParams struct {
+	hasBuddyAddedNotificationParams
+	recordBuddyAddedNotificationParams
+}
+
+// hasBuddyAddedNotificationParams is the list of parameters passed at the mock
+// BuddyAddedNotifierDeduper.HasBuddyAddedNotification call site.
+type hasBuddyAddedNotificationParams []struct {
+	granter   state.IdentScreenName
+	requester state.IdentScreenName
+	result    bool
+	err       error
+}
+
+// recordBuddyAddedNotificationParams is the list of parameters passed at the mock
+// BuddyAddedNotifierDeduper.RecordBuddyAddedNotification call site.
+type recordBuddyAddedNotificationParams []struct {
+	granter   state.IdentScreenName
+	requester state.IdentScreenName
 	err       error
 }
 

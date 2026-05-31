@@ -803,6 +803,63 @@ func TestSQLiteUserStore_ListBARTItems(t *testing.T) {
 	})
 }
 
+func TestSQLiteUserStore_BuddyAddedNotifications(t *testing.T) {
+	defer func() {
+		assert.NoError(t, os.Remove(testFile))
+	}()
+
+	store, err := NewSQLiteUserStore(testFile)
+	require.NoError(t, err)
+
+	granter := NewIdentScreenName("granter")
+	requester := NewIdentScreenName("requester")
+
+	// ensure both users exist to satisfy FKs
+	assert.NoError(t, store.InsertUser(context.Background(), User{
+		IdentScreenName:   granter,
+		DisplayScreenName: DisplayScreenName("Granter"),
+	}))
+	assert.NoError(t, store.InsertUser(context.Background(), User{
+		IdentScreenName:   requester,
+		DisplayScreenName: DisplayScreenName("Requester"),
+	}))
+
+	has, err := store.HasBuddyAddedNotification(context.Background(), granter, requester)
+	assert.NoError(t, err)
+	assert.False(t, has)
+
+	assert.NoError(t, store.RecordBuddyAddedNotification(context.Background(), granter, requester))
+
+	has, err = store.HasBuddyAddedNotification(context.Background(), granter, requester)
+	assert.NoError(t, err)
+	assert.True(t, has)
+
+	// idempotent
+	assert.NoError(t, store.RecordBuddyAddedNotification(context.Background(), granter, requester))
+}
+
+func TestSQLiteUserStore_RecordBuddyAddedNotification_unknownUser(t *testing.T) {
+	defer func() {
+		assert.NoError(t, os.Remove(testFile))
+	}()
+
+	store, err := NewSQLiteUserStore(testFile)
+	require.NoError(t, err)
+
+	granter := NewIdentScreenName("100001")
+	assert.NoError(t, store.InsertUser(context.Background(), User{
+		IdentScreenName:   granter,
+		DisplayScreenName: DisplayScreenName("Granter"),
+	}))
+
+	unknownBuddy := NewIdentScreenName("999999")
+	assert.NoError(t, store.RecordBuddyAddedNotification(context.Background(), granter, unknownBuddy))
+
+	has, err := store.HasBuddyAddedNotification(context.Background(), granter, unknownBuddy)
+	assert.NoError(t, err)
+	assert.False(t, has)
+}
+
 func TestSQLiteUserStore_SetUserPassword_UserExists(t *testing.T) {
 	defer func() {
 		assert.NoError(t, os.Remove(testFile))
@@ -4228,4 +4285,37 @@ func TestSQLiteUserStore_ContactPreAuth(t *testing.T) {
 		owner.String(), requester.String()).Scan(&count)
 	require.NoError(t, err)
 	assert.Equal(t, 1, count)
+}
+
+func TestSQLiteUserStore_RecordPreAuth_unknownUser(t *testing.T) {
+	ctx := context.Background()
+	defer func() {
+		assert.NoError(t, os.Remove(testFile))
+	}()
+
+	f, err := NewSQLiteUserStore(testFile)
+	require.NoError(t, err)
+
+	owner := NewIdentScreenName("100001")
+	require.NoError(t, f.InsertUser(ctx, User{
+		IdentScreenName:   owner,
+		DisplayScreenName: DisplayScreenName("100001"),
+		IsICQ:             true,
+		ICQInfo: ICQInfo{
+			Permissions: ICQPermissions{AuthRequired: true},
+		},
+	}))
+
+	unknownRequester := NewIdentScreenName("999999")
+	assert.NoError(t, f.RecordPreAuth(ctx, owner, unknownRequester))
+
+	blocked, err := f.RequiresAuthorization(ctx, owner, unknownRequester)
+	require.NoError(t, err)
+	assert.True(t, blocked)
+
+	var count int
+	err = f.db.QueryRow(`SELECT COUNT(*) FROM contactPreauth WHERE ownerScreenName = ? AND authorizedScreenName = ?`,
+		owner.String(), unknownRequester.String()).Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 0, count)
 }

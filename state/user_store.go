@@ -569,26 +569,53 @@ func (f SQLiteUserStore) RequiresAuthorization(ctx context.Context, owner, reque
 }
 
 // RecordPreAuth records that owner has pre-authorized requester to add owner
-// without a further authorization prompt. Returns ErrNoUser if requester
-// does not exist.
+// without a further authorization prompt. No-ops when either user is not
+// registered. The operation is idempotent.
 func (f SQLiteUserStore) RecordPreAuth(ctx context.Context, owner, requester IdentScreenName) error {
-	q := `
-		INSERT INTO contactPreauth (ownerScreenName, authorizedScreenName, createdAt)
-		SELECT ?, ?, UNIXEPOCH()
-		WHERE EXISTS (SELECT 1 FROM users WHERE identScreenName = ?)
-		ON CONFLICT (ownerScreenName, authorizedScreenName)
-			DO UPDATE SET createdAt = UNIXEPOCH()
-	`
-	result, err := f.db.ExecContext(ctx, q, owner.String(), requester.String(), requester.String())
+	_, err := f.db.ExecContext(ctx,
+		`INSERT OR IGNORE INTO contactPreauth (ownerScreenName, authorizedScreenName, createdAt) 
+		VALUES (?, ?, UNIXEPOCH())`,
+		owner.String(), requester.String(),
+	)
 	if err != nil {
+		if sqliteErr, ok := err.(*sqlite.Error); ok && sqliteErr.Code() == lib.SQLITE_CONSTRAINT_FOREIGNKEY {
+			return nil
+		}
 		return fmt.Errorf("RecordPreAuth: %w", err)
 	}
-	n, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("RecordPreAuth: %w", err)
+	return nil
+}
+
+// HasBuddyAddedNotification reports whether the server has already sent a
+// "you were added" notification for requester being added by granter.
+func (f SQLiteUserStore) HasBuddyAddedNotification(ctx context.Context, granter, requester IdentScreenName) (bool, error) {
+	var one int
+	err := f.db.QueryRowContext(ctx,
+		`SELECT 1 FROM buddyAddedNotifications WHERE granterScreenName = ? AND requesterScreenName = ? LIMIT 1`,
+		granter.String(), requester.String(),
+	).Scan(&one)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
 	}
-	if n == 0 {
-		return ErrNoUser
+	if err != nil {
+		return false, fmt.Errorf("HasBuddyAddedNotification: %w", err)
+	}
+	return true, nil
+}
+
+// RecordBuddyAddedNotification records that the server has sent a "you were added"
+// notification for requester being added by granter. No-ops when either user is
+// not registered. The operation is idempotent.
+func (f SQLiteUserStore) RecordBuddyAddedNotification(ctx context.Context, granter, requester IdentScreenName) error {
+	_, err := f.db.ExecContext(ctx,
+		`INSERT OR IGNORE INTO buddyAddedNotifications (granterScreenName, requesterScreenName, createdAt) VALUES (?, ?, UNIXEPOCH())`,
+		granter.String(), requester.String(),
+	)
+	if err != nil {
+		if sqliteErr, ok := err.(*sqlite.Error); ok && sqliteErr.Code() == lib.SQLITE_CONSTRAINT_FOREIGNKEY {
+			return nil
+		}
+		return fmt.Errorf("RecordBuddyAddedNotification: %w", err)
 	}
 	return nil
 }
