@@ -285,10 +285,6 @@ func (s *ICBMService) sendOfflineMessage(ctx context.Context, instance *state.Se
 		return nil, fmt.Errorf("save ICBM offline message failed: %w", err)
 	}
 
-	if instance.UIN() > 0 {
-		return newICBMErr(inFrame.RequestID, wire.ErrorCodeNotLoggedOn), nil
-	}
-
 	if _, requestedConfirmation := inBody.Bytes(wire.ICBMTLVRequestHostAck); requestedConfirmation {
 		// ack message back to sender
 		return &wire.SNACMessage{

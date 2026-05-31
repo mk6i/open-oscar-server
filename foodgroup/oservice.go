@@ -732,7 +732,7 @@ func (s OServiceService) ClientOnline(ctx context.Context, service uint16, inBod
 			}
 		}
 
-		if instance.OfflineMsgCount() > 0 {
+		if instance.UIN() == 0 && instance.OfflineMsgCount() > 0 {
 			if err := s.sendOfflineMessageNotification(ctx, instance); err != nil {
 				return fmt.Errorf("send offline message notification: %w", err)
 			}

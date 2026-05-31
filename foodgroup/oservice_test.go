@@ -2519,6 +2519,45 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 			},
 		},
 		{
+			name:     "ICQ user with offline messages, no offline message notification sent",
+			instance: newTestInstance("100001", sessOptCannedSignonTime, sessOptOfflineMsgCount(3), sessOptContactsInit, sessOptUIN(100001)),
+			bodyIn:   wire.SNAC_0x01_0x02_OServiceClientOnline{},
+			service:  wire.BOS,
+			mockParams: mockParams{
+				buddyBroadcasterParams: buddyBroadcasterParams{
+					broadcastVisibilityParams: broadcastVisibilityParams{
+						{
+							from:             state.NewIdentScreenName("100001"),
+							filter:           nil,
+							doSendDepartures: false,
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("100001"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Stats,
+									SubGroup:  wire.StatsSetMinReportInterval,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x0B_0x02_StatsSetMinReportInterval{
+									MinReportInterval: 1,
+								},
+							},
+						},
+					},
+				},
+			},
+			validateSess: func(t *testing.T, instance *state.SessionInstance) {
+				assert.True(t, instance.SignonComplete())
+				assert.Equal(t, uint32(100001), instance.UIN())
+				assert.Equal(t, 3, instance.OfflineMsgCount())
+			},
+		},
+		{
 			name: "notify that BOS user is logged in to multiple locations",
 			instance: func() *state.SessionInstance {
 				instance1 := newTestInstance("me")

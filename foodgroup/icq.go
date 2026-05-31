@@ -445,7 +445,7 @@ func (s *ICQService) OfflineMsgReq(ctx context.Context, inFrame wire.SNACFrame, 
 		msgOut := wire.ICQMessageReplyEnvelope{
 			Message: reply,
 		}
-		if err := s.reply(ctx, instance, msgOut, inFrame.RequestID, 0); err != nil {
+		if err := s.reply(ctx, instance, msgOut, inFrame.RequestID, wire.SNACFlagsMoreToCome); err != nil {
 			return fmt.Errorf("sending offline message: %w", err)
 		}
 	}

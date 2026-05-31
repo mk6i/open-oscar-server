@@ -2380,6 +2380,7 @@ func TestICQService_OfflineMsgReq(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									Flags:     wire.SNACFlagsMoreToCome,
 									RequestID: 1234,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{
@@ -2413,6 +2414,7 @@ func TestICQService_OfflineMsgReq(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICQ,
 									SubGroup:  wire.ICQDBReply,
+									Flags:     wire.SNACFlagsMoreToCome,
 									RequestID: 1234,
 								},
 								Body: wire.SNAC_0x15_0x02_DBReply{

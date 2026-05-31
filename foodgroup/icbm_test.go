@@ -466,22 +466,12 @@ func TestICBMService_ChannelMsgToHost(t *testing.T) {
 					ScreenName: "22222222",
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
-							wire.NewTLVBE(wire.ICBMTLVRequestHostAck, []byte{}),
 							wire.NewTLVBE(wire.ICBMTLVStore, []byte{}),
 						},
 					},
 				},
 			},
-			expectOutput: &wire.SNACMessage{
-				Frame: wire.SNACFrame{
-					FoodGroup: wire.ICBM,
-					SubGroup:  wire.ICBMErr,
-					RequestID: 1234,
-				},
-				Body: wire.SNACError{
-					Code: wire.ErrorCodeNotLoggedOn,
-				},
-			},
+			expectOutput: nil,
 			timeNow: func() time.Time {
 				return time.Date(2020, time.August, 1, 0, 0, 0, 0, time.UTC)
 			},
@@ -521,7 +511,6 @@ func TestICBMService_ChannelMsgToHost(t *testing.T) {
 									ScreenName: "22222222",
 									TLVRestBlock: wire.TLVRestBlock{
 										TLVList: wire.TLVList{
-											wire.NewTLVBE(wire.ICBMTLVRequestHostAck, []byte{}),
 											wire.NewTLVBE(wire.ICBMTLVStore, []byte{}),
 										},
 									},
