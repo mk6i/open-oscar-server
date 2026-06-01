@@ -343,6 +343,11 @@ func (s *FeedbagService) UpsertItem(ctx context.Context, instance *state.Session
 				continue
 			}
 
+			// they haven't been notified yet, record it for next time
+			if err := s.buddyAddedNotifierDeduper.RecordBuddyAddedNotification(ctx, instance.IdentScreenName(), buddyScreenName); err != nil {
+				return nil, fmt.Errorf("buddyAddedNotifierDeduper.RecordBuddyAddedNotification: %w", err)
+			}
+
 			buddySess := s.sessionRetriever.RetrieveSession(buddyScreenName)
 			if buddySess != nil && buddySess.UsesFeedbag() {
 				s.messageRelayer.RelayToScreenName(ctx, buddyScreenName, wire.SNACMessage{
@@ -360,9 +365,6 @@ func (s *FeedbagService) UpsertItem(ctx context.Context, instance *state.Session
 						ScreenName: instance.DisplayScreenName().String(),
 					},
 				})
-				if err := s.buddyAddedNotifierDeduper.RecordBuddyAddedNotification(ctx, instance.IdentScreenName(), buddyScreenName); err != nil {
-					return nil, fmt.Errorf("buddyAddedNotifierDeduper.RecordBuddyAddedNotification: %w", err)
-				}
 			} else {
 				if err := s.sendLegacyBuddyAddedMsg(ctx, instance, buddyScreenName); err != nil {
 					return nil, fmt.Errorf("sendLegacyBuddyAddedMsg: %w", err)

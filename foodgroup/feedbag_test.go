@@ -667,6 +667,9 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					hasBuddyAddedNotificationParams: hasBuddyAddedNotificationParams{
 						{granter: state.NewIdentScreenName("100001"), requester: state.NewIdentScreenName("123401"), result: false},
 					},
+					recordBuddyAddedNotificationParams: recordBuddyAddedNotificationParams{
+						{granter: state.NewIdentScreenName("100001"), requester: state.NewIdentScreenName("123401")},
+					},
 				},
 			},
 			expectOutput: nil,
@@ -780,6 +783,9 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 				buddyAddedNotifierDeduperParams: buddyAddedNotifierDeduperParams{
 					hasBuddyAddedNotificationParams: hasBuddyAddedNotificationParams{
 						{granter: state.NewIdentScreenName("me"), requester: state.NewIdentScreenName("123400"), result: false},
+					},
+					recordBuddyAddedNotificationParams: recordBuddyAddedNotificationParams{
+						{granter: state.NewIdentScreenName("me"), requester: state.NewIdentScreenName("123400")},
 					},
 				},
 			},
@@ -2119,6 +2125,9 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					hasBuddyAddedNotificationParams: hasBuddyAddedNotificationParams{
 						{granter: state.NewIdentScreenName("me"), requester: state.NewIdentScreenName("123400"), result: false},
 					},
+					recordBuddyAddedNotificationParams: recordBuddyAddedNotificationParams{
+						{granter: state.NewIdentScreenName("me"), requester: state.NewIdentScreenName("123400")},
+					},
 				},
 				sessionRetrieverParams: sessionRetrieverParams{
 					retrieveSessionParams: retrieveSessionParams{
@@ -2470,6 +2479,9 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 				buddyAddedNotifierDeduperParams: buddyAddedNotifierDeduperParams{
 					hasBuddyAddedNotificationParams: hasBuddyAddedNotificationParams{
 						{granter: state.NewIdentScreenName("100001"), requester: state.NewIdentScreenName("990011"), result: false},
+					},
+					recordBuddyAddedNotificationParams: recordBuddyAddedNotificationParams{
+						{granter: state.NewIdentScreenName("100001"), requester: state.NewIdentScreenName("990011")},
 					},
 				},
 				messageRelayerParams: messageRelayerParams{
