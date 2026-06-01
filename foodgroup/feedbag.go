@@ -717,45 +717,45 @@ func isASCII(s string) bool {
 	return true
 }
 
-func (s *FeedbagService) authorizeContact(ctx context.Context, from state.IdentScreenName, to state.IdentScreenName, message string) error {
-	recipSess := s.sessionRetriever.RetrieveSession(to)
+func (s *FeedbagService) authorizeContact(ctx context.Context, granter state.IdentScreenName, requester state.IdentScreenName, message string) error {
+	requesterSess := s.sessionRetriever.RetrieveSession(requester)
 
-	if err := s.contactPreAuthorizer.RecordPreAuth(ctx, from, to); err != nil {
+	if err := s.contactPreAuthorizer.RecordPreAuth(ctx, granter, requester); err != nil {
 		if errors.Is(err, state.ErrNoUser) {
-			s.logger.DebugContext(ctx, "user not found", "name", to.String())
+			s.logger.DebugContext(ctx, "user not found", "name", requester.String())
 			return nil
 		}
 		return fmt.Errorf("RecordPreAuth: %w", err)
 	}
 
-	if recipSess == nil {
-		if err := s.sendLegacyAuthMsg(ctx, from, to); err != nil {
+	if requesterSess == nil {
+		if err := s.sendLegacyAuthMsg(ctx, granter, requester); err != nil {
 			return fmt.Errorf("sendLegacyAuthMsg: %w", err)
 		}
 		return nil
 	}
 
-	if cleared, err := s.clearPendingAuth(ctx, from, to); err != nil {
+	if cleared, err := s.clearPendingAuth(ctx, granter, requester); err != nil {
 		return fmt.Errorf("clearPendingAuth: %w", err)
 	} else if cleared {
 		return nil
 	}
 
-	if recipSess.UsesFeedbag() {
-		rel, err := s.relationshipFetcher.Relationship(ctx, from, to)
+	if requesterSess.UsesFeedbag() {
+		rel, err := s.relationshipFetcher.Relationship(ctx, granter, requester)
 		if err != nil {
 			return fmt.Errorf("relationshipFetcher.Relationship: %w", err)
 		}
 		if rel.BlocksYou {
 			return nil
 		}
-		s.messageRelayer.RelayToScreenName(ctx, to, wire.SNACMessage{
+		s.messageRelayer.RelayToScreenName(ctx, requester, wire.SNACMessage{
 			Frame: wire.SNACFrame{
 				FoodGroup: wire.Feedbag,
 				SubGroup:  wire.FeedbagPreAuthorizedBuddy,
 			},
 			Body: wire.SNAC_0x13_0x15_FeedbagPreAuthorizedBuddy{
-				ScreenName: from.String(),
+				ScreenName: granter.String(),
 				Message:    message,
 				Flags:      0,
 			},
@@ -764,7 +764,7 @@ func (s *FeedbagService) authorizeContact(ctx context.Context, from state.IdentS
 	}
 
 	// send legacy ICQ authorization message
-	if err := s.sendLegacyAuthMsg(ctx, from, to); err != nil {
+	if err := s.sendLegacyAuthMsg(ctx, granter, requester); err != nil {
 		return fmt.Errorf("sendLegacyAuthMsg: %w", err)
 	}
 
@@ -821,8 +821,8 @@ func (s *FeedbagService) sendLegacyBuddyAddedMsg(ctx context.Context, from *stat
 	return nil
 }
 
-func (s *FeedbagService) clearPendingAuth(ctx context.Context, from state.IdentScreenName, to state.IdentScreenName) (bool, error) {
-	items, err := s.feedbagManager.Feedbag(ctx, to)
+func (s *FeedbagService) clearPendingAuth(ctx context.Context, granter state.IdentScreenName, requester state.IdentScreenName) (bool, error) {
+	items, err := s.feedbagManager.Feedbag(ctx, requester)
 	if err != nil {
 		return false, fmt.Errorf("failed to fetch feedbag items: %w", err)
 	}
@@ -830,7 +830,7 @@ func (s *FeedbagService) clearPendingAuth(ctx context.Context, from state.IdentS
 	// look for the pending buddy authorization
 	var buddyItem *wire.FeedbagItem
 	for _, item := range items {
-		if item.ClassID == wire.FeedbagClassIdBuddy && item.Name == from.String() {
+		if item.ClassID == wire.FeedbagClassIdBuddy && item.Name == granter.String() {
 			buddyItem = &item
 			break
 		}
@@ -846,13 +846,14 @@ func (s *FeedbagService) clearPendingAuth(ctx context.Context, from state.IdentS
 	})
 
 	updates := []wire.FeedbagItem{*buddyItem}
-	if err = s.feedbagManager.FeedbagUpsert(ctx, to, updates); err != nil {
+	if err = s.feedbagManager.FeedbagUpsert(ctx, requester, updates); err != nil {
 		return false, fmt.Errorf("failed to update feedbag: %w", err)
 	}
 
-	fromSess := s.sessionRetriever.RetrieveSession(from)
-	if fromSess != nil && fromSess.UsesFeedbag() {
-		s.messageRelayer.RelayToScreenName(ctx, from, wire.SNACMessage{
+	// send a "you were added" message to the granter
+	granterSess := s.sessionRetriever.RetrieveSession(granter)
+	if granterSess != nil && granterSess.UsesFeedbag() {
+		s.messageRelayer.RelayToScreenName(ctx, granter, wire.SNACMessage{
 			Frame: wire.SNACFrame{
 				FoodGroup: wire.Feedbag,
 				SubGroup:  wire.FeedbagBuddyAdded,
@@ -864,20 +865,21 @@ func (s *FeedbagService) clearPendingAuth(ctx context.Context, from state.IdentS
 						wire.NewTLVBE(wire.FeedbagTLVVersion, uint16(4)),
 					},
 				},
-				ScreenName: to.String(),
+				ScreenName: requester.String(),
 			},
 		})
 	} else {
-		toSess := state.NewSession()
-		toSess.SetIdentScreenName(to)
-		toSess.SetDisplayScreenName(state.DisplayScreenName(to.String()))
-		if err := s.sendLegacyBuddyAddedMsg(ctx, toSess.AddInstance(), from); err != nil {
+		requesterSess := state.NewSession()
+		requesterSess.SetIdentScreenName(requester)
+		requesterSess.SetDisplayScreenName(state.DisplayScreenName(requester.String()))
+		requesterSess.SetUIN(requester.UIN())
+		if err := s.sendLegacyBuddyAddedMsg(ctx, requesterSess.AddInstance(), granter); err != nil {
 			return false, fmt.Errorf("sendLegacyBuddyAddedMsg: %w", err)
 		}
 	}
 
-	// clear the pending flag on the recipient's buddy entry
-	s.messageRelayer.RelayToScreenName(ctx, to, wire.SNACMessage{
+	// clear the pending flag on the requester's buddy entry
+	s.messageRelayer.RelayToScreenName(ctx, requester, wire.SNACMessage{
 		Frame: wire.SNACFrame{
 			FoodGroup: wire.Feedbag,
 			SubGroup:  wire.FeedbagUpdateItem,
@@ -887,8 +889,8 @@ func (s *FeedbagService) clearPendingAuth(ctx context.Context, from state.IdentS
 		},
 	})
 
-	// tell the recipient that we're friends
-	s.messageRelayer.RelayToScreenName(ctx, to, wire.SNACMessage{
+	// tell the requester that we're friends
+	s.messageRelayer.RelayToScreenName(ctx, requester, wire.SNACMessage{
 		Frame: wire.SNACFrame{
 			FoodGroup: wire.Feedbag,
 			SubGroup:  wire.FeedbagRespondAuthorizeToClient,
@@ -900,16 +902,16 @@ func (s *FeedbagService) clearPendingAuth(ctx context.Context, from state.IdentS
 					wire.NewTLVBE(wire.FeedbagTLVVersion, uint16(2)),
 				},
 			},
-			ScreenName: from.String(),
+			ScreenName: granter.String(),
 			Accepted:   1,
 		},
 	})
 
-	if fromSess != nil {
-		instances := fromSess.Instances()
+	if granterSess != nil {
+		instances := granterSess.Instances()
 		if len(instances) > 0 {
-			// tell the recipient that we're online
-			if err := s.buddyBroadcaster.BroadcastVisibility(ctx, instances[0], []state.IdentScreenName{to}, false); err != nil {
+			// tell the granter that we're online
+			if err := s.buddyBroadcaster.BroadcastVisibility(ctx, instances[0], []state.IdentScreenName{requester}, false); err != nil {
 				s.logger.ErrorContext(ctx, "broadcastBuddyArrived failed", "err", err)
 			}
 		}
@@ -919,11 +921,8 @@ func (s *FeedbagService) clearPendingAuth(ctx context.Context, from state.IdentS
 }
 
 // RespondAuthorizeToHost forwards an authorization response from the user
-// whose authorization was requested to the user who made the authorization
-// request.
-// Right now we send an ICBM request so that responses can work for both ICQ
-// 2000b and ICQ 2001a. This function should eventually only send an ICBM
-// message to non-feedbag clients and SNAC(0x0013,0x001B) to feedbag clients.
+// whose authorization was requested (granter) to the user who made the
+// authorization request (requester).
 func (s *FeedbagService) RespondAuthorizeToHost(ctx context.Context, instance state.IdentScreenName, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost) error {
 	switch inBody.Accepted {
 	case 0:
@@ -942,9 +941,9 @@ func (s *FeedbagService) RespondAuthorizeToHost(ctx context.Context, instance st
 	return nil
 }
 
-func (s *FeedbagService) rejectContact(ctx context.Context, from state.IdentScreenName, to state.IdentScreenName, reason string) error {
-	if toSess := s.sessionRetriever.RetrieveSession(to); toSess != nil && toSess.UsesFeedbag() {
-		s.messageRelayer.RelayToScreenName(ctx, to, wire.SNACMessage{
+func (s *FeedbagService) rejectContact(ctx context.Context, rejecter state.IdentScreenName, requester state.IdentScreenName, reason string) error {
+	if toSess := s.sessionRetriever.RetrieveSession(requester); toSess != nil && toSess.UsesFeedbag() {
+		s.messageRelayer.RelayToScreenName(ctx, requester, wire.SNACMessage{
 			Frame: wire.SNACFrame{
 				FoodGroup: wire.Feedbag,
 				SubGroup:  wire.FeedbagRespondAuthorizeToClient,
@@ -956,7 +955,7 @@ func (s *FeedbagService) rejectContact(ctx context.Context, from state.IdentScre
 						wire.NewTLVBE(wire.FeedbagTLVVersion, uint16(2)),
 					},
 				},
-				ScreenName: from.String(),
+				ScreenName: rejecter.String(),
 				Accepted:   0,
 				Reason:     reason,
 			},
@@ -968,11 +967,11 @@ func (s *FeedbagService) rejectContact(ctx context.Context, from state.IdentScre
 		}
 		snac := wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
 			ChannelID:  wire.ICBMChannelICQ,
-			ScreenName: to.String(),
+			ScreenName: requester.String(),
 			TLVRestBlock: wire.TLVRestBlock{
 				TLVList: wire.TLVList{
 					wire.NewTLVLE(wire.ICBMTLVData, wire.ICBMCh4Message{
-						UIN:         from.UIN(),
+						UIN:         rejecter.UIN(),
 						MessageType: wire.ICBMMsgTypeAuthDeny,
 						Message:     reason,
 					}),
@@ -981,8 +980,8 @@ func (s *FeedbagService) rejectContact(ctx context.Context, from state.IdentScre
 			},
 		}
 		fromSess := state.NewSession()
-		fromSess.SetIdentScreenName(from)
-		fromSess.SetDisplayScreenName(state.DisplayScreenName(from.String()))
+		fromSess.SetIdentScreenName(rejecter)
+		fromSess.SetDisplayScreenName(state.DisplayScreenName(rejecter.String()))
 		if _, err := s.icbmSender(ctx, fromSess.AddInstance(), frame, snac); err != nil {
 			return fmt.Errorf("could not send ICBM message: %w", err)
 		}

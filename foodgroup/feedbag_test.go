@@ -3516,19 +3516,21 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 		FoodGroup: wire.ICBM,
 		SubGroup:  wire.ICBMChannelMsgToHost,
 	}
+	granter := state.NewIdentScreenName("100001")
+	requester := state.NewIdentScreenName("100003")
 	tests := []struct {
 		// name is the unit test name
 		name string
-		// instance is the client session
-		instance *state.SessionInstance
+		// granterSess is the session instance of the user who accepts / rejects authorization
+		granterSess *state.SessionInstance
+		// requesterSess is the session instance of the user who requested authorization
+		requesterSess *state.Session
 		// bodyIn is the SNAC body sent by the client
 		bodyIn wire.SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost
-		// buddySess is the online session for the recipient, or nil if offline
-		buddySess *state.Session
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
-		// expectICBM is true when RespondAuthorizeToHost should route via icbmSender
+		// expectICBM is true when the response is sent via ICBM rather than Feebdag SNACs
 		expectICBM bool
 		// wantHostSNAC is the expected ICBM body when expectICBM is true
 		wantHostSNAC wire.SNAC_0x04_0x06_ICBMChannelMsgToHost
@@ -3536,27 +3538,28 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 		wantErr error
 	}{
 		{
-			name:     "authorization accepted - offline recipient receives legacy ICQ auth OK",
-			instance: newTestInstance("100001", sessOptUIN(100001)),
+			name:          "requester offline: requester receives auth OK",
+			granterSess:   newTestInstance(state.DisplayScreenName(granter.String()), sessOptUIN(granter.UIN())),
+			requesterSess: nil, // offline
 			bodyIn: wire.SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost{
-				ScreenName: "100003",
+				ScreenName: requester.String(),
 				Accepted:   1,
 			},
 			mockParams: mockParams{
 				contactPreAuthorizerParams: contactPreAuthorizerParams{
 					recordPreAuthParams: recordPreAuthParams{
-						{owner: state.NewIdentScreenName("100001"), buddy: state.NewIdentScreenName("100003")},
+						{owner: granter, buddy: requester},
 					},
 				},
 			},
 			expectICBM: true,
 			wantHostSNAC: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
 				ChannelID:  wire.ICBMChannelICQ,
-				ScreenName: "100003",
+				ScreenName: requester.String(),
 				TLVRestBlock: wire.TLVRestBlock{
 					TLVList: wire.TLVList{
 						wire.NewTLVLE(wire.ICBMTLVData, wire.ICBMCh4Message{
-							UIN:         100001,
+							UIN:         granter.UIN(),
 							MessageType: wire.ICBMMsgTypeAuthOK,
 						}),
 						wire.NewTLVBE(wire.ICBMTLVStore, []byte{}),
@@ -3565,21 +3568,22 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 			},
 		},
 		{
-			name:     "authorization denied - offline recipient receives legacy ICQ auth deny",
-			instance: newTestInstance("100001", sessOptUIN(100001)),
+			name:          "requester offline: requester receives auth deny",
+			granterSess:   newTestInstance(state.DisplayScreenName(granter.String()), sessOptUIN(granter.UIN())),
+			requesterSess: nil, // offline
 			bodyIn: wire.SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost{
-				ScreenName: "100003",
+				ScreenName: requester.String(),
 				Accepted:   0,
 				Reason:     "I don't know you!",
 			},
 			expectICBM: true,
 			wantHostSNAC: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
 				ChannelID:  wire.ICBMChannelICQ,
-				ScreenName: "100003",
+				ScreenName: requester.String(),
 				TLVRestBlock: wire.TLVRestBlock{
 					TLVList: wire.TLVList{
 						wire.NewTLVLE(wire.ICBMTLVData, wire.ICBMCh4Message{
-							UIN:         100001,
+							UIN:         granter.UIN(),
 							MessageType: wire.ICBMMsgTypeAuthDeny,
 							Message:     "I don't know you!",
 						}),
@@ -3589,46 +3593,46 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 			},
 		},
 		{
-			name:     "authorization accepted - feedbag recipient receives FeedbagPreAuthorizedBuddy",
-			instance: newTestInstance("100001", sessOptUIN(100001)),
-			bodyIn: wire.SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost{
-				ScreenName: "100003",
-				Accepted:   1,
-				Reason:     "welcome",
-			},
-			buddySess: func() *state.Session {
+			name:        "requester online: requester is pre-authorized",
+			granterSess: newTestInstance(state.DisplayScreenName(granter.String()), sessOptUIN(granter.UIN())),
+			requesterSess: func() *state.Session {
 				s := state.NewSession()
-				s.SetIdentScreenName(state.NewIdentScreenName("100003"))
+				s.SetIdentScreenName(requester)
 				s.SetUsesFeedbag()
 				return s
 			}(),
+			bodyIn: wire.SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost{
+				ScreenName: requester.String(),
+				Accepted:   1,
+				Reason:     "welcome",
+			},
 			mockParams: mockParams{
 				contactPreAuthorizerParams: contactPreAuthorizerParams{
 					recordPreAuthParams: recordPreAuthParams{
-						{owner: state.NewIdentScreenName("100001"), buddy: state.NewIdentScreenName("100003")},
+						{owner: granter, buddy: requester},
 					},
 				},
 				feedbagManagerParams: feedbagManagerParams{
 					feedbagParams: feedbagParams{
-						{screenName: state.NewIdentScreenName("100003"), results: []wire.FeedbagItem{}},
+						{screenName: requester, results: []wire.FeedbagItem{}},
 					},
 				},
 				relationshipFetcherParams: relationshipFetcherParams{
 					relationshipParams: relationshipParams{
-						{me: state.NewIdentScreenName("100001"), them: state.NewIdentScreenName("100003"), result: state.Relationship{}},
+						{me: granter, them: requester, result: state.Relationship{}},
 					},
 				},
 				messageRelayerParams: messageRelayerParams{
 					relayToScreenNameParams: relayToScreenNameParams{
 						{
-							screenName: state.NewIdentScreenName("100003"),
+							screenName: requester,
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
 									SubGroup:  wire.FeedbagPreAuthorizedBuddy,
 								},
 								Body: wire.SNAC_0x13_0x15_FeedbagPreAuthorizedBuddy{
-									ScreenName: "100001",
+									ScreenName: granter.String(),
 									Message:    "welcome",
 									Flags:      0,
 								},
@@ -3639,32 +3643,32 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 			},
 		},
 		{
-			name:     "authorization accepted - feedbag recipient with pending auth, sender has feedbag: clearPendingAuth feedbag path",
-			instance: newTestInstance("100001", sessOptUIN(100001)),
-			bodyIn: wire.SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost{
-				ScreenName: "100003",
-				Accepted:   1,
-			},
-			buddySess: func() *state.Session {
+			name:        "requester online: pending auth is finalized",
+			granterSess: newTestInstance(state.DisplayScreenName(granter.String()), sessOptUIN(granter.UIN())),
+			requesterSess: func() *state.Session {
 				s := state.NewSession()
-				s.SetIdentScreenName(state.NewIdentScreenName("100003"))
+				s.SetIdentScreenName(requester)
 				s.SetUsesFeedbag()
 				return s
 			}(),
+			bodyIn: wire.SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost{
+				ScreenName: requester.String(),
+				Accepted:   1,
+			},
 			mockParams: mockParams{
 				contactPreAuthorizerParams: contactPreAuthorizerParams{
 					recordPreAuthParams: recordPreAuthParams{
-						{owner: state.NewIdentScreenName("100001"), buddy: state.NewIdentScreenName("100003")},
+						{owner: granter, buddy: requester},
 					},
 				},
 				feedbagManagerParams: feedbagManagerParams{
 					feedbagParams: feedbagParams{
 						{
-							screenName: state.NewIdentScreenName("100003"),
+							screenName: requester,
 							results: []wire.FeedbagItem{
 								{
 									ClassID: wire.FeedbagClassIdBuddy,
-									Name:    "100001",
+									Name:    granter.String(),
 									TLVLBlock: wire.TLVLBlock{
 										TLVList: wire.TLVList{
 											wire.NewTLVBE(wire.FeedbagAttributesPending, []byte{}),
@@ -3677,9 +3681,9 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 					feedbagUpsertParams: feedbagUpsertParams{
 						// slices.DeleteFunc returns an empty non-nil slice after removing the pending tag
 						{
-							screenName: state.NewIdentScreenName("100003"),
+							screenName: requester,
 							items: []wire.FeedbagItem{
-								{ClassID: wire.FeedbagClassIdBuddy, Name: "100001", TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{}}},
+								{ClassID: wire.FeedbagClassIdBuddy, Name: granter.String(), TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{}}},
 							},
 						},
 					},
@@ -3687,10 +3691,10 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 				sessionRetrieverParams: sessionRetrieverParams{
 					retrieveSessionParams: retrieveSessionParams{
 						{
-							screenName: state.NewIdentScreenName("100001"),
+							screenName: granter,
 							result: func() *state.Session {
 								s := state.NewSession()
-								s.SetIdentScreenName(state.NewIdentScreenName("100001"))
+								s.SetIdentScreenName(granter)
 								s.SetUsesFeedbag()
 								s.AddInstance()
 								return s
@@ -3701,7 +3705,7 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 				messageRelayerParams: messageRelayerParams{
 					relayToScreenNameParams: relayToScreenNameParams{
 						{
-							screenName: state.NewIdentScreenName("100001"),
+							screenName: granter,
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
@@ -3714,12 +3718,12 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 											wire.NewTLVBE(wire.FeedbagTLVVersion, uint16(4)),
 										},
 									},
-									ScreenName: "100003",
+									ScreenName: requester.String(),
 								},
 							},
 						},
 						{
-							screenName: state.NewIdentScreenName("100003"),
+							screenName: requester,
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
@@ -3727,13 +3731,13 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 								},
 								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
 									Items: []wire.FeedbagItem{
-										{ClassID: wire.FeedbagClassIdBuddy, Name: "100001", TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{}}},
+										{ClassID: wire.FeedbagClassIdBuddy, Name: granter.String(), TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{}}},
 									},
 								},
 							},
 						},
 						{
-							screenName: state.NewIdentScreenName("100003"),
+							screenName: requester,
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
@@ -3746,7 +3750,7 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 											wire.NewTLVBE(wire.FeedbagTLVVersion, uint16(2)),
 										},
 									},
-									ScreenName: "100001",
+									ScreenName: granter.String(),
 									Accepted:   1,
 								},
 							},
@@ -3756,8 +3760,8 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 				buddyBroadcasterParams: buddyBroadcasterParams{
 					broadcastVisibilityParams: broadcastVisibilityParams{
 						{
-							from:             state.NewIdentScreenName("100001"),
-							filter:           []state.IdentScreenName{state.NewIdentScreenName("100003")},
+							from:             granter,
+							filter:           []state.IdentScreenName{requester},
 							doSendDepartures: false,
 						},
 					},
@@ -3765,32 +3769,32 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 			},
 		},
 		{
-			name:     "authorization accepted - feedbag recipient with pending auth, sender offline: clearPendingAuth legacy path",
-			instance: newTestInstance("100001", sessOptUIN(100001)),
+			name:        "requester online, granter offline: pending auth is finalized",
+			granterSess: newTestInstance(state.DisplayScreenName(granter.String()), sessOptUIN(granter.UIN())),
 			bodyIn: wire.SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost{
-				ScreenName: "100003",
+				ScreenName: requester.String(),
 				Accepted:   1,
 			},
-			buddySess: func() *state.Session {
+			requesterSess: func() *state.Session {
 				s := state.NewSession()
-				s.SetIdentScreenName(state.NewIdentScreenName("100003"))
+				s.SetIdentScreenName(requester)
 				s.SetUsesFeedbag()
 				return s
 			}(),
 			mockParams: mockParams{
 				contactPreAuthorizerParams: contactPreAuthorizerParams{
 					recordPreAuthParams: recordPreAuthParams{
-						{owner: state.NewIdentScreenName("100001"), buddy: state.NewIdentScreenName("100003")},
+						{owner: granter, buddy: requester},
 					},
 				},
 				feedbagManagerParams: feedbagManagerParams{
 					feedbagParams: feedbagParams{
 						{
-							screenName: state.NewIdentScreenName("100003"),
+							screenName: requester,
 							results: []wire.FeedbagItem{
 								{
 									ClassID: wire.FeedbagClassIdBuddy,
-									Name:    "100001",
+									Name:    granter.String(),
 									TLVLBlock: wire.TLVLBlock{
 										TLVList: wire.TLVList{
 											wire.NewTLVBE(wire.FeedbagAttributesPending, []byte{}),
@@ -3802,22 +3806,22 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 					},
 					feedbagUpsertParams: feedbagUpsertParams{
 						{
-							screenName: state.NewIdentScreenName("100003"),
+							screenName: requester,
 							items: []wire.FeedbagItem{
-								{ClassID: wire.FeedbagClassIdBuddy, Name: "100001", TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{}}},
+								{ClassID: wire.FeedbagClassIdBuddy, Name: granter.String(), TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{}}},
 							},
 						},
 					},
 				},
 				sessionRetrieverParams: sessionRetrieverParams{
 					retrieveSessionParams: retrieveSessionParams{
-						{screenName: state.NewIdentScreenName("100001"), result: nil},
+						{screenName: granter, result: nil},
 					},
 				},
 				messageRelayerParams: messageRelayerParams{
 					relayToScreenNameParams: relayToScreenNameParams{
 						{
-							screenName: state.NewIdentScreenName("100003"),
+							screenName: requester,
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
@@ -3825,13 +3829,13 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 								},
 								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
 									Items: []wire.FeedbagItem{
-										{ClassID: wire.FeedbagClassIdBuddy, Name: "100001", TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{}}},
+										{ClassID: wire.FeedbagClassIdBuddy, Name: granter.String(), TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{}}},
 									},
 								},
 							},
 						},
 						{
-							screenName: state.NewIdentScreenName("100003"),
+							screenName: requester,
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
@@ -3844,7 +3848,7 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 											wire.NewTLVBE(wire.FeedbagTLVVersion, uint16(2)),
 										},
 									},
-									ScreenName: "100001",
+									ScreenName: granter.String(),
 									Accepted:   1,
 								},
 							},
@@ -3855,11 +3859,11 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 			expectICBM: true,
 			wantHostSNAC: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
 				ChannelID:  wire.ICBMChannelICQ,
-				ScreenName: "100001",
+				ScreenName: granter.String(),
 				TLVRestBlock: wire.TLVRestBlock{
 					TLVList: wire.TLVList{
 						wire.NewTLVLE(wire.ICBMTLVData, wire.ICBMCh4Message{
-							UIN:         0,
+							UIN:         requester.UIN(),
 							MessageType: wire.ICBMMsgTypeAdded,
 						}),
 						wire.NewTLVBE(wire.ICBMTLVStore, []byte{}),
@@ -3868,16 +3872,16 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 			},
 		},
 		{
-			name:     "authorization denied - feedbag recipient receives FeedbagRespondAuthorizeToClient",
-			instance: newTestInstance("100001", sessOptUIN(100001)),
+			name:        "requester online: requester is denied",
+			granterSess: newTestInstance(state.DisplayScreenName(granter.String()), sessOptUIN(granter.UIN())),
 			bodyIn: wire.SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost{
-				ScreenName: "100003",
+				ScreenName: requester.String(),
 				Accepted:   0,
 				Reason:     "I don't know you!",
 			},
-			buddySess: func() *state.Session {
+			requesterSess: func() *state.Session {
 				s := state.NewSession()
-				s.SetIdentScreenName(state.NewIdentScreenName("100003"))
+				s.SetIdentScreenName(requester)
 				s.SetUsesFeedbag()
 				return s
 			}(),
@@ -3885,7 +3889,7 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 				messageRelayerParams: messageRelayerParams{
 					relayToScreenNameParams: relayToScreenNameParams{
 						{
-							screenName: state.NewIdentScreenName("100003"),
+							screenName: requester,
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.Feedbag,
@@ -3898,7 +3902,7 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 											wire.NewTLVBE(wire.FeedbagTLVVersion, uint16(2)),
 										},
 									},
-									ScreenName: "100001",
+									ScreenName: granter.String(),
 									Accepted:   0,
 									Reason:     "I don't know you!",
 								},
@@ -3914,7 +3918,7 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 			sessionRetriever := newMockSessionRetriever(t)
 			sessionRetriever.EXPECT().
 				RetrieveSession(state.NewIdentScreenName(tt.bodyIn.ScreenName)).
-				Return(tt.buddySess)
+				Return(tt.requesterSess)
 			for _, params := range tt.mockParams.retrieveSessionParams {
 				sessionRetriever.EXPECT().RetrieveSession(params.screenName).Return(params.result)
 			}
@@ -3949,7 +3953,9 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 					Return(params.err)
 			}
 
+			var icbmCallCount int
 			icbmSender := func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) (*wire.SNACMessage, error) {
+				icbmCallCount++
 				if !tt.expectICBM {
 					t.Fatalf("unexpected icbmSender call")
 				}
@@ -3966,8 +3972,13 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 			svc.buddyBroadcaster = buddyBroadcaster
 			svc.icbmSender = icbmSender
 
-			haveErr := svc.RespondAuthorizeToHost(context.Background(), tt.instance.IdentScreenName(), wire.SNACFrame{}, tt.bodyIn)
+			haveErr := svc.RespondAuthorizeToHost(context.Background(), tt.granterSess.IdentScreenName(), wire.SNACFrame{}, tt.bodyIn)
 			assert.ErrorIs(t, tt.wantErr, haveErr)
+			if tt.expectICBM {
+				assert.Equal(t, 1, icbmCallCount, "expected icbmSender to be called exactly once")
+			} else {
+				assert.Equal(t, 0, icbmCallCount, "expected icbmSender not to be called")
+			}
 		})
 	}
 }
