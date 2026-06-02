@@ -3530,18 +3530,26 @@ func (h *V5Handler) sendMetaUserInfo(session *LegacySession, seqNum uint16, info
 
 	packetData := MarshalV5ServerPacket(pkt)
 
-	h.logger.Info("sending META user info",
-		"uin", session.UIN,
-		"sub_command", fmt.Sprintf("0x%04X", ICQLegacySrvMetaUserInfo),
-		"target_uin", info.UIN,
-		"nickname", info.Nickname,
-		"firstname", info.FirstName,
-		"lastname", info.LastName,
-		"email", info.Email,
-		"auth", info.AuthRequired,
-		"gender", info.Gender,
-		"packet_len", len(packetData),
-	)
+	if info != nil {
+		h.logger.Info("sending META user info",
+			"uin", session.UIN,
+			"sub_command", fmt.Sprintf("0x%04X", ICQLegacySrvMetaUserInfo),
+			"target_uin", info.UIN,
+			"nickname", info.Nickname,
+			"firstname", info.FirstName,
+			"lastname", info.LastName,
+			"email", info.Email,
+			"auth", info.AuthRequired,
+			"gender", info.Gender,
+			"packet_len", len(packetData),
+		)
+	} else {
+		h.logger.Info("sending META user info not found",
+			"uin", session.UIN,
+			"sub_command", fmt.Sprintf("0x%04X", ICQLegacySrvMetaUserInfo),
+			"packet_len", len(packetData),
+		)
+	}
 
 	return h.sender.SendToSession(session, packetData)
 }
