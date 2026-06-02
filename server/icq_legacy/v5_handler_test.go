@@ -37,6 +37,11 @@ func newTestV5SessionManager() *LegacySessionManager {
 	return NewLegacySessionManager(noopSessionRegistry{}, config.ICQLegacyConfig{}, slog.Default())
 }
 
+// newTestLegacySessionManager is shared by V1–V4 handler tests.
+func newTestLegacySessionManager() *LegacySessionManager {
+	return newTestV5SessionManager()
+}
+
 func newTestV5Handler(t *testing.T, sender PacketSender, svc LegacyService, sessions *LegacySessionManager) *V5Handler {
 	t.Helper()
 	if sessions == nil {
