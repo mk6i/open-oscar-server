@@ -381,7 +381,7 @@ type LegacyService interface {
 	// NotifyUserOffline broadcasts a user departure to OSCAR clients.
 	NotifyUserOffline(ctx context.Context, uin uint32) error
 
-	// NotifyUserOnline broadcasts a user arrival to OSCAR clients.
+	// NotifyUserOnline broadcasts a user arrival to OSCAR clients after legacy login.
 	NotifyUserOnline(ctx context.Context, uin uint32, status uint32) error
 
 	// User Management

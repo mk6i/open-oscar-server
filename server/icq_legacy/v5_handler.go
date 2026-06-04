@@ -489,14 +489,7 @@ func (h *V5Handler) handleContactList(session *LegacySession, pkt *V5ClientPacke
 		}
 	}
 
-	// Also notify contacts that THIS user is now online
-	// This is the key fix - we need to tell contacts who have us in their list
 	h.notifyContactsUserOnline(session)
-
-	// Notify OSCAR clients that this legacy user is online
-	if err := h.service.NotifyUserOnline(ctx, session.UIN, session.GetStatus()); err != nil {
-		h.logger.Debug("V5 failed to notify OSCAR clients of online", "uin", session.UIN, "err", err)
-	}
 
 	// 5. Send contact list done using packet builder
 	return h.sender.SendToSession(session, h.packetBuilder.BuildContactListDone(session, pkt.SeqNum2))
@@ -1255,6 +1248,10 @@ func (h *V5Handler) handleLogin(session *LegacySession, addr *net.UDPAddr, pkt *
 		"uin", pkt.UIN,
 		"session_id", newSession.SessionID,
 	)
+
+	if err := h.service.NotifyUserOnline(ctx, newSession.UIN, newSession.GetStatus()); err != nil {
+		h.logger.Debug("V5 failed to notify OSCAR clients of online", "uin", newSession.UIN, "err", err)
+	}
 
 	return nil
 }

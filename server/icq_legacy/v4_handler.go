@@ -634,8 +634,10 @@ func (h *V4Handler) handleLogin(session *LegacySession, addr *net.UDPAddr, seq1,
 			"session_id", existingSession.SessionID,
 		)
 
-		// Notify other sessions that have this user in their contact list
 		h.notifyContactsUserOnline(existingSession)
+		if err := h.service.NotifyUserOnline(ctx, existingSession.UIN, existingSession.GetStatus()); err != nil {
+			h.logger.Debug("V4 failed to notify OSCAR clients of online", "uin", existingSession.UIN, "err", err)
+		}
 	} else {
 		// Direct login flow: client sent Login (0x03E8) without prior
 		// GetDeps. Just create session and send login reply directly.
@@ -659,8 +661,10 @@ func (h *V4Handler) handleLogin(session *LegacySession, addr *net.UDPAddr, seq1,
 			"session_id", newSession.SessionID,
 		)
 
-		// Notify other sessions that have this user in their contact list
 		h.notifyContactsUserOnline(newSession)
+		if err := h.service.NotifyUserOnline(ctx, newSession.UIN, newSession.GetStatus()); err != nil {
+			h.logger.Debug("V4 failed to notify OSCAR clients of online", "uin", newSession.UIN, "err", err)
+		}
 	}
 
 	return nil
@@ -776,13 +780,7 @@ func (h *V4Handler) handleContactList(session *LegacySession, seq1, seq2 uint16,
 		}
 	}
 
-	// Also notify contacts that THIS user is now online
 	h.notifyContactsUserOnline(session)
-
-	// Notify OSCAR clients that this legacy user is online
-	if err := h.service.NotifyUserOnline(ctx, session.UIN, session.GetStatus()); err != nil {
-		h.logger.Debug("V4 failed to notify OSCAR clients of online", "uin", session.UIN, "err", err)
-	}
 
 	// 5. Send contact list done using packet builder
 	return h.sender.SendToSession(session, h.packetBuilder.BuildContactListDone(session.NextServerSeqNum(), seq2, session.UIN))

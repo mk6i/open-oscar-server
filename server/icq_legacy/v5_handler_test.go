@@ -593,6 +593,7 @@ func TestV5Handler_HandleLogin(t *testing.T) {
 					e.Service.EXPECT().AuthenticateUser(mock.Anything, mock.MatchedBy(func(req AuthRequest) bool {
 						return req.UIN == testV5UIN && req.Password == "secret"
 					})).Return(&AuthResult{Success: true, oscarSession: testAuthSuccessInstance()}, nil).Once()
+					e.Service.EXPECT().NotifyUserOnline(mock.Anything, testV5UIN, mock.Anything).Return(nil).Once()
 					e.Sender.EXPECT().SendPacket(testV5Addr, mock.AnythingOfType("[]uint8")).Return(nil).Once()
 					e.Sender.EXPECT().SendToSession(mock.AnythingOfType("*icq_legacy.LegacySession"), mock.AnythingOfType("[]uint8")).
 						Return(nil).Once()
@@ -685,7 +686,6 @@ func TestV5Handler_HandleContactList(t *testing.T) {
 				func(e v5HandleEnv) {
 					e.Service.EXPECT().ProcessContactList(mock.Anything, mock.Anything, mock.Anything).
 						Return(&ContactListResult{}, nil).Once()
-					e.Service.EXPECT().NotifyUserOnline(mock.Anything, testV5UIN, mock.Anything).Return(nil).Once()
 					e.Sender.EXPECT().SendPacket(e.Session.Addr, mock.AnythingOfType("[]uint8")).Return(nil).Once()
 					e.Sender.EXPECT().SendToSession(e.Session, mock.AnythingOfType("[]uint8")).
 						Run(func(_ *LegacySession, p []byte) {

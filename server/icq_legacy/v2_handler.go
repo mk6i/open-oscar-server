@@ -243,9 +243,8 @@ func (h *V2Handler) handleLogin(session *LegacySession, addr *net.UDPAddr, pkt *
 		"session_id", newSession.SessionID,
 	)
 
-	// 6. Notify contacts that user is online (via service layer)
-	if err := h.service.NotifyStatusChange(ctx, pkt.UIN, loginData.Status); err != nil {
-		h.logger.Debug("failed to notify status change", "err", err)
+	if err := h.service.NotifyUserOnline(ctx, newSession.UIN, newSession.GetStatus()); err != nil {
+		h.logger.Debug("V2 failed to notify OSCAR clients of online", "uin", newSession.UIN, "err", err)
 	}
 
 	return nil
@@ -360,11 +359,6 @@ func (h *V2Handler) handleContactList(session *LegacySession, pkt *V2ClientPacke
 			)
 			_ = h.sender.SendToSession(session, onlinePkt)
 		}
-	}
-
-	// Notify OSCAR clients that this legacy user is online
-	if err := h.service.NotifyUserOnline(ctx, session.UIN, session.GetStatus()); err != nil {
-		h.logger.Debug("V2 failed to notify OSCAR clients of online", "uin", session.UIN, "err", err)
 	}
 
 	// 4. Send contact list done using packet builder
