@@ -294,15 +294,15 @@ func alertUserJoined(ctx context.Context, instance *state.SessionInstance, chatM
 	})
 }
 
-func alertUserLeft(ctx context.Context, instance *state.SessionInstance, chatMessageRelayer ChatMessageRelayer) {
-	chatMessageRelayer.RelayToAllExcept(ctx, instance.ChatRoomCookie(), instance.IdentScreenName(), wire.SNACMessage{
+func alertUserLeft(ctx context.Context, sess *state.Session, chatMessageRelayer ChatMessageRelayer) {
+	chatMessageRelayer.RelayToAllExcept(ctx, sess.ChatRoomCookie(), sess.IdentScreenName(), wire.SNACMessage{
 		Frame: wire.SNACFrame{
 			FoodGroup: wire.Chat,
 			SubGroup:  wire.ChatUsersLeft,
 		},
 		Body: wire.SNAC_0x0E_0x04_ChatUsersLeft{
 			Users: []wire.TLVUserInfo{
-				instance.Session().TLVUserInfo(),
+				sess.TLVUserInfo(),
 			},
 		},
 	})

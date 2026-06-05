@@ -205,10 +205,7 @@ func (s AuthService) Signout(ctx context.Context, session *state.Session) {
 // SignoutChat removes user from chat room and notifies remaining participants
 // of their departure.
 func (s AuthService) SignoutChat(ctx context.Context, sess *state.Session) {
-	instances := sess.Instances()
-	for _, instance := range instances {
-		alertUserLeft(ctx, instance, s.chatMessageRelayer)
-	}
+	alertUserLeft(ctx, sess, s.chatMessageRelayer)
 	s.chatSessionRegistry.RemoveSession(sess)
 }
 
