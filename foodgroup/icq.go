@@ -386,67 +386,94 @@ func (s *ICQService) OfflineMsgReq(ctx context.Context, inFrame wire.SNACFrame, 
 	}
 
 	for _, msgIn := range messages {
-		reply := wire.ICQ_0x0041_DBQueryOfflineMsgReply{
-			ICQMetadata: wire.ICQMetadata{
-				UIN:     instance.UIN(),
-				ReqType: wire.ICQDBQueryOfflineMsgReply,
-				Seq:     seq,
-			},
-			SenderUIN: msgIn.Sender.UIN(),
-			Year:      uint16(msgIn.Sent.Year()),
-			Month:     uint8(msgIn.Sent.Month()),
-			Day:       uint8(msgIn.Sent.Day()),
-			Hour:      uint8(msgIn.Sent.Hour()),
-			Minute:    uint8(msgIn.Sent.Minute()),
-		}
-
-		switch msgIn.Message.ChannelID {
-		case wire.ICBMChannelIM:
-			if payload, hasIM := msgIn.Message.Bytes(wire.ICBMTLVAOLIMData); hasIM {
-				// send regular IM
-				msgText, err := wire.UnmarshalICBMMessageText(payload)
-				if err != nil {
-					return fmt.Errorf("unmarshalling offline message: %w", err)
-				}
-				reply.MsgType = wire.ICBMExtendedMsgTypePlain
-				reply.Message = msgText
+		if msgIn.Sender.UIN() != 0 {
+			reply := wire.ICQ_0x0041_DBQueryOfflineMsgReply{
+				ICQMetadata: wire.ICQMetadata{
+					UIN:     instance.UIN(),
+					ReqType: wire.ICQDBQueryOfflineMsgReply,
+					Seq:     seq,
+				},
+				SenderUIN: msgIn.Sender.UIN(),
+				Year:      uint16(msgIn.Sent.Year()),
+				Month:     uint8(msgIn.Sent.Month()),
+				Day:       uint8(msgIn.Sent.Day()),
+				Hour:      uint8(msgIn.Sent.Hour()),
+				Minute:    uint8(msgIn.Sent.Minute()),
 			}
-		case wire.ICBMChannelICQ:
-			if b, hasAuthReq := msgIn.Message.Bytes(wire.ICBMTLVData); hasAuthReq {
-				msg := wire.ICBMCh4Message{}
-				buf := bytes.NewBuffer(b)
-				if err := wire.UnmarshalLE(&msg, buf); err != nil {
-					return err
-				}
-				if msg.MessageType == wire.ICBMMsgTypeAuthReq ||
-					msg.MessageType == wire.ICBMMsgTypeAuthDeny ||
-					msg.MessageType == wire.ICBMMsgTypeAuthOK ||
-					msg.MessageType == wire.ICBMMsgTypeAdded {
-					if instance.Session().UsesFeedbag() {
-						// send auth grant/deny/request SNACs instead of the legacy MSG_TYPE_*
-						// ICQ messages.
-						if err := s.forwardICQAuthEvents(ctx, msgIn.Sender, msgIn.Recipient, msg); err != nil {
-							return fmt.Errorf("s.forwardICQAuthEvents: %w", err)
-						}
-						continue // do not send these messages in response
+
+			switch msgIn.Message.ChannelID {
+			case wire.ICBMChannelIM:
+				if payload, hasIM := msgIn.Message.Bytes(wire.ICBMTLVAOLIMData); hasIM {
+					// send regular IM
+					msgText, err := wire.UnmarshalICBMMessageText(payload)
+					if err != nil {
+						return fmt.Errorf("unmarshalling offline message: %w", err)
 					}
+					reply.MsgType = wire.ICBMExtendedMsgTypePlain
+					reply.Message = msgText
 				}
-				reply.MsgType = msg.MessageType
-				reply.Flags = msg.Flags
-				reply.Message = msg.Message
+			case wire.ICBMChannelICQ:
+				if b, hasAuthReq := msgIn.Message.Bytes(wire.ICBMTLVData); hasAuthReq {
+					msg := wire.ICBMCh4Message{}
+					buf := bytes.NewBuffer(b)
+					if err := wire.UnmarshalLE(&msg, buf); err != nil {
+						return err
+					}
+					if msg.MessageType == wire.ICBMMsgTypeAuthReq ||
+						msg.MessageType == wire.ICBMMsgTypeAuthDeny ||
+						msg.MessageType == wire.ICBMMsgTypeAuthOK ||
+						msg.MessageType == wire.ICBMMsgTypeAdded {
+						if instance.Session().UsesFeedbag() {
+							// send auth grant/deny/request SNACs instead of the legacy MSG_TYPE_*
+							// ICQ messages.
+							if err := s.forwardICQAuthEvents(ctx, msgIn.Sender, msgIn.Recipient, msg); err != nil {
+								return fmt.Errorf("s.forwardICQAuthEvents: %w", err)
+							}
+							continue // do not send these messages in response
+						}
+					}
+					reply.MsgType = msg.MessageType
+					reply.Flags = msg.Flags
+					reply.Message = msg.Message
+				}
 			}
-		}
 
-		if reply.MsgType == 0 {
-			return fmt.Errorf("did not find an appropriate saved message payload. channel: %d",
-				msgIn.Message.ChannelID)
-		}
+			if reply.MsgType == 0 {
+				return fmt.Errorf("did not find an appropriate saved message payload. channel: %d",
+					msgIn.Message.ChannelID)
+			}
 
-		msgOut := wire.ICQMessageReplyEnvelope{
-			Message: reply,
-		}
-		if err := s.reply(ctx, instance, msgOut, inFrame.RequestID, wire.SNACFlagsMoreToCome); err != nil {
-			return fmt.Errorf("sending offline message: %w", err)
+			msgOut := wire.ICQMessageReplyEnvelope{
+				Message: reply,
+			}
+			if err := s.reply(ctx, instance, msgOut, inFrame.RequestID, wire.SNACFlagsMoreToCome); err != nil {
+				return fmt.Errorf("sending offline message: %w", err)
+			}
+		} else {
+			// offline message sent by AIM client. this SNAC supports string
+			// screen names, whereas ICQ_0x0041_DBQueryOfflineMsgReply does not.
+			clientIM := wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
+				Cookie:    msgIn.Message.Cookie,
+				ChannelID: msgIn.Message.ChannelID,
+				TLVUserInfo: wire.TLVUserInfo{
+					ScreenName: msgIn.Sender.String(),
+				},
+				TLVRestBlock: wire.TLVRestBlock{},
+			}
+
+			for _, tlv := range msgIn.Message.TLVList {
+				clientIM.Append(tlv)
+			}
+			clientIM.Append(wire.NewTLVBE(wire.ICBMTLVSendTime, uint32(msgIn.Sent.Unix())))
+
+			s.messageRelayer.RelayToScreenName(ctx, msgIn.Recipient, wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.ICBM,
+					SubGroup:  wire.ICBMChannelMsgToClient,
+					RequestID: wire.ReqIDFromServer,
+				},
+				Body: clientIM,
+			})
 		}
 	}
 
