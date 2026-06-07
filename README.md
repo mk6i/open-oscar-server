@@ -41,7 +41,7 @@ The following features are supported:
 
 **ICQ**
 
-- [x] Windows ICQ Clients: 2000b (more to come soon)
+- [x] Windows ICQ Clients: [98x, 99x, 2000x, 2001x, 2002x, 2003x, 4, 5](./docs/CLIENT_ICQ.md)
 - [x] Instant Messaging
 - [x] Profiles
 - [x] User Search
