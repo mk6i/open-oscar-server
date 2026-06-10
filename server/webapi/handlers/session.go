@@ -67,7 +67,7 @@ type BuddyListService interface {
 
 // OSCARBuddyService defines the OSCAR buddy-list operations we need to emulate an OSCAR client.
 type OSCARBuddyService interface {
-	AddBuddies(ctx context.Context, instance *state.SessionInstance, inBody wire.SNAC_0x03_0x04_BuddyAddBuddies) error
+	AddBuddies(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x03_0x04_BuddyAddBuddies) (*wire.SNACMessage, error)
 }
 
 type ChatSessionManager interface {
@@ -320,7 +320,7 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 						}{ScreenName: item.Name})
 					}
 					if len(b.Buddies) > 0 {
-						if err := h.OSCARBuddyService.AddBuddies(ctx, oscarInstance, b); err != nil {
+						if _, err := h.OSCARBuddyService.AddBuddies(ctx, oscarInstance, wire.SNACFrame{}, b); err != nil {
 							h.Logger.ErrorContext(ctx, "failed to add OSCAR buddy watch list", "err", err.Error())
 						}
 					}
