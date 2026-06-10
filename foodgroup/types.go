@@ -429,3 +429,19 @@ type UserManager interface {
 	// SetWarnLevel updates the last warn update time and warning level for a user.
 	SetWarnLevel(ctx context.Context, user state.IdentScreenName, lastWarnUpdate time.Time, lastWarnLevel uint16) error
 }
+
+type LinkedAccountManager interface {
+	// LinkedAccounts retrieves all accounts linked to the primary screen name.
+	LinkedAccounts(ctx context.Context, screenName state.IdentScreenName) ([]state.IdentScreenName, error)
+
+	// InsertLinkedAccount adds a linked account relationship. Return state.ErrLinkExists
+	// if a link relationship with the same screenname already exists.
+	InsertLinkedAccount(ctx context.Context, screenName state.IdentScreenName, linkedScreenName state.IdentScreenName) error
+
+	// DeleteLinkedAccount removes a linked account relationship. Returns state.ErrNoUser
+	// if the linked account relationship does not exist.
+	DeleteLinkedAccount(ctx context.Context, screenName state.IdentScreenName, linkedScreenName state.IdentScreenName) error
+
+	// CheckLinkedAccount reports whether the proposed screenName->linkedScreenName relationship is valid.
+	CheckLinkedAccount(ctx context.Context, screenName state.IdentScreenName, linkedScreenName state.IdentScreenName) (bool, error)
+}

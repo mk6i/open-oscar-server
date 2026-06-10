@@ -93,6 +93,7 @@ func MakeCommonDeps() (Container, error) {
 		c.sqLiteUserStore,
 		c.sqLiteUserStore,
 		c.sqLiteUserStore,
+		c.sqLiteUserStore,
 	)
 
 	c.icbmSvc = foodgroup.NewICBMService(
@@ -264,6 +265,7 @@ func OSCAR(deps Container) *oscar.Server {
 		deps.chatSessionManager,
 		deps.sqLiteUserStore,
 		deps.sqLiteUserStore,
+		deps.sqLiteUserStore,
 		deps.rateLimitClasses,
 		state.NewAccountCreator(deps.sqLiteUserStore.InsertUser),
 		logger,
@@ -285,6 +287,7 @@ func OSCAR(deps Container) *oscar.Server {
 	)
 	chatService := foodgroup.NewChatService(deps.chatSessionManager)
 	chatNavService := foodgroup.NewChatNavService(logger, deps.sqLiteUserStore)
+
 	permitDenyService := foodgroup.NewPermitDenyService(
 		deps.sqLiteUserStore,
 		deps.sqLiteUserStore,
@@ -311,6 +314,7 @@ func OSCAR(deps Container) *oscar.Server {
 		deps.sqLiteUserStore,
 		deps.snacRateLimits,
 		deps.chatSessionManager,
+		deps.sqLiteUserStore,
 		deps.sqLiteUserStore,
 		deps.sqLiteUserStore,
 	)
@@ -370,6 +374,7 @@ func KerberosAPI(deps Container) *kerberos.Server {
 		deps.chatSessionManager,
 		deps.sqLiteUserStore,
 		deps.sqLiteUserStore,
+		deps.sqLiteUserStore,
 		deps.rateLimitClasses,
 		state.NewAccountCreator(deps.sqLiteUserStore.InsertUser),
 		logger,
@@ -412,6 +417,7 @@ func MgmtAPI(deps Container) *http.Server {
 		deps.sqLiteUserStore,        // profileRetriever
 		deps.sqLiteUserStore,        // webAPIKeyManager
 		deps.sqLiteUserStore,        // icqProfileManager
+		deps.sqLiteUserStore,        // linkedAccountManager
 		state.NewAccountCreator(deps.sqLiteUserStore.InsertUser),
 		logger,
 	)
@@ -441,6 +447,7 @@ func TOC(deps Container) *toc.Server {
 				deps.sqLiteUserStore,
 				deps.hmacCookieBaker,
 				deps.chatSessionManager,
+				deps.sqLiteUserStore,
 				deps.sqLiteUserStore,
 				deps.sqLiteUserStore,
 				deps.rateLimitClasses,
@@ -480,6 +487,7 @@ func TOC(deps Container) *toc.Server {
 				deps.sqLiteUserStore,
 				deps.snacRateLimits,
 				deps.chatSessionManager,
+				deps.sqLiteUserStore,
 				deps.sqLiteUserStore,
 				deps.sqLiteUserStore,
 			),
@@ -551,6 +559,7 @@ func WebAPI(deps Container) *webapi.Server {
 			deps.chatSessionManager,
 			deps.sqLiteUserStore,
 			deps.sqLiteUserStore,
+			deps.sqLiteUserStore,
 			deps.rateLimitClasses,
 			state.NewAccountCreator(deps.sqLiteUserStore.InsertUser),
 			logger,
@@ -587,6 +596,7 @@ func WebAPI(deps Container) *webapi.Server {
 			deps.sqLiteUserStore,
 			deps.snacRateLimits,
 			deps.chatSessionManager,
+			deps.sqLiteUserStore,
 			deps.sqLiteUserStore,
 			deps.sqLiteUserStore,
 		),
@@ -648,6 +658,7 @@ func ICQLegacy(deps Container) *icq_legacy.LegacyServer {
 		deps.sqLiteUserStore,
 		deps.hmacCookieBaker,
 		deps.chatSessionManager,
+		deps.sqLiteUserStore,
 		deps.sqLiteUserStore,
 		deps.sqLiteUserStore,
 		deps.rateLimitClasses,

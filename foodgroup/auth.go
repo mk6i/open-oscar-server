@@ -3,6 +3,7 @@ package foodgroup
 import (
 	"bytes"
 	"context"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -32,6 +33,7 @@ func NewAuthService(
 	chatMessageRelayer ChatMessageRelayer,
 	accountManager AccountManager,
 	bartItemManager BARTItemManager,
+	linkedAccountManager LinkedAccountManager,
 	classes wire.RateLimitClasses,
 	createAccount state.CreateAccountFunc,
 	logger *slog.Logger,
@@ -46,6 +48,7 @@ func NewAuthService(
 		chatMessageRelayer:         chatMessageRelayer,
 		accountManager:             accountManager,
 		bartItemManager:            bartItemManager,
+		linkedAccountManager:       linkedAccountManager,
 		rateLimitClasses:           classes,
 		timeNow:                    time.Now,
 		maxConcurrentLoginsPerUser: MaxConcurrentLoginsPerUser,
@@ -68,6 +71,7 @@ type AuthService struct {
 	userManager                UserManager
 	accountManager             AccountManager
 	bartItemManager            BARTItemManager
+	linkedAccountManager       LinkedAccountManager
 	rateLimitClasses           wire.RateLimitClasses
 	timeNow                    func() time.Time
 	maxConcurrentLoginsPerUser int
@@ -547,7 +551,7 @@ func (s AuthService) login(ctx context.Context, tlv wire.TLVList, advertisedHost
 	if s.config.DisableAuth {
 		// user exists, but don't validate
 		s.logger.Debug("login: auth disabled, skipping password validation", "screen_name", props.screenName)
-		return s.loginSuccessResponse(props, advertisedHost)
+		return s.loginSuccessResponse(ctx, props, advertisedHost)
 	}
 
 	var loginOK bool
@@ -600,7 +604,7 @@ func (s AuthService) login(ctx context.Context, tlv wire.TLVList, advertisedHost
 	}
 
 	s.logger.Debug("login: login successful", "screen_name", props.screenName)
-	return s.loginSuccessResponse(props, advertisedHost)
+	return s.loginSuccessResponse(ctx, props, advertisedHost)
 }
 
 func (s AuthService) createUser(ctx context.Context, props loginProperties, advertisedHost string) (wire.TLVRestBlock, error) {
@@ -616,10 +620,10 @@ func (s AuthService) createUser(ctx context.Context, props loginProperties, adve
 		}
 	}
 
-	return s.loginSuccessResponse(props, advertisedHost)
+	return s.loginSuccessResponse(ctx, props, advertisedHost)
 }
 
-func (s AuthService) loginSuccessResponse(props loginProperties, advertisedHost string) (wire.TLVRestBlock, error) {
+func (s AuthService) loginSuccessResponse(ctx context.Context, props loginProperties, advertisedHost string) (wire.TLVRestBlock, error) {
 	loginCookie := state.ServerCookie{
 		Service:       wire.BOS,
 		ScreenName:    props.screenName,
@@ -647,14 +651,40 @@ func (s AuthService) loginSuccessResponse(props loginProperties, advertisedHost 
 		"reconnect_host", reconnectHost,
 		"ssl_state", sslState)
 
-	return wire.TLVRestBlock{
-		TLVList: []wire.TLV{
-			wire.NewTLVBE(wire.LoginTLVTagsScreenName, props.screenName),
-			wire.NewTLVBE(wire.LoginTLVTagsReconnectHere, reconnectHost),
-			wire.NewTLVBE(wire.LoginTLVTagsAuthorizationCookie, cookie),
-			wire.NewTLVBE(wire.OServiceTLVTagsSSLState, sslState),
-		},
-	}, nil
+	loginTLVTags := wire.TLVList{
+		wire.NewTLVBE(wire.LoginTLVTagsScreenName, props.screenName),
+		wire.NewTLVBE(wire.LoginTLVTagsReconnectHere, reconnectHost),
+		wire.NewTLVBE(wire.LoginTLVTagsAuthorizationCookie, cookie),
+		wire.NewTLVBE(wire.OServiceTLVTagsSSLState, sslState),
+	}
+
+	if err := s.addLinkedAccountsTLV(ctx, props.screenName, &loginTLVTags); err != nil {
+		return wire.TLVRestBlock{}, err
+	}
+
+	return wire.TLVRestBlock{TLVList: loginTLVTags}, nil
+}
+
+// addLinkedAccountsTLV builds the linked accounts XML and appends the
+// corresponding TLV to tlvs. If linkedNames is empty, tlvs is not modified.
+func (s AuthService) addLinkedAccountsTLV(ctx context.Context, screenName state.DisplayScreenName, tlvs *wire.TLVList) error {
+	accounts, err := s.linkedAccountManager.LinkedAccounts(ctx, screenName.IdentScreenName())
+	if err != nil {
+		return fmt.Errorf("failed to get linked accounts: %w", err)
+	}
+
+	if len(accounts) == 0 {
+		return nil
+	}
+
+	linkedNames := append([]state.IdentScreenName{}, accounts...)
+
+	xml, err := buildLinkedAccountsXML(screenName.IdentScreenName(), linkedNames)
+	if err != nil {
+		return fmt.Errorf("failed to build linked accounts xml: %w", err)
+	}
+	*tlvs = append(*tlvs, wire.NewTLVBE(wire.OServiceTLVTagsLinkedAccounts, xml))
+	return nil
 }
 
 func loginFailureResponse(props loginProperties, errCode uint16) wire.TLVRestBlock {
@@ -664,4 +694,53 @@ func loginFailureResponse(props loginProperties, errCode uint16) wire.TLVRestBlo
 			wire.NewTLVBE(wire.LoginTLVTagsErrorSubcode, errCode),
 		},
 	}
+}
+
+// buildLinkedAccountsXML will return the XML doc expected for wire.OServiceTLVTagsLinkedAccounts
+// Example:
+// <SET SETID="1">
+//
+//	<RESREC TYPE="PRIMARY-ACCOUNT" ID="1"><n>PrimaryName</n></RESREC>
+//	<RESREC TYPE="LINKED-ACCOUNT" ID="2"><n>LinkedName1</n></RESREC>
+//	<RESREC TYPE="LINKED-ACCOUNT" ID="3"><n>LinkedName2</n></RESREC>
+//	<RESREC TYPE="LINKED-ACCOUNT" ID="4"><n>LinkedName3</n></RESREC>
+//	<RESREC TYPE="LINKED-ACCOUNT" ID="5"><n>LinkedName4</n></RESREC>
+//
+// </SET>
+func buildLinkedAccountsXML(screenName state.IdentScreenName, linkedNames []state.IdentScreenName) (string, error) {
+	// ResRec represents the <RESREC> element with its attributes and nested <n> tag
+	type ResRec struct {
+		Type string `xml:"TYPE,attr"`
+		ID   string `xml:"ID,attr"`
+		Name string `xml:"n"`
+	}
+	// Set represents the root <SET> element
+	type Set struct {
+		XMLName xml.Name `xml:"SET"`
+		SetID   string   `xml:"SETID,attr"`
+		Records []ResRec `xml:"RESREC"`
+	}
+
+	data := Set{
+		SetID: "1",
+		Records: []ResRec{
+			{Type: "PRIMARY-ACCOUNT", ID: "1", Name: screenName.String()},
+		},
+	}
+
+	for i, name := range linkedNames {
+		newRec := ResRec{
+			Type: "LINKED-ACCOUNT",
+			// Incrementing ID starting from 2 (since Primary is 1)
+			ID:   strconv.Itoa(i + 2),
+			Name: name.String(),
+		}
+		data.Records = append(data.Records, newRec)
+	}
+
+	output, err := xml.Marshal(data)
+	if err != nil {
+		return "", err
+	}
+	return string(output), nil
 }
