@@ -20,7 +20,7 @@ func offlineWebAPIBuddy(aimID, displayID string) WebAPIBuddyInfo {
 		State:     "offline",
 		UserType:  "aim",
 		Bot:       false,
-		Service:   "aim",
+		Service:   "AIM",
 	}
 }
 

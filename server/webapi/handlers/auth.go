@@ -1,12 +1,16 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/mk6i/open-oscar-server/state"
@@ -16,7 +20,14 @@ import (
 // AuthHandler handles Web AIM API authentication endpoints.
 type AuthHandler struct {
 	AuthService AuthService
+	CookieBaker CookieBaker
+	UserManager UserRetriever
 	Logger      *slog.Logger
+}
+
+// UserRetriever looks up local AIM accounts.
+type UserRetriever interface {
+	User(ctx context.Context, screenName state.IdentScreenName) (*state.User, error)
 }
 
 type OServiceService interface {
@@ -28,6 +39,175 @@ type ClientLoginRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 	DevID    string `json:"devId"`
+}
+
+// GetToken handles GET /auth/getToken requests.
+// The Web AIM client uses this JSONP endpoint to exchange SSO session cookies for an API token.
+func (h *AuthHandler) GetToken(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	devID := r.URL.Query().Get("devId")
+
+	loginID, tokenBytes, ok := h.resolveGetTokenSession(ctx, r)
+	if !ok || loginID == "" {
+		h.Logger.DebugContext(ctx, "getToken: no session, returning redirect",
+			"devId", devID,
+			"host", r.Host)
+		resp := BaseResponse{}
+		resp.Response.StatusCode = 401
+		resp.Response.StatusText = "Unauthorized"
+		resp.Response.Data = map[string]interface{}{
+			"redirectURL": h.loginRedirectURL(r),
+		}
+		SendResponse(w, r, resp, h.Logger)
+		return
+	}
+
+	if h.UserManager != nil {
+		user, err := h.UserManager.User(ctx, loginID.IdentScreenName())
+		if err != nil {
+			h.Logger.ErrorContext(ctx, "getToken: user lookup failed", "error", err, "loginId", loginID)
+			SendError(w, http.StatusInternalServerError, "internal server error")
+			return
+		}
+		if user == nil {
+			h.Logger.DebugContext(ctx, "getToken: user not found", "loginId", loginID)
+			resp := BaseResponse{}
+			resp.Response.StatusCode = 401
+			resp.Response.StatusText = "Unauthorized"
+			resp.Response.Data = map[string]interface{}{
+				"redirectURL": h.loginRedirectURL(r),
+			}
+			SendResponse(w, r, resp, h.Logger)
+			return
+		}
+	}
+
+	if len(tokenBytes) == 0 {
+		var err error
+		tokenBytes, err = h.issueAuthCookie(loginID, devID)
+		if err != nil {
+			h.Logger.ErrorContext(ctx, "getToken: failed to issue token", "error", err, "loginId", loginID)
+			SendError(w, http.StatusInternalServerError, "internal server error")
+			return
+		}
+	}
+
+	resp := BaseResponse{}
+	resp.Response.StatusCode = 200
+	resp.Response.StatusText = "OK"
+	resp.Response.Data = map[string]interface{}{
+		"token": map[string]interface{}{
+			"a":         base64.URLEncoding.EncodeToString(tokenBytes),
+			"expiresIn": "86400",
+		},
+		"userData": map[string]interface{}{
+			"attributes": map[string]interface{}{
+				"loginId": string(loginID),
+			},
+		},
+	}
+	SendResponse(w, r, resp, h.Logger)
+
+	h.Logger.InfoContext(ctx, "getToken succeeded", "loginId", loginID, "devId", devID)
+}
+
+func (h *AuthHandler) resolveGetTokenSession(ctx context.Context, r *http.Request) (state.DisplayScreenName, []byte, bool) {
+	if token := r.URL.Query().Get("a"); token != "" {
+		if loginID, cookie, ok := h.loginFromToken(token); ok {
+			return loginID, cookie, true
+		}
+	}
+
+	if c, err := r.Cookie("oldAimToken"); err == nil && c.Value != "" {
+		token, err := url.QueryUnescape(c.Value)
+		if err != nil {
+			token = c.Value
+		}
+		if loginID, cookie, ok := h.loginFromToken(token); ok {
+			return loginID, cookie, true
+		}
+	}
+
+	if c, err := r.Cookie("localAuthUser"); err == nil && c.Value != "" {
+		if loginID, ok := parseLocalAuthUser(c.Value); ok {
+			return loginID, nil, true
+		}
+	}
+
+	for _, name := range []string{"RSP_USER", "RSP_LOCAL"} {
+		if c, err := r.Cookie(name); err == nil {
+			if loginID, ok := parseRSPCookie(c.Value); ok {
+				return loginID, nil, true
+			}
+		}
+	}
+
+	return "", nil, false
+}
+
+func (h *AuthHandler) loginFromToken(token string) (state.DisplayScreenName, []byte, bool) {
+	rawCookie, err := base64.URLEncoding.DecodeString(strings.TrimSpace(token))
+	if err != nil {
+		return "", nil, false
+	}
+	serverCookie, err := h.AuthService.CrackCookie(rawCookie)
+	if err != nil {
+		return "", nil, false
+	}
+	return serverCookie.ScreenName, rawCookie, true
+}
+
+func parseLocalAuthUser(value string) (state.DisplayScreenName, bool) {
+	parts := strings.SplitN(value, "||", 2)
+	loginID := strings.TrimSpace(parts[0])
+	if loginID == "" {
+		return "", false
+	}
+	return state.DisplayScreenName(loginID), true
+}
+
+func parseRSPCookie(value string) (state.DisplayScreenName, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", false
+	}
+	if decoded, err := url.QueryUnescape(value); err == nil && decoded != "" {
+		value = decoded
+	}
+	// RSP cookies typically contain the screen name directly.
+	if strings.ContainsAny(value, " \t\r\n") {
+		return "", false
+	}
+	return state.DisplayScreenName(value), true
+}
+
+func (h *AuthHandler) issueAuthCookie(screenName state.DisplayScreenName, devID string) ([]byte, error) {
+	if h.CookieBaker == nil {
+		return nil, fmt.Errorf("cookie baker not configured")
+	}
+	clientID := devID
+	if clientID == "" {
+		clientID = "WebAIM"
+	}
+	serverCookie := state.ServerCookie{
+		Service:       wire.BOS,
+		ScreenName:    screenName,
+		ClientID:      clientID,
+		MultiConnFlag: uint8(wire.MultiConnFlagsRecentClient),
+	}
+	buf := &bytes.Buffer{}
+	if err := wire.MarshalBE(serverCookie, buf); err != nil {
+		return nil, err
+	}
+	return h.CookieBaker.Issue(buf.Bytes())
+}
+
+func (h *AuthHandler) loginRedirectURL(r *http.Request) string {
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	return fmt.Sprintf("%s://%s/_cqr/login/login.psp", scheme, r.Host)
 }
 
 // ClientLogin handles POST /auth/clientLogin requests.

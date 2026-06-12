@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -239,6 +240,43 @@ func TestMessagingHandler_SendIM(t *testing.T) {
 			relFetcher.AssertExpectations(t)
 		})
 	}
+}
+
+func TestMessagingHandler_SendIM_POST(t *testing.T) {
+	messageRelayer := &MockMessageRelayer{}
+	sessionRetriever := &MockSessionRetriever{}
+	relFetcher := &MockRelationshipFetcher{}
+
+	sessionMgr, aimsid := createTestSessionManager("testuser")
+
+	relFetcher.On("Relationship", mock.Anything, mock.Anything, state.NewIdentScreenName("recipient")).
+		Return(state.Relationship{}, nil)
+	sessionRetriever.On("RetrieveSession", state.NewIdentScreenName("recipient")).
+		Return(&state.Session{})
+	messageRelayer.On("RelayToScreenName", mock.Anything, state.NewIdentScreenName("recipient"), mock.AnythingOfType("wire.SNACMessage")).
+		Return()
+
+	handler := &MessagingHandler{
+		SessionManager:      sessionMgr,
+		MessageRelayer:      messageRelayer,
+		SessionRetriever:    sessionRetriever,
+		RelationshipFetcher: relFetcher,
+		Logger:              slog.Default(),
+	}
+
+	body := strings.NewReader("message=" + url.QueryEscape("hello from post"))
+	req, err := http.NewRequest(http.MethodPost, "/im/sendIM?aimsid="+aimsid+"&f=json&t=recipient&r=1", body)
+	assert.NoError(t, err)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	rr := httptest.NewRecorder()
+	handler.SendIM(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.Contains(t, rr.Body.String(), `"msgId"`)
+	messageRelayer.AssertExpectations(t)
+	sessionRetriever.AssertExpectations(t)
+	relFetcher.AssertExpectations(t)
 }
 
 func TestMessagingHandler_SendIM_MissingAimsid(t *testing.T) {

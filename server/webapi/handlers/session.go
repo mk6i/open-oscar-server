@@ -96,6 +96,7 @@ type StartSessionResponse struct {
 		StatusText string `json:"statusText"`
 		Data       struct {
 			AimSID          string                 `json:"aimsid"`
+			Ts              int64                  `json:"ts"`
 			FetchTimeout    int                    `json:"fetchTimeout"`
 			TimeToNextFetch int                    `json:"timeToNextFetch"`
 			FetchBaseURL    string                 `json:"fetchBaseURL"` // Gromit expects this directly in data!
@@ -151,7 +152,7 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 	// Get API key info from context (set by auth middleware)
 	apiKey, ok := ctx.Value(middleware.ContextKeyAPIKey).(*state.WebAPIKey)
 	if !ok {
-		h.sendError(w, http.StatusInternalServerError, "internal server error")
+		h.sendError(w, r, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
@@ -204,14 +205,14 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 		rawCookie, err := base64.URLEncoding.DecodeString(strings.TrimSpace(authToken))
 		if err != nil {
 			h.Logger.Warn("invalid authentication token (base64)", "error", err)
-			h.sendError(w, http.StatusUnauthorized, "invalid or expired token")
+			h.sendError(w, r, http.StatusUnauthorized, "invalid or expired token")
 			return
 		}
 		cookie, err = h.OSCARAuthService.CrackCookie(rawCookie)
 		if err != nil {
 			h.Logger.Warn("invalid authentication token",
 				"error", err)
-			h.sendError(w, http.StatusUnauthorized, "invalid or expired token")
+			h.sendError(w, r, http.StatusUnauthorized, "invalid or expired token")
 			return
 		}
 		screenName = cookie.ScreenName
@@ -278,7 +279,7 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 				return nil
 			}); err != nil {
 				h.Logger.ErrorContext(ctx, "failed to init session", "err", err.Error())
-				h.sendError(w, http.StatusInternalServerError, "internal server error")
+				h.sendError(w, r, http.StatusInternalServerError, "internal server error")
 				return
 			}
 
@@ -329,7 +330,7 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 
 			if err := h.OServiceService.ClientOnline(ctx, wire.BOS, wire.SNAC_0x01_0x02_OServiceClientOnline{}, oscarInstance); err != nil {
 				h.Logger.ErrorContext(ctx, "failed to set client online", "err", err.Error())
-				h.sendError(w, http.StatusInternalServerError, "internal server error")
+				h.sendError(w, r, http.StatusInternalServerError, "internal server error")
 				return
 			}
 		}
@@ -339,7 +340,7 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 	session, err := h.SessionManager.CreateSession(r.Context(), screenName, apiKey.DevID, events, oscarInstance, h.Logger)
 	if err != nil {
 		h.Logger.ErrorContext(ctx, "failed to create session", "err", err.Error())
-		h.sendError(w, http.StatusInternalServerError, "failed to create session")
+		h.sendError(w, r, http.StatusInternalServerError, "failed to create session")
 		return
 	}
 
@@ -361,47 +362,60 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 				myInfoData := map[string]interface{}{
 					"aimId":        screenName.String(),
 					"displayId":    screenName.String(),
+					"friendly":     screenName.String(),
 					"state":        "online",
 					"onlineTime":   time.Now().Unix(),
 					"memberSince":  time.Now().Unix() - 86400*30, // 30 days ago
 					"capabilities": []string{},
 					"bot":          false,
-					"service":      "aim",
+					"service":      "AIM",
 				}
 				session.EventQueue.Push(types.EventType("myInfo"), myInfoData)
 				break
 			}
 		}
+		for _, event := range events {
+			if event == "conversation" {
+				session.EventQueue.Push(types.EventTypeConversation,
+					types.ConversationEventData("list", nil))
+				break
+			}
+		}
 	}
+
+	now := time.Now().Unix()
+	scheme := requestScheme(r)
+	baseURL := fmt.Sprintf("%s://%s", scheme, r.Host)
 
 	// Prepare response
 	resp := StartSessionResponse{}
 	resp.Response.StatusCode = 200
 	resp.Response.StatusText = "OK"
 	resp.Response.Data.AimSID = session.AimSID
+	resp.Response.Data.Ts = now
 	resp.Response.Data.FetchTimeout = session.FetchTimeout
 	resp.Response.Data.TimeToNextFetch = session.TimeToNextFetch
 	// Gromit expects fetchBaseURL directly in data, not in wellKnownUrls
-	resp.Response.Data.FetchBaseURL = fmt.Sprintf("http://%s/aim/fetchEvents?aimsid=%s&seqNum=0", r.Host, session.AimSID)
+	resp.Response.Data.FetchBaseURL = fmt.Sprintf("%s/aim/fetchEvents?aimsid=%s&seqNum=0", baseURL, session.AimSID)
 
 	// Add wellKnownUrls for other clients that might use it.
-	webBase := fmt.Sprintf("http://%s/", r.Host)
 	resp.Response.Data.WellKnownUrls = map[string]string{
-		"webApiBase":        webBase,
-		"fetchBaseURL":      fmt.Sprintf("http://%s/aim/fetchEvents", r.Host),
-		"lifestreamApiBase": webBase,
+		"webApiBase":        baseURL + "/",
+		"fetchBaseURL":      baseURL + "/aim/fetchEvents",
+		"lifestreamApiBase": baseURL + "/",
 	}
 
 	if authToken != "" {
 		myInfoPayload := map[string]interface{}{
 			"aimId":        screenName.String(),
 			"displayId":    screenName.String(),
+			"friendly":     screenName.String(),
 			"state":        "online",
 			"onlineTime":   time.Now().Unix(),
 			"memberSince":  time.Now().Unix() - 86400*30, // 30 days ago
 			"capabilities": []string{},
 			"bot":          false,
-			"service":      "aim",
+			"service":      "AIM",
 			"self": map[string]interface{}{
 				"instNum":        1,
 				"loginTime":      time.Now().Unix(),
@@ -472,17 +486,17 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 		xmlResp.Data.FetchTimeout = timeout
 		xmlResp.Data.TimeToNextFetch = 500
 		// Gromit expects fetchBaseURL directly in data
-		xmlResp.Data.FetchBaseURL = fmt.Sprintf("http://%s/aim/fetchEvents?aimsid=%s&seqNum=0", r.Host, session.AimSID)
+		xmlResp.Data.FetchBaseURL = fmt.Sprintf("%s/aim/fetchEvents?aimsid=%s&seqNum=0", baseURL, session.AimSID)
 
 		// Add wellKnownUrls for other clients
-		xmlBase := fmt.Sprintf("http://%s/", r.Host)
+		xmlBase := baseURL + "/"
 		xmlResp.Data.WellKnownUrls = &struct {
 			WebApiBase        string `xml:"webApiBase"`
 			FetchBaseURL      string `xml:"fetchBaseURL"`
 			LifestreamApiBase string `xml:"lifestreamApiBase"`
 		}{
 			WebApiBase:        xmlBase,
-			FetchBaseURL:      fmt.Sprintf("http://%s/aim/fetchEvents", r.Host),
+			FetchBaseURL:      baseURL + "/aim/fetchEvents",
 			LifestreamApiBase: xmlBase,
 		}
 
@@ -558,7 +572,7 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 		xmlData, err := xml.Marshal(xmlResp)
 		if err != nil {
 			h.Logger.Error("failed to marshal XML response", "error", err)
-			h.sendError(w, http.StatusInternalServerError, "internal server error")
+			h.sendError(w, r, http.StatusInternalServerError, "internal server error")
 			return
 		}
 
@@ -587,7 +601,7 @@ func (h *SessionHandler) EndSession(w http.ResponseWriter, r *http.Request) {
 	// Get session ID from parameters
 	aimsid := r.URL.Query().Get("aimsid")
 	if aimsid == "" {
-		h.sendError(w, http.StatusBadRequest, "missing aimsid parameter")
+		h.sendError(w, r, http.StatusBadRequest, "missing aimsid parameter")
 		return
 	}
 
@@ -596,11 +610,11 @@ func (h *SessionHandler) EndSession(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch err {
 		case state.ErrNoWebAPISession:
-			h.sendError(w, http.StatusNotFound, "session not found")
+			h.sendError(w, r, http.StatusNotFound, "session not found")
 		case state.ErrWebAPISessionExpired:
-			h.sendError(w, http.StatusGone, "session expired")
+			h.sendError(w, r, http.StatusGone, "session expired")
 		default:
-			h.sendError(w, http.StatusInternalServerError, "internal server error")
+			h.sendError(w, r, http.StatusInternalServerError, "internal server error")
 		}
 		return
 	}
@@ -629,7 +643,7 @@ func (h *SessionHandler) EndSession(w http.ResponseWriter, r *http.Request) {
 	// Remove session
 	if err := h.SessionManager.RemoveSession(r.Context(), aimsid); err != nil {
 		h.Logger.ErrorContext(ctx, "failed to remove session", "err", err.Error())
-		h.sendError(w, http.StatusInternalServerError, "failed to end session")
+		h.sendError(w, r, http.StatusInternalServerError, "failed to end session")
 		return
 	}
 
@@ -647,9 +661,22 @@ func (h *SessionHandler) EndSession(w http.ResponseWriter, r *http.Request) {
 	)
 }
 
-// sendError is a convenience method that wraps the common SendError function.
-func (h *SessionHandler) sendError(w http.ResponseWriter, statusCode int, message string) {
-	SendError(w, statusCode, message)
+// sendError sends a Web AIM API error envelope, honoring JSONP when requested.
+func (h *SessionHandler) sendError(w http.ResponseWriter, r *http.Request, statusCode int, message string) {
+	resp := BaseResponse{}
+	resp.Response.StatusCode = statusCode
+	resp.Response.StatusText = message
+	SendResponse(w, r, resp, h.Logger)
+}
+
+func requestScheme(r *http.Request) string {
+	if r.TLS != nil {
+		return "https"
+	}
+	if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
+		return proto
+	}
+	return "http"
 }
 
 func shuttingDown(ctx context.Context) bool {

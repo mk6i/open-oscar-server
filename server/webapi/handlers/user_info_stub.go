@@ -19,7 +19,9 @@ func (h *UserInfoStubHandler) GetUserDetails(w http.ResponseWriter, r *http.Requ
 	resp.Response.StatusText = "OK"
 	resp.Response.Data = map[string]interface{}{
 		"userDetails": map[string]interface{}{
-			"services": []map[string]interface{}{},
+			"services": []map[string]interface{}{
+				{"service": "aim"},
+			},
 		},
 	}
 	SendResponse(w, r, resp, h.Logger)

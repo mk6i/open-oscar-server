@@ -43,6 +43,7 @@ type BaseResponse struct {
 type ResponseBody struct {
 	StatusCode int         `json:"statusCode" xml:"statusCode"`
 	StatusText string      `json:"statusText" xml:"statusText"`
+	RequestID  string      `json:"requestId,omitempty" xml:"requestId,omitempty"`
 	Data       interface{} `json:"data,omitempty" xml:"data,omitempty"`
 }
 
@@ -92,20 +93,46 @@ type XMLToken struct {
 	ExpiresIn int    `xml:"expiresIn"`
 }
 
+// requestIDFromRequest returns the Web AIM client request correlation id from the
+// "r" query parameter. JSONP callbacks require this echoed in response.requestId.
+func requestIDFromRequest(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	return r.URL.Query().Get("r")
+}
+
+// attachRequestID copies the request's "r" parameter into BaseResponse.requestId
+// when the handler did not set one explicitly.
+func attachRequestID(r *http.Request, data interface{}) interface{} {
+	id := requestIDFromRequest(r)
+	if id == "" {
+		return data
+	}
+	br, ok := data.(BaseResponse)
+	if !ok || br.Response.RequestID != "" {
+		return data
+	}
+	br.Response.RequestID = id
+	return br
+}
+
 // SendResponse sends a response in the requested format (JSON, JSONP, XML, or AMF).
 // This is the centralized function that all handlers should use for responses.
 func SendResponse(w http.ResponseWriter, r *http.Request, data interface{}, logger *slog.Logger) {
+	data = attachRequestID(r, data)
+
 	// Check for format parameter (f for format or callback for JSONP)
 	// First check URL query parameters
 	format := strings.ToLower(r.URL.Query().Get("f"))
-	callback := r.URL.Query().Get("callback")
+	callback := JSONPCallback(r)
 
 	// If format not in URL query, check form values (for POST requests)
 	if format == "" && r.Method == "POST" {
 		_ = r.ParseForm()
 		format = strings.ToLower(r.FormValue("f"))
 		if callback == "" {
-			callback = r.FormValue("callback")
+			callback = JSONPCallback(r)
 		}
 	}
 
@@ -228,6 +255,15 @@ func SendXML(w http.ResponseWriter, data interface{}, logger *slog.Logger) {
 	// Set content length for proper response handling
 	w.Header().Set("Content-Length", strconv.Itoa(len(xmlOutput)))
 	_, _ = w.Write([]byte(xmlOutput))
+}
+
+// JSONPCallback returns the JSONP callback name from the request.
+// Web AIM clients use the "c" query parameter; other callers may use "callback".
+func JSONPCallback(r *http.Request) string {
+	if callback := r.URL.Query().Get("c"); callback != "" {
+		return callback
+	}
+	return r.URL.Query().Get("callback")
 }
 
 // SendJSONP sends a JSONP response with the specified callback.

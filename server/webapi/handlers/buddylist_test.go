@@ -312,8 +312,7 @@ func TestBuddyListHandler_AddTempBuddy(t *testing.T) {
 	}
 }
 
-func TestBuddyListHandler_AddTempBuddy_EventQueueBehavior(t *testing.T) {
-	// Test that events are properly added to the event queue
+func TestBuddyListHandler_AddTempBuddy_DoesNotPushBuddyListEvent(t *testing.T) {
 	sessionManager := &MockWebAPISessionManager{}
 	logger := slog.Default()
 
@@ -340,28 +339,43 @@ func TestBuddyListHandler_AddTempBuddy_EventQueueBehavior(t *testing.T) {
 	rr := httptest.NewRecorder()
 	handler.AddTempBuddy(rr, req)
 
-	// Verify that events were added to the queue
 	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.Empty(t, eventQueue.GetAllEvents(), "addTempBuddy must not push buddylist events")
 
-	// Check that the event queue has the correct number of events
-	events := eventQueue.GetAllEvents()
-	assert.GreaterOrEqual(t, len(events), 2, "Should have at least 2 events for 2 buddies")
+	sessionManager.AssertExpectations(t)
+}
 
-	// Verify event content
-	for _, event := range events {
-		assert.Equal(t, types.EventTypeBuddyList, event.Type)
-		eventData, ok := event.Data.(types.BuddyListEvent)
-		assert.True(t, ok, "Event data should be BuddyListEvent")
-		assert.Equal(t, "addTemp", eventData.Action)
-		assert.NotNil(t, eventData.Buddy)
-		buddyInfo, ok := eventData.Buddy.(*BuddyPresenceInfo)
-		assert.True(t, ok, "Buddy should be *BuddyPresenceInfo")
-		if ok {
-			assert.Contains(t, []string{"buddy1", "buddy2"}, buddyInfo.AimID)
-			assert.Equal(t, "offline", buddyInfo.State)
-			assert.Equal(t, "aim", buddyInfo.UserType)
-		}
+func TestBuddyListHandler_RemoveTempBuddy(t *testing.T) {
+	sessionManager := &MockWebAPISessionManager{}
+	logger := slog.Default()
+
+	handler := &BuddyListHandler{
+		SessionManager: sessionManager,
+		Logger:         logger,
 	}
+
+	session := &state.WebAPISession{
+		AimSID:     "test-session",
+		ScreenName: state.DisplayScreenName("testuser"),
+		TempBuddies: map[string]bool{
+			"buddy1": true,
+			"buddy2": true,
+		},
+		LastAccessed: time.Now(),
+	}
+
+	sessionManager.On("GetSession", mock.Anything, "test-session").Return(session, nil)
+	sessionManager.On("TouchSession", mock.Anything, "test-session").Return(nil)
+
+	req, err := http.NewRequest("GET", "/aim/removeTempBuddy?aimsid=test-session&t=buddy1", nil)
+	assert.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+	handler.RemoveTempBuddy(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.False(t, session.TempBuddies["buddy1"])
+	assert.True(t, session.TempBuddies["buddy2"])
 
 	sessionManager.AssertExpectations(t)
 }

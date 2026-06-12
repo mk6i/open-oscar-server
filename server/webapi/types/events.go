@@ -47,6 +47,7 @@ type PresenceEvent struct {
 type IMEvent struct {
 	Source    UserInfo `json:"source"`
 	Message   string   `json:"message"`
+	MsgID     string   `json:"msgId,omitempty"`
 	Timestamp float64  `json:"timestamp"` // float64 for AMF3 encoding
 	AutoResp  bool     `json:"autoresponse,omitempty"`
 }
@@ -56,6 +57,7 @@ type SentIMEvent struct {
 	Sender    UserInfo `json:"sender"` // Sender user info
 	Dest      UserInfo `json:"dest"`   // Destination user info
 	Message   string   `json:"message"`
+	MsgID     string   `json:"msgId,omitempty"`
 	Timestamp float64  `json:"timestamp"` // float64 for AMF3 encoding
 	AutoResp  bool     `json:"autoResponse,omitempty"`
 }

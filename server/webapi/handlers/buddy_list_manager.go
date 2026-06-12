@@ -49,7 +49,7 @@ type WebAPIBuddyInfo struct {
 	IdleTime     int      `json:"idleTime,omitempty"` // Minutes idle
 	UserType     string   `json:"userType"`           // "aim", "icq", "admin"
 	Bot          bool     `json:"bot"`
-	Service      string   `json:"service,omitempty"` // "aim", "icq"
+	Service      string   `json:"service,omitempty"` // "AIM", "ICQ" (Web AIM client compares case-sensitively)
 	PresenceIcon string   `json:"presenceIcon,omitempty"`
 	BuddyIcon    string   `json:"buddyIcon,omitempty"`
 	Capabilities []string `json:"capabilities,omitempty"`
@@ -141,7 +141,7 @@ func (m *BuddyListManager) GetBuddyListForUser(ctx context.Context, screenName s
 		if groupName == "" {
 			groupName = "Buddies"
 		}
-		wg := WebAPIBuddyGroup{Name: groupName}
+		wg := WebAPIBuddyGroup{Name: groupName, Buddies: []WebAPIBuddyInfo{}}
 		for _, bid := range g.order {
 			b, ok := g.buddies[bid]
 			if !ok {
@@ -168,7 +168,7 @@ func (m *BuddyListManager) getBuddyInfo(buddyName string) WebAPIBuddyInfo {
 		State:     "offline",
 		UserType:  "aim",
 		Bot:       false,
-		Service:   "aim",
+		Service:   "AIM",
 	}
 
 	// Check if buddy is online

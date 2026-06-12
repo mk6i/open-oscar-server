@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"log/slog"
+	"strconv"
 	"sync"
 	"time"
 
@@ -37,7 +38,9 @@ type WebAPISession struct {
 	TimeToNextFetch int               // Suggested delay before next fetch
 	RemoteAddr      string            // Client IP address
 	TempBuddies     map[string]bool   // Temporary buddies for this session only
-	logger          *slog.Logger      // Logger for debugging
+	imLog           map[string][]WebAPIStoredIM
+	imLogMu         sync.Mutex
+	logger          *slog.Logger // Logger for debugging
 }
 
 // IsExpired checks if the session has expired.
@@ -142,6 +145,11 @@ func (s *WebAPISession) handleIncomingIM(msg wire.SNACMessage) {
 	// Check if it's an auto-response (channel 2)
 	autoResponse := body.ChannelID == 0x0002
 
+	msgID := strconv.FormatUint(body.Cookie, 10)
+	partner := body.ScreenName
+	nowSec := time.Now().Unix()
+	s.AddStoredIM(partner, partner, messageText, msgID, nowSec)
+
 	// Create IM event
 	imEvent := types.IMEvent{
 		Source: types.UserInfo{
@@ -151,11 +159,26 @@ func (s *WebAPISession) handleIncomingIM(msg wire.SNACMessage) {
 			State:     "online",
 		},
 		Message:   messageText,
+		MsgID:     msgID,
 		Timestamp: float64(time.Now().Unix()),
 		AutoResp:  autoResponse,
 	}
 
 	s.EventQueue.Push(types.EventTypeIM, imEvent)
+
+	if s.IsSubscribedTo("conversation") {
+		s.EventQueue.Push(types.EventTypeConversation, types.ConversationEventData("update", []map[string]interface{}{
+			types.ConversationEntry(
+				body.ScreenName,
+				body.ScreenName,
+				messageText,
+				msgID,
+				body.ScreenName,
+				false,
+				1,
+			),
+		}))
+	}
 }
 
 // handleTypingNotification handles typing notifications.

@@ -207,6 +207,9 @@ func (e *AMFEncoder) responseBodyToMap(body ResponseBody) map[string]interface{}
 		"statusCode": body.StatusCode,
 		"statusText": body.StatusText,
 	}
+	if body.RequestID != "" {
+		m["requestId"] = body.RequestID
+	}
 	if body.Data != nil {
 		m["data"] = e.toAMF3Compatible(body.Data)
 	} else {

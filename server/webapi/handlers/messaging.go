@@ -42,12 +42,27 @@ type MessagingHandler struct {
 	Logger                *slog.Logger
 }
 
+// queryOrFormParam returns a request parameter from the query string or, for POST
+// requests, from application/x-www-form-urlencoded body fields. The Web AIM client
+// sends t/offlineIM/etc. on the query string and puts message in the POST body.
+func queryOrFormParam(r *http.Request, key string) string {
+	if v := r.URL.Query().Get(key); v != "" {
+		return v
+	}
+	if r.Method == http.MethodPost {
+		if err := r.ParseForm(); err == nil {
+			return r.FormValue(key)
+		}
+	}
+	return ""
+}
+
 // SendIM handles the /im/sendIM endpoint for sending instant messages
 func (h *MessagingHandler) SendIM(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	// Get session from aimsid
-	aimsid := r.URL.Query().Get("aimsid")
+	aimsid := queryOrFormParam(r, "aimsid")
 	if aimsid == "" {
 		h.sendErrorResponse(w, http.StatusBadRequest, "missing required parameter: aimsid")
 		return
@@ -69,21 +84,22 @@ func (h *MessagingHandler) SendIM(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Parse parameters
-	recipient := r.URL.Query().Get("t")
+	recipient := queryOrFormParam(r, "t")
 	if recipient == "" {
 		h.sendErrorResponse(w, http.StatusBadRequest, "missing required parameter: t (recipient)")
 		return
 	}
 
-	message := r.URL.Query().Get("message")
+	message := queryOrFormParam(r, "message")
 	if message == "" {
 		h.sendErrorResponse(w, http.StatusBadRequest, "missing required parameter: message")
 		return
 	}
 
 	// Parse optional parameters
-	autoResponse := r.URL.Query().Get("autoResponse") == "1"
-	offlineIM := r.URL.Query().Get("offlineIM") != "0" // default to true
+	autoResponse := queryOrFormParam(r, "autoResponse") == "1"
+	offlineIMParam := queryOrFormParam(r, "offlineIM")
+	offlineIM := offlineIMParam != "0" && offlineIMParam != "false" // default to true
 
 	// Create recipient identifier
 	recipientIdent := state.NewIdentScreenName(recipient)
@@ -143,6 +159,11 @@ func (h *MessagingHandler) SendIM(w http.ResponseWriter, r *http.Request) {
 		binary.BigEndian.Uint16([]byte{0x80, 0x00}), // Version bits
 		time.Now().UnixNano()&0xffffffffffff)
 
+	now := float64(time.Now().Unix())
+	nowSec := time.Now().Unix()
+	sn := sess.ScreenName.String()
+	sess.AddStoredIM(recipient, sn, message, messageID, nowSec)
+
 	if recipientSession == nil {
 		// Recipient is offline
 		if offlineIM {
@@ -185,6 +206,8 @@ func (h *MessagingHandler) SendIM(w http.ResponseWriter, r *http.Request) {
 				"from", sess.ScreenName.String(),
 				"to", recipient,
 				"count", count)
+
+			h.pushSenderWebAPIEvents(sess, sn, recipient, message, messageID, now, autoResponse)
 		} else {
 			// Recipient is offline and offline delivery is disabled
 			h.sendErrorResponse(w, http.StatusNotFound, "recipient is not online")
@@ -219,7 +242,7 @@ func (h *MessagingHandler) SendIM(w http.ResponseWriter, r *http.Request) {
 
 		// Queue IM event for the recipient's WebAPI session if they have one
 		if recipientWebSession, err := h.SessionManager.GetSessionByUser(r.Context(), recipientIdent); err == nil && recipientWebSession != nil {
-			sn := sess.ScreenName.String()
+			recipientWebSession.AddStoredIM(sn, sn, message, messageID, nowSec)
 			eventData := types.IMEvent{
 				Source: types.UserInfo{
 					AimID:     sn,
@@ -228,29 +251,19 @@ func (h *MessagingHandler) SendIM(w http.ResponseWriter, r *http.Request) {
 					State:     "online",
 				},
 				Message:   message,
-				Timestamp: float64(time.Now().Unix()),
+				MsgID:     messageID,
+				Timestamp: now,
 				AutoResp:  autoResponse,
 			}
 			recipientWebSession.EventQueue.Push(types.EventTypeIM, eventData)
+			if recipientWebSession.IsSubscribedTo("conversation") {
+				recipientWebSession.EventQueue.Push(types.EventTypeConversation, types.ConversationEventData("update", []map[string]interface{}{
+					types.ConversationEntry(sn, sn, message, messageID, sn, false, 1),
+				}))
+			}
 		}
 
-		// Also queue sentIM event for the sender's WebAPI session to show in their UI
-		senderEventData := types.SentIMEvent{
-			Sender: types.UserInfo{
-				AimID:     sess.ScreenName.String(),
-				DisplayID: sess.ScreenName.String(),
-				UserType:  "aim",
-			},
-			Dest: types.UserInfo{
-				AimID:     recipient,
-				DisplayID: recipient,
-				UserType:  "aim",
-			},
-			Message:   message,
-			Timestamp: float64(time.Now().Unix()),
-			AutoResp:  autoResponse,
-		}
-		sess.EventQueue.Push(types.EventTypeSentIM, senderEventData)
+		h.pushSenderWebAPIEvents(sess, sn, recipient, message, messageID, now, autoResponse)
 
 		h.Logger.DebugContext(ctx, "queued sentIM event for sender",
 			"from", sess.ScreenName.String(),
@@ -273,6 +286,31 @@ func (h *MessagingHandler) SendIM(w http.ResponseWriter, r *http.Request) {
 	response.Response.StatusText = "OK"
 	response.Response.Data = responseData
 	SendResponse(w, r, response, h.Logger)
+}
+
+func (h *MessagingHandler) pushSenderWebAPIEvents(sess *state.WebAPISession, sender, recipient, message, messageID string, now float64, autoResponse bool) {
+	senderEventData := types.SentIMEvent{
+		Sender: types.UserInfo{
+			AimID:     sender,
+			DisplayID: sender,
+			UserType:  "aim",
+		},
+		Dest: types.UserInfo{
+			AimID:     recipient,
+			DisplayID: recipient,
+			UserType:  "aim",
+		},
+		Message:   message,
+		MsgID:     messageID,
+		Timestamp: now,
+		AutoResp:  autoResponse,
+	}
+	sess.EventQueue.Push(types.EventTypeSentIM, senderEventData)
+	if sess.IsSubscribedTo("conversation") {
+		sess.EventQueue.Push(types.EventTypeConversation, types.ConversationEventData("update", []map[string]interface{}{
+			types.ConversationEntry(recipient, recipient, message, messageID, sender, true, 0),
+		}))
+	}
 }
 
 // encodeIMMessage encodes a text message into the OSCAR IM format

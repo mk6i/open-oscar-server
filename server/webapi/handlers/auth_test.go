@@ -60,6 +60,107 @@ func failedLoginBlock() wire.TLVRestBlock {
 	return b
 }
 
+type testCookieBaker struct {
+	issue func(data []byte) ([]byte, error)
+}
+
+func (t *testCookieBaker) Issue(data []byte) ([]byte, error) {
+	if t.issue != nil {
+		return t.issue(data)
+	}
+	return []byte("issued-cookie"), nil
+}
+
+func (t *testCookieBaker) Crack(data []byte) ([]byte, error) {
+	return data, nil
+}
+
+type testUserRetriever struct {
+	user *state.User
+	err  error
+}
+
+func (t *testUserRetriever) User(ctx context.Context, screenName state.IdentScreenName) (*state.User, error) {
+	if t.err != nil {
+		return nil, t.err
+	}
+	return t.user, nil
+}
+
+func TestAuthHandler_GetToken(t *testing.T) {
+	tests := []struct {
+		name         string
+		query        string
+		cookies      []*http.Cookie
+		user         *state.User
+		checkBody    func(*testing.T, string)
+		expectedCode int
+	}{
+		{
+			name:  "Success_LocalAuthUserCookie",
+			query: "f=json&attributes=loginId&devId=ao1yOLlHVHhsa3o6&c=_callbacks_._0mq8wqdav",
+			cookies: []*http.Cookie{
+				{Name: "localAuthUser", Value: "testuser||Test User"},
+			},
+			user: &state.User{},
+			checkBody: func(t *testing.T, body string) {
+				assert.Contains(t, body, "_callbacks_._0mq8wqdav(")
+				assert.Contains(t, body, `"statusCode":200`)
+				assert.Contains(t, body, `"loginId":"testuser"`)
+				assert.Contains(t, body, `"a":`)
+			},
+			expectedCode: http.StatusOK,
+		},
+		{
+			name:  "Unauthorized_NoSession",
+			query: "f=json&attributes=loginId&devId=ao1yOLlHVHhsa3o6&c=_callbacks_._abc",
+			checkBody: func(t *testing.T, body string) {
+				assert.Contains(t, body, `"statusCode":401`)
+				assert.Contains(t, body, `"redirectURL"`)
+			},
+			expectedCode: http.StatusOK,
+		},
+		{
+			name:  "Unauthorized_UnknownUser",
+			query: "f=json&attributes=loginId&devId=dev123",
+			cookies: []*http.Cookie{
+				{Name: "localAuthUser", Value: "missing||Missing User"},
+			},
+			user: nil,
+			checkBody: func(t *testing.T, body string) {
+				assert.Contains(t, body, `"statusCode":401`)
+				assert.Contains(t, body, `"redirectURL"`)
+			},
+			expectedCode: http.StatusOK,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler := &AuthHandler{
+				AuthService: &testAuthService{},
+				CookieBaker: &testCookieBaker{},
+				UserManager: &testUserRetriever{user: tt.user},
+				Logger:      slog.Default(),
+			}
+
+			req, err := http.NewRequest(http.MethodGet, "/auth/getToken?"+tt.query, nil)
+			assert.NoError(t, err)
+			for _, c := range tt.cookies {
+				req.AddCookie(c)
+			}
+
+			rr := httptest.NewRecorder()
+			handler.GetToken(rr, req)
+
+			assert.Equal(t, tt.expectedCode, rr.Code)
+			if tt.checkBody != nil {
+				tt.checkBody(t, rr.Body.String())
+			}
+		})
+	}
+}
+
 func TestAuthHandler_ClientLogin(t *testing.T) {
 	tests := []struct {
 		name               string

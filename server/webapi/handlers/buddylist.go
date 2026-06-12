@@ -526,31 +526,74 @@ func (h *BuddyListHandler) AddTempBuddy(w http.ResponseWriter, r *http.Request) 
 	resp.Response.Data = responseData
 	SendResponse(w, r, resp, h.Logger)
 
-	// Push temp buddy event to the session's event queue
-	if session.EventQueue != nil {
-		for _, buddyName := range buddyNames {
-			buddyName = strings.TrimSpace(buddyName)
-			if buddyName != "" {
-				// Create minimal buddy info for temp buddy
-				buddyInfo := &BuddyPresenceInfo{
-					AimID:    buddyName,
-					State:    "offline", // Default state
-					UserType: "aim",
-				}
-
-				event := types.BuddyListEvent{
-					Action: "addTemp",
-					Buddy:  buddyInfo,
-				}
-				session.EventQueue.Push(types.EventTypeBuddyList, event)
-			}
-		}
-	}
+	// Do not push buddylist events for temp buddies. The Web AIM client handles
+	// addTempBuddy via the API response; a buddylist event without "groups" causes
+	// the client to clear the entire contact list (zC always calls clear() first).
 
 	h.Logger.InfoContext(ctx, "temporary buddies added",
 		"aimsid", aimsid,
 		"buddies", buddyNames,
 		"count", len(buddyNames),
+	)
+}
+
+// RemoveTempBuddy handles GET /aim/removeTempBuddy requests.
+// This removes temporary session buddies added via addTempBuddy.
+func (h *BuddyListHandler) RemoveTempBuddy(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	aimsid := r.URL.Query().Get("aimsid")
+	if aimsid == "" {
+		h.sendError(w, http.StatusBadRequest, "missing aimsid parameter")
+		return
+	}
+
+	session, err := h.SessionManager.GetSession(ctx, aimsid)
+	if err != nil {
+		switch err {
+		case state.ErrNoWebAPISession:
+			h.sendError(w, http.StatusNotFound, "session not found")
+		case state.ErrWebAPISessionExpired:
+			h.sendError(w, http.StatusGone, "session expired")
+		default:
+			h.sendError(w, http.StatusInternalServerError, "internal server error")
+		}
+		return
+	}
+
+	_ = h.SessionManager.TouchSession(ctx, aimsid)
+
+	buddyNames := r.URL.Query()["t"]
+	if len(buddyNames) == 0 {
+		h.sendError(w, http.StatusBadRequest, "missing buddy names (t parameter)")
+		return
+	}
+
+	removed := make([]string, 0, len(buddyNames))
+	for _, buddyName := range buddyNames {
+		buddyName = strings.TrimSpace(buddyName)
+		if buddyName == "" {
+			continue
+		}
+		if session.TempBuddies != nil {
+			delete(session.TempBuddies, buddyName)
+		}
+		removed = append(removed, buddyName)
+	}
+
+	resp := BaseResponse{}
+	resp.Response.StatusCode = 200
+	resp.Response.StatusText = "OK"
+	resp.Response.Data = map[string]interface{}{
+		"resultCode": "success",
+		"buddyNames": removed,
+	}
+	SendResponse(w, r, resp, h.Logger)
+
+	h.Logger.InfoContext(ctx, "temporary buddies removed",
+		"aimsid", aimsid,
+		"buddies", removed,
+		"count", len(removed),
 	)
 }
 
