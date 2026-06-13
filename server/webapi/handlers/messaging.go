@@ -49,16 +49,16 @@ func (h *MessagingHandler) SendIM(w http.ResponseWriter, r *http.Request) {
 	// Get session from aimsid
 	aimsid := r.URL.Query().Get("aimsid")
 	if aimsid == "" {
-		h.sendErrorResponse(w, http.StatusBadRequest, "missing required parameter: aimsid")
+		h.sendErrorResponse(w, r, http.StatusBadRequest, "missing required parameter: aimsid")
 		return
 	}
 
 	sess, err := h.SessionManager.GetSession(r.Context(), aimsid)
 	if err != nil {
 		if err == state.ErrNoWebAPISession || err == state.ErrWebAPISessionExpired {
-			h.sendErrorResponse(w, http.StatusUnauthorized, "invalid or expired session")
+			h.sendErrorResponse(w, r, http.StatusUnauthorized, "invalid or expired session")
 		} else {
-			h.sendErrorResponse(w, http.StatusInternalServerError, "internal server error")
+			h.sendErrorResponse(w, r, http.StatusInternalServerError, "internal server error")
 		}
 		return
 	}
@@ -71,13 +71,13 @@ func (h *MessagingHandler) SendIM(w http.ResponseWriter, r *http.Request) {
 	// Parse parameters
 	recipient := r.URL.Query().Get("t")
 	if recipient == "" {
-		h.sendErrorResponse(w, http.StatusBadRequest, "missing required parameter: t (recipient)")
+		h.sendErrorResponse(w, r, http.StatusBadRequest, "missing required parameter: t (recipient)")
 		return
 	}
 
 	message := r.URL.Query().Get("message")
 	if message == "" {
-		h.sendErrorResponse(w, http.StatusBadRequest, "missing required parameter: message")
+		h.sendErrorResponse(w, r, http.StatusBadRequest, "missing required parameter: message")
 		return
 	}
 
@@ -92,19 +92,19 @@ func (h *MessagingHandler) SendIM(w http.ResponseWriter, r *http.Request) {
 	rel, err := h.RelationshipFetcher.Relationship(ctx, sess.ScreenName.IdentScreenName(), recipientIdent)
 	if err != nil {
 		h.Logger.ErrorContext(ctx, "failed to fetch relationship", "error", err)
-		h.sendErrorResponse(w, http.StatusInternalServerError, "internal server error")
+		h.sendErrorResponse(w, r, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
 	// Check if sender blocks recipient or recipient blocks sender
 	if rel.BlocksYou {
 		// Recipient blocks sender - pretend recipient is offline
-		h.sendErrorResponse(w, http.StatusNotFound, "recipient is not online")
+		h.sendErrorResponse(w, r, http.StatusNotFound, "recipient is not online")
 		return
 	}
 	if rel.YouBlock {
 		// Sender has blocked recipient - cannot send message
-		h.sendErrorResponse(w, http.StatusForbidden, "cannot send message to blocked user")
+		h.sendErrorResponse(w, r, http.StatusForbidden, "cannot send message to blocked user")
 		return
 	}
 
@@ -115,7 +115,7 @@ func (h *MessagingHandler) SendIM(w http.ResponseWriter, r *http.Request) {
 	var cookie [8]byte
 	if _, err := rand.Read(cookie[:]); err != nil {
 		h.Logger.ErrorContext(ctx, "failed to generate message cookie", "error", err)
-		h.sendErrorResponse(w, http.StatusInternalServerError, "internal server error")
+		h.sendErrorResponse(w, r, http.StatusInternalServerError, "internal server error")
 		return
 	}
 	cookieUint64 := binary.BigEndian.Uint64(cookie[:])
@@ -170,14 +170,14 @@ func (h *MessagingHandler) SendIM(w http.ResponseWriter, r *http.Request) {
 					h.Logger.WarnContext(ctx, "offline inbox full",
 						"from", sess.ScreenName.String(),
 						"to", recipient)
-					h.sendErrorResponse(w, http.StatusConflict, "recipient inbox full")
+					h.sendErrorResponse(w, r, http.StatusConflict, "recipient inbox full")
 					return
 				}
 				h.Logger.ErrorContext(ctx, "failed to save offline message",
 					"from", sess.ScreenName.String(),
 					"to", recipient,
 					"error", err)
-				h.sendErrorResponse(w, http.StatusInternalServerError, "failed to save offline message")
+				h.sendErrorResponse(w, r, http.StatusInternalServerError, "failed to save offline message")
 				return
 			}
 
@@ -187,7 +187,7 @@ func (h *MessagingHandler) SendIM(w http.ResponseWriter, r *http.Request) {
 				"count", count)
 		} else {
 			// Recipient is offline and offline delivery is disabled
-			h.sendErrorResponse(w, http.StatusNotFound, "recipient is not online")
+			h.sendErrorResponse(w, r, http.StatusNotFound, "recipient is not online")
 			return
 		}
 	} else {
@@ -290,8 +290,8 @@ func (h *MessagingHandler) encodeIMMessage(text string, autoResponse bool) []byt
 }
 
 // sendErrorResponse sends an error response in Web AIM API format
-func (h *MessagingHandler) sendErrorResponse(w http.ResponseWriter, statusCode int, errorText string) {
-	SendError(w, statusCode, errorText)
+func (h *MessagingHandler) sendErrorResponse(w http.ResponseWriter, r *http.Request, statusCode int, errorText string) {
+	SendError(w, r, statusCode, errorText)
 }
 
 // SetTyping handles the /im/setTyping endpoint for typing indicators
@@ -301,16 +301,16 @@ func (h *MessagingHandler) SetTyping(w http.ResponseWriter, r *http.Request) {
 	// Get session from aimsid
 	aimsid := r.URL.Query().Get("aimsid")
 	if aimsid == "" {
-		h.sendErrorResponse(w, http.StatusBadRequest, "missing required parameter: aimsid")
+		h.sendErrorResponse(w, r, http.StatusBadRequest, "missing required parameter: aimsid")
 		return
 	}
 
 	sess, err := h.SessionManager.GetSession(r.Context(), aimsid)
 	if err != nil {
 		if err == state.ErrNoWebAPISession || err == state.ErrWebAPISessionExpired {
-			h.sendErrorResponse(w, http.StatusUnauthorized, "invalid or expired session")
+			h.sendErrorResponse(w, r, http.StatusUnauthorized, "invalid or expired session")
 		} else {
-			h.sendErrorResponse(w, http.StatusInternalServerError, "internal server error")
+			h.sendErrorResponse(w, r, http.StatusInternalServerError, "internal server error")
 		}
 		return
 	}
@@ -323,7 +323,7 @@ func (h *MessagingHandler) SetTyping(w http.ResponseWriter, r *http.Request) {
 	// Parse parameters
 	recipient := r.URL.Query().Get("t")
 	if recipient == "" {
-		h.sendErrorResponse(w, http.StatusBadRequest, "missing required parameter: t (recipient)")
+		h.sendErrorResponse(w, r, http.StatusBadRequest, "missing required parameter: t (recipient)")
 		return
 	}
 
@@ -345,7 +345,7 @@ func (h *MessagingHandler) SetTyping(w http.ResponseWriter, r *http.Request) {
 	rel, err := h.RelationshipFetcher.Relationship(ctx, sess.ScreenName.IdentScreenName(), recipientIdent)
 	if err != nil {
 		h.Logger.ErrorContext(ctx, "failed to fetch relationship", "error", err)
-		h.sendErrorResponse(w, http.StatusInternalServerError, "internal server error")
+		h.sendErrorResponse(w, r, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
@@ -368,7 +368,7 @@ func (h *MessagingHandler) SetTyping(w http.ResponseWriter, r *http.Request) {
 	var cookie [8]byte
 	if _, err := rand.Read(cookie[:]); err != nil {
 		h.Logger.ErrorContext(ctx, "failed to generate typing cookie", "error", err)
-		h.sendErrorResponse(w, http.StatusInternalServerError, "internal server error")
+		h.sendErrorResponse(w, r, http.StatusInternalServerError, "internal server error")
 		return
 	}
 	cookieUint64 := binary.BigEndian.Uint64(cookie[:])

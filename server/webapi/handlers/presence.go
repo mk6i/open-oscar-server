@@ -65,7 +65,7 @@ func (h *PresenceHandler) GetPresence(w http.ResponseWriter, r *http.Request) {
 	// Get session ID from parameters
 	aimsid := r.URL.Query().Get("aimsid")
 	if aimsid == "" {
-		h.sendError(w, http.StatusBadRequest, "missing aimsid parameter")
+		h.sendError(w, r, http.StatusBadRequest, "missing aimsid parameter")
 		return
 	}
 
@@ -74,11 +74,11 @@ func (h *PresenceHandler) GetPresence(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch err {
 		case state.ErrNoWebAPISession:
-			h.sendError(w, http.StatusNotFound, "session not found")
+			h.sendError(w, r, http.StatusNotFound, "session not found")
 		case state.ErrWebAPISessionExpired:
-			h.sendError(w, http.StatusGone, "session expired")
+			h.sendError(w, r, http.StatusGone, "session expired")
 		default:
-			h.sendError(w, http.StatusInternalServerError, "internal server error")
+			h.sendError(w, r, http.StatusInternalServerError, "internal server error")
 		}
 		return
 	}
@@ -332,8 +332,8 @@ func isICQScreenName(screenName string) bool {
 }
 
 // sendError is a convenience method that wraps the common SendError function.
-func (h *PresenceHandler) sendError(w http.ResponseWriter, statusCode int, message string) {
-	SendError(w, statusCode, message)
+func (h *PresenceHandler) sendError(w http.ResponseWriter, r *http.Request, statusCode int, message string) {
+	SendError(w, r, statusCode, message)
 }
 
 // SetState handles GET /presence/setState requests to update user's presence state.
@@ -343,14 +343,14 @@ func (h *PresenceHandler) SetState(w http.ResponseWriter, r *http.Request) {
 	// Get session ID from parameters
 	aimsid := r.URL.Query().Get("aimsid")
 	if aimsid == "" {
-		h.sendError(w, http.StatusBadRequest, "missing aimsid parameter")
+		h.sendError(w, r, http.StatusBadRequest, "missing aimsid parameter")
 		return
 	}
 
 	// Get session
 	session, err := h.SessionManager.GetSession(r.Context(), aimsid)
 	if err != nil {
-		h.sendError(w, http.StatusUnauthorized, "invalid or expired session")
+		h.sendError(w, r, http.StatusUnauthorized, "invalid or expired session")
 		return
 	}
 
@@ -394,7 +394,7 @@ func (h *PresenceHandler) SetState(w http.ResponseWriter, r *http.Request) {
 	case "dnd":
 		statusBitmask = wire.OServiceUserStatusDND
 	default:
-		h.sendError(w, http.StatusBadRequest, "invalid state parameter")
+		h.sendError(w, r, http.StatusBadRequest, "invalid state parameter")
 		return
 	}
 
@@ -437,14 +437,14 @@ func (h *PresenceHandler) SetStatus(w http.ResponseWriter, r *http.Request) {
 	// Get session ID from parameters
 	aimsid := r.URL.Query().Get("aimsid")
 	if aimsid == "" {
-		h.sendError(w, http.StatusBadRequest, "missing aimsid parameter")
+		h.sendError(w, r, http.StatusBadRequest, "missing aimsid parameter")
 		return
 	}
 
 	// Get session
 	session, err := h.SessionManager.GetSession(r.Context(), aimsid)
 	if err != nil {
-		h.sendError(w, http.StatusUnauthorized, "invalid or expired session")
+		h.sendError(w, r, http.StatusUnauthorized, "invalid or expired session")
 		return
 	}
 
@@ -494,14 +494,14 @@ func (h *PresenceHandler) SetProfile(w http.ResponseWriter, r *http.Request) {
 	// Get session ID from parameters
 	aimsid := r.URL.Query().Get("aimsid")
 	if aimsid == "" {
-		h.sendError(w, http.StatusBadRequest, "missing aimsid parameter")
+		h.sendError(w, r, http.StatusBadRequest, "missing aimsid parameter")
 		return
 	}
 
 	// Get session
 	session, err := h.SessionManager.GetSession(r.Context(), aimsid)
 	if err != nil {
-		h.sendError(w, http.StatusUnauthorized, "invalid or expired session")
+		h.sendError(w, r, http.StatusUnauthorized, "invalid or expired session")
 		return
 	}
 
@@ -515,7 +515,7 @@ func (h *PresenceHandler) SetProfile(w http.ResponseWriter, r *http.Request) {
 
 	// Limit profile size (4KB max)
 	if len(profileText) > 4096 {
-		h.sendError(w, http.StatusBadRequest, "profile too large (max 4KB)")
+		h.sendError(w, r, http.StatusBadRequest, "profile too large (max 4KB)")
 		return
 	}
 
@@ -526,7 +526,7 @@ func (h *PresenceHandler) SetProfile(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := h.ProfileManager.SetProfile(ctx, session.ScreenName.IdentScreenName(), profile); err != nil {
 		h.Logger.ErrorContext(ctx, "failed to set profile", "err", err.Error())
-		h.sendError(w, http.StatusInternalServerError, "failed to save profile")
+		h.sendError(w, r, http.StatusInternalServerError, "failed to save profile")
 		return
 	}
 
@@ -549,14 +549,14 @@ func (h *PresenceHandler) GetProfile(w http.ResponseWriter, r *http.Request) {
 	// Get session ID from parameters
 	aimsid := r.URL.Query().Get("aimsid")
 	if aimsid == "" {
-		h.sendError(w, http.StatusBadRequest, "missing aimsid parameter")
+		h.sendError(w, r, http.StatusBadRequest, "missing aimsid parameter")
 		return
 	}
 
 	// Get session
 	session, err := h.SessionManager.GetSession(r.Context(), aimsid)
 	if err != nil {
-		h.sendError(w, http.StatusUnauthorized, "invalid or expired session")
+		h.sendError(w, r, http.StatusUnauthorized, "invalid or expired session")
 		return
 	}
 
@@ -605,7 +605,7 @@ func (h *PresenceHandler) Icon(w http.ResponseWriter, r *http.Request) {
 	iconType := r.URL.Query().Get("type")
 
 	if name == "" {
-		h.sendError(w, http.StatusBadRequest, "missing name parameter")
+		h.sendError(w, r, http.StatusBadRequest, "missing name parameter")
 		return
 	}
 

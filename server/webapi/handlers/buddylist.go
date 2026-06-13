@@ -39,7 +39,7 @@ func (h *BuddyListHandler) AddBuddy(w http.ResponseWriter, r *http.Request) {
 	// Get session ID from parameters
 	aimsid := r.URL.Query().Get("aimsid")
 	if aimsid == "" {
-		h.sendError(w, http.StatusBadRequest, "missing aimsid parameter")
+		h.sendError(w, r, http.StatusBadRequest, "missing aimsid parameter")
 		return
 	}
 
@@ -48,11 +48,11 @@ func (h *BuddyListHandler) AddBuddy(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch err {
 		case state.ErrNoWebAPISession:
-			h.sendError(w, http.StatusNotFound, "session not found")
+			h.sendError(w, r, http.StatusNotFound, "session not found")
 		case state.ErrWebAPISessionExpired:
-			h.sendError(w, http.StatusGone, "session expired")
+			h.sendError(w, r, http.StatusGone, "session expired")
 		default:
-			h.sendError(w, http.StatusInternalServerError, "internal server error")
+			h.sendError(w, r, http.StatusInternalServerError, "internal server error")
 		}
 		return
 	}
@@ -65,7 +65,7 @@ func (h *BuddyListHandler) AddBuddy(w http.ResponseWriter, r *http.Request) {
 	groupName := strings.TrimSpace(r.URL.Query().Get("group"))
 
 	if buddyName == "" {
-		h.sendError(w, http.StatusBadRequest, "missing buddy parameter")
+		h.sendError(w, r, http.StatusBadRequest, "missing buddy parameter")
 		return
 	}
 
@@ -205,7 +205,7 @@ func (h *BuddyListHandler) AddTempBuddy(w http.ResponseWriter, r *http.Request) 
 	// Get session ID from parameters
 	aimsid := r.URL.Query().Get("aimsid")
 	if aimsid == "" {
-		h.sendError(w, http.StatusBadRequest, "missing aimsid parameter")
+		h.sendError(w, r, http.StatusBadRequest, "missing aimsid parameter")
 		return
 	}
 
@@ -214,11 +214,11 @@ func (h *BuddyListHandler) AddTempBuddy(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		switch err {
 		case state.ErrNoWebAPISession:
-			h.sendError(w, http.StatusNotFound, "session not found")
+			h.sendError(w, r, http.StatusNotFound, "session not found")
 		case state.ErrWebAPISessionExpired:
-			h.sendError(w, http.StatusGone, "session expired")
+			h.sendError(w, r, http.StatusGone, "session expired")
 		default:
-			h.sendError(w, http.StatusInternalServerError, "internal server error")
+			h.sendError(w, r, http.StatusInternalServerError, "internal server error")
 		}
 		return
 	}
@@ -230,7 +230,7 @@ func (h *BuddyListHandler) AddTempBuddy(w http.ResponseWriter, r *http.Request) 
 	// The WebAPI accepts multiple buddy names via &t= parameters
 	buddyNames := r.URL.Query()["t"]
 	if len(buddyNames) == 0 {
-		h.sendError(w, http.StatusBadRequest, "missing buddy names (t parameter)")
+		h.sendError(w, r, http.StatusBadRequest, "missing buddy names (t parameter)")
 		return
 	}
 
@@ -288,6 +288,6 @@ func (h *BuddyListHandler) AddTempBuddy(w http.ResponseWriter, r *http.Request) 
 }
 
 // sendError is a convenience method that wraps the common SendError function.
-func (h *BuddyListHandler) sendError(w http.ResponseWriter, statusCode int, message string) {
-	SendError(w, statusCode, message)
+func (h *BuddyListHandler) sendError(w http.ResponseWriter, r *http.Request, statusCode int, message string) {
+	SendError(w, r, statusCode, message)
 }

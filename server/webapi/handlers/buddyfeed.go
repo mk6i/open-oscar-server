@@ -27,7 +27,7 @@ func (h *BuddyFeedHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 	// Get target user from 't' parameter as per spec
 	targetUser := r.URL.Query().Get("t")
 	if targetUser == "" {
-		SendError(w, http.StatusBadRequest, "missing 't' parameter")
+		SendError(w, r, http.StatusBadRequest, "missing 't' parameter")
 		return
 	}
 
@@ -46,7 +46,7 @@ func (h *BuddyFeedHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 			"user", targetUser,
 			"error", err,
 		)
-		SendError(w, http.StatusInternalServerError, "failed to retrieve feed")
+		SendError(w, r, http.StatusInternalServerError, "failed to retrieve feed")
 		return
 	}
 
@@ -63,7 +63,7 @@ func (h *BuddyFeedHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 				"feedID", feed.ID,
 				"error", err,
 			)
-			SendError(w, http.StatusInternalServerError, "failed to retrieve feed items")
+			SendError(w, r, http.StatusInternalServerError, "failed to retrieve feed items")
 			return
 		}
 
@@ -97,14 +97,14 @@ func (h *BuddyFeedHandler) GetBuddylist(w http.ResponseWriter, r *http.Request) 
 	// Authentication required for buddy list feed
 	aimsid := r.URL.Query().Get("aimsid")
 	if aimsid == "" {
-		SendError(w, http.StatusBadRequest, "missing aimsid parameter")
+		SendError(w, r, http.StatusBadRequest, "missing aimsid parameter")
 		return
 	}
 
 	// Get session
 	session, err := h.SessionManager.GetSession(r.Context(), aimsid)
 	if err != nil {
-		SendError(w, http.StatusUnauthorized, "invalid or expired session")
+		SendError(w, r, http.StatusUnauthorized, "invalid or expired session")
 		return
 	}
 
@@ -170,7 +170,7 @@ func (h *BuddyFeedHandler) GetBuddylist(w http.ResponseWriter, r *http.Request) 
 			"screenName", session.ScreenName.String(),
 			"error", err,
 		)
-		SendError(w, http.StatusInternalServerError, "failed to retrieve feed")
+		SendError(w, r, http.StatusInternalServerError, "failed to retrieve feed")
 		return
 	}
 
@@ -212,7 +212,7 @@ func (h *BuddyFeedHandler) PushFeed(w http.ResponseWriter, r *http.Request) {
 	aimsid := r.URL.Query().Get("aimsid")
 
 	if token == "" && aimsid == "" {
-		SendError(w, http.StatusBadRequest, "authentication required")
+		SendError(w, r, http.StatusBadRequest, "authentication required")
 		return
 	}
 
@@ -220,7 +220,7 @@ func (h *BuddyFeedHandler) PushFeed(w http.ResponseWriter, r *http.Request) {
 	if aimsid != "" {
 		session, err := h.SessionManager.GetSession(r.Context(), aimsid)
 		if err != nil {
-			SendError(w, http.StatusUnauthorized, "invalid or expired session")
+			SendError(w, r, http.StatusUnauthorized, "invalid or expired session")
 			return
 		}
 		screenName = session.ScreenName.String()
@@ -232,7 +232,7 @@ func (h *BuddyFeedHandler) PushFeed(w http.ResponseWriter, r *http.Request) {
 		// Extract screen name from token authentication
 		screenName = r.URL.Query().Get("s")
 		if screenName == "" {
-			SendError(w, http.StatusBadRequest, "missing source user")
+			SendError(w, r, http.StatusBadRequest, "missing source user")
 			return
 		}
 	}
@@ -248,7 +248,7 @@ func (h *BuddyFeedHandler) PushFeed(w http.ResponseWriter, r *http.Request) {
 	// Validate required parameters
 	if feedTitle == "" || feedLink == "" || feedDesc == "" ||
 		itemTitle == "" || itemLink == "" || itemGuid == "" {
-		SendError(w, http.StatusBadRequest, "missing required feed parameters")
+		SendError(w, r, http.StatusBadRequest, "missing required feed parameters")
 		return
 	}
 
@@ -264,7 +264,7 @@ func (h *BuddyFeedHandler) PushFeed(w http.ResponseWriter, r *http.Request) {
 			"screenName", screenName,
 			"error", err,
 		)
-		SendError(w, http.StatusInternalServerError, "failed to get/create feed")
+		SendError(w, r, http.StatusInternalServerError, "failed to get/create feed")
 		return
 	}
 
@@ -290,7 +290,7 @@ func (h *BuddyFeedHandler) PushFeed(w http.ResponseWriter, r *http.Request) {
 			"feedID", feedID,
 			"error", err,
 		)
-		SendError(w, http.StatusInternalServerError, "failed to add feed item")
+		SendError(w, r, http.StatusInternalServerError, "failed to add feed item")
 		return
 	}
 

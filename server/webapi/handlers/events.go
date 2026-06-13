@@ -57,7 +57,7 @@ func (h *EventsHandler) FetchEvents(w http.ResponseWriter, r *http.Request) {
 	// Get session ID from parameters
 	aimsid := r.URL.Query().Get("aimsid")
 	if aimsid == "" {
-		h.sendError(w, http.StatusBadRequest, "missing aimsid parameter")
+		h.sendError(w, r, http.StatusBadRequest, "missing aimsid parameter")
 		return
 	}
 
@@ -66,11 +66,11 @@ func (h *EventsHandler) FetchEvents(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch err {
 		case state.ErrNoWebAPISession:
-			h.sendError(w, http.StatusNotFound, "session not found")
+			h.sendError(w, r, http.StatusNotFound, "session not found")
 		case state.ErrWebAPISessionExpired:
-			h.sendError(w, http.StatusGone, "session expired")
+			h.sendError(w, r, http.StatusGone, "session expired")
 		default:
-			h.sendError(w, http.StatusInternalServerError, "internal server error")
+			h.sendError(w, r, http.StatusInternalServerError, "internal server error")
 		}
 		return
 	}
@@ -111,7 +111,7 @@ func (h *EventsHandler) FetchEvents(w http.ResponseWriter, r *http.Request) {
 			events = []types.Event{}
 		} else {
 			h.Logger.ErrorContext(ctx, "failed to fetch events", "err", err.Error())
-			h.sendError(w, http.StatusInternalServerError, "failed to fetch events")
+			h.sendError(w, r, http.StatusInternalServerError, "failed to fetch events")
 			return
 		}
 	}
@@ -193,6 +193,6 @@ func (h *EventsHandler) FetchEvents(w http.ResponseWriter, r *http.Request) {
 }
 
 // sendError is a convenience method that wraps the common SendError function.
-func (h *EventsHandler) sendError(w http.ResponseWriter, statusCode int, message string) {
-	SendError(w, statusCode, message)
+func (h *EventsHandler) sendError(w http.ResponseWriter, r *http.Request, statusCode int, message string) {
+	SendError(w, r, statusCode, message)
 }
