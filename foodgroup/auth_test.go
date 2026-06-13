@@ -3,6 +3,7 @@ package foodgroup
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -720,6 +721,114 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 			},
 		},
 		{
+			name:           "AIM account exists, correct password, linked accounts in response",
+			advertisedHost: "127.0.0.1:5190",
+			inputSNAC: wire.SNAC_0x17_0x02_BUCPLoginRequest{
+				TLVRestBlock: wire.TLVRestBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.LoginTLVTagsScreenName, user.DisplayScreenName),
+						wire.NewTLVBE(wire.LoginTLVTagsPasswordHash, user.StrongMD5Pass),
+					},
+				},
+			},
+			mockParams: mockParams{
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{
+							screenName: user.IdentScreenName,
+							result:     &user,
+						},
+					},
+				},
+				cookieBakerParams: cookieBakerParams{
+					cookieIssueParams: cookieIssueParams{
+						{
+							dataIn: func() []byte {
+								loginCookie := state.ServerCookie{
+									ScreenName: user.DisplayScreenName,
+								}
+								buf := &bytes.Buffer{}
+								assert.NoError(t, wire.MarshalBE(loginCookie, buf))
+								return buf.Bytes()
+							}(),
+							cookieOut: []byte("the-cookie"),
+						},
+					},
+				},
+				linkedAccountManagerParams: linkedAccountManagerParams{
+					linkedAccountsParams: linkedAccountsParams{
+						{
+							screenName: user.IdentScreenName,
+							result:     []state.IdentScreenName{state.NewIdentScreenName("linked1")},
+						},
+					},
+				},
+			},
+			expectOutput: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.BUCP,
+					SubGroup:  wire.BUCPLoginResponse,
+				},
+				Body: wire.SNAC_0x17_0x03_BUCPLoginResponse{
+					TLVRestBlock: wire.TLVRestBlock{
+						TLVList: wire.TLVList{
+							wire.NewTLVBE(wire.LoginTLVTagsScreenName, user.DisplayScreenName),
+							wire.NewTLVBE(wire.LoginTLVTagsReconnectHere, "127.0.0.1:5190"),
+							wire.NewTLVBE(wire.LoginTLVTagsAuthorizationCookie, []byte("the-cookie")),
+							wire.NewTLVBE(wire.OServiceTLVTagsSSLState, uint8(0x00)),
+							wire.NewTLVBE(wire.OServiceTLVTagsLinkedAccounts, `<SET SETID="1"><RESREC TYPE="PRIMARY-ACCOUNT" ID="1"><n>screenname</n></RESREC><RESREC TYPE="LINKED-ACCOUNT" ID="2"><n>linked1</n></RESREC></SET>`),
+						},
+					},
+				},
+			},
+		},
+		{
+			name:           "linked account manager error during login, returns error",
+			advertisedHost: "127.0.0.1:5190",
+			inputSNAC: wire.SNAC_0x17_0x02_BUCPLoginRequest{
+				TLVRestBlock: wire.TLVRestBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.LoginTLVTagsScreenName, user.DisplayScreenName),
+						wire.NewTLVBE(wire.LoginTLVTagsPasswordHash, user.StrongMD5Pass),
+					},
+				},
+			},
+			mockParams: mockParams{
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{
+							screenName: user.IdentScreenName,
+							result:     &user,
+						},
+					},
+				},
+				cookieBakerParams: cookieBakerParams{
+					cookieIssueParams: cookieIssueParams{
+						{
+							dataIn: func() []byte {
+								loginCookie := state.ServerCookie{
+									ScreenName: user.DisplayScreenName,
+								}
+								buf := &bytes.Buffer{}
+								assert.NoError(t, wire.MarshalBE(loginCookie, buf))
+								return buf.Bytes()
+							}(),
+							cookieOut: []byte("the-cookie"),
+						},
+					},
+				},
+				linkedAccountManagerParams: linkedAccountManagerParams{
+					linkedAccountsParams: linkedAccountsParams{
+						{
+							screenName: user.IdentScreenName,
+							err:        io.EOF,
+						},
+					},
+				},
+			},
+			wantErr: io.EOF,
+		},
+		{
 			name:           "login with TOC client - failed",
 			advertisedHost: "127.0.0.1:5190",
 			inputSNAC: wire.SNAC_0x17_0x02_BUCPLoginRequest{
@@ -779,11 +888,20 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 					Return(params.result)
 			}
 
+			linkedAccountManager := newMockLinkedAccountManager(t)
+			for _, params := range tc.mockParams.linkedAccountsParams {
+				linkedAccountManager.EXPECT().
+					LinkedAccounts(matchContext(), params.screenName).
+					Return(params.result, params.err)
+			}
+			linkedAccountManager.EXPECT().LinkedAccounts(matchContext(), mock.Anything).Return(nil, nil).Maybe()
+
 			svc := AuthService{
 				config:                     tc.cfg,
 				cookieBaker:                cookieBaker,
 				userManager:                userManager,
 				sessionRetriever:           sessionRetriever,
+				linkedAccountManager:       linkedAccountManager,
 				maxConcurrentLoginsPerUser: 2,
 				createAccount:              tc.createAccount,
 				logger:                     slog.Default(),
@@ -1101,6 +1219,52 @@ func TestAuthService_FLAPLogin(t *testing.T) {
 			},
 		},
 		{
+			name:           "linked account manager error during login, returns error",
+			advertisedHost: "127.0.0.1:5190",
+			inputSNAC: wire.FLAPSignonFrame{
+				TLVRestBlock: wire.TLVRestBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.LoginTLVTagsRoastedPassword, wire.RoastOSCARPassword([]byte("the_password"))),
+						wire.NewTLVBE(wire.LoginTLVTagsScreenName, user.DisplayScreenName),
+					},
+				},
+			},
+			mockParams: mockParams{
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{
+							screenName: user.IdentScreenName,
+							result:     &user,
+						},
+					},
+				},
+				cookieBakerParams: cookieBakerParams{
+					cookieIssueParams: cookieIssueParams{
+						{
+							dataIn: func() []byte {
+								loginCookie := state.ServerCookie{
+									ScreenName: user.DisplayScreenName,
+								}
+								buf := &bytes.Buffer{}
+								assert.NoError(t, wire.MarshalBE(loginCookie, buf))
+								return buf.Bytes()
+							}(),
+							cookieOut: []byte("the-cookie"),
+						},
+					},
+				},
+				linkedAccountManagerParams: linkedAccountManagerParams{
+					linkedAccountsParams: linkedAccountsParams{
+						{
+							screenName: user.IdentScreenName,
+							err:        io.EOF,
+						},
+					},
+				},
+			},
+			wantErr: io.EOF,
+		},
+		{
 			name: "login fails on user manager lookup",
 			inputSNAC: wire.FLAPSignonFrame{
 				TLVRestBlock: wire.TLVRestBlock{
@@ -1214,12 +1378,20 @@ func TestAuthService_FLAPLogin(t *testing.T) {
 					Issue(params.dataIn).
 					Return(params.cookieOut, params.err)
 			}
+			linkedAccountManager := newMockLinkedAccountManager(t)
+			for _, params := range tc.mockParams.linkedAccountsParams {
+				linkedAccountManager.EXPECT().
+					LinkedAccounts(matchContext(), params.screenName).
+					Return(params.result, params.err)
+			}
+			linkedAccountManager.EXPECT().LinkedAccounts(matchContext(), mock.Anything).Return(nil, nil).Maybe()
 			svc := AuthService{
-				config:        tc.cfg,
-				cookieBaker:   cookieBaker,
-				userManager:   userManager,
-				createAccount: tc.createAccount,
-				logger:        slog.Default(),
+				config:               tc.cfg,
+				cookieBaker:          cookieBaker,
+				userManager:          userManager,
+				linkedAccountManager: linkedAccountManager,
+				createAccount:        tc.createAccount,
+				logger:               slog.Default(),
 			}
 			outputSNAC, err := svc.FLAPLogin(context.Background(), tc.inputSNAC, tc.advertisedHost)
 			assert.ErrorIs(t, err, tc.wantErr)
@@ -1553,11 +1725,14 @@ func TestAuthService_KerberosLogin(t *testing.T) {
 					RetrieveSession(params.screenName).
 					Return(params.result)
 			}
+			linkedAccountManager := newMockLinkedAccountManager(t)
+			linkedAccountManager.EXPECT().LinkedAccounts(matchContext(), mock.Anything).Return(nil, nil).Maybe()
 			svc := AuthService{
 				config:                     tc.cfg,
 				cookieBaker:                cookieBaker,
 				userManager:                userManager,
 				sessionRetriever:           sessionRetriever,
+				linkedAccountManager:       linkedAccountManager,
 				timeNow:                    tc.timeNow,
 				maxConcurrentLoginsPerUser: 2,
 				createAccount:              tc.createAccount,
@@ -1751,7 +1926,7 @@ func TestAuthService_RegisterChatSession_HappyPath(t *testing.T) {
 	chatCookieBuf := &bytes.Buffer{}
 	assert.NoError(t, wire.MarshalBE(serverCookie, chatCookieBuf))
 
-	svc := NewAuthService(config.Config{}, nil, nil, chatSessionRegistry, nil, nil, nil, nil, nil, wire.DefaultRateLimitClasses(), nil, slog.Default())
+	svc := NewAuthService(config.Config{}, nil, nil, chatSessionRegistry, nil, nil, nil, nil, nil, nil, wire.DefaultRateLimitClasses(), nil, slog.Default())
 
 	have, err := svc.RegisterChatSession(context.Background(), serverCookie, nil)
 	assert.NoError(t, err)
@@ -1773,6 +1948,10 @@ func TestAuthService_RegisterBOSSession(t *testing.T) {
 		name string
 		// cookieOut is the auth cookieOut that contains session information
 		cookie state.ServerCookie
+		// cfg is the server config
+		cfg config.Config
+		// createAccount is called to auto-create a missing user when DisableAuth is set
+		createAccount state.CreateAccountFunc
 		// mockParams is the list of params sent to mocks that satisfy this
 		// method's dependencies
 		mockParams mockParams
@@ -1932,6 +2111,22 @@ func TestAuthService_RegisterBOSSession(t *testing.T) {
 				return uinMatches && flagsMatch
 			},
 		},
+		{
+			name:    "user not found, DisableAuth false, return error",
+			cookie:  aimAuthCookie,
+			cfg:     config.Config{DisableAuth: false},
+			wantErr: errors.New("user not found"),
+			mockParams: mockParams{
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{
+							screenName: screenName.IdentScreenName(),
+							result:     nil,
+						},
+					},
+				},
+			},
+		},
 	}
 
 	for _, tc := range cases {
@@ -1946,7 +2141,7 @@ func TestAuthService_RegisterBOSSession(t *testing.T) {
 			for _, params := range tc.mockParams.userManagerParams.getUserParams {
 				userManager.EXPECT().
 					User(matchContext(), params.screenName).
-					Return(params.result, nil)
+					Return(params.result, nil).Once()
 			}
 			accountManager := newMockAccountManager(t)
 			for _, params := range tc.mockParams.accountManagerConfirmStatusParams {
@@ -1961,9 +2156,13 @@ func TestAuthService_RegisterBOSSession(t *testing.T) {
 					Return(params.result, params.err)
 			}
 
-			svc := NewAuthService(config.Config{}, sessionRegistry, nil, nil, userManager, nil, nil, accountManager, bartItemManager, wire.DefaultRateLimitClasses(), nil, slog.Default())
+			svc := NewAuthService(tc.cfg, sessionRegistry, nil, nil, userManager, nil, nil, accountManager, bartItemManager, nil, wire.DefaultRateLimitClasses(), tc.createAccount, slog.Default())
 
 			have, err := svc.RegisterBOSSession(context.Background(), tc.cookie, nil)
+			if tc.wantErr != nil {
+				assert.ErrorContains(t, err, tc.wantErr.Error())
+				return
+			}
 			assert.NoError(t, err)
 
 			if tc.wantSess != nil {
@@ -1992,7 +2191,7 @@ func TestAuthService_RetrieveBOSSession_HappyPath(t *testing.T) {
 		User(matchContext(), instance.IdentScreenName()).
 		Return(&state.User{IdentScreenName: instance.IdentScreenName()}, nil)
 
-	svc := NewAuthService(config.Config{}, nil, sessionRetriever, nil, userManager, nil, nil, nil, nil, wire.DefaultRateLimitClasses(), nil, slog.Default())
+	svc := NewAuthService(config.Config{}, nil, sessionRetriever, nil, userManager, nil, nil, nil, nil, nil, wire.DefaultRateLimitClasses(), nil, slog.Default())
 
 	have, err := svc.RetrieveBOSSession(context.Background(), aimAuthCookie)
 	assert.NoError(t, err)
@@ -2017,7 +2216,7 @@ func TestAuthService_RetrieveBOSSession_SessionNotFound(t *testing.T) {
 		User(matchContext(), instance.IdentScreenName()).
 		Return(&state.User{IdentScreenName: instance.IdentScreenName()}, nil)
 
-	svc := NewAuthService(config.Config{}, nil, sessionRetriever, nil, userManager, nil, nil, nil, nil, wire.DefaultRateLimitClasses(), nil, slog.Default())
+	svc := NewAuthService(config.Config{}, nil, sessionRetriever, nil, userManager, nil, nil, nil, nil, nil, wire.DefaultRateLimitClasses(), nil, slog.Default())
 
 	have, err := svc.RetrieveBOSSession(context.Background(), aimAuthCookie)
 	assert.NoError(t, err)
@@ -2110,7 +2309,7 @@ func TestAuthService_SignoutChat(t *testing.T) {
 					RemoveSession(matchUserSession(params.screenName))
 			}
 
-			svc := NewAuthService(config.Config{}, nil, nil, sessionManager, nil, nil, chatMessageRelayer, nil, nil, wire.DefaultRateLimitClasses(), nil, slog.Default())
+			svc := NewAuthService(config.Config{}, nil, nil, sessionManager, nil, nil, chatMessageRelayer, nil, nil, nil, wire.DefaultRateLimitClasses(), nil, slog.Default())
 			svc.SignoutChat(context.Background(), tt.instance.Session())
 		})
 	}
@@ -2155,9 +2354,122 @@ func TestAuthService_Signout(t *testing.T) {
 			for _, params := range tt.mockParams.removeSessionParams {
 				sessionManager.EXPECT().RemoveSession(matchUserSession(params.screenName))
 			}
-			svc := NewAuthService(config.Config{}, sessionManager, nil, nil, nil, nil, nil, nil, nil, wire.DefaultRateLimitClasses(), nil, slog.Default())
+			svc := NewAuthService(config.Config{}, sessionManager, nil, nil, nil, nil, nil, nil, nil, nil, wire.DefaultRateLimitClasses(), nil, slog.Default())
 
 			svc.Signout(context.Background(), tt.instance.Session())
+		})
+	}
+}
+
+func TestBuildLinkedAccountsXML(t *testing.T) {
+	cases := []struct {
+		name        string
+		screenName  state.IdentScreenName
+		linkedNames []state.IdentScreenName
+		wantXML     string
+		wantErr     bool
+	}{
+		{
+			name:        "primary account with no linked accounts",
+			screenName:  state.NewIdentScreenName("PrimaryUser"),
+			linkedNames: []state.IdentScreenName{},
+			wantXML:     `<SET SETID="1"><RESREC TYPE="PRIMARY-ACCOUNT" ID="1"><n>primaryuser</n></RESREC></SET>`,
+		},
+		{
+			name:       "primary account with one linked account",
+			screenName: state.NewIdentScreenName("PrimaryUser"),
+			linkedNames: []state.IdentScreenName{
+				state.NewIdentScreenName("LinkedUser1"),
+			},
+			wantXML: `<SET SETID="1"><RESREC TYPE="PRIMARY-ACCOUNT" ID="1"><n>primaryuser</n></RESREC><RESREC TYPE="LINKED-ACCOUNT" ID="2"><n>linkeduser1</n></RESREC></SET>`,
+		},
+		{
+			name:       "primary account with multiple linked accounts",
+			screenName: state.NewIdentScreenName("PrimaryUser"),
+			linkedNames: []state.IdentScreenName{
+				state.NewIdentScreenName("LinkedUser1"),
+				state.NewIdentScreenName("LinkedUser2"),
+				state.NewIdentScreenName("LinkedUser3"),
+			},
+			wantXML: `<SET SETID="1"><RESREC TYPE="PRIMARY-ACCOUNT" ID="1"><n>primaryuser</n></RESREC><RESREC TYPE="LINKED-ACCOUNT" ID="2"><n>linkeduser1</n></RESREC><RESREC TYPE="LINKED-ACCOUNT" ID="3"><n>linkeduser2</n></RESREC><RESREC TYPE="LINKED-ACCOUNT" ID="4"><n>linkeduser3</n></RESREC></SET>`,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := buildLinkedAccountsXML(tc.screenName, tc.linkedNames)
+			if tc.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+			assert.Equal(t, tc.wantXML, got)
+		})
+	}
+}
+
+func TestAuthService_addLinkedAccountsTLV(t *testing.T) {
+	cases := []struct {
+		name       string
+		screenName state.DisplayScreenName
+		// mockLinkedAccounts is what linkedAccountManager.LinkedAccounts returns
+		mockLinkedAccounts []state.IdentScreenName
+		mockErr            error
+		// wantTLVCount is the expected number of TLVs after the call
+		wantTLVCount int
+		wantErr      bool
+	}{
+		{
+			name:               "no linked accounts, TLV list unchanged",
+			screenName:         "PrimaryUser",
+			mockLinkedAccounts: nil,
+			wantTLVCount:       0,
+		},
+		{
+			name:       "one linked account, TLV appended",
+			screenName: "PrimaryUser",
+			mockLinkedAccounts: []state.IdentScreenName{
+				state.NewIdentScreenName("LinkedUser1"),
+			},
+			wantTLVCount: 1,
+		},
+		{
+			name:       "multiple linked accounts, single TLV appended",
+			screenName: "PrimaryUser",
+			mockLinkedAccounts: []state.IdentScreenName{
+				state.NewIdentScreenName("LinkedUser1"),
+				state.NewIdentScreenName("LinkedUser2"),
+			},
+			wantTLVCount: 1,
+		},
+		{
+			name:       "linkedAccountManager returns error, error propagated",
+			screenName: "PrimaryUser",
+			mockErr:    io.EOF,
+			wantErr:    true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			linkedAccountManager := newMockLinkedAccountManager(t)
+			linkedAccountManager.EXPECT().
+				LinkedAccounts(matchContext(), state.NewIdentScreenName(string(tc.screenName))).
+				Return(tc.mockLinkedAccounts, tc.mockErr)
+
+			svc := AuthService{linkedAccountManager: linkedAccountManager}
+			tlvs := wire.TLVList{}
+			err := svc.addLinkedAccountsTLV(context.Background(), tc.screenName, &tlvs)
+
+			if tc.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+			assert.Len(t, tlvs, tc.wantTLVCount)
+			if tc.wantTLVCount > 0 {
+				assert.Equal(t, wire.OServiceTLVTagsLinkedAccounts, tlvs[0].Tag)
+			}
 		})
 	}
 }

@@ -107,6 +107,9 @@ packages:
       UserManager:
         config:
           filename: "mock_user_manager_test.go"
+      LinkedAccountManager:
+        config:
+          filename: "mock_linked_account_manager_test.go"
   github.com/mk6i/open-oscar-server/foodgroup:
     interfaces:
       AccountManager:
@@ -169,6 +172,9 @@ packages:
       UserManager:
         config:
           filename: "mock_user_manager_manager_test.go"
+      LinkedAccountManager:
+        config:
+          filename: "mock_linked_account_manager_test.go"
   github.com/mk6i/open-oscar-server/server/toc:
     interfaces:
       AdminService:

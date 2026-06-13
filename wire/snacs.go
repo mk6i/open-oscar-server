@@ -336,13 +336,14 @@ const (
 	OServicePrivacyFlagIdle   uint32 = 0x00000001
 	OServicePrivacyFlagMember uint32 = 0x00000002
 
-	OServiceTLVTagsReconnectHere uint16 = 0x05
-	OServiceTLVTagsLoginCookie   uint16 = 0x06
-	OServiceTLVTagsGroupID       uint16 = 0x0D
-	OServiceTLVTagsSSLCertName   uint16 = 0x8D
-	OServiceTLVTagsSSLState      uint16 = 0x8E
-	OserviceTLVTagsSSLUseSSL     uint16 = 0x8C
-	OServiceTLVTagsMOTDMessage   uint16 = 0x0B
+	OServiceTLVTagsLinkedAccounts uint16 = 0x02
+	OServiceTLVTagsReconnectHere  uint16 = 0x05
+	OServiceTLVTagsLoginCookie    uint16 = 0x06
+	OServiceTLVTagsGroupID        uint16 = 0x0D
+	OServiceTLVTagsSSLCertName    uint16 = 0x8D
+	OServiceTLVTagsSSLState       uint16 = 0x8E
+	OserviceTLVTagsSSLUseSSL      uint16 = 0x8C
+	OServiceTLVTagsMOTDMessage    uint16 = 0x0B
 
 	OServiceDiscErrNewLogin   uint8 = 0x01
 	OServiceDiscErrAccDeleted uint8 = 0x02
@@ -1696,6 +1697,7 @@ const (
 	FeedbagAttributesFishIgnoreMode          uint16 = 0x00D3
 	FeedbagAttributesCreateTime              uint16 = 0x00D4
 	FeedbagAttributesBartInfo                uint16 = 0x00D5
+	FeedbagAttributesAlPassword              uint16 = 0x00D5 // roasted password in FeedbagClassIdAlInfo items
 	FeedbagAttributesBuddyPrefsValid         uint16 = 0x00D6
 	FeedbagAttributesBuddyPrefs2             uint16 = 0x00D7
 	FeedbagAttributesBuddyPrefs2Valid        uint16 = 0x00D8

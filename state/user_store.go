@@ -12,6 +12,7 @@ import (
 	"math"
 	"net/http"
 	"net/mail"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -2679,5 +2680,101 @@ func (f SQLiteUserStore) SetOfflineMsgCount(ctx context.Context, screenName Iden
 	if c == 0 {
 		return ErrNoUser
 	}
+	return nil
+}
+
+// LinkedAccounts returns the linked accounts associated with a screenname
+func (f SQLiteUserStore) LinkedAccounts(ctx context.Context, screenName IdentScreenName) ([]IdentScreenName, error) {
+	q := `
+		SELECT linkedScreenName
+		FROM linkedAccounts
+		WHERE identScreenName = ?
+	`
+	rows, err := f.db.QueryContext(ctx, q, screenName.String())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []IdentScreenName
+	for rows.Next() {
+		var sn string
+		err := rows.Scan(&sn)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, NewIdentScreenName(sn))
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+// CheckLinkedAccount reports whether the proposed screenName->linkedScreenName relationship is valid.
+func (f SQLiteUserStore) CheckLinkedAccount(ctx context.Context, screenName IdentScreenName, linkedScreenName IdentScreenName) (bool, error) {
+	items, err := f.LinkedAccounts(ctx, screenName)
+	if err != nil {
+		return false, err
+	}
+	if slices.Contains(items, linkedScreenName) {
+		return true, nil
+	}
+	return false, nil
+}
+
+// InsertLinkedAccount inserts a new linked account relationship
+func (f SQLiteUserStore) InsertLinkedAccount(ctx context.Context, identScreenName, linkedScreenName IdentScreenName) error {
+	q := `
+		INSERT INTO linkedAccounts (identScreenName, linkedScreenName)
+		VALUES (?, ?)
+		ON CONFLICT (identScreenName, linkedScreenName) DO NOTHING
+	`
+	result, err := f.db.ExecContext(ctx,
+		q,
+		identScreenName.String(),
+		linkedScreenName.String(),
+	)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return ErrLinkExists
+	}
+	return nil
+}
+
+// DeleteAllLinkedAccounts deletes all linked account relationships for a primary screen name.
+func (f SQLiteUserStore) DeleteAllLinkedAccounts(ctx context.Context, identScreenName IdentScreenName) error {
+	q := `DELETE FROM linkedAccounts WHERE identScreenName = ?`
+	_, err := f.db.ExecContext(ctx, q, identScreenName.String())
+	return err
+}
+
+// DeleteLinkedAccount deletes an existing linked account relationship
+func (f SQLiteUserStore) DeleteLinkedAccount(ctx context.Context, identScreenName, linkedScreenName IdentScreenName) error {
+	q := `
+		DELETE FROM linkedAccounts
+		WHERE identScreenName = ? AND linkedScreenName = ?
+	`
+	result, err := f.db.ExecContext(ctx, q, identScreenName.String(), linkedScreenName.String())
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return ErrNoUser
+	}
+
 	return nil
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"testing"
 	"time"
@@ -130,12 +131,116 @@ func TestFeedbagService_Query(t *testing.T) {
 					Return(params.result, nil)
 			}
 
+			linkedAccountManager := newMockLinkedAccountManager(t)
+			linkedAccountManager.EXPECT().LinkedAccounts(matchContext(), mock.Anything).Return(nil, nil).Maybe()
 			svc := FeedbagService{
-				feedbagManager: feedbagManager,
+				feedbagManager:       feedbagManager,
+				linkedAccountManager: linkedAccountManager,
 			}
 			outputSNAC, err := svc.Query(context.Background(), tc.instance, tc.inputSNAC.Frame)
 			assert.NoError(t, err)
 			assert.Equal(t, *tc.expectOutput, outputSNAC)
+		})
+	}
+}
+
+func TestFeedbagService_Query_LinkedAccounts(t *testing.T) {
+	inFrame := wire.SNACFrame{
+		FoodGroup: wire.Feedbag,
+		SubGroup:  wire.FeedbagQuery,
+		RequestID: 1234,
+	}
+	me := state.NewIdentScreenName("me")
+
+	cases := []struct {
+		name                string
+		feedbagItems        []wire.FeedbagItem
+		linkedAccounts      []state.IdentScreenName
+		linkedAccountsErr   error
+		feedbagLastModified time.Time
+		expectItems         []wire.FeedbagItem
+	}{
+		{
+			name:                "linked accounts appended to feedbag items",
+			feedbagItems:        []wire.FeedbagItem{},
+			linkedAccounts:      []state.IdentScreenName{state.NewIdentScreenName("linked1"), state.NewIdentScreenName("linked2")},
+			feedbagLastModified: time.UnixMilli(1696472198082),
+			expectItems: []wire.FeedbagItem{
+				{
+					Name:      "linked1",
+					ClassID:   wire.FeedbagClassIdAlInfo,
+					ItemID:    uint16(0x8000),
+					GroupID:   0,
+					TLVLBlock: wire.TLVLBlock{},
+				},
+				{
+					Name:      "linked2",
+					ClassID:   wire.FeedbagClassIdAlInfo,
+					ItemID:    uint16(0x8001),
+					GroupID:   0,
+					TLVLBlock: wire.TLVLBlock{},
+				},
+			},
+		},
+		{
+			name:                "no linked accounts, feedbag unchanged",
+			feedbagItems:        []wire.FeedbagItem{{Name: "buddy1"}},
+			linkedAccounts:      nil,
+			feedbagLastModified: time.UnixMilli(1696472198082),
+			expectItems:         []wire.FeedbagItem{{Name: "buddy1"}},
+		},
+		{
+			name:                "linkedAccountManager error, linked items silently skipped",
+			feedbagItems:        []wire.FeedbagItem{{Name: "buddy1"}},
+			linkedAccountsErr:   io.EOF,
+			feedbagLastModified: time.UnixMilli(1696472198082),
+			expectItems:         []wire.FeedbagItem{{Name: "buddy1"}},
+		},
+		{
+			name: "stored AlInfo items in rawFb are stripped and replaced by dynamic linked accounts",
+			feedbagItems: []wire.FeedbagItem{
+				{Name: "buddy1"},
+				{Name: "stalelinked", ClassID: wire.FeedbagClassIdAlInfo},
+			},
+			linkedAccounts:      []state.IdentScreenName{state.NewIdentScreenName("linked1")},
+			feedbagLastModified: time.UnixMilli(1696472198082),
+			expectItems: []wire.FeedbagItem{
+				{Name: "buddy1"},
+				{
+					Name:      "linked1",
+					ClassID:   wire.FeedbagClassIdAlInfo,
+					ItemID:    uint16(0x8000),
+					GroupID:   0,
+					TLVLBlock: wire.TLVLBlock{},
+				},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			feedbagManager := newMockFeedbagManager(t)
+			feedbagManager.EXPECT().
+				Feedbag(matchContext(), me).
+				Return(tc.feedbagItems, nil)
+			if len(tc.expectItems) > 0 {
+				feedbagManager.EXPECT().
+					FeedbagLastModified(matchContext(), me).
+					Return(tc.feedbagLastModified, nil)
+			}
+
+			linkedAccountManager := newMockLinkedAccountManager(t)
+			linkedAccountManager.EXPECT().
+				LinkedAccounts(matchContext(), me).
+				Return(tc.linkedAccounts, tc.linkedAccountsErr)
+
+			svc := NewFeedbagService(slog.Default(), nil, feedbagManager, nil, nil, nil, nil, nil, linkedAccountManager, nil)
+			instance := newTestInstance("me")
+
+			outputSNAC, err := svc.Query(context.Background(), instance, inFrame)
+			assert.NoError(t, err)
+			body := outputSNAC.Body.(wire.SNAC_0x13_0x06_FeedbagReply)
+			assert.Equal(t, tc.expectItems, body.Items)
 		})
 	}
 }
@@ -313,8 +418,11 @@ func TestFeedbagService_QueryIfModified(t *testing.T) {
 			//
 			// send input SNAC
 			//
+			linkedAccountManager := newMockLinkedAccountManager(t)
+			linkedAccountManager.EXPECT().LinkedAccounts(matchContext(), mock.Anything).Return(nil, nil).Maybe()
 			svc := FeedbagService{
-				feedbagManager: feedbagManager,
+				feedbagManager:       feedbagManager,
+				linkedAccountManager: linkedAccountManager,
 			}
 			outputSNAC, err := svc.QueryIfModified(context.Background(), tc.instance, tc.inputSNAC.Frame,
 				tc.inputSNAC.Body.(wire.SNAC_0x13_0x05_FeedbagQueryIfModified))
@@ -327,8 +435,260 @@ func TestFeedbagService_QueryIfModified(t *testing.T) {
 	}
 }
 
+func TestFeedbagService_QueryIfModified_LinkedAccounts(t *testing.T) {
+	inFrame := wire.SNACFrame{
+		FoodGroup: wire.Feedbag,
+		SubGroup:  wire.FeedbagInsertItem,
+		RequestID: 1234,
+	}
+	me := state.NewIdentScreenName("me")
+
+	cases := []struct {
+		name              string
+		feedbagItems      []wire.FeedbagItem
+		lastModified      time.Time
+		lastUpdate        time.Time
+		linkedAccounts    []state.IdentScreenName
+		linkedAccountsErr error
+		expectSNAC        wire.SNACMessage
+	}{
+		{
+			// FeedbagLastModified is gated on len(rawFb) > 0 in QueryIfModified,
+			// so linked accounts only appear in LastUpdate when rawFb is non-empty.
+			name:         "linked accounts appended to non-empty feedbag when modified",
+			feedbagItems: []wire.FeedbagItem{{Name: "buddy1"}},
+			lastModified: time.UnixMilli(200000),
+			lastUpdate:   time.UnixMilli(100000),
+			linkedAccounts: []state.IdentScreenName{
+				state.NewIdentScreenName("linked1"),
+			},
+			expectSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagReply, RequestID: 1234},
+				Body: wire.SNAC_0x13_0x06_FeedbagReply{
+					Items: []wire.FeedbagItem{
+						{Name: "buddy1"},
+						{
+							Name:      "linked1",
+							ClassID:   wire.FeedbagClassIdAlInfo,
+							ItemID:    uint16(0x8000),
+							GroupID:   0,
+							TLVLBlock: wire.TLVLBlock{},
+						},
+					},
+					LastUpdate: uint32(time.UnixMilli(200000).Unix()),
+				},
+			},
+		},
+		{
+			// Linked accounts bypass the not-modified optimization, so a full
+			// FeedbagReply is always returned when linked accounts are present.
+			name:         "full reply returned when linked accounts present even if feedbag unmodified",
+			feedbagItems: []wire.FeedbagItem{{Name: "buddy1"}},
+			lastModified: time.UnixMilli(100000),
+			lastUpdate:   time.UnixMilli(200000),
+			linkedAccounts: []state.IdentScreenName{
+				state.NewIdentScreenName("linked1"),
+				state.NewIdentScreenName("linked2"),
+			},
+			expectSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagReply, RequestID: 1234},
+				Body: wire.SNAC_0x13_0x06_FeedbagReply{
+					Items: []wire.FeedbagItem{
+						{Name: "buddy1"},
+						{
+							Name:      "linked1",
+							ClassID:   wire.FeedbagClassIdAlInfo,
+							ItemID:    uint16(0x8000),
+							GroupID:   0,
+							TLVLBlock: wire.TLVLBlock{},
+						},
+						{
+							Name:      "linked2",
+							ClassID:   wire.FeedbagClassIdAlInfo,
+							ItemID:    uint16(0x8001),
+							GroupID:   0,
+							TLVLBlock: wire.TLVLBlock{},
+						},
+					},
+					LastUpdate: uint32(time.UnixMilli(100000).Unix()),
+				},
+			},
+		},
+		{
+			name:              "linkedAccountManager error, linked items silently skipped",
+			feedbagItems:      []wire.FeedbagItem{{Name: "buddy1"}},
+			lastModified:      time.UnixMilli(200000),
+			lastUpdate:        time.UnixMilli(100000),
+			linkedAccountsErr: io.EOF,
+			expectSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagReply, RequestID: 1234},
+				Body: wire.SNAC_0x13_0x06_FeedbagReply{
+					Items:      []wire.FeedbagItem{{Name: "buddy1"}},
+					LastUpdate: uint32(time.UnixMilli(200000).Unix()),
+				},
+			},
+		},
+		{
+			name:         "linked accounts returned even when raw feedbag empty, LastUpdate is zero",
+			feedbagItems: []wire.FeedbagItem{},
+			linkedAccounts: []state.IdentScreenName{
+				state.NewIdentScreenName("linked1"),
+			},
+			expectSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagReply, RequestID: 1234},
+				Body: wire.SNAC_0x13_0x06_FeedbagReply{
+					Items: []wire.FeedbagItem{
+						{
+							Name:      "linked1",
+							ClassID:   wire.FeedbagClassIdAlInfo,
+							ItemID:    uint16(0x8000),
+							GroupID:   0,
+							TLVLBlock: wire.TLVLBlock{},
+						},
+					},
+					LastUpdate: 0,
+				},
+			},
+		},
+		{
+			name: "stored AlInfo items in rawFb are stripped and replaced by dynamic linked accounts",
+			feedbagItems: []wire.FeedbagItem{
+				{Name: "buddy1"},
+				{Name: "stalelinked", ClassID: wire.FeedbagClassIdAlInfo},
+			},
+			lastModified: time.UnixMilli(200000),
+			lastUpdate:   time.UnixMilli(100000),
+			linkedAccounts: []state.IdentScreenName{
+				state.NewIdentScreenName("linked1"),
+			},
+			expectSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagReply, RequestID: 1234},
+				Body: wire.SNAC_0x13_0x06_FeedbagReply{
+					Items: []wire.FeedbagItem{
+						{Name: "buddy1"},
+						{
+							Name:      "linked1",
+							ClassID:   wire.FeedbagClassIdAlInfo,
+							ItemID:    uint16(0x8000),
+							GroupID:   0,
+							TLVLBlock: wire.TLVLBlock{},
+						},
+					},
+					LastUpdate: uint32(time.UnixMilli(200000).Unix()),
+				},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			feedbagManager := newMockFeedbagManager(t)
+			feedbagManager.EXPECT().
+				Feedbag(matchContext(), me).
+				Return(tc.feedbagItems, nil)
+			if len(tc.feedbagItems) > 0 {
+				feedbagManager.EXPECT().
+					FeedbagLastModified(matchContext(), me).
+					Return(tc.lastModified, nil)
+			}
+
+			linkedAccountManager := newMockLinkedAccountManager(t)
+			linkedAccountManager.EXPECT().
+				LinkedAccounts(matchContext(), me).
+				Return(tc.linkedAccounts, tc.linkedAccountsErr)
+
+			svc := NewFeedbagService(slog.Default(), nil, feedbagManager, nil, nil, nil, nil, nil, linkedAccountManager, nil)
+			instance := newTestInstance("me")
+
+			outputSNAC, err := svc.QueryIfModified(context.Background(), instance, inFrame,
+				wire.SNAC_0x13_0x05_FeedbagQueryIfModified{
+					LastUpdate: uint32(tc.lastUpdate.Unix()),
+				})
+			assert.NoError(t, err)
+			assert.Equal(t, tc.expectSNAC, outputSNAC)
+		})
+	}
+}
+
+func TestFeedbagService_UpsertItem_AlInfoIgnored(t *testing.T) {
+	instance := newTestInstance("me")
+	inFrame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem, RequestID: 1234}
+	items := []wire.FeedbagItem{
+		{ClassID: wire.FeedbagClassIdAlInfo, Name: "linkeduser"},
+	}
+
+	// feedbagManager expects no FeedbagUpsert call since AlInfo items are dropped
+	feedbagManager := newMockFeedbagManager(t)
+
+	messageRelayer := newMockMessageRelayer(t)
+	messageRelayer.EXPECT().
+		RelayToSelf(mock.Anything, mock.Anything, wire.SNACMessage{
+			Frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagStatus, RequestID: 1234},
+			Body:  wire.SNAC_0x13_0x0E_FeedbagStatus{Results: []uint16{0x0000}},
+		})
+	messageRelayer.EXPECT().
+		RelayToOtherInstances(mock.Anything, mock.Anything, wire.SNACMessage{
+			Frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem, RequestID: wire.ReqIDFromServer},
+			Body:  wire.SNAC_0x13_0x09_FeedbagUpdateItem{Items: nil},
+		})
+
+	// linkedAccountManager expects no InsertLinkedAccount call
+	linkedAccountManager := newMockLinkedAccountManager(t)
+
+	svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, nil, nil, nil, nil, nil, linkedAccountManager, nil)
+	output, err := svc.UpsertItem(context.Background(), instance, inFrame, items)
+	assert.NoError(t, err)
+	assert.Nil(t, output)
+}
+
+func TestFeedbagService_DeleteItem_AlInfoIgnored(t *testing.T) {
+	instance := newTestInstance("me")
+	inFrame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagDeleteItem, RequestID: 1234}
+	inBody := wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
+		Items: []wire.FeedbagItem{
+			{ClassID: wire.FeedbagClassIdAlInfo, Name: "linkeduser"},
+		},
+	}
+
+	feedbagManager := newMockFeedbagManager(t)
+	feedbagManager.EXPECT().
+		FeedbagDelete(matchContext(), state.NewIdentScreenName("me"), inBody.Items).
+		Return(nil)
+
+	messageRelayer := newMockMessageRelayer(t)
+	messageRelayer.EXPECT().
+		RelayToSelf(mock.Anything, mock.Anything, wire.SNACMessage{
+			Frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagStatus, RequestID: 1234},
+			Body:  wire.SNAC_0x13_0x0E_FeedbagStatus{Results: []uint16{0x0000}},
+		})
+	messageRelayer.EXPECT().
+		RelayToOtherInstances(mock.Anything, mock.Anything, wire.SNACMessage{
+			Frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagDeleteItem, RequestID: wire.ReqIDFromServer},
+			Body:  inBody,
+		})
+
+	buddyBroadcaster := newMockbuddyBroadcaster(t)
+	buddyBroadcaster.EXPECT().
+		BroadcastVisibility(mock.Anything, matchSession(state.NewIdentScreenName("me")), []state.IdentScreenName(nil), true).
+		Return(nil)
+
+	linkedAccountManager := newMockLinkedAccountManager(t)
+	// No expectations set — DeleteLinkedAccount must not be called for AlInfo items.
+	// mock.AssertExpectations at cleanup will fail if any unexpected call occurs.
+
+	svc := FeedbagService{
+		buddyBroadcaster:     buddyBroadcaster,
+		feedbagManager:       feedbagManager,
+		messageRelayer:       messageRelayer,
+		linkedAccountManager: linkedAccountManager,
+	}
+	output, err := svc.DeleteItem(context.Background(), instance, inFrame, inBody)
+	assert.NoError(t, err)
+	assert.Nil(t, output)
+}
+
 func TestFeedbagService_RightsQuery(t *testing.T) {
-	svc := NewFeedbagService(nil, nil, nil, nil, nil, nil, nil, nil, newMockBuddyAddedNotifierDeduper(t))
+	svc := NewFeedbagService(nil, nil, nil, nil, nil, nil, nil, nil, nil, newMockBuddyAddedNotifierDeduper(t))
 
 	outputSNAC := svc.RightsQuery(context.Background(), wire.SNACFrame{RequestID: 1234})
 	expectSNAC := wire.SNACMessage{
@@ -363,6 +723,10 @@ func TestFeedbagService_RightsQuery(t *testing.T) {
 						0x00,
 						1,
 						200,
+						0x00,
+						0x00,
+						0x00,
+						4,
 					}),
 					wire.NewTLVBE(wire.FeedbagRightsMaxClientItems, uint16(200)),
 					wire.NewTLVBE(wire.FeedbagRightsMaxItemNameLen, uint16(200)),
@@ -2636,7 +3000,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 				assert.Equal(t, wantBody, haveBody)
 				return nil, nil
 			}
-			svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, bartItemManager, nil, sessionRetriever, contactPreAuth, nil, buddyAddedDeduper)
+			svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, bartItemManager, nil, sessionRetriever, contactPreAuth, nil, nil, buddyAddedDeduper)
 			svc.buddyBroadcaster = buddyUpdateBroadcaster
 			svc.icbmSender = icbmSender
 			output, err := svc.UpsertItem(context.Background(), tc.instance, tc.inputSNAC.Frame,
@@ -3076,7 +3440,7 @@ func TestFeedbagService_Use(t *testing.T) {
 					Return(params.err)
 			}
 
-			svc := NewFeedbagService(slog.Default(), nil, feedbagManager, nil, nil, nil, nil, nil, newMockBuddyAddedNotifierDeduper(t))
+			svc := NewFeedbagService(slog.Default(), nil, feedbagManager, nil, nil, nil, nil, nil, nil, newMockBuddyAddedNotifierDeduper(t))
 			svc.buddyBroadcaster = buddyUpdateBroadcaster
 
 			haveErr := svc.Use(context.Background(), tt.instance)
@@ -3509,7 +3873,7 @@ func TestFeedbagService_RequestAuthorizeToHost(t *testing.T) {
 					Return(params.result, params.err)
 			}
 
-			svc := NewFeedbagService(slog.Default(), messageRelayer, nil, nil, nil, sessionRetriever, contactPreAuth, userManager, newMockBuddyAddedNotifierDeduper(t))
+			svc := NewFeedbagService(slog.Default(), messageRelayer, nil, nil, nil, sessionRetriever, contactPreAuth, userManager, nil, newMockBuddyAddedNotifierDeduper(t))
 			svc.icbmSender = icbmSender
 
 			haveErr := svc.RequestAuthorizeToHost(
@@ -3980,7 +4344,7 @@ func TestFeedbagService_RespondAuthorizeToHost(t *testing.T) {
 				return nil, tt.wantErr
 			}
 
-			svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, nil, relationshipFetcher, sessionRetriever, contactPreAuth, nil, newMockBuddyAddedNotifierDeduper(t))
+			svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, nil, relationshipFetcher, sessionRetriever, contactPreAuth, nil, nil, newMockBuddyAddedNotifierDeduper(t))
 			svc.buddyBroadcaster = buddyBroadcaster
 			svc.icbmSender = icbmSender
 
@@ -4315,7 +4679,7 @@ func TestFeedbagService_PreAuthorizeBuddy(t *testing.T) {
 				return nil, nil
 			}
 
-			svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, nil, relationshipFetcher, sessionRetriever, contactPreAuth, nil, newMockBuddyAddedNotifierDeduper(t))
+			svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, nil, relationshipFetcher, sessionRetriever, contactPreAuth, nil, nil, newMockBuddyAddedNotifierDeduper(t))
 			svc.icbmSender = icbmSender
 
 			out, err := svc.PreAuthorizeBuddy(context.Background(), alice, tt.inFrame, tt.inBody)
@@ -4544,7 +4908,7 @@ func TestFeedbagService_StartCluster(t *testing.T) {
 			Body:  inBody,
 		})
 
-	svc := NewFeedbagService(slog.Default(), messageRelayer, nil, nil, nil, nil, nil, nil, newMockBuddyAddedNotifierDeduper(t))
+	svc := NewFeedbagService(slog.Default(), messageRelayer, nil, nil, nil, nil, nil, nil, nil, newMockBuddyAddedNotifierDeduper(t))
 	svc.StartCluster(context.Background(), instance, inFrame, inBody)
 
 	assert.True(t, instance.InNotifyTxn())
@@ -4621,7 +4985,7 @@ func TestFeedbagService_EndCluster(t *testing.T) {
 					Return(params.err)
 			}
 
-			svc := NewFeedbagService(slog.Default(), messageRelayer, nil, nil, nil, nil, nil, nil, newMockBuddyAddedNotifierDeduper(t))
+			svc := NewFeedbagService(slog.Default(), messageRelayer, nil, nil, nil, nil, nil, nil, nil, newMockBuddyAddedNotifierDeduper(t))
 			svc.buddyBroadcaster = buddyBroadcaster
 			err := svc.EndCluster(context.Background(), tc.instance, endFrame)
 			assert.NoError(t, err)
@@ -4676,7 +5040,7 @@ func TestFeedbagService_notifyTxnCluster(t *testing.T) {
 			Return(nil).
 			Once()
 
-		svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, nil, nil, nil, nil, nil, newMockBuddyAddedNotifierDeduper(t))
+		svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, nil, nil, nil, nil, nil, nil, newMockBuddyAddedNotifierDeduper(t))
 		svc.buddyBroadcaster = buddyBroadcaster
 
 		svc.StartCluster(context.Background(), instance, startFrame, startBody)
@@ -4718,7 +5082,7 @@ func TestFeedbagService_notifyTxnCluster(t *testing.T) {
 			Return(nil).
 			Once()
 
-		svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, nil, nil, nil, nil, nil, newMockBuddyAddedNotifierDeduper(t))
+		svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, nil, nil, nil, nil, nil, nil, newMockBuddyAddedNotifierDeduper(t))
 		svc.buddyBroadcaster = buddyBroadcaster
 
 		svc.StartCluster(context.Background(), instance, startFrame, startBody)
@@ -4757,7 +5121,7 @@ func TestFeedbagService_notifyTxnCluster(t *testing.T) {
 			Return(nil).
 			Once()
 
-		svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, nil, nil, nil, nil, nil, newMockBuddyAddedNotifierDeduper(t))
+		svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, nil, nil, nil, nil, nil, nil, newMockBuddyAddedNotifierDeduper(t))
 		svc.buddyBroadcaster = buddyBroadcaster
 
 		svc.StartCluster(context.Background(), instance, startFrame, startBody)
@@ -5052,7 +5416,7 @@ func TestFeedbagService_ForwardICQAuthEvents(t *testing.T) {
 				return nil, tt.wantErr
 			}
 
-			svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, nil, relationshipFetcher, sessionRetriever, contactPreAuth, nil, newMockBuddyAddedNotifierDeduper(t))
+			svc := NewFeedbagService(slog.Default(), messageRelayer, feedbagManager, nil, relationshipFetcher, sessionRetriever, contactPreAuth, nil, nil, newMockBuddyAddedNotifierDeduper(t))
 			svc.icbmSender = icbmSender
 
 			err := svc.ForwardICQAuthEvents(context.Background(), sender.IdentScreenName(), recipient, tt.authMsg)

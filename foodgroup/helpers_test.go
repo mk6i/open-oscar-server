@@ -34,6 +34,7 @@ type mockParams struct {
 	sessionRegistryParams
 	sessionRetrieverParams
 	userManagerParams
+	linkedAccountManagerParams
 }
 
 // contactPreAuthorizerParams is a helper struct that contains mock parameters for
@@ -801,6 +802,20 @@ type createChatRoomParams []struct {
 	err  error
 }
 
+// linkedAccountManagerParams is a helper struct that contains mock parameters for
+// LinkedAccountManager methods
+type linkedAccountManagerParams struct {
+	linkedAccountsParams
+}
+
+// linkedAccountsParams is the list of parameters passed at the mock
+// LinkedAccountManager.LinkedAccounts call site
+type linkedAccountsParams []struct {
+	screenName state.IdentScreenName
+	result     []state.IdentScreenName
+	err        error
+}
+
 // sessOptWarning sets a warning level on the session object
 func sessOptWarning(level int16) func(instance *state.SessionInstance) {
 	return func(instance *state.SessionInstance) {
@@ -873,6 +888,13 @@ func sessOptUIN(UIN uint32) func(instance *state.SessionInstance) {
 // sessOptCaps sets caps
 func sessOptWantTypingEvents(instance *state.SessionInstance) {
 	instance.Session().SetTypingEventsEnabled(true)
+}
+
+// sessOptMultiConnFlag sets the multi-connection flag on the session instance
+func sessOptMultiConnFlag(flag wire.MultiConnFlag) func(instance *state.SessionInstance) {
+	return func(instance *state.SessionInstance) {
+		instance.SetMultiConnFlag(flag)
+	}
 }
 
 // sessOptSetFoodGroupVersion sets food group versions

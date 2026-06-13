@@ -1440,6 +1440,152 @@ paths:
                 $ref: '#/components/schemas/MessageResponse'
 
 
+  /user/{screenname}/linked-account:
+    get:
+      summary: List linked accounts for a screen name
+      description: Retrieve all linked accounts associated with a user.
+      parameters:
+        - in: path
+          name: screenname
+          schema:
+            type: string
+          description: User's AIM screen name or ICQ UIN.
+          required: true
+      responses:
+        '200':
+          description: Successful response containing linked accounts.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  linked_accounts:
+                    type: array
+                    items:
+                      type: string
+                    description: List of linked screen names.
+        '404':
+          description: User not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+    post:
+      summary: Add a linked account
+      description: Link a screen name to the specified primary user account.
+      parameters:
+        - in: path
+          name: screenname
+          schema:
+            type: string
+          description: User's AIM screen name or ICQ UIN.
+          required: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - linked_screen_name
+              properties:
+                linked_screen_name:
+                  type: string
+                  description: The screen name to link to the primary account.
+                  example: "secondaryuser"
+      responses:
+        '201':
+          description: Linked account created successfully.
+        '400':
+          description: Invalid request body.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '404':
+          description: Primary user not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '409':
+          description: Linked account relationship already exists.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+    delete:
+      summary: Remove all linked accounts
+      description: Remove all linked account relationships for the specified primary user.
+      parameters:
+        - in: path
+          name: screenname
+          schema:
+            type: string
+          description: User's AIM screen name or ICQ UIN.
+          required: true
+      responses:
+        '204':
+          description: All linked accounts removed successfully.
+        '404':
+          description: User not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
+  /user/{screenname}/linked-account/{linked_screenname}:
+    delete:
+      summary: Remove a linked account
+      description: Remove the linked account relationship between a primary screen name and a linked screen name.
+      parameters:
+        - in: path
+          name: screenname
+          schema:
+            type: string
+          description: User's AIM screen name or ICQ UIN.
+          required: true
+        - in: path
+          name: linked_screenname
+          schema:
+            type: string
+          description: The linked screen name to remove.
+          required: true
+      responses:
+        '204':
+          description: Linked account removed successfully.
+        '404':
+          description: User or linked account not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
+
 components:
   schemas:
     MessageResponse:

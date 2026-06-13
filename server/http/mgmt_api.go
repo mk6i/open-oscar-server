@@ -24,7 +24,7 @@ import (
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
-func NewManagementAPI(bld config.Build, listener string, userManager UserManager, sessionRetriever SessionRetriever, buddyBroadcaster BuddyBroadcaster, chatRoomRetriever ChatRoomRetriever, chatRoomCreator ChatRoomCreator, chatRoomDeleter ChatRoomDeleter, chatSessionRetriever ChatSessionRetriever, directoryManager DirectoryManager, messageRelayer MessageRelayer, bartAssetManager BARTAssetManager, feedbagRetriever FeedBagRetriever, feedbagManager FeedbagManager, accountManager AccountManager, profileRetriever ProfileRetriever, webAPIKeyManager WebAPIKeyManager, icqProfileManager ICQProfileManager, createAccount state.CreateAccountFunc, logger *slog.Logger) *Server {
+func NewManagementAPI(bld config.Build, listener string, userManager UserManager, sessionRetriever SessionRetriever, buddyBroadcaster BuddyBroadcaster, chatRoomRetriever ChatRoomRetriever, chatRoomCreator ChatRoomCreator, chatRoomDeleter ChatRoomDeleter, chatSessionRetriever ChatSessionRetriever, directoryManager DirectoryManager, messageRelayer MessageRelayer, bartAssetManager BARTAssetManager, feedbagRetriever FeedBagRetriever, feedbagManager FeedbagManager, accountManager AccountManager, profileRetriever ProfileRetriever, webAPIKeyManager WebAPIKeyManager, icqProfileManager ICQProfileManager, linkedAccountManager LinkedAccountManager, createAccount state.CreateAccountFunc, logger *slog.Logger) *Server {
 	mux := http.NewServeMux()
 
 	// Handlers for '/user' route
@@ -185,6 +185,20 @@ func NewManagementAPI(bld config.Build, listener string, userManager UserManager
 	})
 	mux.HandleFunc("DELETE /feedbag/{screen_name}/group/{group_id}/buddy/{buddy_screen_name}", func(w http.ResponseWriter, r *http.Request) {
 		deleteFeedbagBuddyHandler(w, r, buddyBroadcaster, feedbagManager, sessionRetriever, messageRelayer, logger)
+	})
+
+	// Handlers for '/user/{screenname}/linked-account' routes
+	mux.HandleFunc("GET /user/{screenname}/linked-account", func(w http.ResponseWriter, r *http.Request) {
+		getLinkedAccountsHandler(w, r, userManager, linkedAccountManager)
+	})
+	mux.HandleFunc("POST /user/{screenname}/linked-account", func(w http.ResponseWriter, r *http.Request) {
+		postLinkedAccountHandler(w, r, userManager, linkedAccountManager)
+	})
+	mux.HandleFunc("DELETE /user/{screenname}/linked-account", func(w http.ResponseWriter, r *http.Request) {
+		deleteAllLinkedAccountsHandler(w, r, userManager, linkedAccountManager)
+	})
+	mux.HandleFunc("DELETE /user/{screenname}/linked-account/{linked_screenname}", func(w http.ResponseWriter, r *http.Request) {
+		deleteLinkedAccountHandler(w, r, userManager, linkedAccountManager)
 	})
 
 	return &Server{
@@ -1401,6 +1415,100 @@ func putICQProfileHandler(w http.ResponseWriter, r *http.Request, mgr ICQProfile
 		return
 	}
 
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func getLinkedAccountsHandler(w http.ResponseWriter, r *http.Request, userManager UserManager, linkedAccountManager LinkedAccountManager) {
+	screenName := r.PathValue("screenname")
+	user, err := userManager.User(r.Context(), state.NewIdentScreenName(screenName))
+	if err != nil || user == nil {
+		errorMsg(w, "user not found", http.StatusNotFound)
+		return
+	}
+	accounts, err := linkedAccountManager.LinkedAccounts(r.Context(), state.NewIdentScreenName(screenName))
+	if err != nil {
+		errorMsg(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	type response struct {
+		LinkedAccounts []string `json:"linked_accounts"`
+	}
+	out := response{LinkedAccounts: make([]string, 0, len(accounts))}
+	for _, a := range accounts {
+		out.LinkedAccounts = append(out.LinkedAccounts, a.String())
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(out); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func postLinkedAccountHandler(w http.ResponseWriter, r *http.Request, userManager UserManager, linkedAccountManager LinkedAccountManager) {
+	screenName := r.PathValue("screenname")
+	user, err := userManager.User(r.Context(), state.NewIdentScreenName(screenName))
+	if err != nil || user == nil {
+		errorMsg(w, "user not found", http.StatusNotFound)
+		return
+	}
+	var body struct {
+		LinkedScreenName string `json:"linked_screen_name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.LinkedScreenName == "" {
+		errorMsg(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if state.NewIdentScreenName(screenName) == state.NewIdentScreenName(body.LinkedScreenName) {
+		errorMsg(w, "cannot link an account to itself", http.StatusBadRequest)
+		return
+	}
+	linkedUser, err := userManager.User(r.Context(), state.NewIdentScreenName(body.LinkedScreenName))
+	if err != nil || linkedUser == nil {
+		errorMsg(w, "linked user not found", http.StatusNotFound)
+		return
+	}
+	err = linkedAccountManager.InsertLinkedAccount(r.Context(), state.NewIdentScreenName(screenName), state.NewIdentScreenName(body.LinkedScreenName))
+	if errors.Is(err, state.ErrLinkExists) {
+		errorMsg(w, "linked account already exists", http.StatusConflict)
+		return
+	}
+	if err != nil {
+		errorMsg(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusCreated)
+}
+
+func deleteAllLinkedAccountsHandler(w http.ResponseWriter, r *http.Request, userManager UserManager, linkedAccountManager LinkedAccountManager) {
+	screenName := r.PathValue("screenname")
+	user, err := userManager.User(r.Context(), state.NewIdentScreenName(screenName))
+	if err != nil || user == nil {
+		errorMsg(w, "user not found", http.StatusNotFound)
+		return
+	}
+	if err := linkedAccountManager.DeleteAllLinkedAccounts(r.Context(), state.NewIdentScreenName(screenName)); err != nil {
+		errorMsg(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func deleteLinkedAccountHandler(w http.ResponseWriter, r *http.Request, userManager UserManager, linkedAccountManager LinkedAccountManager) {
+	screenName := r.PathValue("screenname")
+	linkedScreenName := r.PathValue("linked_screenname")
+	user, err := userManager.User(r.Context(), state.NewIdentScreenName(screenName))
+	if err != nil || user == nil {
+		errorMsg(w, "user not found", http.StatusNotFound)
+		return
+	}
+	err = linkedAccountManager.DeleteLinkedAccount(r.Context(), state.NewIdentScreenName(screenName), state.NewIdentScreenName(linkedScreenName))
+	if errors.Is(err, state.ErrNoUser) {
+		errorMsg(w, "linked account not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		errorMsg(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 

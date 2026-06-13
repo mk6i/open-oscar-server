@@ -5048,3 +5048,584 @@ func TestRandItemID(t *testing.T) {
 		})
 	}
 }
+
+func TestGetLinkedAccountsHandler(t *testing.T) {
+	tt := []struct {
+		name       string
+		screenname string
+		statusCode int
+		want       string
+		mockParams mockParams
+	}{
+		{
+			name:       "user not found returns 404",
+			screenname: "nobody",
+			statusCode: http.StatusNotFound,
+			want:       `{"message":"user not found"}`,
+			mockParams: mockParams{
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{
+							screenName: state.NewIdentScreenName("nobody"),
+							result:     nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:       "returns empty linked accounts list",
+			screenname: "test1",
+			statusCode: http.StatusOK,
+			want:       `{"linked_accounts":[]}`,
+			mockParams: mockParams{
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{
+							screenName: state.NewIdentScreenName("test1"),
+							result:     &state.User{IdentScreenName: state.NewIdentScreenName("test1")},
+						},
+					},
+				},
+				linkedAccountManagerParams: linkedAccountManagerParams{
+					linkedAccountsParams: linkedAccountsParams{
+						{
+							screenName: state.NewIdentScreenName("test1"),
+							result:     []state.IdentScreenName{},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:       "returns linked accounts",
+			screenname: "test1",
+			statusCode: http.StatusOK,
+			want:       `{"linked_accounts":["test2","test3"]}`,
+			mockParams: mockParams{
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{
+							screenName: state.NewIdentScreenName("test1"),
+							result:     &state.User{IdentScreenName: state.NewIdentScreenName("test1")},
+						},
+					},
+				},
+				linkedAccountManagerParams: linkedAccountManagerParams{
+					linkedAccountsParams: linkedAccountsParams{
+						{
+							screenName: state.NewIdentScreenName("test1"),
+							result: []state.IdentScreenName{
+								state.NewIdentScreenName("test2"),
+								state.NewIdentScreenName("test3"),
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:       "linkedAccountManager error returns 500",
+			screenname: "test1",
+			statusCode: http.StatusInternalServerError,
+			want:       `{"message":"internal server error"}`,
+			mockParams: mockParams{
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{
+							screenName: state.NewIdentScreenName("test1"),
+							result:     &state.User{IdentScreenName: state.NewIdentScreenName("test1")},
+						},
+					},
+				},
+				linkedAccountManagerParams: linkedAccountManagerParams{
+					linkedAccountsParams: linkedAccountsParams{
+						{
+							screenName: state.NewIdentScreenName("test1"),
+							err:        io.EOF,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, "/user/"+tc.screenname+"/linked-account", nil)
+			request.SetPathValue("screenname", tc.screenname)
+			responseRecorder := httptest.NewRecorder()
+
+			userManager := newMockUserManager(t)
+			for _, params := range tc.mockParams.getUserParams {
+				userManager.EXPECT().
+					User(matchContext(), params.screenName).
+					Return(params.result, params.err)
+			}
+
+			linkedAccountManager := newMockLinkedAccountManager(t)
+			for _, params := range tc.mockParams.linkedAccountsParams {
+				linkedAccountManager.EXPECT().
+					LinkedAccounts(matchContext(), params.screenName).
+					Return(params.result, params.err)
+			}
+
+			getLinkedAccountsHandler(responseRecorder, request, userManager, linkedAccountManager)
+
+			assert.Equal(t, tc.statusCode, responseRecorder.Code)
+			assert.Equal(t, tc.want, strings.TrimSpace(responseRecorder.Body.String()))
+		})
+	}
+}
+
+func TestPostLinkedAccountHandler(t *testing.T) {
+	tt := []struct {
+		name       string
+		screenname string
+		body       string
+		statusCode int
+		want       string
+		mockParams mockParams
+	}{
+		{
+			name:       "primary user not found returns 404",
+			screenname: "nobody",
+			body:       `{"linked_screen_name":"test2"}`,
+			statusCode: http.StatusNotFound,
+			want:       `{"message":"user not found"}`,
+			mockParams: mockParams{
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{
+							screenName: state.NewIdentScreenName("nobody"),
+							result:     nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:       "invalid request body returns 400",
+			screenname: "test1",
+			body:       `not json`,
+			statusCode: http.StatusBadRequest,
+			want:       `{"message":"invalid request body"}`,
+			mockParams: mockParams{
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{
+							screenName: state.NewIdentScreenName("test1"),
+							result:     &state.User{IdentScreenName: state.NewIdentScreenName("test1")},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:       "missing linked_screen_name returns 400",
+			screenname: "test1",
+			body:       `{}`,
+			statusCode: http.StatusBadRequest,
+			want:       `{"message":"invalid request body"}`,
+			mockParams: mockParams{
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{
+							screenName: state.NewIdentScreenName("test1"),
+							result:     &state.User{IdentScreenName: state.NewIdentScreenName("test1")},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:       "self-link returns 400",
+			screenname: "test1",
+			body:       `{"linked_screen_name":"test1"}`,
+			statusCode: http.StatusBadRequest,
+			want:       `{"message":"cannot link an account to itself"}`,
+			mockParams: mockParams{
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{
+							screenName: state.NewIdentScreenName("test1"),
+							result:     &state.User{IdentScreenName: state.NewIdentScreenName("test1")},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:       "linked user not found returns 404",
+			screenname: "test1",
+			body:       `{"linked_screen_name":"nobody"}`,
+			statusCode: http.StatusNotFound,
+			want:       `{"message":"linked user not found"}`,
+			mockParams: mockParams{
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{
+							screenName: state.NewIdentScreenName("test1"),
+							result:     &state.User{IdentScreenName: state.NewIdentScreenName("test1")},
+						},
+						{
+							screenName: state.NewIdentScreenName("nobody"),
+							result:     nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:       "duplicate link returns 409",
+			screenname: "test1",
+			body:       `{"linked_screen_name":"test2"}`,
+			statusCode: http.StatusConflict,
+			want:       `{"message":"linked account already exists"}`,
+			mockParams: mockParams{
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{
+							screenName: state.NewIdentScreenName("test1"),
+							result:     &state.User{IdentScreenName: state.NewIdentScreenName("test1")},
+						},
+						{
+							screenName: state.NewIdentScreenName("test2"),
+							result:     &state.User{IdentScreenName: state.NewIdentScreenName("test2")},
+						},
+					},
+				},
+				linkedAccountManagerParams: linkedAccountManagerParams{
+					insertLinkedAccountParams: insertLinkedAccountParams{
+						{
+							screenName:       state.NewIdentScreenName("test1"),
+							linkedScreenName: state.NewIdentScreenName("test2"),
+							err:              state.ErrLinkExists,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:       "insert error returns 500",
+			screenname: "test1",
+			body:       `{"linked_screen_name":"test2"}`,
+			statusCode: http.StatusInternalServerError,
+			want:       `{"message":"internal server error"}`,
+			mockParams: mockParams{
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{
+							screenName: state.NewIdentScreenName("test1"),
+							result:     &state.User{IdentScreenName: state.NewIdentScreenName("test1")},
+						},
+						{
+							screenName: state.NewIdentScreenName("test2"),
+							result:     &state.User{IdentScreenName: state.NewIdentScreenName("test2")},
+						},
+					},
+				},
+				linkedAccountManagerParams: linkedAccountManagerParams{
+					insertLinkedAccountParams: insertLinkedAccountParams{
+						{
+							screenName:       state.NewIdentScreenName("test1"),
+							linkedScreenName: state.NewIdentScreenName("test2"),
+							err:              io.EOF,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:       "link created returns 201",
+			screenname: "test1",
+			body:       `{"linked_screen_name":"test2"}`,
+			statusCode: http.StatusCreated,
+			want:       ``,
+			mockParams: mockParams{
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{
+							screenName: state.NewIdentScreenName("test1"),
+							result:     &state.User{IdentScreenName: state.NewIdentScreenName("test1")},
+						},
+						{
+							screenName: state.NewIdentScreenName("test2"),
+							result:     &state.User{IdentScreenName: state.NewIdentScreenName("test2")},
+						},
+					},
+				},
+				linkedAccountManagerParams: linkedAccountManagerParams{
+					insertLinkedAccountParams: insertLinkedAccountParams{
+						{
+							screenName:       state.NewIdentScreenName("test1"),
+							linkedScreenName: state.NewIdentScreenName("test2"),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, "/user/"+tc.screenname+"/linked-account", strings.NewReader(tc.body))
+			request.SetPathValue("screenname", tc.screenname)
+			responseRecorder := httptest.NewRecorder()
+
+			userManager := newMockUserManager(t)
+			for _, params := range tc.mockParams.getUserParams {
+				userManager.EXPECT().
+					User(matchContext(), params.screenName).
+					Return(params.result, params.err)
+			}
+
+			linkedAccountManager := newMockLinkedAccountManager(t)
+			for _, params := range tc.mockParams.insertLinkedAccountParams {
+				linkedAccountManager.EXPECT().
+					InsertLinkedAccount(matchContext(), params.screenName, params.linkedScreenName).
+					Return(params.err)
+			}
+
+			postLinkedAccountHandler(responseRecorder, request, userManager, linkedAccountManager)
+
+			assert.Equal(t, tc.statusCode, responseRecorder.Code)
+			assert.Equal(t, tc.want, strings.TrimSpace(responseRecorder.Body.String()))
+		})
+	}
+}
+
+func TestDeleteAllLinkedAccountsHandler(t *testing.T) {
+	tt := []struct {
+		name       string
+		screenname string
+		statusCode int
+		want       string
+		mockParams mockParams
+	}{
+		{
+			name:       "user not found returns 404",
+			screenname: "nobody",
+			statusCode: http.StatusNotFound,
+			want:       `{"message":"user not found"}`,
+			mockParams: mockParams{
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{
+							screenName: state.NewIdentScreenName("nobody"),
+							result:     nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:       "delete error returns 500",
+			screenname: "test1",
+			statusCode: http.StatusInternalServerError,
+			want:       `{"message":"internal server error"}`,
+			mockParams: mockParams{
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{
+							screenName: state.NewIdentScreenName("test1"),
+							result:     &state.User{IdentScreenName: state.NewIdentScreenName("test1")},
+						},
+					},
+				},
+				linkedAccountManagerParams: linkedAccountManagerParams{
+					deleteAllLinkedAccountParams: deleteAllLinkedAccountParams{
+						{
+							screenName: state.NewIdentScreenName("test1"),
+							err:        io.EOF,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:       "all links deleted returns 204",
+			screenname: "test1",
+			statusCode: http.StatusNoContent,
+			want:       ``,
+			mockParams: mockParams{
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{
+							screenName: state.NewIdentScreenName("test1"),
+							result:     &state.User{IdentScreenName: state.NewIdentScreenName("test1")},
+						},
+					},
+				},
+				linkedAccountManagerParams: linkedAccountManagerParams{
+					deleteAllLinkedAccountParams: deleteAllLinkedAccountParams{
+						{
+							screenName: state.NewIdentScreenName("test1"),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodDelete, "/user/"+tc.screenname+"/linked-account", nil)
+			request.SetPathValue("screenname", tc.screenname)
+			responseRecorder := httptest.NewRecorder()
+
+			userManager := newMockUserManager(t)
+			for _, params := range tc.mockParams.getUserParams {
+				userManager.EXPECT().
+					User(matchContext(), params.screenName).
+					Return(params.result, params.err)
+			}
+
+			linkedAccountManager := newMockLinkedAccountManager(t)
+			for _, params := range tc.mockParams.deleteAllLinkedAccountParams {
+				linkedAccountManager.EXPECT().
+					DeleteAllLinkedAccounts(matchContext(), params.screenName).
+					Return(params.err)
+			}
+
+			deleteAllLinkedAccountsHandler(responseRecorder, request, userManager, linkedAccountManager)
+
+			assert.Equal(t, tc.statusCode, responseRecorder.Code)
+			assert.Equal(t, tc.want, strings.TrimSpace(responseRecorder.Body.String()))
+		})
+	}
+}
+
+func TestDeleteLinkedAccountHandler(t *testing.T) {
+	tt := []struct {
+		name             string
+		screenname       string
+		linkedScreenname string
+		statusCode       int
+		want             string
+		mockParams       mockParams
+	}{
+		{
+			name:             "primary user not found returns 404",
+			screenname:       "nobody",
+			linkedScreenname: "test2",
+			statusCode:       http.StatusNotFound,
+			want:             `{"message":"user not found"}`,
+			mockParams: mockParams{
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{
+							screenName: state.NewIdentScreenName("nobody"),
+							result:     nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:             "linked account not found returns 404",
+			screenname:       "test1",
+			linkedScreenname: "ghost",
+			statusCode:       http.StatusNotFound,
+			want:             `{"message":"linked account not found"}`,
+			mockParams: mockParams{
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{
+							screenName: state.NewIdentScreenName("test1"),
+							result:     &state.User{IdentScreenName: state.NewIdentScreenName("test1")},
+						},
+					},
+				},
+				linkedAccountManagerParams: linkedAccountManagerParams{
+					deleteLinkedAccountParams: deleteLinkedAccountParams{
+						{
+							screenName:       state.NewIdentScreenName("test1"),
+							linkedScreenName: state.NewIdentScreenName("ghost"),
+							err:              state.ErrNoUser,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:             "delete error returns 500",
+			screenname:       "test1",
+			linkedScreenname: "test2",
+			statusCode:       http.StatusInternalServerError,
+			want:             `{"message":"internal server error"}`,
+			mockParams: mockParams{
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{
+							screenName: state.NewIdentScreenName("test1"),
+							result:     &state.User{IdentScreenName: state.NewIdentScreenName("test1")},
+						},
+					},
+				},
+				linkedAccountManagerParams: linkedAccountManagerParams{
+					deleteLinkedAccountParams: deleteLinkedAccountParams{
+						{
+							screenName:       state.NewIdentScreenName("test1"),
+							linkedScreenName: state.NewIdentScreenName("test2"),
+							err:              io.EOF,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:             "link deleted returns 204",
+			screenname:       "test1",
+			linkedScreenname: "test2",
+			statusCode:       http.StatusNoContent,
+			want:             ``,
+			mockParams: mockParams{
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{
+							screenName: state.NewIdentScreenName("test1"),
+							result:     &state.User{IdentScreenName: state.NewIdentScreenName("test1")},
+						},
+					},
+				},
+				linkedAccountManagerParams: linkedAccountManagerParams{
+					deleteLinkedAccountParams: deleteLinkedAccountParams{
+						{
+							screenName:       state.NewIdentScreenName("test1"),
+							linkedScreenName: state.NewIdentScreenName("test2"),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodDelete, "/user/"+tc.screenname+"/linked-account/"+tc.linkedScreenname, nil)
+			request.SetPathValue("screenname", tc.screenname)
+			request.SetPathValue("linked_screenname", tc.linkedScreenname)
+			responseRecorder := httptest.NewRecorder()
+
+			userManager := newMockUserManager(t)
+			for _, params := range tc.mockParams.getUserParams {
+				userManager.EXPECT().
+					User(matchContext(), params.screenName).
+					Return(params.result, params.err)
+			}
+
+			linkedAccountManager := newMockLinkedAccountManager(t)
+			for _, params := range tc.mockParams.deleteLinkedAccountParams {
+				linkedAccountManager.EXPECT().
+					DeleteLinkedAccount(matchContext(), params.screenName, params.linkedScreenName).
+					Return(params.err)
+			}
+
+			deleteLinkedAccountHandler(responseRecorder, request, userManager, linkedAccountManager)
+
+			assert.Equal(t, tc.statusCode, responseRecorder.Code)
+			assert.Equal(t, tc.want, strings.TrimSpace(responseRecorder.Body.String()))
+		})
+	}
+}

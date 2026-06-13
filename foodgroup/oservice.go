@@ -28,6 +28,7 @@ type OServiceService struct {
 	chatMessageRelayer    ChatMessageRelayer
 	profileManager        ProfileManager
 	offlineMessageManager OfflineMessageManager
+	linkedAccountManager  LinkedAccountManager
 }
 
 // NewOServiceService creates a new instance of NewOServiceService.
@@ -44,6 +45,7 @@ func NewOServiceService(
 	chatMessageRelayer ChatMessageRelayer,
 	profileManager ProfileManager,
 	offlineMessageManager OfflineMessageManager,
+	linkedAccountManager LinkedAccountManager,
 ) *OServiceService {
 	return &OServiceService{
 		cookieIssuer:          cookieIssuer,
@@ -57,6 +59,7 @@ func NewOServiceService(
 		chatMessageRelayer:    chatMessageRelayer,
 		profileManager:        profileManager,
 		offlineMessageManager: offlineMessageManager,
+		linkedAccountManager:  linkedAccountManager,
 	}
 }
 
@@ -621,6 +624,31 @@ func (s OServiceService) ServiceRequest(ctx context.Context, service uint16, ins
 				ChatCookie: room.Cookie(),
 				ScreenName: instance.DisplayScreenName(),
 				SessionNum: instance.Num(),
+			})
+		case wire.OService:
+			// Linked Account signon request
+			_, ok := inBody.Bytes(0x0028)
+			if !ok {
+				return nil, errors.New("unknown OService request")
+			}
+			snBytes, ok := inBody.Bytes(0x01)
+			if !ok {
+				return nil, errors.New("new session request missing linked screenname TLV 0x01")
+			}
+			linkedScreenName := state.NewIdentScreenName(string(snBytes))
+			s.logger.Debug("Linked Account signon request", "primary", instance.IdentScreenName(), "linked", linkedScreenName.String())
+
+			linked, err := s.linkedAccountManager.CheckLinkedAccount(ctx, instance.IdentScreenName(), linkedScreenName)
+			if err != nil {
+				return nil, fmt.Errorf("unable to check linked account: %w", err)
+			}
+			if !linked {
+				return nil, errors.New("linked account session requested but accounts are not linked")
+			}
+			return fnIssueCookie(state.ServerCookie{
+				Service:       wire.BOS,
+				ScreenName:    state.DisplayScreenName(snBytes),
+				MultiConnFlag: uint8(instance.MultiConnFlag()),
 			})
 		default:
 			return nil, nil

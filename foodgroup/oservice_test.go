@@ -827,7 +827,7 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 			//
 			// send input SNAC
 			//
-			svc := NewOServiceService(config.Config{}, nil, slog.Default(), cookieIssuer, chatRoomManager, nil, nil, nil, wire.DefaultSNACRateLimits(), chatMessageRelayer, nil, nil)
+			svc := NewOServiceService(config.Config{}, nil, slog.Default(), cookieIssuer, chatRoomManager, nil, nil, nil, wire.DefaultSNACRateLimits(), chatMessageRelayer, nil, nil, nil)
 
 			outputSNAC, err := svc.ServiceRequest(context.Background(), tc.service, tc.instance, tc.inputSNAC.Frame,
 				tc.inputSNAC.Body.(wire.SNAC_0x01_0x04_OServiceServiceRequest), tc.listener)
@@ -838,6 +838,192 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 			//
 			// verify output
 			//
+			assert.Equal(t, tc.expectOutput, outputSNAC)
+		})
+	}
+}
+
+func TestOServiceService_ServiceRequest_LinkedAccountSignon(t *testing.T) {
+	primaryUser := state.NewIdentScreenName("PrimaryUser")
+	linkedUser := state.DisplayScreenName("LinkedUser")
+	linkedUserIdent := state.NewIdentScreenName(string(linkedUser))
+
+	// cookieDataFor returns the serialized ServerCookie bytes that fnIssueCookie
+	// will pass to cookieIssuer.Issue, with the given MultiConnFlag.
+	cookieDataFor := func(sn state.DisplayScreenName, flag wire.MultiConnFlag) []byte {
+		buf := &bytes.Buffer{}
+		assert.NoError(t, wire.MarshalBE(state.ServerCookie{
+			Service:       wire.BOS,
+			ScreenName:    sn,
+			MultiConnFlag: uint8(flag),
+		}, buf))
+		return buf.Bytes()
+	}
+
+	makeBody := func(includeSUID bool, screenName string) wire.SNAC_0x01_0x04_OServiceServiceRequest {
+		body := wire.SNAC_0x01_0x04_OServiceServiceRequest{
+			FoodGroup: wire.OService,
+		}
+		if includeSUID {
+			body.TLVList = append(body.TLVList,
+				wire.NewTLVBE(uint16(0x0028), []byte("some-uuid-bytes")))
+		}
+		if screenName != "" {
+			body.TLVList = append(body.TLVList,
+				wire.NewTLVBE(uint16(0x01), []byte(screenName)))
+		}
+		return body
+	}
+
+	cases := []struct {
+		name      string
+		instance  *state.SessionInstance
+		inputBody wire.SNAC_0x01_0x04_OServiceServiceRequest
+		// linked is what CheckLinkedAccount returns
+		linked   bool
+		checkErr error
+		// setupCookie is whether to expect cookie issuance
+		setupCookie     bool
+		expectOutput    wire.SNACMessage
+		wantErrContains string
+		wantErr         error
+	}{
+		{
+			name:        "linked account signon OK, returns BOS cookie with no MultiConnFlag",
+			inputBody:   makeBody(true, string(linkedUser)),
+			linked:      true,
+			setupCookie: true,
+			expectOutput: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.OService,
+					SubGroup:  wire.OServiceServiceResponse,
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x01_0x05_OServiceServiceResponse{
+					TLVRestBlock: wire.TLVRestBlock{
+						TLVList: wire.TLVList{
+							wire.NewTLVBE(wire.OServiceTLVTagsGroupID, wire.OService),
+							wire.NewTLVBE(wire.OServiceTLVTagsReconnectHere, "127.0.0.1:5190"),
+							wire.NewTLVBE(wire.OServiceTLVTagsLoginCookie, []byte("the-cookie")),
+							wire.NewTLVBE(wire.OServiceTLVTagsSSLState, uint8(0x00)),
+						},
+					},
+				},
+			},
+		},
+		{
+			name:        "primary has MultiConnFlagsRecentClient, linked account cookie inherits flag",
+			instance:    newTestInstance(state.DisplayScreenName(primaryUser.String()), sessOptMultiConnFlag(wire.MultiConnFlagsRecentClient)),
+			inputBody:   makeBody(true, string(linkedUser)),
+			linked:      true,
+			setupCookie: true,
+			expectOutput: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.OService,
+					SubGroup:  wire.OServiceServiceResponse,
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x01_0x05_OServiceServiceResponse{
+					TLVRestBlock: wire.TLVRestBlock{
+						TLVList: wire.TLVList{
+							wire.NewTLVBE(wire.OServiceTLVTagsGroupID, wire.OService),
+							wire.NewTLVBE(wire.OServiceTLVTagsReconnectHere, "127.0.0.1:5190"),
+							wire.NewTLVBE(wire.OServiceTLVTagsLoginCookie, []byte("the-cookie")),
+							wire.NewTLVBE(wire.OServiceTLVTagsSSLState, uint8(0x00)),
+						},
+					},
+				},
+			},
+		},
+		{
+			name:        "primary has MultiConnFlagsSingleClient, linked account cookie inherits flag",
+			instance:    newTestInstance(state.DisplayScreenName(primaryUser.String()), sessOptMultiConnFlag(wire.MultiConnFlagsSingleClient)),
+			inputBody:   makeBody(true, string(linkedUser)),
+			linked:      true,
+			setupCookie: true,
+			expectOutput: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.OService,
+					SubGroup:  wire.OServiceServiceResponse,
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x01_0x05_OServiceServiceResponse{
+					TLVRestBlock: wire.TLVRestBlock{
+						TLVList: wire.TLVList{
+							wire.NewTLVBE(wire.OServiceTLVTagsGroupID, wire.OService),
+							wire.NewTLVBE(wire.OServiceTLVTagsReconnectHere, "127.0.0.1:5190"),
+							wire.NewTLVBE(wire.OServiceTLVTagsLoginCookie, []byte("the-cookie")),
+							wire.NewTLVBE(wire.OServiceTLVTagsSSLState, uint8(0x00)),
+						},
+					},
+				},
+			},
+		},
+		{
+			name:            "missing SUID TLV 0x0028, returns error",
+			inputBody:       makeBody(false, string(linkedUser)),
+			wantErrContains: "unknown OService request",
+		},
+		{
+			name:            "missing screenname TLV 0x01, returns error",
+			inputBody:       makeBody(true, ""),
+			wantErrContains: "new session request missing linked screenname TLV 0x01",
+		},
+		{
+			name:            "accounts not linked, returns error",
+			inputBody:       makeBody(true, string(linkedUser)),
+			linked:          false,
+			wantErrContains: "linked account session requested but accounts are not linked",
+		},
+		{
+			name:      "CheckLinkedAccount returns error, error propagated",
+			inputBody: makeBody(true, string(linkedUser)),
+			checkErr:  io.EOF,
+			wantErr:   io.EOF,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			instance := tc.instance
+			if instance == nil {
+				instance = newTestInstance(state.DisplayScreenName(primaryUser.String()))
+			}
+
+			cookieIssuer := newMockCookieBaker(t)
+			if tc.setupCookie {
+				cookieIssuer.EXPECT().
+					Issue(cookieDataFor(linkedUser, instance.MultiConnFlag())).
+					Return([]byte("the-cookie"), nil)
+			}
+
+			linkedAccountManager := newMockLinkedAccountManager(t)
+			// Only set up CheckLinkedAccount if the request has both required TLVs
+			if tc.inputBody.HasTag(0x0028) {
+				if snBytes, ok := tc.inputBody.Bytes(0x01); ok && len(snBytes) > 0 {
+					linkedAccountManager.EXPECT().
+						CheckLinkedAccount(matchContext(), primaryUser, linkedUserIdent).
+						Return(tc.linked, tc.checkErr)
+				}
+			}
+
+			svc := NewOServiceService(config.Config{}, nil, slog.Default(), cookieIssuer, nil, nil, nil, nil,
+				wire.DefaultSNACRateLimits(), nil, nil, nil, linkedAccountManager)
+
+			listener := config.Listener{BOSAdvertisedHostPlain: "127.0.0.1:5190"}
+
+			outputSNAC, err := svc.ServiceRequest(context.Background(), wire.BOS, instance,
+				wire.SNACFrame{RequestID: 1234}, tc.inputBody, listener)
+
+			if tc.wantErrContains != "" {
+				assert.ErrorContains(t, err, tc.wantErrContains)
+				return
+			}
+			if tc.wantErr != nil {
+				assert.ErrorIs(t, err, tc.wantErr)
+				return
+			}
+			assert.NoError(t, err)
 			assert.Equal(t, tc.expectOutput, outputSNAC)
 		})
 	}
@@ -1822,7 +2008,7 @@ func TestOServiceService_HostOnline(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			svc := NewOServiceService(config.Config{}, nil, slog.Default(), nil, nil, nil, nil, nil, wire.DefaultSNACRateLimits(), nil, nil, nil)
+			svc := NewOServiceService(config.Config{}, nil, slog.Default(), nil, nil, nil, nil, nil, wire.DefaultSNACRateLimits(), nil, nil, nil, nil)
 			have := svc.HostOnline(tc.service)
 			assert.Equal(t, tc.expectOutput, have)
 		})
@@ -2855,7 +3041,7 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 					Return(params.err)
 			}
 
-			svc := NewOServiceService(tt.cfg, messageRelayer, slog.Default(), nil, chatRoomManager, nil, nil, nil, wire.DefaultSNACRateLimits(), chatMessageRelayer, profileManager, offlineMessageManager)
+			svc := NewOServiceService(tt.cfg, messageRelayer, slog.Default(), nil, chatRoomManager, nil, nil, nil, wire.DefaultSNACRateLimits(), chatMessageRelayer, profileManager, offlineMessageManager, nil)
 			svc.buddyBroadcaster = buddyUpdateBroadcaster
 			haveErr := svc.ClientOnline(context.Background(), tt.service, tt.bodyIn, tt.instance)
 			assert.ErrorIs(t, haveErr, tt.wantErr)
