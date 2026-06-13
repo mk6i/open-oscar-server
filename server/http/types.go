@@ -303,6 +303,18 @@ type messageBody struct {
 	Message string `json:"message"`
 }
 
+type feedbagGroupHandle struct {
+	GroupID   uint16 `json:"group_id"`
+	GroupName string `json:"group_name"`
+}
+
+func feedbagGroupFromItem(item wire.FeedbagItem) feedbagGroupHandle {
+	return feedbagGroupHandle{
+		GroupID:   item.GroupID,
+		GroupName: item.Name,
+	}
+}
+
 // Web API key management types
 
 type createWebAPIKeyRequest struct {

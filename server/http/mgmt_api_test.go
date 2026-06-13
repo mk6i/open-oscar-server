@@ -3172,6 +3172,320 @@ func TestFeedbagBuddyHandler_GET(t *testing.T) {
 	}
 }
 
+func TestFeedbagGroupHandler_PUT(t *testing.T) {
+	tt := []struct {
+		name           string
+		screenName     string
+		groupName      string
+		groupIDGen     func(n int) int
+		wantStatusCode int
+		wantResponse   string
+		mockParams     mockParams
+	}{
+		{
+			name:           "add group to empty feedbag",
+			screenName:     "userA",
+			groupName:      "Friends",
+			groupIDGen:     func(n int) int { return 5 },
+			wantStatusCode: http.StatusCreated,
+			wantResponse:   `{"group_id":5,"group_name":"Friends"}`,
+			mockParams: mockParams{
+				feedbagManagerParams: feedbagManagerParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("userA"),
+							result:     []wire.FeedbagItem{},
+							err:        nil,
+						},
+					},
+					feedbagUpsertParams: feedbagUpsertParams{
+						{
+							screenName: state.NewIdentScreenName("userA"),
+							items: []wire.FeedbagItem{
+								{
+									ClassID: wire.FeedbagClassIdGroup,
+									GroupID: 0,
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{5}),
+										},
+									},
+								},
+								{
+									ClassID: wire.FeedbagClassIdGroup,
+									Name:    "Friends",
+									GroupID: 5,
+								},
+							},
+							err: nil,
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("userA"),
+							msg: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagInsertItem,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
+									Items: []wire.FeedbagItem{
+										{
+											ClassID: wire.FeedbagClassIdGroup,
+											GroupID: 0,
+											TLVLBlock: wire.TLVLBlock{
+												TLVList: wire.TLVList{
+													wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{5}),
+												},
+											},
+										},
+										{
+											ClassID: wire.FeedbagClassIdGroup,
+											Name:    "Friends",
+											GroupID: 5,
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:           "add group to feedbag with existing root",
+			screenName:     "userA",
+			groupName:      "Coworkers",
+			groupIDGen:     func(n int) int { return 2 },
+			wantStatusCode: http.StatusCreated,
+			wantResponse:   `{"group_id":2,"group_name":"Coworkers"}`,
+			mockParams: mockParams{
+				feedbagManagerParams: feedbagManagerParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("userA"),
+							result: []wire.FeedbagItem{
+								{
+									ClassID: wire.FeedbagClassIdGroup,
+									GroupID: 0,
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1}),
+										},
+									},
+								},
+								{
+									ClassID: wire.FeedbagClassIdGroup,
+									Name:    "Buddies",
+									GroupID: 1,
+								},
+							},
+							err: nil,
+						},
+					},
+					feedbagUpsertParams: feedbagUpsertParams{
+						{
+							screenName: state.NewIdentScreenName("userA"),
+							items: []wire.FeedbagItem{
+								{
+									ClassID: wire.FeedbagClassIdGroup,
+									GroupID: 0,
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1, 2}),
+										},
+									},
+								},
+								{
+									ClassID: wire.FeedbagClassIdGroup,
+									Name:    "Coworkers",
+									GroupID: 2,
+								},
+							},
+							err: nil,
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("userA"),
+							msg: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagInsertItem,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
+									Items: []wire.FeedbagItem{
+										{
+											ClassID: wire.FeedbagClassIdGroup,
+											GroupID: 0,
+											TLVLBlock: wire.TLVLBlock{
+												TLVList: wire.TLVList{
+													wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1, 2}),
+												},
+											},
+										},
+										{
+											ClassID: wire.FeedbagClassIdGroup,
+											Name:    "Coworkers",
+											GroupID: 2,
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:           "group already exists",
+			screenName:     "userA",
+			groupName:      "Friends",
+			groupIDGen:     func(n int) int { return 99 },
+			wantStatusCode: http.StatusOK,
+			wantResponse:   `{"group_id":1,"group_name":"Friends"}`,
+			mockParams: mockParams{
+				feedbagManagerParams: feedbagManagerParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("userA"),
+							result: []wire.FeedbagItem{
+								{
+									ClassID: wire.FeedbagClassIdGroup,
+									GroupID: 0,
+								},
+								{
+									ClassID: wire.FeedbagClassIdGroup,
+									Name:    "Friends",
+									GroupID: 1,
+								},
+							},
+							err: nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:           "missing screen_name",
+			screenName:     "",
+			groupName:      "Friends",
+			groupIDGen:     func(n int) int { return 5 },
+			wantStatusCode: http.StatusBadRequest,
+			wantResponse:   `{"message":"screen_name is required"}`,
+		},
+		{
+			name:           "missing group_name",
+			screenName:     "userA",
+			groupName:      "",
+			groupIDGen:     func(n int) int { return 5 },
+			wantStatusCode: http.StatusBadRequest,
+			wantResponse:   `{"message":"group_name is required"}`,
+		},
+		{
+			name:           "error retrieving feedbag",
+			screenName:     "userA",
+			groupName:      "Friends",
+			groupIDGen:     func(n int) int { return 5 },
+			wantStatusCode: http.StatusInternalServerError,
+			wantResponse:   `{"message":"internal server error"}`,
+			mockParams: mockParams{
+				feedbagManagerParams: feedbagManagerParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("userA"),
+							result:     nil,
+							err:        errors.New("database error"),
+						},
+					},
+				},
+			},
+		},
+		{
+			name:           "error upserting feedbag",
+			screenName:     "userA",
+			groupName:      "Friends",
+			groupIDGen:     func(n int) int { return 5 },
+			wantStatusCode: http.StatusInternalServerError,
+			wantResponse:   `{"message":"internal server error"}`,
+			mockParams: mockParams{
+				feedbagManagerParams: feedbagManagerParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("userA"),
+							result:     []wire.FeedbagItem{},
+							err:        nil,
+						},
+					},
+					feedbagUpsertParams: feedbagUpsertParams{
+						{
+							screenName: state.NewIdentScreenName("userA"),
+							items: []wire.FeedbagItem{
+								{
+									ClassID: wire.FeedbagClassIdGroup,
+									GroupID: 0,
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{5}),
+										},
+									},
+								},
+								{
+									ClassID: wire.FeedbagClassIdGroup,
+									Name:    "Friends",
+									GroupID: 5,
+								},
+							},
+							err: errors.New("database error"),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPut, "/feedbag/"+tc.screenName+"/group/"+tc.groupName, nil)
+			if tc.screenName != "" {
+				request.SetPathValue("screen_name", tc.screenName)
+			}
+			if tc.groupName != "" {
+				request.SetPathValue("group_name", tc.groupName)
+			}
+			responseRecorder := httptest.NewRecorder()
+
+			feedbagManager := newMockFeedbagManager(t)
+			messageRelayer := newMockMessageRelayer(t)
+			for _, params := range tc.mockParams.feedbagParams {
+				feedbagManager.EXPECT().
+					Feedbag(matchContext(), params.screenName).
+					Return(params.result, params.err)
+			}
+			for _, params := range tc.mockParams.feedbagUpsertParams {
+				feedbagManager.EXPECT().
+					FeedbagUpsert(matchContext(), params.screenName, params.items).
+					Return(params.err)
+			}
+			for _, params := range tc.mockParams.relayToScreenNameParams {
+				messageRelayer.EXPECT().
+					RelayToScreenName(matchContext(), params.screenName, params.msg)
+			}
+
+			putFeedbagGroupHandler(responseRecorder, request, feedbagManager, messageRelayer, slog.Default(), tc.groupIDGen)
+
+			assert.Equal(t, tc.wantStatusCode, responseRecorder.Code)
+			assert.JSONEq(t, tc.wantResponse, responseRecorder.Body.String())
+		})
+	}
+}
+
 func TestFeedbagBuddyHandler_PUT(t *testing.T) {
 	tt := []struct {
 		name           string

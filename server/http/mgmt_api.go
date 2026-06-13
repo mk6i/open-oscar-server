@@ -174,6 +174,11 @@ func NewManagementAPI(bld config.Build, listener string, userManager UserManager
 		getFeedbagBuddyHandler(w, r, feedbagManager, logger)
 	})
 
+	// Handlers for '/feedbag/{screen_name}/group/{group_name}' route
+	mux.HandleFunc("PUT /feedbag/{screen_name}/group/{group_name}", func(w http.ResponseWriter, r *http.Request) {
+		putFeedbagGroupHandler(w, r, feedbagManager, messageRelayer, logger, rand.Intn)
+	})
+
 	// Handlers for '/feedbag/{screen_name}/group/{group_id}/buddy/{buddy_screen_name}' route
 	mux.HandleFunc("PUT /feedbag/{screen_name}/group/{group_id}/buddy/{buddy_screen_name}", func(w http.ResponseWriter, r *http.Request) {
 		putFeedbagBuddyHandler(w, r, buddyBroadcaster, feedbagManager, sessionRetriever, messageRelayer, logger, rand.Intn)
@@ -1602,9 +1607,8 @@ func getFeedbagBuddyHandler(w http.ResponseWriter, r *http.Request, feedbagManag
 		ItemID uint16 `json:"item_id"`
 	}
 	type groupItem struct {
-		GroupID   uint16      `json:"group_id"`
-		GroupName string      `json:"group_name"`
-		Buddies   []buddyItem `json:"buddies"`
+		feedbagGroupHandle
+		Buddies []buddyItem `json:"buddies"`
 	}
 
 	response := make([]groupItem, 0)
@@ -1617,9 +1621,8 @@ func getFeedbagBuddyHandler(w http.ResponseWriter, r *http.Request, feedbagManag
 				continue
 			}
 			group := groupItem{
-				GroupID:   item.GroupID,
-				GroupName: item.Name,
-				Buddies:   make([]buddyItem, 0, len(buddyMap[item.GroupID])),
+				feedbagGroupHandle: feedbagGroupFromItem(item),
+				Buddies:            make([]buddyItem, 0, len(buddyMap[item.GroupID])),
 			}
 			for _, buddy := range buddyMap[item.GroupID] {
 				group.Buddies = append(group.Buddies, buddyItem{
@@ -1632,6 +1635,77 @@ func getFeedbagBuddyHandler(w http.ResponseWriter, r *http.Request, feedbagManag
 	}
 
 	if err := json.NewEncoder(w).Encode(response); err != nil {
+		logger.Error("error encoding response", "err", err.Error())
+	}
+}
+
+// putFeedbagGroupHandler handles the PUT /feedbag/{screen_name}/group/{group_name} endpoint.
+func putFeedbagGroupHandler(w http.ResponseWriter, r *http.Request, feedbagManager FeedbagManager, messageRelayer MessageRelayer, logger *slog.Logger, intn func(n int) int) {
+	w.Header().Set("Content-Type", "application/json")
+
+	screenName := r.PathValue("screen_name")
+	if screenName == "" {
+		errorMsg(w, "screen_name is required", http.StatusBadRequest)
+		return
+	}
+
+	groupName := r.PathValue("group_name")
+	if groupName == "" {
+		errorMsg(w, "group_name is required", http.StatusBadRequest)
+		return
+	}
+
+	user := state.NewIdentScreenName(screenName)
+
+	items, err := feedbagManager.Feedbag(r.Context(), user)
+	if err != nil {
+		logger.Error("error retrieving feedbag", "err", err.Error())
+		errorMsg(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	var groupItem wire.FeedbagItem
+	var alreadyExist bool
+
+	for _, item := range items {
+		if item.ClassID == wire.FeedbagClassIdGroup && item.Name == groupName {
+			alreadyExist = true
+			groupItem = item
+			break
+		}
+	}
+
+	if !alreadyExist {
+		fb := state.NewFeedbagList(items, intn)
+		groupItem = fb.AddGroup(groupName)
+		pending := fb.PendingUpdates()
+
+		if len(pending) > 0 {
+			if err := feedbagManager.FeedbagUpsert(r.Context(), user, pending); err != nil {
+				logger.Error("error inserting feedbag item", "err", err.Error())
+				errorMsg(w, "internal server error", http.StatusInternalServerError)
+				return
+			}
+			messageRelayer.RelayToScreenName(r.Context(), user, wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagInsertItem,
+					RequestID: wire.ReqIDFromServer,
+				},
+				Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
+					Items: pending,
+				},
+			})
+		}
+	}
+
+	if alreadyExist {
+		w.WriteHeader(http.StatusOK)
+	} else {
+		w.WriteHeader(http.StatusCreated)
+	}
+
+	if err := json.NewEncoder(w).Encode(feedbagGroupFromItem(groupItem)); err != nil {
 		logger.Error("error encoding response", "err", err.Error())
 	}
 }
