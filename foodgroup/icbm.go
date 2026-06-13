@@ -169,6 +169,10 @@ func (s *ICBMService) ChannelMsgToHost(ctx context.Context, instance *state.Sess
 			// on macOS client v4.0.9.
 			continue
 		}
+		if tlv.Tag == wire.ICBMTLVStore {
+			// Strip the store message directive.
+			continue
+		}
 		if clientIM.ChannelID == wire.ICBMChannelRendezvous && tlv.Tag == wire.ICBMTLVData {
 			if tlv, err = addExternalIP(instance, tlv); err != nil {
 				return nil, fmt.Errorf("addExternalIP: %w", err)

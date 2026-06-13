@@ -288,6 +288,74 @@ func TestICBMService_ChannelMsgToHost(t *testing.T) {
 			expectOutput: nil,
 		},
 		{
+			name:     "strip store directive from message relayed to online recipient",
+			instance: newTestInstance("sender-screen-name", sessOptWarning(10)),
+			mockParams: mockParams{
+				relationshipFetcherParams: relationshipFetcherParams{
+					relationshipParams: relationshipParams{
+						{
+							me:   state.NewIdentScreenName("sender-screen-name"),
+							them: state.NewIdentScreenName("recipient-screen-name"),
+							result: state.Relationship{
+								User:          state.NewIdentScreenName("recipient-screen-name"),
+								BlocksYou:     false,
+								YouBlock:      false,
+								IsOnTheirList: false,
+								IsOnYourList:  false,
+							},
+						},
+					},
+				},
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams{
+						{
+							screenName: state.NewIdentScreenName("recipient-screen-name"),
+							result:     newTestInstance("recipient-screen-name", sessOptWarning(20), sessOptSignonComplete).Session(),
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameActiveOnlyParams: relayToScreenNameActiveOnlyParams{
+						{
+							screenName: state.NewIdentScreenName("recipient-screen-name"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.ICBM,
+									SubGroup:  wire.ICBMChannelMsgToClient,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
+									ChannelID:   wire.ICBMChannelIM,
+									TLVUserInfo: newTestInstance("sender-screen-name", sessOptWarning(10)).Session().TLVUserInfo(),
+									TLVRestBlock: wire.TLVRestBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.ICBMTLVData, []byte{1, 2, 3, 4}),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
+					ChannelID:  wire.ICBMChannelIM,
+					ScreenName: "recipient-screen-name",
+					TLVRestBlock: wire.TLVRestBlock{
+						TLVList: wire.TLVList{
+							wire.NewTLVBE(wire.ICBMTLVStore, []byte{}),
+							wire.NewTLVBE(wire.ICBMTLVData, []byte{1, 2, 3, 4}),
+						},
+					},
+				},
+			},
+			expectOutput: nil,
+		},
+		{
 			name:     "don't transmit message from sender to recipient because sender has blocked recipient",
 			instance: newTestInstance("sender-screen-name", sessOptWarning(10)),
 			mockParams: mockParams{
