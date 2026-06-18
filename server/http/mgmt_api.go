@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"golang.org/x/text/encoding/charmap"
 
 	"github.com/mk6i/open-oscar-server/config"
 	"github.com/mk6i/open-oscar-server/state"
@@ -654,7 +655,13 @@ func postInstantMessageHandler(w http.ResponseWriter, r *http.Request, messageRe
 		return
 	}
 
-	tlv, err := wire.ICBMFragmentList(input.Text)
+	cp1251Text, err := charmap.Windows1251.NewEncoder().Bytes([]byte(input.Text))
+	if err != nil {
+		logger.Error("error encoding message to Windows-1251 POST /instant-message", "err", err.Error())
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	tlv, err := wire.ICBMFragmentList(string(cp1251Text))
 	if err != nil {
 		logger.Error("error sending message POST /instant-message", "err", err.Error())
 		http.Error(w, "internal server error", http.StatusInternalServerError)
