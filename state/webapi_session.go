@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"log/slog"
+	"strconv"
 	"sync"
 	"time"
 
@@ -22,22 +23,25 @@ var (
 
 // WebAPISession represents an active Web AIM API session.
 type WebAPISession struct {
-	AimSID          string            // Unique session ID for web client
-	ScreenName      DisplayScreenName // User identity
-	OSCARSession    *SessionInstance  // Bridge to existing OSCAR session
-	Events          []string          // Subscribed event types
-	EventQueue      *types.EventQueue // Per-session event queue
-	DevID           string            // Developer ID that created this session
-	ClientName      string            // Client application name
-	ClientVersion   string            // Client application version
-	CreatedAt       time.Time         // SessionInstance creation time
-	LastAccessed    time.Time         // Last activity time
-	ExpiresAt       time.Time         // SessionInstance expiration time
-	FetchTimeout    int               // Long-polling timeout in milliseconds
-	TimeToNextFetch int               // Suggested delay before next fetch
-	RemoteAddr      string            // Client IP address
-	TempBuddies     map[string]bool   // Temporary buddies for this session only
-	logger          *slog.Logger      // Logger for debugging
+	AimSID             string                                         // Unique session ID for web client
+	ScreenName         DisplayScreenName                              // User identity
+	OSCARSession       *SessionInstance                               // Bridge to existing OSCAR session
+	Events             []string                                       // Subscribed event types
+	EventQueue         *types.EventQueue                              // Per-session event queue
+	DevID              string                                         // Developer ID that created this session
+	ClientName         string                                         // Client application name
+	ClientVersion      string                                         // Client application version
+	CreatedAt          time.Time                                      // SessionInstance creation time
+	LastAccessed       time.Time                                      // Last activity time
+	ExpiresAt          time.Time                                      // SessionInstance expiration time
+	FetchTimeout       int                                            // Long-polling timeout in milliseconds
+	TimeToNextFetch    int                                            // Suggested delay before next fetch
+	RemoteAddr         string                                         // Client IP address
+	TempBuddies        map[string]bool                                // Temporary buddies for this session only
+	BuddyListRefresher func(ctx context.Context) (interface{}, error) // Called on feedbag changes to push buddylist event
+	imLog              map[string][]WebAPIStoredIM
+	imLogMu            sync.Mutex
+	logger             *slog.Logger // Logger for debugging
 }
 
 // IsExpired checks if the session has expired.
@@ -103,6 +107,8 @@ func (s *WebAPISession) handleSNACMessage(msg wire.SNACMessage) {
 		s.handleICBMMessage(msg)
 	case wire.Buddy:
 		s.handleBuddyMessage(msg)
+	case wire.Feedbag:
+		s.handleFeedbagMessage(msg)
 	}
 }
 
@@ -142,15 +148,40 @@ func (s *WebAPISession) handleIncomingIM(msg wire.SNACMessage) {
 	// Check if it's an auto-response (channel 2)
 	autoResponse := body.ChannelID == 0x0002
 
+	msgID := strconv.FormatUint(body.Cookie, 10)
+	partner := body.ScreenName
+	nowSec := time.Now().Unix()
+	s.AddStoredIM(partner, partner, messageText, msgID, nowSec)
+
 	// Create IM event
 	imEvent := types.IMEvent{
-		From:      body.ScreenName,
+		Source: types.UserInfo{
+			AimID:     body.ScreenName,
+			DisplayID: body.ScreenName,
+			UserType:  "aim",
+			State:     "online",
+		},
 		Message:   messageText,
+		MsgID:     msgID,
 		Timestamp: float64(time.Now().Unix()),
 		AutoResp:  autoResponse,
 	}
 
 	s.EventQueue.Push(types.EventTypeIM, imEvent)
+
+	if s.IsSubscribedTo("conversation") {
+		s.EventQueue.Push(types.EventTypeConversation, types.ConversationEventData("update", []map[string]interface{}{
+			types.ConversationEntry(
+				body.ScreenName,
+				body.ScreenName,
+				messageText,
+				msgID,
+				body.ScreenName,
+				false,
+				1,
+			),
+		}))
+	}
 }
 
 // handleTypingNotification handles typing notifications.
@@ -196,9 +227,25 @@ func (s *WebAPISession) handleBuddyArrived(msg wire.SNACMessage) {
 		return
 	}
 
+	stateStr := "online"
+	// For BuddyArrived updates, infer presence state from the TLVUserInfo.
+	// Away and invisible transitions are typically broadcast using BuddyArrived
+	// with updated user flags/status bits, not BuddyDeparted.
+	if body.IsInvisible() {
+		stateStr = "offline"
+	} else if body.IsAway() {
+		stateStr = "away"
+	} else if mask, ok := body.Uint32BE(wire.OServiceUserInfoStatus); ok {
+		if mask&wire.OServiceUserStatusDND == wire.OServiceUserStatusDND {
+			stateStr = "dnd"
+		} else if mask&wire.OServiceUserStatusAway == wire.OServiceUserStatusAway {
+			stateStr = "away"
+		}
+	}
+
 	presenceEvent := types.PresenceEvent{
 		AimID:    body.ScreenName,
-		State:    "online",
+		State:    stateStr,
 		UserType: "aim",
 	}
 
@@ -223,6 +270,21 @@ func (s *WebAPISession) handleBuddyDeparted(msg wire.SNACMessage) {
 	}
 
 	s.EventQueue.Push(types.EventTypePresence, presenceEvent)
+}
+
+func (s *WebAPISession) handleFeedbagMessage(msg wire.SNACMessage) {
+	switch msg.Frame.SubGroup {
+	case wire.FeedbagInsertItem, wire.FeedbagUpdateItem, wire.FeedbagDeleteItem:
+		if s.BuddyListRefresher == nil {
+			return
+		}
+		groups, err := s.BuddyListRefresher(context.Background())
+		if err != nil {
+			s.logger.Error("failed to refresh buddy list after feedbag change", "err", err)
+			return
+		}
+		s.EventQueue.Push(types.EventTypeBuddyList, map[string]interface{}{"groups": groups})
+	}
 }
 
 // WebAPISessionManager manages Web API sessions with thread-safe operations.

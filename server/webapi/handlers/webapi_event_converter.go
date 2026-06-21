@@ -16,14 +16,21 @@ func ConvertEventForAMF3(event types.Event) map[string]interface{} {
 	case types.EventTypeIM:
 		if imEvent, ok := event.Data.(types.IMEvent); ok {
 			// Gromit expects 'source' as a user object and 'autoresponse' (lowercase)
-			result["eventData"] = map[string]interface{}{
+			eventData := map[string]interface{}{
 				"source": map[string]interface{}{
-					"aimId": imEvent.From,
+					"aimId":     imEvent.Source.AimID,
+					"displayId": imEvent.Source.DisplayID,
+					"userType":  imEvent.Source.UserType,
+					"state":     imEvent.Source.State,
 				},
 				"message":      imEvent.Message,
 				"timestamp":    imEvent.Timestamp, // Already float64
 				"autoresponse": imEvent.AutoResp,
 			}
+			if imEvent.MsgID != "" {
+				eventData["msgId"] = imEvent.MsgID
+			}
+			result["eventData"] = eventData
 		} else if dataMap, ok := event.Data.(map[string]interface{}); ok {
 			// Already a map, ensure timestamps are float64
 			if ts, exists := dataMap["timestamp"]; exists {
@@ -39,7 +46,7 @@ func ConvertEventForAMF3(event types.Event) map[string]interface{} {
 	case types.EventTypeOfflineIM:
 		if imEvent, ok := event.Data.(types.IMEvent); ok {
 			result["eventData"] = map[string]interface{}{
-				"aimId":     imEvent.From,
+				"aimId":     imEvent.Source.AimID,
 				"message":   imEvent.Message,
 				"timestamp": float64(imEvent.Timestamp), // Convert to float64
 			}
@@ -115,7 +122,7 @@ func ConvertEventForAMF3(event types.Event) map[string]interface{} {
 		if sentIMEvent, ok := event.Data.(types.SentIMEvent); ok {
 			// Gromit expects both 'source' (sender) and 'dest' (recipient) for sentIM
 			// The parseIM function needs source even for outgoing messages
-			result["eventData"] = map[string]interface{}{
+			eventData := map[string]interface{}{
 				"source": map[string]interface{}{
 					"aimId":     sentIMEvent.Sender.AimID,
 					"displayId": sentIMEvent.Sender.DisplayID,
@@ -132,6 +139,10 @@ func ConvertEventForAMF3(event types.Event) map[string]interface{} {
 				"timestamp":    sentIMEvent.Timestamp, // Already float64
 				"autoresponse": sentIMEvent.AutoResp,
 			}
+			if sentIMEvent.MsgID != "" {
+				eventData["msgId"] = sentIMEvent.MsgID
+			}
+			result["eventData"] = eventData
 		} else {
 			result["eventData"] = event.Data
 		}

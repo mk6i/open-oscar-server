@@ -22,6 +22,7 @@ const (
 	EventTypeOfflineIM    EventType = "offlineIM"
 	EventTypeSessionEnded EventType = "sessionEnded"
 	EventTypeRateLimit    EventType = "rateLimit"
+	EventTypePreference   EventType = "preference"
 )
 
 // Event represents an event to be delivered to a web client.
@@ -29,7 +30,7 @@ type Event struct {
 	Type      EventType   `json:"type"`
 	SeqNum    uint64      `json:"seqNum"`
 	Timestamp int64       `json:"timestamp"`
-	Data      interface{} `json:"data"`
+	Data      interface{} `json:"eventData"`
 }
 
 // PresenceEvent represents a presence change event.
@@ -45,10 +46,11 @@ type PresenceEvent struct {
 
 // IMEvent represents an instant message event.
 type IMEvent struct {
-	From      string  `json:"from"`
-	Message   string  `json:"message"`
-	Timestamp float64 `json:"timestamp"` // float64 for AMF3 encoding
-	AutoResp  bool    `json:"autoResponse,omitempty"`
+	Source    UserInfo `json:"source"`
+	Message   string   `json:"message"`
+	MsgID     string   `json:"msgId,omitempty"`
+	Timestamp float64  `json:"timestamp"` // float64 for AMF3 encoding
+	AutoResp  bool     `json:"autoresponse,omitempty"`
 }
 
 // SentIMEvent represents a sent instant message event.
@@ -56,6 +58,7 @@ type SentIMEvent struct {
 	Sender    UserInfo `json:"sender"` // Sender user info
 	Dest      UserInfo `json:"dest"`   // Destination user info
 	Message   string   `json:"message"`
+	MsgID     string   `json:"msgId,omitempty"`
 	Timestamp float64  `json:"timestamp"` // float64 for AMF3 encoding
 	AutoResp  bool     `json:"autoResponse,omitempty"`
 }

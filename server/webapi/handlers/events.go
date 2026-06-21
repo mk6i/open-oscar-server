@@ -86,11 +86,11 @@ func (h *EventsHandler) FetchEvents(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Get timeout parameter (in seconds, convert to milliseconds)
+	// Timeout is in milliseconds (per Web API spec and client behavior).
 	timeout := time.Duration(session.FetchTimeout) * time.Millisecond
 	if timeoutStr := r.URL.Query().Get("timeout"); timeoutStr != "" {
 		if val, err := strconv.Atoi(timeoutStr); err == nil && val > 0 {
-			timeout = time.Duration(val) * time.Second
+			timeout = time.Duration(val) * time.Millisecond
 		}
 	}
 

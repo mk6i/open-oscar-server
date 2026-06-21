@@ -1,12 +1,16 @@
 package state
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"slices"
 
 	"github.com/mk6i/open-oscar-server/wire"
 )
+
+// ErrGroupNotFound is returned when a feedbag group cannot be found.
+var ErrGroupNotFound = errors.New("group not found")
 
 // FeedbagList provides operations for manipulating a collection of feedbag
 // items. It supports lookups by class/name/group, item insertion with
@@ -138,20 +142,37 @@ func (f *FeedbagList) AddBuddy(groupName, screenName, alias, note string) (bool,
 
 // DeleteBuddy marks a buddy item for deletion in the given group (by name).
 // The parent group's order TLV is updated to remove the buddy.
+// Pass "*" as groupName to remove the buddy from all groups.
 func (f *FeedbagList) DeleteBuddy(groupName, buddyName string) error {
-	group := f.groupByName(groupName)
-	if group == nil {
-		return fmt.Errorf("group %q not found", groupName)
+	var groups []*wire.FeedbagItem
+
+	if groupName == "*" {
+		// delete from all groups
+		for _, item := range f.items {
+			if item.ClassID == wire.FeedbagClassIdGroup && item.GroupID != 0 {
+				groups = append(groups, item)
+			}
+		}
+	} else {
+		group := f.groupByName(groupName)
+		if group == nil {
+			return fmt.Errorf("%w: %q", ErrGroupNotFound, groupName)
+		}
+		groups = []*wire.FeedbagItem{group}
 	}
-	deleted, found := f.deleteItem(wire.FeedbagItem{
-		ClassID: wire.FeedbagClassIdBuddy,
-		GroupID: group.GroupID,
-		Name:    buddyName,
-	})
-	if found {
-		group.RemoveOrderMembers(deleted.ItemID)
-		f.trackUpdate(group)
+
+	for _, group := range groups {
+		deleted, found := f.deleteItem(wire.FeedbagItem{
+			ClassID: wire.FeedbagClassIdBuddy,
+			GroupID: group.GroupID,
+			Name:    buddyName,
+		})
+		if found {
+			group.RemoveOrderMembers(deleted.ItemID)
+			f.trackUpdate(group)
+		}
 	}
+
 	return nil
 }
 

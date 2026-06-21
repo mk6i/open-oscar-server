@@ -2,7 +2,6 @@ package webapi
 
 import (
 	"context"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/mk6i/open-oscar-server/config"
@@ -126,6 +125,18 @@ type FeedbagManager interface {
 	DeleteItem(ctx context.Context, screenName state.IdentScreenName, item wire.FeedbagItem) error
 }
 
+type FeedbagService interface {
+	DeleteItem(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x0A_FeedbagDeleteItem) (*wire.SNACMessage, error)
+	Query(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame) (wire.SNACMessage, error)
+	QueryIfModified(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x05_FeedbagQueryIfModified) (wire.SNACMessage, error)
+	RespondAuthorizeToHost(ctx context.Context, instance state.IdentScreenName, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost) error
+	RightsQuery(ctx context.Context, inFrame wire.SNACFrame) wire.SNACMessage
+	StartCluster(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x11_FeedbagStartCluster)
+	EndCluster(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame) error
+	UpsertItem(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, items []wire.FeedbagItem) (*wire.SNACMessage, error)
+	Use(ctx context.Context, instance *state.SessionInstance) error
+}
+
 // Phase 2: Additional interfaces for messaging and presence
 
 // MessageRelayer relays messages between users
@@ -150,26 +161,6 @@ type BuddyBroadcaster interface {
 type ProfileManager interface {
 	SetProfile(ctx context.Context, screenName state.IdentScreenName, profile state.UserProfile) error
 	Profile(ctx context.Context, screenName state.IdentScreenName) (state.UserProfile, error)
-}
-
-// UserManager defines methods for user authentication.
-type UserManager interface {
-	// AuthenticateUser verifies username and password
-	AuthenticateUser(ctx context.Context, username, password string) (*state.User, error)
-	// FindUserByScreenName finds a user by their screen name
-	FindUserByScreenName(ctx context.Context, screenName state.IdentScreenName) (*state.User, error)
-	// InsertUser creates a new user (for DISABLE_AUTH mode)
-	InsertUser(ctx context.Context, u state.User) error
-}
-
-// TokenStore manages authentication tokens.
-type TokenStore interface {
-	// StoreToken saves an authentication token for a user
-	StoreToken(ctx context.Context, token string, screenName state.IdentScreenName, expiresAt time.Time) error
-	// ValidateToken checks if a token is valid and returns the associated screen name
-	ValidateToken(ctx context.Context, token string) (state.IdentScreenName, error)
-	// DeleteToken removes a token
-	DeleteToken(ctx context.Context, token string) error
 }
 
 // Phase 3: Preference interfaces
@@ -208,4 +199,8 @@ type OSCARConfig interface {
 	GetSSLBOSAddress() (host string, port int)
 	IsSSLAvailable() bool
 	IsAuthDisabled() bool
+}
+
+type ChatSessionManager interface {
+	RemoveUserFromAllChats(user state.IdentScreenName)
 }

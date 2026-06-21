@@ -2,8 +2,12 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"math/rand"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/mk6i/open-oscar-server/state"
@@ -13,15 +17,15 @@ import (
 // BuddyListManager handles the conversion of OSCAR feedbag data
 // to WebAPI buddy list format for web clients.
 type BuddyListManager struct {
-	feedbagRetriever FeedbagRetriever
+	feedbagService   FeedbagService
 	sessionRetriever SessionRetriever
 	logger           *slog.Logger
 }
 
 // NewBuddyListManager creates a new instance of the buddy list manager.
-func NewBuddyListManager(feedbagRetriever FeedbagRetriever, sessionRetriever SessionRetriever, logger *slog.Logger) *BuddyListManager {
+func NewBuddyListManager(feedbagService FeedbagService, sessionRetriever SessionRetriever, logger *slog.Logger) *BuddyListManager {
 	return &BuddyListManager{
-		feedbagRetriever: feedbagRetriever,
+		feedbagService:   feedbagService,
 		sessionRetriever: sessionRetriever,
 		logger:           logger,
 	}
@@ -46,7 +50,7 @@ type WebAPIBuddyInfo struct {
 	IdleTime     int      `json:"idleTime,omitempty"` // Minutes idle
 	UserType     string   `json:"userType"`           // "aim", "icq", "admin"
 	Bot          bool     `json:"bot"`
-	Service      string   `json:"service,omitempty"` // "aim", "icq"
+	Service      string   `json:"service,omitempty"` // "AIM", "ICQ" (Web AIM client compares case-sensitively)
 	PresenceIcon string   `json:"presenceIcon,omitempty"`
 	BuddyIcon    string   `json:"buddyIcon,omitempty"`
 	Capabilities []string `json:"capabilities,omitempty"`
@@ -54,99 +58,112 @@ type WebAPIBuddyInfo struct {
 }
 
 // GetBuddyListForUser retrieves and converts the buddy list for a user.
-func (m *BuddyListManager) GetBuddyListForUser(ctx context.Context, screenName state.IdentScreenName) ([]WebAPIBuddyGroup, error) {
-	// Retrieve feedbag items
-	items, err := m.feedbagRetriever.RetrieveFeedbag(ctx, screenName)
+func (m *BuddyListManager) GetBuddyListForUser(ctx context.Context, sess *state.WebAPISession) ([]WebAPIBuddyGroup, error) {
+	frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
+	snac, err := m.feedbagService.Query(ctx, sess.OSCARSession, frame)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve feedbag: %w", err)
 	}
+	reply, ok := snac.Body.(wire.SNAC_0x13_0x06_FeedbagReply)
+	if !ok {
+		return nil, fmt.Errorf("failed to retrieve feedbag: unexpected reply type")
+	}
+	items := reply.Items
 
-	// Build group map
-	groupMap := make(map[uint16]string)
-	buddyGroupMap := make(map[uint16][]wire.FeedbagItem)
+	type buddy struct {
+		name  string
+		alias string
+	}
+	type group struct {
+		name    string
+		buddies map[uint16]buddy
+		order   []uint16
+	}
+	type feedbagBL struct {
+		order  []uint16
+		groups map[uint16]group
+	}
+	bl := feedbagBL{groups: make(map[uint16]group)}
 
 	for _, item := range items {
-		switch item.ClassID {
-		case wire.FeedbagClassIdGroup:
-			// Store group name
-			groupMap[item.ItemID] = item.Name
-			buddyGroupMap[item.ItemID] = []wire.FeedbagItem{}
-		case wire.FeedbagClassIdBuddy:
-			// Add buddy to its group
-			if _, exists := buddyGroupMap[item.GroupID]; !exists {
-				// Create implicit group if it doesn't exist
-				buddyGroupMap[item.GroupID] = []wire.FeedbagItem{}
-			}
-			buddyGroupMap[item.GroupID] = append(buddyGroupMap[item.GroupID], item)
+		if item.ClassID != wire.FeedbagClassIdGroup {
+			continue
 		}
+		if item.GroupID == 0 {
+			val, hasVal := item.Uint16SliceBE(wire.FeedbagAttributesOrder)
+			if hasVal {
+				bl.order = val
+			}
+			continue
+		}
+		name := item.Name
+		if name == "" {
+			name = "Buddies"
+		}
+		g := group{
+			name:    name,
+			buddies: make(map[uint16]buddy),
+		}
+		val, _ := item.Uint16SliceBE(wire.FeedbagAttributesOrder)
+		g.order = val
+		bl.groups[item.GroupID] = g
 	}
 
-	// Convert to WebAPI format
-	var groups []WebAPIBuddyGroup
-
-	// Add online group (virtual group for online buddies)
-	onlineGroup := WebAPIBuddyGroup{
-		Name:    "Online",
-		Buddies: []WebAPIBuddyInfo{},
+	for _, item := range items {
+		if item.ClassID != wire.FeedbagClassIdBuddy || item.Name == "" {
+			continue
+		}
+		if _, exists := bl.groups[item.GroupID]; !exists {
+			bl.groups[item.GroupID] = group{
+				name:    "Buddies",
+				buddies: make(map[uint16]buddy),
+				order:   nil,
+			}
+		}
+		b := buddy{name: item.Name}
+		if val, hasVal := item.String(wire.FeedbagAttributesAlias); hasVal {
+			b.alias = val
+		}
+		g := bl.groups[item.GroupID]
+		g.buddies[item.ItemID] = b
+		bl.groups[item.GroupID] = g
 	}
 
-	// Process each group
-	for groupID, buddyItems := range buddyGroupMap {
-		groupName := groupMap[groupID]
+	groupOrder := bl.order
+	if len(groupOrder) == 0 && len(bl.groups) > 0 {
+		groupOrder = make([]uint16, 0, len(bl.groups))
+		for gid := range bl.groups {
+			groupOrder = append(groupOrder, gid)
+		}
+		slices.Sort(groupOrder)
+	}
+
+	var out []WebAPIBuddyGroup
+	for _, gid := range groupOrder {
+		g, ok := bl.groups[gid]
+		if !ok {
+			continue
+		}
+		groupName := g.name
 		if groupName == "" {
-			groupName = "Buddies" // Default group name
+			groupName = "Buddies"
 		}
-
-		group := WebAPIBuddyGroup{
-			Name:    groupName,
-			Buddies: []WebAPIBuddyInfo{},
-		}
-
-		// Process buddies in this group
-		for _, buddyItem := range buddyItems {
-			buddyInfo := m.getBuddyInfo(buddyItem.Name)
-
-			// Add to online group if buddy is online
-			if buddyInfo.State == "online" || buddyInfo.State == "away" || buddyInfo.State == "idle" {
-				onlineGroup.Buddies = append(onlineGroup.Buddies, buddyInfo)
+		wg := WebAPIBuddyGroup{Name: groupName, Buddies: []WebAPIBuddyInfo{}}
+		for _, bid := range g.order {
+			b, ok := g.buddies[bid]
+			if !ok {
+				continue
 			}
-
-			group.Buddies = append(group.Buddies, buddyInfo)
-		}
-
-		// Only add group if it has buddies
-		if len(group.Buddies) > 0 {
-			groups = append(groups, group)
-		}
-	}
-
-	// Add online group at the beginning if it has buddies
-	if len(onlineGroup.Buddies) > 0 {
-		groups = append([]WebAPIBuddyGroup{onlineGroup}, groups...)
-	}
-
-	// Always add an "Offline" group at the end for offline buddies
-	offlineGroup := WebAPIBuddyGroup{
-		Name:    "Offline",
-		Buddies: []WebAPIBuddyInfo{},
-	}
-
-	// Collect all offline buddies
-	for _, group := range groups {
-		if group.Name != "Online" {
-			for _, buddy := range group.Buddies {
-				if buddy.State == "offline" {
-					offlineGroup.Buddies = append(offlineGroup.Buddies, buddy)
-				}
+			info := m.getBuddyInfo(b.name)
+			if b.alias != "" {
+				info.DisplayID = b.alias
 			}
+			wg.Buddies = append(wg.Buddies, info)
 		}
+		out = append(out, wg)
 	}
 
-	if len(offlineGroup.Buddies) > 0 {
-		groups = append(groups, offlineGroup)
-	}
-
-	return groups, nil
+	return out, nil
 }
 
 // getBuddyInfo retrieves the current presence information for a buddy.
@@ -158,7 +175,7 @@ func (m *BuddyListManager) getBuddyInfo(buddyName string) WebAPIBuddyInfo {
 		State:     "offline",
 		UserType:  "aim",
 		Bot:       false,
-		Service:   "aim",
+		Service:   "AIM",
 	}
 
 	// Check if buddy is online
@@ -201,12 +218,17 @@ func (m *BuddyListManager) GetPresenceForBuddy(screenName string) WebAPIBuddyInf
 }
 
 // GetOnlineBuddies returns a list of all online buddies for a user.
-func (m *BuddyListManager) GetOnlineBuddies(ctx context.Context, userScreenName state.IdentScreenName) ([]WebAPIBuddyInfo, error) {
-	// Get user's buddy list
-	items, err := m.feedbagRetriever.RetrieveFeedbag(ctx, userScreenName)
+func (m *BuddyListManager) GetOnlineBuddies(ctx context.Context, sess *state.WebAPISession) ([]WebAPIBuddyInfo, error) {
+	frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
+	snac, err := m.feedbagService.Query(ctx, sess.OSCARSession, frame)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve feedbag: %w", err)
 	}
+	reply, ok := snac.Body.(wire.SNAC_0x13_0x06_FeedbagReply)
+	if !ok {
+		return nil, fmt.Errorf("failed to retrieve feedbag: unexpected reply type")
+	}
+	items := reply.Items
 
 	var onlineBuddies []WebAPIBuddyInfo
 
@@ -221,6 +243,115 @@ func (m *BuddyListManager) GetOnlineBuddies(ctx context.Context, userScreenName 
 	}
 
 	return onlineBuddies, nil
+}
+
+// RemoveBuddyFromFeedbag removes a buddy from a group (or all groups if allGroups is true) using feedbag delete/update SNACs.
+func (m *BuddyListManager) RemoveBuddyFromFeedbag(ctx context.Context, sess *state.WebAPISession, buddyName, groupName string, allGroups bool) (resultCode string, err error) {
+	buddyName = strings.TrimSpace(buddyName)
+	if buddyName == "" {
+		return "error", fmt.Errorf("empty buddy")
+	}
+
+	if sess.OSCARSession == nil {
+		return "error", fmt.Errorf("no OSCAR session")
+	}
+
+	frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
+	snac, err := m.feedbagService.Query(ctx, sess.OSCARSession, frame)
+	if err != nil {
+		m.logger.ErrorContext(ctx, "remove buddy: feedbag query failed", "err", err.Error())
+		return "error", err
+	}
+	reply, ok := snac.Body.(wire.SNAC_0x13_0x06_FeedbagReply)
+	if !ok {
+		return "error", fmt.Errorf("unexpected feedbag reply type")
+	}
+
+	fl := state.NewFeedbagList(reply.Items, rand.Intn)
+
+	target := groupName
+	if allGroups {
+		target = "*"
+	}
+	if err := fl.DeleteBuddy(target, buddyName); err != nil {
+		if errors.Is(err, state.ErrGroupNotFound) {
+			return "notFound", nil
+		}
+		m.logger.ErrorContext(ctx, "remove buddy: DeleteBuddy failed", "err", err.Error())
+		return "error", err
+	}
+
+	if pending := fl.PendingDeletes(); len(pending) > 0 {
+		delFrame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagDeleteItem}
+		delBody := wire.SNAC_0x13_0x0A_FeedbagDeleteItem{Items: pending}
+		if _, err := m.feedbagService.DeleteItem(ctx, sess.OSCARSession, delFrame, delBody); err != nil {
+			m.logger.ErrorContext(ctx, "remove buddy: Feedbag DeleteItem failed", "err", err.Error())
+			return "error", err
+		}
+	} else {
+		return "notFound", nil
+	}
+
+	if pending := fl.PendingUpdates(); len(pending) > 0 {
+		upFrame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagUpdateItem}
+		if _, err := m.feedbagService.UpsertItem(ctx, sess.OSCARSession, upFrame, pending); err != nil {
+			m.logger.ErrorContext(ctx, "remove buddy: Feedbag UpsertItem failed", "err", err.Error())
+			return "error", err
+		}
+	}
+
+	return "success", nil
+}
+
+// RemoveGroupFromFeedbag deletes a buddy group and updates the root order (TOC DelGroup).
+func (m *BuddyListManager) RemoveGroupFromFeedbag(ctx context.Context, sess *state.WebAPISession, requestedGroup string) (resultCode string, err error) {
+	req := strings.TrimSpace(requestedGroup)
+	if req == "" {
+		return "error", fmt.Errorf("empty group")
+	}
+	if sess.OSCARSession == nil {
+		return "error", fmt.Errorf("no OSCAR session")
+	}
+
+	frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
+	snac, err := m.feedbagService.Query(ctx, sess.OSCARSession, frame)
+	if err != nil {
+		m.logger.ErrorContext(ctx, "remove group: feedbag query failed", "err", err.Error())
+		return "error", err
+	}
+	reply, ok := snac.Body.(wire.SNAC_0x13_0x06_FeedbagReply)
+	if !ok {
+		return "error", fmt.Errorf("unexpected feedbag reply type")
+	}
+
+	storedName, found := storedGroupNameForRequest(reply.Items, req)
+	if !found {
+		return "notFound", nil
+	}
+
+	fl := state.NewFeedbagList(reply.Items, rand.Intn)
+	fl.DeleteGroup(storedName)
+
+	if pending := fl.PendingDeletes(); len(pending) > 0 {
+		delFrame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagDeleteItem}
+		delBody := wire.SNAC_0x13_0x0A_FeedbagDeleteItem{Items: pending}
+		if _, err := m.feedbagService.DeleteItem(ctx, sess.OSCARSession, delFrame, delBody); err != nil {
+			m.logger.ErrorContext(ctx, "remove group: Feedbag DeleteItem failed", "err", err.Error())
+			return "error", err
+		}
+	} else {
+		return "notFound", nil
+	}
+
+	if pending := fl.PendingUpdates(); len(pending) > 0 {
+		upFrame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagUpdateItem}
+		if _, err := m.feedbagService.UpsertItem(ctx, sess.OSCARSession, upFrame, pending); err != nil {
+			m.logger.ErrorContext(ctx, "remove group: Feedbag UpsertItem failed", "err", err.Error())
+			return "error", err
+		}
+	}
+
+	return "success", nil
 }
 
 // FormatBuddyListEvent formats a buddy list for an event.

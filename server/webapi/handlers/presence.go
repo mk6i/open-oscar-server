@@ -53,6 +53,7 @@ type BuddyPresenceInfo struct {
 	State      string `json:"state" xml:"state"` // "online", "offline", "away", "idle"
 	StatusMsg  string `json:"statusMsg,omitempty" xml:"statusMsg,omitempty"`
 	AwayMsg    string `json:"awayMsg,omitempty" xml:"awayMsg,omitempty"`
+	ProfileMsg string `json:"profileMsg,omitempty" xml:"profileMsg,omitempty"`
 	IdleTime   int    `json:"idleTime,omitempty" xml:"idleTime,omitempty"`
 	OnlineTime int64  `json:"onlineTime,omitempty" xml:"onlineTime,omitempty"`
 	UserType   string `json:"userType" xml:"userType"` // "aim", "icq", "admin"
@@ -90,6 +91,7 @@ func (h *PresenceHandler) GetPresence(w http.ResponseWriter, r *http.Request) {
 
 	// Check if buddy list is requested
 	getBuddyList := r.URL.Query().Get("bl") == "1"
+	wantProfileMsg := r.URL.Query().Get("profileMsg") == "1"
 
 	// Get target users if specified
 	targetUsers := r.URL.Query().Get("t")
@@ -148,6 +150,11 @@ func (h *PresenceHandler) GetPresence(w http.ResponseWriter, r *http.Request) {
 				presenceList = append(presenceList, presence)
 			} else {
 				presence := h.getUserPresence(userScreenName)
+				if wantProfileMsg && presence.ProfileMsg == "" && h.SessionRetriever != nil {
+					if oscarSess := h.SessionRetriever.RetrieveSession(userScreenName); oscarSess != nil {
+						presence.ProfileMsg = oscarSess.Profile().ProfileText
+					}
+				}
 				presenceList = append(presenceList, presence)
 			}
 		}
@@ -359,9 +366,14 @@ func (h *PresenceHandler) SetState(w http.ResponseWriter, r *http.Request) {
 		h.Logger.WarnContext(ctx, "failed to touch session", "aimsid", aimsid, "error", err)
 	}
 
-	// Get the requested state
 	stateParam := r.URL.Query().Get("state")
+	if stateParam == "" {
+		stateParam = r.URL.Query().Get("view")
+	}
 	awayMsg := r.URL.Query().Get("awayMsg")
+	if awayMsg == "" {
+		awayMsg = r.URL.Query().Get("away")
+	}
 
 	// Get OSCAR session if available
 	oscarSession := session.OSCARSession
@@ -384,8 +396,10 @@ func (h *PresenceHandler) SetState(w http.ResponseWriter, r *http.Request) {
 	case "online":
 		statusBitmask = 0x0000 // Clear all status bits
 		oscarSession.SetAwayMessage("")
+		oscarSession.ClearUserInfoFlag(wire.OServiceUserFlagUnavailable)
 	case "away":
 		statusBitmask = wire.OServiceUserStatusAway
+		oscarSession.SetUserInfoFlag(wire.OServiceUserFlagUnavailable)
 		if awayMsg != "" {
 			oscarSession.SetAwayMessage(awayMsg)
 		}
@@ -427,6 +441,15 @@ func (h *PresenceHandler) SetState(w http.ResponseWriter, r *http.Request) {
 	response := BaseResponse{}
 	response.Response.StatusCode = 200
 	response.Response.StatusText = "OK"
+	response.Response.Data = map[string]interface{}{
+		"aimId":      session.ScreenName.String(),
+		"displayId":  session.ScreenName.String(),
+		"state":      stateParam,
+		"awayMsg":    awayMsg,
+		"statusMsg":  "",
+		"userType":   "aim",
+		"onlineTime": time.Now().Unix(),
+	}
 	SendResponse(w, r, response, h.Logger)
 }
 

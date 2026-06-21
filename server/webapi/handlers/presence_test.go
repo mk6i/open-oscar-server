@@ -36,6 +36,61 @@ func (m *MockFeedbagRetriever) RelationshipsByUser(ctx context.Context, screenNa
 	return nil, args.Error(1)
 }
 
+// MockFeedbagService is a mock implementation of FeedbagService
+type MockFeedbagService struct {
+	mock.Mock
+}
+
+func (m *MockFeedbagService) DeleteItem(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x0A_FeedbagDeleteItem) (*wire.SNACMessage, error) {
+	args := m.Called(ctx, instance, inFrame, inBody)
+	if msg := args.Get(0); msg != nil {
+		return msg.(*wire.SNACMessage), args.Error(1)
+	}
+	return nil, args.Error(1)
+}
+
+func (m *MockFeedbagService) Query(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame) (wire.SNACMessage, error) {
+	args := m.Called(ctx, instance, inFrame)
+	return args.Get(0).(wire.SNACMessage), args.Error(1)
+}
+
+func (m *MockFeedbagService) QueryIfModified(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x05_FeedbagQueryIfModified) (wire.SNACMessage, error) {
+	args := m.Called(ctx, instance, inFrame, inBody)
+	return args.Get(0).(wire.SNACMessage), args.Error(1)
+}
+
+func (m *MockFeedbagService) RespondAuthorizeToHost(ctx context.Context, instance state.IdentScreenName, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost) error {
+	args := m.Called(ctx, instance, inFrame, inBody)
+	return args.Error(0)
+}
+
+func (m *MockFeedbagService) RightsQuery(ctx context.Context, inFrame wire.SNACFrame) wire.SNACMessage {
+	args := m.Called(ctx, inFrame)
+	return args.Get(0).(wire.SNACMessage)
+}
+
+func (m *MockFeedbagService) StartCluster(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x11_FeedbagStartCluster) {
+	m.Called(ctx, instance, inFrame, inBody)
+}
+
+func (m *MockFeedbagService) EndCluster(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame) error {
+	args := m.Called(ctx, instance, inFrame)
+	return args.Error(0)
+}
+
+func (m *MockFeedbagService) UpsertItem(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, items []wire.FeedbagItem) (*wire.SNACMessage, error) {
+	args := m.Called(ctx, instance, inFrame, items)
+	if msg := args.Get(0); msg != nil {
+		return msg.(*wire.SNACMessage), args.Error(1)
+	}
+	return nil, args.Error(1)
+}
+
+func (m *MockFeedbagService) Use(ctx context.Context, instance *state.SessionInstance) error {
+	args := m.Called(ctx, instance)
+	return args.Error(0)
+}
+
 // MockBuddyBroadcaster is a mock implementation of BuddyBroadcaster
 type MockBuddyBroadcaster struct {
 	mock.Mock

@@ -149,28 +149,16 @@ func (m *AuthMiddleware) Authenticate(next http.Handler) http.Handler {
 		}
 
 		if apiKey == "" {
-			m.sendErrorResponse(w, http.StatusBadRequest, "required parameter 'k' is missing")
+			m.sendErrorResponse(w, r, http.StatusBadRequest, "required parameter 'k' is missing")
 			return
 		}
 
 		// Validate API key
 		ctx := r.Context()
-		key, err := m.Validator.GetAPIKeyByDevKey(ctx, apiKey)
-		if err != nil {
-			if err == state.ErrNoAPIKey {
-				m.Logger.DebugContext(ctx, "invalid API key attempted", "key", apiKey[:min(8, len(apiKey))]+"...")
-				m.sendErrorResponse(w, http.StatusForbidden, "invalid API key")
-				return
-			}
-			m.Logger.ErrorContext(ctx, "error validating API key", "err", err.Error())
-			m.sendErrorResponse(w, http.StatusInternalServerError, "internal server error")
-			return
-		}
-
-		// Check if key is active
-		if !key.IsActive {
-			m.Logger.DebugContext(ctx, "inactive API key used", "dev_id", key.DevID)
-			m.sendErrorResponse(w, http.StatusForbidden, "API key is inactive")
+		key := m.resolveAPIKey(ctx, apiKey)
+		if key == nil {
+			m.Logger.DebugContext(ctx, "invalid API key attempted", "key", apiKey[:min(8, len(apiKey))]+"...")
+			m.sendErrorResponse(w, r, http.StatusForbidden, "invalid API key")
 			return
 		}
 
@@ -190,7 +178,7 @@ func (m *AuthMiddleware) Authenticate(next http.Handler) http.Handler {
 				retryAfter = 1
 			}
 			w.Header().Set("Retry-After", fmt.Sprintf("%d", retryAfter))
-			m.sendErrorResponse(w, http.StatusTooManyRequests, "rate limit exceeded")
+			m.sendErrorResponse(w, r, http.StatusTooManyRequests, "rate limit exceeded")
 			return
 		}
 
@@ -299,7 +287,7 @@ func (m *AuthMiddleware) CapabilitiesMiddleware(requiredCapability string) func(
 					"required", requiredCapability,
 					"available", key.Capabilities,
 				)
-				m.sendErrorResponse(w, http.StatusForbidden, fmt.Sprintf("missing required capability: %s", requiredCapability))
+				m.sendErrorResponse(w, r, http.StatusForbidden, fmt.Sprintf("missing required capability: %s", requiredCapability))
 				return
 			}
 
@@ -342,19 +330,56 @@ func (m *AuthMiddleware) isOriginAllowed(origin string, allowedOrigins []string)
 	return false
 }
 
-// sendErrorResponse sends a JSON error response.
-func (m *AuthMiddleware) sendErrorResponse(w http.ResponseWriter, statusCode int, message string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-
+// sendErrorResponse sends a Web AIM API error envelope, with JSONP support when requested.
+func (m *AuthMiddleware) sendErrorResponse(w http.ResponseWriter, r *http.Request, statusCode int, message string) {
 	response := map[string]interface{}{
-		"error": message,
-		"code":  statusCode,
+		"response": map[string]interface{}{
+			"statusCode": statusCode,
+			"statusText": message,
+		},
 	}
 
-	if err := json.NewEncoder(w).Encode(response); err != nil {
+	body, err := json.Marshal(response)
+	if err != nil {
 		m.Logger.Error("failed to encode error response", "err", err.Error())
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
 	}
+
+	callback := jsonpCallback(r)
+	if callback != "" && isValidJSONPCallback(callback) {
+		w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+		_, _ = w.Write([]byte(callback))
+		_, _ = w.Write([]byte("("))
+		_, _ = w.Write(body)
+		_, _ = w.Write([]byte(");"))
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(body)
+}
+
+func jsonpCallback(r *http.Request) string {
+	if callback := r.URL.Query().Get("c"); callback != "" {
+		return callback
+	}
+	return r.URL.Query().Get("callback")
+}
+
+func isValidJSONPCallback(callback string) bool {
+	if len(callback) == 0 || len(callback) > 100 {
+		return false
+	}
+	for _, r := range callback {
+		if (r < 'a' || r > 'z') &&
+			(r < 'A' || r > 'Z') &&
+			(r < '0' || r > '9') &&
+			r != '_' && r != '$' && r != '.' {
+			return false
+		}
+	}
+	return true
 }
 
 // GetAPIKeyFromContext retrieves the API key from the request context.
@@ -397,12 +422,24 @@ func (m *AuthMiddleware) AuthenticateFlexible(next http.Handler) http.Handler {
 			return
 		}
 
-		// Priority 2: Check for AOL token auth
+		// Priority 2: AOL token auth — user identity is in the token; k is optional.
 		if token := r.URL.Query().Get("a"); token != "" {
-			// Token auth is present, but we still need to validate the API key
-			// The token provides user authentication while the API key identifies the app
-			m.Logger.DebugContext(ctx, "token authentication detected, will validate API key as well")
-			// Don't return here - continue to API key validation below
+			key := m.resolveAPIKey(ctx, r.URL.Query().Get("k"))
+			if key == nil {
+				devKey := r.URL.Query().Get("k")
+				key = &state.WebAPIKey{
+					DevID:     "aim_web",
+					DevKey:    devKey,
+					AppName:   "AIM Web Client",
+					IsActive:  true,
+					RateLimit: 600,
+				}
+			}
+			ctx = context.WithValue(ctx, ContextKeyAPIKey, key)
+			ctx = context.WithValue(ctx, ContextKeyDevID, key.DevID)
+			m.Logger.DebugContext(ctx, "using token authentication", "dev_id", key.DevID)
+			next.ServeHTTP(w, r.WithContext(ctx))
+			return
 		}
 
 		// Priority 3: Check for signed request auth
@@ -424,27 +461,14 @@ func (m *AuthMiddleware) AuthenticateFlexible(next http.Handler) http.Handler {
 		}
 
 		if apiKey == "" {
-			m.sendErrorResponse(w, http.StatusBadRequest, "authentication required: provide aimsid or k parameter")
+			m.sendErrorResponse(w, r, http.StatusBadRequest, "authentication required: provide aimsid or k parameter")
 			return
 		}
 
-		// Validate API key as before
-		key, err := m.Validator.GetAPIKeyByDevKey(ctx, apiKey)
-		if err != nil {
-			if err == state.ErrNoAPIKey {
-				m.Logger.DebugContext(ctx, "invalid API key attempted", "key", apiKey[:min(8, len(apiKey))]+"...")
-				m.sendErrorResponse(w, http.StatusForbidden, "invalid API key")
-				return
-			}
-			m.Logger.ErrorContext(ctx, "error validating API key", "err", err.Error())
-			m.sendErrorResponse(w, http.StatusInternalServerError, "internal server error")
-			return
-		}
-
-		// Check if key is active
-		if !key.IsActive {
-			m.Logger.DebugContext(ctx, "inactive API key used", "dev_id", key.DevID)
-			m.sendErrorResponse(w, http.StatusForbidden, "API key is inactive")
+		key := m.resolveAPIKey(ctx, apiKey)
+		if key == nil {
+			m.Logger.DebugContext(ctx, "invalid API key attempted", "key", apiKey[:min(8, len(apiKey))]+"...")
+			m.sendErrorResponse(w, r, http.StatusForbidden, "invalid API key")
 			return
 		}
 
@@ -464,7 +488,7 @@ func (m *AuthMiddleware) AuthenticateFlexible(next http.Handler) http.Handler {
 				retryAfter = 1
 			}
 			w.Header().Set("Retry-After", fmt.Sprintf("%d", retryAfter))
-			m.sendErrorResponse(w, http.StatusTooManyRequests, "rate limit exceeded")
+			m.sendErrorResponse(w, r, http.StatusTooManyRequests, "rate limit exceeded")
 			return
 		}
 
@@ -490,4 +514,15 @@ func (m *AuthMiddleware) AuthenticateFlexible(next http.Handler) http.Handler {
 		// Pass to next handler with enriched context
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+func (m *AuthMiddleware) resolveAPIKey(ctx context.Context, devKey string) *state.WebAPIKey {
+	if devKey == "" {
+		return nil
+	}
+	key, err := m.Validator.GetAPIKeyByDevKey(ctx, devKey)
+	if err != nil || key == nil || !key.IsActive {
+		return nil
+	}
+	return key
 }

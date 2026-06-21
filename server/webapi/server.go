@@ -22,10 +22,10 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 
 	// Create handlers
 	authHandler := &handlers.AuthHandler{
-		UserManager: handler.UserManager,
-		TokenStore:  handler.TokenStore,
+		AuthService: handler.AuthService,
+		CookieBaker: handler.CookieBaker,
+		UserManager: handler.TOCConfigStore,
 		Logger:      logger,
-		DisableAuth: handler.OSCARConfig.IsAuthDisabled(),
 	}
 
 	sessionHandler := &handlers.SessionHandler{
@@ -35,9 +35,14 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 		BuddyListService:    nil,
 		BuddyListRegistry:   handler.BuddyListRegistry,
 		BuddyBroadcaster:    handler.BuddyBroadcaster,
+		FeedbagRetriever:    handler.FeedbagRetriever,
+		OSCARBuddyService:   handler.BuddyService,
 		BuddyListManager:    handler.BuddyListManager.(*handlers.BuddyListManager),
-		TokenStore:          handler.TokenStore,
 		Logger:              logger,
+		OServiceService:     handler.OServiceService,
+		RecalcWarning:       handler.RecalcWarning,
+		LowerWarnLevel:      handler.LowerWarnLevel,
+		ChatSessionManager:  handler.ChatSessionManager,
 	}
 
 	eventsHandler := &handlers.EventsHandler{
@@ -55,11 +60,12 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 		Logger:              logger,
 	}
 
-	buddyListHandler := &handlers.BuddyListHandler{
-		SessionManager: sessionManager,
-		FeedbagManager: handler.FeedbagManager,
-		Logger:         logger,
-	}
+	buddyListHandler := handlers.NewBuddyListHandler(
+		sessionManager,
+		handler.BuddyListManager.(*handlers.BuddyListManager),
+		logger,
+		handler.FeedbagService,
+	)
 
 	// Phase 2: Messaging handler
 	messagingHandler := &handlers.MessagingHandler{
@@ -99,8 +105,9 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 	for _, l := range listeners {
 		mux := http.NewServeMux()
 
-		// Public endpoint (no auth required for hello world)
-		mux.HandleFunc("GET /", handler.GetHelloWorldHandler)
+		// Exact root only. Pattern "GET /" matches every GET path in Go 1.22+ (prefix /), which
+		// would steal /getAggregated and other lifestream URLs before stubs/404.
+		mux.HandleFunc("GET /{$}", handler.GetHelloWorldHandler)
 
 		// Authentication endpoint (public - no API key required for user login)
 		// Using pattern with explicit method for Go 1.22+ routing
@@ -121,6 +128,23 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 			w.WriteHeader(http.StatusNoContent)
 		})
 
+		mux.HandleFunc("GET /auth/getToken", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			authHandler.GetToken(w, r)
+		})
+
+		mux.HandleFunc("OPTIONS /auth/getToken", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			w.WriteHeader(http.StatusNoContent)
+		})
+
+		mux.HandleFunc("GET /_cqr/login/login.psp", authHandler.LoginPSP)
+		mux.HandleFunc("POST /_cqr/login/login.psp", authHandler.LoginPSP)
+
 		// Authenticated Web AIM API endpoints
 		// SessionInstance management - supports multiple auth methods (k, a, ts+sig_sha256)
 		mux.Handle("GET /aim/startSession", authMiddleware.AuthenticateFlexible(
@@ -140,7 +164,28 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 		// Add temp buddy - uses aimsid for auth
 		mux.Handle("GET /aim/addTempBuddy", authMiddleware.AuthenticateFlexible(
 			authMiddleware.CORSMiddleware(
-				http.HandlerFunc(buddyListHandler.AddTempBuddy))))
+				buddyListHandler.SessionMiddleware(buddyListHandler.AddTempBuddy))))
+
+		mux.Handle("GET /aim/removeTempBuddy", authMiddleware.AuthenticateFlexible(
+			authMiddleware.CORSMiddleware(
+				buddyListHandler.SessionMiddleware(buddyListHandler.RemoveTempBuddy))))
+
+		aimStub := &handlers.AimStubHandler{Logger: logger}
+		aimRoute := func(h http.HandlerFunc) http.Handler {
+			return authMiddleware.AuthenticateFlexible(
+				authMiddleware.CORSMiddleware(http.HandlerFunc(h)))
+		}
+		mux.Handle("GET /aim/setForwardDomain", aimRoute(aimStub.SetForwardDomain))
+		mux.Handle("GET /aim/getData", aimRoute(aimStub.GetData))
+
+		conversationStub := &handlers.ConversationStubHandler{
+			SessionManager: sessionManager,
+			Logger:         logger,
+		}
+		mux.Handle("GET /conversation/update", aimRoute(conversationStub.Update))
+		mux.Handle("GET /conversation/close", aimRoute(conversationStub.Close))
+		mux.Handle("GET /imlog/markRead", aimRoute(conversationStub.MarkRead))
+		mux.Handle("GET /imlog/fetchStoredIMs", aimRoute(conversationStub.FetchStoredIMs))
 
 		// Presence and buddy list
 		// GetPresence supports aimsid-based auth, so we use flexible auth
@@ -148,15 +193,17 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 			authMiddleware.CORSMiddleware(
 				http.HandlerFunc(presenceHandler.GetPresence))))
 
-		mux.Handle("GET /buddylist/addBuddy", authMiddleware.Authenticate(
-			authMiddleware.CORSMiddleware(
-				http.HandlerFunc(buddyListHandler.AddBuddy))))
+		mux.Handle("/buddylist/", authMiddleware.AuthenticateFlexible(
+			authMiddleware.CORSMiddleware(buddyListHandler)))
 
 		// Phase 2: Messaging endpoints
-		// sendIM supports aimsid-based auth, so we use flexible auth
-		mux.Handle("GET /im/sendIM", authMiddleware.AuthenticateFlexible(
+		// sendIM supports aimsid-based auth, so we use flexible auth.
+		// The Web AIM client POSTs the message body (non-IE browsers); IE uses GET.
+		sendIMHandler := authMiddleware.AuthenticateFlexible(
 			authMiddleware.CORSMiddleware(
-				http.HandlerFunc(messagingHandler.SendIM))))
+				http.HandlerFunc(messagingHandler.SendIM)))
+		mux.Handle("GET /im/sendIM", sendIMHandler)
+		mux.Handle("POST /im/sendIM", sendIMHandler)
 
 		mux.Handle("GET /im/setTyping", authMiddleware.Authenticate(
 			authMiddleware.CORSMiddleware(
@@ -214,6 +261,39 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 			authMiddleware.CORSMiddleware(
 				http.HandlerFunc(expressionsHandler.Get))))
 
+		// Web AIM calls lifestream/* on the API host (e.g. /lifestream/getUserDetails).
+		lifestreamStub := &handlers.UserInfoStubHandler{Logger: logger}
+		lifestreamRoute := func(h http.HandlerFunc) http.Handler {
+			return authMiddleware.AuthenticateFlexible(
+				authMiddleware.CORSMiddleware(http.HandlerFunc(h)))
+		}
+		mux.Handle("GET /lifestream/getUserDetails", lifestreamRoute(lifestreamStub.GetUserDetails))
+		mux.Handle("GET /lifestream/getLocationsFollowing", lifestreamRoute(lifestreamStub.GetLocationsFollowing))
+		for _, p := range []string{
+			"getAggregated",
+			"getNotifications",
+			"getSingle",
+			"getNotificationFilter",
+			"heyGetNotifications",
+			"heyMarkNotifications",
+			"deleteNotification",
+			"commonsFollow",
+			"commonsUnfollow",
+			"tdAddService",
+			"tdRemoveService",
+			"setUserPreference",
+			"getActivity",
+			"addComment",
+			"deleteComment",
+			"deleteActivity",
+			"addLike",
+			"deleteLike",
+			"setNotificationFilter",
+			"heyTakeAction",
+		} {
+			mux.Handle("GET /lifestream/"+p, lifestreamRoute(lifestreamStub.EmptyOK))
+		}
+
 		// Phase 5: Chat room endpoints
 		// All chat endpoints use aimsid for authentication
 		mux.Handle("GET /chat/createAndJoinChat", authMiddleware.AuthenticateFlexible(
@@ -232,9 +312,15 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 			authMiddleware.CORSMiddleware(
 				http.HandlerFunc(chatHandler.LeaveChat))))
 
+		// Unmatched paths (pattern "/" matches anything not covered by routes above).
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			logger.Debug("webapi 404", "method", r.Method, "path", r.URL.Path)
+			handlers.SendError(w, http.StatusNotFound, "not found")
+		})
+
 		servers = append(servers, &http.Server{
 			Addr:    l,
-			Handler: mux,
+			Handler: middleware.RequestLogger(logger, mux),
 		})
 	}
 

@@ -525,7 +525,7 @@ func WebAPI(deps Container) *webapi.Server {
 
 	// Create WebAPI buddy list manager (local to WebAPI)
 	buddyListManager := handlers.NewBuddyListManager(
-		feedbagAdapter,
+		deps.feedbagSvc,
 		deps.inMemorySessionManager,
 		logger,
 	)
@@ -621,9 +621,6 @@ func WebAPI(deps Container) *webapi.Server {
 		BuddyBroadcaster:      oscarBuddyBroadcaster,
 		ProfileManager:        deps.sqLiteUserStore,
 		RelationshipFetcher:   deps.sqLiteUserStore,
-		// Authentication support
-		UserManager: deps.sqLiteUserStore,
-		TokenStore:  deps.sqLiteUserStore.NewWebAPITokenStore(),
 		// Phase 3 additions
 		PreferenceManager: deps.sqLiteUserStore.NewWebPreferenceManager(),
 		PermitDenyManager: deps.sqLiteUserStore.NewWebPermitDenyManager(),
@@ -633,10 +630,14 @@ func WebAPI(deps Container) *webapi.Server {
 		// Phase 5 additions for buddy list and messaging
 		BuddyListManager: buddyListManager,
 		// Phase 5 additions for chat rooms
-		ChatManager: deps.sqLiteUserStore.NewWebAPIChatManager(logger, deps.webAPISessionManager),
+		ChatManager:        deps.sqLiteUserStore.NewWebAPIChatManager(logger, deps.webAPISessionManager),
+		ChatSessionManager: deps.chatSessionManager,
+		RecalcWarning:      deps.icbmSvc.RestoreWarningLevel,
+		LowerWarnLevel:     deps.icbmSvc.UpdateWarnLevel,
+		FeedbagService:     deps.feedbagSvc,
 	}
 	// Pass SQLiteUserStore as the API key validator (it implements middleware.APIKeyValidator)
-	return webapi.NewServer([]string{"0.0.0.0:9000"}, logger, handler, deps.sqLiteUserStore, deps.webAPISessionManager)
+	return webapi.NewServer([]string{"0.0.0.0:80"}, logger, handler, deps.sqLiteUserStore, deps.webAPISessionManager)
 }
 
 // ICQLegacy creates a legacy ICQ server for v2-v5 protocols.
