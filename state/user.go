@@ -19,8 +19,6 @@ var (
 	ErrNoUser = errors.New("user does not exist")
 	// ErrNoEmailAddress indicates that a user has not set an email address.
 	ErrNoEmailAddress = errors.New("user has no email address")
-	// ErrLinkExists indicates that a linked account relationship already exists.
-	ErrLinkExists = errors.New("linked account relationship already exists")
 )
 
 // IdentScreenName struct stores the normalized version of a user's screen name.

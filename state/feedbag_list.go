@@ -57,19 +57,6 @@ func (f *FeedbagList) AddGroup(name string) wire.FeedbagItem {
 		return *g
 	}
 
-	var root *wire.FeedbagItem
-	for _, item := range f.items {
-		if item.ClassID == wire.FeedbagClassIdGroup && item.GroupID == 0 {
-			root = item
-			break
-		}
-	}
-	if root == nil {
-		root = &wire.FeedbagItem{ClassID: wire.FeedbagClassIdGroup, GroupID: 0}
-		f.items = append(f.items, root)
-		f.trackUpdate(root)
-	}
-
 	group := &wire.FeedbagItem{
 		ClassID: wire.FeedbagClassIdGroup,
 		Name:    name,
@@ -77,6 +64,7 @@ func (f *FeedbagList) AddGroup(name string) wire.FeedbagItem {
 	}
 	f.items = append(f.items, group)
 
+	root := f.rootGroup()
 	root.AppendOrderMembers(group.GroupID)
 	f.trackUpdate(root)
 	f.trackUpdate(group)
@@ -208,6 +196,46 @@ func (f *FeedbagList) DeleteDeny(screenName string) {
 	})
 }
 
+// AddLinkedScreenName adds a linked screen name.
+func (f *FeedbagList) AddLinkedScreenName(screenName string) {
+	f.upsertItem(wire.FeedbagItem{
+		ClassID: wire.FeedbagClassIdAlInfo,
+		Name:    screenName,
+	})
+}
+
+// DeleteLinkedScreenName deletes a linked screen name.
+func (f *FeedbagList) DeleteLinkedScreenName(screenName string) {
+	_, deleted := f.deleteItem(wire.FeedbagItem{
+		ClassID: wire.FeedbagClassIdAlInfo,
+		Name:    screenName,
+	})
+
+	if deleted {
+		// touch the root group so that the client purges its local
+		// buddy list cache
+		f.trackUpdate(f.rootGroup())
+	}
+}
+
+// LinkedScreenNames returns all linked screen names in the feedbag.
+func (f *FeedbagList) LinkedScreenNames() []IdentScreenName {
+	var names []IdentScreenName
+	for _, item := range f.items {
+		if item.ClassID == wire.FeedbagClassIdAlInfo {
+			names = append(names, NewIdentScreenName(item.Name))
+		}
+	}
+	return names
+}
+
+// HasLinkedScreenName returns whether the feedbag has a linked screen name.
+func (f *FeedbagList) HasLinkedScreenName(screenName string) bool {
+	return slices.ContainsFunc(f.items, func(item *wire.FeedbagItem) bool {
+		return item.ClassID == wire.FeedbagClassIdAlInfo && item.Name == NewIdentScreenName(screenName).String()
+	})
+}
+
 // PendingUpdates returns items that were explicitly upserted via upsertItem
 // and items that were implicitly created or modified as side effects of other
 // operations (e.g., group order updates from upsertItem, root group updates
@@ -233,6 +261,23 @@ func (f *FeedbagList) PendingDeletes() []wire.FeedbagItem {
 	}
 	f.pendingDeletes = nil
 	return result
+}
+
+// rootGroup retrieves the root group, creating one if non-existent.
+func (f *FeedbagList) rootGroup() *wire.FeedbagItem {
+	var root *wire.FeedbagItem
+	for _, item := range f.items {
+		if item.ClassID == wire.FeedbagClassIdGroup && item.GroupID == 0 {
+			root = item
+			break
+		}
+	}
+	if root == nil {
+		root = &wire.FeedbagItem{ClassID: wire.FeedbagClassIdGroup, GroupID: 0}
+		f.items = append(f.items, root)
+		f.trackUpdate(root)
+	}
+	return root
 }
 
 // groupByName returns the group item with the given name, or nil if not found.
@@ -345,5 +390,6 @@ func (f *FeedbagList) genID() uint16 {
 func hasScreenName(classID uint16) bool {
 	return classID == wire.FeedbagClassIdBuddy ||
 		classID == wire.FeedbagClassIDPermit ||
+		classID == wire.FeedbagClassIdAlInfo ||
 		classID == wire.FeedbagClassIDDeny
 }

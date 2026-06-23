@@ -471,6 +471,31 @@ func TestFeedbagList_AddGroup(t *testing.T) {
 	})
 }
 
+func TestFeedbagList_SetMode(t *testing.T) {
+	t.Run("upserts pdinfo item with mode TLV", func(t *testing.T) {
+		fl := NewFeedbagList(nil, func(n int) int { return 0 })
+		fl.SetMode(2)
+		upserts := fl.PendingUpdates()
+		assert.Len(t, upserts, 1)
+		assert.Equal(t, wire.FeedbagClassIdPdinfo, upserts[0].ClassID)
+		mode, ok := upserts[0].Uint8(wire.FeedbagAttributesPdMode)
+		assert.True(t, ok)
+		assert.Equal(t, uint8(2), mode)
+	})
+
+	t.Run("second SetMode updates existing item in place", func(t *testing.T) {
+		fl := NewFeedbagList(nil, func(n int) int { return 0 })
+		fl.SetMode(1)
+		_ = fl.PendingUpdates()
+		fl.SetMode(3)
+		upserts := fl.PendingUpdates()
+		assert.Len(t, upserts, 1)
+		mode, ok := upserts[0].Uint8(wire.FeedbagAttributesPdMode)
+		assert.True(t, ok)
+		assert.Equal(t, uint8(3), mode)
+	})
+}
+
 func TestFeedbagList_DeleteGroup(t *testing.T) {
 	t.Run("updates root group order", func(t *testing.T) {
 		fl := NewFeedbagList([]wire.FeedbagItem{
@@ -528,6 +553,13 @@ func TestFeedbagList_DeleteGroup(t *testing.T) {
 		order, ok := upserts[0].Uint16SliceBE(wire.FeedbagAttributesOrder)
 		assert.True(t, ok)
 		assert.Equal(t, []uint16{1, 3}, order)
+	})
+
+	t.Run("deleting non-existent group is a no-op", func(t *testing.T) {
+		fl := NewFeedbagList(nil, nil)
+		fl.DeleteGroup("Nonexistent")
+		assert.Empty(t, fl.PendingDeletes())
+		assert.Nil(t, fl.PendingUpdates())
 	})
 }
 
@@ -630,6 +662,46 @@ func TestFeedbagList_AddBuddy(t *testing.T) {
 		assert.Len(t, deletes, 1)
 		assert.Equal(t, "alice", deletes[0].Name)
 	})
+
+	t.Run("alias is stored as TLV attribute", func(t *testing.T) {
+		fl := NewFeedbagList([]wire.FeedbagItem{
+			{Name: "Buddies", ClassID: wire.FeedbagClassIdGroup, GroupID: 1},
+		}, func(n int) int { return 1 })
+		_, err := fl.AddBuddy("Buddies", "alice", "Al", "")
+		assert.NoError(t, err)
+		upserts := fl.PendingUpdates()
+		var buddy *wire.FeedbagItem
+		for i := range upserts {
+			if upserts[i].ClassID == wire.FeedbagClassIdBuddy {
+				buddy = &upserts[i]
+				break
+			}
+		}
+		assert.NotNil(t, buddy)
+		alias, ok := buddy.Bytes(wire.FeedbagAttributesAlias)
+		assert.True(t, ok)
+		assert.Equal(t, []byte("Al"), alias)
+	})
+
+	t.Run("note is stored as TLV attribute", func(t *testing.T) {
+		fl := NewFeedbagList([]wire.FeedbagItem{
+			{Name: "Buddies", ClassID: wire.FeedbagClassIdGroup, GroupID: 1},
+		}, func(n int) int { return 1 })
+		_, err := fl.AddBuddy("Buddies", "alice", "", "call first")
+		assert.NoError(t, err)
+		upserts := fl.PendingUpdates()
+		var buddy *wire.FeedbagItem
+		for i := range upserts {
+			if upserts[i].ClassID == wire.FeedbagClassIdBuddy {
+				buddy = &upserts[i]
+				break
+			}
+		}
+		assert.NotNil(t, buddy)
+		note, ok := buddy.Bytes(wire.FeedbagAttributesNote)
+		assert.True(t, ok)
+		assert.Equal(t, []byte("call first"), note)
+	})
 }
 
 func TestFeedbagList_DeleteBuddy(t *testing.T) {
@@ -663,6 +735,50 @@ func TestFeedbagList_DeleteBuddy(t *testing.T) {
 		order, ok := upserts[0].Uint16SliceBE(wire.FeedbagAttributesOrder)
 		assert.True(t, ok)
 		assert.Equal(t, []uint16{10, 30}, order)
+	})
+
+	t.Run("wildcard removes buddy from all groups", func(t *testing.T) {
+		fl := NewFeedbagList([]wire.FeedbagItem{
+			{
+				Name:    "Buddies",
+				ClassID: wire.FeedbagClassIdGroup,
+				GroupID: 1,
+				TLVLBlock: wire.TLVLBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{10, 20}),
+					},
+				},
+			},
+			{
+				Name:    "Coworkers",
+				ClassID: wire.FeedbagClassIdGroup,
+				GroupID: 2,
+				TLVLBlock: wire.TLVLBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{30, 40}),
+					},
+				},
+			},
+			{Name: "alice", ClassID: wire.FeedbagClassIdBuddy, GroupID: 1, ItemID: 10},
+			{Name: "bob", ClassID: wire.FeedbagClassIdBuddy, GroupID: 1, ItemID: 20},
+			{Name: "alice", ClassID: wire.FeedbagClassIdBuddy, GroupID: 2, ItemID: 30},
+			{Name: "charlie", ClassID: wire.FeedbagClassIdBuddy, GroupID: 2, ItemID: 40},
+		}, nil)
+
+		err := fl.DeleteBuddy("*", "alice")
+		assert.NoError(t, err)
+
+		deletes := fl.PendingDeletes()
+		assert.Len(t, deletes, 2)
+
+		upserts := fl.PendingUpdates()
+		assert.Len(t, upserts, 2)
+		order1, ok := upserts[0].Uint16SliceBE(wire.FeedbagAttributesOrder)
+		assert.True(t, ok)
+		assert.Equal(t, []uint16{20}, order1)
+		order2, ok := upserts[1].Uint16SliceBE(wire.FeedbagAttributesOrder)
+		assert.True(t, ok)
+		assert.Equal(t, []uint16{40}, order2)
 	})
 
 	t.Run("removes only buddy in specified group when same screen name in two groups", func(t *testing.T) {
@@ -771,5 +887,215 @@ func TestFeedbagList_PendingUpdates_upsertsOnly(t *testing.T) {
 
 		upserts := fl.PendingUpdates()
 		assert.Len(t, upserts, 2)
+	})
+}
+
+func TestFeedbagList_PermitUser(t *testing.T) {
+	t.Run("new permit entry is added", func(t *testing.T) {
+		fl := NewFeedbagList(nil, func(n int) int { return 0 })
+		fl.PermitUser("alice")
+		upserts := fl.PendingUpdates()
+		assert.Len(t, upserts, 1)
+		assert.Equal(t, wire.FeedbagClassIDPermit, upserts[0].ClassID)
+		assert.Equal(t, "alice", upserts[0].Name)
+	})
+
+	t.Run("duplicate permit is not re-added", func(t *testing.T) {
+		fl := NewFeedbagList([]wire.FeedbagItem{
+			{ClassID: wire.FeedbagClassIDPermit, Name: "alice", ItemID: 1},
+		}, nil)
+		fl.PermitUser("alice")
+		assert.Nil(t, fl.PendingUpdates())
+	})
+
+	t.Run("name is normalized", func(t *testing.T) {
+		fl := NewFeedbagList(nil, func(n int) int { return 0 })
+		fl.PermitUser("Alice")
+		upserts := fl.PendingUpdates()
+		assert.Len(t, upserts, 1)
+		assert.Equal(t, "alice", upserts[0].Name)
+	})
+}
+
+func TestFeedbagList_DenyUser(t *testing.T) {
+	t.Run("new deny entry is added", func(t *testing.T) {
+		fl := NewFeedbagList(nil, func(n int) int { return 0 })
+		fl.DenyUser("alice")
+		upserts := fl.PendingUpdates()
+		assert.Len(t, upserts, 1)
+		assert.Equal(t, wire.FeedbagClassIDDeny, upserts[0].ClassID)
+		assert.Equal(t, "alice", upserts[0].Name)
+	})
+
+	t.Run("duplicate deny is not re-added", func(t *testing.T) {
+		fl := NewFeedbagList([]wire.FeedbagItem{
+			{ClassID: wire.FeedbagClassIDDeny, Name: "alice", ItemID: 1},
+		}, nil)
+		fl.DenyUser("alice")
+		assert.Nil(t, fl.PendingUpdates())
+	})
+
+	t.Run("name is normalized", func(t *testing.T) {
+		fl := NewFeedbagList(nil, func(n int) int { return 0 })
+		fl.DenyUser("Alice")
+		upserts := fl.PendingUpdates()
+		assert.Len(t, upserts, 1)
+		assert.Equal(t, "alice", upserts[0].Name)
+	})
+}
+
+func TestFeedbagList_DeletePermit(t *testing.T) {
+	t.Run("existing permit is deleted", func(t *testing.T) {
+		item := wire.FeedbagItem{ClassID: wire.FeedbagClassIDPermit, Name: "alice", ItemID: 1}
+		fl := NewFeedbagList([]wire.FeedbagItem{item}, nil)
+		fl.DeletePermit("alice")
+		deletes := fl.PendingDeletes()
+		assert.Len(t, deletes, 1)
+		assert.Equal(t, item, deletes[0])
+	})
+
+	t.Run("deleting non-existent permit is a no-op", func(t *testing.T) {
+		fl := NewFeedbagList(nil, nil)
+		fl.DeletePermit("alice")
+		assert.Empty(t, fl.PendingDeletes())
+	})
+
+	t.Run("name comparison is case-insensitive", func(t *testing.T) {
+		item := wire.FeedbagItem{ClassID: wire.FeedbagClassIDPermit, Name: "alice", ItemID: 1}
+		fl := NewFeedbagList([]wire.FeedbagItem{item}, nil)
+		fl.DeletePermit("Alice")
+		assert.Len(t, fl.PendingDeletes(), 1)
+	})
+}
+
+func TestFeedbagList_DeleteDeny(t *testing.T) {
+	t.Run("existing deny is deleted", func(t *testing.T) {
+		item := wire.FeedbagItem{ClassID: wire.FeedbagClassIDDeny, Name: "alice", ItemID: 1}
+		fl := NewFeedbagList([]wire.FeedbagItem{item}, nil)
+		fl.DeleteDeny("alice")
+		deletes := fl.PendingDeletes()
+		assert.Len(t, deletes, 1)
+		assert.Equal(t, item, deletes[0])
+	})
+
+	t.Run("deleting non-existent deny is a no-op", func(t *testing.T) {
+		fl := NewFeedbagList(nil, nil)
+		fl.DeleteDeny("alice")
+		assert.Empty(t, fl.PendingDeletes())
+	})
+
+	t.Run("name comparison is case-insensitive", func(t *testing.T) {
+		item := wire.FeedbagItem{ClassID: wire.FeedbagClassIDDeny, Name: "alice", ItemID: 1}
+		fl := NewFeedbagList([]wire.FeedbagItem{item}, nil)
+		fl.DeleteDeny("Alice")
+		assert.Len(t, fl.PendingDeletes(), 1)
+	})
+}
+
+func TestFeedbagList_AddLinkedScreenName(t *testing.T) {
+	t.Run("new linked screen name is added", func(t *testing.T) {
+		fl := NewFeedbagList(nil, func(n int) int { return 0 })
+		fl.AddLinkedScreenName("alice")
+		upserts := fl.PendingUpdates()
+		assert.Len(t, upserts, 1)
+		assert.Equal(t, wire.FeedbagClassIdAlInfo, upserts[0].ClassID)
+		assert.Equal(t, "alice", upserts[0].Name)
+	})
+
+	t.Run("duplicate linked screen name is not re-added", func(t *testing.T) {
+		fl := NewFeedbagList([]wire.FeedbagItem{
+			{ClassID: wire.FeedbagClassIdAlInfo, Name: "alice", ItemID: 1},
+		}, nil)
+		fl.AddLinkedScreenName("alice")
+		assert.Nil(t, fl.PendingUpdates())
+	})
+
+	t.Run("name is normalized", func(t *testing.T) {
+		fl := NewFeedbagList(nil, func(n int) int { return 0 })
+		fl.AddLinkedScreenName("Alice")
+		upserts := fl.PendingUpdates()
+		assert.Len(t, upserts, 1)
+		assert.Equal(t, "alice", upserts[0].Name)
+	})
+}
+
+func TestFeedbagList_DeleteLinkedScreenName(t *testing.T) {
+	t.Run("existing linked screen name is deleted, root group created and pending", func(t *testing.T) {
+		item := wire.FeedbagItem{ClassID: wire.FeedbagClassIdAlInfo, Name: "alice", ItemID: 1}
+		fl := NewFeedbagList([]wire.FeedbagItem{item}, nil)
+		fl.DeleteLinkedScreenName("alice")
+		deletes := fl.PendingDeletes()
+		assert.Len(t, deletes, 1)
+		assert.Equal(t, item, deletes[0])
+		upserts := fl.PendingUpdates()
+		assert.Len(t, upserts, 1)
+		assert.Equal(t, wire.FeedbagClassIdGroup, upserts[0].ClassID)
+		assert.Equal(t, uint16(0), upserts[0].GroupID)
+	})
+
+	t.Run("existing root group is touched on delete", func(t *testing.T) {
+		root := wire.FeedbagItem{ClassID: wire.FeedbagClassIdGroup, GroupID: 0, ItemID: 1}
+		item := wire.FeedbagItem{ClassID: wire.FeedbagClassIdAlInfo, Name: "alice", ItemID: 2}
+		fl := NewFeedbagList([]wire.FeedbagItem{root, item}, nil)
+		fl.DeleteLinkedScreenName("alice")
+		upserts := fl.PendingUpdates()
+		assert.Len(t, upserts, 1)
+		assert.Equal(t, wire.FeedbagClassIdGroup, upserts[0].ClassID)
+		assert.Equal(t, uint16(0), upserts[0].GroupID)
+	})
+
+	t.Run("deleting non-existent linked screen name is a no-op", func(t *testing.T) {
+		fl := NewFeedbagList(nil, nil)
+		fl.DeleteLinkedScreenName("alice")
+		assert.Empty(t, fl.PendingDeletes())
+		assert.Nil(t, fl.PendingUpdates())
+	})
+
+	t.Run("name comparison is case-insensitive", func(t *testing.T) {
+		item := wire.FeedbagItem{ClassID: wire.FeedbagClassIdAlInfo, Name: "alice", ItemID: 1}
+		fl := NewFeedbagList([]wire.FeedbagItem{item}, nil)
+		fl.DeleteLinkedScreenName("Alice")
+		assert.Len(t, fl.PendingDeletes(), 1)
+	})
+}
+
+func TestFeedbagList_LinkedScreenNames(t *testing.T) {
+	t.Run("returns all linked screen names", func(t *testing.T) {
+		fl := NewFeedbagList([]wire.FeedbagItem{
+			{ClassID: wire.FeedbagClassIdAlInfo, Name: "alice", ItemID: 1},
+			{ClassID: wire.FeedbagClassIdAlInfo, Name: "bob", ItemID: 2},
+			{ClassID: wire.FeedbagClassIdBuddy, Name: "carol", ItemID: 3},
+		}, nil)
+		names := fl.LinkedScreenNames()
+		assert.Equal(t, []IdentScreenName{
+			NewIdentScreenName("alice"),
+			NewIdentScreenName("bob"),
+		}, names)
+	})
+
+	t.Run("returns nil when no linked screen names exist", func(t *testing.T) {
+		fl := NewFeedbagList(nil, nil)
+		assert.Nil(t, fl.LinkedScreenNames())
+	})
+}
+
+func TestFeedbagList_HasLinkedScreenName(t *testing.T) {
+	t.Run("returns true when linked screen name exists", func(t *testing.T) {
+		fl := NewFeedbagList([]wire.FeedbagItem{
+			{ClassID: wire.FeedbagClassIdAlInfo, Name: "alice", ItemID: 1},
+		}, nil)
+		assert.True(t, fl.HasLinkedScreenName("alice"))
+	})
+
+	t.Run("returns false when linked screen name does not exist", func(t *testing.T) {
+		fl := NewFeedbagList(nil, nil)
+		assert.False(t, fl.HasLinkedScreenName("alice"))
+	})
+
+	t.Run("match is case-insensitive", func(t *testing.T) {
+		fl := NewFeedbagList([]wire.FeedbagItem{
+			{ClassID: wire.FeedbagClassIdAlInfo, Name: "alice", ItemID: 1},
+		}, nil)
+		assert.True(t, fl.HasLinkedScreenName("Alice"))
 	})
 }

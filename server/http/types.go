@@ -195,14 +195,6 @@ type ICQProfileManager interface {
 	SetICQInfo(ctx context.Context, name state.IdentScreenName, info state.ICQInfo) error
 }
 
-// LinkedAccountManager manages linked account relationships.
-type LinkedAccountManager interface {
-	LinkedAccounts(ctx context.Context, screenName state.IdentScreenName) ([]state.IdentScreenName, error)
-	InsertLinkedAccount(ctx context.Context, screenName state.IdentScreenName, linkedScreenName state.IdentScreenName) error
-	DeleteLinkedAccount(ctx context.Context, screenName state.IdentScreenName, linkedScreenName state.IdentScreenName) error
-	DeleteAllLinkedAccounts(ctx context.Context, screenName state.IdentScreenName) error
-}
-
 type userWithPassword struct {
 	ScreenName string `json:"screen_name"`
 	Password   string `json:"password,omitempty"`

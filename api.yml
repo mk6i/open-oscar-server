@@ -145,7 +145,7 @@ paths:
                 suspended_status:
                   type: string
                   nullable: true
-                  enum: [deleted, expired, suspended, suspended_age]
+                  enum: [ deleted, expired, suspended, suspended_age ]
                   description: The suspended status of the account
                 is_bot:
                   type: boolean
@@ -813,7 +813,7 @@ paths:
     get:
       summary: List all Web API keys
       description: Retrieve a list of all Web API keys for the Web AIM API.
-      tags: [Web API Management]
+      tags: [ Web API Management ]
       responses:
         '200':
           description: Successful response containing a list of API keys.
@@ -833,7 +833,7 @@ paths:
     post:
       summary: Create a new Web API key
       description: Create a new API key for Web AIM API authentication.
-      tags: [Web API Management]
+      tags: [ Web API Management ]
       requestBody:
         required: true
         content:
@@ -852,7 +852,7 @@ paths:
                   items:
                     type: string
                   description: List of allowed CORS origins. Empty list allows all origins (useful for mobile apps).
-                  example: ["https://example.com", "https://app.example.com"]
+                  example: [ "https://example.com", "https://app.example.com" ]
                 rate_limit:
                   type: integer
                   description: Maximum requests per minute allowed for this key.
@@ -863,7 +863,7 @@ paths:
                   items:
                     type: string
                   description: List of capabilities/features enabled for this key. Empty list allows all capabilities.
-                  example: ["aim.session", "presence.get", "im.send"]
+                  example: [ "aim.session", "presence.get", "im.send" ]
       responses:
         '201':
           description: API key created successfully.
@@ -901,7 +901,7 @@ paths:
     get:
       summary: Get a specific Web API key
       description: Retrieve details of a specific Web API key by its developer ID.
-      tags: [Web API Management]
+      tags: [ Web API Management ]
       parameters:
         - name: id
           in: path
@@ -933,7 +933,7 @@ paths:
     put:
       summary: Update a Web API key
       description: Update settings for an existing Web API key.
-      tags: [Web API Management]
+      tags: [ Web API Management ]
       parameters:
         - name: id
           in: path
@@ -991,7 +991,7 @@ paths:
     delete:
       summary: Delete a Web API key
       description: Permanently delete a Web API key.
-      tags: [Web API Management]
+      tags: [ Web API Management ]
       parameters:
         - name: id
           in: path
@@ -1503,44 +1503,19 @@ paths:
         '201':
           description: Linked account created successfully.
         '400':
-          description: Invalid request body.
+          description: Invalid request body, or screen name cannot be linked to itself.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/MessageResponse'
         '404':
-          description: Primary user not found.
+          description: Primary user or linked user not found.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/MessageResponse'
         '409':
           description: Linked account relationship already exists.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MessageResponse'
-        '500':
-          description: Internal server error.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MessageResponse'
-    delete:
-      summary: Remove all linked accounts
-      description: Remove all linked account relationships for the specified primary user.
-      parameters:
-        - in: path
-          name: screenname
-          schema:
-            type: string
-          description: User's AIM screen name or ICQ UIN.
-          required: true
-      responses:
-        '204':
-          description: All linked accounts removed successfully.
-        '404':
-          description: User not found.
           content:
             application/json:
               schema:
@@ -1599,7 +1574,7 @@ components:
 
     BARTType:
       type: integer
-      enum: [0, 1, 2, 3, 4, 5, 6, 12, 13, 15, 96, 129, 131, 136, 137, 1024, 1026, 1027, 1028]
+      enum: [ 0, 1, 2, 3, 4, 5, 6, 12, 13, 15, 96, 129, 131, 136, 137, 1024, 1026, 1027, 1028 ]
       description: |
         BART (Buddy ART) type identifier. Valid type IDs and their corresponding names:
         - 0: buddy_icon_small (GIF/JPG/BMP, <= 32 pixels and 2k)
@@ -1655,10 +1630,10 @@ components:
           items:
             type: string
           description: List of allowed CORS origins. Empty list allows all origins.
-          example: ["https://example.com"]
+          example: [ "https://example.com" ]
         capabilities:
           type: array
           items:
             type: string
           description: List of enabled features/endpoints. Empty list allows all capabilities.
-          example: ["aim.session", "presence.get"]
+          example: [ "aim.session", "presence.get" ]

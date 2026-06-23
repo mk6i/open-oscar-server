@@ -93,7 +93,6 @@ func MakeCommonDeps() (Container, error) {
 		c.sqLiteUserStore,
 		c.sqLiteUserStore,
 		c.sqLiteUserStore,
-		c.sqLiteUserStore,
 	)
 
 	c.icbmSvc = foodgroup.NewICBMService(
@@ -417,7 +416,6 @@ func MgmtAPI(deps Container) *http.Server {
 		deps.sqLiteUserStore,        // profileRetriever
 		deps.sqLiteUserStore,        // webAPIKeyManager
 		deps.sqLiteUserStore,        // icqProfileManager
-		deps.sqLiteUserStore,        // linkedAccountManager
 		state.NewAccountCreator(deps.sqLiteUserStore.InsertUser),
 		logger,
 	)

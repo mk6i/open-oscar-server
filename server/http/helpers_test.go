@@ -20,7 +20,6 @@ type mockParams struct {
 	directoryManagerParams
 	feedBagRetrieverParams
 	feedbagManagerParams
-	linkedAccountManagerParams
 	messageRelayerParams
 	profileRetrieverParams
 	sessionRetrieverParams
@@ -352,46 +351,6 @@ type setUserPasswordParams []struct {
 	screenName  state.IdentScreenName
 	newPassword string
 	err         error
-}
-
-// linkedAccountManagerParams is a helper struct that contains mock parameters for
-// LinkedAccountManager methods
-type linkedAccountManagerParams struct {
-	linkedAccountsParams
-	insertLinkedAccountParams
-	deleteLinkedAccountParams
-	deleteAllLinkedAccountParams
-}
-
-// linkedAccountsParams is the list of parameters passed at the mock
-// LinkedAccountManager.LinkedAccounts call site
-type linkedAccountsParams []struct {
-	screenName state.IdentScreenName
-	result     []state.IdentScreenName
-	err        error
-}
-
-// insertLinkedAccountParams is the list of parameters passed at the mock
-// LinkedAccountManager.InsertLinkedAccount call site
-type insertLinkedAccountParams []struct {
-	screenName       state.IdentScreenName
-	linkedScreenName state.IdentScreenName
-	err              error
-}
-
-// deleteLinkedAccountParams is the list of parameters passed at the mock
-// LinkedAccountManager.DeleteLinkedAccount call site
-type deleteLinkedAccountParams []struct {
-	screenName       state.IdentScreenName
-	linkedScreenName state.IdentScreenName
-	err              error
-}
-
-// deleteAllLinkedAccountParams is the list of parameters passed at the mock
-// LinkedAccountManager.DeleteAllLinkedAccounts call site
-type deleteAllLinkedAccountParams []struct {
-	screenName state.IdentScreenName
-	err        error
 }
 
 // matchContext matches any instance of Context interface.

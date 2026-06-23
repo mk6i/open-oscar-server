@@ -28,7 +28,7 @@ type OServiceService struct {
 	chatMessageRelayer    ChatMessageRelayer
 	profileManager        ProfileManager
 	offlineMessageManager OfflineMessageManager
-	linkedAccountManager  LinkedAccountManager
+	feedbagManager        FeedbagManager
 }
 
 // NewOServiceService creates a new instance of NewOServiceService.
@@ -45,7 +45,7 @@ func NewOServiceService(
 	chatMessageRelayer ChatMessageRelayer,
 	profileManager ProfileManager,
 	offlineMessageManager OfflineMessageManager,
-	linkedAccountManager LinkedAccountManager,
+	feedbagManager FeedbagManager,
 ) *OServiceService {
 	return &OServiceService{
 		cookieIssuer:          cookieIssuer,
@@ -59,7 +59,7 @@ func NewOServiceService(
 		chatMessageRelayer:    chatMessageRelayer,
 		profileManager:        profileManager,
 		offlineMessageManager: offlineMessageManager,
-		linkedAccountManager:  linkedAccountManager,
+		feedbagManager:        feedbagManager,
 	}
 }
 
@@ -638,11 +638,11 @@ func (s OServiceService) ServiceRequest(ctx context.Context, service uint16, ins
 			linkedScreenName := state.NewIdentScreenName(string(snBytes))
 			s.logger.Debug("Linked Account signon request", "primary", instance.IdentScreenName(), "linked", linkedScreenName.String())
 
-			linked, err := s.linkedAccountManager.CheckLinkedAccount(ctx, instance.IdentScreenName(), linkedScreenName)
+			items, err := s.feedbagManager.Feedbag(ctx, instance.IdentScreenName())
 			if err != nil {
 				return nil, fmt.Errorf("unable to check linked account: %w", err)
 			}
-			if !linked {
+			if !state.NewFeedbagList(items, nil).HasLinkedScreenName(linkedScreenName.String()) {
 				return nil, errors.New("linked account session requested but accounts are not linked")
 			}
 			return fnIssueCookie(state.ServerCookie{

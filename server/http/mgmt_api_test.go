@@ -5087,11 +5087,11 @@ func TestGetLinkedAccountsHandler(t *testing.T) {
 						},
 					},
 				},
-				linkedAccountManagerParams: linkedAccountManagerParams{
-					linkedAccountsParams: linkedAccountsParams{
+				feedbagManagerParams: feedbagManagerParams{
+					feedbagParams: feedbagParams{
 						{
 							screenName: state.NewIdentScreenName("test1"),
-							result:     []state.IdentScreenName{},
+							result:     []wire.FeedbagItem{},
 						},
 					},
 				},
@@ -5111,13 +5111,13 @@ func TestGetLinkedAccountsHandler(t *testing.T) {
 						},
 					},
 				},
-				linkedAccountManagerParams: linkedAccountManagerParams{
-					linkedAccountsParams: linkedAccountsParams{
+				feedbagManagerParams: feedbagManagerParams{
+					feedbagParams: feedbagParams{
 						{
 							screenName: state.NewIdentScreenName("test1"),
-							result: []state.IdentScreenName{
-								state.NewIdentScreenName("test2"),
-								state.NewIdentScreenName("test3"),
+							result: []wire.FeedbagItem{
+								{ClassID: wire.FeedbagClassIdAlInfo, Name: "test2"},
+								{ClassID: wire.FeedbagClassIdAlInfo, Name: "test3"},
 							},
 						},
 					},
@@ -5125,7 +5125,7 @@ func TestGetLinkedAccountsHandler(t *testing.T) {
 			},
 		},
 		{
-			name:       "linkedAccountManager error returns 500",
+			name:       "feedbag error returns 500",
 			screenname: "test1",
 			statusCode: http.StatusInternalServerError,
 			want:       `{"message":"internal server error"}`,
@@ -5138,8 +5138,8 @@ func TestGetLinkedAccountsHandler(t *testing.T) {
 						},
 					},
 				},
-				linkedAccountManagerParams: linkedAccountManagerParams{
-					linkedAccountsParams: linkedAccountsParams{
+				feedbagManagerParams: feedbagManagerParams{
+					feedbagParams: feedbagParams{
 						{
 							screenName: state.NewIdentScreenName("test1"),
 							err:        io.EOF,
@@ -5163,14 +5163,14 @@ func TestGetLinkedAccountsHandler(t *testing.T) {
 					Return(params.result, params.err)
 			}
 
-			linkedAccountManager := newMockLinkedAccountManager(t)
-			for _, params := range tc.mockParams.linkedAccountsParams {
-				linkedAccountManager.EXPECT().
-					LinkedAccounts(matchContext(), params.screenName).
+			feedbagManager := newMockFeedbagManager(t)
+			for _, params := range tc.mockParams.feedbagParams {
+				feedbagManager.EXPECT().
+					Feedbag(matchContext(), params.screenName).
 					Return(params.result, params.err)
 			}
 
-			getLinkedAccountsHandler(responseRecorder, request, userManager, linkedAccountManager)
+			getLinkedAccountsHandler(responseRecorder, request, userManager, feedbagManager)
 
 			assert.Equal(t, tc.statusCode, responseRecorder.Code)
 			assert.Equal(t, tc.want, strings.TrimSpace(responseRecorder.Body.String()))
@@ -5295,12 +5295,13 @@ func TestPostLinkedAccountHandler(t *testing.T) {
 						},
 					},
 				},
-				linkedAccountManagerParams: linkedAccountManagerParams{
-					insertLinkedAccountParams: insertLinkedAccountParams{
+				feedbagManagerParams: feedbagManagerParams{
+					feedbagParams: feedbagParams{
 						{
-							screenName:       state.NewIdentScreenName("test1"),
-							linkedScreenName: state.NewIdentScreenName("test2"),
-							err:              state.ErrLinkExists,
+							screenName: state.NewIdentScreenName("test1"),
+							result: []wire.FeedbagItem{
+								{ClassID: wire.FeedbagClassIdAlInfo, Name: "test2"},
+							},
 						},
 					},
 				},
@@ -5325,12 +5326,20 @@ func TestPostLinkedAccountHandler(t *testing.T) {
 						},
 					},
 				},
-				linkedAccountManagerParams: linkedAccountManagerParams{
-					insertLinkedAccountParams: insertLinkedAccountParams{
+				feedbagManagerParams: feedbagManagerParams{
+					feedbagParams: feedbagParams{
 						{
-							screenName:       state.NewIdentScreenName("test1"),
-							linkedScreenName: state.NewIdentScreenName("test2"),
-							err:              io.EOF,
+							screenName: state.NewIdentScreenName("test1"),
+							result:     []wire.FeedbagItem{},
+						},
+					},
+					feedbagUpsertParams: feedbagUpsertParams{
+						{
+							screenName: state.NewIdentScreenName("test1"),
+							items: []wire.FeedbagItem{
+								{ItemID: 1, ClassID: wire.FeedbagClassIdAlInfo, Name: "test2"},
+							},
+							err: io.EOF,
 						},
 					},
 				},
@@ -5355,11 +5364,19 @@ func TestPostLinkedAccountHandler(t *testing.T) {
 						},
 					},
 				},
-				linkedAccountManagerParams: linkedAccountManagerParams{
-					insertLinkedAccountParams: insertLinkedAccountParams{
+				feedbagManagerParams: feedbagManagerParams{
+					feedbagParams: feedbagParams{
 						{
-							screenName:       state.NewIdentScreenName("test1"),
-							linkedScreenName: state.NewIdentScreenName("test2"),
+							screenName: state.NewIdentScreenName("test1"),
+							result:     []wire.FeedbagItem{},
+						},
+					},
+					feedbagUpsertParams: feedbagUpsertParams{
+						{
+							screenName: state.NewIdentScreenName("test1"),
+							items: []wire.FeedbagItem{
+								{ItemID: 1, ClassID: wire.FeedbagClassIdAlInfo, Name: "test2"},
+							},
 						},
 					},
 				},
@@ -5380,115 +5397,19 @@ func TestPostLinkedAccountHandler(t *testing.T) {
 					Return(params.result, params.err)
 			}
 
-			linkedAccountManager := newMockLinkedAccountManager(t)
-			for _, params := range tc.mockParams.insertLinkedAccountParams {
-				linkedAccountManager.EXPECT().
-					InsertLinkedAccount(matchContext(), params.screenName, params.linkedScreenName).
-					Return(params.err)
-			}
-
-			postLinkedAccountHandler(responseRecorder, request, userManager, linkedAccountManager)
-
-			assert.Equal(t, tc.statusCode, responseRecorder.Code)
-			assert.Equal(t, tc.want, strings.TrimSpace(responseRecorder.Body.String()))
-		})
-	}
-}
-
-func TestDeleteAllLinkedAccountsHandler(t *testing.T) {
-	tt := []struct {
-		name       string
-		screenname string
-		statusCode int
-		want       string
-		mockParams mockParams
-	}{
-		{
-			name:       "user not found returns 404",
-			screenname: "nobody",
-			statusCode: http.StatusNotFound,
-			want:       `{"message":"user not found"}`,
-			mockParams: mockParams{
-				userManagerParams: userManagerParams{
-					getUserParams: getUserParams{
-						{
-							screenName: state.NewIdentScreenName("nobody"),
-							result:     nil,
-						},
-					},
-				},
-			},
-		},
-		{
-			name:       "delete error returns 500",
-			screenname: "test1",
-			statusCode: http.StatusInternalServerError,
-			want:       `{"message":"internal server error"}`,
-			mockParams: mockParams{
-				userManagerParams: userManagerParams{
-					getUserParams: getUserParams{
-						{
-							screenName: state.NewIdentScreenName("test1"),
-							result:     &state.User{IdentScreenName: state.NewIdentScreenName("test1")},
-						},
-					},
-				},
-				linkedAccountManagerParams: linkedAccountManagerParams{
-					deleteAllLinkedAccountParams: deleteAllLinkedAccountParams{
-						{
-							screenName: state.NewIdentScreenName("test1"),
-							err:        io.EOF,
-						},
-					},
-				},
-			},
-		},
-		{
-			name:       "all links deleted returns 204",
-			screenname: "test1",
-			statusCode: http.StatusNoContent,
-			want:       ``,
-			mockParams: mockParams{
-				userManagerParams: userManagerParams{
-					getUserParams: getUserParams{
-						{
-							screenName: state.NewIdentScreenName("test1"),
-							result:     &state.User{IdentScreenName: state.NewIdentScreenName("test1")},
-						},
-					},
-				},
-				linkedAccountManagerParams: linkedAccountManagerParams{
-					deleteAllLinkedAccountParams: deleteAllLinkedAccountParams{
-						{
-							screenName: state.NewIdentScreenName("test1"),
-						},
-					},
-				},
-			},
-		},
-	}
-
-	for _, tc := range tt {
-		t.Run(tc.name, func(t *testing.T) {
-			request := httptest.NewRequest(http.MethodDelete, "/user/"+tc.screenname+"/linked-account", nil)
-			request.SetPathValue("screenname", tc.screenname)
-			responseRecorder := httptest.NewRecorder()
-
-			userManager := newMockUserManager(t)
-			for _, params := range tc.mockParams.getUserParams {
-				userManager.EXPECT().
-					User(matchContext(), params.screenName).
+			feedbagManager := newMockFeedbagManager(t)
+			for _, params := range tc.mockParams.feedbagParams {
+				feedbagManager.EXPECT().
+					Feedbag(matchContext(), params.screenName).
 					Return(params.result, params.err)
 			}
-
-			linkedAccountManager := newMockLinkedAccountManager(t)
-			for _, params := range tc.mockParams.deleteAllLinkedAccountParams {
-				linkedAccountManager.EXPECT().
-					DeleteAllLinkedAccounts(matchContext(), params.screenName).
+			for _, params := range tc.mockParams.feedbagUpsertParams {
+				feedbagManager.EXPECT().
+					FeedbagUpsert(matchContext(), params.screenName, params.items).
 					Return(params.err)
 			}
 
-			deleteAllLinkedAccountsHandler(responseRecorder, request, userManager, linkedAccountManager)
+			postLinkedAccountHandler(responseRecorder, request, userManager, feedbagManager, slog.Default(), func(n int) int { return 0 })
 
 			assert.Equal(t, tc.statusCode, responseRecorder.Code)
 			assert.Equal(t, tc.want, strings.TrimSpace(responseRecorder.Body.String()))
@@ -5497,6 +5418,12 @@ func TestDeleteAllLinkedAccountsHandler(t *testing.T) {
 }
 
 func TestDeleteLinkedAccountHandler(t *testing.T) {
+	linkedFeedbagItem := wire.FeedbagItem{
+		ItemID:  1,
+		ClassID: wire.FeedbagClassIdAlInfo,
+		Name:    "test2",
+	}
+
 	tt := []struct {
 		name             string
 		screenname       string
@@ -5537,12 +5464,11 @@ func TestDeleteLinkedAccountHandler(t *testing.T) {
 						},
 					},
 				},
-				linkedAccountManagerParams: linkedAccountManagerParams{
-					deleteLinkedAccountParams: deleteLinkedAccountParams{
+				feedbagManagerParams: feedbagManagerParams{
+					feedbagParams: feedbagParams{
 						{
-							screenName:       state.NewIdentScreenName("test1"),
-							linkedScreenName: state.NewIdentScreenName("ghost"),
-							err:              state.ErrNoUser,
+							screenName: state.NewIdentScreenName("test1"),
+							result:     []wire.FeedbagItem{},
 						},
 					},
 				},
@@ -5563,12 +5489,56 @@ func TestDeleteLinkedAccountHandler(t *testing.T) {
 						},
 					},
 				},
-				linkedAccountManagerParams: linkedAccountManagerParams{
-					deleteLinkedAccountParams: deleteLinkedAccountParams{
+				feedbagManagerParams: feedbagManagerParams{
+					feedbagParams: feedbagParams{
 						{
-							screenName:       state.NewIdentScreenName("test1"),
-							linkedScreenName: state.NewIdentScreenName("test2"),
-							err:              io.EOF,
+							screenName: state.NewIdentScreenName("test1"),
+							result:     []wire.FeedbagItem{linkedFeedbagItem},
+						},
+					},
+					feedbagDeleteParams: feedbagDeleteParams{
+						{
+							screenName: state.NewIdentScreenName("test1"),
+							items:      []wire.FeedbagItem{linkedFeedbagItem},
+							err:        io.EOF,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:             "upsert error after delete returns 500",
+			screenname:       "test1",
+			linkedScreenname: "test2",
+			statusCode:       http.StatusInternalServerError,
+			want:             `{"message":"internal server error"}`,
+			mockParams: mockParams{
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{
+							screenName: state.NewIdentScreenName("test1"),
+							result:     &state.User{IdentScreenName: state.NewIdentScreenName("test1")},
+						},
+					},
+				},
+				feedbagManagerParams: feedbagManagerParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("test1"),
+							result:     []wire.FeedbagItem{linkedFeedbagItem},
+						},
+					},
+					feedbagDeleteParams: feedbagDeleteParams{
+						{
+							screenName: state.NewIdentScreenName("test1"),
+							items:      []wire.FeedbagItem{linkedFeedbagItem},
+						},
+					},
+					feedbagUpsertParams: feedbagUpsertParams{
+						{
+							screenName: state.NewIdentScreenName("test1"),
+							items:      []wire.FeedbagItem{{ClassID: wire.FeedbagClassIdGroup}},
+							err:        io.EOF,
 						},
 					},
 				},
@@ -5589,11 +5559,23 @@ func TestDeleteLinkedAccountHandler(t *testing.T) {
 						},
 					},
 				},
-				linkedAccountManagerParams: linkedAccountManagerParams{
-					deleteLinkedAccountParams: deleteLinkedAccountParams{
+				feedbagManagerParams: feedbagManagerParams{
+					feedbagParams: feedbagParams{
 						{
-							screenName:       state.NewIdentScreenName("test1"),
-							linkedScreenName: state.NewIdentScreenName("test2"),
+							screenName: state.NewIdentScreenName("test1"),
+							result:     []wire.FeedbagItem{linkedFeedbagItem},
+						},
+					},
+					feedbagDeleteParams: feedbagDeleteParams{
+						{
+							screenName: state.NewIdentScreenName("test1"),
+							items:      []wire.FeedbagItem{linkedFeedbagItem},
+						},
+					},
+					feedbagUpsertParams: feedbagUpsertParams{
+						{
+							screenName: state.NewIdentScreenName("test1"),
+							items:      []wire.FeedbagItem{{ClassID: wire.FeedbagClassIdGroup}},
 						},
 					},
 				},
@@ -5615,14 +5597,24 @@ func TestDeleteLinkedAccountHandler(t *testing.T) {
 					Return(params.result, params.err)
 			}
 
-			linkedAccountManager := newMockLinkedAccountManager(t)
-			for _, params := range tc.mockParams.deleteLinkedAccountParams {
-				linkedAccountManager.EXPECT().
-					DeleteLinkedAccount(matchContext(), params.screenName, params.linkedScreenName).
+			feedbagManager := newMockFeedbagManager(t)
+			for _, params := range tc.mockParams.feedbagParams {
+				feedbagManager.EXPECT().
+					Feedbag(matchContext(), params.screenName).
+					Return(params.result, params.err)
+			}
+			for _, params := range tc.mockParams.feedbagDeleteParams {
+				feedbagManager.EXPECT().
+					FeedbagDelete(matchContext(), params.screenName, params.items).
+					Return(params.err)
+			}
+			for _, params := range tc.mockParams.feedbagUpsertParams {
+				feedbagManager.EXPECT().
+					FeedbagUpsert(matchContext(), params.screenName, params.items).
 					Return(params.err)
 			}
 
-			deleteLinkedAccountHandler(responseRecorder, request, userManager, linkedAccountManager)
+			deleteLinkedAccountHandler(responseRecorder, request, userManager, feedbagManager, slog.Default(), nil)
 
 			assert.Equal(t, tc.statusCode, responseRecorder.Code)
 			assert.Equal(t, tc.want, strings.TrimSpace(responseRecorder.Body.String()))

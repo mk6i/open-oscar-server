@@ -755,11 +755,11 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 						},
 					},
 				},
-				linkedAccountManagerParams: linkedAccountManagerParams{
-					linkedAccountsParams: linkedAccountsParams{
+				feedbagManagerParams: feedbagManagerParams{
+					feedbagParams: feedbagParams{
 						{
 							screenName: user.IdentScreenName,
-							result:     []state.IdentScreenName{state.NewIdentScreenName("linked1")},
+							results:    []wire.FeedbagItem{{ClassID: wire.FeedbagClassIdAlInfo, Name: "linked1"}},
 						},
 					},
 				},
@@ -783,7 +783,7 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 			},
 		},
 		{
-			name:           "linked account manager error during login, returns error",
+			name:           "feedbag error during login, returns error",
 			advertisedHost: "127.0.0.1:5190",
 			inputSNAC: wire.SNAC_0x17_0x02_BUCPLoginRequest{
 				TLVRestBlock: wire.TLVRestBlock{
@@ -817,8 +817,8 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 						},
 					},
 				},
-				linkedAccountManagerParams: linkedAccountManagerParams{
-					linkedAccountsParams: linkedAccountsParams{
+				feedbagManagerParams: feedbagManagerParams{
+					feedbagParams: feedbagParams{
 						{
 							screenName: user.IdentScreenName,
 							err:        io.EOF,
@@ -888,20 +888,20 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 					Return(params.result)
 			}
 
-			linkedAccountManager := newMockLinkedAccountManager(t)
-			for _, params := range tc.mockParams.linkedAccountsParams {
-				linkedAccountManager.EXPECT().
-					LinkedAccounts(matchContext(), params.screenName).
-					Return(params.result, params.err)
+			feedbagManager := newMockFeedbagManager(t)
+			for _, params := range tc.mockParams.feedbagParams {
+				feedbagManager.EXPECT().
+					Feedbag(matchContext(), params.screenName).
+					Return(params.results, params.err)
 			}
-			linkedAccountManager.EXPECT().LinkedAccounts(matchContext(), mock.Anything).Return(nil, nil).Maybe()
+			feedbagManager.EXPECT().Feedbag(matchContext(), mock.Anything).Return(nil, nil).Maybe()
 
 			svc := AuthService{
 				config:                     tc.cfg,
 				cookieBaker:                cookieBaker,
 				userManager:                userManager,
 				sessionRetriever:           sessionRetriever,
-				linkedAccountManager:       linkedAccountManager,
+				feedbagManager:             feedbagManager,
 				maxConcurrentLoginsPerUser: 2,
 				createAccount:              tc.createAccount,
 				logger:                     slog.Default(),
@@ -1219,7 +1219,7 @@ func TestAuthService_FLAPLogin(t *testing.T) {
 			},
 		},
 		{
-			name:           "linked account manager error during login, returns error",
+			name:           "feedbag error during login, returns error",
 			advertisedHost: "127.0.0.1:5190",
 			inputSNAC: wire.FLAPSignonFrame{
 				TLVRestBlock: wire.TLVRestBlock{
@@ -1253,8 +1253,8 @@ func TestAuthService_FLAPLogin(t *testing.T) {
 						},
 					},
 				},
-				linkedAccountManagerParams: linkedAccountManagerParams{
-					linkedAccountsParams: linkedAccountsParams{
+				feedbagManagerParams: feedbagManagerParams{
+					feedbagParams: feedbagParams{
 						{
 							screenName: user.IdentScreenName,
 							err:        io.EOF,
@@ -1378,20 +1378,20 @@ func TestAuthService_FLAPLogin(t *testing.T) {
 					Issue(params.dataIn).
 					Return(params.cookieOut, params.err)
 			}
-			linkedAccountManager := newMockLinkedAccountManager(t)
-			for _, params := range tc.mockParams.linkedAccountsParams {
-				linkedAccountManager.EXPECT().
-					LinkedAccounts(matchContext(), params.screenName).
-					Return(params.result, params.err)
+			feedbagManager := newMockFeedbagManager(t)
+			for _, params := range tc.mockParams.feedbagParams {
+				feedbagManager.EXPECT().
+					Feedbag(matchContext(), params.screenName).
+					Return(params.results, params.err)
 			}
-			linkedAccountManager.EXPECT().LinkedAccounts(matchContext(), mock.Anything).Return(nil, nil).Maybe()
+			feedbagManager.EXPECT().Feedbag(matchContext(), mock.Anything).Return(nil, nil).Maybe()
 			svc := AuthService{
-				config:               tc.cfg,
-				cookieBaker:          cookieBaker,
-				userManager:          userManager,
-				linkedAccountManager: linkedAccountManager,
-				createAccount:        tc.createAccount,
-				logger:               slog.Default(),
+				config:         tc.cfg,
+				cookieBaker:    cookieBaker,
+				userManager:    userManager,
+				feedbagManager: feedbagManager,
+				createAccount:  tc.createAccount,
+				logger:         slog.Default(),
 			}
 			outputSNAC, err := svc.FLAPLogin(context.Background(), tc.inputSNAC, tc.advertisedHost)
 			assert.ErrorIs(t, err, tc.wantErr)
@@ -1725,14 +1725,14 @@ func TestAuthService_KerberosLogin(t *testing.T) {
 					RetrieveSession(params.screenName).
 					Return(params.result)
 			}
-			linkedAccountManager := newMockLinkedAccountManager(t)
-			linkedAccountManager.EXPECT().LinkedAccounts(matchContext(), mock.Anything).Return(nil, nil).Maybe()
+			feedbagManager := newMockFeedbagManager(t)
+			feedbagManager.EXPECT().Feedbag(matchContext(), mock.Anything).Return(nil, nil).Maybe()
 			svc := AuthService{
 				config:                     tc.cfg,
 				cookieBaker:                cookieBaker,
 				userManager:                userManager,
 				sessionRetriever:           sessionRetriever,
-				linkedAccountManager:       linkedAccountManager,
+				feedbagManager:             feedbagManager,
 				timeNow:                    tc.timeNow,
 				maxConcurrentLoginsPerUser: 2,
 				createAccount:              tc.createAccount,
@@ -2412,52 +2412,52 @@ func TestAuthService_addLinkedAccountsTLV(t *testing.T) {
 	cases := []struct {
 		name       string
 		screenName state.DisplayScreenName
-		// mockLinkedAccounts is what linkedAccountManager.LinkedAccounts returns
-		mockLinkedAccounts []state.IdentScreenName
-		mockErr            error
+		// feedbagItems is what feedbagManager.Feedbag returns
+		feedbagItems []wire.FeedbagItem
+		feedbagErr   error
 		// wantTLVCount is the expected number of TLVs after the call
 		wantTLVCount int
 		wantErr      bool
 	}{
 		{
-			name:               "no linked accounts, TLV list unchanged",
-			screenName:         "PrimaryUser",
-			mockLinkedAccounts: nil,
-			wantTLVCount:       0,
+			name:         "no linked accounts, TLV list unchanged",
+			screenName:   "PrimaryUser",
+			feedbagItems: nil,
+			wantTLVCount: 0,
 		},
 		{
 			name:       "one linked account, TLV appended",
 			screenName: "PrimaryUser",
-			mockLinkedAccounts: []state.IdentScreenName{
-				state.NewIdentScreenName("LinkedUser1"),
+			feedbagItems: []wire.FeedbagItem{
+				{ClassID: wire.FeedbagClassIdAlInfo, Name: "linkeduser1"},
 			},
 			wantTLVCount: 1,
 		},
 		{
 			name:       "multiple linked accounts, single TLV appended",
 			screenName: "PrimaryUser",
-			mockLinkedAccounts: []state.IdentScreenName{
-				state.NewIdentScreenName("LinkedUser1"),
-				state.NewIdentScreenName("LinkedUser2"),
+			feedbagItems: []wire.FeedbagItem{
+				{ClassID: wire.FeedbagClassIdAlInfo, Name: "linkeduser1"},
+				{ClassID: wire.FeedbagClassIdAlInfo, Name: "linkeduser2"},
 			},
 			wantTLVCount: 1,
 		},
 		{
-			name:       "linkedAccountManager returns error, error propagated",
+			name:       "feedbagManager returns error, error propagated",
 			screenName: "PrimaryUser",
-			mockErr:    io.EOF,
+			feedbagErr: io.EOF,
 			wantErr:    true,
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			linkedAccountManager := newMockLinkedAccountManager(t)
-			linkedAccountManager.EXPECT().
-				LinkedAccounts(matchContext(), state.NewIdentScreenName(string(tc.screenName))).
-				Return(tc.mockLinkedAccounts, tc.mockErr)
+			feedbagManager := newMockFeedbagManager(t)
+			feedbagManager.EXPECT().
+				Feedbag(matchContext(), state.NewIdentScreenName(string(tc.screenName))).
+				Return(tc.feedbagItems, tc.feedbagErr)
 
-			svc := AuthService{linkedAccountManager: linkedAccountManager}
+			svc := AuthService{feedbagManager: feedbagManager}
 			tlvs := wire.TLVList{}
 			err := svc.addLinkedAccountsTLV(context.Background(), tc.screenName, &tlvs)
 

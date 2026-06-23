@@ -876,12 +876,11 @@ func TestOServiceService_ServiceRequest_LinkedAccountSignon(t *testing.T) {
 	}
 
 	cases := []struct {
-		name      string
-		instance  *state.SessionInstance
-		inputBody wire.SNAC_0x01_0x04_OServiceServiceRequest
-		// linked is what CheckLinkedAccount returns
-		linked   bool
-		checkErr error
+		name         string
+		instance     *state.SessionInstance
+		inputBody    wire.SNAC_0x01_0x04_OServiceServiceRequest
+		feedbagItems []wire.FeedbagItem
+		feedbagErr   error
 		// setupCookie is whether to expect cookie issuance
 		setupCookie     bool
 		expectOutput    wire.SNACMessage
@@ -889,10 +888,10 @@ func TestOServiceService_ServiceRequest_LinkedAccountSignon(t *testing.T) {
 		wantErr         error
 	}{
 		{
-			name:        "linked account signon OK, returns BOS cookie with no MultiConnFlag",
-			inputBody:   makeBody(true, string(linkedUser)),
-			linked:      true,
-			setupCookie: true,
+			name:         "linked account signon OK, returns BOS cookie with no MultiConnFlag",
+			inputBody:    makeBody(true, string(linkedUser)),
+			feedbagItems: []wire.FeedbagItem{{ClassID: wire.FeedbagClassIdAlInfo, Name: linkedUserIdent.String()}},
+			setupCookie:  true,
 			expectOutput: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.OService,
@@ -912,11 +911,11 @@ func TestOServiceService_ServiceRequest_LinkedAccountSignon(t *testing.T) {
 			},
 		},
 		{
-			name:        "primary has MultiConnFlagsRecentClient, linked account cookie inherits flag",
-			instance:    newTestInstance(state.DisplayScreenName(primaryUser.String()), sessOptMultiConnFlag(wire.MultiConnFlagsRecentClient)),
-			inputBody:   makeBody(true, string(linkedUser)),
-			linked:      true,
-			setupCookie: true,
+			name:         "primary has MultiConnFlagsRecentClient, linked account cookie inherits flag",
+			instance:     newTestInstance(state.DisplayScreenName(primaryUser.String()), sessOptMultiConnFlag(wire.MultiConnFlagsRecentClient)),
+			inputBody:    makeBody(true, string(linkedUser)),
+			feedbagItems: []wire.FeedbagItem{{ClassID: wire.FeedbagClassIdAlInfo, Name: linkedUserIdent.String()}},
+			setupCookie:  true,
 			expectOutput: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.OService,
@@ -936,11 +935,11 @@ func TestOServiceService_ServiceRequest_LinkedAccountSignon(t *testing.T) {
 			},
 		},
 		{
-			name:        "primary has MultiConnFlagsSingleClient, linked account cookie inherits flag",
-			instance:    newTestInstance(state.DisplayScreenName(primaryUser.String()), sessOptMultiConnFlag(wire.MultiConnFlagsSingleClient)),
-			inputBody:   makeBody(true, string(linkedUser)),
-			linked:      true,
-			setupCookie: true,
+			name:         "primary has MultiConnFlagsSingleClient, linked account cookie inherits flag",
+			instance:     newTestInstance(state.DisplayScreenName(primaryUser.String()), sessOptMultiConnFlag(wire.MultiConnFlagsSingleClient)),
+			inputBody:    makeBody(true, string(linkedUser)),
+			feedbagItems: []wire.FeedbagItem{{ClassID: wire.FeedbagClassIdAlInfo, Name: linkedUserIdent.String()}},
+			setupCookie:  true,
 			expectOutput: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.OService,
@@ -972,14 +971,13 @@ func TestOServiceService_ServiceRequest_LinkedAccountSignon(t *testing.T) {
 		{
 			name:            "accounts not linked, returns error",
 			inputBody:       makeBody(true, string(linkedUser)),
-			linked:          false,
 			wantErrContains: "linked account session requested but accounts are not linked",
 		},
 		{
-			name:      "CheckLinkedAccount returns error, error propagated",
-			inputBody: makeBody(true, string(linkedUser)),
-			checkErr:  io.EOF,
-			wantErr:   io.EOF,
+			name:       "feedbag lookup error, error propagated",
+			inputBody:  makeBody(true, string(linkedUser)),
+			feedbagErr: io.EOF,
+			wantErr:    io.EOF,
 		},
 	}
 
@@ -997,18 +995,17 @@ func TestOServiceService_ServiceRequest_LinkedAccountSignon(t *testing.T) {
 					Return([]byte("the-cookie"), nil)
 			}
 
-			linkedAccountManager := newMockLinkedAccountManager(t)
-			// Only set up CheckLinkedAccount if the request has both required TLVs
+			feedbagManager := newMockFeedbagManager(t)
 			if tc.inputBody.HasTag(0x0028) {
 				if snBytes, ok := tc.inputBody.Bytes(0x01); ok && len(snBytes) > 0 {
-					linkedAccountManager.EXPECT().
-						CheckLinkedAccount(matchContext(), primaryUser, linkedUserIdent).
-						Return(tc.linked, tc.checkErr)
+					feedbagManager.EXPECT().
+						Feedbag(matchContext(), primaryUser).
+						Return(tc.feedbagItems, tc.feedbagErr)
 				}
 			}
 
 			svc := NewOServiceService(config.Config{}, nil, slog.Default(), cookieIssuer, nil, nil, nil, nil,
-				wire.DefaultSNACRateLimits(), nil, nil, nil, linkedAccountManager)
+				wire.DefaultSNACRateLimits(), nil, nil, nil, feedbagManager)
 
 			listener := config.Listener{BOSAdvertisedHostPlain: "127.0.0.1:5190"}
 

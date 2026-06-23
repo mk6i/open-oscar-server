@@ -33,7 +33,7 @@ func NewAuthService(
 	chatMessageRelayer ChatMessageRelayer,
 	accountManager AccountManager,
 	bartItemManager BARTItemManager,
-	linkedAccountManager LinkedAccountManager,
+	feedbagManager FeedbagManager,
 	classes wire.RateLimitClasses,
 	createAccount state.CreateAccountFunc,
 	logger *slog.Logger,
@@ -48,7 +48,7 @@ func NewAuthService(
 		chatMessageRelayer:         chatMessageRelayer,
 		accountManager:             accountManager,
 		bartItemManager:            bartItemManager,
-		linkedAccountManager:       linkedAccountManager,
+		feedbagManager:             feedbagManager,
 		rateLimitClasses:           classes,
 		timeNow:                    time.Now,
 		maxConcurrentLoginsPerUser: MaxConcurrentLoginsPerUser,
@@ -71,7 +71,7 @@ type AuthService struct {
 	userManager                UserManager
 	accountManager             AccountManager
 	bartItemManager            BARTItemManager
-	linkedAccountManager       LinkedAccountManager
+	feedbagManager             FeedbagManager
 	rateLimitClasses           wire.RateLimitClasses
 	timeNow                    func() time.Time
 	maxConcurrentLoginsPerUser int
@@ -668,22 +668,22 @@ func (s AuthService) loginSuccessResponse(ctx context.Context, props loginProper
 // addLinkedAccountsTLV builds the linked accounts XML and appends the
 // corresponding TLV to tlvs. If linkedNames is empty, tlvs is not modified.
 func (s AuthService) addLinkedAccountsTLV(ctx context.Context, screenName state.DisplayScreenName, tlvs *wire.TLVList) error {
-	accounts, err := s.linkedAccountManager.LinkedAccounts(ctx, screenName.IdentScreenName())
+	items, err := s.feedbagManager.Feedbag(ctx, screenName.IdentScreenName())
 	if err != nil {
 		return fmt.Errorf("failed to get linked accounts: %w", err)
 	}
 
-	if len(accounts) == 0 {
+	linkedNames := state.NewFeedbagList(items, nil).LinkedScreenNames()
+
+	if len(linkedNames) == 0 {
 		return nil
 	}
 
-	linkedNames := append([]state.IdentScreenName{}, accounts...)
-
-	xml, err := buildLinkedAccountsXML(screenName.IdentScreenName(), linkedNames)
+	acctXML, err := buildLinkedAccountsXML(screenName.IdentScreenName(), linkedNames)
 	if err != nil {
 		return fmt.Errorf("failed to build linked accounts xml: %w", err)
 	}
-	*tlvs = append(*tlvs, wire.NewTLVBE(wire.OServiceTLVTagsLinkedAccounts, xml))
+	*tlvs = append(*tlvs, wire.NewTLVBE(wire.OServiceTLVTagsLinkedAccounts, acctXML))
 	return nil
 }
 

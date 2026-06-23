@@ -34,7 +34,6 @@ type mockParams struct {
 	sessionRegistryParams
 	sessionRetrieverParams
 	userManagerParams
-	linkedAccountManagerParams
 }
 
 // contactPreAuthorizerParams is a helper struct that contains mock parameters for
@@ -800,20 +799,6 @@ type chatRoomByNameParams []struct {
 type createChatRoomParams []struct {
 	room *state.ChatRoom
 	err  error
-}
-
-// linkedAccountManagerParams is a helper struct that contains mock parameters for
-// LinkedAccountManager methods
-type linkedAccountManagerParams struct {
-	linkedAccountsParams
-}
-
-// linkedAccountsParams is the list of parameters passed at the mock
-// LinkedAccountManager.LinkedAccounts call site
-type linkedAccountsParams []struct {
-	screenName state.IdentScreenName
-	result     []state.IdentScreenName
-	err        error
 }
 
 // sessOptWarning sets a warning level on the session object

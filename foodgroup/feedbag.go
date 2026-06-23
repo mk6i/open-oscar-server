@@ -25,7 +25,6 @@ func NewFeedbagService(
 	sessionRetriever SessionRetriever,
 	contactPreAuthorizer ContactPreAuthorizer,
 	userManager UserManager,
-	linkedAccountManager LinkedAccountManager,
 	buddyAddedNotifierDeduper BuddyAddedNotifierDeduper,
 ) *FeedbagService {
 	return &FeedbagService{
@@ -33,7 +32,6 @@ func NewFeedbagService(
 		buddyBroadcaster:          newBuddyNotifier(bartItemManager, relationshipFetcher, messageRelayer, sessionRetriever),
 		buddyAddedNotifierDeduper: buddyAddedNotifierDeduper,
 		feedbagManager:            feedbagManager,
-		linkedAccountManager:      linkedAccountManager,
 		logger:                    logger,
 		messageRelayer:            messageRelayer,
 		relationshipFetcher:       relationshipFetcher,
@@ -53,7 +51,6 @@ type FeedbagService struct {
 	buddyBroadcaster          buddyBroadcaster
 	buddyAddedNotifierDeduper BuddyAddedNotifierDeduper
 	feedbagManager            FeedbagManager
-	linkedAccountManager      LinkedAccountManager
 	logger                    *slog.Logger
 	messageRelayer            MessageRelayer
 	relationshipFetcher       RelationshipFetcher
@@ -122,32 +119,9 @@ func (s *FeedbagService) RightsQuery(_ context.Context, inFrame wire.SNACFrame) 
 // Query fetches the user's feedbag (aka buddy list). It returns
 // wire.FeedbagReply, which contains feedbag entries.
 func (s *FeedbagService) Query(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame) (wire.SNACMessage, error) {
-	rawFb, err := s.feedbagManager.Feedbag(ctx, instance.IdentScreenName())
+	fb, err := s.feedbagManager.Feedbag(ctx, instance.IdentScreenName())
 	if err != nil {
 		return wire.SNACMessage{}, err
-	}
-
-	// Strip any stored ClassIdAlInfo items — they are generated dynamically below.
-	fb := make([]wire.FeedbagItem, 0, len(rawFb))
-	for _, item := range rawFb {
-		if item.ClassID != wire.FeedbagClassIdAlInfo {
-			fb = append(fb, item)
-		}
-	}
-
-	// Dynamically build the FeedbagItem for each linked account. Use a placeholder string for
-	// the roasted password, as clients don't seem to need it for anything.
-	linked, err := s.linkedAccountManager.LinkedAccounts(ctx, instance.IdentScreenName())
-	if err == nil {
-		for i, acc := range linked {
-			fb = append(fb, wire.FeedbagItem{
-				Name:      acc.String(),
-				ClassID:   wire.FeedbagClassIdAlInfo,
-				ItemID:    uint16(0x8000 + i), // Use a reserved high range
-				GroupID:   0,
-				TLVLBlock: wire.TLVLBlock{},
-			})
-		}
 	}
 
 	lm := time.UnixMilli(0)
@@ -178,43 +152,19 @@ func (s *FeedbagService) Query(ctx context.Context, instance *state.SessionInsta
 // inBody.LastUpdate, else return wire.FeedbagReply, which contains feedbag
 // entries.
 func (s *FeedbagService) QueryIfModified(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x05_FeedbagQueryIfModified) (wire.SNACMessage, error) {
-	rawFb, err := s.feedbagManager.Feedbag(ctx, instance.IdentScreenName())
+	fb, err := s.feedbagManager.Feedbag(ctx, instance.IdentScreenName())
 	if err != nil {
 		return wire.SNACMessage{}, err
 	}
 
-	fb := make([]wire.FeedbagItem, 0, len(rawFb))
-	for _, item := range rawFb {
-		if item.ClassID != wire.FeedbagClassIdAlInfo {
-			fb = append(fb, item)
-		}
-	}
-
-	hasLinkedAccounts := false
-	linked, linkedErr := s.linkedAccountManager.LinkedAccounts(ctx, instance.IdentScreenName())
-	if linkedErr == nil {
-		for i, acc := range linked {
-			hasLinkedAccounts = true
-			fb = append(fb, wire.FeedbagItem{
-				Name:      acc.String(),
-				ClassID:   wire.FeedbagClassIdAlInfo,
-				ItemID:    uint16(0x8000 + i),
-				GroupID:   0,
-				TLVLBlock: wire.TLVLBlock{},
-			})
-		}
-	}
-
 	lm := time.UnixMilli(0)
 
-	if len(rawFb) > 0 {
+	if len(fb) > 0 {
 		lm, err = s.feedbagManager.FeedbagLastModified(ctx, instance.IdentScreenName())
 		if err != nil {
 			return wire.SNACMessage{}, err
 		}
-		// Skip the not-modified response when linked accounts are present — AlInfo
-		// items are generated dynamically and never cached by the client.
-		if !hasLinkedAccounts && lm.Before(time.Unix(int64(inBody.LastUpdate), 0)) {
+		if lm.Before(time.Unix(int64(inBody.LastUpdate), 0)) {
 			return wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.Feedbag,
@@ -253,9 +203,25 @@ func (s *FeedbagService) QueryIfModified(ctx context.Context, instance *state.Se
 // feedbag. It returns wire.FeedbagStatus, which contains update confirmation.
 func (s *FeedbagService) UpsertItem(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, items []wire.FeedbagItem) (*wire.SNACMessage, error) {
 	for _, item := range items {
-		// don't let users block themselves, it causes the AIM client to go
-		// into a weird state.
-		if item.ClassID == wire.FeedbagClassIDDeny && state.NewIdentScreenName(item.Name) == instance.IdentScreenName() {
+		switch item.ClassID {
+		case wire.FeedbagClassIDDeny:
+			// don't let users block themselves, it causes the AIM client to go
+			// into a weird state.
+			if state.NewIdentScreenName(item.Name) == instance.IdentScreenName() {
+				return &wire.SNACMessage{
+					Frame: wire.SNACFrame{
+						FoodGroup: wire.Feedbag,
+						SubGroup:  wire.FeedbagErr,
+						RequestID: inFrame.RequestID,
+					},
+					Body: wire.SNACError{
+						Code: wire.ErrorCodeNotSupportedByHost,
+					},
+				}, nil
+			}
+		case wire.FeedbagClassIdAlInfo:
+			// don't let users add arbitrary linked accounts. they can only be
+			// added via the management API.
 			return &wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.Feedbag,
@@ -263,7 +229,7 @@ func (s *FeedbagService) UpsertItem(ctx context.Context, instance *state.Session
 					RequestID: inFrame.RequestID,
 				},
 				Body: wire.SNACError{
-					Code: wire.ErrorCodeNotSupportedByHost,
+					Code: wire.ErrorCodeInsufficientRights,
 				},
 			}, nil
 		}
