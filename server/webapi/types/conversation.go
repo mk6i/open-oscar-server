@@ -2,9 +2,6 @@ package types
 
 import "time"
 
-// EventTypeConversation is the fetchEvents type for chat list sync.
-const EventTypeConversation EventType = "conversation"
-
 // ConversationEventData builds a conversation fetchEvents payload.
 func ConversationEventData(operation string, conversations []map[string]interface{}) map[string]interface{} {
 	if conversations == nil {

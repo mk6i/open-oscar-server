@@ -263,6 +263,14 @@ func (f *FeedbagList) PendingDeletes() []wire.FeedbagItem {
 	return result
 }
 
+func (f *FeedbagList) Items() []wire.FeedbagItem {
+	var result []wire.FeedbagItem
+	for _, p := range f.items {
+		result = append(result, *p)
+	}
+	return result
+}
+
 // rootGroup retrieves the root group, creating one if non-existent.
 func (f *FeedbagList) rootGroup() *wire.FeedbagItem {
 	var root *wire.FeedbagItem

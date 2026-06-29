@@ -12,17 +12,18 @@ import (
 type EventType string
 
 const (
-	// Event types that can be subscribed to
 	EventTypeBuddyList    EventType = "buddylist"
-	EventTypePresence     EventType = "presence"
+	EventTypeConversation EventType = "conversation"
 	EventTypeIM           EventType = "im"
-	EventTypeSentIM       EventType = "sentIM"
-	EventTypeTyping       EventType = "typing"
-	EventTypeStatus       EventType = "status"
 	EventTypeOfflineIM    EventType = "offlineIM"
-	EventTypeSessionEnded EventType = "sessionEnded"
-	EventTypeRateLimit    EventType = "rateLimit"
 	EventTypePreference   EventType = "preference"
+	EventTypePresence     EventType = "presence"
+	EventTypeRateLimit    EventType = "rateLimit"
+	EventTypeSentIM       EventType = "sentIM"
+	EventTypeSessionEnded EventType = "sessionEnded"
+	EventTypeStatus       EventType = "status"
+	EventTypeTyping       EventType = "typing"
+	EventTypePermitDeny   EventType = "permitDeny"
 )
 
 // Event represents an event to be delivered to a web client.
@@ -74,8 +75,8 @@ type UserInfo struct {
 
 // TypingEvent represents a typing notification event.
 type TypingEvent struct {
-	From   string `json:"from"`
-	Typing bool   `json:"typing"`
+	AimID        string `json:"aimId"`
+	TypingStatus string `json:"typingStatus"`
 }
 
 // BuddyListEvent represents a buddy list change event.

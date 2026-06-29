@@ -36,6 +36,7 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 		BuddyListRegistry:   handler.BuddyListRegistry,
 		BuddyBroadcaster:    handler.BuddyBroadcaster,
 		FeedbagRetriever:    handler.FeedbagRetriever,
+		FeedbagService:      handler.FeedbagService,
 		OSCARBuddyService:   handler.BuddyService,
 		BuddyListManager:    handler.BuddyListManager.(*handlers.BuddyListManager),
 		Logger:              logger,
@@ -69,19 +70,16 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 
 	// Phase 2: Messaging handler
 	messagingHandler := &handlers.MessagingHandler{
-		SessionManager:        sessionManager,
-		MessageRelayer:        handler.MessageRelayer,
-		OfflineMessageManager: handler.OfflineMessageManager,
-		SessionRetriever:      handler.SessionRetriever,
-		RelationshipFetcher:   handler.RelationshipFetcher,
-		Logger:                logger,
+		SessionManager: sessionManager,
+		ICBMService:    handler.ICBMService,
+		Logger:         logger,
 	}
 
 	// Phase 3: Preference handler
 	preferenceHandler := &handlers.PreferenceHandler{
 		SessionManager:    sessionManager,
 		PreferenceManager: handler.PreferenceManager,
-		PermitDenyManager: handler.PermitDenyManager,
+		FeedbagService:    handler.FeedbagService,
 		Logger:            logger,
 	}
 
@@ -205,7 +203,7 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 		mux.Handle("GET /im/sendIM", sendIMHandler)
 		mux.Handle("POST /im/sendIM", sendIMHandler)
 
-		mux.Handle("GET /im/setTyping", authMiddleware.Authenticate(
+		mux.Handle("GET /im/setTyping", authMiddleware.AuthenticateFlexible(
 			authMiddleware.CORSMiddleware(
 				http.HandlerFunc(messagingHandler.SetTyping))))
 

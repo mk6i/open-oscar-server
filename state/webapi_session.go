@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"log/slog"
+	mrand "math/rand/v2"
 	"strconv"
 	"sync"
 	"time"
@@ -23,25 +24,26 @@ var (
 
 // WebAPISession represents an active Web AIM API session.
 type WebAPISession struct {
-	AimSID             string                                         // Unique session ID for web client
-	ScreenName         DisplayScreenName                              // User identity
-	OSCARSession       *SessionInstance                               // Bridge to existing OSCAR session
-	Events             []string                                       // Subscribed event types
-	EventQueue         *types.EventQueue                              // Per-session event queue
-	DevID              string                                         // Developer ID that created this session
-	ClientName         string                                         // Client application name
-	ClientVersion      string                                         // Client application version
-	CreatedAt          time.Time                                      // SessionInstance creation time
-	LastAccessed       time.Time                                      // Last activity time
-	ExpiresAt          time.Time                                      // SessionInstance expiration time
-	FetchTimeout       int                                            // Long-polling timeout in milliseconds
-	TimeToNextFetch    int                                            // Suggested delay before next fetch
-	RemoteAddr         string                                         // Client IP address
-	TempBuddies        map[string]bool                                // Temporary buddies for this session only
-	BuddyListRefresher func(ctx context.Context) (interface{}, error) // Called on feedbag changes to push buddylist event
-	imLog              map[string][]WebAPIStoredIM
-	imLogMu            sync.Mutex
-	logger             *slog.Logger // Logger for debugging
+	AimSID              string                                         // Unique session ID for web client
+	ScreenName          DisplayScreenName                              // User identity
+	OSCARSession        *SessionInstance                               // Bridge to existing OSCAR session
+	Events              []string                                       // Subscribed event types
+	EventQueue          *types.EventQueue                              // Per-session event queue
+	DevID               string                                         // Developer ID that created this session
+	ClientName          string                                         // Client application name
+	ClientVersion       string                                         // Client application version
+	CreatedAt           time.Time                                      // SessionInstance creation time
+	LastAccessed        time.Time                                      // Last activity time
+	ExpiresAt           time.Time                                      // SessionInstance expiration time
+	FetchTimeout        int                                            // Long-polling timeout in milliseconds
+	TimeToNextFetch     int                                            // Suggested delay before next fetch
+	RemoteAddr          string                                         // Client IP address
+	TempBuddies         map[string]bool                                // Temporary buddies for this session only
+	BuddyListRefresher  func(ctx context.Context) (interface{}, error) // Called on feedbag changes to push buddylist event
+	PermitDenyRefresher func(ctx context.Context) (interface{}, error) // Called on feedbag changes to push permitDeny event
+	imLog               map[string][]WebAPIStoredIM
+	imLogMu             sync.Mutex
+	logger              *slog.Logger // Logger for debugging
 }
 
 // IsExpired checks if the session has expired.
@@ -148,7 +150,11 @@ func (s *WebAPISession) handleIncomingIM(msg wire.SNACMessage) {
 	// Check if it's an auto-response (channel 2)
 	autoResponse := body.ChannelID == 0x0002
 
-	msgID := strconv.FormatUint(body.Cookie, 10)
+	// msgId must be unique per delivered event. The OSCAR cookie is not a
+	// reliable unique id (some clients reuse it across messages), and the web
+	// client dedupes its conversation list by msgId, silently dropping any
+	// collisions. Mint a fresh random id instead of reusing body.Cookie.
+	msgID := strconv.FormatUint(mrand.Uint64(), 16)
 	partner := body.ScreenName
 	nowSec := time.Now().Unix()
 	s.AddStoredIM(partner, partner, messageText, msgID, nowSec)
@@ -195,12 +201,20 @@ func (s *WebAPISession) handleTypingNotification(msg wire.SNACMessage) {
 		return
 	}
 
-	// Event types: 0=stopped typing, 1=text typed, 2=typing
-	isTyping := body.Event == 1 || body.Event == 2
+	// Event types: 0x0000=none, 0x0001=typed (paused), 0x0002=typing
+	var typingStatus string
+	switch body.Event {
+	case 0x0002:
+		typingStatus = "typing"
+	case 0x0001:
+		typingStatus = "typed"
+	default:
+		typingStatus = "none"
+	}
 
 	typingEvent := types.TypingEvent{
-		From:   body.ScreenName,
-		Typing: isTyping,
+		AimID:        body.ScreenName,
+		TypingStatus: typingStatus,
 	}
 
 	s.EventQueue.Push(types.EventTypeTyping, typingEvent)
@@ -275,15 +289,32 @@ func (s *WebAPISession) handleBuddyDeparted(msg wire.SNACMessage) {
 func (s *WebAPISession) handleFeedbagMessage(msg wire.SNACMessage) {
 	switch msg.Frame.SubGroup {
 	case wire.FeedbagInsertItem, wire.FeedbagUpdateItem, wire.FeedbagDeleteItem:
-		if s.BuddyListRefresher == nil {
-			return
+		if s.BuddyListRefresher != nil {
+			groups, err := s.BuddyListRefresher(context.Background())
+			if err != nil {
+				s.logger.Error("failed to refresh buddy list after feedbag change", "err", err)
+			} else {
+				s.EventQueue.Push(types.EventTypeBuddyList, map[string]interface{}{"groups": groups})
+			}
 		}
-		groups, err := s.BuddyListRefresher(context.Background())
-		if err != nil {
-			s.logger.Error("failed to refresh buddy list after feedbag change", "err", err)
-			return
+		if msg.Frame.SubGroup == wire.FeedbagUpdateItem && s.PermitDenyRefresher != nil {
+			body, ok := msg.Body.(wire.SNAC_0x13_0x09_FeedbagUpdateItem)
+			if ok {
+				for _, item := range body.Items {
+					if item.ClassID == wire.FeedbagClassIDPermit ||
+						item.ClassID == wire.FeedbagClassIDDeny ||
+						item.ClassID == wire.FeedbagClassIdPdinfo {
+						pdd, err := s.PermitDenyRefresher(context.Background())
+						if err != nil {
+							s.logger.Error("failed to refresh permit/deny after feedbag change", "err", err)
+						} else {
+							s.EventQueue.Push(types.EventTypePermitDeny, pdd)
+						}
+						break
+					}
+				}
+			}
 		}
-		s.EventQueue.Push(types.EventTypeBuddyList, map[string]interface{}{"groups": groups})
 	}
 }
 

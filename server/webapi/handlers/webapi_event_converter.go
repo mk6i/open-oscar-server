@@ -108,15 +108,7 @@ func ConvertEventForAMF3(event types.Event) map[string]interface{} {
 		result["eventData"] = event.Data
 
 	case types.EventTypeTyping:
-		if typingEvent, ok := event.Data.(types.TypingEvent); ok {
-			// Gromit expects 'aimId' and 'typingStatus'
-			result["eventData"] = map[string]interface{}{
-				"aimId":        typingEvent.From,
-				"typingStatus": typingEvent.Typing,
-			}
-		} else {
-			result["eventData"] = event.Data
-		}
+		result["eventData"] = event.Data
 
 	case types.EventTypeSentIM:
 		if sentIMEvent, ok := event.Data.(types.SentIMEvent); ok {

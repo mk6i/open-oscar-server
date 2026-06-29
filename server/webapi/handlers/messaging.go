@@ -1,15 +1,12 @@
 package handlers
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/mk6i/open-oscar-server/server/webapi/types"
@@ -17,29 +14,22 @@ import (
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
-// MessageRelayer defines methods for relaying messages between users
-type MessageRelayer interface {
-	RelayToScreenName(ctx context.Context, recipient state.IdentScreenName, msg wire.SNACMessage)
-}
-
-// OfflineMessageManager defines methods for managing offline messages
-type OfflineMessageManager interface {
-	SaveMessage(ctx context.Context, msg state.OfflineMessage) (int, error)
-}
-
 // RelationshipFetcher defines methods for fetching user relationships
 type RelationshipFetcher interface {
 	Relationship(ctx context.Context, me state.IdentScreenName, them state.IdentScreenName) (state.Relationship, error)
 }
 
+// ICBMService defines methods for ICBM operations
+type ICBMService interface {
+	ChannelMsgToHost(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) (*wire.SNACMessage, error)
+	ClientEvent(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x14_ICBMClientEvent) error
+}
+
 // MessagingHandler handles Web AIM API messaging endpoints
 type MessagingHandler struct {
-	SessionManager        *state.WebAPISessionManager
-	MessageRelayer        MessageRelayer
-	OfflineMessageManager OfflineMessageManager
-	SessionRetriever      SessionRetriever
-	RelationshipFetcher   RelationshipFetcher
-	Logger                *slog.Logger
+	SessionManager *state.WebAPISessionManager
+	ICBMService    ICBMService
+	Logger         *slog.Logger
 }
 
 // queryOrFormParam returns a request parameter from the query string or, for POST
@@ -98,34 +88,11 @@ func (h *MessagingHandler) SendIM(w http.ResponseWriter, r *http.Request) {
 
 	// Parse optional parameters
 	autoResponse := queryOrFormParam(r, "autoResponse") == "1"
-	offlineIMParam := queryOrFormParam(r, "offlineIM")
-	offlineIM := offlineIMParam != "0" && offlineIMParam != "false" // default to true
+	//offlineIMParam := queryOrFormParam(r, "offlineIM") what is this for
+	//offlineIM := offlineIMParam != "0" && offlineIMParam != "false" // default to true
 
 	// Create recipient identifier
 	recipientIdent := state.NewIdentScreenName(recipient)
-
-	// Check blocking relationship
-	rel, err := h.RelationshipFetcher.Relationship(ctx, sess.ScreenName.IdentScreenName(), recipientIdent)
-	if err != nil {
-		h.Logger.ErrorContext(ctx, "failed to fetch relationship", "error", err)
-		h.sendErrorResponse(w, http.StatusInternalServerError, "internal server error")
-		return
-	}
-
-	// Check if sender blocks recipient or recipient blocks sender
-	if rel.BlocksYou {
-		// Recipient blocks sender - pretend recipient is offline
-		h.sendErrorResponse(w, http.StatusNotFound, "recipient is not online")
-		return
-	}
-	if rel.YouBlock {
-		// Sender has blocked recipient - cannot send message
-		h.sendErrorResponse(w, http.StatusForbidden, "cannot send message to blocked user")
-		return
-	}
-
-	// Check if recipient is online
-	recipientSession := h.SessionRetriever.RetrieveSession(recipientIdent)
 
 	// Generate message cookie
 	var cookie [8]byte
@@ -164,117 +131,99 @@ func (h *MessagingHandler) SendIM(w http.ResponseWriter, r *http.Request) {
 	sn := sess.ScreenName.String()
 	sess.AddStoredIM(recipient, sn, message, messageID, nowSec)
 
-	if recipientSession == nil {
-		// Recipient is offline
-		if offlineIM {
-			// Save offline message
-			offlineMsg := state.OfflineMessage{
-				Message: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
-					Cookie:     cookieUint64,
-					ChannelID:  wire.ICBMChannelIM,
-					ScreenName: recipient,
-					TLVRestBlock: wire.TLVRestBlock{
-						TLVList: wire.TLVList{
-							wire.NewTLVBE(wire.ICBMTLVAOLIMData, h.encodeIMMessage(message, autoResponse)),
-							wire.NewTLVBE(wire.ICBMTLVStore, uint8(1)), // store offline
-						},
-					},
-				},
-				Recipient: recipientIdent,
-				Sender:    sess.ScreenName.IdentScreenName(),
-				Sent:      time.Now().UTC(),
-			}
+	// Recipient is online, deliver message
+	clientIM := wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
+		Cookie:       cookieUint64,
+		ChannelID:    wire.ICBMChannelIM,
+		ScreenName:   recipient,
+		TLVRestBlock: wire.TLVRestBlock{},
+	}
 
-			count, err := h.OfflineMessageManager.SaveMessage(ctx, offlineMsg)
-			if err != nil {
-				if errors.Is(err, state.ErrOfflineInboxFull) {
-					h.Logger.WarnContext(ctx, "offline inbox full",
-						"from", sess.ScreenName.String(),
-						"to", recipient)
-					h.sendErrorResponse(w, http.StatusConflict, "recipient inbox full")
+	// Add message data
+	frags, err := wire.ICBMFragmentList(message)
+	if err != nil {
+		h.sendErrorResponse(w, http.StatusInternalServerError, "failed to send message")
+		return
+	}
+
+	clientIM.Append(wire.NewTLVBE(wire.ICBMTLVAOLIMData, frags))
+
+	// Add auto-response flag if applicable
+	if autoResponse {
+		clientIM.Append(wire.NewTLVBE(wire.ICBMTLVAutoResponse, []byte{}))
+	}
+
+	frame := wire.SNACFrame{
+		FoodGroup: wire.ICBM,
+		SubGroup:  wire.ICBMChannelMsgToHost,
+		RequestID: wire.ReqIDFromServer,
+	}
+	resp, err := h.ICBMService.ChannelMsgToHost(r.Context(), sess.OSCARSession, frame, clientIM)
+
+	if err != nil {
+		h.sendErrorResponse(w, http.StatusInternalServerError, "failed to send message")
+		return
+	}
+
+	if resp != nil {
+		switch {
+		case resp.Frame.FoodGroup == wire.ICBM && resp.Frame.SubGroup == wire.ICBMErr:
+			if errSn, ok := resp.Body.(wire.SNACError); ok {
+				switch errSn.Code {
+				case wire.ErrorCodeNotLoggedOn:
+					subCode, hasSubCode := errSn.Uint16BE(wire.ErrorTLVErrorSubcode)
+					if hasSubCode {
+						if subCode == wire.ICBMSubErrOfflineIMExceedMax {
+							h.Logger.DebugContext(r.Context(), "user's offline messages full")
+						}
+					} else {
+						h.Logger.DebugContext(r.Context(), "recipient offline")
+					}
+					return
+				case wire.ErrorCodeInLocalPermitDeny:
+					h.Logger.DebugContext(r.Context(), "you blocked this user")
 					return
 				}
-				h.Logger.ErrorContext(ctx, "failed to save offline message",
-					"from", sess.ScreenName.String(),
-					"to", recipient,
-					"error", err)
-				h.sendErrorResponse(w, http.StatusInternalServerError, "failed to save offline message")
-				return
 			}
-
-			h.Logger.DebugContext(ctx, "saved offline message",
-				"from", sess.ScreenName.String(),
-				"to", recipient,
-				"count", count)
-
-			h.pushSenderWebAPIEvents(sess, sn, recipient, message, messageID, now, autoResponse)
-		} else {
-			// Recipient is offline and offline delivery is disabled
-			h.sendErrorResponse(w, http.StatusNotFound, "recipient is not online")
-			return
+		case resp.Frame.FoodGroup == wire.ICBM && resp.Frame.SubGroup == wire.ICBMHostAck:
+			h.Logger.DebugContext(r.Context(), "received host ack")
 		}
-	} else {
-		// Recipient is online, deliver message
-		clientIM := wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
-			Cookie:       cookieUint64,
-			ChannelID:    wire.ICBMChannelIM,
-			TLVUserInfo:  senderInfo,
-			TLVRestBlock: wire.TLVRestBlock{},
-		}
-
-		// Add message data
-		clientIM.Append(wire.NewTLVBE(wire.ICBMTLVAOLIMData, h.encodeIMMessage(message, autoResponse)))
-
-		// Add auto-response flag if applicable
-		if autoResponse {
-			clientIM.Append(wire.NewTLVBE(wire.ICBMTLVAutoResponse, []byte{}))
-		}
-
-		// Send message to recipient
-		h.MessageRelayer.RelayToScreenName(ctx, recipientIdent, wire.SNACMessage{
-			Frame: wire.SNACFrame{
-				FoodGroup: wire.ICBM,
-				SubGroup:  wire.ICBMChannelMsgToClient,
-				RequestID: wire.ReqIDFromServer,
-			},
-			Body: clientIM,
-		})
-
-		// Queue IM event for the recipient's WebAPI session if they have one
-		if recipientWebSession, err := h.SessionManager.GetSessionByUser(r.Context(), recipientIdent); err == nil && recipientWebSession != nil {
-			recipientWebSession.AddStoredIM(sn, sn, message, messageID, nowSec)
-			eventData := types.IMEvent{
-				Source: types.UserInfo{
-					AimID:     sn,
-					DisplayID: sn,
-					UserType:  "aim",
-					State:     "online",
-				},
-				Message:   message,
-				MsgID:     messageID,
-				Timestamp: now,
-				AutoResp:  autoResponse,
-			}
-			recipientWebSession.EventQueue.Push(types.EventTypeIM, eventData)
-			if recipientWebSession.IsSubscribedTo("conversation") {
-				recipientWebSession.EventQueue.Push(types.EventTypeConversation, types.ConversationEventData("update", []map[string]interface{}{
-					types.ConversationEntry(sn, sn, message, messageID, sn, false, 1),
-				}))
-			}
-		}
-
-		h.pushSenderWebAPIEvents(sess, sn, recipient, message, messageID, now, autoResponse)
-
-		h.Logger.DebugContext(ctx, "queued sentIM event for sender",
-			"from", sess.ScreenName.String(),
-			"to", recipient,
-			"eventType", types.EventTypeSentIM,
-		)
-
-		h.Logger.DebugContext(ctx, "delivered instant message",
-			"from", sess.ScreenName.String(),
-			"to", recipient)
 	}
+
+	// Queue IM event for the recipient's WebAPI session if they have one
+	if recipientWebSession, err := h.SessionManager.GetSessionByUser(r.Context(), recipientIdent); err == nil && recipientWebSession != nil {
+		recipientWebSession.AddStoredIM(sn, sn, message, messageID, nowSec)
+		eventData := types.IMEvent{
+			Source: types.UserInfo{
+				AimID:     sn,
+				DisplayID: sn,
+				UserType:  "aim",
+				State:     "online",
+			},
+			Message:   message,
+			MsgID:     messageID,
+			Timestamp: now,
+			AutoResp:  autoResponse,
+		}
+		recipientWebSession.EventQueue.Push(types.EventTypeIM, eventData)
+		if recipientWebSession.IsSubscribedTo("conversation") {
+			recipientWebSession.EventQueue.Push(types.EventTypeConversation, types.ConversationEventData("update", []map[string]interface{}{
+				types.ConversationEntry(sn, sn, message, messageID, sn, false, 1),
+			}))
+		}
+	}
+
+	h.pushSenderWebAPIEvents(sess, sn, recipient, message, messageID, now, autoResponse)
+
+	h.Logger.DebugContext(ctx, "queued sentIM event for sender",
+		"from", sess.ScreenName.String(),
+		"to", recipient,
+		"eventType", types.EventTypeSentIM,
+	)
+
+	h.Logger.DebugContext(ctx, "delivered instant message",
+		"from", sess.ScreenName.String(),
+		"to", recipient)
 
 	// Send success response
 	responseData := map[string]interface{}{
@@ -311,26 +260,6 @@ func (h *MessagingHandler) pushSenderWebAPIEvents(sess *state.WebAPISession, sen
 			types.ConversationEntry(recipient, recipient, message, messageID, sender, true, 0),
 		}))
 	}
-}
-
-// encodeIMMessage encodes a text message into the OSCAR IM format
-func (h *MessagingHandler) encodeIMMessage(text string, autoResponse bool) []byte {
-	// Create ICBM fragment list for the message
-	frags, err := wire.ICBMFragmentList(text)
-	if err != nil {
-		// If fragment creation fails, return simple text bytes
-		return []byte(text)
-	}
-
-	// Marshal the fragments
-	buf := &bytes.Buffer{}
-	for _, frag := range frags {
-		if err := wire.MarshalBE(frag, buf); err != nil {
-			// If marshaling fails, return simple text bytes
-			return []byte(text)
-		}
-	}
-	return buf.Bytes()
 }
 
 // sendErrorResponse sends an error response in Web AIM API format
@@ -371,92 +300,32 @@ func (h *MessagingHandler) SetTyping(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	typingStr := r.URL.Query().Get("typing")
-	typing := false
-	if typingStr != "" {
-		var err error
-		typing, err = strconv.ParseBool(typingStr)
-		if err != nil {
-			// Try numeric format (0/1)
-			typing = typingStr == "1"
-		}
+	typingStatus := r.URL.Query().Get("typingStatus")
+	if typingStatus == "" {
+		typingStatus = "none"
 	}
 
-	// Create recipient identifier
-	recipientIdent := state.NewIdentScreenName(recipient)
-
-	// Check blocking relationship
-	rel, err := h.RelationshipFetcher.Relationship(ctx, sess.ScreenName.IdentScreenName(), recipientIdent)
-	if err != nil {
-		h.Logger.ErrorContext(ctx, "failed to fetch relationship", "error", err)
-		h.sendErrorResponse(w, http.StatusInternalServerError, "internal server error")
-		return
+	var event uint16
+	switch typingStatus {
+	case "typing":
+		event = 0x0002
+	case "typed":
+		event = 0x0001
+	default:
+		event = 0x0000
 	}
 
-	// Check if sender blocks recipient or recipient blocks sender
-	if rel.BlocksYou || rel.YouBlock {
-		// Either party blocks the other - silently succeed without sending notification
-		h.sendSuccessResponse(w, r, nil)
-		return
-	}
-
-	// Check if recipient is online
-	recipientSession := h.SessionRetriever.RetrieveSession(recipientIdent)
-	if recipientSession == nil {
-		// Silently succeed even if recipient is offline
-		h.sendSuccessResponse(w, r, nil)
-		return
-	}
-
-	// Generate typing notification cookie
-	var cookie [8]byte
-	if _, err := rand.Read(cookie[:]); err != nil {
-		h.Logger.ErrorContext(ctx, "failed to generate typing cookie", "error", err)
-		h.sendErrorResponse(w, http.StatusInternalServerError, "internal server error")
-		return
-	}
-	cookieUint64 := binary.BigEndian.Uint64(cookie[:])
-
-	// Create typing notification
-	var notificationType uint16
-	if typing {
-		notificationType = 0x0002 // Typing started
-	} else {
-		notificationType = 0x0001 // Typing stopped
-	}
-
-	typingNotification := wire.SNAC_0x04_0x14_ICBMClientEvent{
-		Cookie:     cookieUint64,
+	inBody := wire.SNAC_0x04_0x14_ICBMClientEvent{
 		ChannelID:  wire.ICBMChannelIM,
-		ScreenName: sess.ScreenName.String(),
-		Event:      notificationType,
+		ScreenName: recipient,
+		Event:      event,
+	}
+	if err := h.ICBMService.ClientEvent(ctx, sess.OSCARSession, wire.SNACFrame{}, inBody); err != nil {
+		h.Logger.ErrorContext(ctx, "failed to send typing notification", "error", err)
+		h.sendErrorResponse(w, http.StatusInternalServerError, "internal server error")
+		return
 	}
 
-	// Send typing notification to recipient
-	h.MessageRelayer.RelayToScreenName(ctx, recipientIdent, wire.SNACMessage{
-		Frame: wire.SNACFrame{
-			FoodGroup: wire.ICBM,
-			SubGroup:  wire.ICBMClientEvent,
-			RequestID: wire.ReqIDFromServer,
-		},
-		Body: typingNotification,
-	})
-
-	// Queue typing event for the recipient's WebAPI session if they have one
-	if recipientWebSession, err := h.SessionManager.GetSessionByUser(r.Context(), recipientIdent); err == nil && recipientWebSession != nil {
-		eventData := types.TypingEvent{
-			From:   sess.ScreenName.String(),
-			Typing: typing,
-		}
-		recipientWebSession.EventQueue.Push(types.EventTypeTyping, eventData)
-	}
-
-	h.Logger.DebugContext(ctx, "sent typing notification",
-		"from", sess.ScreenName.String(),
-		"to", recipient,
-		"typing", typing)
-
-	// Send success response
 	h.sendSuccessResponse(w, r, nil)
 }
 

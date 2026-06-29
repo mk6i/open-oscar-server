@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -27,6 +28,7 @@ type SessionHandler struct {
 	BuddyListRegistry   BuddyListRegistry
 	BuddyBroadcaster    BuddyBroadcaster
 	FeedbagRetriever    FeedbagRetriever
+	FeedbagService      FeedbagService
 	OSCARBuddyService   OSCARBuddyService
 	BuddyListManager    *BuddyListManager
 	Logger              *slog.Logger
@@ -301,6 +303,18 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 				}
 			})
 
+			if err := h.FeedbagService.Use(ctx, oscarInstance); err != nil {
+				h.Logger.ErrorContext(ctx, "failed to use feedbag", "err", err.Error())
+			}
+
+			// A web client signals that it wants typing events through its event
+			// subscription, not through a stored feedbag buddy pref. Reflect that
+			// on the OSCAR session so ICBMService attaches the WantEvents TLV to
+			// outgoing IMs, prompting recipients to send typing notifications
+			// back. This must run after FeedbagService.Use, which otherwise
+			// overwrites the flag from stored prefs the web user may not have set.
+			oscarInstance.Session().SetTypingEventsEnabled(slices.Contains(events, "typing"))
+
 			oscarInstance.SetSignonComplete()
 
 			// Emulate an OSCAR client buddy watch list.
@@ -352,6 +366,20 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 	// Wire buddy list refresher so feedbag SNACs from the OSCAR bridge trigger a buddylist event.
 	session.BuddyListRefresher = func(ctx context.Context) (interface{}, error) {
 		return h.BuddyListManager.GetBuddyListForUser(ctx, session)
+	}
+
+	// Wire permit/deny refresher so FeedbagUpdateItem SNACs trigger a permitDeny event.
+	session.PermitDenyRefresher = func(ctx context.Context) (interface{}, error) {
+		frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
+		fb, err := h.FeedbagService.Query(ctx, session.OSCARSession, frame)
+		if err != nil {
+			return nil, err
+		}
+		reply, ok := fb.Body.(wire.SNAC_0x13_0x06_FeedbagReply)
+		if !ok {
+			return nil, fmt.Errorf("unexpected feedbag reply type")
+		}
+		return permitDenyData(reply.Items), nil
 	}
 
 	// Store client info
