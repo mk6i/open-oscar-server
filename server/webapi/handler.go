@@ -8,32 +8,21 @@ import (
 	"net/http"
 
 	"github.com/mk6i/open-oscar-server/state"
-	"github.com/mk6i/open-oscar-server/wire"
 )
 
 type Handler struct {
-	AdminService      AdminService
 	AuthService       AuthService
 	BuddyListRegistry BuddyListRegistry
-	BuddyService      BuddyService
-	ChatNavService    ChatNavService
-	ChatService       ChatService
 	CookieBaker       CookieBaker
-	DirSearchService  DirSearchService
 	ICBMService       ICBMService
 	LocateService     LocateService
 	Logger            *slog.Logger
 	OServiceService   OServiceService
-	PermitDenyService PermitDenyService
-	TOCConfigStore    TOCConfigStore
-	SNACRateLimits    wire.SNACRateLimits
 	// New fields for WebAPI handlers
 	SessionRetriever SessionRetriever
 	// Phase 2 additions
-	MessageRelayer        MessageRelayer
-	OfflineMessageManager OfflineMessageManager
-	BuddyBroadcaster      BuddyBroadcaster
-	ProfileManager        ProfileManager
+	BuddyBroadcaster BuddyBroadcaster
+	ProfileManager   ProfileManager
 	// Phase 3 additions
 	PreferenceManager PreferenceManager
 	// Phase 4 additions for OSCAR Bridge

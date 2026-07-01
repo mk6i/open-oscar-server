@@ -21,13 +21,7 @@ import (
 type AuthHandler struct {
 	AuthService AuthService
 	CookieBaker CookieBaker
-	UserManager UserRetriever
 	Logger      *slog.Logger
-}
-
-// UserRetriever looks up local AIM accounts.
-type UserRetriever interface {
-	User(ctx context.Context, screenName state.IdentScreenName) (*state.User, error)
 }
 
 type OServiceService interface {
@@ -62,26 +56,9 @@ func (h *AuthHandler) GetToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if h.UserManager != nil {
-		user, err := h.UserManager.User(ctx, loginID.IdentScreenName())
-		if err != nil {
-			h.Logger.ErrorContext(ctx, "getToken: user lookup failed", "error", err, "loginId", loginID)
-			SendError(w, http.StatusInternalServerError, "internal server error")
-			return
-		}
-		if user == nil {
-			h.Logger.DebugContext(ctx, "getToken: user not found", "loginId", loginID)
-			resp := BaseResponse{}
-			resp.Response.StatusCode = 401
-			resp.Response.StatusText = "Unauthorized"
-			resp.Response.Data = map[string]interface{}{
-				"redirectURL": h.loginRedirectURL(r),
-			}
-			SendResponse(w, r, resp, h.Logger)
-			return
-		}
-	}
-
+	// Existence of the account is authoritatively enforced downstream by
+	// RegisterBOSSession (during startSession); a token minted here for an
+	// unknown screen name is inert, so no user lookup is needed at this point.
 	if len(tokenBytes) == 0 {
 		var err error
 		tokenBytes, err = h.issueAuthCookie(loginID, devID)
@@ -98,7 +75,7 @@ func (h *AuthHandler) GetToken(w http.ResponseWriter, r *http.Request) {
 	resp.Response.Data = map[string]interface{}{
 		"token": map[string]interface{}{
 			"a":         base64.URLEncoding.EncodeToString(tokenBytes),
-			"expiresIn": "86400",
+			"expiresIn": "86400", // todo check this assumption
 		},
 		"userData": map[string]interface{}{
 			"attributes": map[string]interface{}{

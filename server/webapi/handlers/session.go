@@ -249,66 +249,68 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 		oscarInstance, err = h.OSCARAuthService.RegisterBOSSession(ctx, cookie, fnCfg)
 
 		if err != nil {
+			// A failed BOS registration (e.g. the per-user session cap) leaves no
+			// OSCAR session. Downstream steps (buddy list, feedbag, presence) all
+			// dereference it, so fail the request instead of continuing half-set-up.
 			h.Logger.ErrorContext(ctx, "failed to create OSCAR session", "err", err.Error())
-			// Continue without OSCAR session - WebAPI can work standalone
-			// todo wat
-			oscarInstance = nil
-		} else {
-			if err = oscarInstance.Session().RunOnce(func() error {
-				// make buddy list visible to other users
-				if err := h.BuddyListRegistry.RegisterBuddyList(ctx, oscarInstance.IdentScreenName()); err != nil {
-					return fmt.Errorf("unable to init buddy list: %w", err)
-				}
-				// restore warning level from last session
-				if err := h.RecalcWarning(ctx, oscarInstance); err != nil {
-					return fmt.Errorf("failed to recalculate warning level: %w", err)
-				}
-				// periodically decay warning level
-				go h.LowerWarnLevel(ctx, oscarInstance)
-				return nil
-			}); err != nil {
-				h.Logger.ErrorContext(ctx, "failed to init session", "err", err.Error())
-				h.sendError(w, r, http.StatusInternalServerError, "internal server error")
+			h.sendError(w, r, http.StatusServiceUnavailable, "unable to establish session")
+			return
+		}
+
+		if err = oscarInstance.Session().RunOnce(func() error {
+			// make buddy list visible to other users
+			if err := h.BuddyListRegistry.RegisterBuddyList(ctx, oscarInstance.IdentScreenName()); err != nil {
+				return fmt.Errorf("unable to init buddy list: %w", err)
+			}
+			// restore warning level from last session
+			if err := h.RecalcWarning(ctx, oscarInstance); err != nil {
+				return fmt.Errorf("failed to recalculate warning level: %w", err)
+			}
+			// periodically decay warning level
+			go h.LowerWarnLevel(ctx, oscarInstance)
+			return nil
+		}); err != nil {
+			h.Logger.ErrorContext(ctx, "failed to init session", "err", err.Error())
+			h.sendError(w, r, http.StatusInternalServerError, "internal server error")
+			return
+		}
+
+		// Update user visibility when an instance closes, as the user's overall status may change.
+		// Example: With 1 away and 1 non-away instance, the user appears available. If the non-away
+		// instance closes, the user should appear away.
+		oscarInstance.OnClose(func() {
+			if shuttingDown(ctx) {
 				return
 			}
-
-			// Update user visibility when an instance closes, as the user's overall status may change.
-			// Example: With 1 away and 1 non-away instance, the user appears available. If the non-away
-			// instance closes, the user should appear away.
-			oscarInstance.OnClose(func() {
-				if shuttingDown(ctx) {
-					return
+			if oscarInstance.Session().Invisible() {
+				if err := h.BuddyBroadcaster.BroadcastBuddyDeparted(ctx, oscarInstance.IdentScreenName()); err != nil {
+					h.Logger.ErrorContext(ctx, "error sending buddy departure notifications", "err", err.Error())
 				}
-				if oscarInstance.Session().Invisible() {
-					if err := h.BuddyBroadcaster.BroadcastBuddyDeparted(ctx, oscarInstance.IdentScreenName()); err != nil {
-						h.Logger.ErrorContext(ctx, "error sending buddy departure notifications", "err", err.Error())
-					}
-				} else {
-					if err := h.BuddyBroadcaster.BroadcastBuddyArrived(ctx, oscarInstance.IdentScreenName(), oscarInstance.Session().TLVUserInfo()); err != nil {
-						h.Logger.ErrorContext(ctx, "error sending buddy arrival notifications", "err", err.Error())
-					}
+			} else {
+				if err := h.BuddyBroadcaster.BroadcastBuddyArrived(ctx, oscarInstance.IdentScreenName(), oscarInstance.Session().TLVUserInfo()); err != nil {
+					h.Logger.ErrorContext(ctx, "error sending buddy arrival notifications", "err", err.Error())
 				}
-			})
-
-			if err := h.FeedbagService.Use(ctx, oscarInstance); err != nil {
-				h.Logger.ErrorContext(ctx, "failed to use feedbag", "err", err.Error())
 			}
+		})
 
-			// A web client signals that it wants typing events through its event
-			// subscription, not through a stored feedbag buddy pref. Reflect that
-			// on the OSCAR session so ICBMService attaches the WantEvents TLV to
-			// outgoing IMs, prompting recipients to send typing notifications
-			// back. This must run after FeedbagService.Use, which otherwise
-			// overwrites the flag from stored prefs the web user may not have set.
-			oscarInstance.Session().SetTypingEventsEnabled(slices.Contains(events, "typing"))
+		if err := h.FeedbagService.Use(ctx, oscarInstance); err != nil {
+			h.Logger.ErrorContext(ctx, "failed to use feedbag", "err", err.Error())
+		}
 
-			oscarInstance.SetSignonComplete()
+		// A web client signals that it wants typing events through its event
+		// subscription, not through a stored feedbag buddy pref. Reflect that
+		// on the OSCAR session so ICBMService attaches the WantEvents TLV to
+		// outgoing IMs, prompting recipients to send typing notifications
+		// back. This must run after FeedbagService.Use, which otherwise
+		// overwrites the flag from stored prefs the web user may not have set.
+		oscarInstance.Session().SetTypingEventsEnabled(slices.Contains(events, "typing"))
 
-			if err := h.OServiceService.ClientOnline(ctx, wire.BOS, wire.SNAC_0x01_0x02_OServiceClientOnline{}, oscarInstance); err != nil {
-				h.Logger.ErrorContext(ctx, "failed to set client online", "err", err.Error())
-				h.sendError(w, r, http.StatusInternalServerError, "internal server error")
-				return
-			}
+		oscarInstance.SetSignonComplete()
+
+		if err := h.OServiceService.ClientOnline(ctx, wire.BOS, wire.SNAC_0x01_0x02_OServiceClientOnline{}, oscarInstance); err != nil {
+			h.Logger.ErrorContext(ctx, "failed to set client online", "err", err.Error())
+			h.sendError(w, r, http.StatusInternalServerError, "internal server error")
+			return
 		}
 	}
 

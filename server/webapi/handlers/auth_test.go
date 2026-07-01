@@ -75,24 +75,11 @@ func (t *testCookieBaker) Crack(data []byte) ([]byte, error) {
 	return data, nil
 }
 
-type testUserRetriever struct {
-	user *state.User
-	err  error
-}
-
-func (t *testUserRetriever) User(ctx context.Context, screenName state.IdentScreenName) (*state.User, error) {
-	if t.err != nil {
-		return nil, t.err
-	}
-	return t.user, nil
-}
-
 func TestAuthHandler_GetToken(t *testing.T) {
 	tests := []struct {
 		name         string
 		query        string
 		cookies      []*http.Cookie
-		user         *state.User
 		checkBody    func(*testing.T, string)
 		expectedCode int
 	}{
@@ -102,7 +89,6 @@ func TestAuthHandler_GetToken(t *testing.T) {
 			cookies: []*http.Cookie{
 				{Name: "localAuthUser", Value: "testuser||Test User"},
 			},
-			user: &state.User{},
 			checkBody: func(t *testing.T, body string) {
 				assert.Contains(t, body, "_callbacks_._0mq8wqdav(")
 				assert.Contains(t, body, `"statusCode":200`)
@@ -121,15 +107,18 @@ func TestAuthHandler_GetToken(t *testing.T) {
 			expectedCode: http.StatusOK,
 		},
 		{
-			name:  "Unauthorized_UnknownUser",
-			query: "f=json&attributes=loginId&devId=dev123",
+			// getToken no longer checks account existence; an unknown screen name
+			// still receives a token. Existence is enforced later by
+			// RegisterBOSSession during startSession.
+			name:  "Success_UnknownUserStillIssuesToken",
+			query: "f=json&attributes=loginId&devId=dev123&c=_callbacks_._xyz",
 			cookies: []*http.Cookie{
 				{Name: "localAuthUser", Value: "missing||Missing User"},
 			},
-			user: nil,
 			checkBody: func(t *testing.T, body string) {
-				assert.Contains(t, body, `"statusCode":401`)
-				assert.Contains(t, body, `"redirectURL"`)
+				assert.Contains(t, body, `"statusCode":200`)
+				assert.Contains(t, body, `"loginId":"missing"`)
+				assert.Contains(t, body, `"a":`)
 			},
 			expectedCode: http.StatusOK,
 		},
@@ -140,7 +129,6 @@ func TestAuthHandler_GetToken(t *testing.T) {
 			handler := &AuthHandler{
 				AuthService: &testAuthService{},
 				CookieBaker: &testCookieBaker{},
-				UserManager: &testUserRetriever{user: tt.user},
 				Logger:      slog.Default(),
 			}
 

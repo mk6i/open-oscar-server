@@ -534,14 +534,6 @@ func WebAPI(deps Container) *webapi.Server {
 	)
 
 	handler := webapi.Handler{
-		AdminService: foodgroup.NewAdminService(
-			deps.sqLiteUserStore,
-			deps.sqLiteUserStore,
-			deps.sqLiteUserStore,
-			deps.inMemorySessionManager,
-			deps.inMemorySessionManager,
-			deps.logger,
-		),
 		AuthService: foodgroup.NewAuthService(
 			deps.cfg,
 			deps.inMemorySessionManager,
@@ -558,17 +550,8 @@ func WebAPI(deps Container) *webapi.Server {
 			logger,
 		),
 		BuddyListRegistry: deps.sqLiteUserStore,
-		BuddyService: foodgroup.NewBuddyService(
-			deps.inMemorySessionManager,
-			deps.sqLiteUserStore,
-			deps.sqLiteUserStore,
-			deps.inMemorySessionManager,
-			deps.sqLiteUserStore,
-			deps.sqLiteUserStore,
-		),
-		CookieBaker:      deps.hmacCookieBaker,
-		DirSearchService: foodgroup.NewODirService(logger, deps.sqLiteUserStore),
-		ICBMService:      deps.icbmSvc,
+		CookieBaker:       deps.hmacCookieBaker,
+		ICBMService:       deps.icbmSvc,
 		LocateService: foodgroup.NewLocateService(
 			deps.sqLiteUserStore,
 			deps.inMemorySessionManager,
@@ -593,24 +576,11 @@ func WebAPI(deps Container) *webapi.Server {
 			deps.sqLiteUserStore,
 			deps.sqLiteUserStore,
 		),
-		PermitDenyService: foodgroup.NewPermitDenyService(
-			deps.sqLiteUserStore,
-			deps.sqLiteUserStore,
-			deps.sqLiteUserStore,
-			deps.inMemorySessionManager,
-			deps.inMemorySessionManager,
-		),
-		TOCConfigStore: deps.sqLiteUserStore,
-		ChatService:    foodgroup.NewChatService(deps.chatSessionManager),
-		ChatNavService: foodgroup.NewChatNavService(logger, deps.sqLiteUserStore),
-		SNACRateLimits: deps.snacRateLimits,
 		// New fields for WebAPI handlers
 		SessionRetriever: deps.inMemorySessionManager,
 		// Phase 2 additions
-		MessageRelayer:        deps.inMemorySessionManager,
-		OfflineMessageManager: deps.sqLiteUserStore,
-		BuddyBroadcaster:      oscarBuddyBroadcaster,
-		ProfileManager:        deps.sqLiteUserStore,
+		BuddyBroadcaster: oscarBuddyBroadcaster,
+		ProfileManager:   deps.sqLiteUserStore,
 		// Phase 3 additions
 		PreferenceManager: deps.sqLiteUserStore.NewWebPreferenceManager(),
 		// Phase 4 additions for OSCAR Bridge
