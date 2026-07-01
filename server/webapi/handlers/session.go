@@ -24,12 +24,9 @@ type SessionHandler struct {
 	SessionManager      *state.WebAPISessionManager
 	OSCARSessionManager SessionManager
 	OSCARAuthService    AuthService
-	BuddyListService    BuddyListService
 	BuddyListRegistry   BuddyListRegistry
 	BuddyBroadcaster    BuddyBroadcaster
-	FeedbagRetriever    FeedbagRetriever
 	FeedbagService      FeedbagService
-	OSCARBuddyService   OSCARBuddyService
 	BuddyListManager    *BuddyListManager
 	Logger              *slog.Logger
 	OServiceService     OServiceService
@@ -60,16 +57,6 @@ type SessionManager interface {
 type BuddyListRegistry interface {
 	RegisterBuddyList(ctx context.Context, screenName state.IdentScreenName) error
 	UnregisterBuddyList(ctx context.Context, screenName state.IdentScreenName) error
-}
-
-// BuddyListService defines methods for buddy list operations.
-type BuddyListService interface {
-	GetBuddyList(ctx context.Context, screenName state.IdentScreenName) ([]BuddyGroup, error)
-}
-
-// OSCARBuddyService defines the OSCAR buddy-list operations we need to emulate an OSCAR client.
-type OSCARBuddyService interface {
-	AddBuddies(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x03_0x04_BuddyAddBuddies) (*wire.SNACMessage, error)
 }
 
 type ChatSessionManager interface {
@@ -316,31 +303,6 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 			oscarInstance.Session().SetTypingEventsEnabled(slices.Contains(events, "typing"))
 
 			oscarInstance.SetSignonComplete()
-
-			// Emulate an OSCAR client buddy watch list.
-			if h.FeedbagRetriever != nil && h.OSCARBuddyService != nil {
-				if items, err := h.FeedbagRetriever.RetrieveFeedbag(ctx, screenName.IdentScreenName()); err != nil {
-					h.Logger.ErrorContext(ctx, "failed to retrieve feedbag for buddy watch list", "err", err.Error())
-				} else {
-					var b wire.SNAC_0x03_0x04_BuddyAddBuddies
-					for _, item := range items {
-						if item.ClassID != wire.FeedbagClassIdBuddy {
-							continue
-						}
-						if strings.TrimSpace(item.Name) == "" {
-							continue
-						}
-						b.Buddies = append(b.Buddies, struct {
-							ScreenName string `oscar:"len_prefix=uint8"`
-						}{ScreenName: item.Name})
-					}
-					if len(b.Buddies) > 0 {
-						if _, err := h.OSCARBuddyService.AddBuddies(ctx, oscarInstance, wire.SNACFrame{}, b); err != nil {
-							h.Logger.ErrorContext(ctx, "failed to add OSCAR buddy watch list", "err", err.Error())
-						}
-					}
-				}
-			}
 
 			if err := h.OServiceService.ClientOnline(ctx, wire.BOS, wire.SNAC_0x01_0x02_OServiceClientOnline{}, oscarInstance); err != nil {
 				h.Logger.ErrorContext(ctx, "failed to set client online", "err", err.Error())

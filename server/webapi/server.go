@@ -32,12 +32,9 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 		SessionManager:      sessionManager,
 		OSCARSessionManager: handler.SessionRetriever.(handlers.SessionManager),
 		OSCARAuthService:    handler.AuthService,
-		BuddyListService:    nil,
 		BuddyListRegistry:   handler.BuddyListRegistry,
 		BuddyBroadcaster:    handler.BuddyBroadcaster,
-		FeedbagRetriever:    handler.FeedbagRetriever,
 		FeedbagService:      handler.FeedbagService,
-		OSCARBuddyService:   handler.BuddyService,
 		BuddyListManager:    handler.BuddyListManager.(*handlers.BuddyListManager),
 		Logger:              logger,
 		OServiceService:     handler.OServiceService,
@@ -54,7 +51,7 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 	presenceHandler := &handlers.PresenceHandler{
 		SessionManager:      sessionManager,
 		SessionRetriever:    handler.SessionRetriever,
-		FeedbagRetriever:    handler.FeedbagRetriever,
+		FeedbagService:      handler.FeedbagService,
 		BuddyBroadcaster:    handler.BuddyBroadcaster,
 		ProfileManager:      handler.ProfileManager,
 		RelationshipFetcher: handler.RelationshipFetcher,
@@ -91,13 +88,6 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 		BridgeStore:      handler.OSCARBridgeStore,
 		Config:           handler.OSCARConfig,
 		Logger:           logger,
-	}
-
-	// Phase 5: Chat handler
-	chatHandler := &handlers.ChatHandler{
-		SessionManager: sessionManager,
-		ChatManager:    handler.ChatManager,
-		Logger:         logger,
 	}
 
 	for _, l := range listeners {
@@ -291,24 +281,6 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 		} {
 			mux.Handle("GET /lifestream/"+p, lifestreamRoute(lifestreamStub.EmptyOK))
 		}
-
-		// Phase 5: Chat room endpoints
-		// All chat endpoints use aimsid for authentication
-		mux.Handle("GET /chat/createAndJoinChat", authMiddleware.AuthenticateFlexible(
-			authMiddleware.CORSMiddleware(
-				http.HandlerFunc(chatHandler.CreateAndJoinChat))))
-
-		mux.Handle("GET /chat/sendMessage", authMiddleware.AuthenticateFlexible(
-			authMiddleware.CORSMiddleware(
-				http.HandlerFunc(chatHandler.SendMessage))))
-
-		mux.Handle("GET /chat/setTyping", authMiddleware.AuthenticateFlexible(
-			authMiddleware.CORSMiddleware(
-				http.HandlerFunc(chatHandler.SetTyping))))
-
-		mux.Handle("GET /chat/leaveChat", authMiddleware.AuthenticateFlexible(
-			authMiddleware.CORSMiddleware(
-				http.HandlerFunc(chatHandler.LeaveChat))))
 
 		// Unmatched paths (pattern "/" matches anything not covered by routes above).
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

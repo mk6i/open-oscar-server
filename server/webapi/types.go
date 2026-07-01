@@ -111,20 +111,6 @@ type SessionRetriever interface {
 	RetrieveSession(screenName state.IdentScreenName) *state.Session
 }
 
-// FeedbagRetriever provides methods to retrieve buddy list data.
-type FeedbagRetriever interface {
-	RetrieveFeedbag(ctx context.Context, screenName state.IdentScreenName) ([]wire.FeedbagItem, error)
-	RelationshipsByUser(ctx context.Context, screenName state.IdentScreenName) ([]state.IdentScreenName, error)
-}
-
-// FeedbagManager provides methods to manage buddy lists.
-type FeedbagManager interface {
-	RetrieveFeedbag(ctx context.Context, screenName state.IdentScreenName) ([]wire.FeedbagItem, error)
-	InsertItem(ctx context.Context, screenName state.IdentScreenName, item wire.FeedbagItem) error
-	UpdateItem(ctx context.Context, screenName state.IdentScreenName, item wire.FeedbagItem) error
-	DeleteItem(ctx context.Context, screenName state.IdentScreenName, item wire.FeedbagItem) error
-}
-
 type FeedbagService interface {
 	DeleteItem(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x0A_FeedbagDeleteItem) (*wire.SNACMessage, error)
 	Query(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame) (wire.SNACMessage, error)
@@ -169,18 +155,6 @@ type ProfileManager interface {
 type PreferenceManager interface {
 	SetPreferences(ctx context.Context, screenName state.IdentScreenName, prefs map[string]interface{}) error
 	GetPreferences(ctx context.Context, screenName state.IdentScreenName) (map[string]interface{}, error)
-}
-
-// PermitDenyManager provides methods to manage permit/deny lists.
-type PermitDenyManager interface {
-	SetPDMode(ctx context.Context, screenName state.IdentScreenName, mode wire.FeedbagPDMode) error
-	GetPDMode(ctx context.Context, screenName state.IdentScreenName) (wire.FeedbagPDMode, error)
-	GetPermitList(ctx context.Context, screenName state.IdentScreenName) ([]state.IdentScreenName, error)
-	GetDenyList(ctx context.Context, screenName state.IdentScreenName) ([]state.IdentScreenName, error)
-	AddPermitBuddy(ctx context.Context, me state.IdentScreenName, them state.IdentScreenName) error
-	RemovePermitBuddy(ctx context.Context, me state.IdentScreenName, them state.IdentScreenName) error
-	AddDenyBuddy(ctx context.Context, me state.IdentScreenName, them state.IdentScreenName) error
-	RemoveDenyBuddy(ctx context.Context, me state.IdentScreenName, them state.IdentScreenName) error
 }
 
 // Phase 4: OSCAR Bridge interfaces

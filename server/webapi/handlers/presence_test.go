@@ -15,27 +15,6 @@ import (
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
-// MockFeedbagRetriever is a mock implementation of FeedbagRetriever
-type MockFeedbagRetriever struct {
-	mock.Mock
-}
-
-func (m *MockFeedbagRetriever) RetrieveFeedbag(ctx context.Context, screenName state.IdentScreenName) ([]wire.FeedbagItem, error) {
-	args := m.Called(ctx, screenName)
-	if items := args.Get(0); items != nil {
-		return items.([]wire.FeedbagItem), args.Error(1)
-	}
-	return nil, args.Error(1)
-}
-
-func (m *MockFeedbagRetriever) RelationshipsByUser(ctx context.Context, screenName state.IdentScreenName) ([]state.IdentScreenName, error) {
-	args := m.Called(ctx, screenName)
-	if names := args.Get(0); names != nil {
-		return names.([]state.IdentScreenName), args.Error(1)
-	}
-	return nil, args.Error(1)
-}
-
 // MockFeedbagService is a mock implementation of FeedbagService
 type MockFeedbagService struct {
 	mock.Mock
@@ -125,19 +104,23 @@ func TestPresenceHandler_GetPresence(t *testing.T) {
 	tests := []struct {
 		name               string
 		queryParams        string
-		setupMocks         func(*MockSessionRetriever, *MockFeedbagRetriever, *MockRelationshipFetcher)
+		setupMocks         func(*MockSessionRetriever, *MockFeedbagService, *MockRelationshipFetcher)
 		expectedStatusCode int
 		checkResponse      func(*testing.T, string)
 	}{
 		{
 			name:        "Success_BuddyList",
 			queryParams: "bl=1",
-			setupMocks: func(sr *MockSessionRetriever, fr *MockFeedbagRetriever, rf *MockRelationshipFetcher) {
+			setupMocks: func(sr *MockSessionRetriever, fr *MockFeedbagService, rf *MockRelationshipFetcher) {
 				// Return feedbag with a group and buddy
-				fr.On("RetrieveFeedbag", mock.Anything, state.NewIdentScreenName("testuser")).
-					Return([]wire.FeedbagItem{
-						{ItemID: 1, ClassID: wire.FeedbagClassIdGroup, Name: "Friends", GroupID: 0},
-						{ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, Name: "buddy1", GroupID: 1},
+				fr.On("Query", mock.Anything, mock.Anything, mock.Anything).
+					Return(wire.SNACMessage{
+						Body: wire.SNAC_0x13_0x06_FeedbagReply{
+							Items: []wire.FeedbagItem{
+								{ItemID: 1, ClassID: wire.FeedbagClassIdGroup, Name: "Friends", GroupID: 0},
+								{ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, Name: "buddy1", GroupID: 1},
+							},
+						},
 					}, nil)
 				rf.On("Relationship", mock.Anything, state.NewIdentScreenName("testuser"), state.NewIdentScreenName("buddy1")).
 					Return(state.Relationship{}, nil)
@@ -156,7 +139,7 @@ func TestPresenceHandler_GetPresence(t *testing.T) {
 		{
 			name:        "Success_TargetUsers",
 			queryParams: "t=user1,user2",
-			setupMocks: func(sr *MockSessionRetriever, fr *MockFeedbagRetriever, rf *MockRelationshipFetcher) {
+			setupMocks: func(sr *MockSessionRetriever, fr *MockFeedbagService, rf *MockRelationshipFetcher) {
 				rf.On("Relationship", mock.Anything, state.NewIdentScreenName("testuser"), state.NewIdentScreenName("user1")).
 					Return(state.Relationship{}, nil)
 				rf.On("Relationship", mock.Anything, state.NewIdentScreenName("testuser"), state.NewIdentScreenName("user2")).
@@ -177,7 +160,7 @@ func TestPresenceHandler_GetPresence(t *testing.T) {
 		{
 			name:        "Success_BlockedUserOffline",
 			queryParams: "t=blockeduser",
-			setupMocks: func(sr *MockSessionRetriever, fr *MockFeedbagRetriever, rf *MockRelationshipFetcher) {
+			setupMocks: func(sr *MockSessionRetriever, fr *MockFeedbagService, rf *MockRelationshipFetcher) {
 				rf.On("Relationship", mock.Anything, state.NewIdentScreenName("testuser"), state.NewIdentScreenName("blockeduser")).
 					Return(state.Relationship{YouBlock: true}, nil)
 				// RetrieveSession should NOT be called for blocked users
@@ -192,7 +175,7 @@ func TestPresenceHandler_GetPresence(t *testing.T) {
 		{
 			name:               "Success_EmptyRequest",
 			queryParams:        "",
-			setupMocks:         func(sr *MockSessionRetriever, fr *MockFeedbagRetriever, rf *MockRelationshipFetcher) {},
+			setupMocks:         func(sr *MockSessionRetriever, fr *MockFeedbagService, rf *MockRelationshipFetcher) {},
 			expectedStatusCode: http.StatusOK,
 			checkResponse: func(t *testing.T, body string) {
 				assert.Contains(t, body, `"statusCode":200`)
@@ -203,7 +186,7 @@ func TestPresenceHandler_GetPresence(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			sessionRetriever := &MockSessionRetriever{}
-			feedbagRetriever := &MockFeedbagRetriever{}
+			feedbagService := &MockFeedbagService{}
 			relFetcher := &MockRelationshipFetcher{}
 
 			sessionMgr, aimsid := createTestSessionManager("testuser")
@@ -211,12 +194,12 @@ func TestPresenceHandler_GetPresence(t *testing.T) {
 			handler := &PresenceHandler{
 				SessionManager:      sessionMgr,
 				SessionRetriever:    sessionRetriever,
-				FeedbagRetriever:    feedbagRetriever,
+				FeedbagService:      feedbagService,
 				RelationshipFetcher: relFetcher,
 				Logger:              slog.Default(),
 			}
 
-			tt.setupMocks(sessionRetriever, feedbagRetriever, relFetcher)
+			tt.setupMocks(sessionRetriever, feedbagService, relFetcher)
 
 			reqURL := "/presence/get?aimsid=" + aimsid
 			if tt.queryParams != "" {
@@ -237,7 +220,7 @@ func TestPresenceHandler_GetPresence(t *testing.T) {
 			}
 
 			sessionRetriever.AssertExpectations(t)
-			feedbagRetriever.AssertExpectations(t)
+			feedbagService.AssertExpectations(t)
 			relFetcher.AssertExpectations(t)
 		})
 	}

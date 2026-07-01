@@ -12,19 +12,12 @@ import (
 	"strings"
 
 	"github.com/mk6i/open-oscar-server/state"
-	"github.com/mk6i/open-oscar-server/wire"
 )
 
 // SessionRetriever provides methods to retrieve OSCAR sessions.
 type SessionRetriever interface {
 	AllSessions() []*state.Session
 	RetrieveSession(screenName state.IdentScreenName) *state.Session
-}
-
-// FeedbagRetriever provides methods to retrieve feedbag data.
-type FeedbagRetriever interface {
-	RetrieveFeedbag(ctx context.Context, screenName state.IdentScreenName) ([]wire.FeedbagItem, error)
-	RelationshipsByUser(ctx context.Context, screenName state.IdentScreenName) ([]state.IdentScreenName, error)
 }
 
 // CommonHandler provides shared utilities for all Web API handlers.

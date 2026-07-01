@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -16,7 +17,7 @@ import (
 type PresenceHandler struct {
 	SessionManager      *state.WebAPISessionManager
 	SessionRetriever    SessionRetriever
-	FeedbagRetriever    FeedbagRetriever
+	FeedbagService      FeedbagService
 	BuddyBroadcaster    BuddyBroadcaster
 	ProfileManager      ProfileManager
 	RelationshipFetcher RelationshipFetcher
@@ -106,7 +107,7 @@ func (h *PresenceHandler) GetPresence(w http.ResponseWriter, r *http.Request) {
 
 	if getBuddyList {
 		// Retrieve buddy list from feedbag
-		groups, err := h.getBuddyListGroups(ctx, session.ScreenName.IdentScreenName())
+		groups, err := h.getBuddyListGroups(ctx, session)
 		if err != nil {
 			h.Logger.ErrorContext(ctx, "failed to get buddy list", "err", err.Error())
 			// Return empty buddy list on error instead of failing
@@ -179,12 +180,20 @@ func (h *PresenceHandler) GetPresence(w http.ResponseWriter, r *http.Request) {
 }
 
 // getBuddyListGroups retrieves the buddy list organized by groups.
-func (h *PresenceHandler) getBuddyListGroups(ctx context.Context, screenName state.IdentScreenName) ([]BuddyGroupInfo, error) {
-	// Get feedbag items
-	items, err := h.FeedbagRetriever.RetrieveFeedbag(ctx, screenName)
+func (h *PresenceHandler) getBuddyListGroups(ctx context.Context, session *state.WebAPISession) ([]BuddyGroupInfo, error) {
+	screenName := session.ScreenName.IdentScreenName()
+
+	// Get feedbag items via the feedbag service
+	frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
+	reply, err := h.FeedbagService.Query(ctx, session.OSCARSession, frame)
 	if err != nil {
 		return nil, err
 	}
+	body, ok := reply.Body.(wire.SNAC_0x13_0x06_FeedbagReply)
+	if !ok {
+		return nil, fmt.Errorf("unexpected feedbag reply body type %T", reply.Body)
+	}
+	items := body.Items
 
 	// Organize items into groups
 	groupMap := make(map[uint16]*BuddyGroupInfo)

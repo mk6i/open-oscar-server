@@ -516,11 +516,6 @@ func TOC(deps Container) *toc.Server {
 func WebAPI(deps Container) *webapi.Server {
 	logger := deps.logger.With("svc", "webapi")
 
-	// Create feedbag adapter for WebAPI
-	feedbagAdapter := &webapi.FeedbagAdapter{
-		Store: deps.sqLiteUserStore,
-	}
-
 	// Create WebAPI buddy list manager (local to WebAPI)
 	buddyListManager := handlers.NewBuddyListManager(
 		deps.feedbagSvc,
@@ -611,8 +606,6 @@ func WebAPI(deps Container) *webapi.Server {
 		SNACRateLimits: deps.snacRateLimits,
 		// New fields for WebAPI handlers
 		SessionRetriever: deps.inMemorySessionManager,
-		FeedbagRetriever: feedbagAdapter,
-		FeedbagManager:   feedbagAdapter,
 		// Phase 2 additions
 		MessageRelayer:        deps.inMemorySessionManager,
 		OfflineMessageManager: deps.sqLiteUserStore,
@@ -621,14 +614,11 @@ func WebAPI(deps Container) *webapi.Server {
 		RelationshipFetcher:   deps.sqLiteUserStore,
 		// Phase 3 additions
 		PreferenceManager: deps.sqLiteUserStore.NewWebPreferenceManager(),
-		PermitDenyManager: deps.sqLiteUserStore.NewWebPermitDenyManager(),
 		// Phase 4 additions for OSCAR Bridge
 		OSCARBridgeStore: deps.sqLiteUserStore.NewOSCARBridgeStore(),
 		OSCARConfig:      webapi.NewOSCARConfigAdapter(deps.cfg),
 		// Phase 5 additions for buddy list and messaging
-		BuddyListManager: buddyListManager,
-		// Phase 5 additions for chat rooms
-		ChatManager:        deps.sqLiteUserStore.NewWebAPIChatManager(logger, deps.webAPISessionManager),
+		BuddyListManager:   buddyListManager,
 		ChatSessionManager: deps.chatSessionManager,
 		RecalcWarning:      deps.icbmSvc.RestoreWarningLevel,
 		LowerWarnLevel:     deps.icbmSvc.UpdateWarnLevel,

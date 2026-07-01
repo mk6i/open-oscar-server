@@ -14,10 +14,9 @@ import (
 
 // BuddyFeedHandler handles Web AIM API buddy feed endpoints.
 type BuddyFeedHandler struct {
-	SessionManager   *state.WebAPISessionManager
-	FeedManager      *state.BuddyFeedManager
-	SessionRetriever SessionRetriever
-	Logger           *slog.Logger
+	SessionManager *state.WebAPISessionManager
+	FeedManager    *state.BuddyFeedManager
+	Logger         *slog.Logger
 }
 
 // GetUser handles GET /buddyfeed/getUser requests to retrieve a user's feed.

@@ -29,8 +29,6 @@ type Handler struct {
 	SNACRateLimits    wire.SNACRateLimits
 	// New fields for WebAPI handlers
 	SessionRetriever SessionRetriever
-	FeedbagRetriever FeedbagRetriever
-	FeedbagManager   FeedbagManager
 	// Phase 2 additions
 	MessageRelayer        MessageRelayer
 	OfflineMessageManager OfflineMessageManager
@@ -41,14 +39,11 @@ type Handler struct {
 	}
 	// Phase 3 additions
 	PreferenceManager PreferenceManager
-	PermitDenyManager PermitDenyManager
 	// Phase 4 additions for OSCAR Bridge
 	OSCARBridgeStore OSCARBridgeStore
 	OSCARConfig      OSCARConfig
 	// Phase 5 additions for buddy list and messaging
-	BuddyListManager interface{}
-	// Phase 5 additions for chat rooms
-	ChatManager        *state.WebAPIChatManager
+	BuddyListManager   interface{}
 	RecalcWarning      func(ctx context.Context, instance *state.SessionInstance) error
 	LowerWarnLevel     func(ctx context.Context, instance *state.SessionInstance)
 	ChatSessionManager ChatSessionManager
