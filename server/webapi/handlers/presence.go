@@ -15,13 +15,20 @@ import (
 
 // PresenceHandler handles Web AIM API presence-related endpoints.
 type PresenceHandler struct {
-	SessionManager      *state.WebAPISessionManager
-	SessionRetriever    SessionRetriever
-	FeedbagService      FeedbagService
-	BuddyBroadcaster    BuddyBroadcaster
-	ProfileManager      ProfileManager
-	RelationshipFetcher RelationshipFetcher
-	Logger              *slog.Logger
+	SessionManager   *state.WebAPISessionManager
+	SessionRetriever SessionRetriever
+	FeedbagService   FeedbagService
+	BuddyBroadcaster BuddyBroadcaster
+	ProfileManager   ProfileManager
+	LocateService    LocateService
+	Logger           *slog.Logger
+}
+
+// LocateService issues OSCAR locate user-info queries. A single query performs
+// the blocking relationship check, the online/offline session lookup, and
+// returns the user's presence info plus optional profile and away-message data.
+type LocateService interface {
+	UserInfoQuery(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x02_0x05_LocateUserInfoQuery) (wire.SNACMessage, error)
 }
 
 // BuddyBroadcaster broadcasts buddy presence updates
@@ -29,6 +36,10 @@ type BuddyBroadcaster interface {
 	BroadcastBuddyArrived(ctx context.Context, screenName state.IdentScreenName, userInfo wire.TLVUserInfo) error
 	BroadcastBuddyDeparted(ctx context.Context, screenName state.IdentScreenName) error
 }
+
+// maxPresenceTargets caps how many screen names a single presence/get request
+// may query in target-list ("t=") mode.
+const maxPresenceTargets = 10
 
 // ProfileManager manages user profiles (uses types.ProfileManager)
 type ProfileManager interface {
@@ -107,7 +118,7 @@ func (h *PresenceHandler) GetPresence(w http.ResponseWriter, r *http.Request) {
 
 	if getBuddyList {
 		// Retrieve buddy list from feedbag
-		groups, err := h.getBuddyListGroups(ctx, session)
+		groups, err := h.getBuddyListGroups(ctx, session, wantProfileMsg)
 		if err != nil {
 			h.Logger.ErrorContext(ctx, "failed to get buddy list", "err", err.Error())
 			// Return empty buddy list on error instead of failing
@@ -117,6 +128,10 @@ func (h *PresenceHandler) GetPresence(w http.ResponseWriter, r *http.Request) {
 	} else if targetUsers != "" {
 		// Get presence for specific users
 		users := strings.Split(targetUsers, ",")
+		if len(users) > maxPresenceTargets {
+			h.sendError(w, http.StatusBadRequest, fmt.Sprintf("too many screen names requested (max %d)", maxPresenceTargets))
+			return
+		}
 		presenceList := make([]BuddyPresenceInfo, 0, len(users))
 
 		for _, user := range users {
@@ -124,40 +139,7 @@ func (h *PresenceHandler) GetPresence(w http.ResponseWriter, r *http.Request) {
 			if user == "" {
 				continue
 			}
-
-			userScreenName := state.NewIdentScreenName(user)
-
-			// Check blocking relationship (OSCAR compliant)
-			rel, err := h.RelationshipFetcher.Relationship(ctx, session.ScreenName.IdentScreenName(), userScreenName)
-			if err != nil {
-				h.Logger.WarnContext(ctx, "failed to get relationship", "error", err)
-				// On error, show as offline
-				presence := BuddyPresenceInfo{
-					AimID:    user,
-					State:    "offline",
-					UserType: "aim",
-				}
-				presenceList = append(presenceList, presence)
-				continue
-			}
-
-			// OSCAR compliance: mutual invisibility when blocking
-			if rel.YouBlock || rel.BlocksYou {
-				presence := BuddyPresenceInfo{
-					AimID:    user,
-					State:    "offline",
-					UserType: "aim",
-				}
-				presenceList = append(presenceList, presence)
-			} else {
-				presence := h.getUserPresence(userScreenName)
-				if wantProfileMsg && presence.ProfileMsg == "" && h.SessionRetriever != nil {
-					if oscarSess := h.SessionRetriever.RetrieveSession(userScreenName); oscarSess != nil {
-						presence.ProfileMsg = oscarSess.Profile().ProfileText
-					}
-				}
-				presenceList = append(presenceList, presence)
-			}
+			presenceList = append(presenceList, h.getUserPresence(ctx, session.OSCARSession, state.NewIdentScreenName(user), wantProfileMsg))
 		}
 
 		presenceData.Users = presenceList
@@ -180,9 +162,7 @@ func (h *PresenceHandler) GetPresence(w http.ResponseWriter, r *http.Request) {
 }
 
 // getBuddyListGroups retrieves the buddy list organized by groups.
-func (h *PresenceHandler) getBuddyListGroups(ctx context.Context, session *state.WebAPISession) ([]BuddyGroupInfo, error) {
-	screenName := session.ScreenName.IdentScreenName()
-
+func (h *PresenceHandler) getBuddyListGroups(ctx context.Context, session *state.WebAPISession, wantProfileMsg bool) ([]BuddyGroupInfo, error) {
 	// Get feedbag items via the feedbag service
 	frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
 	reply, err := h.FeedbagService.Query(ctx, session.OSCARSession, frame)
@@ -249,36 +229,10 @@ func (h *PresenceHandler) getBuddyListGroups(ctx context.Context, session *state
 			}
 		}
 
-		buddyScreenName := state.NewIdentScreenName(buddyName)
-
-		// Check blocking relationship (OSCAR compliant)
-		rel, err := h.RelationshipFetcher.Relationship(ctx, screenName, buddyScreenName)
-		if err != nil {
-			h.Logger.WarnContext(ctx, "failed to get relationship", "error", err)
-			// On error, include the buddy but they'll appear offline
-			presence := BuddyPresenceInfo{
-				AimID:    buddyName,
-				State:    "offline",
-				UserType: "aim",
-			}
-			group.Buddies = append(group.Buddies, presence)
-			continue
-		}
-
-		// OSCAR compliance: mutual invisibility when blocking
-		if rel.YouBlock || rel.BlocksYou {
-			// Add them as offline to maintain buddy list structure
-			presence := BuddyPresenceInfo{
-				AimID:    buddyName,
-				State:    "offline",
-				UserType: "aim",
-			}
-			group.Buddies = append(group.Buddies, presence)
-		} else {
-			// Normal presence lookup
-			presence := h.getUserPresence(buddyScreenName)
-			group.Buddies = append(group.Buddies, presence)
-		}
+		// UserInfoQuery performs the blocking check and online lookup; blocked or
+		// offline buddies come back as "offline", preserving the list structure.
+		presence := h.getUserPresence(ctx, session.OSCARSession, state.NewIdentScreenName(buddyName), wantProfileMsg)
+		group.Buddies = append(group.Buddies, presence)
 	}
 
 	// Convert map to slice
@@ -290,45 +244,73 @@ func (h *PresenceHandler) getBuddyListGroups(ctx context.Context, session *state
 	return groups, nil
 }
 
-// getUserPresence gets the current presence state for a user.
-func (h *PresenceHandler) getUserPresence(screenName state.IdentScreenName) BuddyPresenceInfo {
+// getUserPresence resolves a user's presence by issuing a locate UserInfoQuery
+// on behalf of the requesting OSCAR session (instance). UserInfoQuery performs
+// the OSCAR blocking check and online lookup internally: blocked and offline
+// users both come back as a locate error, which we surface as "offline".
+func (h *PresenceHandler) getUserPresence(ctx context.Context, instance *state.SessionInstance, target state.IdentScreenName, wantProfileMsg bool) BuddyPresenceInfo {
 	// Default offline presence
 	presence := BuddyPresenceInfo{
-		AimID:    screenName.String(),
+		AimID:    target.String(),
 		State:    "offline",
 		UserType: "aim",
 	}
 
-	// Check if user is online by looking for their OSCAR session
-	if session := h.SessionRetriever.RetrieveSession(screenName); session != nil {
-		presence.State = "online"
-
-		// Check user status
-		if session.Away() {
-			presence.State = "away"
-			// TODO: Get away message from session
-		} else if session.AllUserStatusBitmask(wire.OServiceUserStatusDND) {
-			presence.State = "dnd"
-		}
-
-		// Check idle time
-		if session.Idle() {
-			presence.State = "idle"
-			idleTime := time.Since(session.IdleTime())
-			presence.IdleTime = int(idleTime.Minutes())
-		}
-
-		// Get online time
-		presence.OnlineTime = session.SignonTime().Unix()
-
-		// TODO: Get status message from profile
+	// Determine user type
+	if strings.HasPrefix(target.String(), "admin") {
+		presence.UserType = "admin"
+	} else if isICQScreenName(target.String()) {
+		presence.UserType = "icq"
 	}
 
-	// Determine user type
-	if strings.HasPrefix(screenName.String(), "admin") {
-		presence.UserType = "admin"
-	} else if isICQScreenName(screenName.String()) {
-		presence.UserType = "icq"
+	// Web-only sessions have no OSCAR instance to query on behalf of.
+	if instance == nil {
+		return presence
+	}
+
+	reqType := wire.LocateTypeUnavailable // away message
+	if wantProfileMsg {
+		reqType |= wire.LocateTypeSig // profile text
+	}
+
+	reply, err := h.LocateService.UserInfoQuery(ctx, instance, wire.SNACFrame{},
+		wire.SNAC_0x02_0x05_LocateUserInfoQuery{Type: uint16(reqType), ScreenName: target.String()})
+	if err != nil {
+		h.Logger.WarnContext(ctx, "failed to query user info", "screenName", target.String(), "error", err)
+		return presence
+	}
+
+	info, ok := reply.Body.(wire.SNAC_0x02_0x06_LocateUserInfoReply)
+	if !ok {
+		// Locate error => user is blocked or offline.
+		return presence
+	}
+
+	presence.State = "online"
+
+	if tod, ok := info.Uint32BE(wire.OServiceUserInfoSignonTOD); ok {
+		presence.OnlineTime = int64(tod)
+	}
+
+	if info.IsAway() {
+		presence.State = "away"
+	} else if status, ok := info.Uint32BE(wire.OServiceUserInfoStatus); ok && status&wire.OServiceUserStatusDND != 0 {
+		presence.State = "dnd"
+	}
+
+	if idle, ok := info.Uint16BE(wire.OServiceUserInfoIdleTime); ok && idle > 0 {
+		presence.State = "idle"
+		presence.IdleTime = int(idle)
+	}
+
+	if msg, ok := info.LocateInfo.String(wire.LocateTLVTagsInfoUnavailableData); ok {
+		presence.AwayMsg = msg
+	}
+
+	if wantProfileMsg {
+		if prof, ok := info.LocateInfo.String(wire.LocateTLVTagsInfoSigData); ok {
+			presence.ProfileMsg = prof
+		}
 	}
 
 	return presence

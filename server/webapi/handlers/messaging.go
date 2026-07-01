@@ -14,11 +14,6 @@ import (
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
-// RelationshipFetcher defines methods for fetching user relationships
-type RelationshipFetcher interface {
-	Relationship(ctx context.Context, me state.IdentScreenName, them state.IdentScreenName) (state.Relationship, error)
-}
-
 // ICBMService defines methods for ICBM operations
 type ICBMService interface {
 	ChannelMsgToHost(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) (*wire.SNACMessage, error)

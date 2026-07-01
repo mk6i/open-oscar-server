@@ -100,18 +100,37 @@ func (m *MockProfileManager) Profile(ctx context.Context, screenName state.Ident
 	return args.Get(0).(state.UserProfile), args.Error(1)
 }
 
+// onlineUserInfoReply builds a locate UserInfoReply for an online user,
+// optionally marking them idle by the given number of minutes (0 = not idle).
+func onlineUserInfoReply(screenName string, idleMinutes uint16) wire.SNACMessage {
+	info := wire.TLVUserInfo{ScreenName: screenName}
+	if idleMinutes > 0 {
+		info.Append(wire.NewTLVBE(wire.OServiceUserInfoIdleTime, idleMinutes))
+	}
+	return wire.SNACMessage{
+		Body: wire.SNAC_0x02_0x06_LocateUserInfoReply{TLVUserInfo: info},
+	}
+}
+
+// screenNameMatcher matches a UserInfoQuery request body by its target screen name.
+func screenNameMatcher(screenName string) any {
+	return mock.MatchedBy(func(b wire.SNAC_0x02_0x05_LocateUserInfoQuery) bool {
+		return b.ScreenName == screenName
+	})
+}
+
 func TestPresenceHandler_GetPresence(t *testing.T) {
 	tests := []struct {
 		name               string
 		queryParams        string
-		setupMocks         func(*MockSessionRetriever, *MockFeedbagService, *MockRelationshipFetcher)
+		setupMocks         func(*MockFeedbagService, *MockLocateService)
 		expectedStatusCode int
 		checkResponse      func(*testing.T, string)
 	}{
 		{
 			name:        "Success_BuddyList",
 			queryParams: "bl=1",
-			setupMocks: func(sr *MockSessionRetriever, fr *MockFeedbagService, rf *MockRelationshipFetcher) {
+			setupMocks: func(fr *MockFeedbagService, ls *MockLocateService) {
 				// Return feedbag with a group and buddy
 				fr.On("Query", mock.Anything, mock.Anything, mock.Anything).
 					Return(wire.SNACMessage{
@@ -122,10 +141,8 @@ func TestPresenceHandler_GetPresence(t *testing.T) {
 							},
 						},
 					}, nil)
-				rf.On("Relationship", mock.Anything, state.NewIdentScreenName("testuser"), state.NewIdentScreenName("buddy1")).
-					Return(state.Relationship{}, nil)
-				sr.On("RetrieveSession", state.NewIdentScreenName("buddy1")).
-					Return(nil)
+				ls.On("UserInfoQuery", mock.Anything, mock.Anything, mock.Anything, screenNameMatcher("buddy1")).
+					Return(onlineUserInfoReply("buddy1", 0), nil)
 			},
 			expectedStatusCode: http.StatusOK,
 			checkResponse: func(t *testing.T, body string) {
@@ -133,21 +150,18 @@ func TestPresenceHandler_GetPresence(t *testing.T) {
 				assert.Contains(t, body, `"groups"`)
 				assert.Contains(t, body, `"Friends"`)
 				assert.Contains(t, body, `"buddy1"`)
-				assert.Contains(t, body, `"offline"`)
+				assert.Contains(t, body, `"online"`)
 			},
 		},
 		{
 			name:        "Success_TargetUsers",
 			queryParams: "t=user1,user2",
-			setupMocks: func(sr *MockSessionRetriever, fr *MockFeedbagService, rf *MockRelationshipFetcher) {
-				rf.On("Relationship", mock.Anything, state.NewIdentScreenName("testuser"), state.NewIdentScreenName("user1")).
-					Return(state.Relationship{}, nil)
-				rf.On("Relationship", mock.Anything, state.NewIdentScreenName("testuser"), state.NewIdentScreenName("user2")).
-					Return(state.Relationship{}, nil)
-				sr.On("RetrieveSession", state.NewIdentScreenName("user1")).
-					Return(nil)
-				sr.On("RetrieveSession", state.NewIdentScreenName("user2")).
-					Return(nil)
+			setupMocks: func(fr *MockFeedbagService, ls *MockLocateService) {
+				ls.On("UserInfoQuery", mock.Anything, mock.Anything, mock.Anything, screenNameMatcher("user1")).
+					Return(onlineUserInfoReply("user1", 0), nil)
+				// user2 is idle for 7 minutes.
+				ls.On("UserInfoQuery", mock.Anything, mock.Anything, mock.Anything, screenNameMatcher("user2")).
+					Return(onlineUserInfoReply("user2", 7), nil)
 			},
 			expectedStatusCode: http.StatusOK,
 			checkResponse: func(t *testing.T, body string) {
@@ -155,15 +169,16 @@ func TestPresenceHandler_GetPresence(t *testing.T) {
 				assert.Contains(t, body, `"users"`)
 				assert.Contains(t, body, `"user1"`)
 				assert.Contains(t, body, `"user2"`)
+				assert.Contains(t, body, `"idle"`)
 			},
 		},
 		{
-			name:        "Success_BlockedUserOffline",
+			name:        "Success_BlockedOrOfflineUser",
 			queryParams: "t=blockeduser",
-			setupMocks: func(sr *MockSessionRetriever, fr *MockFeedbagService, rf *MockRelationshipFetcher) {
-				rf.On("Relationship", mock.Anything, state.NewIdentScreenName("testuser"), state.NewIdentScreenName("blockeduser")).
-					Return(state.Relationship{YouBlock: true}, nil)
-				// RetrieveSession should NOT be called for blocked users
+			setupMocks: func(fr *MockFeedbagService, ls *MockLocateService) {
+				// A blocked or offline user comes back as a locate error.
+				ls.On("UserInfoQuery", mock.Anything, mock.Anything, mock.Anything, screenNameMatcher("blockeduser")).
+					Return(wire.SNACMessage{Body: wire.SNACError{Code: wire.ErrorCodeNotLoggedOn}}, nil)
 			},
 			expectedStatusCode: http.StatusOK,
 			checkResponse: func(t *testing.T, body string) {
@@ -175,31 +190,40 @@ func TestPresenceHandler_GetPresence(t *testing.T) {
 		{
 			name:               "Success_EmptyRequest",
 			queryParams:        "",
-			setupMocks:         func(sr *MockSessionRetriever, fr *MockFeedbagService, rf *MockRelationshipFetcher) {},
+			setupMocks:         func(fr *MockFeedbagService, ls *MockLocateService) {},
 			expectedStatusCode: http.StatusOK,
 			checkResponse: func(t *testing.T, body string) {
 				assert.Contains(t, body, `"statusCode":200`)
+			},
+		},
+		{
+			name:        "Error_TooManyTargets",
+			queryParams: "t=u1,u2,u3,u4,u5,u6,u7,u8,u9,u10,u11",
+			// No UserInfoQuery should be issued; the request is rejected up front.
+			setupMocks:         func(fr *MockFeedbagService, ls *MockLocateService) {},
+			expectedStatusCode: http.StatusBadRequest,
+			checkResponse: func(t *testing.T, body string) {
+				assert.Contains(t, body, "too many screen names requested")
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sessionRetriever := &MockSessionRetriever{}
 			feedbagService := &MockFeedbagService{}
-			relFetcher := &MockRelationshipFetcher{}
+			locateService := &MockLocateService{}
 
-			sessionMgr, aimsid := createTestSessionManager("testuser")
+			oscarInstance := state.NewSession().AddInstance()
+			sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
 
 			handler := &PresenceHandler{
-				SessionManager:      sessionMgr,
-				SessionRetriever:    sessionRetriever,
-				FeedbagService:      feedbagService,
-				RelationshipFetcher: relFetcher,
-				Logger:              slog.Default(),
+				SessionManager: sessionMgr,
+				FeedbagService: feedbagService,
+				LocateService:  locateService,
+				Logger:         slog.Default(),
 			}
 
-			tt.setupMocks(sessionRetriever, feedbagService, relFetcher)
+			tt.setupMocks(feedbagService, locateService)
 
 			reqURL := "/presence/get?aimsid=" + aimsid
 			if tt.queryParams != "" {
@@ -219,9 +243,8 @@ func TestPresenceHandler_GetPresence(t *testing.T) {
 				tt.checkResponse(t, responseBody)
 			}
 
-			sessionRetriever.AssertExpectations(t)
 			feedbagService.AssertExpectations(t)
-			relFetcher.AssertExpectations(t)
+			locateService.AssertExpectations(t)
 		})
 	}
 }

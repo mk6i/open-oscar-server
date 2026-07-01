@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	"github.com/mk6i/open-oscar-server/state"
+	"github.com/mk6i/open-oscar-server/wire"
 )
 
 // MockSessionRetriever is a mock implementation of SessionRetriever
@@ -29,12 +30,12 @@ func (m *MockSessionRetriever) RetrieveSession(screenName state.IdentScreenName)
 	return nil
 }
 
-// MockRelationshipFetcher is a mock implementation of RelationshipFetcher
-type MockRelationshipFetcher struct {
+// MockLocateService is a mock implementation of LocateService
+type MockLocateService struct {
 	mock.Mock
 }
 
-func (m *MockRelationshipFetcher) Relationship(ctx context.Context, me state.IdentScreenName, them state.IdentScreenName) (state.Relationship, error) {
-	args := m.Called(ctx, me, them)
-	return args.Get(0).(state.Relationship), args.Error(1)
+func (m *MockLocateService) UserInfoQuery(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x02_0x05_LocateUserInfoQuery) (wire.SNACMessage, error) {
+	args := m.Called(ctx, instance, inFrame, inBody)
+	return args.Get(0).(wire.SNACMessage), args.Error(1)
 }

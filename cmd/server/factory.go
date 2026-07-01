@@ -611,7 +611,6 @@ func WebAPI(deps Container) *webapi.Server {
 		OfflineMessageManager: deps.sqLiteUserStore,
 		BuddyBroadcaster:      oscarBuddyBroadcaster,
 		ProfileManager:        deps.sqLiteUserStore,
-		RelationshipFetcher:   deps.sqLiteUserStore,
 		// Phase 3 additions
 		PreferenceManager: deps.sqLiteUserStore.NewWebPreferenceManager(),
 		// Phase 4 additions for OSCAR Bridge

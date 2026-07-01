@@ -34,9 +34,6 @@ type Handler struct {
 	OfflineMessageManager OfflineMessageManager
 	BuddyBroadcaster      BuddyBroadcaster
 	ProfileManager        ProfileManager
-	RelationshipFetcher   interface {
-		Relationship(ctx context.Context, me state.IdentScreenName, them state.IdentScreenName) (state.Relationship, error)
-	}
 	// Phase 3 additions
 	PreferenceManager PreferenceManager
 	// Phase 4 additions for OSCAR Bridge
