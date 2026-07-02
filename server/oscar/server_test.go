@@ -21,6 +21,30 @@ import (
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
+func TestServer_ListenAndServe_ShutdownBeforeStart(t *testing.T) {
+	cfg := []config.Listener{
+		{BOSListenAddress: ":0", BOSAdvertisedHostPlain: "localhost"},
+	}
+
+	server := NewServer(
+		nil, nil, nil, nil,
+		slog.Default(),
+		nil, nil, nil,
+		wire.DefaultSNACRateLimits(),
+		nil, cfg,
+		func(ctx context.Context, instance *state.SessionInstance) error { return nil },
+		func(ctx context.Context, instance *state.SessionInstance) {},
+	)
+
+	// simulate Shutdown running before ListenAndServe is scheduled
+	server.cleanupListeners()
+	server.shutdownCancel()
+
+	err := server.ListenAndServe()
+	assert.NoError(t, err)
+	assert.Empty(t, server.listeners)
+}
+
 func TestServer_ListenAndServeAndShutdown(t *testing.T) {
 	var mu sync.Mutex
 	var received []string
