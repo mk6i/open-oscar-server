@@ -2,28 +2,118 @@ package handlers
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"math/rand"
 	"net/http"
-	"strconv"
 	"strings"
 
+	"github.com/mk6i/open-oscar-server/server/webapi/types"
 	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
 // PreferenceHandler handles Web AIM API preference-related endpoints.
 type PreferenceHandler struct {
-	FeedbagService    FeedbagService
-	SessionManager    *state.WebAPISessionManager
-	PreferenceManager PreferenceManager
-	Logger            *slog.Logger
+	FeedbagService FeedbagService
+	SessionManager *state.WebAPISessionManager
+	Logger         *slog.Logger
 }
 
-// PreferenceManager provides methods to manage user preferences.
-type PreferenceManager interface {
-	SetPreferences(ctx context.Context, screenName state.IdentScreenName, prefs map[string]interface{}) error
-	GetPreferences(ctx context.Context, screenName state.IdentScreenName) (map[string]interface{}, error)
+// buddyPref maps a Web AIM API preference to its OSCAR buddy-pref bit number
+// and the default value defined by the Web API spec.
+type buddyPref struct {
+	num uint16
+	def bool
+}
+
+// webBuddyPrefs maps Web AIM API preference names to OSCAR buddy prefs, which
+// are stored as a bitmask in the user's feedbag (see wire.BuddyPref). Pref
+// numbers 0x07, 0x13, and 0x17 are reserved/unused and intentionally absent.
+var webBuddyPrefs = map[string]buddyPref{
+	"displayLogin":                {wire.FeedbagBuddyPrefsDisplayLogin, true},
+	"displayEBuddy":               {wire.FeedbagBuddyPrefsDisplayEBuddy, true},
+	"playEnter":                   {wire.FeedbagBuddyPrefsPlayEnter, true},
+	"playExit":                    {wire.FeedbagBuddyPrefsPlayExit, true},
+	"viewIMTimestamps":            {wire.FeedbagBuddyPrefsViewIMStamp, true},
+	"viewSmilies":                 {wire.FeedbagBuddyPrefsViewSmileys, true},
+	"acceptIcons":                 {wire.FeedbagBuddyPrefsAcceptIcons, true},
+	"knockNonAOLIMs":              {wire.FeedbagBuddyPrefsKnockNonAOLIMs, true},
+	"knockNonListIMs":             {wire.FeedbagBuddyPrefsKnockNonListIMs, true},
+	"discloseIdle":                {wire.FeedbagBuddyPrefsDiscloseIdle, true},
+	"acceptCustomBart":            {wire.FeedbagBuddyPrefsAcceptCustomBart, false},
+	"acceptNonListBart":           {wire.FeedbagBuddyPrefsAcceptNonListBart, false},
+	"acceptBgs":                   {wire.FeedbagBuddyPrefsAcceptBgs, true},
+	"acceptChromes":               {wire.FeedbagBuddyPrefsAcceptChromes, true},
+	"acceptBLSounds":              {wire.FeedbagBuddyPrefsAcceptBLSounds, true},
+	"acceptIMsounds":              {wire.FeedbagBuddyPrefsAcceptIMSounds, true},
+	"noSeeRecentBuddies":          {wire.FeedbagBuddyPrefsNoSeeRecentBuddies, false},
+	"acceptSMSLegal":              {wire.FeedbagBuddyPrefsAcceptSMSLegal, false},
+	"enterDoesCRLF":               {wire.FeedbagBuddyPrefsEnterDoesCRLF, false},
+	"playIMSound":                 {wire.FeedbagBuddyPrefsPlayIMSound, true},
+	"discloseTyping":              {wire.FeedbagBuddyPrefsDiscloseTyping, true},
+	"acceptSuperIcons":            {wire.FeedbagBuddyPrefsAcceptSuperIcons, true},
+	"acceptBLRichText":            {wire.FeedbagBuddyPrefsAcceptBLRichText, true},
+	"reduceIMSound":               {wire.FeedbagBuddyPrefsReduceIMSound, true},
+	"confirmDirectIM":             {wire.FeedbagBuddyPrefsConfirmDirectIM, true},
+	"oneTabbedIMWindow":           {wire.FeedbagBuddyPrefsOneTabbedIMWindow, true},
+	"buddyInfoOnMouseover":        {wire.FeedbagBuddyPrefsBuddyInfoOnMouseover, true},
+	"discloseBuddyMatches":        {wire.FeedbagBuddyPrefsDiscloseBuddyMatches, true},
+	"catchIMs":                    {wire.FeedbagBuddyPrefsCatchIMs, false},
+	"showFriendlyName":            {wire.FeedbagBuddyPrefsShowFriendlyName, true},
+	"discloseRadio":               {wire.FeedbagBuddyPrefsDiscloseRadio, true},
+	"showCapabilities":            {wire.FeedbagBuddyPrefsShowCapabilities, true},
+	"showBuddyListFilter":         {wire.FeedbagBuddyPrefsShowBuddyListFilter, true},
+	"showAwayIdle":                {wire.FeedbagBuddyPrefsShowAwayIdle, true},
+	"showMobile":                  {wire.FeedbagBuddyPrefsShowMobile, true},
+	"sortBuddyList":               {wire.FeedbagBuddyPrefsSortBuddyList, false},
+	"catchIMsForClient":           {wire.FeedbagBuddyPrefsCatchIMsForClient, false},
+	"newMessageSmallNotification": {wire.FeedbagBuddyPrefsNewMessageSmallNotify, true},
+	"noFrequentBuddies":           {wire.FeedbagBuddyPrefsNoFrequentBuddies, false},
+	"blogAwayMessages":            {wire.FeedbagBuddyPrefsBlogAwayMessages, false},
+	"blogAIMSigMessages":          {wire.FeedbagBuddyPrefsBlogAIMSigMessages, false},
+	"blogNoComments":              {wire.FeedbagBuddyPrefsBlogNoComments, false},
+	"friendOfFriend":              {wire.FeedbagBuddyPrefsFriendOfFriend, false},
+	"friendGetContactList":        {wire.FeedbagBuddyPrefsFriendGetContactList, false},
+	"compadInit":                  {wire.FeedbagBuddyPrefsCompadInit, false},
+	"sendBuddyFeed":               {wire.FeedbagBuddyPrefsSendBuddyFeed, true},
+	"blkSendIMWhileAway":          {wire.FeedbagBuddyPrefsBlkSendIMWhileAway, false},
+	"showBuddyFeed":               {wire.FeedbagBuddyPrefsShowBuddyFeed, true},
+	"noSaveVanityInfo":            {wire.FeedbagBuddyPrefsNoSaveVanityInfo, false},
+	"acceptOffLineIM":             {wire.FeedbagBuddyPrefsAcceptOfflineIM, true},
+	"showGroups":                  {wire.FeedbagBuddyPrefsShowGroups, false},
+	"sortGroup":                   {wire.FeedbagBuddyPrefsSortGroup, true},
+	"showOffLineBuddies":          {wire.FeedbagBuddyPrefsShowOfflineBuddies, true},
+	"expandBuddies":               {wire.FeedbagBuddyPrefsExpandBuddies, false},
+	"thirdPartyFeeds":             {wire.FeedbagBuddyPrefsThirdPartyFeeds, false},
+	"notifyReceivedInvite":        {wire.FeedbagBuddyPrefsNotifyReceivedInvite, true},
+	"apfAutoAccept":               {wire.FeedbagBuddyPrefsApfAutoAccept, false},
+	"apfAutoAcceptBuddy":          {wire.FeedbagBuddyPrefsApfAutoAcceptBuddy, false},
+	"blockAwayMsgFeed":            {wire.FeedbagBuddyPrefsBlockAwayMsgFeed, false},
+	"blockAIMProfileFeed":         {wire.FeedbagBuddyPrefsBlockAIMProfileFeed, false},
+	"blockAIMPagesFeed":           {wire.FeedbagBuddyPrefsBlockAIMPagesFeed, false},
+	"blockJournalsFeed":           {wire.FeedbagBuddyPrefsBlockJournalsFeed, false},
+	"blockLocationFeed":           {wire.FeedbagBuddyPrefsBlockLocationFeed, false},
+	"blockStickiesFeed":           {wire.FeedbagBuddyPrefsBlockStickiesFeed, false},
+	"blockUncutFeed":              {wire.FeedbagBuddyPrefsBlockUncutFeed, false},
+	"blockLinksFeed":              {wire.FeedbagBuddyPrefsBlockLinksFeed, false},
+	"blockAIMBulletinFeed":        {wire.FeedbagBuddyPrefsBlockAIMBulletinFeed, false},
+	"saveStatusMsg":               {wire.FeedbagBuddyPrefsSaveStatusMsg, true},
+	// Not in the spec Preferences enum, but sent by the web client.
+	"apfNotifyReceivedInviteByEmail": {wire.FeedbagBuddyPrefsApfNotifyReceivedByEmail, false},
+	"showOfflineGrp":                 {wire.FeedbagBuddyPrefsShowOfflineGrp, true},
+	"offlineGrpCollapsed":            {wire.FeedbagBuddyPrefsOfflineGrpCollapsed, false},
+	"firstImSoundOnly":               {wire.FeedbagBuddyPrefsFirstIMSoundOnly, false},
+	"imblastInviteNotify":            {wire.FeedbagBuddyPrefsImblastInviteNotify, true},
+
+	// Web-client-only preferences with no OSCAR buddy-pref equivalent. OSCAR
+	// defines prefs through 0x4B, so we persist these in the same feedbag
+	// buddy-prefs bitmask at positions above that range; no real OSCAR client
+	// reads or writes these bits.
+	"viewIMsInBubbles":           {wire.FeedbagBuddyPrefsViewIMsInBubbles, true},
+	"viewIMTimestampsRelative":   {wire.FeedbagBuddyPrefsViewIMTimestampsRelative, false},
+	"globalOTR":                  {wire.FeedbagBuddyPrefsGlobalOTR, false},
+	"imblastInviteFromBuddyOnly": {wire.FeedbagBuddyPrefsImblastInviteFromBuddyOnly, false},
 }
 
 // PermitDenyData contains permit/deny list information.
@@ -56,60 +146,58 @@ func (h *PreferenceHandler) SetPreferences(w http.ResponseWriter, r *http.Reques
 		h.Logger.WarnContext(ctx, "failed to touch session", "aimsid", aimsid, "error", err)
 	}
 
-	// Parse preferences from query parameters
-	prefs := make(map[string]interface{})
-
-	// Common preference keys from the Web AIM API spec
-	prefKeys := []string{
-		"statusMsg", "awayMsg", "profileMsg", "buddyIcon",
-		"soundsOn", "alertsOn", "typingStatus", "idleTime",
-		"pdMode", "invisibleTo", "visibleTo", "blockList",
-		"allowList", "language", "timeZone", "dateFormat",
-		"showTimestamps", "fontSize", "fontFamily", "theme",
-		"autoResponse", "saveHistory", "encryptMessages",
-	}
-
-	// Extract preferences from query parameters
-	for _, key := range prefKeys {
-		if val := r.URL.Query().Get(key); val != "" {
-			// Try to parse as boolean
-			if val == "true" || val == "false" {
-				prefs[key] = val == "true"
-			} else if num, err := strconv.Atoi(val); err == nil {
-				// Try to parse as integer
-				prefs[key] = num
-			} else {
-				// Store as string
-				prefs[key] = val
-			}
-		}
-	}
-
-	// Allow any other parameters starting with "pref_" for extensibility
-	for key, values := range r.URL.Query() {
-		if strings.HasPrefix(key, "pref_") && len(values) > 0 {
-			actualKey := strings.TrimPrefix(key, "pref_")
-			prefs[actualKey] = values[0]
-		}
-	}
-
-	// Save preferences
-	if err := h.PreferenceManager.SetPreferences(ctx, session.ScreenName.IdentScreenName(), prefs); err != nil {
-		h.Logger.ErrorContext(ctx, "failed to set preferences", "err", err.Error())
-		h.sendError(w, http.StatusInternalServerError, "failed to save preferences")
+	// Preferences are stored as OSCAR buddy prefs in the feedbag, which requires
+	// an OSCAR session to act on behalf of.
+	instance := session.OSCARSession
+	if instance == nil {
+		h.sendError(w, http.StatusBadRequest, "no OSCAR session")
 		return
+	}
+
+	// Read-modify-write the buddy-prefs item so bits the web client doesn't
+	// manage (e.g. the typing-events bit consumed by the OSCAR session) survive.
+	item, err := buddyPrefsItem(ctx, h.FeedbagService, instance)
+	if err != nil {
+		h.Logger.ErrorContext(ctx, "failed to retrieve feedbag", "err", err.Error())
+		h.sendError(w, http.StatusInternalServerError, "failed to retrieve feedbag")
+		return
+	}
+
+	applied := make(map[string]interface{})
+	for name, pref := range webBuddyPrefs {
+		val := r.URL.Query().Get(name)
+		if val == "" {
+			continue
+		}
+		on := parseBoolPref(val)
+		item.TLVList = wire.SetBuddyPref(item.TLVList, pref.num, on)
+		applied[name] = boolToPrefInt(on)
+	}
+
+	if len(applied) > 0 {
+		frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem}
+		if _, err := h.FeedbagService.UpsertItem(ctx, instance, frame, []wire.FeedbagItem{item}); err != nil {
+			h.Logger.ErrorContext(ctx, "failed to set preferences", "err", err.Error())
+			h.sendError(w, http.StatusInternalServerError, "failed to save preferences")
+			return
+		}
+
+		// Notify the client's open windows via the event stream so display
+		// changes (e.g. bubbles/classic) take effect immediately without a
+		// browser refresh.
+		session.EventQueue.Push(types.EventTypePreference, applied)
 	}
 
 	h.Logger.DebugContext(ctx, "preferences updated",
 		"screenName", session.ScreenName.String(),
-		"prefCount", len(prefs),
+		"prefCount", len(applied),
 	)
 
 	// Send success response
 	response := BaseResponse{}
 	response.Response.StatusCode = 200
 	response.Response.StatusText = "OK"
-	response.Response.Data = prefs
+	response.Response.Data = applied
 	SendResponse(w, r, response, h.Logger)
 }
 
@@ -136,103 +224,60 @@ func (h *PreferenceHandler) GetPreferences(w http.ResponseWriter, r *http.Reques
 		h.Logger.WarnContext(ctx, "failed to touch session", "aimsid", aimsid, "error", err)
 	}
 
-	// Get target user (optional, defaults to session user)
-	targetUser := session.ScreenName.IdentScreenName()
-	if t := r.URL.Query().Get("t"); t != "" {
-		targetUser = state.NewIdentScreenName(t)
-	}
-
-	// Get all stored preferences or defaults
-	allPrefs, err := h.PreferenceManager.GetPreferences(ctx, targetUser)
-	if err != nil {
-		h.Logger.ErrorContext(ctx, "failed to get preferences", "err", err.Error())
-		allPrefs = h.getDefaultPreferences()
-	}
-	if len(allPrefs) == 0 {
-		allPrefs = h.getDefaultPreferences()
-	}
-
-	// Check if specific preferences are being requested
-	requestedPrefs := make(map[string]interface{})
-	defaultPrefs := h.getDefaultPreferences()
-
-	// Check each known preference key in the query parameters
-	// When a preference appears in the query (e.g., playIMSound=1),
-	// the client is requesting that specific preference value
-	for key := range defaultPrefs {
-		if r.URL.Query().Has(key) {
-			// Client is requesting this specific preference
-			if prefValue, exists := allPrefs[key]; exists {
-				requestedPrefs[key] = prefValue
-			} else {
-				requestedPrefs[key] = defaultPrefs[key]
-			}
+	// Load the buddy-prefs bitmask from the feedbag. Absent prefs fall back to
+	// the spec default. Web-only sessions resolve entirely to defaults.
+	var prefsList wire.TLVList
+	if instance := session.OSCARSession; instance != nil {
+		if item, err := buddyPrefsItem(ctx, h.FeedbagService, instance); err != nil {
+			h.Logger.WarnContext(ctx, "failed to get preferences", "err", err.Error())
+		} else {
+			prefsList = item.TLVList
 		}
 	}
 
-	// If no specific preferences were requested, return all
+	// When specific preferences are named in the query (e.g. playIMSound=1), the
+	// client is selecting those; otherwise return all preferences.
+	requestedPrefs := make(map[string]interface{})
+	for name, pref := range webBuddyPrefs {
+		if r.URL.Query().Has(name) {
+			requestedPrefs[name] = effectivePrefValue(prefsList, pref)
+		}
+	}
+
 	var prefs map[string]interface{}
 	if len(requestedPrefs) > 0 {
 		prefs = requestedPrefs
 	} else {
-		prefs = allPrefs
+		prefs = make(map[string]interface{}, len(webBuddyPrefs))
+		for name, pref := range webBuddyPrefs {
+			prefs[name] = effectivePrefValue(prefsList, pref)
+		}
 	}
 
 	h.Logger.DebugContext(ctx, "preferences retrieved",
-		"screenName", targetUser.String(),
+		"screenName", session.ScreenName.String(),
 		"prefCount", len(prefs),
 		"requested", len(requestedPrefs) > 0,
 	)
 
-	// Check for AMF format to handle special Gromit compatibility requirements
+	// AMF clients (e.g. Gromit) expect the payload shaped a specific way. Pref
+	// values are already numeric 0/1, which is what these clients expect.
 	format := strings.ToLower(r.URL.Query().Get("f"))
 	if format == "amf" || format == "amf3" {
-		// Convert string "1"/"0" to numeric values for Gromit compatibility
-		// Gromit expects numeric values for boolean preferences
-		convertedPrefs := make(map[string]interface{})
-		for key, val := range prefs {
-			if strVal, ok := val.(string); ok {
-				switch strVal {
-				case "1":
-					convertedPrefs[key] = 1
-				case "0":
-					convertedPrefs[key] = 0
-				default:
-					// Keep non-boolean values as strings
-					convertedPrefs[key] = val
-				}
-			} else {
-				convertedPrefs[key] = val
-			}
+		// Ensure prefs is never empty for Gromit.
+		if len(prefs) == 0 {
+			prefs = map[string]interface{}{"playIMSound": 1}
 		}
-		prefs = convertedPrefs
+		// A single preference is returned directly; multiple are wrapped in
+		// jsonData for Gromit compatibility.
+		if len(prefs) != 1 {
+			prefs = map[string]interface{}{"jsonData": prefs}
+		}
 
 		h.Logger.DebugContext(ctx, "AMF preference response",
-			"prefs", prefs,
 			"prefCount", len(prefs),
 			"format", format,
 		)
-
-		// Ensure prefs is never nil or empty for Gromit
-		if len(prefs) == 0 {
-			// If no preferences found, at least return the requested ones with defaults
-			if len(requestedPrefs) > 0 {
-				prefs = requestedPrefs
-			} else {
-				// Return playIMSound as default if nothing else
-				prefs = map[string]interface{}{
-					"playIMSound": 1,
-				}
-			}
-		}
-
-		// For single preference requests, return directly for Gromit compatibility
-		// For multiple preferences, wrap in jsonData
-		if len(prefs) != 1 {
-			prefs = map[string]interface{}{
-				"jsonData": prefs,
-			}
-		}
 	}
 
 	// Send response in requested format
@@ -241,6 +286,74 @@ func (h *PreferenceHandler) GetPreferences(w http.ResponseWriter, r *http.Reques
 	response.Response.StatusText = "OK"
 	response.Response.Data = prefs
 	SendResponse(w, r, response, h.Logger)
+}
+
+// buddyPrefsItem returns the user's buddy-prefs feedbag item, creating a fresh
+// (empty) one if the feedbag does not have it yet.
+func buddyPrefsItem(ctx context.Context, fs FeedbagService, instance *state.SessionInstance) (wire.FeedbagItem, error) {
+	frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
+	fb, err := fs.Query(ctx, instance, frame)
+	if err != nil {
+		return wire.FeedbagItem{}, err
+	}
+	reply, ok := fb.Body.(wire.SNAC_0x13_0x06_FeedbagReply)
+	if !ok {
+		return wire.FeedbagItem{}, fmt.Errorf("unexpected feedbag reply type")
+	}
+	for _, item := range reply.Items {
+		if item.ClassID == wire.FeedbagClassIdBuddyPrefs {
+			return item, nil
+		}
+	}
+	// No buddy-prefs item yet; create one. Only a single item of this class is
+	// allowed, with an empty name and no group.
+	return wire.FeedbagItem{
+		ClassID: wire.FeedbagClassIdBuddyPrefs,
+		ItemID:  uint16(rand.Intn(0xFFFF)),
+	}, nil
+}
+
+// validBuddyPrefs returns the 0/1 values of the preferences that are actually
+// present (valid) in the feedbag buddy-prefs bitmask. Preferences the user has
+// never set are omitted, so callers can distinguish "unset" from a default
+// value.
+func validBuddyPrefs(list wire.TLVList) map[string]interface{} {
+	prefs := make(map[string]interface{})
+	for name, pref := range webBuddyPrefs {
+		if valid, val := wire.BuddyPref(list, pref.num); valid {
+			prefs[name] = boolToPrefInt(val)
+		}
+	}
+	return prefs
+}
+
+// effectivePrefValue returns the 0/1 value for pref, using the feedbag value
+// when present and the spec default otherwise. Values are emitted as numbers
+// (not "1"/"0" strings) because the web client evaluates them with JavaScript
+// truthiness/numeric comparisons, where the string "0" is truthy.
+func effectivePrefValue(list wire.TLVList, pref buddyPref) int {
+	valid, val := wire.BuddyPref(list, pref.num)
+	if !valid {
+		val = pref.def
+	}
+	return boolToPrefInt(val)
+}
+
+// parseBoolPref interprets a Web API preference query value as a boolean.
+func parseBoolPref(v string) bool {
+	switch strings.ToLower(v) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
+}
+
+func boolToPrefInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 // SetPermitDeny handles GET /preference/setPermitDeny requests to update permit/deny settings.
@@ -454,36 +567,6 @@ func (h *PreferenceHandler) GetPermitDeny(w http.ResponseWriter, r *http.Request
 	response.Response.StatusText = "OK"
 	response.Response.Data = pdd
 	SendResponse(w, r, response, h.Logger)
-}
-
-// sendError sends an error response in Web AIM API format.
-// getDefaultPreferences returns default preference values that clients expect.
-func (h *PreferenceHandler) getDefaultPreferences() map[string]interface{} {
-	return map[string]interface{}{
-		"autoPlay":            "1",
-		"playIMSound":         "1",
-		"playBuddySound":      "1",
-		"showTimestamps":      "1",
-		"showAdsFlag":         "1",
-		"soundSetting":        "1",
-		"awayMessageOn":       "0",
-		"awayMessage":         "",
-		"confirmSignOff":      "0",
-		"skipNavigator":       "1",
-		"displayIdleTime":     "1",
-		"repliesAnyone":       "0",
-		"repliesUsersOnline":  "0",
-		"repliesBuddies":      "0",
-		"replyMessage":        "",
-		"allowAccessPresence": "0",
-		"blockIdleStatus":     "0",
-		"reportIdleTyping":    "1",
-		"smileysDisabled":     "0",
-		"sortBuddiesAlpha":    "0",
-		"statusMsg":           "",
-		"statusIcon":          "",
-		"skin":                "default",
-	}
 }
 
 func (h *PreferenceHandler) sendError(w http.ResponseWriter, statusCode int, message string) {

@@ -71,10 +71,9 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 
 	// Phase 3: Preference handler
 	preferenceHandler := &handlers.PreferenceHandler{
-		SessionManager:    sessionManager,
-		PreferenceManager: handler.PreferenceManager,
-		FeedbagService:    handler.FeedbagService,
-		Logger:            logger,
+		SessionManager: sessionManager,
+		FeedbagService: handler.FeedbagService,
+		Logger:         logger,
 	}
 
 	// Phase 4: OSCAR Bridge handler

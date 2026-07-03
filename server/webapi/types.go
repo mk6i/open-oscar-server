@@ -87,14 +87,6 @@ type BuddyBroadcaster interface {
 	BroadcastBuddyDeparted(ctx context.Context, screenName state.IdentScreenName) error
 }
 
-// Phase 3: Preference interfaces
-
-// PreferenceManager provides methods to manage user preferences.
-type PreferenceManager interface {
-	SetPreferences(ctx context.Context, screenName state.IdentScreenName, prefs map[string]interface{}) error
-	GetPreferences(ctx context.Context, screenName state.IdentScreenName) (map[string]interface{}, error)
-}
-
 // Phase 4: OSCAR Bridge interfaces
 
 // OSCARBridgeStore manages the persistence of OSCAR bridge sessions.

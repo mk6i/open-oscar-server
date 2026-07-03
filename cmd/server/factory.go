@@ -582,8 +582,6 @@ func WebAPI(deps Container) *webapi.Server {
 		SessionRetriever: deps.inMemorySessionManager,
 		// Phase 2 additions
 		BuddyBroadcaster: oscarBuddyBroadcaster,
-		// Phase 3 additions
-		PreferenceManager: deps.sqLiteUserStore.NewWebPreferenceManager(),
 		// Phase 4 additions for OSCAR Bridge
 		OSCARBridgeStore: deps.sqLiteUserStore.NewOSCARBridgeStore(),
 		OSCARConfig:      webapi.NewOSCARConfigAdapter(deps.cfg),
