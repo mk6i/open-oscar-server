@@ -49,10 +49,8 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 
 	presenceHandler := &handlers.PresenceHandler{
 		SessionManager:   sessionManager,
-		SessionRetriever: handler.SessionRetriever,
 		FeedbagService:   handler.FeedbagService,
 		BuddyBroadcaster: handler.BuddyBroadcaster,
-		ProfileManager:   handler.ProfileManager,
 		LocateService:    handler.LocateService,
 		Logger:           logger,
 	}

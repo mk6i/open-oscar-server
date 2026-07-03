@@ -516,10 +516,19 @@ func TOC(deps Container) *toc.Server {
 func WebAPI(deps Container) *webapi.Server {
 	logger := deps.logger.With("svc", "webapi")
 
+	locateService := foodgroup.NewLocateService(
+		deps.sqLiteUserStore,
+		deps.inMemorySessionManager,
+		deps.sqLiteUserStore,
+		deps.sqLiteUserStore,
+		deps.inMemorySessionManager,
+		deps.sqLiteUserStore,
+	)
+
 	// Create WebAPI buddy list manager (local to WebAPI)
 	buddyListManager := handlers.NewBuddyListManager(
 		deps.feedbagSvc,
-		deps.inMemorySessionManager,
+		locateService,
 		logger,
 	)
 
@@ -552,15 +561,8 @@ func WebAPI(deps Container) *webapi.Server {
 		BuddyListRegistry: deps.sqLiteUserStore,
 		CookieBaker:       deps.hmacCookieBaker,
 		ICBMService:       deps.icbmSvc,
-		LocateService: foodgroup.NewLocateService(
-			deps.sqLiteUserStore,
-			deps.inMemorySessionManager,
-			deps.sqLiteUserStore,
-			deps.sqLiteUserStore,
-			deps.inMemorySessionManager,
-			deps.sqLiteUserStore,
-		),
-		Logger: logger,
+		LocateService:     locateService,
+		Logger:            logger,
 		OServiceService: foodgroup.NewOServiceService(
 			deps.cfg,
 			deps.inMemorySessionManager,
@@ -580,7 +582,6 @@ func WebAPI(deps Container) *webapi.Server {
 		SessionRetriever: deps.inMemorySessionManager,
 		// Phase 2 additions
 		BuddyBroadcaster: oscarBuddyBroadcaster,
-		ProfileManager:   deps.sqLiteUserStore,
 		// Phase 3 additions
 		PreferenceManager: deps.sqLiteUserStore.NewWebPreferenceManager(),
 		// Phase 4 additions for OSCAR Bridge

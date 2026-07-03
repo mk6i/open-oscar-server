@@ -22,7 +22,6 @@ type Handler struct {
 	SessionRetriever SessionRetriever
 	// Phase 2 additions
 	BuddyBroadcaster BuddyBroadcaster
-	ProfileManager   ProfileManager
 	// Phase 3 additions
 	PreferenceManager PreferenceManager
 	// Phase 4 additions for OSCAR Bridge

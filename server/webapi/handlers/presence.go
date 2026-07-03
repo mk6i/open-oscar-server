@@ -16,10 +16,8 @@ import (
 // PresenceHandler handles Web AIM API presence-related endpoints.
 type PresenceHandler struct {
 	SessionManager   *state.WebAPISessionManager
-	SessionRetriever SessionRetriever
 	FeedbagService   FeedbagService
 	BuddyBroadcaster BuddyBroadcaster
-	ProfileManager   ProfileManager
 	LocateService    LocateService
 	Logger           *slog.Logger
 }
@@ -28,6 +26,7 @@ type PresenceHandler struct {
 // the blocking relationship check, the online/offline session lookup, and
 // returns the user's presence info plus optional profile and away-message data.
 type LocateService interface {
+	SetInfo(ctx context.Context, instance *state.SessionInstance, inBody wire.SNAC_0x02_0x04_LocateSetInfo) error
 	UserInfoQuery(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x02_0x05_LocateUserInfoQuery) (wire.SNACMessage, error)
 }
 
@@ -40,12 +39,6 @@ type BuddyBroadcaster interface {
 // maxPresenceTargets caps how many screen names a single presence/get request
 // may query in target-list ("t=") mode.
 const maxPresenceTargets = 10
-
-// ProfileManager manages user profiles (uses types.ProfileManager)
-type ProfileManager interface {
-	SetProfile(ctx context.Context, screenName state.IdentScreenName, profile state.UserProfile) error
-	Profile(ctx context.Context, screenName state.IdentScreenName) (state.UserProfile, error)
-}
 
 // PresenceData contains presence information.
 type PresenceData struct {
@@ -533,12 +526,23 @@ func (h *PresenceHandler) SetProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Save profile using ProfileManager
-	profile := state.UserProfile{
-		ProfileText: profileText,
-		UpdateTime:  time.Now().UTC(),
+	// Web-only sessions have no OSCAR instance to set info on behalf of.
+	instance := session.OSCARSession
+	if instance == nil {
+		h.Logger.WarnContext(ctx, "no OSCAR session for profile update", "aimsid", aimsid)
+		h.sendError(w, http.StatusBadRequest, "no OSCAR session")
+		return
 	}
-	if err := h.ProfileManager.SetProfile(ctx, session.ScreenName.IdentScreenName(), profile); err != nil {
+
+	// Save profile via OSCAR LocateService.
+	setInfo := wire.SNAC_0x02_0x04_LocateSetInfo{
+		TLVRestBlock: wire.TLVRestBlock{
+			TLVList: wire.TLVList{
+				wire.NewTLVBE(wire.LocateTLVTagsInfoSigData, profileText),
+			},
+		},
+	}
+	if err := h.LocateService.SetInfo(ctx, instance, setInfo); err != nil {
 		h.Logger.ErrorContext(ctx, "failed to set profile", "err", err.Error())
 		h.sendError(w, http.StatusInternalServerError, "failed to save profile")
 		return
@@ -585,23 +589,26 @@ func (h *PresenceHandler) GetProfile(w http.ResponseWriter, r *http.Request) {
 		targetSN = session.ScreenName.String()
 	}
 
-	// Retrieve profile using ProfileManager
-	profile, err := h.ProfileManager.Profile(ctx, state.NewIdentScreenName(targetSN))
-	if err != nil {
-		h.Logger.WarnContext(ctx, "failed to get profile", "err", err.Error())
-		// Return empty profile on error
-		profile = state.UserProfile{}
+	// Retrieve profile via OSCAR LocateService. Web-only sessions have no OSCAR
+	// instance to query on behalf of, so they resolve to an empty profile.
+	var profileText string
+	if instance := session.OSCARSession; instance != nil {
+		reply, err := h.LocateService.UserInfoQuery(ctx, instance, wire.SNACFrame{},
+			wire.SNAC_0x02_0x05_LocateUserInfoQuery{Type: uint16(wire.LocateTypeSig), ScreenName: targetSN})
+		if err != nil {
+			h.Logger.WarnContext(ctx, "failed to get profile", "err", err.Error())
+		} else if info, ok := reply.Body.(wire.SNAC_0x02_0x06_LocateUserInfoReply); ok {
+			if prof, ok := info.LocateInfo.String(wire.LocateTLVTagsInfoSigData); ok {
+				profileText = prof
+			}
+		}
 	}
 
 	// Send response
-	lastUpdated := int64(0)
-	if !profile.UpdateTime.IsZero() {
-		lastUpdated = profile.UpdateTime.Unix()
-	}
 	responseData := map[string]interface{}{
 		"screenName":  targetSN,
-		"profile":     profile.ProfileText,
-		"lastUpdated": lastUpdated,
+		"profile":     profileText,
+		"lastUpdated": int64(0),
 	}
 
 	response := BaseResponse{}
@@ -643,18 +650,26 @@ func (h *PresenceHandler) Icon(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Check if user is online and get their state
-	screenName := state.NewIdentScreenName(name)
-	if session := h.SessionRetriever.RetrieveSession(screenName); session != nil {
-		if session.Away() {
-			iconURL = "/static/icons/away_" + iconType + "_" + size + ".png"
-		} else if session.Idle() {
-			iconURL = "/static/icons/idle_" + iconType + "_" + size + ".png"
-		} else {
-			iconURL = "/static/icons/online_" + iconType + "_" + size + ".png"
+	// Resolve the target's presence via OSCAR LocateService, querying on behalf
+	// of the caller's session. This endpoint is unauthenticated, so fall back to
+	// the offline icon when no valid session is supplied.
+	var instance *state.SessionInstance
+	if aimsid := r.URL.Query().Get("aimsid"); aimsid != "" {
+		if session, err := h.SessionManager.GetSession(r.Context(), aimsid); err == nil {
+			instance = session.OSCARSession
 		}
-	} else {
+	}
+
+	screenName := state.NewIdentScreenName(name)
+	switch h.getUserPresence(r.Context(), instance, screenName, false).State {
+	case "away":
+		iconURL = "/static/icons/away_" + iconType + "_" + size + ".png"
+	case "idle":
+		iconURL = "/static/icons/idle_" + iconType + "_" + size + ".png"
+	case "offline":
 		iconURL = "/static/icons/offline_" + iconType + "_" + size + ".png"
+	default:
+		iconURL = "/static/icons/online_" + iconType + "_" + size + ".png"
 	}
 
 	// Redirect to icon URL

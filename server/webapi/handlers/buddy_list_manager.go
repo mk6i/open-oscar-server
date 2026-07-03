@@ -8,7 +8,6 @@ import (
 	"math/rand"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
@@ -17,17 +16,17 @@ import (
 // BuddyListManager handles the conversion of OSCAR feedbag data
 // to WebAPI buddy list format for web clients.
 type BuddyListManager struct {
-	feedbagService   FeedbagService
-	sessionRetriever SessionRetriever
-	logger           *slog.Logger
+	feedbagService FeedbagService
+	locateService  LocateService
+	logger         *slog.Logger
 }
 
 // NewBuddyListManager creates a new instance of the buddy list manager.
-func NewBuddyListManager(feedbagService FeedbagService, sessionRetriever SessionRetriever, logger *slog.Logger) *BuddyListManager {
+func NewBuddyListManager(feedbagService FeedbagService, locateService LocateService, logger *slog.Logger) *BuddyListManager {
 	return &BuddyListManager{
-		feedbagService:   feedbagService,
-		sessionRetriever: sessionRetriever,
-		logger:           logger,
+		feedbagService: feedbagService,
+		locateService:  locateService,
+		logger:         logger,
 	}
 }
 
@@ -154,7 +153,7 @@ func (m *BuddyListManager) GetBuddyListForUser(ctx context.Context, sess *state.
 			if !ok {
 				continue
 			}
-			info := m.getBuddyInfo(b.name)
+			info := m.getBuddyInfo(ctx, sess.OSCARSession, b.name)
 			if b.alias != "" {
 				info.DisplayID = b.alias
 			}
@@ -166,8 +165,9 @@ func (m *BuddyListManager) GetBuddyListForUser(ctx context.Context, sess *state.
 	return out, nil
 }
 
-// getBuddyInfo retrieves the current presence information for a buddy.
-func (m *BuddyListManager) getBuddyInfo(buddyName string) WebAPIBuddyInfo {
+// getBuddyInfo retrieves a buddy's current presence by issuing a locate
+// UserInfoQuery on behalf of the requesting session's OSCAR instance.
+func (m *BuddyListManager) getBuddyInfo(ctx context.Context, instance *state.SessionInstance, buddyName string) WebAPIBuddyInfo {
 	// Default to offline
 	info := WebAPIBuddyInfo{
 		AimID:     buddyName,
@@ -178,71 +178,49 @@ func (m *BuddyListManager) getBuddyInfo(buddyName string) WebAPIBuddyInfo {
 		Service:   "AIM",
 	}
 
-	// Check if buddy is online
-	buddyScreenName := state.NewIdentScreenName(buddyName)
-	session := m.sessionRetriever.RetrieveSession(buddyScreenName)
+	// Web-only sessions have no OSCAR instance to query on behalf of.
+	if instance == nil {
+		return info
+	}
 
-	if session != nil {
-		// Buddy is online
-		info.State = "online"
-		info.OnlineTime = session.SignonTime().Unix()
+	reply, err := m.locateService.UserInfoQuery(ctx, instance, wire.SNACFrame{},
+		wire.SNAC_0x02_0x05_LocateUserInfoQuery{
+			Type:       uint16(wire.LocateTypeUnavailable), // away message
+			ScreenName: buddyName,
+		})
+	if err != nil {
+		m.logger.WarnContext(ctx, "failed to query buddy info", "screenName", buddyName, "error", err)
+		return info
+	}
 
-		// Check away status
-		if session.Away() {
-			info.State = "away"
-			info.AwayMsg = session.AwayMessage()
+	userInfo, ok := reply.Body.(wire.SNAC_0x02_0x06_LocateUserInfoReply)
+	if !ok {
+		// Locate error => buddy is blocked or offline.
+		return info
+	}
+
+	info.State = "online"
+	info.Capabilities = []string{}
+
+	if tod, ok := userInfo.Uint32BE(wire.OServiceUserInfoSignonTOD); ok {
+		info.OnlineTime = int64(tod)
+	}
+
+	if userInfo.IsAway() {
+		info.State = "away"
+		if msg, ok := userInfo.LocateInfo.String(wire.LocateTLVTagsInfoUnavailableData); ok {
+			info.AwayMsg = msg
 		}
+	}
 
-		// Check idle status
-		if session.Idle() {
-			idleDuration := time.Since(session.IdleTime())
-			info.IdleTime = int(idleDuration.Minutes())
-			if info.State == "online" {
-				info.State = "idle"
-			}
+	if idle, ok := userInfo.Uint16BE(wire.OServiceUserInfoIdleTime); ok && idle > 0 {
+		info.IdleTime = int(idle)
+		if info.State == "online" {
+			info.State = "idle"
 		}
-
-		// Status messages not currently supported in SessionInstance
-
-		// Set capabilities
-		// Capabilities parsing not implemented
-		info.Capabilities = []string{}
 	}
 
 	return info
-}
-
-// GetPresenceForBuddy retrieves presence information for a specific buddy.
-func (m *BuddyListManager) GetPresenceForBuddy(screenName string) WebAPIBuddyInfo {
-	return m.getBuddyInfo(screenName)
-}
-
-// GetOnlineBuddies returns a list of all online buddies for a user.
-func (m *BuddyListManager) GetOnlineBuddies(ctx context.Context, sess *state.WebAPISession) ([]WebAPIBuddyInfo, error) {
-	frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
-	snac, err := m.feedbagService.Query(ctx, sess.OSCARSession, frame)
-	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve feedbag: %w", err)
-	}
-	reply, ok := snac.Body.(wire.SNAC_0x13_0x06_FeedbagReply)
-	if !ok {
-		return nil, fmt.Errorf("failed to retrieve feedbag: unexpected reply type")
-	}
-	items := reply.Items
-
-	var onlineBuddies []WebAPIBuddyInfo
-
-	// Check each buddy's presence
-	for _, item := range items {
-		if item.ClassID == wire.FeedbagClassIdBuddy {
-			buddyInfo := m.getBuddyInfo(item.Name)
-			if buddyInfo.State != "offline" {
-				onlineBuddies = append(onlineBuddies, buddyInfo)
-			}
-		}
-	}
-
-	return onlineBuddies, nil
 }
 
 // RemoveBuddyFromFeedbag removes a buddy from a group (or all groups if allGroups is true) using feedbag delete/update SNACs.

@@ -85,21 +85,6 @@ func (m *MockBuddyBroadcaster) BroadcastBuddyDeparted(ctx context.Context, scree
 	return args.Error(0)
 }
 
-// MockProfileManager is a mock implementation of ProfileManager
-type MockProfileManager struct {
-	mock.Mock
-}
-
-func (m *MockProfileManager) SetProfile(ctx context.Context, screenName state.IdentScreenName, profile state.UserProfile) error {
-	args := m.Called(ctx, screenName, profile)
-	return args.Error(0)
-}
-
-func (m *MockProfileManager) Profile(ctx context.Context, screenName state.IdentScreenName) (state.UserProfile, error) {
-	args := m.Called(ctx, screenName)
-	return args.Get(0).(state.UserProfile), args.Error(1)
-}
-
 // onlineUserInfoReply builds a locate UserInfoReply for an online user,
 // optionally marking them idle by the given number of minutes (0 = not idle).
 func onlineUserInfoReply(screenName string, idleMinutes uint16) wire.SNACMessage {
@@ -360,16 +345,14 @@ func TestPresenceHandler_Icon(t *testing.T) {
 	tests := []struct {
 		name               string
 		queryParams        string
-		setupMocks         func(*MockSessionRetriever)
 		expectedStatusCode int
 		checkRedirect      func(*testing.T, *httptest.ResponseRecorder)
 	}{
 		{
-			name:        "Redirect_OfflineUser",
-			queryParams: "name=offlineuser",
-			setupMocks: func(sr *MockSessionRetriever) {
-				sr.On("RetrieveSession", state.NewIdentScreenName("offlineuser")).Return(nil)
-			},
+			name: "Redirect_OfflineUser",
+			// No aimsid, so there is no OSCAR session to query on behalf of and
+			// the target resolves to offline.
+			queryParams:        "name=offlineuser",
 			expectedStatusCode: http.StatusFound,
 			checkRedirect: func(t *testing.T, rr *httptest.ResponseRecorder) {
 				location := rr.Header().Get("Location")
@@ -379,21 +362,17 @@ func TestPresenceHandler_Icon(t *testing.T) {
 		{
 			name:               "Error_MissingName",
 			queryParams:        "",
-			setupMocks:         func(sr *MockSessionRetriever) {},
 			expectedStatusCode: http.StatusBadRequest,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sessionRetriever := &MockSessionRetriever{}
-
 			handler := &PresenceHandler{
-				SessionRetriever: sessionRetriever,
-				Logger:           slog.Default(),
+				SessionManager: state.NewWebAPISessionManager(),
+				LocateService:  &MockLocateService{},
+				Logger:         slog.Default(),
 			}
-
-			tt.setupMocks(sessionRetriever)
 
 			reqURL := "/presence/icon"
 			if tt.queryParams != "" {
@@ -411,25 +390,25 @@ func TestPresenceHandler_Icon(t *testing.T) {
 			if tt.checkRedirect != nil {
 				tt.checkRedirect(t, rr)
 			}
-
-			sessionRetriever.AssertExpectations(t)
 		})
 	}
 }
 
 func TestPresenceHandler_SetProfile(t *testing.T) {
+	oscarInstance := state.NewSession().AddInstance()
+
 	tests := []struct {
 		name               string
 		queryParams        string
-		setupMocks         func(*MockProfileManager)
+		setupMocks         func(*MockLocateService)
 		expectedStatusCode int
 		checkResponse      func(*testing.T, string)
 	}{
 		{
 			name:        "Success_SetProfile",
 			queryParams: "profile=Hello+World",
-			setupMocks: func(pm *MockProfileManager) {
-				pm.On("SetProfile", mock.Anything, state.NewIdentScreenName("testuser"), mock.AnythingOfType("state.UserProfile")).Return(nil)
+			setupMocks: func(ls *MockLocateService) {
+				ls.On("SetInfo", mock.Anything, oscarInstance, mock.AnythingOfType("wire.SNAC_0x02_0x04_LocateSetInfo")).Return(nil)
 			},
 			expectedStatusCode: http.StatusOK,
 			checkResponse: func(t *testing.T, body string) {
@@ -439,7 +418,7 @@ func TestPresenceHandler_SetProfile(t *testing.T) {
 		{
 			name:               "Error_ProfileTooLarge",
 			queryParams:        "profile=" + strings.Repeat("x", 4097),
-			setupMocks:         func(pm *MockProfileManager) {},
+			setupMocks:         func(ls *MockLocateService) {},
 			expectedStatusCode: http.StatusBadRequest,
 			checkResponse: func(t *testing.T, body string) {
 				assert.Contains(t, body, "profile too large")
@@ -449,17 +428,17 @@ func TestPresenceHandler_SetProfile(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			profileManager := &MockProfileManager{}
+			locateService := &MockLocateService{}
 
-			sessionMgr, aimsid := createTestSessionManager("testuser")
+			sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
 
 			handler := &PresenceHandler{
 				SessionManager: sessionMgr,
-				ProfileManager: profileManager,
+				LocateService:  locateService,
 				Logger:         slog.Default(),
 			}
 
-			tt.setupMocks(profileManager)
+			tt.setupMocks(locateService)
 
 			reqURL := "/presence/setProfile?aimsid=" + aimsid + "&" + tt.queryParams
 			req, err := http.NewRequest("GET", reqURL, nil)
@@ -476,24 +455,33 @@ func TestPresenceHandler_SetProfile(t *testing.T) {
 				tt.checkResponse(t, responseBody)
 			}
 
-			profileManager.AssertExpectations(t)
+			locateService.AssertExpectations(t)
 		})
 	}
 }
 
 func TestPresenceHandler_GetProfile(t *testing.T) {
-	profileManager := &MockProfileManager{}
+	locateService := &MockLocateService{}
 
-	sessionMgr, aimsid := createTestSessionManager("testuser")
+	oscarInstance := state.NewSession().AddInstance()
+	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
 
 	handler := &PresenceHandler{
 		SessionManager: sessionMgr,
-		ProfileManager: profileManager,
+		LocateService:  locateService,
 		Logger:         slog.Default(),
 	}
 
-	profileManager.On("Profile", mock.Anything, state.NewIdentScreenName("testuser")).
-		Return(state.UserProfile{ProfileText: "My profile"}, nil)
+	locateService.On("UserInfoQuery", mock.Anything, mock.Anything, mock.Anything, screenNameMatcher("testuser")).
+		Return(wire.SNACMessage{
+			Body: wire.SNAC_0x02_0x06_LocateUserInfoReply{
+				LocateInfo: wire.TLVRestBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.LocateTLVTagsInfoSigData, "My profile"),
+					},
+				},
+			},
+		}, nil)
 
 	req, err := http.NewRequest("GET", "/presence/getProfile?aimsid="+aimsid, nil)
 	assert.NoError(t, err)
@@ -507,5 +495,5 @@ func TestPresenceHandler_GetProfile(t *testing.T) {
 	assert.Contains(t, body, `"My profile"`)
 	assert.Contains(t, body, `"testuser"`)
 
-	profileManager.AssertExpectations(t)
+	locateService.AssertExpectations(t)
 }

@@ -24,14 +24,6 @@ func offlineWebAPIBuddy(aimID, displayID string) WebAPIBuddyInfo {
 	}
 }
 
-func buddyCountInGroups(groups []WebAPIBuddyGroup) int {
-	n := 0
-	for _, g := range groups {
-		n += len(g.Buddies)
-	}
-	return n
-}
-
 func TestBuddyListManager_GetBuddyListForUser(t *testing.T) {
 	ctx := context.Background()
 	owner := state.NewIdentScreenName("listowner")
@@ -240,19 +232,18 @@ func TestBuddyListManager_GetBuddyListForUser(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			fs := &MockFeedbagService{}
-			sr := &MockSessionRetriever{}
+			// The test session has no OSCAR instance, so buddies resolve to
+			// offline without any locate query being issued.
+			ls := &MockLocateService{}
 			if tt.fbErr != nil {
 				fs.On("Query", mock.Anything, mock.Anything, mock.Anything).Return(wire.SNACMessage{}, tt.fbErr).Once()
 			} else {
 				fs.On("Query", mock.Anything, mock.Anything, mock.Anything).Return(
 					wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: tt.fb}}, nil,
 				).Once()
-				if bc := buddyCountInGroups(tt.want); bc > 0 {
-					sr.On("RetrieveSession", mock.Anything).Return((*state.Session)(nil)).Times(bc)
-				}
 			}
 
-			m := NewBuddyListManager(fs, sr, slog.Default())
+			m := NewBuddyListManager(fs, ls, slog.Default())
 			sess := &state.WebAPISession{ScreenName: state.DisplayScreenName(owner.String())}
 			got, err := m.GetBuddyListForUser(ctx, sess)
 
@@ -265,9 +256,7 @@ func TestBuddyListManager_GetBuddyListForUser(t *testing.T) {
 			assert.NoError(t, err)
 			assert.Equal(t, tt.want, got)
 			fs.AssertExpectations(t)
-			if tt.fbErr == nil && buddyCountInGroups(tt.want) > 0 {
-				sr.AssertExpectations(t)
-			}
+			ls.AssertExpectations(t)
 		})
 	}
 }

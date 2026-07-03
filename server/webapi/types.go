@@ -87,12 +87,6 @@ type BuddyBroadcaster interface {
 	BroadcastBuddyDeparted(ctx context.Context, screenName state.IdentScreenName) error
 }
 
-// ProfileManager manages user profiles
-type ProfileManager interface {
-	SetProfile(ctx context.Context, screenName state.IdentScreenName, profile state.UserProfile) error
-	Profile(ctx context.Context, screenName state.IdentScreenName) (state.UserProfile, error)
-}
-
 // Phase 3: Preference interfaces
 
 // PreferenceManager provides methods to manage user preferences.
