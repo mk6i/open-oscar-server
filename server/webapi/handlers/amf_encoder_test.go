@@ -195,58 +195,6 @@ func TestDetectAMFVersion(t *testing.T) {
 	}
 }
 
-func TestIsAMFRequest(t *testing.T) {
-	tests := []struct {
-		name     string
-		request  *http.Request
-		expected bool
-	}{
-		{
-			name:     "Query parameter amf",
-			request:  httptest.NewRequest("GET", "/?f=amf", nil),
-			expected: true,
-		},
-		{
-			name:     "Query parameter amf3",
-			request:  httptest.NewRequest("GET", "/?f=amf3", nil),
-			expected: true,
-		},
-		{
-			name: "Accept header",
-			request: func() *http.Request {
-				req := httptest.NewRequest("GET", "/", nil)
-				req.Header.Set("Accept", "application/x-amf")
-				return req
-			}(),
-			expected: true,
-		},
-		{
-			name:     "JSON format",
-			request:  httptest.NewRequest("GET", "/?f=json", nil),
-			expected: false,
-		},
-		{
-			name:     "No format",
-			request:  httptest.NewRequest("GET", "/", nil),
-			expected: false,
-		},
-		{
-			name:     "Nil request",
-			request:  nil,
-			expected: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := IsAMFRequest(tt.request)
-			if result != tt.expected {
-				t.Errorf("IsAMFRequest() = %v, want %v", result, tt.expected)
-			}
-		})
-	}
-}
-
 func TestSendAMF(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -335,7 +283,7 @@ func TestStructToMap(t *testing.T) {
 		NoTag:    "should appear with field name",
 	}
 
-	result := encoder.toAMFCompatible(testStruct)
+	result := encoder.toAMF3Compatible(testStruct)
 	resultMap, ok := result.(map[string]interface{})
 	if !ok {
 		t.Fatal("Expected map[string]interface{}")
@@ -375,7 +323,7 @@ func TestSliceToArray(t *testing.T) {
 		map[string]interface{}{"nested": "value"},
 	}
 
-	result := encoder.toAMFCompatible(input)
+	result := encoder.toAMF3Compatible(input)
 	resultArray, ok := result.([]interface{})
 	if !ok {
 		t.Fatal("Expected []interface{}")
@@ -459,7 +407,7 @@ func TestZeroValueDetection(t *testing.T) {
 		TrueValue:   true,
 	}
 
-	result := encoder.toAMFCompatible(testStruct)
+	result := encoder.toAMF3Compatible(testStruct)
 	resultMap, ok := result.(map[string]interface{})
 	if !ok {
 		t.Fatal("Expected map[string]interface{}")

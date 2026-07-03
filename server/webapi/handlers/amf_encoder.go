@@ -189,11 +189,6 @@ func (e *AMFEncoder) sanitizeForAMF3(data interface{}) interface{} {
 	}
 }
 
-// toAMFCompatible converts Go types to AMF3-compatible types
-func (e *AMFEncoder) toAMFCompatible(data interface{}) interface{} {
-	return e.toAMF3Compatible(data)
-}
-
 // baseResponseToMap converts BaseResponse to AMF3-compatible map
 func (e *AMFEncoder) baseResponseToMap(resp BaseResponse) map[string]interface{} {
 	return map[string]interface{}{
@@ -404,26 +399,4 @@ func DetectAMFVersion(r *http.Request) AMFVersion {
 
 	// Default to AMF3 for modern clients
 	return AMF3
-}
-
-// IsAMFRequest checks if the request is asking for AMF format
-func IsAMFRequest(r *http.Request) bool {
-	if r == nil {
-		return false
-	}
-
-	// Check query parameter
-	format := strings.ToLower(r.URL.Query().Get("f"))
-	if format == "amf" || format == "amf0" || format == "amf3" {
-		return true
-	}
-
-	// Check Accept header
-	accept := strings.ToLower(r.Header.Get("Accept"))
-	if strings.Contains(accept, "application/x-amf") ||
-		strings.Contains(accept, "application/amf") {
-		return true
-	}
-
-	return false
 }

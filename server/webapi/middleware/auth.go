@@ -116,12 +116,6 @@ func (r *RateLimiter) CheckRateLimit(devID string, limit int) RateLimitInfo {
 	}
 }
 
-// Allow checks if a request from the given devID is allowed based on rate limits.
-func (r *RateLimiter) Allow(devID string, limit int) bool {
-	info := r.CheckRateLimit(devID, limit)
-	return info.Allowed
-}
-
 // AuthMiddleware provides authentication and rate limiting for Web API endpoints.
 type AuthMiddleware struct {
 	Validator   APIKeyValidator
@@ -254,48 +248,6 @@ func (m *AuthMiddleware) CORSMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// CapabilitiesMiddleware checks if the API key has the required capability for an endpoint.
-func (m *AuthMiddleware) CapabilitiesMiddleware(requiredCapability string) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Get API key from context
-			key, ok := r.Context().Value(ContextKeyAPIKey).(*state.WebAPIKey)
-			if !ok {
-				m.Logger.Error("CapabilitiesMiddleware called without authentication context")
-				http.Error(w, "internal server error", http.StatusInternalServerError)
-				return
-			}
-
-			// If no capabilities are defined, allow all (backward compatibility)
-			if len(key.Capabilities) == 0 {
-				next.ServeHTTP(w, r)
-				return
-			}
-
-			// Check if required capability is present
-			hasCapability := false
-			for _, cap := range key.Capabilities {
-				if cap == requiredCapability || cap == "*" {
-					hasCapability = true
-					break
-				}
-			}
-
-			if !hasCapability {
-				m.Logger.WarnContext(r.Context(), "capability check failed",
-					"dev_id", key.DevID,
-					"required", requiredCapability,
-					"available", key.Capabilities,
-				)
-				m.sendErrorResponse(w, r, http.StatusForbidden, fmt.Sprintf("missing required capability: %s", requiredCapability))
-				return
-			}
-
-			next.ServeHTTP(w, r)
-		})
-	}
-}
-
 // isOriginAllowed checks if an origin is in the allowed list.
 func (m *AuthMiddleware) isOriginAllowed(origin string, allowedOrigins []string) bool {
 	// If no origins specified, allow all (for backward compatibility/development)
@@ -380,18 +332,6 @@ func isValidJSONPCallback(callback string) bool {
 		}
 	}
 	return true
-}
-
-// GetAPIKeyFromContext retrieves the API key from the request context.
-func GetAPIKeyFromContext(ctx context.Context) (*state.WebAPIKey, bool) {
-	key, ok := ctx.Value(ContextKeyAPIKey).(*state.WebAPIKey)
-	return key, ok
-}
-
-// GetDevIDFromContext retrieves the developer ID from the request context.
-func GetDevIDFromContext(ctx context.Context) (string, bool) {
-	devID, ok := ctx.Value(ContextKeyDevID).(string)
-	return devID, ok
 }
 
 // min returns the minimum of two integers.

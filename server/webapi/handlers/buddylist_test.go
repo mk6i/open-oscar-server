@@ -240,20 +240,6 @@ func TestFeedbagGroupMatchesRequested(t *testing.T) {
 	assert.False(t, feedbagGroupMatchesRequested("", "Friends"))
 }
 
-func TestFindFeedbagGroupID(t *testing.T) {
-	items := []wire.FeedbagItem{
-		{ItemID: 1, ClassID: wire.FeedbagClassIdGroup, Name: "", GroupID: 0},
-		{ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, Name: "jon", GroupID: 1},
-	}
-	id, ok := findFeedbagGroupID(items, "Buddies")
-	assert.True(t, ok)
-	assert.Equal(t, uint16(1), id)
-
-	id, ok = findFeedbagGroupID(items, "Friends")
-	assert.False(t, ok)
-	assert.Equal(t, uint16(0), id)
-}
-
 func TestStoredGroupNameForRequest(t *testing.T) {
 	items := []wire.FeedbagItem{
 		{ItemID: 1, ClassID: wire.FeedbagClassIdGroup, Name: "", GroupID: 1},

@@ -219,19 +219,6 @@ func feedbagGroupMatchesRequested(storedName, requested string) bool {
 	return false
 }
 
-// findFeedbagGroupID returns the ItemID of a group matching requested, or false if none.
-func findFeedbagGroupID(items []wire.FeedbagItem, requested string) (uint16, bool) {
-	for _, item := range items {
-		if item.ClassID != wire.FeedbagClassIdGroup {
-			continue
-		}
-		if feedbagGroupMatchesRequested(item.Name, requested) {
-			return item.ItemID, true
-		}
-	}
-	return 0, false
-}
-
 // storedGroupNameForRequest returns the feedbag group row Name for a Web client group label.
 // Rows with GroupID 0 are the root order record, not a named buddy group.
 func storedGroupNameForRequest(items []wire.FeedbagItem, requested string) (string, bool) {
