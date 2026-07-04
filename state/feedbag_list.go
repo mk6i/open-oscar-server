@@ -12,6 +12,13 @@ import (
 // ErrGroupNotFound is returned when a feedbag group cannot be found.
 var ErrGroupNotFound = errors.New("group not found")
 
+// ErrGroupExists is returned when a feedbag group cannot be created or renamed
+// because another group already has the target name.
+var ErrGroupExists = errors.New("group already exists")
+
+// ErrBuddyNotFound is returned when a feedbag buddy cannot be found.
+var ErrBuddyNotFound = errors.New("buddy not found")
+
 // FeedbagList provides operations for manipulating a collection of feedbag
 // items. It supports lookups by class/name/group, item insertion with
 // automatic ID generation, and transparent root group management.
@@ -164,6 +171,110 @@ func (f *FeedbagList) DeleteBuddy(groupName, buddyName string) error {
 	return nil
 }
 
+// RenameGroup changes a group's name in place, preserving its GroupID and
+// ItemID. Returns ErrGroupNotFound if oldName does not exist, or ErrGroupExists
+// if a different group already uses newName. The group is renamed in place
+// rather than re-inserted because upsertItem keys groups on name and would
+// otherwise create a duplicate.
+func (f *FeedbagList) RenameGroup(oldName, newName string) error {
+	group := f.groupByName(oldName)
+	if group == nil {
+		return fmt.Errorf("%w: %q", ErrGroupNotFound, oldName)
+	}
+	if newName != oldName && f.groupByName(newName) != nil {
+		return fmt.Errorf("%w: %q", ErrGroupExists, newName)
+	}
+	if group.Name == newName {
+		return nil
+	}
+	group.Name = newName
+	f.trackUpdate(group)
+	return nil
+}
+
+// MoveBuddy moves a buddy between groups and/or repositions it within a group's
+// order. When toGroup names a different group than fromGroup, the buddy's
+// feedbag item is deleted from the source group and re-inserted into the
+// destination (a buddy's identity includes its GroupID at the protocol level),
+// carrying over its alias and note attributes. When beforeBuddy is non-empty,
+// the buddy is positioned immediately before that buddy in the destination
+// group's order; otherwise it is appended. Returns ErrGroupNotFound or
+// ErrBuddyNotFound if the source group/buddy or destination group is missing.
+func (f *FeedbagList) MoveBuddy(fromGroup, toGroup, buddyName, beforeBuddy string) error {
+	src := f.groupByName(fromGroup)
+	if src == nil {
+		return fmt.Errorf("%w: %q", ErrGroupNotFound, fromGroup)
+	}
+	srcBuddy := f.buddyItem(src, buddyName)
+	if srcBuddy == nil {
+		return fmt.Errorf("%w: %q", ErrBuddyNotFound, buddyName)
+	}
+
+	dst := src
+	if toGroup != "" && toGroup != fromGroup {
+		dst = f.groupByName(toGroup)
+		if dst == nil {
+			return fmt.Errorf("%w: %q", ErrGroupNotFound, toGroup)
+		}
+
+		alias, _ := srcBuddy.String(wire.FeedbagAttributesAlias)
+		note, _ := srcBuddy.String(wire.FeedbagAttributesNote)
+
+		if err := f.DeleteBuddy(fromGroup, buddyName); err != nil {
+			return err
+		}
+		if _, err := f.AddBuddy(toGroup, buddyName, alias, note); err != nil {
+			return err
+		}
+	}
+
+	if beforeBuddy != "" {
+		moved := f.buddyItem(dst, buddyName)
+		before := f.buddyItem(dst, beforeBuddy)
+		if moved != nil && before != nil {
+			f.reorderInGroupOrder(dst, moved.ItemID, before.ItemID)
+		}
+	}
+
+	return nil
+}
+
+// SetBuddyAlias sets (or, when alias is empty, clears) the alias attribute on
+// every buddy item matching buddyName across all groups. Returns true if at
+// least one buddy item was found.
+func (f *FeedbagList) SetBuddyAlias(buddyName, alias string) (bool, error) {
+	buddies := f.buddyItemsByName(buddyName)
+	if len(buddies) == 0 {
+		return false, nil
+	}
+	for _, buddy := range buddies {
+		if alias != "" {
+			setItemTLV(buddy, wire.FeedbagAttributesAlias, alias)
+		} else {
+			clearItemTLV(buddy, wire.FeedbagAttributesAlias)
+		}
+		f.trackUpdate(buddy)
+	}
+	return true, nil
+}
+
+// SetGroupCollapsed sets (or, when collapsed is false, clears) the collapsed
+// attribute on a group. An empty groupName targets the unnamed default group.
+// Returns ErrGroupNotFound if the group does not exist.
+func (f *FeedbagList) SetGroupCollapsed(groupName string, collapsed bool) error {
+	group := f.groupByName(groupName)
+	if group == nil {
+		return fmt.Errorf("%w: %q", ErrGroupNotFound, groupName)
+	}
+	if collapsed {
+		setItemTLV(group, wire.FeedbagAttributesCollapsed, []byte{})
+	} else {
+		clearItemTLV(group, wire.FeedbagAttributesCollapsed)
+	}
+	f.trackUpdate(group)
+	return nil
+}
+
 // PermitUser upserts a permit-list entry for the given screen name.
 func (f *FeedbagList) PermitUser(screenName string) {
 	f.upsertItem(wire.FeedbagItem{
@@ -289,13 +400,102 @@ func (f *FeedbagList) rootGroup() *wire.FeedbagItem {
 }
 
 // groupByName returns the group item with the given name, or nil if not found.
+// The root group (GroupID 0) is never returned; it holds the master group order
+// rather than buddies, and an empty name matches the unnamed default buddy group.
 func (f *FeedbagList) groupByName(name string) *wire.FeedbagItem {
 	for _, item := range f.items {
-		if item.ClassID == wire.FeedbagClassIdGroup && item.Name == name {
+		if item.ClassID == wire.FeedbagClassIdGroup && item.GroupID != 0 && item.Name == name {
 			return item
 		}
 	}
 	return nil
+}
+
+// buddyItem returns the buddy item with the given name in the given group, or
+// nil if not found. Names are normalized before comparison.
+func (f *FeedbagList) buddyItem(group *wire.FeedbagItem, buddyName string) *wire.FeedbagItem {
+	want := NewIdentScreenName(buddyName).String()
+	for _, item := range f.items {
+		if item.ClassID != wire.FeedbagClassIdBuddy || item.GroupID != group.GroupID {
+			continue
+		}
+		if NewIdentScreenName(item.Name).String() == want {
+			return item
+		}
+	}
+	return nil
+}
+
+// buddyItemsByName returns every buddy item matching buddyName across all
+// groups. Names are normalized before comparison.
+func (f *FeedbagList) buddyItemsByName(buddyName string) []*wire.FeedbagItem {
+	want := NewIdentScreenName(buddyName).String()
+	var out []*wire.FeedbagItem
+	for _, item := range f.items {
+		if item.ClassID != wire.FeedbagClassIdBuddy {
+			continue
+		}
+		if NewIdentScreenName(item.Name).String() == want {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+// reorderInGroupOrder moves itemID so that it sits immediately before
+// beforeItemID in the group's order TLV. If beforeItemID is not present, itemID
+// is appended. The group is tracked as updated.
+func (f *FeedbagList) reorderInGroupOrder(group *wire.FeedbagItem, itemID, beforeItemID uint16) {
+	order, ok := group.Uint16SliceBE(wire.FeedbagAttributesOrder)
+	if !ok {
+		return
+	}
+	filtered := make([]uint16, 0, len(order))
+	for _, id := range order {
+		if id != itemID {
+			filtered = append(filtered, id)
+		}
+	}
+	insertAt := len(filtered)
+	for i, id := range filtered {
+		if id == beforeItemID {
+			insertAt = i
+			break
+		}
+	}
+	reordered := make([]uint16, 0, len(filtered)+1)
+	reordered = append(reordered, filtered[:insertAt]...)
+	reordered = append(reordered, itemID)
+	reordered = append(reordered, filtered[insertAt:]...)
+
+	if group.HasTag(wire.FeedbagAttributesOrder) {
+		group.Replace(wire.NewTLVBE(wire.FeedbagAttributesOrder, reordered))
+	} else {
+		group.Append(wire.NewTLVBE(wire.FeedbagAttributesOrder, reordered))
+	}
+	f.trackUpdate(group)
+}
+
+// setItemTLV sets a single attribute TLV on item, replacing an existing TLV
+// with the same tag or appending a new one. Mirrors AppendOrderMembers'
+// replace-or-append pattern since TLVList.Replace no-ops when the tag is absent.
+func setItemTLV(item *wire.FeedbagItem, tag uint16, value any) {
+	if item.HasTag(tag) {
+		item.Replace(wire.NewTLVBE(tag, value))
+	} else {
+		item.Append(wire.NewTLVBE(tag, value))
+	}
+}
+
+// clearItemTLV removes every TLV with the given tag from item.
+func clearItemTLV(item *wire.FeedbagItem, tag uint16) {
+	filtered := item.TLVList[:0:0]
+	for _, tlv := range item.TLVList {
+		if tlv.Tag != tag {
+			filtered = append(filtered, tlv)
+		}
+	}
+	item.TLVList = filtered
 }
 
 // trackUpdate adds item to the pending-updates list if not already present.

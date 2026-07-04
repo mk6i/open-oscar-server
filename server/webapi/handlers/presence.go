@@ -168,64 +168,53 @@ func (h *PresenceHandler) getBuddyListGroups(ctx context.Context, session *state
 	}
 	items := body.Items
 
-	// Organize items into groups
+	// Organize items into groups, keyed by GroupID. Group rows store their
+	// identity in GroupID (ItemID is 0 for every group), so a GroupID-keyed map
+	// is the only way to associate buddies — which reference their group via
+	// GroupID — with the right group.
 	groupMap := make(map[uint16]*BuddyGroupInfo)
-	buddyToGroup := make(map[string]uint16)
 
-	// First pass: identify groups
+	// First pass: identify groups. Skip the root group (GroupID 0), which holds
+	// the master group order rather than buddies.
 	for _, item := range items {
-		if item.ClassID == wire.FeedbagClassIdGroup {
-			name := item.Name
-			if name == "" {
-				name = "Buddies" // Default group name
-			}
-
-			groupMap[item.ItemID] = &BuddyGroupInfo{
-				Name:    name,
-				Buddies: []BuddyPresenceInfo{},
-			}
+		if item.ClassID != wire.FeedbagClassIdGroup || item.GroupID == 0 {
+			continue
+		}
+		name := item.Name
+		if name == "" {
+			name = "Buddies" // Default group name
+		}
+		groupMap[item.GroupID] = &BuddyGroupInfo{
+			Name:    name,
+			Buddies: []BuddyPresenceInfo{},
 		}
 	}
 
-	// Second pass: add buddies to groups
+	// Second pass: add buddies to their group with presence info.
 	for _, item := range items {
-		if item.ClassID == wire.FeedbagClassIdBuddy {
-			// Get buddy screen name
-			buddyName := item.Name
-			if buddyName == "" {
-				continue
-			}
-
-			// Find buddy's group
-			groupID := item.GroupID
-
-			buddyToGroup[buddyName] = groupID
+		if item.ClassID != wire.FeedbagClassIdBuddy || item.Name == "" {
+			continue
 		}
+		group, exists := groupMap[item.GroupID]
+		if !exists {
+			// Orphan buddy whose group row is missing: synthesize a default
+			// group for its GroupID so the buddy is not dropped.
+			group = &BuddyGroupInfo{Name: "Buddies", Buddies: []BuddyPresenceInfo{}}
+			groupMap[item.GroupID] = group
+		}
+
+		// UserInfoQuery performs the blocking check and online lookup; blocked or
+		// offline buddies come back as "offline", preserving the list structure.
+		presence := h.getUserPresence(ctx, session.OSCARSession, state.NewIdentScreenName(item.Name), wantProfileMsg)
+		group.Buddies = append(group.Buddies, presence)
 	}
 
-	// If no groups exist, create a default one
+	// If no groups exist at all, return a single default group.
 	if len(groupMap) == 0 {
 		groupMap[0] = &BuddyGroupInfo{
 			Name:    "Buddies",
 			Buddies: []BuddyPresenceInfo{},
 		}
-	}
-
-	// Add buddies to their groups with presence info
-	for buddyName, groupID := range buddyToGroup {
-		group, exists := groupMap[groupID]
-		if !exists {
-			// Put in first available group if group doesn't exist
-			for _, g := range groupMap {
-				group = g
-				break
-			}
-		}
-
-		// UserInfoQuery performs the blocking check and online lookup; blocked or
-		// offline buddies come back as "offline", preserving the list structure.
-		presence := h.getUserPresence(ctx, session.OSCARSession, state.NewIdentScreenName(buddyName), wantProfileMsg)
-		group.Buddies = append(group.Buddies, presence)
 	}
 
 	// Convert map to slice

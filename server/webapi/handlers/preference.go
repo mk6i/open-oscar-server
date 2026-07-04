@@ -81,7 +81,7 @@ var webBuddyPrefs = map[string]buddyPref{
 	"showBuddyFeed":               {wire.FeedbagBuddyPrefsShowBuddyFeed, true},
 	"noSaveVanityInfo":            {wire.FeedbagBuddyPrefsNoSaveVanityInfo, false},
 	"acceptOffLineIM":             {wire.FeedbagBuddyPrefsAcceptOfflineIM, true},
-	"showGroups":                  {wire.FeedbagBuddyPrefsShowGroups, false},
+	"showGroups":                  {wire.FeedbagBuddyPrefsShowGroups, true},
 	"sortGroup":                   {wire.FeedbagBuddyPrefsSortGroup, true},
 	"showOffLineBuddies":          {wire.FeedbagBuddyPrefsShowOfflineBuddies, true},
 	"expandBuddies":               {wire.FeedbagBuddyPrefsExpandBuddies, false},
@@ -313,16 +313,18 @@ func buddyPrefsItem(ctx context.Context, fs FeedbagService, instance *state.Sess
 	}, nil
 }
 
-// validBuddyPrefs returns the 0/1 values of the preferences that are actually
-// present (valid) in the feedbag buddy-prefs bitmask. Preferences the user has
-// never set are omitted, so callers can distinguish "unset" from a default
-// value.
-func validBuddyPrefs(list wire.TLVList) map[string]interface{} {
-	prefs := make(map[string]interface{})
+// effectiveBuddyPrefs returns the 0/1 value of every web buddy pref, using the
+// feedbag value when the pref's valid bit is set and the spec default otherwise.
+// This mirrors GetPreferences so the pushed preference event and the
+// preference/get endpoint agree: server-side defaults (e.g. showGroups) reach
+// the client even for prefs the user has never explicitly set. The web client
+// reads these from the startup preference event and has no other default for
+// them, so an omitted pref would silently fall back to the client's own hidden
+// default (which, for showGroups, hides group headers).
+func effectiveBuddyPrefs(list wire.TLVList) map[string]interface{} {
+	prefs := make(map[string]interface{}, len(webBuddyPrefs))
 	for name, pref := range webBuddyPrefs {
-		if valid, val := wire.BuddyPref(list, pref.num); valid {
-			prefs[name] = boolToPrefInt(val)
-		}
+		prefs[name] = effectivePrefValue(list, pref)
 	}
 	return prefs
 }

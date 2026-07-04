@@ -151,23 +151,29 @@ func TestPreferenceHandler_GetPreferences_AMF(t *testing.T) {
 	assert.NotContains(t, body, `playIMSound":"0"`)
 }
 
-func TestValidBuddyPrefs_OnlyValidBits(t *testing.T) {
-	// Only playIMSound (set false) and viewIMsInBubbles (set true) are valid;
-	// everything else must be omitted rather than defaulted.
+func TestEffectiveBuddyPrefs_StoredOverridesDefault(t *testing.T) {
+	// playIMSound defaults true but is stored false; viewIMsInBubbles defaults
+	// true and is stored true. Stored (valid) values must win over defaults.
 	var list wire.TLVList
 	list = wire.SetBuddyPref(list, wire.FeedbagBuddyPrefsPlayIMSound, false)
 	list = wire.SetBuddyPref(list, wire.FeedbagBuddyPrefsViewIMsInBubbles, true)
 
-	got := validBuddyPrefs(list)
+	got := effectiveBuddyPrefs(list)
 
-	assert.Equal(t, map[string]interface{}{
-		"playIMSound":      0,
-		"viewIMsInBubbles": 1,
-	}, got)
+	// Every pref is present (defaults applied for unset ones).
+	assert.Len(t, got, len(webBuddyPrefs))
+	assert.Equal(t, 0, got["playIMSound"])
+	assert.Equal(t, 1, got["viewIMsInBubbles"])
 }
 
-func TestValidBuddyPrefs_EmptyWhenNothingSet(t *testing.T) {
-	assert.Empty(t, validBuddyPrefs(wire.TLVList{}))
+func TestEffectiveBuddyPrefs_AppliesDefaultsWhenNothingSet(t *testing.T) {
+	got := effectiveBuddyPrefs(wire.TLVList{})
+
+	// Unset prefs resolve to their spec defaults rather than being omitted.
+	assert.Len(t, got, len(webBuddyPrefs))
+	assert.Equal(t, 1, got["showGroups"], "showGroups should default to shown")
+	assert.Equal(t, 1, got["playIMSound"], "playIMSound defaults true")
+	assert.Equal(t, 0, got["sortBuddyList"], "sortBuddyList defaults false")
 }
 
 func TestPreferenceHandler_SetPreferences_NoOSCARSession(t *testing.T) {

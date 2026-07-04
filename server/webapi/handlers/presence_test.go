@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -121,7 +122,7 @@ func TestPresenceHandler_GetPresence(t *testing.T) {
 					Return(wire.SNACMessage{
 						Body: wire.SNAC_0x13_0x06_FeedbagReply{
 							Items: []wire.FeedbagItem{
-								{ItemID: 1, ClassID: wire.FeedbagClassIdGroup, Name: "Friends", GroupID: 0},
+								{ItemID: 0, ClassID: wire.FeedbagClassIdGroup, Name: "Friends", GroupID: 1},
 								{ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, Name: "buddy1", GroupID: 1},
 							},
 						},
@@ -232,6 +233,78 @@ func TestPresenceHandler_GetPresence(t *testing.T) {
 			locateService.AssertExpectations(t)
 		})
 	}
+}
+
+// TestPresenceHandler_GetPresence_BuddyListGrouping verifies that bl=1 places
+// each buddy under its own group using realistic feedbag data, where group rows
+// carry ItemID 0 and a distinct nonzero GroupID, and buddy rows reference those
+// GroupIDs. This is the shape the OSCAR feedbag actually stores.
+func TestPresenceHandler_GetPresence_BuddyListGrouping(t *testing.T) {
+	feedbagService := &MockFeedbagService{}
+	locateService := &MockLocateService{}
+
+	items := []wire.FeedbagItem{
+		// Root order group: ItemID 0, GroupID 0, empty name — not a real buddy group.
+		{ItemID: 0, GroupID: 0, ClassID: wire.FeedbagClassIdGroup, Name: ""},
+		// Named groups: ItemID 0, distinct nonzero GroupIDs.
+		{ItemID: 0, GroupID: 10, ClassID: wire.FeedbagClassIdGroup, Name: "Friends"},
+		{ItemID: 0, GroupID: 20, ClassID: wire.FeedbagClassIdGroup, Name: "Work"},
+		// Buddies reference their group's GroupID.
+		{ItemID: 101, GroupID: 10, ClassID: wire.FeedbagClassIdBuddy, Name: "alice"},
+		{ItemID: 201, GroupID: 20, ClassID: wire.FeedbagClassIdBuddy, Name: "bob"},
+	}
+	feedbagService.On("Query", mock.Anything, mock.Anything, mock.Anything).
+		Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: items}}, nil)
+	locateService.On("UserInfoQuery", mock.Anything, mock.Anything, mock.Anything, screenNameMatcher("alice")).
+		Return(onlineUserInfoReply("alice", 0), nil)
+	locateService.On("UserInfoQuery", mock.Anything, mock.Anything, mock.Anything, screenNameMatcher("bob")).
+		Return(onlineUserInfoReply("bob", 0), nil)
+
+	oscarInstance := state.NewSession().AddInstance()
+	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
+	handler := &PresenceHandler{
+		SessionManager: sessionMgr,
+		FeedbagService: feedbagService,
+		LocateService:  locateService,
+		Logger:         slog.Default(),
+	}
+
+	req, err := http.NewRequest("GET", "/presence/get?aimsid="+aimsid+"&bl=1", nil)
+	assert.NoError(t, err)
+	rr := httptest.NewRecorder()
+	handler.GetPresence(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+
+	var parsed struct {
+		Response struct {
+			Data struct {
+				Groups []struct {
+					Name    string `json:"name"`
+					Buddies []struct {
+						AimID string `json:"aimId"`
+					} `json:"buddies"`
+				} `json:"groups"`
+			} `json:"data"`
+		} `json:"response"`
+	}
+	assert.NoError(t, json.Unmarshal(rr.Body.Bytes(), &parsed))
+
+	// Build name -> set of buddy aimIds.
+	byGroup := map[string][]string{}
+	for _, g := range parsed.Response.Data.Groups {
+		for _, b := range g.Buddies {
+			byGroup[g.Name] = append(byGroup[g.Name], b.AimID)
+		}
+	}
+
+	// Exactly the two named groups appear; the root group is excluded.
+	assert.Len(t, parsed.Response.Data.Groups, 2)
+	assert.Equal(t, []string{"alice"}, byGroup["Friends"])
+	assert.Equal(t, []string{"bob"}, byGroup["Work"])
+
+	feedbagService.AssertExpectations(t)
+	locateService.AssertExpectations(t)
 }
 
 func TestPresenceHandler_GetPresence_MissingAimsid(t *testing.T) {

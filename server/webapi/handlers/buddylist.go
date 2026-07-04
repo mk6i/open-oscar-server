@@ -39,6 +39,10 @@ func NewBuddyListHandler(sessionManager WebAPISessionManager, blm *BuddyListMana
 	m.Handle("GET /buddylist/addGroup", h.SessionMiddleware(h.AddGroup))
 	m.Handle("GET /buddylist/removeBuddy", h.SessionMiddleware(h.RemoveBuddy))
 	m.Handle("GET /buddylist/removeGroup", h.SessionMiddleware(h.RemoveGroup))
+	m.Handle("GET /buddylist/renameGroup", h.SessionMiddleware(h.RenameGroup))
+	m.Handle("GET /buddylist/moveBuddy", h.SessionMiddleware(h.MoveBuddy))
+	m.Handle("GET /buddylist/setBuddyAttribute", h.SessionMiddleware(h.SetBuddyAttribute))
+	m.Handle("GET /buddylist/setGroupAttribute", h.SessionMiddleware(h.SetGroupAttribute))
 	h.mux = m
 	return h
 }
@@ -489,6 +493,193 @@ func (h *BuddyListHandler) RemoveTempBuddy(w http.ResponseWriter, r *http.Reques
 		"buddies", removed,
 		"count", len(removed),
 	)
+}
+
+// RenameGroup handles GET /buddylist/renameGroup requests.
+//
+// The Web AIM client calls this with oldGroup (current group name) and newGroup
+// (the requested new name). This is a stub; it does not yet rename the group in
+// the feedbag.
+func (h *BuddyListHandler) RenameGroup(w http.ResponseWriter, r *http.Request, session *state.WebAPISession) {
+	ctx := r.Context()
+	aimsid := r.URL.Query().Get("aimsid")
+
+	oldGroup := strings.TrimSpace(r.URL.Query().Get("oldGroup"))
+	newGroup := strings.TrimSpace(r.URL.Query().Get("newGroup"))
+	if oldGroup == "" || newGroup == "" {
+		h.sendError(w, http.StatusBadRequest, "missing oldGroup or newGroup parameter")
+		return
+	}
+
+	resultCode, rnErr := h.BuddyListManager.RenameGroupInFeedbag(ctx, session, oldGroup, newGroup)
+	if rnErr != nil {
+		h.Logger.ErrorContext(ctx, "rename group failed", "err", rnErr.Error())
+	}
+
+	resp := BaseResponse{}
+	resp.Response.StatusCode = 200
+	resp.Response.StatusText = "OK"
+	resp.Response.Data = map[string]any{
+		"resultCode": resultCode,
+	}
+	SendResponse(w, r, resp, h.Logger)
+
+	if resultCode == "success" {
+		h.pushBuddyListEvent(ctx, session)
+	}
+
+	h.Logger.InfoContext(ctx, "buddy list group renamed",
+		"aimsid", aimsid,
+		"oldGroup", oldGroup,
+		"newGroup", newGroup,
+		"result", resultCode,
+	)
+}
+
+// MoveBuddy handles GET /buddylist/moveBuddy requests.
+//
+// The Web AIM client calls this with buddy (the buddy to move), group (the
+// current group), and optionally newGroup (destination group) and beforeBuddy
+// (buddy to position it before). This is a stub; it does not yet move the buddy
+// in the feedbag.
+func (h *BuddyListHandler) MoveBuddy(w http.ResponseWriter, r *http.Request, session *state.WebAPISession) {
+	ctx := r.Context()
+	aimsid := r.URL.Query().Get("aimsid")
+
+	buddyName := strings.TrimSpace(r.URL.Query().Get("buddy"))
+	groupName := strings.TrimSpace(r.URL.Query().Get("group"))
+	newGroup := strings.TrimSpace(r.URL.Query().Get("newGroup"))
+	beforeBuddy := strings.TrimSpace(r.URL.Query().Get("beforeBuddy"))
+	if buddyName == "" {
+		h.sendError(w, http.StatusBadRequest, "missing buddy parameter")
+		return
+	}
+	if groupName == "" {
+		h.sendError(w, http.StatusBadRequest, "missing group parameter")
+		return
+	}
+
+	resultCode, mvErr := h.BuddyListManager.MoveBuddyInFeedbag(ctx, session, buddyName, groupName, newGroup, beforeBuddy)
+	if mvErr != nil {
+		h.Logger.ErrorContext(ctx, "move buddy failed", "err", mvErr.Error())
+	}
+
+	resp := BaseResponse{}
+	resp.Response.StatusCode = 200
+	resp.Response.StatusText = "OK"
+	resp.Response.Data = map[string]any{
+		"resultCode": resultCode,
+	}
+	SendResponse(w, r, resp, h.Logger)
+
+	if resultCode == "success" {
+		h.pushBuddyListEvent(ctx, session)
+	}
+
+	h.Logger.InfoContext(ctx, "buddy moved",
+		"aimsid", aimsid,
+		"buddy", buddyName,
+		"group", groupName,
+		"newGroup", newGroup,
+		"beforeBuddy", beforeBuddy,
+		"result", resultCode,
+	)
+}
+
+// SetBuddyAttribute handles GET /buddylist/setBuddyAttribute requests.
+//
+// The Web AIM client calls this with t (the buddy) and friendly (the display
+// name / alias). This is a stub; it does not yet persist the attribute to the
+// feedbag.
+func (h *BuddyListHandler) SetBuddyAttribute(w http.ResponseWriter, r *http.Request, session *state.WebAPISession) {
+	ctx := r.Context()
+	aimsid := r.URL.Query().Get("aimsid")
+
+	buddyName := strings.TrimSpace(r.URL.Query().Get("t"))
+	friendly := strings.TrimSpace(r.URL.Query().Get("friendly"))
+	if buddyName == "" {
+		h.sendError(w, http.StatusBadRequest, "missing t parameter")
+		return
+	}
+
+	resultCode, saErr := h.BuddyListManager.SetBuddyAttributeInFeedbag(ctx, session, buddyName, friendly)
+	if saErr != nil {
+		h.Logger.ErrorContext(ctx, "set buddy attribute failed", "err", saErr.Error())
+	}
+
+	resp := BaseResponse{}
+	resp.Response.StatusCode = 200
+	resp.Response.StatusText = "OK"
+	resp.Response.Data = map[string]any{
+		"resultCode": resultCode,
+	}
+	SendResponse(w, r, resp, h.Logger)
+
+	if resultCode == "success" {
+		h.pushBuddyListEvent(ctx, session)
+	}
+
+	h.Logger.InfoContext(ctx, "buddy attribute set",
+		"aimsid", aimsid,
+		"buddy", buddyName,
+		"friendly", friendly,
+		"result", resultCode,
+	)
+}
+
+// SetGroupAttribute handles GET /buddylist/setGroupAttribute requests.
+//
+// The Web AIM client calls this with collapsed (the group's collapsed state)
+// and, for named groups, group. The unnamed default group omits group. This is
+// a stub; it does not yet persist the attribute to the feedbag.
+func (h *BuddyListHandler) SetGroupAttribute(w http.ResponseWriter, r *http.Request, session *state.WebAPISession) {
+	ctx := r.Context()
+	aimsid := r.URL.Query().Get("aimsid")
+
+	query := r.URL.Query()
+	groupName := strings.TrimSpace(query.Get("group"))
+	collapsedParam := strings.TrimSpace(query.Get("collapsed"))
+	if collapsedParam == "" {
+		h.sendError(w, http.StatusBadRequest, "missing collapsed parameter")
+		return
+	}
+	collapsed := collapsedParam == "true" || collapsedParam == "1"
+
+	resultCode, saErr := h.BuddyListManager.SetGroupAttributeInFeedbag(ctx, session, groupName, collapsed)
+	if saErr != nil {
+		h.Logger.ErrorContext(ctx, "set group attribute failed", "err", saErr.Error())
+	}
+
+	resp := BaseResponse{}
+	resp.Response.StatusCode = 200
+	resp.Response.StatusText = "OK"
+	resp.Response.Data = map[string]any{
+		"resultCode": resultCode,
+	}
+	SendResponse(w, r, resp, h.Logger)
+
+	if resultCode == "success" {
+		h.pushBuddyListEvent(ctx, session)
+	}
+
+	h.Logger.InfoContext(ctx, "buddy list group attribute set",
+		"aimsid", aimsid,
+		"group", groupName,
+		"collapsed", collapsed,
+		"result", resultCode,
+	)
+}
+
+// pushBuddyListEvent refreshes the buddy list and pushes it to the session's
+// event queue so the Web client re-renders after a mutation.
+func (h *BuddyListHandler) pushBuddyListEvent(ctx context.Context, session *state.WebAPISession) {
+	groups, err := h.BuddyListManager.GetBuddyListForUser(ctx, session)
+	if err != nil {
+		h.Logger.ErrorContext(ctx, "failed to get buddy list for event", "err", err.Error())
+		return
+	}
+	blPayload := map[string]any{"groups": groups}
+	session.EventQueue.Push(types.EventTypeBuddyList, blPayload)
 }
 
 // sendError is a convenience method that wraps the common SendError function.

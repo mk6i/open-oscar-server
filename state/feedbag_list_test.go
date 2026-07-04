@@ -1099,3 +1099,220 @@ func TestFeedbagList_HasLinkedScreenName(t *testing.T) {
 		assert.True(t, fl.HasLinkedScreenName("Alice"))
 	})
 }
+
+func TestFeedbagList_RenameGroup(t *testing.T) {
+	t.Run("renames group in place preserving IDs", func(t *testing.T) {
+		fl := NewFeedbagList([]wire.FeedbagItem{
+			{Name: "Coworkers", ClassID: wire.FeedbagClassIdGroup, GroupID: 5, ItemID: 0},
+		}, nil)
+
+		err := fl.RenameGroup("Coworkers", "Colleagues")
+		assert.NoError(t, err)
+
+		upserts := fl.PendingUpdates()
+		assert.Len(t, upserts, 1)
+		assert.Equal(t, "Colleagues", upserts[0].Name)
+		assert.Equal(t, uint16(5), upserts[0].GroupID)
+		assert.Equal(t, wire.FeedbagClassIdGroup, upserts[0].ClassID)
+	})
+
+	t.Run("returns ErrGroupNotFound for missing group", func(t *testing.T) {
+		fl := NewFeedbagList(nil, nil)
+		err := fl.RenameGroup("Nope", "New")
+		assert.ErrorIs(t, err, ErrGroupNotFound)
+		assert.Nil(t, fl.PendingUpdates())
+	})
+
+	t.Run("returns ErrGroupExists when target name taken", func(t *testing.T) {
+		fl := NewFeedbagList([]wire.FeedbagItem{
+			{Name: "A", ClassID: wire.FeedbagClassIdGroup, GroupID: 1},
+			{Name: "B", ClassID: wire.FeedbagClassIdGroup, GroupID: 2},
+		}, nil)
+		err := fl.RenameGroup("A", "B")
+		assert.ErrorIs(t, err, ErrGroupExists)
+		assert.Nil(t, fl.PendingUpdates())
+	})
+
+	t.Run("renaming to same name is a no-op", func(t *testing.T) {
+		fl := NewFeedbagList([]wire.FeedbagItem{
+			{Name: "A", ClassID: wire.FeedbagClassIdGroup, GroupID: 1},
+		}, nil)
+		err := fl.RenameGroup("A", "A")
+		assert.NoError(t, err)
+		assert.Nil(t, fl.PendingUpdates())
+	})
+}
+
+func TestFeedbagList_MoveBuddy(t *testing.T) {
+	t.Run("moves buddy across groups carrying alias", func(t *testing.T) {
+		fl := NewFeedbagList([]wire.FeedbagItem{
+			{Name: "Buddies", ClassID: wire.FeedbagClassIdGroup, GroupID: 1,
+				TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{
+					wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{10}),
+				}}},
+			{Name: "alice", ClassID: wire.FeedbagClassIdBuddy, GroupID: 1, ItemID: 10,
+				TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{
+					wire.NewTLVBE(wire.FeedbagAttributesAlias, "Al"),
+				}}},
+			{Name: "Coworkers", ClassID: wire.FeedbagClassIdGroup, GroupID: 2},
+		}, func(n int) int { return 99 })
+
+		err := fl.MoveBuddy("Buddies", "Coworkers", "alice", "")
+		assert.NoError(t, err)
+
+		deletes := fl.PendingDeletes()
+		assert.Len(t, deletes, 1)
+		assert.Equal(t, "alice", deletes[0].Name)
+		assert.Equal(t, uint16(1), deletes[0].GroupID)
+
+		upserts := fl.PendingUpdates()
+		var newBuddy *wire.FeedbagItem
+		for i := range upserts {
+			if upserts[i].ClassID == wire.FeedbagClassIdBuddy {
+				newBuddy = &upserts[i]
+			}
+		}
+		assert.NotNil(t, newBuddy)
+		assert.Equal(t, uint16(2), newBuddy.GroupID)
+		alias, ok := newBuddy.Bytes(wire.FeedbagAttributesAlias)
+		assert.True(t, ok)
+		assert.Equal(t, []byte("Al"), alias)
+	})
+
+	t.Run("reorders within a group before another buddy", func(t *testing.T) {
+		fl := NewFeedbagList([]wire.FeedbagItem{
+			{Name: "Buddies", ClassID: wire.FeedbagClassIdGroup, GroupID: 1,
+				TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{
+					wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{10, 20, 30}),
+				}}},
+			{Name: "alice", ClassID: wire.FeedbagClassIdBuddy, GroupID: 1, ItemID: 10},
+			{Name: "bob", ClassID: wire.FeedbagClassIdBuddy, GroupID: 1, ItemID: 20},
+			{Name: "carol", ClassID: wire.FeedbagClassIdBuddy, GroupID: 1, ItemID: 30},
+		}, nil)
+
+		// move carol (30) before alice (10)
+		err := fl.MoveBuddy("Buddies", "", "carol", "alice")
+		assert.NoError(t, err)
+
+		upserts := fl.PendingUpdates()
+		assert.Len(t, upserts, 1)
+		order, ok := upserts[0].Uint16SliceBE(wire.FeedbagAttributesOrder)
+		assert.True(t, ok)
+		assert.Equal(t, []uint16{30, 10, 20}, order)
+	})
+
+	t.Run("returns ErrBuddyNotFound when buddy missing", func(t *testing.T) {
+		fl := NewFeedbagList([]wire.FeedbagItem{
+			{Name: "Buddies", ClassID: wire.FeedbagClassIdGroup, GroupID: 1},
+		}, nil)
+		err := fl.MoveBuddy("Buddies", "", "ghost", "")
+		assert.ErrorIs(t, err, ErrBuddyNotFound)
+	})
+
+	t.Run("returns ErrGroupNotFound when destination missing", func(t *testing.T) {
+		fl := NewFeedbagList([]wire.FeedbagItem{
+			{Name: "Buddies", ClassID: wire.FeedbagClassIdGroup, GroupID: 1},
+			{Name: "alice", ClassID: wire.FeedbagClassIdBuddy, GroupID: 1, ItemID: 10},
+		}, nil)
+		err := fl.MoveBuddy("Buddies", "Nowhere", "alice", "")
+		assert.ErrorIs(t, err, ErrGroupNotFound)
+	})
+}
+
+func TestFeedbagList_SetBuddyAlias(t *testing.T) {
+	t.Run("sets alias on all matching buddies", func(t *testing.T) {
+		fl := NewFeedbagList([]wire.FeedbagItem{
+			{Name: "alice", ClassID: wire.FeedbagClassIdBuddy, GroupID: 1, ItemID: 10},
+			{Name: "alice", ClassID: wire.FeedbagClassIdBuddy, GroupID: 2, ItemID: 20},
+		}, nil)
+
+		found, err := fl.SetBuddyAlias("alice", "Al")
+		assert.NoError(t, err)
+		assert.True(t, found)
+
+		upserts := fl.PendingUpdates()
+		assert.Len(t, upserts, 2)
+		for _, item := range upserts {
+			alias, ok := item.Bytes(wire.FeedbagAttributesAlias)
+			assert.True(t, ok)
+			assert.Equal(t, []byte("Al"), alias)
+		}
+	})
+
+	t.Run("clears alias when empty", func(t *testing.T) {
+		fl := NewFeedbagList([]wire.FeedbagItem{
+			{Name: "alice", ClassID: wire.FeedbagClassIdBuddy, GroupID: 1, ItemID: 10,
+				TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{
+					wire.NewTLVBE(wire.FeedbagAttributesAlias, "Al"),
+				}}},
+		}, nil)
+
+		found, err := fl.SetBuddyAlias("alice", "")
+		assert.NoError(t, err)
+		assert.True(t, found)
+
+		upserts := fl.PendingUpdates()
+		assert.Len(t, upserts, 1)
+		assert.False(t, upserts[0].HasTag(wire.FeedbagAttributesAlias))
+	})
+
+	t.Run("returns false when buddy not found", func(t *testing.T) {
+		fl := NewFeedbagList(nil, nil)
+		found, err := fl.SetBuddyAlias("ghost", "X")
+		assert.NoError(t, err)
+		assert.False(t, found)
+		assert.Nil(t, fl.PendingUpdates())
+	})
+}
+
+func TestFeedbagList_SetGroupCollapsed(t *testing.T) {
+	t.Run("sets collapsed attribute", func(t *testing.T) {
+		fl := NewFeedbagList([]wire.FeedbagItem{
+			{Name: "Coworkers", ClassID: wire.FeedbagClassIdGroup, GroupID: 1},
+		}, nil)
+
+		err := fl.SetGroupCollapsed("Coworkers", true)
+		assert.NoError(t, err)
+
+		upserts := fl.PendingUpdates()
+		assert.Len(t, upserts, 1)
+		assert.True(t, upserts[0].HasTag(wire.FeedbagAttributesCollapsed))
+	})
+
+	t.Run("clears collapsed attribute", func(t *testing.T) {
+		fl := NewFeedbagList([]wire.FeedbagItem{
+			{Name: "Coworkers", ClassID: wire.FeedbagClassIdGroup, GroupID: 1,
+				TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{
+					wire.NewTLVBE(wire.FeedbagAttributesCollapsed, []byte{}),
+				}}},
+		}, nil)
+
+		err := fl.SetGroupCollapsed("Coworkers", false)
+		assert.NoError(t, err)
+
+		upserts := fl.PendingUpdates()
+		assert.Len(t, upserts, 1)
+		assert.False(t, upserts[0].HasTag(wire.FeedbagAttributesCollapsed))
+	})
+
+	t.Run("targets unnamed default group, not the root group", func(t *testing.T) {
+		fl := NewFeedbagList([]wire.FeedbagItem{
+			{Name: "", ClassID: wire.FeedbagClassIdGroup, GroupID: 0},
+			{Name: "", ClassID: wire.FeedbagClassIdGroup, GroupID: 3},
+		}, nil)
+
+		err := fl.SetGroupCollapsed("", true)
+		assert.NoError(t, err)
+
+		upserts := fl.PendingUpdates()
+		assert.Len(t, upserts, 1)
+		assert.Equal(t, uint16(3), upserts[0].GroupID)
+		assert.True(t, upserts[0].HasTag(wire.FeedbagAttributesCollapsed))
+	})
+
+	t.Run("returns ErrGroupNotFound for missing group", func(t *testing.T) {
+		fl := NewFeedbagList(nil, nil)
+		err := fl.SetGroupCollapsed("Nope", true)
+		assert.ErrorIs(t, err, ErrGroupNotFound)
+	})
+}

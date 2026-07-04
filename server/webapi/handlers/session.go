@@ -464,15 +464,18 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 				session.EventQueue.Push(types.EventTypeBuddyList, blPayload)
 			}
 		case types.EventTypePreference:
-			// Seed the client with the preferences the user has actually set
-			// (those present in the feedbag buddy-prefs valid bitmask). Unset
-			// prefs are omitted so we don't clobber client-side defaults.
+			// Seed the client with effective preference values: the user's stored
+			// prefs where set, and the server-side spec defaults otherwise. The
+			// client reads its buddy-list display prefs (e.g. showGroups) only from
+			// this event and has no default of its own for them, so an omitted pref
+			// would silently fall back to the client's hidden default and, for
+			// showGroups, hide group headers.
 			prefPayload := map[string]interface{}{}
 			if authToken != "" && session.OSCARSession != nil {
 				if item, err := buddyPrefsItem(ctx, h.FeedbagService, session.OSCARSession); err != nil {
 					h.Logger.ErrorContext(ctx, "failed to get preferences", "err", err.Error())
 				} else {
-					prefPayload = validBuddyPrefs(item.TLVList)
+					prefPayload = effectiveBuddyPrefs(item.TLVList)
 				}
 			}
 			if resp.Response.Data.Events == nil {
