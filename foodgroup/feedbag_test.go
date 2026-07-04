@@ -976,9 +976,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 						{
 							ClassID: wire.FeedbagClassIdBuddyPrefs,
 							TLVLBlock: wire.TLVLBlock{
-								TLVList: wire.TLVList{
-									wire.NewTLVBE(wire.FeedbagAttributesBuddyPrefs, uint32(wire.FeedbagBuddyPrefsWantsTypingEvents)),
-								},
+								TLVList: wire.SetBuddyPref(nil, wire.FeedbagBuddyPrefsDiscloseTyping, true),
 							},
 						},
 					},
@@ -993,9 +991,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 								{
 									ClassID: wire.FeedbagClassIdBuddyPrefs,
 									TLVLBlock: wire.TLVLBlock{
-										TLVList: wire.TLVList{
-											wire.NewTLVBE(wire.FeedbagAttributesBuddyPrefs, uint32(wire.FeedbagBuddyPrefsWantsTypingEvents)),
-										},
+										TLVList: wire.SetBuddyPref(nil, wire.FeedbagBuddyPrefsDiscloseTyping, true),
 									},
 								},
 							},
@@ -1017,9 +1013,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 										{
 											ClassID: wire.FeedbagClassIdBuddyPrefs,
 											TLVLBlock: wire.TLVLBlock{
-												TLVList: wire.TLVList{
-													wire.NewTLVBE(wire.FeedbagAttributesBuddyPrefs, uint32(wire.FeedbagBuddyPrefsWantsTypingEvents)),
-												},
+												TLVList: wire.SetBuddyPref(nil, wire.FeedbagBuddyPrefsDiscloseTyping, true),
 											},
 										},
 									},
@@ -3047,9 +3041,7 @@ func TestFeedbagService_Use(t *testing.T) {
 								{
 									ClassID: wire.FeedbagClassIdBuddyPrefs,
 									TLVLBlock: wire.TLVLBlock{
-										TLVList: wire.TLVList{
-											wire.NewTLVBE(wire.FeedbagAttributesBuddyPrefs, uint32(wire.FeedbagBuddyPrefsWantsTypingEvents)),
-										},
+										TLVList: wire.SetBuddyPref(nil, wire.FeedbagBuddyPrefsDiscloseTyping, true),
 									},
 								},
 							},

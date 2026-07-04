@@ -1015,9 +1015,9 @@ func (s *FeedbagService) rejectContact(ctx context.Context, rejecter state.Ident
 // setSessionBuddyPrefs sets session preferences based on the feedbag buddy prefs item, if present.
 func setSessionBuddyPrefs(items []wire.FeedbagItem, instance *state.SessionInstance) {
 	for _, item := range items {
-		if item.ClassID == wire.FeedbagClassIdBuddyPrefs && item.HasTag(wire.FeedbagAttributesBuddyPrefs) {
-			buddyPrefs, _ := item.Uint32BE(wire.FeedbagAttributesBuddyPrefs)
-			instance.Session().SetTypingEventsEnabled(buddyPrefs&wire.FeedbagBuddyPrefsWantsTypingEvents == wire.FeedbagBuddyPrefsWantsTypingEvents)
+		if item.ClassID == wire.FeedbagClassIdBuddyPrefs {
+			_, wantsTyping := wire.BuddyPref(item.TLVList, wire.FeedbagBuddyPrefsDiscloseTyping)
+			instance.Session().SetTypingEventsEnabled(wantsTyping)
 			break
 		}
 	}

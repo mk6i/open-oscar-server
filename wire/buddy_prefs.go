@@ -129,12 +129,6 @@ const (
 	FeedbagBuddyPrefsImblastInviteFromBuddyOnly uint16 = 0x4F
 )
 
-// FeedbagBuddyPrefsWantsTypingEvents is the DiscloseTyping (0x16) preference in
-// raw uint32-mask form (bit 22 of the fixed BuddyPrefs field). It is used when
-// reading the whole 4-byte bitmask as a single integer rather than by pref
-// number.
-const FeedbagBuddyPrefsWantsTypingEvents uint32 = 0x400000
-
 // buddyPrefTags returns the (valid, value) TLV tags that hold prefNum.
 func buddyPrefTags(prefNum uint16) (validTag, valueTag uint16) {
 	if prefNum < 32 {
