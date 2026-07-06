@@ -653,9 +653,7 @@ func (h *SessionHandler) EndSession(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		// Remove OSCAR session
 		h.OSCARSessionManager.RemoveSession(session.OSCARSession.Session())
-		session.OSCARSession = nil
 	}
 
 	// Remove session
