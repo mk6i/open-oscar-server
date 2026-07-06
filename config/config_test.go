@@ -442,24 +442,27 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "valid config with all fields",
 			config: Config{
-				TOCListeners: []string{"0.0.0.0:9898", "192.168.1.10:9899"},
-				APIListener:  "127.0.0.1:8080",
+				TOCListeners:    []string{"0.0.0.0:9898", "192.168.1.10:9899"},
+				APIListener:     "127.0.0.1:8080",
+				WebAPIListeners: []string{"0.0.0.0:8081"},
 			},
 			wantErr: false,
 		},
 		{
 			name: "valid config with single TOC listener",
 			config: Config{
-				TOCListeners: []string{"0.0.0.0:9898"},
-				APIListener:  "127.0.0.1:8080",
+				TOCListeners:    []string{"0.0.0.0:9898"},
+				APIListener:     "127.0.0.1:8080",
+				WebAPIListeners: []string{"0.0.0.0:8081"},
 			},
 			wantErr: false,
 		},
 		{
 			name: "valid config with empty TOC listeners",
 			config: Config{
-				TOCListeners: []string{},
-				APIListener:  "127.0.0.1:8080",
+				TOCListeners:    []string{},
+				APIListener:     "127.0.0.1:8080",
+				WebAPIListeners: []string{"0.0.0.0:8081"},
 			},
 			wantErr: false,
 		},
@@ -547,19 +550,79 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "whitespace-only TOC listeners",
 			config: Config{
-				TOCListeners: []string{"   ", "  ", "  "},
-				APIListener:  "127.0.0.1:8080",
+				TOCListeners:    []string{"   ", "  ", "  "},
+				APIListener:     "127.0.0.1:8080",
+				WebAPIListeners: []string{"0.0.0.0:8081"},
 			},
 			wantErr: false,
 		},
 		{
 			name: "whitespace-only API listener",
 			config: Config{
-				TOCListeners: []string{"0.0.0.0:9898"},
-				APIListener:  "   ",
+				TOCListeners:    []string{"0.0.0.0:9898"},
+				APIListener:     "   ",
+				WebAPIListeners: []string{"0.0.0.0:8081"},
 			},
 			wantErr:     true,
 			errContains: "APIListener is required and cannot be empty",
+		},
+		{
+			name: "valid multiple web API listeners",
+			config: Config{
+				TOCListeners:    []string{"0.0.0.0:9898"},
+				APIListener:     "127.0.0.1:8080",
+				WebAPIListeners: []string{"0.0.0.0:8081", "192.168.1.10:8082"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "whitespace-only web API listeners",
+			config: Config{
+				TOCListeners:    []string{"0.0.0.0:9898"},
+				APIListener:     "127.0.0.1:8080",
+				WebAPIListeners: []string{"   ", "  "},
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid web API listener - missing port",
+			config: Config{
+				TOCListeners:    []string{"0.0.0.0:9898"},
+				APIListener:     "127.0.0.1:8080",
+				WebAPIListeners: []string{"0.0.0.0"},
+			},
+			wantErr:     true,
+			errContains: "invalid web API listener \"0.0.0.0\": address 0.0.0.0: missing port in address",
+		},
+		{
+			name: "invalid web API listener - missing host",
+			config: Config{
+				TOCListeners:    []string{"0.0.0.0:9898"},
+				APIListener:     "127.0.0.1:8080",
+				WebAPIListeners: []string{":8081"},
+			},
+			wantErr:     true,
+			errContains: "invalid web API listener \":8081\": missing host",
+		},
+		{
+			name: "invalid web API listener - malformed",
+			config: Config{
+				TOCListeners:    []string{"0.0.0.0:9898"},
+				APIListener:     "127.0.0.1:8080",
+				WebAPIListeners: []string{"invalid-format"},
+			},
+			wantErr:     true,
+			errContains: "invalid web API listener \"invalid-format\": address invalid-format: missing port in address",
+		},
+		{
+			name: "invalid web API listener in comma-separated list",
+			config: Config{
+				TOCListeners:    []string{"0.0.0.0:9898"},
+				APIListener:     "127.0.0.1:8080",
+				WebAPIListeners: []string{"0.0.0.0:8081", "invalid-format", "192.168.1.10:8082"},
+			},
+			wantErr:     true,
+			errContains: "invalid web API listener \"invalid-format\": address invalid-format: missing port in address",
 		},
 	}
 
