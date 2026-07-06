@@ -112,6 +112,19 @@ func (f *FeedbagList) DeleteGroup(groupName string) {
 // AddBuddy upserts a buddy item in the given group (by name), optionally
 // attaching alias and note attributes. Returns true if a new buddy was inserted.
 func (f *FeedbagList) AddBuddy(groupName, screenName, alias, note string) (bool, error) {
+	var attrs wire.TLVList
+	if alias != "" {
+		attrs.Append(wire.NewTLVBE(wire.FeedbagAttributesAlias, alias))
+	}
+	if note != "" {
+		attrs.Append(wire.NewTLVBE(wire.FeedbagAttributesNote, note))
+	}
+	return f.addBuddyItem(groupName, screenName, attrs)
+}
+
+// addBuddyItem upserts a buddy item carrying the given attribute TLVs into the
+// named group. Returns true if a new buddy was inserted.
+func (f *FeedbagList) addBuddyItem(groupName, screenName string, attrs wire.TLVList) (bool, error) {
 	group := f.groupByName(groupName)
 	if group == nil {
 		return false, fmt.Errorf("group %q not found", groupName)
@@ -121,12 +134,7 @@ func (f *FeedbagList) AddBuddy(groupName, screenName, alias, note string) (bool,
 		GroupID: group.GroupID,
 		Name:    screenName,
 	}
-	if alias != "" {
-		item.Append(wire.NewTLVBE(wire.FeedbagAttributesAlias, alias))
-	}
-	if note != "" {
-		item.Append(wire.NewTLVBE(wire.FeedbagAttributesNote, note))
-	}
+	item.TLVList = attrs
 	result, inserted := f.upsertItem(item)
 	if inserted {
 		group.AppendOrderMembers(result.ItemID)
@@ -196,7 +204,7 @@ func (f *FeedbagList) RenameGroup(oldName, newName string) error {
 // order. When toGroup names a different group than fromGroup, the buddy's
 // feedbag item is deleted from the source group and re-inserted into the
 // destination (a buddy's identity includes its GroupID at the protocol level),
-// carrying over its alias and note attributes. When beforeBuddy is non-empty,
+// carrying over all of its attribute TLVs. When beforeBuddy is non-empty,
 // the buddy is positioned immediately before that buddy in the destination
 // group's order; otherwise it is appended. Returns ErrGroupNotFound or
 // ErrBuddyNotFound if the source group/buddy or destination group is missing.
@@ -217,13 +225,15 @@ func (f *FeedbagList) MoveBuddy(fromGroup, toGroup, buddyName, beforeBuddy strin
 			return fmt.Errorf("%w: %q", ErrGroupNotFound, toGroup)
 		}
 
-		alias, _ := srcBuddy.String(wire.FeedbagAttributesAlias)
-		note, _ := srcBuddy.String(wire.FeedbagAttributesNote)
+		// preserve every attribute TLV (alias, note, auth state, etc.), not
+		// just alias/note. Clone so the re-inserted item does not share a
+		// backing array with the snapshot queued for deletion.
+		attrs := slices.Clone(srcBuddy.TLVList)
 
 		if err := f.DeleteBuddy(fromGroup, buddyName); err != nil {
 			return err
 		}
-		if _, err := f.AddBuddy(toGroup, buddyName, alias, note); err != nil {
+		if _, err := f.addBuddyItem(toGroup, buddyName, attrs); err != nil {
 			return err
 		}
 	}
@@ -249,9 +259,9 @@ func (f *FeedbagList) SetBuddyAlias(buddyName, alias string) (bool, error) {
 	}
 	for _, buddy := range buddies {
 		if alias != "" {
-			setItemTLV(buddy, wire.FeedbagAttributesAlias, alias)
+			buddy.Set(wire.NewTLVBE(wire.FeedbagAttributesAlias, alias))
 		} else {
-			clearItemTLV(buddy, wire.FeedbagAttributesAlias)
+			buddy.Remove(wire.FeedbagAttributesAlias)
 		}
 		f.trackUpdate(buddy)
 	}
@@ -267,9 +277,9 @@ func (f *FeedbagList) SetGroupCollapsed(groupName string, collapsed bool) error 
 		return fmt.Errorf("%w: %q", ErrGroupNotFound, groupName)
 	}
 	if collapsed {
-		setItemTLV(group, wire.FeedbagAttributesCollapsed, []byte{})
+		group.Set(wire.NewTLVBE(wire.FeedbagAttributesCollapsed, []byte{}))
 	} else {
-		clearItemTLV(group, wire.FeedbagAttributesCollapsed)
+		group.Remove(wire.FeedbagAttributesCollapsed)
 	}
 	f.trackUpdate(group)
 	return nil
@@ -468,34 +478,8 @@ func (f *FeedbagList) reorderInGroupOrder(group *wire.FeedbagItem, itemID, befor
 	reordered = append(reordered, itemID)
 	reordered = append(reordered, filtered[insertAt:]...)
 
-	if group.HasTag(wire.FeedbagAttributesOrder) {
-		group.Replace(wire.NewTLVBE(wire.FeedbagAttributesOrder, reordered))
-	} else {
-		group.Append(wire.NewTLVBE(wire.FeedbagAttributesOrder, reordered))
-	}
+	group.Set(wire.NewTLVBE(wire.FeedbagAttributesOrder, reordered))
 	f.trackUpdate(group)
-}
-
-// setItemTLV sets a single attribute TLV on item, replacing an existing TLV
-// with the same tag or appending a new one. Mirrors AppendOrderMembers'
-// replace-or-append pattern since TLVList.Replace no-ops when the tag is absent.
-func setItemTLV(item *wire.FeedbagItem, tag uint16, value any) {
-	if item.HasTag(tag) {
-		item.Replace(wire.NewTLVBE(tag, value))
-	} else {
-		item.Append(wire.NewTLVBE(tag, value))
-	}
-}
-
-// clearItemTLV removes every TLV with the given tag from item.
-func clearItemTLV(item *wire.FeedbagItem, tag uint16) {
-	filtered := item.TLVList[:0:0]
-	for _, tlv := range item.TLVList {
-		if tlv.Tag != tag {
-			filtered = append(filtered, tlv)
-		}
-	}
-	item.TLVList = filtered
 }
 
 // trackUpdate adds item to the pending-updates list if not already present.

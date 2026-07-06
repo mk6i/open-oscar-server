@@ -215,18 +215,8 @@ func SetBuddyPref(list TLVList, prefNum uint16, value bool) TLVList {
 		valueBytes[index] &^= mask
 	}
 
-	list = setTLVBytes(list, validTag, validBytes)
-	list = setTLVBytes(list, valueTag, valueBytes)
-	return list
-}
-
-// setTLVBytes replaces the value of tag in list, or appends it when absent.
-func setTLVBytes(list TLVList, tag uint16, b []byte) TLVList {
-	if list.HasTag(tag) {
-		list.Replace(NewTLVBE(tag, b))
-		return list
-	}
-	list.Append(NewTLVBE(tag, b))
+	list.Set(NewTLVBE(validTag, validBytes))
+	list.Set(NewTLVBE(valueTag, valueBytes))
 	return list
 }
 

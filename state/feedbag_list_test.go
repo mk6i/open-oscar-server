@@ -1144,7 +1144,7 @@ func TestFeedbagList_RenameGroup(t *testing.T) {
 }
 
 func TestFeedbagList_MoveBuddy(t *testing.T) {
-	t.Run("moves buddy across groups carrying alias", func(t *testing.T) {
+	t.Run("moves buddy across groups carrying all attributes", func(t *testing.T) {
 		fl := NewFeedbagList([]wire.FeedbagItem{
 			{Name: "Buddies", ClassID: wire.FeedbagClassIdGroup, GroupID: 1,
 				TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{
@@ -1153,6 +1153,9 @@ func TestFeedbagList_MoveBuddy(t *testing.T) {
 			{Name: "alice", ClassID: wire.FeedbagClassIdBuddy, GroupID: 1, ItemID: 10,
 				TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{
 					wire.NewTLVBE(wire.FeedbagAttributesAlias, "Al"),
+					wire.NewTLVBE(wire.FeedbagAttributesNote, "friend"),
+					// a non-alias/note attribute that must survive the move
+					wire.NewTLVBE(wire.FeedbagAttributesPending, []byte{}),
 				}}},
 			{Name: "Coworkers", ClassID: wire.FeedbagClassIdGroup, GroupID: 2},
 		}, func(n int) int { return 99 })
@@ -1177,6 +1180,11 @@ func TestFeedbagList_MoveBuddy(t *testing.T) {
 		alias, ok := newBuddy.Bytes(wire.FeedbagAttributesAlias)
 		assert.True(t, ok)
 		assert.Equal(t, []byte("Al"), alias)
+		note, ok := newBuddy.Bytes(wire.FeedbagAttributesNote)
+		assert.True(t, ok)
+		assert.Equal(t, []byte("friend"), note)
+		// the non-alias/note attribute is preserved rather than stripped
+		assert.True(t, newBuddy.HasTag(wire.FeedbagAttributesPending))
 	})
 
 	t.Run("reorders within a group before another buddy", func(t *testing.T) {

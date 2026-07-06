@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"slices"
 )
 
 // TLV represents dynamically typed data in the OSCAR protocol. Each message
@@ -142,14 +143,27 @@ func (s *TLVList) HasTag(tag uint16) bool {
 	return false
 }
 
-// Replace updates the values of TLVs in the list with the same tag as new. If
-// no matching tag is found, the list remains unchanged.
-func (s *TLVList) Replace(new TLV) {
+// Set replaces every TLV with the same tag with the new TLV. If no matching tag
+// is found, the new TLV is appended to the list.
+func (s *TLVList) Set(new TLV) {
+	found := false
 	for i, old := range *s {
 		if old.Tag == new.Tag {
 			(*s)[i].Value = new.Value
+			found = true
 		}
 	}
+	if !found {
+		*s = append(*s, new)
+	}
+}
+
+// Remove deletes every TLV with the given tag from the list. If no matching tag
+// is found, the list remains unchanged.
+func (s *TLVList) Remove(tag uint16) {
+	*s = slices.DeleteFunc(*s, func(tlv TLV) bool {
+		return tlv.Tag == tag
+	})
 }
 
 // String retrieves the string value associated with the specified tag from the

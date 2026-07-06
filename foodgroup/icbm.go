@@ -323,7 +323,7 @@ func addExternalIP(instance *state.SessionInstance, tlv wire.TLV) (wire.TLV, err
 		// server. unlike AOL's original behavior, this allows NATed clients
 		// to use rendezvous by replacing their LAN IP with the correct
 		// external IP.
-		frag.Replace(wire.NewTLVBE(wire.ICBMRdvTLVTagsRequesterIP, ip.AsSlice()))
+		frag.Set(wire.NewTLVBE(wire.ICBMRdvTLVTagsRequesterIP, ip.AsSlice()))
 		// append the client's IP as seen by the server. the recipient uses
 		// this to verify that the sender's claimed IP matches what the server
 		// detects. although redundant since we override the requester IP

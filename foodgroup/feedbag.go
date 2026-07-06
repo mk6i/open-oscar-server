@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -270,9 +269,7 @@ func (s *FeedbagService) UpsertItem(ctx context.Context, instance *state.Session
 					// Authorization has since been granted (IServerd strips
 					// SSI_TLV_AUTH before inserting when auth is already recorded).
 					// Clear the pending flag so the row is stored as a normal buddy.
-					item.TLVList = slices.DeleteFunc(item.TLVList, func(t wire.TLV) bool {
-						return t.Tag == wire.FeedbagAttributesPending
-					})
+					item.Remove(wire.FeedbagAttributesPending)
 				}
 			case instance.UIN() == 0 && sn.UIN() != 0:
 				// sender:aim, recipient: icq
@@ -863,9 +860,7 @@ func (s *FeedbagService) clearPendingAuth(ctx context.Context, granter state.Ide
 		return false, nil
 	}
 	// remove the pending buddy authorization tag
-	buddyItem.TLVList = slices.DeleteFunc(buddyItem.TLVList, func(tlv wire.TLV) bool {
-		return tlv.Tag == wire.FeedbagAttributesPending
-	})
+	buddyItem.Remove(wire.FeedbagAttributesPending)
 
 	updates := []wire.FeedbagItem{*buddyItem}
 	if err = s.feedbagManager.FeedbagUpsert(ctx, requester, updates); err != nil {

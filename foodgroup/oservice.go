@@ -273,7 +273,7 @@ func (s OServiceService) SetUserInfoFields(ctx context.Context, instance *state.
 	// it does not reflect aggregated state of the session. this is necessary
 	// for the "invisible" button to properly toggle on the client.
 	info := instance.Session().TLVUserInfo()
-	info.Replace(wire.NewTLVBE(wire.OServiceUserInfoStatus, instance.UserStatusBitmask()))
+	info.Set(wire.NewTLVBE(wire.OServiceUserInfoStatus, instance.UserStatusBitmask()))
 
 	return wire.SNACMessage{
 		Frame: wire.SNACFrame{

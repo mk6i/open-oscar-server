@@ -406,7 +406,7 @@ func TestTLVList_ICQString(t *testing.T) {
 	})
 }
 
-func TestTLVList_Replace(t *testing.T) {
+func TestTLVList_Set(t *testing.T) {
 	tests := []struct {
 		name        string
 		given       TLVList
@@ -443,12 +443,74 @@ func TestTLVList_Replace(t *testing.T) {
 				NewTLVLE(0x02, []byte{0x02}),
 				NewTLVLE(0x01, []byte{0x03}),
 				NewTLVLE(0x03, []byte{0x04}),
+				NewTLVLE(0x07, []byte{0xAA}),
 			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tt.given.Replace(tt.replacement)
+			tt.given.Set(tt.replacement)
+			assert.Equal(t, tt.want, tt.given)
+		})
+	}
+}
+
+func TestTLVList_Remove(t *testing.T) {
+	tests := []struct {
+		name  string
+		given TLVList
+		tag   uint16
+		want  TLVList
+	}{
+		{
+			name: "remove multiple TLVs with the same tag",
+			given: TLVList{
+				NewTLVLE(0x01, []byte{0x01}),
+				NewTLVLE(0x02, []byte{0x02}),
+				NewTLVLE(0x01, []byte{0x03}),
+				NewTLVLE(0x03, []byte{0x04}),
+			},
+			tag: 0x01,
+			want: TLVList{
+				NewTLVLE(0x02, []byte{0x02}),
+				NewTLVLE(0x03, []byte{0x04}),
+			},
+		},
+		{
+			name: "remove a single TLV",
+			given: TLVList{
+				NewTLVLE(0x01, []byte{0x01}),
+				NewTLVLE(0x02, []byte{0x02}),
+				NewTLVLE(0x03, []byte{0x04}),
+			},
+			tag: 0x02,
+			want: TLVList{
+				NewTLVLE(0x01, []byte{0x01}),
+				NewTLVLE(0x03, []byte{0x04}),
+			},
+		},
+		{
+			name: "no matching tag leaves the list unchanged",
+			given: TLVList{
+				NewTLVLE(0x01, []byte{0x01}),
+				NewTLVLE(0x02, []byte{0x02}),
+			},
+			tag: 0x07,
+			want: TLVList{
+				NewTLVLE(0x01, []byte{0x01}),
+				NewTLVLE(0x02, []byte{0x02}),
+			},
+		},
+		{
+			name:  "remove from an empty list",
+			given: TLVList{},
+			tag:   0x01,
+			want:  TLVList{},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.given.Remove(tt.tag)
 			assert.Equal(t, tt.want, tt.given)
 		})
 	}

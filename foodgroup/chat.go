@@ -137,7 +137,7 @@ func (s ChatService) transformChatMessage(inBody wire.SNAC_0x0E_0x05_ChatChannel
 		if enc == "ISO 8859" {
 			// fix malformed content encoding type sent by Kopete, which causes
 			// chat messages to show up blank in Windows AIM chat windows
-			msgBlock.Replace(wire.NewTLVBE(wire.ChatTLVMessageInfoEncoding, []byte("ISO-8859-1")))
+			msgBlock.Set(wire.NewTLVBE(wire.ChatTLVMessageInfoEncoding, []byte("ISO-8859-1")))
 		}
 	}
 

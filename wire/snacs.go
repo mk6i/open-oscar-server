@@ -2800,11 +2800,8 @@ func (f *FeedbagItem) IsEqual(other FeedbagItem) bool {
 // the order TLV already exists, the new IDs are appended to it. Otherwise a
 // new order TLV is created.
 func (f *FeedbagItem) AppendOrderMembers(memberIDs ...uint16) {
-	if existing, ok := f.Uint16SliceBE(FeedbagAttributesOrder); ok {
-		f.Replace(NewTLVBE(FeedbagAttributesOrder, append(existing, memberIDs...)))
-	} else {
-		f.Append(NewTLVBE(FeedbagAttributesOrder, memberIDs))
-	}
+	existing, _ := f.Uint16SliceBE(FeedbagAttributesOrder)
+	f.Set(NewTLVBE(FeedbagAttributesOrder, append(existing, memberIDs...)))
 }
 
 // RemoveOrderMembers removes the specified member IDs from the item's order
@@ -2824,7 +2821,7 @@ func (f *FeedbagItem) RemoveOrderMembers(memberIDs ...uint16) {
 			filtered = append(filtered, id)
 		}
 	}
-	f.Replace(NewTLVBE(FeedbagAttributesOrder, filtered))
+	f.Set(NewTLVBE(FeedbagAttributesOrder, filtered))
 }
 
 // ICQDCInfo represents ICQ direct connect settings.
