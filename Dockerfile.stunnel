@@ -1,5 +1,13 @@
 ###############################################################################
 # Build stage – compile OpenSSL 1.0.2u and stunnel 5.75
+#
+# Why the ancient OpenSSL? AIM 6.2–7.0 begin the TLS handshake with an
+# SSLv2-format ("v2 hello") ClientHello for backward compatibility, even when
+# they go on to negotiate TLS 1.0. OpenSSL 1.1.0 removed the code that parses
+# these SSLv2-style ClientHello records, so any modern OpenSSL (1.1.x / 3.x)
+# rejects the handshake outright. OpenSSL 1.0.2u is the last release that still
+# accepts the v2 hello, so stunnel must be linked against it to front these
+# clients.
 ###############################################################################
 FROM debian:12.11-slim AS build
 

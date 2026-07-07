@@ -63,6 +63,12 @@ make run
 To run AIM v6.2-v7.0, you must run the server with SSL enabled. This project provides tooling for generating a
 self-signed certificate and fronting the server with the SSL proxy [stunnel](https://www.stunnel.org/downloads.html).
 
+> **Note:** The stunnel image is pinned to OpenSSL 1.0.2u on purpose. These AIM clients begin the TLS handshake with an
+> SSLv2-format ("v2 hello") ClientHello for backward compatibility, even when they go on to negotiate TLS 1.0. OpenSSL
+> 1.1.0 removed support for parsing this v2 hello, so modern OpenSSL (1.1.x / 3.x) rejects the handshake outright.
+> 1.0.2u is the last release that still accepts it. This is why `Dockerfile.stunnel` builds its own OpenSSL instead of
+> using the distro package.
+
 #### Prerequisites
 
 - Git
