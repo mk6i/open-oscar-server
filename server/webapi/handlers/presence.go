@@ -65,34 +65,9 @@ type BuddyPresenceInfo struct {
 }
 
 // GetPresence handles GET /presence/get requests.
-func (h *PresenceHandler) GetPresence(w http.ResponseWriter, r *http.Request) {
+func (h *PresenceHandler) GetPresence(w http.ResponseWriter, r *http.Request, session *state.WebAPISession) {
 	ctx := r.Context()
-
-	// Get session ID from parameters
-	aimsid := r.URL.Query().Get("aimsid")
-	if aimsid == "" {
-		h.sendError(w, http.StatusBadRequest, "missing aimsid parameter")
-		return
-	}
-
-	// Get session
-	session, err := h.SessionManager.GetSession(r.Context(), aimsid)
-	if err != nil {
-		switch err {
-		case state.ErrNoWebAPISession:
-			h.sendError(w, http.StatusNotFound, "session not found")
-		case state.ErrWebAPISessionExpired:
-			h.sendError(w, http.StatusGone, "session expired")
-		default:
-			h.sendError(w, http.StatusInternalServerError, "internal server error")
-		}
-		return
-	}
-
-	// Touch the session
-	if err := h.SessionManager.TouchSession(r.Context(), aimsid); err != nil {
-		h.Logger.WarnContext(ctx, "failed to touch session", "aimsid", aimsid, "error", err)
-	}
+	aimsid := session.AimSID
 
 	// Check if buddy list is requested
 	getBuddyList := r.URL.Query().Get("bl") == "1"
@@ -317,27 +292,8 @@ func (h *PresenceHandler) sendError(w http.ResponseWriter, statusCode int, messa
 }
 
 // SetState handles GET /presence/setState requests to update user's presence state.
-func (h *PresenceHandler) SetState(w http.ResponseWriter, r *http.Request) {
+func (h *PresenceHandler) SetState(w http.ResponseWriter, r *http.Request, session *state.WebAPISession) {
 	ctx := r.Context()
-
-	// Get session ID from parameters
-	aimsid := r.URL.Query().Get("aimsid")
-	if aimsid == "" {
-		h.sendError(w, http.StatusBadRequest, "missing aimsid parameter")
-		return
-	}
-
-	// Get session
-	session, err := h.SessionManager.GetSession(r.Context(), aimsid)
-	if err != nil {
-		h.sendError(w, http.StatusUnauthorized, "invalid or expired session")
-		return
-	}
-
-	// Update session activity
-	if err := h.SessionManager.TouchSession(r.Context(), aimsid); err != nil {
-		h.Logger.WarnContext(ctx, "failed to touch session", "aimsid", aimsid, "error", err)
-	}
 
 	stateParam := r.URL.Query().Get("state")
 	if stateParam == "" {
@@ -348,20 +304,7 @@ func (h *PresenceHandler) SetState(w http.ResponseWriter, r *http.Request) {
 		awayMsg = r.URL.Query().Get("away")
 	}
 
-	// Get OSCAR session if available
 	oscarSession := session.OSCARSession
-	if oscarSession == nil {
-		// For web-only sessions, we'll need to track state in the WebAPI session
-		// For now, just store in event data
-		h.Logger.WarnContext(ctx, "no OSCAR session for presence update", "aimsid", aimsid)
-
-		// Still send success response
-		response := BaseResponse{}
-		response.Response.StatusCode = 200
-		response.Response.StatusText = "OK"
-		SendResponse(w, r, response, h.Logger)
-		return
-	}
 
 	// Map web state to OSCAR status bits
 	var statusBitmask uint32
@@ -427,27 +370,8 @@ func (h *PresenceHandler) SetState(w http.ResponseWriter, r *http.Request) {
 }
 
 // SetStatus handles GET /presence/setStatus requests to update user's status message.
-func (h *PresenceHandler) SetStatus(w http.ResponseWriter, r *http.Request) {
+func (h *PresenceHandler) SetStatus(w http.ResponseWriter, r *http.Request, session *state.WebAPISession) {
 	ctx := r.Context()
-
-	// Get session ID from parameters
-	aimsid := r.URL.Query().Get("aimsid")
-	if aimsid == "" {
-		h.sendError(w, http.StatusBadRequest, "missing aimsid parameter")
-		return
-	}
-
-	// Get session
-	session, err := h.SessionManager.GetSession(r.Context(), aimsid)
-	if err != nil {
-		h.sendError(w, http.StatusUnauthorized, "invalid or expired session")
-		return
-	}
-
-	// Update session activity
-	if err := h.SessionManager.TouchSession(r.Context(), aimsid); err != nil {
-		h.Logger.WarnContext(ctx, "failed to touch session", "aimsid", aimsid, "error", err)
-	}
 
 	// Get the status message
 	statusMsg := r.URL.Query().Get("statusMsg")
@@ -456,15 +380,13 @@ func (h *PresenceHandler) SetStatus(w http.ResponseWriter, r *http.Request) {
 	// Store status message in session (this would normally be stored in a profile/status service)
 	// For now, we'll broadcast it as part of presence
 
-	// Get OSCAR session if available
-	if oscarSession := session.OSCARSession; oscarSession != nil {
-		// In OSCAR, status messages are typically part of the profile
-		// We'll need to extend this based on the actual implementation
+	oscarSession := session.OSCARSession
+	// In OSCAR, status messages are typically part of the profile
+	// We'll need to extend this based on the actual implementation
 
-		// Broadcast presence update with new status
-		if err := h.BuddyBroadcaster.BroadcastBuddyArrived(ctx, oscarSession.IdentScreenName(), oscarSession.Session().TLVUserInfo()); err != nil {
-			h.Logger.ErrorContext(ctx, "failed to broadcast status update", "err", err.Error())
-		}
+	// Broadcast presence update with new status
+	if err := h.BuddyBroadcaster.BroadcastBuddyArrived(ctx, oscarSession.IdentScreenName(), oscarSession.Session().TLVUserInfo()); err != nil {
+		h.Logger.ErrorContext(ctx, "failed to broadcast status update", "err", err.Error())
 	}
 
 	// Queue status event for other WebAPI sessions
@@ -484,27 +406,8 @@ func (h *PresenceHandler) SetStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 // SetProfile handles GET /presence/setProfile requests to update user's profile.
-func (h *PresenceHandler) SetProfile(w http.ResponseWriter, r *http.Request) {
+func (h *PresenceHandler) SetProfile(w http.ResponseWriter, r *http.Request, session *state.WebAPISession) {
 	ctx := r.Context()
-
-	// Get session ID from parameters
-	aimsid := r.URL.Query().Get("aimsid")
-	if aimsid == "" {
-		h.sendError(w, http.StatusBadRequest, "missing aimsid parameter")
-		return
-	}
-
-	// Get session
-	session, err := h.SessionManager.GetSession(r.Context(), aimsid)
-	if err != nil {
-		h.sendError(w, http.StatusUnauthorized, "invalid or expired session")
-		return
-	}
-
-	// Update session activity
-	if err := h.SessionManager.TouchSession(r.Context(), aimsid); err != nil {
-		h.Logger.WarnContext(ctx, "failed to touch session", "aimsid", aimsid, "error", err)
-	}
 
 	// Get the profile content
 	profileText := r.URL.Query().Get("profile")
@@ -515,13 +418,7 @@ func (h *PresenceHandler) SetProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Web-only sessions have no OSCAR instance to set info on behalf of.
 	instance := session.OSCARSession
-	if instance == nil {
-		h.Logger.WarnContext(ctx, "no OSCAR session for profile update", "aimsid", aimsid)
-		h.sendError(w, http.StatusBadRequest, "no OSCAR session")
-		return
-	}
 
 	// Save profile via OSCAR LocateService.
 	setInfo := wire.SNAC_0x02_0x04_LocateSetInfo{
@@ -550,27 +447,8 @@ func (h *PresenceHandler) SetProfile(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetProfile handles GET /presence/getProfile requests to retrieve user's profile.
-func (h *PresenceHandler) GetProfile(w http.ResponseWriter, r *http.Request) {
+func (h *PresenceHandler) GetProfile(w http.ResponseWriter, r *http.Request, session *state.WebAPISession) {
 	ctx := r.Context()
-
-	// Get session ID from parameters
-	aimsid := r.URL.Query().Get("aimsid")
-	if aimsid == "" {
-		h.sendError(w, http.StatusBadRequest, "missing aimsid parameter")
-		return
-	}
-
-	// Get session
-	session, err := h.SessionManager.GetSession(r.Context(), aimsid)
-	if err != nil {
-		h.sendError(w, http.StatusUnauthorized, "invalid or expired session")
-		return
-	}
-
-	// Update session activity
-	if err := h.SessionManager.TouchSession(r.Context(), aimsid); err != nil {
-		h.Logger.WarnContext(ctx, "failed to touch session", "aimsid", aimsid, "error", err)
-	}
 
 	// Get target screen name (optional - defaults to self)
 	targetSN := r.URL.Query().Get("sn")
@@ -578,18 +456,16 @@ func (h *PresenceHandler) GetProfile(w http.ResponseWriter, r *http.Request) {
 		targetSN = session.ScreenName.String()
 	}
 
-	// Retrieve profile via OSCAR LocateService. Web-only sessions have no OSCAR
-	// instance to query on behalf of, so they resolve to an empty profile.
+	// Retrieve profile via OSCAR LocateService.
 	var profileText string
-	if instance := session.OSCARSession; instance != nil {
-		reply, err := h.LocateService.UserInfoQuery(ctx, instance, wire.SNACFrame{},
-			wire.SNAC_0x02_0x05_LocateUserInfoQuery{Type: uint16(wire.LocateTypeSig), ScreenName: targetSN})
-		if err != nil {
-			h.Logger.WarnContext(ctx, "failed to get profile", "err", err.Error())
-		} else if info, ok := reply.Body.(wire.SNAC_0x02_0x06_LocateUserInfoReply); ok {
-			if prof, ok := info.LocateInfo.String(wire.LocateTLVTagsInfoSigData); ok {
-				profileText = prof
-			}
+	instance := session.OSCARSession
+	reply, err := h.LocateService.UserInfoQuery(ctx, instance, wire.SNACFrame{},
+		wire.SNAC_0x02_0x05_LocateUserInfoQuery{Type: uint16(wire.LocateTypeSig), ScreenName: targetSN})
+	if err != nil {
+		h.Logger.WarnContext(ctx, "failed to get profile", "err", err.Error())
+	} else if info, ok := reply.Body.(wire.SNAC_0x02_0x06_LocateUserInfoReply); ok {
+		if prof, ok := info.LocateInfo.String(wire.LocateTLVTagsInfoSigData); ok {
+			profileText = prof
 		}
 	}
 

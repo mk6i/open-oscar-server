@@ -612,29 +612,8 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 }
 
 // EndSession handles GET /aim/endSession requests.
-func (h *SessionHandler) EndSession(w http.ResponseWriter, r *http.Request) {
+func (h *SessionHandler) EndSession(w http.ResponseWriter, r *http.Request, session *state.WebAPISession) {
 	ctx := r.Context()
-
-	// Get session ID from parameters
-	aimsid := r.URL.Query().Get("aimsid")
-	if aimsid == "" {
-		h.sendError(w, r, http.StatusBadRequest, "missing aimsid parameter")
-		return
-	}
-
-	// Get session
-	session, err := h.SessionManager.GetSession(r.Context(), aimsid)
-	if err != nil {
-		switch err {
-		case state.ErrNoWebAPISession:
-			h.sendError(w, r, http.StatusNotFound, "session not found")
-		case state.ErrWebAPISessionExpired:
-			h.sendError(w, r, http.StatusGone, "session expired")
-		default:
-			h.sendError(w, r, http.StatusInternalServerError, "internal server error")
-		}
-		return
-	}
 
 	session.OSCARSession.CloseInstance()
 
@@ -647,7 +626,7 @@ func (h *SessionHandler) EndSession(w http.ResponseWriter, r *http.Request) {
 	SendResponse(w, r, resp, h.Logger)
 
 	h.Logger.DebugContext(ctx, "session ended",
-		"aimsid", aimsid,
+		"aimsid", session.AimSID,
 		"screen_name", session.ScreenName,
 	)
 }

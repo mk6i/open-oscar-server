@@ -220,7 +220,7 @@ func TestPresenceHandler_GetPresence(t *testing.T) {
 
 			rr := httptest.NewRecorder()
 
-			handler.GetPresence(rr, req)
+			requireSession(handler.SessionManager, handler.GetPresence).ServeHTTP(rr, req)
 
 			assert.Equal(t, tt.expectedStatusCode, rr.Code)
 
@@ -272,7 +272,7 @@ func TestPresenceHandler_GetPresence_BuddyListGrouping(t *testing.T) {
 	req, err := http.NewRequest("GET", "/presence/get?aimsid="+aimsid+"&bl=1", nil)
 	assert.NoError(t, err)
 	rr := httptest.NewRecorder()
-	handler.GetPresence(rr, req)
+	requireSession(handler.SessionManager, handler.GetPresence).ServeHTTP(rr, req)
 
 	assert.Equal(t, http.StatusOK, rr.Code)
 
@@ -317,7 +317,7 @@ func TestPresenceHandler_GetPresence_MissingAimsid(t *testing.T) {
 	assert.NoError(t, err)
 
 	rr := httptest.NewRecorder()
-	handler.GetPresence(rr, req)
+	requireSession(handler.SessionManager, handler.GetPresence).ServeHTTP(rr, req)
 
 	assert.Equal(t, http.StatusBadRequest, rr.Code)
 	assert.Contains(t, rr.Body.String(), "missing aimsid parameter")
@@ -333,10 +333,10 @@ func TestPresenceHandler_GetPresence_SessionNotFound(t *testing.T) {
 	assert.NoError(t, err)
 
 	rr := httptest.NewRecorder()
-	handler.GetPresence(rr, req)
+	requireSession(handler.SessionManager, handler.GetPresence).ServeHTTP(rr, req)
 
-	assert.Equal(t, http.StatusNotFound, rr.Code)
-	assert.Contains(t, rr.Body.String(), "session not found")
+	assert.Equal(t, http.StatusUnauthorized, rr.Code)
+	assert.Contains(t, rr.Body.String(), "invalid or expired session")
 }
 
 func TestPresenceHandler_SetState_MissingAimsid(t *testing.T) {
@@ -349,14 +349,15 @@ func TestPresenceHandler_SetState_MissingAimsid(t *testing.T) {
 	assert.NoError(t, err)
 
 	rr := httptest.NewRecorder()
-	handler.SetState(rr, req)
+	requireSession(handler.SessionManager, handler.SetState).ServeHTTP(rr, req)
 
 	assert.Equal(t, http.StatusBadRequest, rr.Code)
 	assert.Contains(t, rr.Body.String(), "missing aimsid parameter")
 }
 
 func TestPresenceHandler_SetState_InvalidState(t *testing.T) {
-	sessionMgr, aimsid := createTestSessionManager("testuser")
+	oscarInstance := state.NewSession().AddInstance()
+	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
 
 	handler := &PresenceHandler{
 		SessionManager: sessionMgr,
@@ -367,15 +368,15 @@ func TestPresenceHandler_SetState_InvalidState(t *testing.T) {
 	assert.NoError(t, err)
 
 	rr := httptest.NewRecorder()
-	handler.SetState(rr, req)
+	requireSession(handler.SessionManager, handler.SetState).ServeHTTP(rr, req)
 
-	// Web-only sessions (no OSCAR session) return 200 before checking state param
-	// because the handler returns early with success for web-only sessions
-	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.Equal(t, http.StatusBadRequest, rr.Code)
+	assert.Contains(t, rr.Body.String(), "invalid state parameter")
 }
 
-func TestPresenceHandler_SetState_WebOnlySession(t *testing.T) {
-	// Web-only sessions (no OSCAR session) should return success
+func TestPresenceHandler_SetState_NoOSCARSession_Rejected(t *testing.T) {
+	// Anonymous (web-only, no OSCAR) sessions are rejected by the session
+	// middleware before the handler runs.
 	sessionMgr, aimsid := createTestSessionManager("testuser")
 
 	handler := &PresenceHandler{
@@ -387,10 +388,10 @@ func TestPresenceHandler_SetState_WebOnlySession(t *testing.T) {
 	assert.NoError(t, err)
 
 	rr := httptest.NewRecorder()
-	handler.SetState(rr, req)
+	requireSession(handler.SessionManager, handler.SetState).ServeHTTP(rr, req)
 
-	assert.Equal(t, http.StatusOK, rr.Code)
-	assert.Contains(t, rr.Body.String(), `"statusCode":200`)
+	assert.Equal(t, http.StatusUnauthorized, rr.Code)
+	assert.Contains(t, rr.Body.String(), "invalid or expired session")
 }
 
 func TestIsICQScreenName(t *testing.T) {
@@ -519,7 +520,7 @@ func TestPresenceHandler_SetProfile(t *testing.T) {
 
 			rr := httptest.NewRecorder()
 
-			handler.SetProfile(rr, req)
+			requireSession(handler.SessionManager, handler.SetProfile).ServeHTTP(rr, req)
 
 			assert.Equal(t, tt.expectedStatusCode, rr.Code)
 
@@ -560,7 +561,7 @@ func TestPresenceHandler_GetProfile(t *testing.T) {
 	assert.NoError(t, err)
 
 	rr := httptest.NewRecorder()
-	handler.GetProfile(rr, req)
+	requireSession(handler.SessionManager, handler.GetProfile).ServeHTTP(rr, req)
 
 	assert.Equal(t, http.StatusOK, rr.Code)
 	body := rr.Body.String()

@@ -4,7 +4,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -54,7 +53,7 @@ func TestPreferenceHandler_SetPreferences(t *testing.T) {
 
 	req, _ := http.NewRequest("GET", "/preference/set?aimsid="+aimsid+"&playIMSound=0&discloseTyping=1", nil)
 	rr := httptest.NewRecorder()
-	handler.SetPreferences(rr, req)
+	requireSession(handler.SessionManager, handler.SetPreferences).ServeHTTP(rr, req)
 
 	assert.Equal(t, http.StatusOK, rr.Code)
 	if assert.Len(t, upserted, 1) {
@@ -89,7 +88,7 @@ func TestPreferenceHandler_GetPreferences_Selected(t *testing.T) {
 	// Request two prefs: playIMSound (stored=false) and acceptIcons (unset -> default true).
 	req, _ := http.NewRequest("GET", "/preference/get?aimsid="+aimsid+"&playIMSound&acceptIcons", nil)
 	rr := httptest.NewRecorder()
-	handler.GetPreferences(rr, req)
+	requireSession(handler.SessionManager, handler.GetPreferences).ServeHTTP(rr, req)
 
 	assert.Equal(t, http.StatusOK, rr.Code)
 	body := rr.Body.String()
@@ -116,7 +115,7 @@ func TestPreferenceHandler_GetPreferences_All(t *testing.T) {
 
 	req, _ := http.NewRequest("GET", "/preference/get?aimsid="+aimsid, nil)
 	rr := httptest.NewRecorder()
-	handler.GetPreferences(rr, req)
+	requireSession(handler.SessionManager, handler.GetPreferences).ServeHTTP(rr, req)
 
 	assert.Equal(t, http.StatusOK, rr.Code)
 	body := rr.Body.String()
@@ -141,7 +140,7 @@ func TestPreferenceHandler_GetPreferences_AMF(t *testing.T) {
 	// Single-pref AMF request returns a numeric value (not wrapped in jsonData).
 	req, _ := http.NewRequest("GET", "/preference/get?aimsid="+aimsid+"&f=amf&playIMSound", nil)
 	rr := httptest.NewRecorder()
-	handler.GetPreferences(rr, req)
+	requireSession(handler.SessionManager, handler.GetPreferences).ServeHTTP(rr, req)
 
 	assert.Equal(t, http.StatusOK, rr.Code)
 	body := rr.Body.String()
@@ -188,9 +187,11 @@ func TestPreferenceHandler_SetPreferences_NoOSCARSession(t *testing.T) {
 
 	req, _ := http.NewRequest("GET", "/preference/set?aimsid="+aimsid+"&playIMSound=1", nil)
 	rr := httptest.NewRecorder()
-	handler.SetPreferences(rr, req)
+	requireSession(handler.SessionManager, handler.SetPreferences).ServeHTTP(rr, req)
 
-	assert.Equal(t, http.StatusBadRequest, rr.Code)
+	// Anonymous (nil OSCAR) sessions are rejected by the session middleware
+	// before the handler runs, so no feedbag lookup occurs.
+	assert.Equal(t, http.StatusUnauthorized, rr.Code)
+	assert.Contains(t, rr.Body.String(), "invalid or expired session")
 	fs.AssertNotCalled(t, "Query", mock.Anything, mock.Anything, mock.Anything)
-	_ = strings.TrimSpace(rr.Body.String())
 }

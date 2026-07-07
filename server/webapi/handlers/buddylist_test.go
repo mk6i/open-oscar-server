@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
+	"github.com/mk6i/open-oscar-server/server/webapi/middleware"
 	"github.com/mk6i/open-oscar-server/server/webapi/types"
 	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
@@ -380,7 +381,6 @@ func TestBuddyListHandler_AddBuddy(t *testing.T) {
 			logger := slog.Default()
 
 			handler := &BuddyListHandler{
-				SessionManager:   sessionManager,
 				FeedbagService:   feedbagService,
 				BuddyListManager: blm,
 				Logger:           logger,
@@ -523,7 +523,6 @@ func TestBuddyListHandler_AddGroup(t *testing.T) {
 			session := tt.setup(sm, fs, blmFs, aimsid)
 
 			handler := &BuddyListHandler{
-				SessionManager:   sm,
 				FeedbagService:   fs,
 				BuddyListManager: blm,
 				Logger:           slog.Default(),
@@ -681,7 +680,6 @@ func TestBuddyListHandler_RemoveBuddy(t *testing.T) {
 			session := tt.setup(sm, blm, fs, aimsid)
 
 			handler := &BuddyListHandler{
-				SessionManager:   sm,
 				BuddyListManager: blm,
 				Logger:           slog.Default(),
 			}
@@ -827,7 +825,6 @@ func TestBuddyListHandler_RemoveGroup(t *testing.T) {
 			session := tt.setup(sm, blm, fs, aimsid)
 
 			handler := &BuddyListHandler{
-				SessionManager:   sm,
 				BuddyListManager: blm,
 				Logger:           slog.Default(),
 			}
@@ -849,7 +846,7 @@ func TestBuddyListHandler_RemoveGroup(t *testing.T) {
 	}
 }
 
-func TestBuddyListHandler_sessionMiddleware(t *testing.T) {
+func TestRequireSession(t *testing.T) {
 	tests := []struct {
 		name               string
 		aimsid             string
@@ -872,8 +869,8 @@ func TestBuddyListHandler_sessionMiddleware(t *testing.T) {
 			setupMocks: func(sm *MockWebAPISessionManager, aimsid string) {
 				sm.On("GetSession", mock.Anything, aimsid).Return(nil, state.ErrNoWebAPISession)
 			},
-			expectedStatusCode: http.StatusNotFound,
-			expectedResponse:   `{"response":{"statusCode":404,"statusText":"session not found"}}`,
+			expectedStatusCode: http.StatusUnauthorized,
+			expectedResponse:   `{"response":{"statusCode":401,"statusText":"invalid or expired session"}}`,
 			expectNextCalled:   false,
 		},
 		{
@@ -882,8 +879,8 @@ func TestBuddyListHandler_sessionMiddleware(t *testing.T) {
 			setupMocks: func(sm *MockWebAPISessionManager, aimsid string) {
 				sm.On("GetSession", mock.Anything, aimsid).Return(nil, state.ErrWebAPISessionExpired)
 			},
-			expectedStatusCode: http.StatusGone,
-			expectedResponse:   `{"response":{"statusCode":410,"statusText":"session expired"}}`,
+			expectedStatusCode: http.StatusUnauthorized,
+			expectedResponse:   `{"response":{"statusCode":401,"statusText":"invalid or expired session"}}`,
 			expectNextCalled:   false,
 		},
 		{
@@ -892,8 +889,24 @@ func TestBuddyListHandler_sessionMiddleware(t *testing.T) {
 			setupMocks: func(sm *MockWebAPISessionManager, aimsid string) {
 				sm.On("GetSession", mock.Anything, aimsid).Return(nil, errors.New("db error"))
 			},
-			expectedStatusCode: http.StatusInternalServerError,
-			expectedResponse:   `{"response":{"statusCode":500,"statusText":"internal server error"}}`,
+			expectedStatusCode: http.StatusUnauthorized,
+			expectedResponse:   `{"response":{"statusCode":401,"statusText":"invalid or expired session"}}`,
+			expectNextCalled:   false,
+		},
+		{
+			name:   "Error_AnonymousSession",
+			aimsid: "anon-session",
+			setupMocks: func(sm *MockWebAPISessionManager, aimsid string) {
+				sess := &state.WebAPISession{
+					AimSID:       aimsid,
+					ScreenName:   state.DisplayScreenName("Guest_abc"),
+					LastAccessed: time.Now(),
+					// OSCARSession is nil - anonymous session.
+				}
+				sm.On("GetSession", mock.Anything, aimsid).Return(sess, nil)
+			},
+			expectedStatusCode: http.StatusUnauthorized,
+			expectedResponse:   `{"response":{"statusCode":401,"statusText":"invalid or expired session"}}`,
 			expectNextCalled:   false,
 		},
 		{
@@ -903,6 +916,7 @@ func TestBuddyListHandler_sessionMiddleware(t *testing.T) {
 				sess := &state.WebAPISession{
 					AimSID:       aimsid,
 					ScreenName:   state.DisplayScreenName("testuser"),
+					OSCARSession: state.NewSession().AddInstance(),
 					LastAccessed: time.Now(),
 				}
 				sm.On("GetSession", mock.Anything, aimsid).Return(sess, nil)
@@ -919,21 +933,17 @@ func TestBuddyListHandler_sessionMiddleware(t *testing.T) {
 			sm := &MockWebAPISessionManager{}
 			tt.setupMocks(sm, tt.aimsid)
 
-			handler := &BuddyListHandler{
-				SessionManager: sm,
-				Logger:         slog.Default(),
-			}
-
 			nextCalled := false
 			next := func(w http.ResponseWriter, r *http.Request, session *state.WebAPISession) {
 				nextCalled = true
 				resp := BaseResponse{}
 				resp.Response.StatusCode = 200
 				resp.Response.StatusText = "OK"
-				SendResponse(w, r, resp, handler.Logger)
+				SendResponse(w, r, resp, slog.Default())
 			}
 
-			wrapped := handler.SessionMiddleware(next)
+			authMiddleware := middleware.NewAuthMiddleware(nil, slog.Default())
+			wrapped := authMiddleware.RequireSession(sm, next)
 
 			reqURL := "/buddylist/test"
 			if tt.aimsid != "" {

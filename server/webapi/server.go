@@ -17,10 +17,8 @@ import (
 func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyValidator middleware.APIKeyValidator, sessionManager *state.WebAPISessionManager) *Server {
 	servers := make([]*http.Server, 0, len(listeners))
 
-	// Create authentication middleware
 	authMiddleware := middleware.NewAuthMiddleware(apiKeyValidator, logger)
 
-	// Create handlers
 	authHandler := &handlers.AuthHandler{
 		AuthService: handler.AuthService,
 		CookieBaker: handler.CookieBaker,
@@ -55,28 +53,24 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 		Logger:           logger,
 	}
 
-	buddyListHandler := handlers.NewBuddyListHandler(
-		sessionManager,
-		handler.BuddyListManager.(*handlers.BuddyListManager),
-		logger,
-		handler.FeedbagService,
-	)
+	buddyListHandler := &handlers.BuddyListHandler{
+		BuddyListManager: handler.BuddyListManager.(*handlers.BuddyListManager),
+		Logger:           logger,
+		FeedbagService:   handler.FeedbagService,
+	}
 
-	// Phase 2: Messaging handler
 	messagingHandler := &handlers.MessagingHandler{
 		SessionManager: sessionManager,
 		ICBMService:    handler.ICBMService,
 		Logger:         logger,
 	}
 
-	// Phase 3: Preference handler
 	preferenceHandler := &handlers.PreferenceHandler{
 		SessionManager: sessionManager,
 		FeedbagService: handler.FeedbagService,
 		Logger:         logger,
 	}
 
-	// Phase 4: OSCAR Bridge handler
 	oscarBridgeHandler := &handlers.OSCARBridgeHandler{
 		SessionManager:   sessionManager,
 		OSCARAuthService: handler.AuthService,
@@ -137,21 +131,21 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 		// End session - uses aimsid for auth, no k required
 		mux.Handle("GET /aim/endSession", authMiddleware.AuthenticateFlexible(
 			authMiddleware.CORSMiddleware(
-				http.HandlerFunc(sessionHandler.EndSession))))
+				authMiddleware.RequireSession(sessionManager, sessionHandler.EndSession))))
 
 		// Event fetching - uses aimsid for auth, no k required
 		mux.Handle("GET /aim/fetchEvents", authMiddleware.AuthenticateFlexible(
 			authMiddleware.CORSMiddleware(
-				http.HandlerFunc(eventsHandler.FetchEvents))))
+				authMiddleware.RequireSession(sessionManager, eventsHandler.FetchEvents))))
 
 		// Add temp buddy - uses aimsid for auth
 		mux.Handle("GET /aim/addTempBuddy", authMiddleware.AuthenticateFlexible(
 			authMiddleware.CORSMiddleware(
-				buddyListHandler.SessionMiddleware(buddyListHandler.AddTempBuddy))))
+				authMiddleware.RequireSession(sessionManager, buddyListHandler.AddTempBuddy))))
 
 		mux.Handle("GET /aim/removeTempBuddy", authMiddleware.AuthenticateFlexible(
 			authMiddleware.CORSMiddleware(
-				buddyListHandler.SessionMiddleware(buddyListHandler.RemoveTempBuddy))))
+				authMiddleware.RequireSession(sessionManager, buddyListHandler.RemoveTempBuddy))))
 
 		aimStub := &handlers.AimStubHandler{Logger: logger}
 		aimRoute := func(h http.HandlerFunc) http.Handler {
@@ -168,71 +162,79 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 		mux.Handle("GET /conversation/update", aimRoute(conversationStub.Update))
 		mux.Handle("GET /conversation/close", aimRoute(conversationStub.Close))
 		mux.Handle("GET /imlog/markRead", aimRoute(conversationStub.MarkRead))
-		mux.Handle("GET /imlog/fetchStoredIMs", aimRoute(conversationStub.FetchStoredIMs))
+		mux.Handle("GET /imlog/fetchStoredIMs", authMiddleware.AuthenticateFlexible(
+			authMiddleware.CORSMiddleware(
+				authMiddleware.RequireSession(sessionManager, conversationStub.FetchStoredIMs))))
 
 		// Presence and buddy list
 		// GetPresence supports aimsid-based auth, so we use flexible auth
 		mux.Handle("GET /presence/get", authMiddleware.AuthenticateFlexible(
 			authMiddleware.CORSMiddleware(
-				http.HandlerFunc(presenceHandler.GetPresence))))
+				authMiddleware.RequireSession(sessionManager, presenceHandler.GetPresence))))
 
-		mux.Handle("/buddylist/", authMiddleware.AuthenticateFlexible(
-			authMiddleware.CORSMiddleware(buddyListHandler)))
+		buddyListRoute := func(h func(http.ResponseWriter, *http.Request, *state.WebAPISession)) http.Handler {
+			return authMiddleware.AuthenticateFlexible(
+				authMiddleware.CORSMiddleware(
+					authMiddleware.RequireSession(sessionManager, h)))
+		}
+		mux.Handle("GET /buddylist/addBuddy", buddyListRoute(buddyListHandler.AddBuddy))
+		mux.Handle("GET /buddylist/addGroup", buddyListRoute(buddyListHandler.AddGroup))
+		mux.Handle("GET /buddylist/removeBuddy", buddyListRoute(buddyListHandler.RemoveBuddy))
+		mux.Handle("GET /buddylist/removeGroup", buddyListRoute(buddyListHandler.RemoveGroup))
+		mux.Handle("GET /buddylist/renameGroup", buddyListRoute(buddyListHandler.RenameGroup))
+		mux.Handle("GET /buddylist/moveBuddy", buddyListRoute(buddyListHandler.MoveBuddy))
+		mux.Handle("GET /buddylist/setBuddyAttribute", buddyListRoute(buddyListHandler.SetBuddyAttribute))
+		mux.Handle("GET /buddylist/setGroupAttribute", buddyListRoute(buddyListHandler.SetGroupAttribute))
 
-		// Phase 2: Messaging endpoints
 		// sendIM supports aimsid-based auth, so we use flexible auth.
 		// The Web AIM client POSTs the message body (non-IE browsers); IE uses GET.
 		sendIMHandler := authMiddleware.AuthenticateFlexible(
 			authMiddleware.CORSMiddleware(
-				http.HandlerFunc(messagingHandler.SendIM)))
+				authMiddleware.RequireSession(sessionManager, messagingHandler.SendIM)))
 		mux.Handle("GET /im/sendIM", sendIMHandler)
 		mux.Handle("POST /im/sendIM", sendIMHandler)
 
 		mux.Handle("GET /im/setTyping", authMiddleware.AuthenticateFlexible(
 			authMiddleware.CORSMiddleware(
-				http.HandlerFunc(messagingHandler.SetTyping))))
+				authMiddleware.RequireSession(sessionManager, messagingHandler.SetTyping))))
 
-		// Phase 2: Presence management endpoints
 		// SetState only requires aimsid, no k parameter needed
 		mux.Handle("GET /presence/setState", authMiddleware.AuthenticateFlexible(
 			authMiddleware.CORSMiddleware(
-				http.HandlerFunc(presenceHandler.SetState))))
+				authMiddleware.RequireSession(sessionManager, presenceHandler.SetState))))
 
 		// These presence endpoints support aimsid-based auth where k is not required
 		mux.Handle("GET /presence/setStatus", authMiddleware.AuthenticateFlexible(
 			authMiddleware.CORSMiddleware(
-				http.HandlerFunc(presenceHandler.SetStatus))))
+				authMiddleware.RequireSession(sessionManager, presenceHandler.SetStatus))))
 
 		mux.Handle("GET /presence/setProfile", authMiddleware.AuthenticateFlexible(
 			authMiddleware.CORSMiddleware(
-				http.HandlerFunc(presenceHandler.SetProfile))))
+				authMiddleware.RequireSession(sessionManager, presenceHandler.SetProfile))))
 
 		mux.Handle("GET /presence/getProfile", authMiddleware.AuthenticateFlexible(
 			authMiddleware.CORSMiddleware(
-				http.HandlerFunc(presenceHandler.GetProfile))))
+				authMiddleware.RequireSession(sessionManager, presenceHandler.GetProfile))))
 
-		// Phase 2: Presence icon endpoint (no auth required)
 		mux.HandleFunc("GET /presence/icon", presenceHandler.Icon)
 
-		// Phase 3: Preference management endpoints
 		// These endpoints support aimsid-based auth, so we use a flexible auth approach
 		mux.Handle("GET /preference/set", authMiddleware.AuthenticateFlexible(
 			authMiddleware.CORSMiddleware(
-				http.HandlerFunc(preferenceHandler.SetPreferences))))
+				authMiddleware.RequireSession(sessionManager, preferenceHandler.SetPreferences))))
 
 		mux.Handle("GET /preference/get", authMiddleware.AuthenticateFlexible(
 			authMiddleware.CORSMiddleware(
-				http.HandlerFunc(preferenceHandler.GetPreferences))))
+				authMiddleware.RequireSession(sessionManager, preferenceHandler.GetPreferences))))
 
 		mux.Handle("GET /preference/setPermitDeny", authMiddleware.AuthenticateFlexible(
 			authMiddleware.CORSMiddleware(
-				http.HandlerFunc(preferenceHandler.SetPermitDeny))))
+				authMiddleware.RequireSession(sessionManager, preferenceHandler.SetPermitDeny))))
 
 		mux.Handle("GET /preference/getPermitDeny", authMiddleware.AuthenticateFlexible(
 			authMiddleware.CORSMiddleware(
-				http.HandlerFunc(preferenceHandler.GetPermitDeny))))
+				authMiddleware.RequireSession(sessionManager, preferenceHandler.GetPermitDeny))))
 
-		// Phase 4: Advanced Features
 		// OSCAR Bridge endpoint
 		mux.Handle("GET /aim/startOSCARSession", authMiddleware.Authenticate(
 			authMiddleware.CORSMiddleware(

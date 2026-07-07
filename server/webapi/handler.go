@@ -11,20 +11,16 @@ import (
 )
 
 type Handler struct {
-	AuthService       AuthService
-	BuddyListRegistry BuddyListRegistry
-	CookieBaker       CookieBaker
-	ICBMService       ICBMService
-	LocateService     LocateService
-	Logger            *slog.Logger
-	OServiceService   OServiceService
-	// New fields for WebAPI handlers
-	SessionRetriever SessionRetriever
-	// Phase 2 additions
-	BuddyBroadcaster BuddyBroadcaster
-	// Phase 4 additions for OSCAR Bridge
-	OSCARConfig OSCARConfig
-	// Phase 5 additions for buddy list and messaging
+	AuthService        AuthService
+	BuddyListRegistry  BuddyListRegistry
+	CookieBaker        CookieBaker
+	ICBMService        ICBMService
+	LocateService      LocateService
+	Logger             *slog.Logger
+	OServiceService    OServiceService
+	SessionRetriever   SessionRetriever
+	BuddyBroadcaster   BuddyBroadcaster
+	OSCARConfig        OSCARConfig
 	BuddyListManager   interface{}
 	RecalcWarning      func(ctx context.Context, instance *state.SessionInstance) error
 	LowerWarnLevel     func(ctx context.Context, instance *state.SessionInstance)
@@ -33,7 +29,6 @@ type Handler struct {
 }
 
 func (h Handler) GetHelloWorldHandler(w http.ResponseWriter, r *http.Request) {
-	h.Logger.Info("got a request to the root endpoint", "method", r.Method, "path", r.URL.Path)
 	_, _ = fmt.Fprintf(w, "WebAPI Server Running\n")
 	// Must return the same JSON envelope as other Web AIM APIs.
 	h.Logger.Info("webapi root GET", "remote", r.RemoteAddr, "host", r.Host, "path", r.URL.Path)

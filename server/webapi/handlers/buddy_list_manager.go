@@ -230,10 +230,6 @@ func (m *BuddyListManager) RemoveBuddyFromFeedbag(ctx context.Context, sess *sta
 		return "error", fmt.Errorf("empty buddy")
 	}
 
-	if sess.OSCARSession == nil {
-		return "error", fmt.Errorf("no OSCAR session")
-	}
-
 	frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
 	snac, err := m.feedbagService.Query(ctx, sess.OSCARSession, frame)
 	if err != nil {
@@ -287,10 +283,6 @@ func (m *BuddyListManager) RemoveGroupFromFeedbag(ctx context.Context, sess *sta
 	if req == "" {
 		return "error", fmt.Errorf("empty group")
 	}
-	if sess.OSCARSession == nil {
-		return "error", fmt.Errorf("no OSCAR session")
-	}
-
 	frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
 	snac, err := m.feedbagService.Query(ctx, sess.OSCARSession, frame)
 	if err != nil {
@@ -339,10 +331,6 @@ func (m *BuddyListManager) RenameGroupInFeedbag(ctx context.Context, sess *state
 	if oldGroup == "" || newGroup == "" {
 		return "error", fmt.Errorf("empty group name")
 	}
-	if sess.OSCARSession == nil {
-		return "error", fmt.Errorf("no OSCAR session")
-	}
-
 	frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
 	snac, err := m.feedbagService.Query(ctx, sess.OSCARSession, frame)
 	if err != nil {
@@ -393,10 +381,6 @@ func (m *BuddyListManager) MoveBuddyInFeedbag(ctx context.Context, sess *state.W
 	if buddyName == "" || fromGroup == "" {
 		return "error", fmt.Errorf("empty buddy or group")
 	}
-	if sess.OSCARSession == nil {
-		return "error", fmt.Errorf("no OSCAR session")
-	}
-
 	frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
 	snac, err := m.feedbagService.Query(ctx, sess.OSCARSession, frame)
 	if err != nil {
@@ -473,10 +457,6 @@ func (m *BuddyListManager) SetBuddyAttributeInFeedbag(ctx context.Context, sess 
 	if buddyName == "" {
 		return "error", fmt.Errorf("empty buddy")
 	}
-	if sess.OSCARSession == nil {
-		return "error", fmt.Errorf("no OSCAR session")
-	}
-
 	frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
 	snac, err := m.feedbagService.Query(ctx, sess.OSCARSession, frame)
 	if err != nil {
@@ -513,10 +493,6 @@ func (m *BuddyListManager) SetBuddyAttributeInFeedbag(ctx context.Context, sess 
 // targets the unnamed default group.
 func (m *BuddyListManager) SetGroupAttributeInFeedbag(ctx context.Context, sess *state.WebAPISession, groupName string, collapsed bool) (resultCode string, err error) {
 	groupName = strings.TrimSpace(groupName)
-	if sess.OSCARSession == nil {
-		return "error", fmt.Errorf("no OSCAR session")
-	}
-
 	frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
 	snac, err := m.feedbagService.Query(ctx, sess.OSCARSession, frame)
 	if err != nil {

@@ -43,30 +43,8 @@ func queryOrFormParam(r *http.Request, key string) string {
 }
 
 // SendIM handles the /im/sendIM endpoint for sending instant messages
-func (h *MessagingHandler) SendIM(w http.ResponseWriter, r *http.Request) {
+func (h *MessagingHandler) SendIM(w http.ResponseWriter, r *http.Request, sess *state.WebAPISession) {
 	ctx := r.Context()
-
-	// Get session from aimsid
-	aimsid := queryOrFormParam(r, "aimsid")
-	if aimsid == "" {
-		h.sendErrorResponse(w, http.StatusBadRequest, "missing required parameter: aimsid")
-		return
-	}
-
-	sess, err := h.SessionManager.GetSession(r.Context(), aimsid)
-	if err != nil {
-		if err == state.ErrNoWebAPISession || err == state.ErrWebAPISessionExpired {
-			h.sendErrorResponse(w, http.StatusUnauthorized, "invalid or expired session")
-		} else {
-			h.sendErrorResponse(w, http.StatusInternalServerError, "internal server error")
-		}
-		return
-	}
-
-	// Update session activity
-	if err := h.SessionManager.TouchSession(r.Context(), aimsid); err != nil {
-		h.Logger.WarnContext(ctx, "failed to touch session", "aimsid", aimsid, "error", err)
-	}
 
 	// Parse parameters
 	recipient := queryOrFormParam(r, "t")
@@ -97,20 +75,6 @@ func (h *MessagingHandler) SendIM(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cookieUint64 := binary.BigEndian.Uint64(cookie[:])
-
-	// Get sender's OSCAR session if available
-	var senderInfo wire.TLVUserInfo
-	if sess.OSCARSession != nil {
-		senderInfo = sess.OSCARSession.Session().TLVUserInfo()
-	} else {
-		// Create minimal user info for web-only sessions
-		senderInfo = wire.TLVUserInfo{
-			ScreenName:   sess.ScreenName.String(),
-			WarningLevel: 0,
-		}
-		senderInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoSignonTOD, uint32(sess.CreatedAt.Unix())))
-		senderInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoStatus, uint32(0x0000))) // online status
-	}
 
 	// Create message ID for response (UUID format like working implementation)
 	// Using the cookie bytes to generate a UUID-like string
@@ -263,30 +227,8 @@ func (h *MessagingHandler) sendErrorResponse(w http.ResponseWriter, statusCode i
 }
 
 // SetTyping handles the /im/setTyping endpoint for typing indicators
-func (h *MessagingHandler) SetTyping(w http.ResponseWriter, r *http.Request) {
+func (h *MessagingHandler) SetTyping(w http.ResponseWriter, r *http.Request, sess *state.WebAPISession) {
 	ctx := r.Context()
-
-	// Get session from aimsid
-	aimsid := r.URL.Query().Get("aimsid")
-	if aimsid == "" {
-		h.sendErrorResponse(w, http.StatusBadRequest, "missing required parameter: aimsid")
-		return
-	}
-
-	sess, err := h.SessionManager.GetSession(r.Context(), aimsid)
-	if err != nil {
-		if err == state.ErrNoWebAPISession || err == state.ErrWebAPISessionExpired {
-			h.sendErrorResponse(w, http.StatusUnauthorized, "invalid or expired session")
-		} else {
-			h.sendErrorResponse(w, http.StatusInternalServerError, "internal server error")
-		}
-		return
-	}
-
-	// Update session activity
-	if err := h.SessionManager.TouchSession(r.Context(), aimsid); err != nil {
-		h.Logger.WarnContext(ctx, "failed to touch session", "aimsid", aimsid, "error", err)
-	}
 
 	// Parse parameters
 	recipient := r.URL.Query().Get("t")

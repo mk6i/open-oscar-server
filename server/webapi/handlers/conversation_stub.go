@@ -38,23 +38,7 @@ func (h *ConversationStubHandler) MarkRead(w http.ResponseWriter, r *http.Reques
 }
 
 // FetchStoredIMs returns stored IM history for a conversation partner.
-func (h *ConversationStubHandler) FetchStoredIMs(w http.ResponseWriter, r *http.Request) {
-	aimsid := r.URL.Query().Get("aimsid")
-	if aimsid == "" {
-		SendError(w, http.StatusBadRequest, "missing required parameter: aimsid")
-		return
-	}
-
-	sess, err := h.SessionManager.GetSession(r.Context(), aimsid)
-	if err != nil {
-		if err == state.ErrNoWebAPISession || err == state.ErrWebAPISessionExpired {
-			SendError(w, http.StatusUnauthorized, "invalid or expired session")
-		} else {
-			SendError(w, http.StatusInternalServerError, "internal server error")
-		}
-		return
-	}
-
+func (h *ConversationStubHandler) FetchStoredIMs(w http.ResponseWriter, r *http.Request, sess *state.WebAPISession) {
 	partner := r.URL.Query().Get("to")
 	if partner == "" {
 		SendError(w, http.StatusBadRequest, "missing required parameter: to")

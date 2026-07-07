@@ -132,6 +132,48 @@ func NewAuthMiddleware(validator APIKeyValidator, logger *slog.Logger) *AuthMidd
 	}
 }
 
+// WebAPISessionResolver resolves and refreshes Web API sessions by aimsid.
+type WebAPISessionResolver interface {
+	GetSession(ctx context.Context, aimsid string) (*state.WebAPISession, error)
+	TouchSession(ctx context.Context, aimsid string) error
+}
+
+// RequireSession resolves the aimsid session and passes it to next. It rejects
+// requests whose session is missing, expired, or anonymous (no bridged OSCAR
+// session) with an auth error, so downstream handlers can treat
+// session.OSCARSession as non-nil.
+func (m *AuthMiddleware) RequireSession(sm WebAPISessionResolver, next func(http.ResponseWriter, *http.Request, *state.WebAPISession)) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		aimsid := r.URL.Query().Get("aimsid")
+		if aimsid == "" {
+			m.sendSessionError(w, http.StatusBadRequest, "missing aimsid parameter")
+			return
+		}
+		session, err := sm.GetSession(r.Context(), aimsid)
+		if err != nil || session.OSCARSession == nil {
+			m.sendSessionError(w, http.StatusUnauthorized, "invalid or expired session")
+			return
+		}
+		_ = sm.TouchSession(r.Context(), aimsid)
+		next(w, r, session)
+	})
+}
+
+// sendSessionError writes a Web AIM API error envelope with the given HTTP status.
+func (m *AuthMiddleware) sendSessionError(w http.ResponseWriter, statusCode int, message string) {
+	body, err := json.Marshal(map[string]any{
+		"response": map[string]any{"statusCode": statusCode, "statusText": message},
+	})
+	if err != nil {
+		m.Logger.Error("failed to encode error response", "err", err.Error())
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	_, _ = w.Write(body)
+}
+
 // Authenticate is an HTTP middleware that validates API keys and enforces rate limits.
 func (m *AuthMiddleware) Authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

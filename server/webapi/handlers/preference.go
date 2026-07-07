@@ -118,35 +118,12 @@ type PermitDenyData struct {
 }
 
 // SetPreferences handles GET /preference/set requests to update user preferences.
-func (h *PreferenceHandler) SetPreferences(w http.ResponseWriter, r *http.Request) {
+func (h *PreferenceHandler) SetPreferences(w http.ResponseWriter, r *http.Request, session *state.WebAPISession) {
 	ctx := r.Context()
-
-	// Get session ID from parameters
-	aimsid := r.URL.Query().Get("aimsid")
-	if aimsid == "" {
-		h.sendError(w, http.StatusBadRequest, "missing aimsid parameter")
-		return
-	}
-
-	// Get session
-	session, err := h.SessionManager.GetSession(r.Context(), aimsid)
-	if err != nil {
-		h.sendError(w, http.StatusUnauthorized, "invalid or expired session")
-		return
-	}
-
-	// Update session activity
-	if err := h.SessionManager.TouchSession(r.Context(), aimsid); err != nil {
-		h.Logger.WarnContext(ctx, "failed to touch session", "aimsid", aimsid, "error", err)
-	}
 
 	// Preferences are stored as OSCAR buddy prefs in the feedbag, which requires
 	// an OSCAR session to act on behalf of.
 	instance := session.OSCARSession
-	if instance == nil {
-		h.sendError(w, http.StatusBadRequest, "no OSCAR session")
-		return
-	}
 
 	// Read-modify-write the buddy-prefs item so bits the web client doesn't
 	// manage (e.g. the typing-events bit consumed by the OSCAR session) survive.
@@ -196,37 +173,16 @@ func (h *PreferenceHandler) SetPreferences(w http.ResponseWriter, r *http.Reques
 }
 
 // GetPreferences handles GET /preference/get requests to retrieve user preferences.
-func (h *PreferenceHandler) GetPreferences(w http.ResponseWriter, r *http.Request) {
+func (h *PreferenceHandler) GetPreferences(w http.ResponseWriter, r *http.Request, session *state.WebAPISession) {
 	ctx := r.Context()
 
-	// Get session ID from parameters
-	aimsid := r.URL.Query().Get("aimsid")
-	if aimsid == "" {
-		h.sendError(w, http.StatusBadRequest, "missing aimsid parameter")
-		return
-	}
-
-	// Get session
-	session, err := h.SessionManager.GetSession(r.Context(), aimsid)
-	if err != nil {
-		h.sendError(w, http.StatusUnauthorized, "invalid or expired session")
-		return
-	}
-
-	// Update session activity
-	if err := h.SessionManager.TouchSession(r.Context(), aimsid); err != nil {
-		h.Logger.WarnContext(ctx, "failed to touch session", "aimsid", aimsid, "error", err)
-	}
-
 	// Load the buddy-prefs bitmask from the feedbag. Absent prefs fall back to
-	// the spec default. Web-only sessions resolve entirely to defaults.
+	// the spec default.
 	var prefsList wire.TLVList
-	if instance := session.OSCARSession; instance != nil {
-		if item, err := buddyPrefsItem(ctx, h.FeedbagService, instance); err != nil {
-			h.Logger.WarnContext(ctx, "failed to get preferences", "err", err.Error())
-		} else {
-			prefsList = item.TLVList
-		}
+	if item, err := buddyPrefsItem(ctx, h.FeedbagService, session.OSCARSession); err != nil {
+		h.Logger.WarnContext(ctx, "failed to get preferences", "err", err.Error())
+	} else {
+		prefsList = item.TLVList
 	}
 
 	// When specific preferences are named in the query (e.g. playIMSound=1), the
@@ -349,27 +305,8 @@ func boolToPrefInt(b bool) int {
 }
 
 // SetPermitDeny handles GET /preference/setPermitDeny requests to update permit/deny settings.
-func (h *PreferenceHandler) SetPermitDeny(w http.ResponseWriter, r *http.Request) {
+func (h *PreferenceHandler) SetPermitDeny(w http.ResponseWriter, r *http.Request, session *state.WebAPISession) {
 	ctx := r.Context()
-
-	// Get session ID from parameters
-	aimsid := r.URL.Query().Get("aimsid")
-	if aimsid == "" {
-		h.sendError(w, http.StatusBadRequest, "missing aimsid parameter")
-		return
-	}
-
-	// Get session
-	session, err := h.SessionManager.GetSession(r.Context(), aimsid)
-	if err != nil {
-		h.sendError(w, http.StatusUnauthorized, "invalid or expired session")
-		return
-	}
-
-	// Update session activity
-	if err := h.SessionManager.TouchSession(r.Context(), aimsid); err != nil {
-		h.Logger.WarnContext(ctx, "failed to touch session", "aimsid", aimsid, "error", err)
-	}
 
 	frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
 	fb, err := h.FeedbagService.Query(r.Context(), session.OSCARSession, frame)
@@ -511,27 +448,8 @@ func permitDenyData(fl []wire.FeedbagItem) PermitDenyData {
 }
 
 // GetPermitDeny handles GET /preference/getPermitDeny requests to retrieve permit/deny settings.
-func (h *PreferenceHandler) GetPermitDeny(w http.ResponseWriter, r *http.Request) {
+func (h *PreferenceHandler) GetPermitDeny(w http.ResponseWriter, r *http.Request, session *state.WebAPISession) {
 	ctx := r.Context()
-
-	// Get session ID from parameters
-	aimsid := r.URL.Query().Get("aimsid")
-	if aimsid == "" {
-		h.sendError(w, http.StatusBadRequest, "missing aimsid parameter")
-		return
-	}
-
-	// Get session
-	session, err := h.SessionManager.GetSession(r.Context(), aimsid)
-	if err != nil {
-		h.sendError(w, http.StatusUnauthorized, "invalid or expired session")
-		return
-	}
-
-	// Update session activity
-	if err := h.SessionManager.TouchSession(r.Context(), aimsid); err != nil {
-		h.Logger.WarnContext(ctx, "failed to touch session", "aimsid", aimsid, "error", err)
-	}
 
 	frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
 	fb, err := h.FeedbagService.Query(r.Context(), session.OSCARSession, frame)

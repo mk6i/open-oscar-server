@@ -12,67 +12,11 @@ import (
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
-// WebAPISessionManager provides methods to manage WebAPI sessions.
-type WebAPISessionManager interface {
-	GetSession(ctx context.Context, aimsid string) (*state.WebAPISession, error)
-	TouchSession(ctx context.Context, aimsid string) error
-}
-
 // BuddyListHandler handles Web AIM API buddy list management endpoints.
 type BuddyListHandler struct {
-	SessionManager   WebAPISessionManager
 	BuddyListManager *BuddyListManager
 	Logger           *slog.Logger
 	FeedbagService   FeedbagService
-	mux              *http.ServeMux
-}
-
-func NewBuddyListHandler(sessionManager WebAPISessionManager, blm *BuddyListManager, logger *slog.Logger, feedbagService FeedbagService) *BuddyListHandler {
-	h := &BuddyListHandler{
-		SessionManager:   sessionManager,
-		BuddyListManager: blm,
-		Logger:           logger,
-		FeedbagService:   feedbagService,
-	}
-	m := http.NewServeMux()
-	m.Handle("GET /buddylist/addBuddy", h.SessionMiddleware(h.AddBuddy))
-	m.Handle("GET /buddylist/addGroup", h.SessionMiddleware(h.AddGroup))
-	m.Handle("GET /buddylist/removeBuddy", h.SessionMiddleware(h.RemoveBuddy))
-	m.Handle("GET /buddylist/removeGroup", h.SessionMiddleware(h.RemoveGroup))
-	m.Handle("GET /buddylist/renameGroup", h.SessionMiddleware(h.RenameGroup))
-	m.Handle("GET /buddylist/moveBuddy", h.SessionMiddleware(h.MoveBuddy))
-	m.Handle("GET /buddylist/setBuddyAttribute", h.SessionMiddleware(h.SetBuddyAttribute))
-	m.Handle("GET /buddylist/setGroupAttribute", h.SessionMiddleware(h.SetGroupAttribute))
-	h.mux = m
-	return h
-}
-
-func (h *BuddyListHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	h.mux.ServeHTTP(w, r)
-}
-
-func (h *BuddyListHandler) SessionMiddleware(next func(http.ResponseWriter, *http.Request, *state.WebAPISession)) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		aimsid := r.URL.Query().Get("aimsid")
-		if aimsid == "" {
-			h.sendError(w, http.StatusBadRequest, "missing aimsid parameter")
-			return
-		}
-		session, err := h.SessionManager.GetSession(r.Context(), aimsid)
-		if err != nil {
-			switch err {
-			case state.ErrNoWebAPISession:
-				h.sendError(w, http.StatusNotFound, "session not found")
-			case state.ErrWebAPISessionExpired:
-				h.sendError(w, http.StatusGone, "session expired")
-			default:
-				h.sendError(w, http.StatusInternalServerError, "internal server error")
-			}
-			return
-		}
-		_ = h.SessionManager.TouchSession(r.Context(), aimsid)
-		next(w, r, session)
-	})
 }
 
 type FeedbagService interface {

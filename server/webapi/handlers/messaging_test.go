@@ -12,9 +12,15 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
+	"github.com/mk6i/open-oscar-server/server/webapi/middleware"
 	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
 )
+
+// requireSession wraps next with the session-resolving auth middleware for tests.
+func requireSession(sm middleware.WebAPISessionResolver, next func(http.ResponseWriter, *http.Request, *state.WebAPISession)) http.Handler {
+	return middleware.NewAuthMiddleware(nil, slog.Default()).RequireSession(sm, next)
+}
 
 // MockICBMService is a mock implementation of ICBMService
 type MockICBMService struct {
@@ -117,7 +123,7 @@ func TestMessagingHandler_SendIM(t *testing.T) {
 
 			rr := httptest.NewRecorder()
 
-			handler.SendIM(rr, req)
+			requireSession(handler.SessionManager, handler.SendIM).ServeHTTP(rr, req)
 
 			assert.Equal(t, tt.expectedStatusCode, rr.Code)
 
@@ -152,7 +158,7 @@ func TestMessagingHandler_SendIM_POST(t *testing.T) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	rr := httptest.NewRecorder()
-	handler.SendIM(rr, req)
+	requireSession(handler.SessionManager, handler.SendIM).ServeHTTP(rr, req)
 
 	assert.Equal(t, http.StatusOK, rr.Code)
 	assert.Contains(t, rr.Body.String(), `"msgId"`)
@@ -169,10 +175,10 @@ func TestMessagingHandler_SendIM_MissingAimsid(t *testing.T) {
 	assert.NoError(t, err)
 
 	rr := httptest.NewRecorder()
-	handler.SendIM(rr, req)
+	requireSession(handler.SessionManager, handler.SendIM).ServeHTTP(rr, req)
 
 	assert.Equal(t, http.StatusBadRequest, rr.Code)
-	assert.Contains(t, rr.Body.String(), "missing required parameter: aimsid")
+	assert.Contains(t, rr.Body.String(), "missing aimsid parameter")
 }
 
 func TestMessagingHandler_SendIM_InvalidSession(t *testing.T) {
@@ -185,7 +191,7 @@ func TestMessagingHandler_SendIM_InvalidSession(t *testing.T) {
 	assert.NoError(t, err)
 
 	rr := httptest.NewRecorder()
-	handler.SendIM(rr, req)
+	requireSession(handler.SessionManager, handler.SendIM).ServeHTTP(rr, req)
 
 	assert.Equal(t, http.StatusUnauthorized, rr.Code)
 	assert.Contains(t, rr.Body.String(), "invalid or expired session")
@@ -271,7 +277,7 @@ func TestMessagingHandler_SetTyping(t *testing.T) {
 
 			rr := httptest.NewRecorder()
 
-			handler.SetTyping(rr, req)
+			requireSession(handler.SessionManager, handler.SetTyping).ServeHTTP(rr, req)
 
 			assert.Equal(t, tt.expectedStatusCode, rr.Code)
 
@@ -295,8 +301,8 @@ func TestMessagingHandler_SetTyping_MissingAimsid(t *testing.T) {
 	assert.NoError(t, err)
 
 	rr := httptest.NewRecorder()
-	handler.SetTyping(rr, req)
+	requireSession(handler.SessionManager, handler.SetTyping).ServeHTTP(rr, req)
 
 	assert.Equal(t, http.StatusBadRequest, rr.Code)
-	assert.Contains(t, rr.Body.String(), "missing required parameter: aimsid")
+	assert.Contains(t, rr.Body.String(), "missing aimsid parameter")
 }

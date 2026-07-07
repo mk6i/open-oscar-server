@@ -87,8 +87,6 @@ type BuddyBroadcaster interface {
 	BroadcastBuddyDeparted(ctx context.Context, screenName state.IdentScreenName) error
 }
 
-// Phase 4: OSCAR Bridge interfaces
-
 // OSCARConfig provides configuration for OSCAR services.
 type OSCARConfig interface {
 	GetBOSAddress() (host string, port int)

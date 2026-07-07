@@ -51,32 +51,9 @@ type FetchEventsXMLResponse struct {
 }
 
 // FetchEvents handles GET /aim/fetchEvents requests with long-polling support.
-func (h *EventsHandler) FetchEvents(w http.ResponseWriter, r *http.Request) {
+func (h *EventsHandler) FetchEvents(w http.ResponseWriter, r *http.Request, session *state.WebAPISession) {
 	ctx := r.Context()
-
-	// Get session ID from parameters
-	aimsid := r.URL.Query().Get("aimsid")
-	if aimsid == "" {
-		h.sendError(w, http.StatusBadRequest, "missing aimsid parameter")
-		return
-	}
-
-	// Get session
-	session, err := h.SessionManager.GetSession(r.Context(), aimsid)
-	if err != nil {
-		switch err {
-		case state.ErrNoWebAPISession:
-			h.sendError(w, http.StatusNotFound, "session not found")
-		case state.ErrWebAPISessionExpired:
-			h.sendError(w, http.StatusGone, "session expired")
-		default:
-			h.sendError(w, http.StatusInternalServerError, "internal server error")
-		}
-		return
-	}
-
-	// Touch the session to update last accessed time
-	_ = h.SessionManager.TouchSession(r.Context(), aimsid)
+	aimsid := session.AimSID
 
 	// Get sequence number parameter
 	var lastSeqNum uint64
