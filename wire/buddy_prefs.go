@@ -154,10 +154,110 @@ func buddyPrefBit(prefNum uint16, length int) (index int, mask byte) {
 	return index, byte(0x80) >> (offset % 8)
 }
 
-// BuddyPref reads preference prefNum from a feedbag buddy-prefs TLV list. valid
-// reports whether the preference is present in the bitmask; value is its boolean
-// value, meaningful only when valid is true.
-func BuddyPref(list TLVList, prefNum uint16) (valid, value bool) {
+// buddyPrefDefaults is the source of truth for the default value of each buddy
+// preference: the value BuddyPref returns when the preference bit is absent from
+// the feedbag bitmask.
+var buddyPrefDefaults = map[uint16]bool{
+	FeedbagBuddyPrefsDisplayLogin:          true,
+	FeedbagBuddyPrefsDisplayEBuddy:         true,
+	FeedbagBuddyPrefsPlayEnter:             true,
+	FeedbagBuddyPrefsPlayExit:              true,
+	FeedbagBuddyPrefsViewIMStamp:           true,
+	FeedbagBuddyPrefsViewSmileys:           true,
+	FeedbagBuddyPrefsAcceptIcons:           true,
+	FeedbagBuddyPrefsKnockNonAOLIMs:        true,
+	FeedbagBuddyPrefsKnockNonListIMs:       true,
+	FeedbagBuddyPrefsDiscloseIdle:          true,
+	FeedbagBuddyPrefsAcceptCustomBart:      false,
+	FeedbagBuddyPrefsAcceptNonListBart:     false,
+	FeedbagBuddyPrefsAcceptBgs:             true,
+	FeedbagBuddyPrefsAcceptChromes:         true,
+	FeedbagBuddyPrefsAcceptBLSounds:        true,
+	FeedbagBuddyPrefsAcceptIMSounds:        true,
+	FeedbagBuddyPrefsNoSeeRecentBuddies:    false,
+	FeedbagBuddyPrefsAcceptSMSLegal:        false,
+	FeedbagBuddyPrefsEnterDoesCRLF:         false,
+	FeedbagBuddyPrefsPlayIMSound:           true,
+	FeedbagBuddyPrefsDiscloseTyping:        true,
+	FeedbagBuddyPrefsAcceptSuperIcons:      true,
+	FeedbagBuddyPrefsAcceptBLRichText:      true,
+	FeedbagBuddyPrefsReduceIMSound:         true,
+	FeedbagBuddyPrefsConfirmDirectIM:       true,
+	FeedbagBuddyPrefsOneTabbedIMWindow:     true,
+	FeedbagBuddyPrefsBuddyInfoOnMouseover:  true,
+	FeedbagBuddyPrefsDiscloseBuddyMatches:  true,
+	FeedbagBuddyPrefsCatchIMs:              false,
+	FeedbagBuddyPrefsShowFriendlyName:      true,
+	FeedbagBuddyPrefsDiscloseRadio:         true,
+	FeedbagBuddyPrefsShowCapabilities:      true,
+	FeedbagBuddyPrefsShowBuddyListFilter:   true,
+	FeedbagBuddyPrefsShowAwayIdle:          true,
+	FeedbagBuddyPrefsShowMobile:            true,
+	FeedbagBuddyPrefsSortBuddyList:         false,
+	FeedbagBuddyPrefsCatchIMsForClient:     false,
+	FeedbagBuddyPrefsNewMessageSmallNotify: true,
+	FeedbagBuddyPrefsNoFrequentBuddies:     false,
+	FeedbagBuddyPrefsBlogAwayMessages:      false,
+	FeedbagBuddyPrefsBlogAIMSigMessages:    false,
+	FeedbagBuddyPrefsBlogNoComments:        false,
+	FeedbagBuddyPrefsFriendOfFriend:        false,
+	FeedbagBuddyPrefsFriendGetContactList:  false,
+	FeedbagBuddyPrefsCompadInit:            false,
+	FeedbagBuddyPrefsSendBuddyFeed:         true,
+	FeedbagBuddyPrefsBlkSendIMWhileAway:    false,
+	FeedbagBuddyPrefsShowBuddyFeed:         true,
+	FeedbagBuddyPrefsNoSaveVanityInfo:      false,
+	FeedbagBuddyPrefsAcceptOfflineIM:       true,
+	// ShowGroups deliberately departs from the OSCAR spec default (0). The web
+	// client keys group-header visibility off this pref and has no default of
+	// its own, so we default it on to keep headers visible.
+	FeedbagBuddyPrefsShowGroups:               true,
+	FeedbagBuddyPrefsSortGroup:                true,
+	FeedbagBuddyPrefsShowOfflineBuddies:       true,
+	FeedbagBuddyPrefsExpandBuddies:            false,
+	FeedbagBuddyPrefsThirdPartyFeeds:          false,
+	FeedbagBuddyPrefsNotifyReceivedInvite:     true,
+	FeedbagBuddyPrefsApfAutoAccept:            false,
+	FeedbagBuddyPrefsApfAutoAcceptBuddy:       false,
+	FeedbagBuddyPrefsBlockAwayMsgFeed:         false,
+	FeedbagBuddyPrefsBlockAIMProfileFeed:      false,
+	FeedbagBuddyPrefsBlockAIMPagesFeed:        false,
+	FeedbagBuddyPrefsBlockJournalsFeed:        false,
+	FeedbagBuddyPrefsBlockLocationFeed:        false,
+	FeedbagBuddyPrefsBlockStickiesFeed:        false,
+	FeedbagBuddyPrefsBlockUncutFeed:           false,
+	FeedbagBuddyPrefsBlockLinksFeed:           false,
+	FeedbagBuddyPrefsBlockAIMBulletinFeed:     false,
+	FeedbagBuddyPrefsSaveStatusMsg:            true,
+	FeedbagBuddyPrefsApfNotifyReceivedByEmail: false,
+	FeedbagBuddyPrefsShowOfflineGrp:           true,
+	FeedbagBuddyPrefsOfflineGrpCollapsed:      false,
+	FeedbagBuddyPrefsFirstIMSoundOnly:         false,
+	FeedbagBuddyPrefsImblastInviteNotify:      true,
+
+	// Web-client-only preferences with no OSCAR equivalent.
+	FeedbagBuddyPrefsViewIMsInBubbles:           true,
+	FeedbagBuddyPrefsViewIMTimestampsRelative:   false,
+	FeedbagBuddyPrefsGlobalOTR:                  false,
+	FeedbagBuddyPrefsImblastInviteFromBuddyOnly: false,
+}
+
+// BuddyPref returns the effective boolean value of preference prefNum in a
+// feedbag buddy-prefs TLV list: the stored value when the preference is present
+// in the bitmask, otherwise the preference's default (see buddyPrefDefaults).
+// Whether the preference is actually present ("valid") is an internal detail;
+// BuddyPref is the source of truth for default values.
+func BuddyPref(list TLVList, prefNum uint16) bool {
+	if valid, value := readBuddyPref(list, prefNum); valid {
+		return value
+	}
+	return buddyPrefDefaults[prefNum]
+}
+
+// readBuddyPref reads preference prefNum from a feedbag buddy-prefs TLV list.
+// valid reports whether the preference is present in the bitmask; value is its
+// boolean value, meaningful only when valid is true.
+func readBuddyPref(list TLVList, prefNum uint16) (valid, value bool) {
 	validTag, valueTag := buddyPrefTags(prefNum)
 
 	validBytes, ok := list.Bytes(validTag)

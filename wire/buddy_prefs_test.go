@@ -7,19 +7,28 @@ import (
 
 func TestBuddyPref(t *testing.T) {
 	tests := []struct {
-		name      string
-		prefNum   uint16
-		list      TLVList
-		wantValid bool
-		wantValue bool
+		name    string
+		prefNum uint16
+		list    TLVList
+		want    bool
 	}{
 		{
-			name:    "absent bitmask => not valid",
-			prefNum: 0x15,
+			// PlayIMSound (0x15) defaults to true when the bitmask is absent.
+			name:    "absent bitmask => default true",
+			prefNum: FeedbagBuddyPrefsPlayIMSound,
 			list:    TLVList{},
+			want:    true,
+		},
+		{
+			// AcceptCustomBart (0x0B) defaults to false when the bitmask is absent.
+			name:    "absent bitmask => default false",
+			prefNum: FeedbagBuddyPrefsAcceptCustomBart,
+			list:    TLVList{},
+			want:    false,
 		},
 		{
 			// pref 0x34 (=52) lives in BuddyPrefs2 at offset 19 (index 2, mask 0x10).
+			// Explicitly set to false, overriding the true default.
 			name:    "offline messages disabled",
 			prefNum: FeedbagBuddyPrefsAcceptOfflineIM,
 			list: TLVList{
@@ -28,8 +37,7 @@ func TestBuddyPref(t *testing.T) {
 				{Tag: FeedbagAttributesBuddyPrefs2Valid, Value: []byte{0, 0, 17}},
 				{Tag: FeedbagAttributesBuddyPrefs2, Value: []byte{0, 0, 1}},
 			},
-			wantValid: true,
-			wantValue: false,
+			want: false,
 		},
 		{
 			// pref 22 lives in BuddyPrefs at index 1, mask 0x40.
@@ -39,8 +47,7 @@ func TestBuddyPref(t *testing.T) {
 				{Tag: FeedbagAttributesBuddyPrefsValid, Value: []byte{0, 0x40, 0, 0}},
 				{Tag: FeedbagAttributesBuddyPrefs, Value: []byte{0, 0x40, 0, 0}},
 			},
-			wantValid: true,
-			wantValue: true,
+			want: true,
 		},
 		{
 			// prefs 32 and 33 both fall at offset 0 in BuddyPrefs2.
@@ -50,17 +57,14 @@ func TestBuddyPref(t *testing.T) {
 				{Tag: FeedbagAttributesBuddyPrefs2Valid, Value: []byte{0x80, 0, 0, 0}},
 				{Tag: FeedbagAttributesBuddyPrefs2, Value: []byte{0x80, 0, 0, 0}},
 			},
-			wantValid: true,
-			wantValue: true,
+			want: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			valid, value := BuddyPref(tt.list, tt.prefNum)
-			if valid != tt.wantValid || value != tt.wantValue {
-				t.Fatalf("BuddyPref(%d) = (valid=%v, value=%v), want (valid=%v, value=%v)",
-					tt.prefNum, valid, value, tt.wantValid, tt.wantValue)
+			if got := BuddyPref(tt.list, tt.prefNum); got != tt.want {
+				t.Fatalf("BuddyPref(%d) = %v, want %v", tt.prefNum, got, tt.want)
 			}
 		})
 	}
@@ -72,11 +76,7 @@ func TestSetBuddyPref_RoundTrip(t *testing.T) {
 	for _, want := range []bool{true, false} {
 		for _, prefNum := range prefs {
 			list := SetBuddyPref(TLVList{}, prefNum, want)
-			valid, value := BuddyPref(list, prefNum)
-			if !valid {
-				t.Errorf("pref 0x%02x set to %v: not valid after set", prefNum, want)
-			}
-			if value != want {
+			if value := BuddyPref(list, prefNum); value != want {
 				t.Errorf("pref 0x%02x round-trip: got %v, want %v", prefNum, value, want)
 			}
 		}
@@ -98,10 +98,8 @@ func TestSetBuddyPref_PreservesOtherBits(t *testing.T) {
 		{0x16, true},
 		{0x34, true},
 	} {
-		valid, value := BuddyPref(list, tc.prefNum)
-		if !valid || value != tc.wantValue {
-			t.Errorf("pref 0x%02x = (valid=%v, value=%v), want (true, %v)",
-				tc.prefNum, valid, value, tc.wantValue)
+		if value := BuddyPref(list, tc.prefNum); value != tc.wantValue {
+			t.Errorf("pref 0x%02x = %v, want %v", tc.prefNum, value, tc.wantValue)
 		}
 	}
 }

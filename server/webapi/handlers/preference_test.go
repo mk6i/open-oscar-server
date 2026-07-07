@@ -35,9 +35,11 @@ func TestPreferenceHandler_SetPreferences(t *testing.T) {
 	oscarInstance := state.NewSession().AddInstance()
 	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
 
-	// Existing feedbag already has displayLogin (0x00) enabled; it must survive.
+	// Existing feedbag already has acceptCustomBart (0x0B, default false) enabled;
+	// it must survive the read-modify-write. Using a default-false pref means an
+	// observed true value can only come from the stored bit, not the default.
 	fs.On("Query", mock.Anything, oscarInstance, mock.Anything).
-		Return(buddyPrefsFeedbag(map[uint16]bool{0x00: true}), nil)
+		Return(buddyPrefsFeedbag(map[uint16]bool{wire.FeedbagBuddyPrefsAcceptCustomBart: true}), nil)
 
 	var upserted []wire.FeedbagItem
 	fs.On("UpsertItem", mock.Anything, oscarInstance, mock.Anything, mock.Anything).
@@ -59,14 +61,12 @@ func TestPreferenceHandler_SetPreferences(t *testing.T) {
 		item := upserted[0]
 		assert.Equal(t, wire.FeedbagClassIdBuddyPrefs, item.ClassID)
 
-		assertPref := func(num uint16, wantValid, wantValue bool) {
-			valid, value := wire.BuddyPref(item.TLVList, num)
-			assert.Equalf(t, wantValid, valid, "pref 0x%02x valid", num)
-			assert.Equalf(t, wantValue, value, "pref 0x%02x value", num)
+		assertPref := func(num uint16, want bool) {
+			assert.Equalf(t, want, wire.BuddyPref(item.TLVList, num), "pref 0x%02x", num)
 		}
-		assertPref(0x00, true, true)  // preserved
-		assertPref(0x15, true, false) // playIMSound off
-		assertPref(0x16, true, true)  // discloseTyping on
+		assertPref(wire.FeedbagBuddyPrefsAcceptCustomBart, true) // preserved (default false)
+		assertPref(0x15, false)                                  // playIMSound off (default true)
+		assertPref(0x16, true)                                   // discloseTyping on
 	}
 	fs.AssertExpectations(t)
 }

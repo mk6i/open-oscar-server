@@ -3008,9 +3008,7 @@ func TestFeedbagService_Use(t *testing.T) {
 								{
 									ClassID: wire.FeedbagClassIdBuddyPrefs,
 									TLVLBlock: wire.TLVLBlock{
-										TLVList: wire.TLVList{
-											wire.NewTLVBE(wire.FeedbagAttributesBuddyPrefs, uint32(wire.SNACFlagsExtendedInfo)),
-										},
+										TLVList: wire.SetBuddyPref(nil, wire.FeedbagBuddyPrefsDiscloseTyping, false),
 									},
 								},
 							},
@@ -4429,7 +4427,6 @@ func TestFeedbagBuddyPref(t *testing.T) {
 		name      string
 		itemType  uint16
 		list      wire.TLVList
-		wantValid bool
 		wantValue bool
 	}{
 		{
@@ -4441,19 +4438,6 @@ func TestFeedbagBuddyPref(t *testing.T) {
 				{Tag: wire.FeedbagAttributesBuddyPrefs2Valid, Value: []byte{0, 0, 17}},
 				{Tag: wire.FeedbagAttributesBuddyPrefs2, Value: []byte{0, 0, 1}},
 			},
-			wantValid: true,
-			wantValue: false,
-		},
-		{
-			name:     "offline messages disabled",
-			itemType: wire.FeedbagBuddyPrefsAcceptOfflineIM,
-			list: wire.TLVList{
-				{Tag: wire.FeedbagAttributesBuddyPrefsValid, Value: []byte{0, 0, 24, 64}},
-				{Tag: wire.FeedbagAttributesBuddyPrefs, Value: []byte{0, 0, 24, 64}},
-				{Tag: wire.FeedbagAttributesBuddyPrefs2Valid, Value: []byte{0, 0, 17}},
-				{Tag: wire.FeedbagAttributesBuddyPrefs2, Value: []byte{0, 0, 1}},
-			},
-			wantValid: true,
 			wantValue: false,
 		},
 		{
@@ -4465,7 +4449,6 @@ func TestFeedbagBuddyPref(t *testing.T) {
 				{Tag: wire.FeedbagAttributesBuddyPrefs2Valid, Value: []byte{0, 0, 17, 0, 0}},
 				{Tag: wire.FeedbagAttributesBuddyPrefs2, Value: []byte{0, 0, 1, 0, 0}},
 			},
-			wantValid: true,
 			wantValue: false,
 		},
 		{
@@ -4477,11 +4460,10 @@ func TestFeedbagBuddyPref(t *testing.T) {
 				{Tag: wire.FeedbagAttributesBuddyPrefs2Valid, Value: []byte{0, 0, 17}},
 				{Tag: wire.FeedbagAttributesBuddyPrefs2, Value: []byte{0, 0, 17}},
 			},
-			wantValid: true,
 			wantValue: true,
 		},
 		{
-			name:     "offline messages enabled",
+			name:     "offline messages enabled, extra padding",
 			itemType: wire.FeedbagBuddyPrefsAcceptOfflineIM,
 			list: wire.TLVList{
 				{Tag: wire.FeedbagAttributesBuddyPrefsValid, Value: []byte{0, 0, 24, 64}},
@@ -4489,7 +4471,6 @@ func TestFeedbagBuddyPref(t *testing.T) {
 				{Tag: wire.FeedbagAttributesBuddyPrefs2Valid, Value: []byte{0, 0, 17, 0, 0}},
 				{Tag: wire.FeedbagAttributesBuddyPrefs2, Value: []byte{0, 0, 17, 0, 0}},
 			},
-			wantValid: true,
 			wantValue: true,
 		},
 		{
@@ -4501,7 +4482,6 @@ func TestFeedbagBuddyPref(t *testing.T) {
 				{Tag: wire.FeedbagAttributesBuddyPrefs2Valid, Value: []byte{0, 0, 17}},
 				{Tag: wire.FeedbagAttributesBuddyPrefs2, Value: []byte{0, 0, 17}},
 			},
-			wantValid: true,
 			wantValue: true,
 		},
 		{
@@ -4513,7 +4493,6 @@ func TestFeedbagBuddyPref(t *testing.T) {
 				{Tag: wire.FeedbagAttributesBuddyPrefs2Valid, Value: []byte{17}},
 				{Tag: wire.FeedbagAttributesBuddyPrefs2, Value: []byte{17}},
 			},
-			wantValid: true,
 			wantValue: true,
 		},
 		{
@@ -4525,7 +4504,6 @@ func TestFeedbagBuddyPref(t *testing.T) {
 				{Tag: wire.FeedbagAttributesBuddyPrefs2Valid, Value: []byte{0, 0, 17}},
 				{Tag: wire.FeedbagAttributesBuddyPrefs2, Value: []byte{0, 0, 17}},
 			},
-			wantValid: true,
 			wantValue: false,
 		},
 		{
@@ -4537,7 +4515,6 @@ func TestFeedbagBuddyPref(t *testing.T) {
 				{Tag: wire.FeedbagAttributesBuddyPrefs2Valid, Value: []byte{17}},
 				{Tag: wire.FeedbagAttributesBuddyPrefs2, Value: []byte{17}},
 			},
-			wantValid: true,
 			wantValue: false,
 		},
 		{
@@ -4549,7 +4526,6 @@ func TestFeedbagBuddyPref(t *testing.T) {
 				{Tag: wire.FeedbagAttributesBuddyPrefs2Valid, Value: []byte{0x80, 0x00, 0x00, 0x00}},
 				{Tag: wire.FeedbagAttributesBuddyPrefs2, Value: []byte{0x80, 0x00, 0x00, 0x00}},
 			},
-			wantValid: true,
 			wantValue: true,
 		},
 		{
@@ -4561,7 +4537,6 @@ func TestFeedbagBuddyPref(t *testing.T) {
 				{Tag: wire.FeedbagAttributesBuddyPrefs2Valid, Value: []byte{0x80, 0x00, 0x00, 0x00}},
 				{Tag: wire.FeedbagAttributesBuddyPrefs2, Value: []byte{0x80, 0x00, 0x00, 0x00}},
 			},
-			wantValid: true,
 			wantValue: true,
 		},
 		{
@@ -4573,16 +4548,13 @@ func TestFeedbagBuddyPref(t *testing.T) {
 				{Tag: wire.FeedbagAttributesBuddyPrefs2Valid, Value: []byte{0x40, 0x00, 0x00, 0x00}},
 				{Tag: wire.FeedbagAttributesBuddyPrefs2, Value: []byte{0x40, 0x00, 0x00, 0x00}},
 			},
-			wantValid: true,
 			wantValue: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			valid, value := feedbagBuddyPref(tt.itemType, tt.list)
-			assert.Equal(t, tt.wantValid, valid)
-			assert.Equal(t, tt.wantValue, value)
+			assert.Equal(t, tt.wantValue, wire.BuddyPref(tt.list, tt.itemType))
 		})
 	}
 }

@@ -1011,18 +1011,11 @@ func (s *FeedbagService) rejectContact(ctx context.Context, rejecter state.Ident
 func setSessionBuddyPrefs(items []wire.FeedbagItem, instance *state.SessionInstance) {
 	for _, item := range items {
 		if item.ClassID == wire.FeedbagClassIdBuddyPrefs {
-			_, wantsTyping := wire.BuddyPref(item.TLVList, wire.FeedbagBuddyPrefsDiscloseTyping)
+			wantsTyping := wire.BuddyPref(item.TLVList, wire.FeedbagBuddyPrefsDiscloseTyping)
 			instance.Session().SetTypingEventsEnabled(wantsTyping)
 			break
 		}
 	}
-}
-
-// feedbagBuddyPref returns whether preference prefNum is present in the user's
-// feedbag buddy-prefs bitmask (valid) and its boolean value. See wire.BuddyPref
-// for the bitmask layout.
-func feedbagBuddyPref(prefNum uint16, list wire.TLVList) (valid bool, value bool) {
-	return wire.BuddyPref(list, prefNum)
 }
 
 // ForwardICQAuthEvents converts ICQ channel-4 payloads to feedbag SNACs and

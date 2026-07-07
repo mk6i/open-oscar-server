@@ -20,100 +20,94 @@ type PreferenceHandler struct {
 	Logger         *slog.Logger
 }
 
-// buddyPref maps a Web AIM API preference to its OSCAR buddy-pref bit number
-// and the default value defined by the Web API spec.
-type buddyPref struct {
-	num uint16
-	def bool
-}
-
-// webBuddyPrefs maps Web AIM API preference names to OSCAR buddy prefs, which
-// are stored as a bitmask in the user's feedbag (see wire.BuddyPref). Pref
-// numbers 0x07, 0x13, and 0x17 are reserved/unused and intentionally absent.
-var webBuddyPrefs = map[string]buddyPref{
-	"displayLogin":                {wire.FeedbagBuddyPrefsDisplayLogin, true},
-	"displayEBuddy":               {wire.FeedbagBuddyPrefsDisplayEBuddy, true},
-	"playEnter":                   {wire.FeedbagBuddyPrefsPlayEnter, true},
-	"playExit":                    {wire.FeedbagBuddyPrefsPlayExit, true},
-	"viewIMTimestamps":            {wire.FeedbagBuddyPrefsViewIMStamp, true},
-	"viewSmilies":                 {wire.FeedbagBuddyPrefsViewSmileys, true},
-	"acceptIcons":                 {wire.FeedbagBuddyPrefsAcceptIcons, true},
-	"knockNonAOLIMs":              {wire.FeedbagBuddyPrefsKnockNonAOLIMs, true},
-	"knockNonListIMs":             {wire.FeedbagBuddyPrefsKnockNonListIMs, true},
-	"discloseIdle":                {wire.FeedbagBuddyPrefsDiscloseIdle, true},
-	"acceptCustomBart":            {wire.FeedbagBuddyPrefsAcceptCustomBart, false},
-	"acceptNonListBart":           {wire.FeedbagBuddyPrefsAcceptNonListBart, false},
-	"acceptBgs":                   {wire.FeedbagBuddyPrefsAcceptBgs, true},
-	"acceptChromes":               {wire.FeedbagBuddyPrefsAcceptChromes, true},
-	"acceptBLSounds":              {wire.FeedbagBuddyPrefsAcceptBLSounds, true},
-	"acceptIMsounds":              {wire.FeedbagBuddyPrefsAcceptIMSounds, true},
-	"noSeeRecentBuddies":          {wire.FeedbagBuddyPrefsNoSeeRecentBuddies, false},
-	"acceptSMSLegal":              {wire.FeedbagBuddyPrefsAcceptSMSLegal, false},
-	"enterDoesCRLF":               {wire.FeedbagBuddyPrefsEnterDoesCRLF, false},
-	"playIMSound":                 {wire.FeedbagBuddyPrefsPlayIMSound, true},
-	"discloseTyping":              {wire.FeedbagBuddyPrefsDiscloseTyping, true},
-	"acceptSuperIcons":            {wire.FeedbagBuddyPrefsAcceptSuperIcons, true},
-	"acceptBLRichText":            {wire.FeedbagBuddyPrefsAcceptBLRichText, true},
-	"reduceIMSound":               {wire.FeedbagBuddyPrefsReduceIMSound, true},
-	"confirmDirectIM":             {wire.FeedbagBuddyPrefsConfirmDirectIM, true},
-	"oneTabbedIMWindow":           {wire.FeedbagBuddyPrefsOneTabbedIMWindow, true},
-	"buddyInfoOnMouseover":        {wire.FeedbagBuddyPrefsBuddyInfoOnMouseover, true},
-	"discloseBuddyMatches":        {wire.FeedbagBuddyPrefsDiscloseBuddyMatches, true},
-	"catchIMs":                    {wire.FeedbagBuddyPrefsCatchIMs, false},
-	"showFriendlyName":            {wire.FeedbagBuddyPrefsShowFriendlyName, true},
-	"discloseRadio":               {wire.FeedbagBuddyPrefsDiscloseRadio, true},
-	"showCapabilities":            {wire.FeedbagBuddyPrefsShowCapabilities, true},
-	"showBuddyListFilter":         {wire.FeedbagBuddyPrefsShowBuddyListFilter, true},
-	"showAwayIdle":                {wire.FeedbagBuddyPrefsShowAwayIdle, true},
-	"showMobile":                  {wire.FeedbagBuddyPrefsShowMobile, true},
-	"sortBuddyList":               {wire.FeedbagBuddyPrefsSortBuddyList, false},
-	"catchIMsForClient":           {wire.FeedbagBuddyPrefsCatchIMsForClient, false},
-	"newMessageSmallNotification": {wire.FeedbagBuddyPrefsNewMessageSmallNotify, true},
-	"noFrequentBuddies":           {wire.FeedbagBuddyPrefsNoFrequentBuddies, false},
-	"blogAwayMessages":            {wire.FeedbagBuddyPrefsBlogAwayMessages, false},
-	"blogAIMSigMessages":          {wire.FeedbagBuddyPrefsBlogAIMSigMessages, false},
-	"blogNoComments":              {wire.FeedbagBuddyPrefsBlogNoComments, false},
-	"friendOfFriend":              {wire.FeedbagBuddyPrefsFriendOfFriend, false},
-	"friendGetContactList":        {wire.FeedbagBuddyPrefsFriendGetContactList, false},
-	"compadInit":                  {wire.FeedbagBuddyPrefsCompadInit, false},
-	"sendBuddyFeed":               {wire.FeedbagBuddyPrefsSendBuddyFeed, true},
-	"blkSendIMWhileAway":          {wire.FeedbagBuddyPrefsBlkSendIMWhileAway, false},
-	"showBuddyFeed":               {wire.FeedbagBuddyPrefsShowBuddyFeed, true},
-	"noSaveVanityInfo":            {wire.FeedbagBuddyPrefsNoSaveVanityInfo, false},
-	"acceptOffLineIM":             {wire.FeedbagBuddyPrefsAcceptOfflineIM, true},
-	"showGroups":                  {wire.FeedbagBuddyPrefsShowGroups, true},
-	"sortGroup":                   {wire.FeedbagBuddyPrefsSortGroup, true},
-	"showOffLineBuddies":          {wire.FeedbagBuddyPrefsShowOfflineBuddies, true},
-	"expandBuddies":               {wire.FeedbagBuddyPrefsExpandBuddies, false},
-	"thirdPartyFeeds":             {wire.FeedbagBuddyPrefsThirdPartyFeeds, false},
-	"notifyReceivedInvite":        {wire.FeedbagBuddyPrefsNotifyReceivedInvite, true},
-	"apfAutoAccept":               {wire.FeedbagBuddyPrefsApfAutoAccept, false},
-	"apfAutoAcceptBuddy":          {wire.FeedbagBuddyPrefsApfAutoAcceptBuddy, false},
-	"blockAwayMsgFeed":            {wire.FeedbagBuddyPrefsBlockAwayMsgFeed, false},
-	"blockAIMProfileFeed":         {wire.FeedbagBuddyPrefsBlockAIMProfileFeed, false},
-	"blockAIMPagesFeed":           {wire.FeedbagBuddyPrefsBlockAIMPagesFeed, false},
-	"blockJournalsFeed":           {wire.FeedbagBuddyPrefsBlockJournalsFeed, false},
-	"blockLocationFeed":           {wire.FeedbagBuddyPrefsBlockLocationFeed, false},
-	"blockStickiesFeed":           {wire.FeedbagBuddyPrefsBlockStickiesFeed, false},
-	"blockUncutFeed":              {wire.FeedbagBuddyPrefsBlockUncutFeed, false},
-	"blockLinksFeed":              {wire.FeedbagBuddyPrefsBlockLinksFeed, false},
-	"blockAIMBulletinFeed":        {wire.FeedbagBuddyPrefsBlockAIMBulletinFeed, false},
-	"saveStatusMsg":               {wire.FeedbagBuddyPrefsSaveStatusMsg, true},
+// webBuddyPrefs maps Web AIM API preference names to OSCAR buddy-pref bit
+// numbers, which are stored as a bitmask in the user's feedbag (see
+// wire.BuddyPref). Default values for absent prefs are owned by wire.BuddyPref,
+// not here.
+var webBuddyPrefs = map[string]uint16{
+	"displayLogin":                wire.FeedbagBuddyPrefsDisplayLogin,
+	"displayEBuddy":               wire.FeedbagBuddyPrefsDisplayEBuddy,
+	"playEnter":                   wire.FeedbagBuddyPrefsPlayEnter,
+	"playExit":                    wire.FeedbagBuddyPrefsPlayExit,
+	"viewIMTimestamps":            wire.FeedbagBuddyPrefsViewIMStamp,
+	"viewSmilies":                 wire.FeedbagBuddyPrefsViewSmileys,
+	"acceptIcons":                 wire.FeedbagBuddyPrefsAcceptIcons,
+	"knockNonAOLIMs":              wire.FeedbagBuddyPrefsKnockNonAOLIMs,
+	"knockNonListIMs":             wire.FeedbagBuddyPrefsKnockNonListIMs,
+	"discloseIdle":                wire.FeedbagBuddyPrefsDiscloseIdle,
+	"acceptCustomBart":            wire.FeedbagBuddyPrefsAcceptCustomBart,
+	"acceptNonListBart":           wire.FeedbagBuddyPrefsAcceptNonListBart,
+	"acceptBgs":                   wire.FeedbagBuddyPrefsAcceptBgs,
+	"acceptChromes":               wire.FeedbagBuddyPrefsAcceptChromes,
+	"acceptBLSounds":              wire.FeedbagBuddyPrefsAcceptBLSounds,
+	"acceptIMsounds":              wire.FeedbagBuddyPrefsAcceptIMSounds,
+	"noSeeRecentBuddies":          wire.FeedbagBuddyPrefsNoSeeRecentBuddies,
+	"acceptSMSLegal":              wire.FeedbagBuddyPrefsAcceptSMSLegal,
+	"enterDoesCRLF":               wire.FeedbagBuddyPrefsEnterDoesCRLF,
+	"playIMSound":                 wire.FeedbagBuddyPrefsPlayIMSound,
+	"discloseTyping":              wire.FeedbagBuddyPrefsDiscloseTyping,
+	"acceptSuperIcons":            wire.FeedbagBuddyPrefsAcceptSuperIcons,
+	"acceptBLRichText":            wire.FeedbagBuddyPrefsAcceptBLRichText,
+	"reduceIMSound":               wire.FeedbagBuddyPrefsReduceIMSound,
+	"confirmDirectIM":             wire.FeedbagBuddyPrefsConfirmDirectIM,
+	"oneTabbedIMWindow":           wire.FeedbagBuddyPrefsOneTabbedIMWindow,
+	"buddyInfoOnMouseover":        wire.FeedbagBuddyPrefsBuddyInfoOnMouseover,
+	"discloseBuddyMatches":        wire.FeedbagBuddyPrefsDiscloseBuddyMatches,
+	"catchIMs":                    wire.FeedbagBuddyPrefsCatchIMs,
+	"showFriendlyName":            wire.FeedbagBuddyPrefsShowFriendlyName,
+	"discloseRadio":               wire.FeedbagBuddyPrefsDiscloseRadio,
+	"showCapabilities":            wire.FeedbagBuddyPrefsShowCapabilities,
+	"showBuddyListFilter":         wire.FeedbagBuddyPrefsShowBuddyListFilter,
+	"showAwayIdle":                wire.FeedbagBuddyPrefsShowAwayIdle,
+	"showMobile":                  wire.FeedbagBuddyPrefsShowMobile,
+	"sortBuddyList":               wire.FeedbagBuddyPrefsSortBuddyList,
+	"catchIMsForClient":           wire.FeedbagBuddyPrefsCatchIMsForClient,
+	"newMessageSmallNotification": wire.FeedbagBuddyPrefsNewMessageSmallNotify,
+	"noFrequentBuddies":           wire.FeedbagBuddyPrefsNoFrequentBuddies,
+	"blogAwayMessages":            wire.FeedbagBuddyPrefsBlogAwayMessages,
+	"blogAIMSigMessages":          wire.FeedbagBuddyPrefsBlogAIMSigMessages,
+	"blogNoComments":              wire.FeedbagBuddyPrefsBlogNoComments,
+	"friendOfFriend":              wire.FeedbagBuddyPrefsFriendOfFriend,
+	"friendGetContactList":        wire.FeedbagBuddyPrefsFriendGetContactList,
+	"compadInit":                  wire.FeedbagBuddyPrefsCompadInit,
+	"sendBuddyFeed":               wire.FeedbagBuddyPrefsSendBuddyFeed,
+	"blkSendIMWhileAway":          wire.FeedbagBuddyPrefsBlkSendIMWhileAway,
+	"showBuddyFeed":               wire.FeedbagBuddyPrefsShowBuddyFeed,
+	"noSaveVanityInfo":            wire.FeedbagBuddyPrefsNoSaveVanityInfo,
+	"acceptOffLineIM":             wire.FeedbagBuddyPrefsAcceptOfflineIM,
+	"showGroups":                  wire.FeedbagBuddyPrefsShowGroups,
+	"sortGroup":                   wire.FeedbagBuddyPrefsSortGroup,
+	"showOffLineBuddies":          wire.FeedbagBuddyPrefsShowOfflineBuddies,
+	"expandBuddies":               wire.FeedbagBuddyPrefsExpandBuddies,
+	"thirdPartyFeeds":             wire.FeedbagBuddyPrefsThirdPartyFeeds,
+	"notifyReceivedInvite":        wire.FeedbagBuddyPrefsNotifyReceivedInvite,
+	"apfAutoAccept":               wire.FeedbagBuddyPrefsApfAutoAccept,
+	"apfAutoAcceptBuddy":          wire.FeedbagBuddyPrefsApfAutoAcceptBuddy,
+	"blockAwayMsgFeed":            wire.FeedbagBuddyPrefsBlockAwayMsgFeed,
+	"blockAIMProfileFeed":         wire.FeedbagBuddyPrefsBlockAIMProfileFeed,
+	"blockAIMPagesFeed":           wire.FeedbagBuddyPrefsBlockAIMPagesFeed,
+	"blockJournalsFeed":           wire.FeedbagBuddyPrefsBlockJournalsFeed,
+	"blockLocationFeed":           wire.FeedbagBuddyPrefsBlockLocationFeed,
+	"blockStickiesFeed":           wire.FeedbagBuddyPrefsBlockStickiesFeed,
+	"blockUncutFeed":              wire.FeedbagBuddyPrefsBlockUncutFeed,
+	"blockLinksFeed":              wire.FeedbagBuddyPrefsBlockLinksFeed,
+	"blockAIMBulletinFeed":        wire.FeedbagBuddyPrefsBlockAIMBulletinFeed,
+	"saveStatusMsg":               wire.FeedbagBuddyPrefsSaveStatusMsg,
 	// Not in the spec Preferences enum, but sent by the web client.
-	"apfNotifyReceivedInviteByEmail": {wire.FeedbagBuddyPrefsApfNotifyReceivedByEmail, false},
-	"showOfflineGrp":                 {wire.FeedbagBuddyPrefsShowOfflineGrp, true},
-	"offlineGrpCollapsed":            {wire.FeedbagBuddyPrefsOfflineGrpCollapsed, false},
-	"firstImSoundOnly":               {wire.FeedbagBuddyPrefsFirstIMSoundOnly, false},
-	"imblastInviteNotify":            {wire.FeedbagBuddyPrefsImblastInviteNotify, true},
+	"apfNotifyReceivedInviteByEmail": wire.FeedbagBuddyPrefsApfNotifyReceivedByEmail,
+	"showOfflineGrp":                 wire.FeedbagBuddyPrefsShowOfflineGrp,
+	"offlineGrpCollapsed":            wire.FeedbagBuddyPrefsOfflineGrpCollapsed,
+	"firstImSoundOnly":               wire.FeedbagBuddyPrefsFirstIMSoundOnly,
+	"imblastInviteNotify":            wire.FeedbagBuddyPrefsImblastInviteNotify,
 
 	// Web-client-only preferences with no OSCAR buddy-pref equivalent. OSCAR
 	// defines prefs through 0x4B, so we persist these in the same feedbag
 	// buddy-prefs bitmask at positions above that range; no real OSCAR client
 	// reads or writes these bits.
-	"viewIMsInBubbles":           {wire.FeedbagBuddyPrefsViewIMsInBubbles, true},
-	"viewIMTimestampsRelative":   {wire.FeedbagBuddyPrefsViewIMTimestampsRelative, false},
-	"globalOTR":                  {wire.FeedbagBuddyPrefsGlobalOTR, false},
-	"imblastInviteFromBuddyOnly": {wire.FeedbagBuddyPrefsImblastInviteFromBuddyOnly, false},
+	"viewIMsInBubbles":           wire.FeedbagBuddyPrefsViewIMsInBubbles,
+	"viewIMTimestampsRelative":   wire.FeedbagBuddyPrefsViewIMTimestampsRelative,
+	"globalOTR":                  wire.FeedbagBuddyPrefsGlobalOTR,
+	"imblastInviteFromBuddyOnly": wire.FeedbagBuddyPrefsImblastInviteFromBuddyOnly,
 }
 
 // PermitDenyData contains permit/deny list information.
@@ -170,7 +164,7 @@ func (h *PreferenceHandler) SetPreferences(w http.ResponseWriter, r *http.Reques
 			continue
 		}
 		on := parseBoolPref(val)
-		item.TLVList = wire.SetBuddyPref(item.TLVList, pref.num, on)
+		item.TLVList = wire.SetBuddyPref(item.TLVList, pref, on)
 		applied[name] = boolToPrefInt(on)
 	}
 
@@ -329,16 +323,12 @@ func effectiveBuddyPrefs(list wire.TLVList) map[string]interface{} {
 	return prefs
 }
 
-// effectivePrefValue returns the 0/1 value for pref, using the feedbag value
-// when present and the spec default otherwise. Values are emitted as numbers
-// (not "1"/"0" strings) because the web client evaluates them with JavaScript
-// truthiness/numeric comparisons, where the string "0" is truthy.
-func effectivePrefValue(list wire.TLVList, pref buddyPref) int {
-	valid, val := wire.BuddyPref(list, pref.num)
-	if !valid {
-		val = pref.def
-	}
-	return boolToPrefInt(val)
+// effectivePrefValue returns the 0/1 value for the buddy pref prefNum, deferring
+// to wire.BuddyPref for both the stored value and its default. Values are emitted
+// as numbers (not "1"/"0" strings) because the web client evaluates them with
+// JavaScript truthiness/numeric comparisons, where the string "0" is truthy.
+func effectivePrefValue(list wire.TLVList, prefNum uint16) int {
+	return boolToPrefInt(wire.BuddyPref(list, prefNum))
 }
 
 // parseBoolPref interprets a Web API preference query value as a boolean.
