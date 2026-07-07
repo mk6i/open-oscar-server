@@ -23,8 +23,7 @@ type Handler struct {
 	// Phase 2 additions
 	BuddyBroadcaster BuddyBroadcaster
 	// Phase 4 additions for OSCAR Bridge
-	OSCARBridgeStore OSCARBridgeStore
-	OSCARConfig      OSCARConfig
+	OSCARConfig OSCARConfig
 	// Phase 5 additions for buddy list and messaging
 	BuddyListManager   interface{}
 	RecalcWarning      func(ctx context.Context, instance *state.SessionInstance) error

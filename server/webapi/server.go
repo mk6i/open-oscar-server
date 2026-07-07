@@ -81,7 +81,6 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 		SessionManager:   sessionManager,
 		OSCARAuthService: handler.AuthService,
 		CookieBaker:      handler.CookieBaker,
-		BridgeStore:      handler.OSCARBridgeStore,
 		Config:           handler.OSCARConfig,
 		Logger:           logger,
 	}

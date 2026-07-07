@@ -225,14 +225,13 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 	if authToken != "" && h.OSCARSessionManager != nil {
 		fnCfg := func(sess *state.Session) {
 			sess.OnSessionClose(func() {
-				if !shuttingDown(ctx) {
-					if err := h.BuddyBroadcaster.BroadcastBuddyDeparted(ctx, sess.IdentScreenName()); err != nil {
-						h.Logger.ErrorContext(ctx, "error sending buddy departure notifications", "err", err.Error())
-					}
-				}
-
 				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 				defer cancel()
+
+				// todo - a better way to detect server shutdowns
+				if err := h.BuddyBroadcaster.BroadcastBuddyDeparted(ctx, sess.IdentScreenName()); err != nil {
+					h.Logger.ErrorContext(ctx, "error sending buddy departure notifications", "err", err.Error())
+				}
 
 				// buddy list must be cleared before session is closed, otherwise
 				// there will be a race condition that could cause the buddy list
@@ -637,31 +636,33 @@ func (h *SessionHandler) EndSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Clean up OSCAR session if present
-	if session.OSCARSession != nil && h.OSCARSessionManager != nil {
-		// Broadcast departure to OSCAR clients
-		if h.BuddyBroadcaster != nil {
-			if err := h.BuddyBroadcaster.BroadcastBuddyDeparted(ctx, session.OSCARSession.IdentScreenName()); err != nil {
-				h.Logger.ErrorContext(ctx, "failed to broadcast buddy departure", "err", err.Error())
-			}
-		}
+	//// Clean up OSCAR session if present
+	//if session.OSCARSession != nil && h.OSCARSessionManager != nil {
+	//	// Broadcast departure to OSCAR clients
+	//	if h.BuddyBroadcaster != nil {
+	//		if err := h.BuddyBroadcaster.BroadcastBuddyDeparted(ctx, session.OSCARSession.IdentScreenName()); err != nil {
+	//			h.Logger.ErrorContext(ctx, "failed to broadcast buddy departure", "err", err.Error())
+	//		}
+	//	}
+	//
+	//	// Unregister buddy list
+	//	if h.BuddyListRegistry != nil {
+	//		if err := h.BuddyListRegistry.UnregisterBuddyList(ctx, session.ScreenName.IdentScreenName()); err != nil {
+	//			h.Logger.ErrorContext(ctx, "failed to unregister buddy list", "err", err.Error())
+	//		}
+	//	}
+	//
+	//	h.OSCARSessionManager.RemoveSession(session.OSCARSession.Session())
+	//}
+	//
+	//// Remove session
+	//if err := h.SessionManager.RemoveSession(r.Context(), aimsid); err != nil {
+	//	h.Logger.ErrorContext(ctx, "failed to remove session", "err", err.Error())
+	//	h.sendError(w, r, http.StatusInternalServerError, "failed to end session")
+	//	return
+	//}
 
-		// Unregister buddy list
-		if h.BuddyListRegistry != nil {
-			if err := h.BuddyListRegistry.UnregisterBuddyList(ctx, session.ScreenName.IdentScreenName()); err != nil {
-				h.Logger.ErrorContext(ctx, "failed to unregister buddy list", "err", err.Error())
-			}
-		}
-
-		h.OSCARSessionManager.RemoveSession(session.OSCARSession.Session())
-	}
-
-	// Remove session
-	if err := h.SessionManager.RemoveSession(r.Context(), aimsid); err != nil {
-		h.Logger.ErrorContext(ctx, "failed to remove session", "err", err.Error())
-		h.sendError(w, r, http.StatusInternalServerError, "failed to end session")
-		return
-	}
+	session.OSCARSession.CloseInstance()
 
 	// Send response
 	resp := EndSessionResponse{}

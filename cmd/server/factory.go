@@ -583,8 +583,7 @@ func WebAPI(deps Container) *webapi.Server {
 		// Phase 2 additions
 		BuddyBroadcaster: oscarBuddyBroadcaster,
 		// Phase 4 additions for OSCAR Bridge
-		OSCARBridgeStore: deps.sqLiteUserStore.NewOSCARBridgeStore(),
-		OSCARConfig:      webapi.NewOSCARConfigAdapter(deps.cfg),
+		OSCARConfig: webapi.NewOSCARConfigAdapter(deps.cfg),
 		// Phase 5 additions for buddy list and messaging
 		BuddyListManager:   buddyListManager,
 		ChatSessionManager: deps.chatSessionManager,

@@ -27,6 +27,10 @@ type WebAPISession struct {
 	AimSID              string                                         // Unique session ID for web client
 	ScreenName          DisplayScreenName                              // User identity
 	OSCARSession        *SessionInstance                               // Bridge to existing OSCAR session
+	OSCARCookie         []byte                                         // OSCAR auth cookie for the startOSCARSession handoff
+	BOSHost             string                                         // BOS host advertised to the web client
+	BOSPort             int                                            // BOS port advertised to the web client
+	UseSSL              bool                                           // Whether the handoff advertised an SSL BOS connection
 	Events              []string                                       // Subscribed event types
 	EventQueue          *types.EventQueue                              // Per-session event queue
 	DevID               string                                         // Developer ID that created this session
@@ -465,25 +469,6 @@ func (m *WebAPISessionManager) GetAllSessions(ctx context.Context) []*WebAPISess
 			sessions = append(sessions, session)
 		}
 	}
-	return sessions
-}
-
-// GetSessionsByScreenName returns all sessions for a given screen name.
-func (m *WebAPISessionManager) GetSessionsByScreenName(ctx context.Context, screenName DisplayScreenName) []*WebAPISession {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	var sessions []*WebAPISession
-	identScreenName := screenName.IdentScreenName()
-
-	// Check both the byUser map and iterate through all sessions
-	// since a user might have multiple sessions
-	for _, session := range m.sessions {
-		if session.ScreenName.IdentScreenName() == identScreenName {
-			sessions = append(sessions, session)
-		}
-	}
-
 	return sessions
 }
 

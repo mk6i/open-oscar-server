@@ -22,7 +22,6 @@ type OSCARBridgeHandler struct {
 	SessionManager   *state.WebAPISessionManager
 	OSCARAuthService OSCARAuthService
 	CookieBaker      CookieBaker
-	BridgeStore      OSCARBridgeStore
 	Config           OSCARConfig
 	Logger           *slog.Logger
 }
@@ -43,16 +42,6 @@ type CookieBaker interface {
 	Issue(data []byte) ([]byte, error)
 	// Crack verifies and decodes an authentication cookie
 	Crack(data []byte) ([]byte, error)
-}
-
-// OSCARBridgeStore manages the persistence of OSCAR bridge sessions.
-type OSCARBridgeStore interface {
-	// SaveBridgeSession stores the mapping between WebAPI and OSCAR sessions
-	SaveBridgeSession(ctx context.Context, webSessionID string, oscarCookie []byte, bosHost string, bosPort int) error
-	// GetBridgeSession retrieves bridge session details
-	GetBridgeSession(ctx context.Context, webSessionID string) (*state.OSCARBridgeSession, error)
-	// DeleteBridgeSession removes a bridge session
-	DeleteBridgeSession(ctx context.Context, webSessionID string) error
 }
 
 // OSCARConfig provides configuration for OSCAR services.
@@ -218,15 +207,12 @@ func (h *OSCARBridgeHandler) StartOSCARSession(w http.ResponseWriter, r *http.Re
 		host, port = h.Config.GetBOSAddress()
 	}
 
-	// Store bridge session in database
-	if h.BridgeStore != nil {
-		if err := h.BridgeStore.SaveBridgeSession(ctx, aimsid, cookie, host, port); err != nil {
-			h.Logger.Error("failed to save bridge session",
-				"error", err,
-				"aimsid", aimsid)
-			// Continue anyway - the bridge will work without persistence
-		}
-	}
+	// Record the bridge details on the session so a repeat startOSCARSession
+	// can return the same connection details via returnExistingBridge.
+	session.OSCARCookie = cookie
+	session.BOSHost = host
+	session.BOSPort = port
+	session.UseSSL = useSSL
 
 	// Prepare response
 	resp := h.buildResponse(host, port, cookie, useSSL, compress)
@@ -292,14 +278,11 @@ func (h *OSCARBridgeHandler) parseBoolParam(value string) bool {
 
 // returnExistingBridge returns details for an existing OSCAR bridge.
 func (h *OSCARBridgeHandler) returnExistingBridge(w http.ResponseWriter, r *http.Request, session *state.WebAPISession) {
-	// Retrieve existing bridge details from store
-	if h.BridgeStore != nil {
-		bridge, err := h.BridgeStore.GetBridgeSession(r.Context(), session.AimSID)
-		if err == nil && bridge != nil {
-			resp := h.buildResponse(bridge.BOSHost, bridge.BOSPort, bridge.OSCARCookie, bridge.UseSSL, false)
-			h.sendResponse(w, r, resp)
-			return
-		}
+	// Reuse the bridge details recorded on the session by StartOSCARSession.
+	if len(session.OSCARCookie) > 0 {
+		resp := h.buildResponse(session.BOSHost, session.BOSPort, session.OSCARCookie, session.UseSSL, false)
+		h.sendResponse(w, r, resp)
+		return
 	}
 
 	// If we can't retrieve the bridge, return an error
