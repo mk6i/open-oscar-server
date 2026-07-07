@@ -636,32 +636,6 @@ func (h *SessionHandler) EndSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//// Clean up OSCAR session if present
-	//if session.OSCARSession != nil && h.OSCARSessionManager != nil {
-	//	// Broadcast departure to OSCAR clients
-	//	if h.BuddyBroadcaster != nil {
-	//		if err := h.BuddyBroadcaster.BroadcastBuddyDeparted(ctx, session.OSCARSession.IdentScreenName()); err != nil {
-	//			h.Logger.ErrorContext(ctx, "failed to broadcast buddy departure", "err", err.Error())
-	//		}
-	//	}
-	//
-	//	// Unregister buddy list
-	//	if h.BuddyListRegistry != nil {
-	//		if err := h.BuddyListRegistry.UnregisterBuddyList(ctx, session.ScreenName.IdentScreenName()); err != nil {
-	//			h.Logger.ErrorContext(ctx, "failed to unregister buddy list", "err", err.Error())
-	//		}
-	//	}
-	//
-	//	h.OSCARSessionManager.RemoveSession(session.OSCARSession.Session())
-	//}
-	//
-	//// Remove session
-	//if err := h.SessionManager.RemoveSession(r.Context(), aimsid); err != nil {
-	//	h.Logger.ErrorContext(ctx, "failed to remove session", "err", err.Error())
-	//	h.sendError(w, r, http.StatusInternalServerError, "failed to end session")
-	//	return
-	//}
-
 	session.OSCARSession.CloseInstance()
 
 	// Send response

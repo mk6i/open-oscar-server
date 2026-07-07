@@ -9,10 +9,6 @@ type UserInfoStubHandler struct {
 	Logger *slog.Logger
 }
 
-func (h *UserInfoStubHandler) GetLocationsFollowing(w http.ResponseWriter, r *http.Request) {
-	h.emptyOK(w, r)
-}
-
 func (h *UserInfoStubHandler) GetUserDetails(w http.ResponseWriter, r *http.Request) {
 	resp := BaseResponse{}
 	resp.Response.StatusCode = 200

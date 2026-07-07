@@ -79,13 +79,6 @@ type TypingEvent struct {
 	TypingStatus string `json:"typingStatus"`
 }
 
-// BuddyListEvent represents a buddy list change event.
-type BuddyListEvent struct {
-	Action string      `json:"action"` // "add", "remove", "update"
-	Buddy  interface{} `json:"buddy"`
-	Group  string      `json:"group,omitempty"`
-}
-
 // EventQueue manages a queue of events for a WebAPI session.
 type EventQueue struct {
 	events   []Event
@@ -214,22 +207,6 @@ func (q *EventQueue) GetAllEvents() []Event {
 	return result
 }
 
-// Clear removes all events from the queue.
-func (q *EventQueue) Clear() {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-
-	q.events = make([]Event, 0)
-}
-
-// Size returns the current number of events in the queue.
-func (q *EventQueue) Size() int {
-	q.mu.RLock()
-	defer q.mu.RUnlock()
-
-	return len(q.events)
-}
-
 // Close closes the event queue, unblocking any waiting fetchers.
 func (q *EventQueue) Close() {
 	q.closedMu.Lock()
@@ -250,11 +227,4 @@ notifyWaiters:
 			break notifyWaiters
 		}
 	}
-}
-
-// IsClosed returns whether the queue is closed.
-func (q *EventQueue) IsClosed() bool {
-	q.closedMu.RLock()
-	defer q.closedMu.RUnlock()
-	return q.closed
 }

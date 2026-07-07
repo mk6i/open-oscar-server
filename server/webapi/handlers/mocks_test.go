@@ -9,27 +9,6 @@ import (
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
-// MockSessionRetriever is a mock implementation of SessionRetriever
-type MockSessionRetriever struct {
-	mock.Mock
-}
-
-func (m *MockSessionRetriever) AllSessions() []*state.Session {
-	args := m.Called()
-	if sessions := args.Get(0); sessions != nil {
-		return sessions.([]*state.Session)
-	}
-	return nil
-}
-
-func (m *MockSessionRetriever) RetrieveSession(screenName state.IdentScreenName) *state.Session {
-	args := m.Called(screenName)
-	if session := args.Get(0); session != nil {
-		return session.(*state.Session)
-	}
-	return nil
-}
-
 // MockLocateService is a mock implementation of LocateService
 type MockLocateService struct {
 	mock.Mock

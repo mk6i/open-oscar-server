@@ -239,7 +239,7 @@ func TestSendAMF(t *testing.T) {
 			}
 
 			w := httptest.NewRecorder()
-			SendAMF(w, tt.request, tt.data, nil)
+			sendAMF(w, tt.request, tt.data, nil)
 
 			resp := w.Result()
 			if resp.StatusCode != tt.expectStatus {

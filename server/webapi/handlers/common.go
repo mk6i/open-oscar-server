@@ -10,20 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-
-	"github.com/mk6i/open-oscar-server/state"
 )
-
-// SessionRetriever provides methods to retrieve OSCAR sessions.
-type SessionRetriever interface {
-	AllSessions() []*state.Session
-	RetrieveSession(screenName state.IdentScreenName) *state.Session
-}
-
-// CommonHandler provides shared utilities for all Web API handlers.
-type CommonHandler struct {
-	Logger *slog.Logger
-}
 
 // BaseResponse is the standard response envelope for all Web API responses.
 // It supports both JSON and XML marshaling.
@@ -118,20 +105,20 @@ func SendResponse(w http.ResponseWriter, r *http.Request, data interface{}, logg
 	// Check for format parameter (f for format or callback for JSONP)
 	// First check URL query parameters
 	format := strings.ToLower(r.URL.Query().Get("f"))
-	callback := JSONPCallback(r)
+	callback := jsonpCallback(r)
 
 	// If format not in URL query, check form values (for POST requests)
 	if format == "" && r.Method == "POST" {
 		_ = r.ParseForm()
 		format = strings.ToLower(r.FormValue("f"))
 		if callback == "" {
-			callback = JSONPCallback(r)
+			callback = jsonpCallback(r)
 		}
 	}
 
 	// Check for AMF format first
 	if format == "amf" || format == "amf3" {
-		SendAMF(w, r, data, logger)
+		sendAMF(w, r, data, logger)
 		return
 	}
 
@@ -139,24 +126,24 @@ func SendResponse(w http.ResponseWriter, r *http.Request, data interface{}, logg
 	accept := strings.ToLower(r.Header.Get("Accept"))
 	if strings.Contains(accept, "application/x-amf") ||
 		strings.Contains(accept, "application/amf") {
-		SendAMF(w, r, data, logger)
+		sendAMF(w, r, data, logger)
 		return
 	}
 
 	// If callback is provided, it's JSONP
 	if callback != "" {
-		SendJSONP(w, callback, data, logger)
+		sendJSONP(w, callback, data, logger)
 		return
 	}
 
 	// Check for XML format
 	if format == "xml" {
-		SendXML(w, data, logger)
+		sendXML(w, data, logger)
 		return
 	}
 
 	// Default to JSON
-	SendJSON(w, data, logger)
+	sendJSON(w, data, logger)
 }
 
 // SendError sends an error response in the appropriate format.
@@ -165,16 +152,16 @@ func SendError(w http.ResponseWriter, statusCode int, message string) {
 	contentType := w.Header().Get("Content-Type")
 
 	if strings.Contains(contentType, "amf") {
-		SendAMFError(w, nil, statusCode, message, nil)
+		sendAMFError(w, nil, statusCode, message, nil)
 	} else if strings.Contains(contentType, "xml") {
-		SendXMLError(w, statusCode, message)
+		sendXMLError(w, statusCode, message)
 	} else {
-		SendJSONError(w, statusCode, message)
+		sendJSONError(w, statusCode, message)
 	}
 }
 
-// SendJSONError sends a JSON error response.
-func SendJSONError(w http.ResponseWriter, statusCode int, message string) {
+// sendJSONError sends a JSON error response.
+func sendJSONError(w http.ResponseWriter, statusCode int, message string) {
 	resp := ErrorResponse{}
 	resp.Response.StatusCode = statusCode
 	resp.Response.StatusText = message
@@ -184,8 +171,8 @@ func SendJSONError(w http.ResponseWriter, statusCode int, message string) {
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
-// SendXMLError sends an XML error response.
-func SendXMLError(w http.ResponseWriter, statusCode int, message string) {
+// sendXMLError sends an XML error response.
+func sendXMLError(w http.ResponseWriter, statusCode int, message string) {
 	resp := ErrorResponse{}
 	resp.StatusCode = statusCode
 	resp.StatusText = message
@@ -205,8 +192,8 @@ func SendXMLError(w http.ResponseWriter, statusCode int, message string) {
 	_, _ = w.Write([]byte(xmlOutput))
 }
 
-// SendJSON sends a JSON response.
-func SendJSON(w http.ResponseWriter, data interface{}, logger *slog.Logger) {
+// sendJSON sends a JSON response.
+func sendJSON(w http.ResponseWriter, data interface{}, logger *slog.Logger) {
 	w.Header().Set("Content-Type", "application/json")
 	body, err := json.Marshal(data)
 	if err != nil {
@@ -223,8 +210,8 @@ func SendJSON(w http.ResponseWriter, data interface{}, logger *slog.Logger) {
 	}
 }
 
-// SendXML sends an XML response.
-func SendXML(w http.ResponseWriter, data interface{}, logger *slog.Logger) {
+// sendXML sends an XML response.
+func sendXML(w http.ResponseWriter, data interface{}, logger *slog.Logger) {
 	w.Header().Set("Content-Type", "text/xml; charset=utf-8")
 
 	// Convert BaseResponse with map data to a format XML can handle
@@ -238,7 +225,7 @@ func SendXML(w http.ResponseWriter, data interface{}, logger *slog.Logger) {
 		if logger != nil {
 			logger.Error("failed to marshal XML response", "err", err.Error())
 		}
-		SendXMLError(w, http.StatusInternalServerError, "internal server error")
+		sendXMLError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
@@ -250,20 +237,20 @@ func SendXML(w http.ResponseWriter, data interface{}, logger *slog.Logger) {
 	_, _ = w.Write([]byte(xmlOutput))
 }
 
-// JSONPCallback returns the JSONP callback name from the request.
+// jsonpCallback returns the JSONP callback name from the request.
 // Web AIM clients use the "c" query parameter; other callers may use "callback".
-func JSONPCallback(r *http.Request) string {
+func jsonpCallback(r *http.Request) string {
 	if callback := r.URL.Query().Get("c"); callback != "" {
 		return callback
 	}
 	return r.URL.Query().Get("callback")
 }
 
-// SendJSONP sends a JSONP response with the specified callback.
-func SendJSONP(w http.ResponseWriter, callback string, data interface{}, logger *slog.Logger) {
+// sendJSONP sends a JSONP response with the specified callback.
+func sendJSONP(w http.ResponseWriter, callback string, data interface{}, logger *slog.Logger) {
 	// Validate callback to prevent XSS
-	if !IsValidCallback(callback) {
-		SendJSONError(w, http.StatusBadRequest, "invalid callback parameter")
+	if !isValidCallback(callback) {
+		sendJSONError(w, http.StatusBadRequest, "invalid callback parameter")
 		return
 	}
 
@@ -272,7 +259,7 @@ func SendJSONP(w http.ResponseWriter, callback string, data interface{}, logger 
 		if logger != nil {
 			logger.Error("failed to marshal response", "err", err.Error())
 		}
-		SendJSONError(w, http.StatusInternalServerError, "internal server error")
+		sendJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
@@ -283,8 +270,8 @@ func SendJSONP(w http.ResponseWriter, callback string, data interface{}, logger 
 	_, _ = w.Write([]byte(");"))
 }
 
-// IsValidCallback validates a JSONP callback name to prevent XSS.
-func IsValidCallback(callback string) bool {
+// isValidCallback validates a JSONP callback name to prevent XSS.
+func isValidCallback(callback string) bool {
 	if len(callback) == 0 || len(callback) > 100 {
 		return false
 	}
@@ -302,8 +289,8 @@ func IsValidCallback(callback string) bool {
 	return true
 }
 
-// SendAMF sends an AMF response
-func SendAMF(w http.ResponseWriter, r *http.Request, data interface{}, logger *slog.Logger) {
+// sendAMF sends an AMF response
+func sendAMF(w http.ResponseWriter, r *http.Request, data interface{}, logger *slog.Logger) {
 	encoder := NewAMFEncoder(logger)
 	version := DetectAMFVersion(r)
 
@@ -316,7 +303,7 @@ func SendAMF(w http.ResponseWriter, r *http.Request, data interface{}, logger *s
 				"dataType", fmt.Sprintf("%T", data))
 		}
 		// Fall back to JSON error
-		SendJSONError(w, http.StatusInternalServerError, "AMF encoding failed")
+		sendJSONError(w, http.StatusInternalServerError, "AMF encoding failed")
 		return
 	}
 
@@ -409,8 +396,8 @@ func convertBaseResponseForXML(resp BaseResponse) XMLMapResponse {
 	return xmlResp
 }
 
-// SendAMFError sends an AMF error response
-func SendAMFError(w http.ResponseWriter, r *http.Request, statusCode int, message string, logger *slog.Logger) {
+// sendAMFError sends an AMF error response
+func sendAMFError(w http.ResponseWriter, r *http.Request, statusCode int, message string, logger *slog.Logger) {
 	errorResp := ErrorResponse{}
 	errorResp.Response.StatusCode = statusCode
 	errorResp.Response.StatusText = message
@@ -421,7 +408,7 @@ func SendAMFError(w http.ResponseWriter, r *http.Request, statusCode int, messag
 	amfData, err := encoder.EncodeAMF(errorResp, version)
 	if err != nil {
 		// If AMF encoding fails, fall back to JSON error
-		SendJSONError(w, statusCode, message)
+		sendJSONError(w, statusCode, message)
 		return
 	}
 

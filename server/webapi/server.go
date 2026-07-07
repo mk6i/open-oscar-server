@@ -250,32 +250,11 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 			return authMiddleware.AuthenticateFlexible(
 				authMiddleware.CORSMiddleware(http.HandlerFunc(h)))
 		}
+		// getUserDetails returns a minimal AIM identity. Every other lifestream/*
+		// method is an unimplemented social-feed feature; the subtree catch-all
+		// acknowledges them with an empty 200 so the client doesn't error.
 		mux.Handle("GET /lifestream/getUserDetails", lifestreamRoute(lifestreamStub.GetUserDetails))
-		mux.Handle("GET /lifestream/getLocationsFollowing", lifestreamRoute(lifestreamStub.GetLocationsFollowing))
-		for _, p := range []string{
-			"getAggregated",
-			"getNotifications",
-			"getSingle",
-			"getNotificationFilter",
-			"heyGetNotifications",
-			"heyMarkNotifications",
-			"deleteNotification",
-			"commonsFollow",
-			"commonsUnfollow",
-			"tdAddService",
-			"tdRemoveService",
-			"setUserPreference",
-			"getActivity",
-			"addComment",
-			"deleteComment",
-			"deleteActivity",
-			"addLike",
-			"deleteLike",
-			"setNotificationFilter",
-			"heyTakeAction",
-		} {
-			mux.Handle("GET /lifestream/"+p, lifestreamRoute(lifestreamStub.EmptyOK))
-		}
+		mux.Handle("GET /lifestream/", lifestreamRoute(lifestreamStub.EmptyOK))
 
 		// Unmatched paths (pattern "/" matches anything not covered by routes above).
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
