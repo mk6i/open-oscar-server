@@ -374,6 +374,44 @@ func TestPresenceHandler_SetState_InvalidState(t *testing.T) {
 	assert.Contains(t, rr.Body.String(), "invalid state parameter")
 }
 
+func TestPresenceHandler_SetState_EmitsMyInfoEvent(t *testing.T) {
+	// The AIM client re-renders its own status badge only from "myInfo" events,
+	// so setState must queue one on the user's own session for the change to be
+	// visible in their UI.
+	oscarInstance := state.NewSession().AddInstance()
+	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
+
+	broadcaster := &MockBuddyBroadcaster{}
+	broadcaster.On("BroadcastBuddyArrived", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	handler := &PresenceHandler{
+		SessionManager:   sessionMgr,
+		BuddyBroadcaster: broadcaster,
+		Logger:           slog.Default(),
+	}
+
+	req, err := http.NewRequest("GET", "/presence/setState?aimsid="+aimsid+"&state=away&awayMsg=brb", nil)
+	assert.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+	requireSession(handler.SessionManager, handler.SetState).ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusOK, rr.Code)
+
+	session, err := sessionMgr.GetSession(context.Background(), aimsid)
+	assert.NoError(t, err)
+
+	var myInfo map[string]interface{}
+	for _, event := range session.EventQueue.GetAllEvents() {
+		if event.Type == "myInfo" {
+			myInfo, _ = event.Data.(map[string]interface{})
+		}
+	}
+	assert.NotNil(t, myInfo, "expected a myInfo event to be queued")
+	assert.Equal(t, "away", myInfo["state"])
+	assert.Equal(t, "brb", myInfo["awayMsg"])
+	assert.Equal(t, "testuser", myInfo["aimId"])
+}
+
 func TestPresenceHandler_SetState_NoOSCARSession_Rejected(t *testing.T) {
 	// Anonymous (web-only, no OSCAR) sessions are rejected by the session
 	// middleware before the handler runs.

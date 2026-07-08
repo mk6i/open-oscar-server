@@ -347,6 +347,13 @@ func (h *PresenceHandler) SetState(w http.ResponseWriter, r *http.Request, sessi
 	// Queue presence event for other WebAPI sessions watching this user
 	h.broadcastPresenceEvent(session.ScreenName.IdentScreenName(), stateParam, awayMsg, "")
 
+	// Notify the user's own client so its status indicator re-renders. The AIM
+	// client updates its self-presence badge only from "myInfo" events; the
+	// "presence" broadcast above drives buddy dots, not the user's own state.
+	// Without this, changing to Busy/Away leaves the user still showing as
+	// available in their own UI.
+	h.pushMyInfo(session, stateParam, awayMsg, "")
+
 	h.Logger.InfoContext(ctx, "presence state updated",
 		"screenName", session.ScreenName.String(),
 		"state", stateParam,
@@ -391,6 +398,10 @@ func (h *PresenceHandler) SetStatus(w http.ResponseWriter, r *http.Request, sess
 
 	// Queue status event for other WebAPI sessions
 	h.broadcastPresenceEvent(session.ScreenName.IdentScreenName(), "", "", statusMsg)
+
+	// Notify the user's own client so its status message re-renders. Preserve the
+	// current presence state so a status-only change does not flip the self badge.
+	h.pushMyInfo(session, currentWebState(oscarSession), oscarSession.Session().AwayMessage(), statusMsg)
 
 	h.Logger.InfoContext(ctx, "status message updated",
 		"screenName", session.ScreenName.String(),
@@ -539,6 +550,52 @@ func (h *PresenceHandler) Icon(w http.ResponseWriter, r *http.Request) {
 
 	// Redirect to icon URL
 	http.Redirect(w, r, iconURL, http.StatusFound)
+}
+
+// currentWebState maps an OSCAR session's presence flags to the web state string
+// the AIM client expects ("online", "away", "idle", "invisible").
+func currentWebState(instance *state.SessionInstance) string {
+	sess := instance.Session()
+	switch {
+	case sess.Invisible():
+		return "invisible"
+	case sess.Away():
+		return "away"
+	case instance.Idle():
+		return "idle"
+	default:
+		return "online"
+	}
+}
+
+// pushMyInfo queues a "myInfo" event on the user's own session so the AIM client
+// re-renders its self-presence badge. The client binds its identity-badge render
+// to "myInfo" events only, so state changes made via setState/setStatus are
+// invisible in the user's own UI unless a myInfo event is delivered.
+func (h *PresenceHandler) pushMyInfo(session *state.WebAPISession, webState, awayMsg, statusMsg string) {
+	if session.EventQueue == nil {
+		return
+	}
+	if !session.IsSubscribedTo("myInfo") && !session.IsSubscribedTo("presence") {
+		return
+	}
+
+	screenName := session.ScreenName.String()
+	myInfo := map[string]interface{}{
+		"aimId":     screenName,
+		"displayId": screenName,
+		"friendly":  screenName,
+		"state":     webState,
+		"userType":  "aim",
+	}
+	if awayMsg != "" {
+		myInfo["awayMsg"] = awayMsg
+	}
+	if statusMsg != "" {
+		myInfo["statusMsg"] = statusMsg
+	}
+
+	session.EventQueue.Push(types.EventType("myInfo"), myInfo)
 }
 
 // broadcastPresenceEvent sends presence updates to all WebAPI sessions watching this user
