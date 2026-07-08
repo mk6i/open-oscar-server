@@ -187,6 +187,25 @@ func (h *AuthHandler) loginRedirectURL(r *http.Request) string {
 	return fmt.Sprintf("%s://%s/_cqr/login/login.psp", scheme, r.Host)
 }
 
+func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	h.clearLoginPSPCookies(w)
+
+	loginURL := h.loginRedirectURL(r)
+	q := url.Values{}
+	if devID := r.URL.Query().Get("devId"); devID != "" {
+		q.Set("devId", devID)
+	}
+	if succURL := r.URL.Query().Get("succUrl"); succURL != "" {
+		q.Set("succUrl", succURL)
+	}
+	if enc := q.Encode(); enc != "" {
+		loginURL += "?" + enc
+	}
+
+	h.Logger.InfoContext(r.Context(), "logout", "devId", r.URL.Query().Get("devId"))
+	http.Redirect(w, r, loginURL, http.StatusFound)
+}
+
 // ClientLogin handles POST /auth/clientLogin requests.
 // This endpoint authenticates users and returns an authentication token.
 func (h *AuthHandler) ClientLogin(w http.ResponseWriter, r *http.Request) {

@@ -28,6 +28,34 @@ func TestAuthHandler_LoginPSP_GET(t *testing.T) {
 	assert.Contains(t, rr.Body.String(), `name="devId" value="dev1"`)
 }
 
+func TestAuthHandler_Logout(t *testing.T) {
+	handler := &AuthHandler{Logger: slog.Default()}
+
+	req := httptest.NewRequest(http.MethodGet, "/auth/logout?f=json&a=sometoken&devId=dev1&succUrl=http%3A%2F%2Flocalhost%3A8000%2F.client%2F", nil)
+	rr := httptest.NewRecorder()
+
+	handler.Logout(rr, req)
+
+	assert.Equal(t, http.StatusFound, rr.Code)
+
+	loc, err := url.Parse(rr.Header().Get("Location"))
+	assert.NoError(t, err)
+	assert.Equal(t, "/_cqr/login/login.psp", loc.Path)
+	assert.Equal(t, "dev1", loc.Query().Get("devId"))
+	assert.Equal(t, "http://localhost:8000/.client/", loc.Query().Get("succUrl"))
+
+	// SSO cookies are expired so the browser is logged out.
+	cleared := map[string]bool{}
+	for _, c := range rr.Result().Cookies() {
+		if c.MaxAge < 0 {
+			cleared[c.Name] = true
+		}
+	}
+	for _, name := range []string{"RSP_USER", "RSP_LOCAL", "localAuthUser", "oldAimToken"} {
+		assert.True(t, cleared[name], "expected %s cookie to be cleared", name)
+	}
+}
+
 func TestAuthHandler_LoginPSP_POST_Success(t *testing.T) {
 	handler := &AuthHandler{
 		AuthService: &testAuthService{

@@ -119,6 +119,10 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 			w.WriteHeader(http.StatusNoContent)
 		})
 
+		// Web AIM navigates the browser here on File > Logout; clear SSO state
+		// and redirect to the login screen.
+		mux.HandleFunc("GET /auth/logout", authHandler.Logout)
+
 		mux.HandleFunc("GET /_cqr/login/login.psp", authHandler.LoginPSP)
 		mux.HandleFunc("POST /_cqr/login/login.psp", authHandler.LoginPSP)
 

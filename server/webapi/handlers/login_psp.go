@@ -161,6 +161,22 @@ func (h *AuthHandler) setLoginPSPCookies(w http.ResponseWriter, screenName state
 	http.SetCookie(w, cookie("localAuthUser", loginID+"||"+loginID))
 }
 
+// clearLoginPSPCookies expires the SSO cookies set by setLoginPSPCookies (plus
+// the oldAimToken cookie honored by getToken) so the browser is logged out.
+func (h *AuthHandler) clearLoginPSPCookies(w http.ResponseWriter) {
+	for _, name := range []string{"RSP_USER", "RSP_LOCAL", "localAuthUser", "oldAimToken"} {
+		http.SetCookie(w, &http.Cookie{
+			Name:     name,
+			Value:    "",
+			Path:     "/",
+			Expires:  time.Unix(0, 0),
+			MaxAge:   -1,
+			HttpOnly: false,
+			SameSite: http.SameSiteLaxMode,
+		})
+	}
+}
+
 func defaultLoginSuccURL(r *http.Request) string {
 	scheme := "http"
 	if r.TLS != nil {
