@@ -1,6 +1,7 @@
 package state
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -139,11 +140,38 @@ func (s *WebAPISession) handleIncomingIM(msg wire.SNACMessage) {
 		return
 	}
 
-	// Extract message text from TLV data
+	// Extract message text from TLV data.
+	// Channel 1 (standard AIM/ICQ text): text is in TLV(0x0002) as a fragment
+	// list. Channel 2 (ICQ advanced/Type-2, used by Jimm/QIP/JOscarLib bots):
+	// text is buried inside TLV(0x0005)→TLV(0x2711). Try Channel 1 first,
+	// then fall back to Channel 2 parsing for vintage ICQ clients.
 	var messageText string
 	if msgData, hasMsg := body.Bytes(wire.ICBMTLVAOLIMData); hasMsg {
 		if text, err := wire.UnmarshalICBMMessageText(msgData); err == nil {
 			messageText = text
+		}
+	}
+
+	// Channel 2 fallback: parse TLV(0x0005) → nested TLV(0x2711) → extract
+	// text. This is the format used by vintage ICQ clients (Jimm, QIP) and
+	// Java bots (JOscarLib). Without this, messages from these clients are
+	// silently dropped (text="" → early return).
+	if messageText == "" && body.ChannelID == wire.ICBMChannelRendezvous {
+		if tlv5Data, hasTlv5 := body.Bytes(wire.ICBMTLVData); hasTlv5 {
+			// TLV 0x0005 value starts with 26 bytes of non-TLV data:
+			// ack type(2) + cookie/time(4) + message id(4) + capability(16).
+			// Skip them, then parse the rest as a nested TLV list containing
+			// TLV 0x000A, TLV 0x000F, and TLV 0x2711 (service data).
+			if len(tlv5Data) > 26 {
+				var tlv5 wire.TLVRestBlock
+				if err := wire.UnmarshalBE(&tlv5, bytes.NewReader(tlv5Data[26:])); err == nil {
+					if svcData, has2711 := tlv5.Bytes(wire.ICBMRdvTLVTagsSvcData); has2711 {
+						if text, err := wire.UnmarshalICBMCh2MessageText(svcData); err == nil {
+							messageText = text
+						}
+					}
+				}
+			}
 		}
 	}
 
