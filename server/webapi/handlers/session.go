@@ -21,18 +21,15 @@ import (
 
 // SessionHandler handles Web AIM API session management endpoints.
 type SessionHandler struct {
-	SessionManager      *state.WebAPISessionManager
-	OSCARSessionManager SessionManager
-	OSCARAuthService    AuthService
-	BuddyListRegistry   BuddyListRegistry
-	BuddyBroadcaster    BuddyBroadcaster
-	FeedbagService      FeedbagService
-	BuddyListManager    *BuddyListManager
-	Logger              *slog.Logger
-	OServiceService     OServiceService
-	RecalcWarning       func(ctx context.Context, instance *state.SessionInstance) error
-	LowerWarnLevel      func(ctx context.Context, instance *state.SessionInstance)
-	ChatSessionManager  ChatSessionManager
+	SessionManager   *state.WebAPISessionManager
+	OSCARAuthService AuthService
+	FeedbagService   FeedbagService
+	BuddyListManager *BuddyListManager
+	Logger           *slog.Logger
+	OServiceService  OServiceService
+	FnSessCfg        func(sess *state.Session)
+	FnSessInit       func(instance *state.SessionInstance) func() error
+	FnInstanceClose  func(instance *state.SessionInstance) func()
 }
 
 // AuthService defines methods needed for authentication.
@@ -186,135 +183,74 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Determine screen name from auth token or anonymous
-	var screenName state.DisplayScreenName
-
-	var cookie state.ServerCookie
-	if authToken != "" {
-		rawCookie, err := base64.URLEncoding.DecodeString(strings.TrimSpace(authToken))
-		if err != nil {
-			h.Logger.Warn("invalid authentication token (base64)", "error", err)
-			h.sendError(w, r, http.StatusUnauthorized, "invalid or expired token")
-			return
-		}
-		cookie, err = h.OSCARAuthService.CrackCookie(rawCookie)
-		if err != nil {
-			h.Logger.Warn("invalid authentication token",
-				"error", err)
-			h.sendError(w, r, http.StatusUnauthorized, "invalid or expired token")
-			return
-		}
-		screenName = cookie.ScreenName
-		tokenPreview := authToken
-		if len(tokenPreview) > 8 {
-			tokenPreview = tokenPreview[:8] + "..."
-		}
-		h.Logger.Info("authenticated session requested",
-			"token", tokenPreview,
-			"screenName", screenName)
-	} else {
-		// Anonymous session - generate guest name
-		screenName = state.DisplayScreenName("Guest_" + strconv.FormatInt(time.Now().Unix(), 36))
-		h.Logger.Info("anonymous session requested",
-			"screenName", screenName)
+	// A Web API session must be bridged to an authenticated OSCAR session;
+	// anonymous guests are not supported.
+	if authToken == "" {
+		h.sendError(w, r, http.StatusUnauthorized, "authentication token required")
+		return
 	}
 
-	// Create OSCAR session for authenticated users
-	var oscarInstance *state.SessionInstance
-	var err error
-	if authToken != "" && h.OSCARSessionManager != nil {
-		fnCfg := func(sess *state.Session) {
-			sess.OnSessionClose(func() {
-				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-				defer cancel()
+	rawCookie, err := base64.URLEncoding.DecodeString(strings.TrimSpace(authToken))
+	if err != nil {
+		h.Logger.Warn("invalid authentication token (base64)", "error", err)
+		h.sendError(w, r, http.StatusUnauthorized, "invalid or expired token")
+		return
+	}
+	cookie, err := h.OSCARAuthService.CrackCookie(rawCookie)
+	if err != nil {
+		h.Logger.Warn("invalid authentication token", "error", err)
+		h.sendError(w, r, http.StatusUnauthorized, "invalid or expired token")
+		return
+	}
+	screenName := cookie.ScreenName
+	tokenPreview := authToken
+	if len(tokenPreview) > 8 {
+		tokenPreview = tokenPreview[:8] + "..."
+	}
+	h.Logger.Info("authenticated session requested",
+		"token", tokenPreview,
+		"screenName", screenName)
 
-				// todo - a better way to detect server shutdowns
-				if err := h.BuddyBroadcaster.BroadcastBuddyDeparted(ctx, sess.IdentScreenName()); err != nil {
-					h.Logger.ErrorContext(ctx, "error sending buddy departure notifications", "err", err.Error())
-				}
+	var instance *state.SessionInstance
 
-				// buddy list must be cleared before session is closed, otherwise
-				// there will be a race condition that could cause the buddy list
-				// be prematurely deleted.
-				if err := h.BuddyListRegistry.UnregisterBuddyList(ctx, sess.IdentScreenName()); err != nil {
-					h.Logger.ErrorContext(ctx, "error removing buddy list entry", "err", err.Error())
-				}
-				h.ChatSessionManager.RemoveUserFromAllChats(sess.IdentScreenName())
-				h.OSCARAuthService.Signout(ctx, sess)
-			})
-		}
+	// Create OSCAR session
+	instance, err = h.OSCARAuthService.RegisterBOSSession(ctx, cookie, h.FnSessCfg)
+	if err != nil {
+		h.Logger.ErrorContext(ctx, "failed to create OSCAR session", "err", err.Error())
+		h.sendError(w, r, http.StatusServiceUnavailable, "unable to establish session")
+		return
+	}
 
-		// Create OSCAR session
-		oscarInstance, err = h.OSCARAuthService.RegisterBOSSession(ctx, cookie, fnCfg)
+	if err = instance.Session().RunOnce(h.FnSessInit(instance)); err != nil {
+		h.Logger.ErrorContext(context.Background(), "failed to init session", "err", err.Error())
+		h.sendError(w, r, http.StatusInternalServerError, "internal server error")
+		return
+	}
 
-		if err != nil {
-			// A failed BOS registration (e.g. the per-user session cap) leaves no
-			// OSCAR session. Downstream steps (buddy list, feedbag, presence) all
-			// dereference it, so fail the request instead of continuing half-set-up.
-			h.Logger.ErrorContext(ctx, "failed to create OSCAR session", "err", err.Error())
-			h.sendError(w, r, http.StatusServiceUnavailable, "unable to establish session")
-			return
-		}
+	instance.OnClose(h.FnInstanceClose(instance))
 
-		if err = oscarInstance.Session().RunOnce(func() error {
-			// make buddy list visible to other users
-			if err := h.BuddyListRegistry.RegisterBuddyList(ctx, oscarInstance.IdentScreenName()); err != nil {
-				return fmt.Errorf("unable to init buddy list: %w", err)
-			}
-			// restore warning level from last session
-			if err := h.RecalcWarning(ctx, oscarInstance); err != nil {
-				return fmt.Errorf("failed to recalculate warning level: %w", err)
-			}
-			// periodically decay warning level
-			go h.LowerWarnLevel(ctx, oscarInstance)
-			return nil
-		}); err != nil {
-			h.Logger.ErrorContext(ctx, "failed to init session", "err", err.Error())
-			h.sendError(w, r, http.StatusInternalServerError, "internal server error")
-			return
-		}
+	if err := h.FeedbagService.Use(ctx, instance); err != nil {
+		h.Logger.ErrorContext(ctx, "failed to use feedbag", "err", err.Error())
+	}
 
-		// Update user visibility when an instance closes, as the user's overall status may change.
-		// Example: With 1 away and 1 non-away instance, the user appears available. If the non-away
-		// instance closes, the user should appear away.
-		oscarInstance.OnClose(func() {
-			if shuttingDown(ctx) {
-				return
-			}
-			if oscarInstance.Session().Invisible() {
-				if err := h.BuddyBroadcaster.BroadcastBuddyDeparted(ctx, oscarInstance.IdentScreenName()); err != nil {
-					h.Logger.ErrorContext(ctx, "error sending buddy departure notifications", "err", err.Error())
-				}
-			} else {
-				if err := h.BuddyBroadcaster.BroadcastBuddyArrived(ctx, oscarInstance.IdentScreenName(), oscarInstance.Session().TLVUserInfo()); err != nil {
-					h.Logger.ErrorContext(ctx, "error sending buddy arrival notifications", "err", err.Error())
-				}
-			}
-		})
+	// A web client signals that it wants typing events through its event
+	// subscription, not through a stored feedbag buddy pref. Reflect that
+	// on the OSCAR session so ICBMService attaches the WantEvents TLV to
+	// outgoing IMs, prompting recipients to send typing notifications
+	// back. This must run after FeedbagService.Use, which otherwise
+	// overwrites the flag from stored prefs the web user may not have set.
+	instance.Session().SetTypingEventsEnabled(slices.Contains(events, "typing"))
 
-		if err := h.FeedbagService.Use(ctx, oscarInstance); err != nil {
-			h.Logger.ErrorContext(ctx, "failed to use feedbag", "err", err.Error())
-		}
+	instance.SetSignonComplete()
 
-		// A web client signals that it wants typing events through its event
-		// subscription, not through a stored feedbag buddy pref. Reflect that
-		// on the OSCAR session so ICBMService attaches the WantEvents TLV to
-		// outgoing IMs, prompting recipients to send typing notifications
-		// back. This must run after FeedbagService.Use, which otherwise
-		// overwrites the flag from stored prefs the web user may not have set.
-		oscarInstance.Session().SetTypingEventsEnabled(slices.Contains(events, "typing"))
-
-		oscarInstance.SetSignonComplete()
-
-		if err := h.OServiceService.ClientOnline(ctx, wire.BOS, wire.SNAC_0x01_0x02_OServiceClientOnline{}, oscarInstance); err != nil {
-			h.Logger.ErrorContext(ctx, "failed to set client online", "err", err.Error())
-			h.sendError(w, r, http.StatusInternalServerError, "internal server error")
-			return
-		}
+	if err := h.OServiceService.ClientOnline(ctx, wire.BOS, wire.SNAC_0x01_0x02_OServiceClientOnline{}, instance); err != nil {
+		h.Logger.ErrorContext(ctx, "failed to set client online", "err", err.Error())
+		h.sendError(w, r, http.StatusInternalServerError, "internal server error")
+		return
 	}
 
 	// Create WebAPI session
-	session, err := h.SessionManager.CreateSession(r.Context(), screenName, apiKey.DevID, events, oscarInstance, h.Logger)
+	session, err := h.SessionManager.CreateSession(r.Context(), screenName, apiKey.DevID, events, instance, h.Logger)
 	if err != nil {
 		h.Logger.ErrorContext(ctx, "failed to create session", "err", err.Error())
 		h.sendError(w, r, http.StatusInternalServerError, "failed to create session")
@@ -329,6 +265,14 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 	// Wire buddy list refresher so feedbag SNACs from the OSCAR bridge trigger a buddylist event.
 	session.BuddyListRefresher = func(ctx context.Context) (interface{}, error) {
 		return h.BuddyListManager.GetBuddyListForUser(ctx, session)
+	}
+
+	// Wire the alias loader so OSCAR-driven im/presence events can repeat the
+	// buddy's friendly name. The client discards the alias it holds each time it
+	// merges a user map, so an event that omits it renames the buddy. The session
+	// caches what this returns until a feedbag change invalidates it.
+	session.BuddyAliasLoader = func(ctx context.Context) (map[string]string, error) {
+		return LookupBuddyAliases(ctx, h.FeedbagService, session.OSCARSession)
 	}
 
 	// Wire permit/deny refresher so FeedbagUpdateItem SNACs trigger a permitDeny event.
@@ -356,7 +300,7 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 		for _, event := range events {
 			if event == "myInfo" || event == "presence" {
 				myInfoData := map[string]interface{}{
-					"aimId":        screenName.String(),
+					"aimId":        screenName.IdentScreenName().String(),
 					"displayId":    screenName.String(),
 					"friendly":     screenName.String(),
 					"state":        "online",
@@ -403,7 +347,7 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 
 	if authToken != "" {
 		myInfoPayload := map[string]interface{}{
-			"aimId":        screenName.String(),
+			"aimId":        screenName.IdentScreenName().String(),
 			"displayId":    screenName.String(),
 			"friendly":     screenName.String(),
 			"state":        "online",
@@ -525,7 +469,7 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 				Groups *[]BuddyGroup `xml:"group,omitempty"`
 			} `xml:"buddylist,omitempty"`
 		}{
-			AimID:     session.ScreenName.String(),
+			AimID:     session.ScreenName.IdentScreenName().String(),
 			DisplayID: session.ScreenName.String(),
 		}
 
@@ -615,7 +559,13 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 func (h *SessionHandler) EndSession(w http.ResponseWriter, r *http.Request, session *state.WebAPISession) {
 	ctx := r.Context()
 
-	session.OSCARSession.CloseInstance()
+	// RemoveSession evicts the session from the manager and tears it down
+	// (closes the event queue and the OSCAR instance). Without this the aimsid
+	// stays resolvable until the reaper sweeps it, and RequireSession would keep
+	// handing handlers a session whose OSCAR instance is already closed.
+	if err := h.SessionManager.RemoveSession(ctx, session.AimSID); err != nil {
+		h.Logger.ErrorContext(ctx, "failed to remove session", "err", err.Error())
+	}
 
 	// Send response
 	resp := EndSessionResponse{}
@@ -647,14 +597,4 @@ func requestScheme(r *http.Request) string {
 		return proto
 	}
 	return "http"
-}
-
-func shuttingDown(ctx context.Context) bool {
-	select {
-	case <-ctx.Done():
-		// server is shutting down, don't send buddy notifications
-		return true
-	default:
-	}
-	return false
 }

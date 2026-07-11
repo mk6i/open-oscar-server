@@ -42,7 +42,8 @@ type WebAPIBuddyGroup struct {
 type WebAPIBuddyInfo struct {
 	AimID        string   `json:"aimId"`
 	DisplayID    string   `json:"displayId"`
-	State        string   `json:"state"` // "online", "offline", "away", "idle"
+	Friendly     string   `json:"friendly,omitempty"` // Viewer's private alias, rendered in preference to DisplayID
+	State        string   `json:"state"`              // "online", "offline", "away", "idle"
 	StatusMsg    string   `json:"statusMsg,omitempty"`
 	AwayMsg      string   `json:"awayMsg,omitempty"`
 	OnlineTime   int64    `json:"onlineTime,omitempty"`
@@ -154,9 +155,10 @@ func (m *BuddyListManager) GetBuddyListForUser(ctx context.Context, sess *state.
 				continue
 			}
 			info := m.getBuddyInfo(ctx, sess.OSCARSession, b.name)
-			if b.alias != "" {
-				info.DisplayID = b.alias
-			}
+			// The alias belongs in friendly, not displayId: the client renders
+			// friendly in preference to displayId but still shows displayId as
+			// the buddy's actual screen name.
+			info.Friendly = b.alias
 			wg.Buddies = append(wg.Buddies, info)
 		}
 		out = append(out, wg)
@@ -168,9 +170,16 @@ func (m *BuddyListManager) GetBuddyListForUser(ctx context.Context, sess *state.
 // getBuddyInfo retrieves a buddy's current presence by issuing a locate
 // UserInfoQuery on behalf of the requesting session's OSCAR instance.
 func (m *BuddyListManager) getBuddyInfo(ctx context.Context, instance *state.SessionInstance, buddyName string) WebAPIBuddyInfo {
-	// Default to offline
+	// Default to offline. The web client keys users by the normalized aimId and
+	// shallow-merges each buddy map onto the shared user object, so a display-form
+	// aimId here overwrites the id every other event is keyed by.
+	//
+	// Feedbag buddy names are stored normalized, so they are not a source of
+	// display names. DisplayID is filled in from the locate reply below when the
+	// buddy is online, or overridden by the caller's alias when one is set.
+	ident := state.NewIdentScreenName(buddyName)
 	info := WebAPIBuddyInfo{
-		AimID:     buddyName,
+		AimID:     ident.String(),
 		DisplayID: buddyName,
 		State:     "offline",
 		UserType:  "aim",
@@ -178,15 +187,10 @@ func (m *BuddyListManager) getBuddyInfo(ctx context.Context, instance *state.Ses
 		Service:   "AIM",
 	}
 
-	// Web-only sessions have no OSCAR instance to query on behalf of.
-	if instance == nil {
-		return info
-	}
-
 	reply, err := m.locateService.UserInfoQuery(ctx, instance, wire.SNACFrame{},
 		wire.SNAC_0x02_0x05_LocateUserInfoQuery{
 			Type:       uint16(wire.LocateTypeUnavailable), // away message
-			ScreenName: buddyName,
+			ScreenName: ident.String(),
 		})
 	if err != nil {
 		m.logger.WarnContext(ctx, "failed to query buddy info", "screenName", buddyName, "error", err)
@@ -201,6 +205,11 @@ func (m *BuddyListManager) getBuddyInfo(ctx context.Context, instance *state.Ses
 
 	info.State = "online"
 	info.Capabilities = []string{}
+
+	// The locate reply carries the screen name as the buddy formatted it.
+	if userInfo.ScreenName != "" {
+		info.DisplayID = userInfo.ScreenName
+	}
 
 	if tod, ok := userInfo.Uint32BE(wire.OServiceUserInfoSignonTOD); ok {
 		info.OnlineTime = int64(tod)
@@ -225,6 +234,11 @@ func (m *BuddyListManager) getBuddyInfo(ctx context.Context, instance *state.Ses
 
 // RemoveBuddyFromFeedbag removes a buddy from a group (or all groups if allGroups is true) using feedbag delete/update SNACs.
 func (m *BuddyListManager) RemoveBuddyFromFeedbag(ctx context.Context, sess *state.WebAPISession, buddyName, groupName string, allGroups bool) (resultCode string, err error) {
+	// Buddy items carry the owner's alias for the buddy, and the feedbag service
+	// relays a session's own writes only to the owner's other instances, so every
+	// method here that rewrites buddy items has to drop the alias cache itself.
+	defer sess.InvalidateAliases()
+
 	buddyName = strings.TrimSpace(buddyName)
 	if buddyName == "" {
 		return "error", fmt.Errorf("empty buddy")
@@ -279,6 +293,8 @@ func (m *BuddyListManager) RemoveBuddyFromFeedbag(ctx context.Context, sess *sta
 
 // RemoveGroupFromFeedbag deletes a buddy group and updates the root order (TOC DelGroup).
 func (m *BuddyListManager) RemoveGroupFromFeedbag(ctx context.Context, sess *state.WebAPISession, requestedGroup string) (resultCode string, err error) {
+	defer sess.InvalidateAliases()
+
 	req := strings.TrimSpace(requestedGroup)
 	if req == "" {
 		return "error", fmt.Errorf("empty group")
@@ -326,6 +342,8 @@ func (m *BuddyListManager) RemoveGroupFromFeedbag(ctx context.Context, sess *sta
 
 // RenameGroupInFeedbag renames a buddy group, updating the group item in place.
 func (m *BuddyListManager) RenameGroupInFeedbag(ctx context.Context, sess *state.WebAPISession, oldGroup, newGroup string) (resultCode string, err error) {
+	defer sess.InvalidateAliases()
+
 	oldGroup = strings.TrimSpace(oldGroup)
 	newGroup = strings.TrimSpace(newGroup)
 	if oldGroup == "" || newGroup == "" {
@@ -374,6 +392,8 @@ func (m *BuddyListManager) RenameGroupInFeedbag(ctx context.Context, sess *state
 // MoveBuddyInFeedbag moves a buddy to a different group and/or repositions it
 // within a group's order.
 func (m *BuddyListManager) MoveBuddyInFeedbag(ctx context.Context, sess *state.WebAPISession, buddyName, fromGroup, toGroup, beforeBuddy string) (resultCode string, err error) {
+	defer sess.InvalidateAliases()
+
 	buddyName = strings.TrimSpace(buddyName)
 	fromGroup = strings.TrimSpace(fromGroup)
 	toGroup = strings.TrimSpace(toGroup)
@@ -453,6 +473,8 @@ func (m *BuddyListManager) MoveBuddyInFeedbag(ctx context.Context, sess *state.W
 // SetBuddyAttributeInFeedbag sets a buddy's friendly (alias) name across all
 // groups it belongs to. An empty friendly clears the alias.
 func (m *BuddyListManager) SetBuddyAttributeInFeedbag(ctx context.Context, sess *state.WebAPISession, buddyName, friendly string) (resultCode string, err error) {
+	defer sess.InvalidateAliases()
+
 	buddyName = strings.TrimSpace(buddyName)
 	if buddyName == "" {
 		return "error", fmt.Errorf("empty buddy")
@@ -492,6 +514,8 @@ func (m *BuddyListManager) SetBuddyAttributeInFeedbag(ctx context.Context, sess 
 // SetGroupAttributeInFeedbag sets a group's collapsed state. An empty group
 // targets the unnamed default group.
 func (m *BuddyListManager) SetGroupAttributeInFeedbag(ctx context.Context, sess *state.WebAPISession, groupName string, collapsed bool) (resultCode string, err error) {
+	defer sess.InvalidateAliases()
+
 	groupName = strings.TrimSpace(groupName)
 	frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
 	snac, err := m.feedbagService.Query(ctx, sess.OSCARSession, frame)

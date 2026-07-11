@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"golang.org/x/sync/errgroup"
 
@@ -26,18 +27,12 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 	}
 
 	sessionHandler := &handlers.SessionHandler{
-		SessionManager:      sessionManager,
-		OSCARSessionManager: handler.SessionRetriever.(handlers.SessionManager),
-		OSCARAuthService:    handler.AuthService,
-		BuddyListRegistry:   handler.BuddyListRegistry,
-		BuddyBroadcaster:    handler.BuddyBroadcaster,
-		FeedbagService:      handler.FeedbagService,
-		BuddyListManager:    handler.BuddyListManager.(*handlers.BuddyListManager),
-		Logger:              logger,
-		OServiceService:     handler.OServiceService,
-		RecalcWarning:       handler.RecalcWarning,
-		LowerWarnLevel:      handler.LowerWarnLevel,
-		ChatSessionManager:  handler.ChatSessionManager,
+		SessionManager:   sessionManager,
+		OSCARAuthService: handler.AuthService,
+		FeedbagService:   handler.FeedbagService,
+		BuddyListManager: handler.BuddyListManager.(*handlers.BuddyListManager),
+		Logger:           logger,
+		OServiceService:  handler.OServiceService,
 	}
 
 	eventsHandler := &handlers.EventsHandler{
@@ -62,6 +57,8 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 	messagingHandler := &handlers.MessagingHandler{
 		SessionManager: sessionManager,
 		ICBMService:    handler.ICBMService,
+		LocateService:  handler.LocateService,
+		FeedbagService: handler.FeedbagService,
 		Logger:         logger,
 	}
 
@@ -274,17 +271,82 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 		})
 	}
 
+	shutdownCtx, shutdownCancel := context.WithCancel(context.Background())
+
+	sessionHandler.FnSessCfg = func(sess *state.Session) {
+		sess.OnSessionClose(func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+
+			if !shuttingDown(shutdownCtx) {
+				if err := handler.BuddyBroadcaster.BroadcastBuddyDeparted(ctx, sess.IdentScreenName()); err != nil {
+					logger.ErrorContext(ctx, "error sending buddy departure notifications", "err", err.Error())
+				}
+			}
+
+			// buddy list must be cleared before session is closed, otherwise
+			// there will be a race condition that could cause the buddy list
+			// be prematurely deleted.
+			if err := handler.BuddyListRegistry.UnregisterBuddyList(ctx, sess.IdentScreenName()); err != nil {
+				logger.ErrorContext(ctx, "error removing buddy list entry", "err", err.Error())
+			}
+			handler.ChatSessionManager.RemoveUserFromAllChats(sess.IdentScreenName())
+			handler.AuthService.Signout(ctx, sess)
+		})
+	}
+
+	sessionHandler.FnSessInit = func(instance *state.SessionInstance) func() error {
+		return func() error {
+			// make buddy list visible to other users
+			if err := handler.BuddyListRegistry.RegisterBuddyList(shutdownCtx, instance.IdentScreenName()); err != nil {
+				return fmt.Errorf("unable to init buddy list: %w", err)
+			}
+			// restore warning level from last session
+			if err := handler.RecalcWarning(shutdownCtx, instance); err != nil {
+				return fmt.Errorf("failed to recalculate warning level: %w", err)
+			}
+			// periodically decay warning level
+			go handler.LowerWarnLevel(shutdownCtx, instance)
+			return nil
+		}
+	}
+
+	sessionHandler.FnInstanceClose = func(instance *state.SessionInstance) func() {
+		return func() {
+			if shuttingDown(shutdownCtx) {
+				return
+			}
+			if instance.Session().Invisible() {
+				if err := handler.BuddyBroadcaster.BroadcastBuddyDeparted(shutdownCtx, instance.IdentScreenName()); err != nil {
+					logger.ErrorContext(shutdownCtx, "error sending buddy departure notifications", "err", err.Error())
+				}
+			} else {
+				if err := handler.BuddyBroadcaster.BroadcastBuddyArrived(shutdownCtx, instance.IdentScreenName(), instance.Session().TLVUserInfo()); err != nil {
+					logger.ErrorContext(shutdownCtx, "error sending buddy arrival notifications", "err", err.Error())
+				}
+			}
+		}
+	}
 	return &Server{
-		servers: servers,
-		logger:  logger,
+		servers:        servers,
+		logger:         logger,
+		sessionManager: sessionManager,
+		shutdownCtx:    shutdownCtx,
+		shutdownCancel: shutdownCancel,
 	}
 }
 
 // Server hosts an HTTP endpoint capable of handling AIM-style Kerberos
 // authentication. The messages are structured as SNACs transmitted over HTTP.
+//
+// shutdownCtx bounds the lifetime of the background session reaper: ListenAndServe
+// drives it, and Shutdown (or a failed listener) calls shutdownCancel to unwind.
 type Server struct {
-	servers []*http.Server
-	logger  *slog.Logger
+	servers        []*http.Server
+	logger         *slog.Logger
+	sessionManager *state.WebAPISessionManager
+	shutdownCtx    context.Context
+	shutdownCancel context.CancelFunc
 }
 
 func (s *Server) ListenAndServe() error {
@@ -293,15 +355,18 @@ func (s *Server) ListenAndServe() error {
 		return nil
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	g, ctx := errgroup.WithContext(s.shutdownCtx)
 
-	g, _ := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		s.sessionManager.Run(ctx)
+		return nil
+	})
+
 	for _, server := range s.servers {
 		g.Go(func() error {
 			s.logger.Info("starting server", "addr", server.Addr)
 			if err := server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
-				cancel()
+				s.shutdownCancel()
 				return fmt.Errorf("unable to start webapi server: %w", err)
 			}
 			return nil
@@ -312,11 +377,22 @@ func (s *Server) ListenAndServe() error {
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
-	if len(s.servers) > 0 {
-		for _, srv := range s.servers {
-			_ = srv.Shutdown(ctx)
-		}
-		s.logger.Info("shutdown complete")
+	s.logger.Debug("Initiating graceful shutdown...")
+	s.shutdownCancel() // stop the session reaper so ListenAndServe's errgroup can drain
+	for _, srv := range s.servers {
+		_ = srv.Shutdown(ctx)
 	}
+	s.sessionManager.Shutdown()
+	s.logger.Info("shutdown complete")
 	return nil
+}
+
+func shuttingDown(ctx context.Context) bool {
+	select {
+	case <-ctx.Done():
+		// server is shutting down, don't send buddy notifications
+		return true
+	default:
+	}
+	return false
 }

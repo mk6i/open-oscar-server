@@ -139,8 +139,14 @@ type WebAPISessionResolver interface {
 }
 
 // RequireSession resolves the aimsid session and passes it to next. It rejects
-// requests whose session is missing, expired, or anonymous (no bridged OSCAR
-// session) with an auth error, so downstream handlers can treat
+// requests whose session is missing or expired with an auth error. On success it
+// touches the session, sliding its expiry forward; this is the keepalive that
+// holds a long-polling client's session open (see the session lifecycle timeline
+// on state's WebAPISession manager).
+//
+// A session with a nil OSCARSession is rejected as a 500: startSession no longer
+// creates such sessions (anonymous guests are unsupported), so a nil is a broken
+// server invariant, not a client error. This lets downstream handlers treat
 // session.OSCARSession as non-nil.
 func (m *AuthMiddleware) RequireSession(sm WebAPISessionResolver, next func(http.ResponseWriter, *http.Request, *state.WebAPISession)) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -150,8 +156,14 @@ func (m *AuthMiddleware) RequireSession(sm WebAPISessionResolver, next func(http
 			return
 		}
 		session, err := sm.GetSession(r.Context(), aimsid)
-		if err != nil || session.OSCARSession == nil {
+		if err != nil {
 			m.sendSessionError(w, http.StatusUnauthorized, "invalid or expired session")
+			return
+		}
+		// startSession no longer creates sessions without an OSCAR instance, so a
+		// nil here is a server-side invariant violation, not a bad request.
+		if session.OSCARSession == nil {
+			m.sendSessionError(w, http.StatusInternalServerError, "internal server error")
 			return
 		}
 		_ = sm.TouchSession(r.Context(), aimsid)

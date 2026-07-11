@@ -11,6 +11,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 
 	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
@@ -211,6 +212,11 @@ func TestPresenceHandler_GetPresence(t *testing.T) {
 
 			tt.setupMocks(feedbagService, locateService)
 
+			// Presence payloads carry the viewer's alias, so GetPresence reads the
+			// feedbag. Registered last so a case's own Query stub takes precedence.
+			feedbagService.On("Query", mock.Anything, mock.Anything, mock.Anything).
+				Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{}}, nil).Maybe()
+
 			reqURL := "/presence/get?aimsid=" + aimsid
 			if tt.queryParams != "" {
 				reqURL += "&" + tt.queryParams
@@ -410,6 +416,54 @@ func TestPresenceHandler_SetState_EmitsMyInfoEvent(t *testing.T) {
 	assert.Equal(t, "away", myInfo["state"])
 	assert.Equal(t, "brb", myInfo["awayMsg"])
 	assert.Equal(t, "testuser", myInfo["aimId"])
+}
+
+func TestPresenceHandler_SetState_MyInfoNormalizesAimID(t *testing.T) {
+	// The client shallow-merges myInfo onto the shared user object, so aimId must
+	// be the normalized id while displayId and friendly keep the user's own
+	// casing and spacing.
+	oscarInstance := state.NewSession().AddInstance()
+	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("Mike Kelly", oscarInstance)
+
+	broadcaster := &MockBuddyBroadcaster{}
+	broadcaster.On("BroadcastBuddyArrived", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	handler := &PresenceHandler{
+		SessionManager:   sessionMgr,
+		BuddyBroadcaster: broadcaster,
+		Logger:           slog.Default(),
+	}
+
+	req, err := http.NewRequest("GET", "/presence/setState?aimsid="+aimsid+"&state=away", nil)
+	assert.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+	requireSession(handler.SessionManager, handler.SetState).ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusOK, rr.Code)
+
+	// The setState response body carries the same identity fields.
+	var resp struct {
+		Response struct {
+			Data map[string]interface{} `json:"data"`
+		} `json:"response"`
+	}
+	assert.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+	assert.Equal(t, "mikekelly", resp.Response.Data["aimId"])
+	assert.Equal(t, "Mike Kelly", resp.Response.Data["displayId"])
+
+	session, err := sessionMgr.GetSession(context.Background(), aimsid)
+	assert.NoError(t, err)
+
+	var myInfo map[string]interface{}
+	for _, event := range session.EventQueue.GetAllEvents() {
+		if event.Type == "myInfo" {
+			myInfo, _ = event.Data.(map[string]interface{})
+		}
+	}
+	require.NotNil(t, myInfo, "expected a myInfo event to be queued")
+	assert.Equal(t, "mikekelly", myInfo["aimId"])
+	assert.Equal(t, "Mike Kelly", myInfo["displayId"])
+	assert.Equal(t, "Mike Kelly", myInfo["friendly"])
 }
 
 func TestPresenceHandler_SetState_NoOSCARSession_Rejected(t *testing.T) {

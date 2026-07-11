@@ -35,8 +35,12 @@ type Event struct {
 }
 
 // PresenceEvent represents a presence change event.
+// Friendly repeats the viewer's alias for the user. The client's merge deletes any
+// alias it already holds, so a presence update that omits it silently renames the
+// buddy back to their screen name. See UserInfo.
 type PresenceEvent struct {
 	AimID      string `json:"aimId"`
+	Friendly   string `json:"friendly,omitempty"`
 	State      string `json:"state"` // "online", "offline", "away", "idle"
 	StatusMsg  string `json:"statusMsg,omitempty"`
 	AwayMsg    string `json:"awayMsg,omitempty"`
@@ -65,9 +69,17 @@ type SentIMEvent struct {
 }
 
 // UserInfo represents basic user information in events.
+// AimID is the normalized screen name the client keys users by. DisplayID is the
+// screen name as its owner formatted it. Friendly is the viewer's private alias for
+// that user, and takes precedence over DisplayID when the client renders a name.
+//
+// The client merges every user map it receives onto the single user object it holds
+// per aimId, and that merge deletes friendly before applying the map. An alias
+// therefore has to be repeated on every user map, or it is lost.
 type UserInfo struct {
 	AimID      string  `json:"aimId"`
 	DisplayID  string  `json:"displayId,omitempty"`
+	Friendly   string  `json:"friendly,omitempty"`
 	UserType   string  `json:"userType,omitempty"`
 	State      string  `json:"state,omitempty"`
 	OnlineTime float64 `json:"onlineTime,omitempty"` // float64 for AMF3 encoding

@@ -24,6 +24,8 @@ type ICBMService interface {
 type MessagingHandler struct {
 	SessionManager *state.WebAPISessionManager
 	ICBMService    ICBMService
+	LocateService  LocateService
+	FeedbagService FeedbagService
 	Logger         *slog.Logger
 }
 
@@ -61,11 +63,6 @@ func (h *MessagingHandler) SendIM(w http.ResponseWriter, r *http.Request, sess *
 
 	// Parse optional parameters
 	autoResponse := queryOrFormParam(r, "autoResponse") == "1"
-	//offlineIMParam := queryOrFormParam(r, "offlineIM") what is this for
-	//offlineIM := offlineIMParam != "0" && offlineIMParam != "false" // default to true
-
-	// Create recipient identifier
-	recipientIdent := state.NewIdentScreenName(recipient)
 
 	// Generate message cookie
 	var cookie [8]byte
@@ -87,8 +84,10 @@ func (h *MessagingHandler) SendIM(w http.ResponseWriter, r *http.Request, sess *
 
 	now := float64(time.Now().Unix())
 	nowSec := time.Now().Unix()
-	sn := sess.ScreenName.String()
-	sess.AddStoredIM(recipient, sn, message, messageID, nowSec)
+	// The client sends t as the normalized aimId it keys the conversation by, so
+	// it is never a source of display names.
+	recipientIdent := state.NewIdentScreenName(recipient)
+	sess.AddStoredIM(recipientIdent.String(), sess.ScreenName.IdentScreenName().String(), message, messageID, nowSec)
 
 	// Recipient is online, deliver message
 	clientIM := wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
@@ -149,40 +148,17 @@ func (h *MessagingHandler) SendIM(w http.ResponseWriter, r *http.Request, sess *
 		}
 	}
 
-	// Queue IM event for the recipient's WebAPI session if they have one
-	if recipientWebSession, err := h.SessionManager.GetSessionByUser(r.Context(), recipientIdent); err == nil && recipientWebSession != nil {
-		recipientWebSession.AddStoredIM(sn, sn, message, messageID, nowSec)
-		eventData := types.IMEvent{
-			Source: types.UserInfo{
-				AimID:     sn,
-				DisplayID: sn,
-				UserType:  "aim",
-				State:     "online",
-			},
-			Message:   message,
-			MsgID:     messageID,
-			Timestamp: now,
-			AutoResp:  autoResponse,
-		}
-		recipientWebSession.EventQueue.Push(types.EventTypeIM, eventData)
-		if recipientWebSession.IsSubscribedTo("conversation") {
-			recipientWebSession.EventQueue.Push(types.EventTypeConversation, types.ConversationEventData("update", []map[string]interface{}{
-				types.ConversationEntry(sn, sn, message, messageID, sn, false, 1),
-			}))
-		}
-	}
-
-	h.pushSenderWebAPIEvents(sess, sn, recipient, message, messageID, now, autoResponse)
+	recipientDisplay := h.resolveDisplayName(ctx, sess.OSCARSession, recipientIdent)
+	// The alias lives in the sender's feedbag, so unlike the display name it cannot
+	// be read off a locate reply.
+	recipientAlias := sess.Aliases(ctx)[recipientIdent.String()]
+	h.pushSenderWebAPIEvents(sess, recipientIdent, recipientDisplay, recipientAlias, message, messageID, now, autoResponse)
 
 	h.Logger.DebugContext(ctx, "queued sentIM event for sender",
 		"from", sess.ScreenName.String(),
 		"to", recipient,
 		"eventType", types.EventTypeSentIM,
 	)
-
-	h.Logger.DebugContext(ctx, "delivered instant message",
-		"from", sess.ScreenName.String(),
-		"to", recipient)
 
 	// Send success response
 	responseData := map[string]interface{}{
@@ -196,16 +172,51 @@ func (h *MessagingHandler) SendIM(w http.ResponseWriter, r *http.Request, sess *
 	SendResponse(w, r, response, h.Logger)
 }
 
-func (h *MessagingHandler) pushSenderWebAPIEvents(sess *state.WebAPISession, sender, recipient, message, messageID string, now float64, autoResponse bool) {
+// resolveDisplayName returns the recipient's screen name as they formatted it,
+// or "" when it cannot be determined because they are offline or blocked.
+func (h *MessagingHandler) resolveDisplayName(ctx context.Context, instance *state.SessionInstance, recipient state.IdentScreenName) string {
+	reply, err := h.LocateService.UserInfoQuery(ctx, instance, wire.SNACFrame{},
+		wire.SNAC_0x02_0x05_LocateUserInfoQuery{
+			Type:       uint16(wire.LocateTypeUnavailable),
+			ScreenName: recipient.String(),
+		})
+	if err != nil {
+		h.Logger.DebugContext(ctx, "failed to resolve recipient display name",
+			"screenName", recipient.String(), "error", err)
+		return ""
+	}
+	info, ok := reply.Body.(wire.SNAC_0x02_0x06_LocateUserInfoReply)
+	if !ok {
+		return ""
+	}
+	return info.ScreenName
+}
+
+// pushSenderWebAPIEvents echoes a just-sent IM back to the sender's own event
+// queue. recipientDisplay is the recipient's own formatting of their screen name,
+// or "" when it could not be resolved; recipientAlias is the sender's private name
+// for them, or "" when unaliased.
+//
+// The web client merges every user map it receives onto the single user object it
+// keys by aimId, so a displayId here overwrites the name the buddy list already
+// rendered. Echoing the normalized aimId as a displayId would reduce a buddy named
+// "Mike Lee" to "mikelee" the moment you message him. Omitting displayId leaves the
+// client's existing name untouched. The merge also deletes any alias it holds, so
+// friendly has to be repeated here even though the buddy list already sent it.
+func (h *MessagingHandler) pushSenderWebAPIEvents(sess *state.WebAPISession, recipient state.IdentScreenName, recipientDisplay, recipientAlias, message, messageID string, now float64, autoResponse bool) {
+	senderAimID := sess.ScreenName.IdentScreenName().String()
+	recipientAimID := recipient.String()
+
 	senderEventData := types.SentIMEvent{
 		Sender: types.UserInfo{
-			AimID:     sender,
-			DisplayID: sender,
+			AimID:     senderAimID,
+			DisplayID: sess.ScreenName.String(),
 			UserType:  "aim",
 		},
 		Dest: types.UserInfo{
-			AimID:     recipient,
-			DisplayID: recipient,
+			AimID:     recipientAimID,
+			DisplayID: recipientDisplay,
+			Friendly:  recipientAlias,
 			UserType:  "aim",
 		},
 		Message:   message,
@@ -216,7 +227,7 @@ func (h *MessagingHandler) pushSenderWebAPIEvents(sess *state.WebAPISession, sen
 	sess.EventQueue.Push(types.EventTypeSentIM, senderEventData)
 	if sess.IsSubscribedTo("conversation") {
 		sess.EventQueue.Push(types.EventTypeConversation, types.ConversationEventData("update", []map[string]interface{}{
-			types.ConversationEntry(recipient, recipient, message, messageID, sender, true, 0),
+			types.ConversationEntry(recipientAimID, recipientDisplay, message, messageID, senderAimID, true, 0),
 		}))
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestWebAPISession_GetStoredIMs(t *testing.T) {
@@ -30,4 +31,18 @@ func TestWebAPISession_GetStoredIMs(t *testing.T) {
 	})
 	assert.Len(t, msgs, 1)
 	assert.Equal(t, "msg-2", msgs[0]["msgId"])
+}
+
+func TestWebAPISession_GetStoredIMs_NormalizesPartner(t *testing.T) {
+	sess := &WebAPISession{}
+	sess.AddStoredIM("Mike Kelly", "mikekelly", "hello", "msg-1", 100)
+
+	// The web client queries history by the normalized aimId, never by the
+	// display screen name it was stored under.
+	msgs := sess.GetStoredIMs(StoredIMQuery{
+		PartnerAimID: "mikekelly",
+		NToGet:       10,
+	})
+	require.Len(t, msgs, 1)
+	assert.Equal(t, "msg-1", msgs[0]["msgId"])
 }

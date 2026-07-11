@@ -114,6 +114,9 @@ func (s *WebAPISession) GetStoredIMs(q StoredIMQuery) []map[string]interface{} {
 	return out
 }
 
+// normalizeWebAPIAimID keys the IM log by the same normalization the web client
+// applies to aimIds, so a partner stored from a display screen name is still
+// found when the client queries by aimId.
 func normalizeWebAPIAimID(aimID string) string {
-	return strings.ToLower(aimID)
+	return NewIdentScreenName(aimID).String()
 }

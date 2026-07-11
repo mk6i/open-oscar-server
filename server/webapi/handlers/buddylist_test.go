@@ -294,7 +294,7 @@ func TestBuddyListHandler_AddBuddy(t *testing.T) {
 				return session
 			},
 			expectedStatusCode: http.StatusOK,
-			expectedResponse:   `{"response":{"statusCode":200,"statusText":"OK","data":{"buddyInfo":{"aimId":"newbuddy","state":"offline","userType":"aim"},"resultCode":"success"}}}`,
+			expectedResponse:   `{"response":{"statusCode":200,"statusText":"OK","data":{"buddyInfo":{"aimId":"newbuddy","displayId":"newbuddy","state":"offline","userType":"aim"},"resultCode":"success"}}}`,
 		},
 		{
 			name: "Success_EventPushSkippedOnBLMError",
@@ -324,7 +324,7 @@ func TestBuddyListHandler_AddBuddy(t *testing.T) {
 				return session
 			},
 			expectedStatusCode: http.StatusOK,
-			expectedResponse:   `{"response":{"statusCode":200,"statusText":"OK","data":{"buddyInfo":{"aimId":"newbuddy","state":"offline","userType":"aim"},"resultCode":"success"}}}`,
+			expectedResponse:   `{"response":{"statusCode":200,"statusText":"OK","data":{"buddyInfo":{"aimId":"newbuddy","displayId":"newbuddy","state":"offline","userType":"aim"},"resultCode":"success"}}}`,
 		},
 		{
 			name: "Error_BuddyAlreadyExists",

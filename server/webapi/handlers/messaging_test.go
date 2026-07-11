@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -11,8 +13,10 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 
 	"github.com/mk6i/open-oscar-server/server/webapi/middleware"
+	"github.com/mk6i/open-oscar-server/server/webapi/types"
 	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
 )
@@ -57,6 +61,145 @@ func createTestSessionManagerWithOSCAR(screenName string, oscarSession *state.Se
 		slog.Default(),
 	)
 	return mgr, session.AimSID
+}
+
+// stubLocateService answers UserInfoQuery with a reply carrying screenName, or
+// with an error when screenName is empty (i.e. the target is offline or blocked).
+func stubLocateService(screenName string) *MockLocateService {
+	ls := &MockLocateService{}
+	call := ls.On("UserInfoQuery", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	if screenName == "" {
+		call.Return(wire.SNACMessage{}, io.EOF)
+	} else {
+		call.Return(wire.SNACMessage{Body: wire.SNAC_0x02_0x06_LocateUserInfoReply{
+			TLVUserInfo: wire.TLVUserInfo{ScreenName: screenName},
+		}}, nil)
+	}
+	return ls
+}
+
+// stubFeedbagService answers Query with a single buddy item for buddy, carrying
+// alias when one is given.
+func stubFeedbagService(buddy, alias string) *MockFeedbagService {
+	item := wire.FeedbagItem{ItemID: 1, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: buddy}
+	if alias != "" {
+		item.TLVLBlock = wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesAlias, alias)}}
+	}
+	fs := &MockFeedbagService{}
+	fs.On("Query", mock.Anything, mock.Anything, mock.Anything).Return(
+		wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: []wire.FeedbagItem{item}}}, nil,
+	)
+	return fs
+}
+
+// sendIMForDest drives SendIM addressed to t, with the recipient's display name
+// resolving to locateName and the sender's alias for them set to alias, and returns
+// the events queued for the sender.
+func sendIMForDest(t *testing.T, dest, locateName, alias string) []types.Event {
+	t.Helper()
+
+	oscarInstance := state.NewSession().AddInstance()
+	icbmService := &MockICBMService{}
+	icbmService.On("ChannelMsgToHost", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, nil)
+
+	mgr := state.NewWebAPISessionManager()
+	session, err := mgr.CreateSession(context.Background(), state.DisplayScreenName("Ann Dupree"),
+		"test-dev", []string{"im", "sentIM", "conversation"}, oscarInstance, slog.Default())
+	require.NoError(t, err)
+
+	handler := &MessagingHandler{
+		SessionManager: mgr,
+		ICBMService:    icbmService,
+		LocateService:  stubLocateService(locateName),
+		FeedbagService: stubFeedbagService(dest, alias),
+		Logger:         slog.Default(),
+	}
+
+	// startSession wires this in production; SendIM reads aliases off the session.
+	session.BuddyAliasLoader = func(ctx context.Context) (map[string]string, error) {
+		return LookupBuddyAliases(ctx, handler.FeedbagService, session.OSCARSession)
+	}
+
+	req, err := http.NewRequest("GET", "/im/sendIM?aimsid="+session.AimSID+"&t="+url.QueryEscape(dest)+"&message=hi", nil)
+	require.NoError(t, err)
+	rr := httptest.NewRecorder()
+	requireSession(mgr, handler.SendIM).ServeHTTP(rr, req)
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	return session.EventQueue.GetAllEvents()
+}
+
+// The client sends t as the normalized aimId, so the recipient's display name has
+// to come from the locate reply. Echoing t back as a displayId would overwrite the
+// properly formatted name the client already holds for that aimId.
+func TestMessagingHandler_SendIM_DestDisplayIDFromLocateReply(t *testing.T) {
+	var sentIM types.SentIMEvent
+	var conv map[string]interface{}
+	for _, event := range sendIMForDest(t, "mikelee", "Mike Lee", "") {
+		switch event.Type {
+		case types.EventTypeSentIM:
+			sentIM, _ = event.Data.(types.SentIMEvent)
+		case types.EventTypeConversation:
+			data, _ := event.Data.(map[string]interface{})
+			convs, _ := data["conversations"].([]map[string]interface{})
+			require.Len(t, convs, 1)
+			conv = convs[0]
+		}
+	}
+
+	assert.Equal(t, "anndupree", sentIM.Sender.AimID)
+	assert.Equal(t, "Ann Dupree", sentIM.Sender.DisplayID)
+	assert.Equal(t, "mikelee", sentIM.Dest.AimID)
+	assert.Equal(t, "Mike Lee", sentIM.Dest.DisplayID)
+
+	require.NotNil(t, conv)
+	assert.Equal(t, "mikelee", conv["aimId"])
+	assert.Equal(t, "Mike Lee", conv["displayId"])
+}
+
+// An alias is private to the sender and lives only in their feedbag, and the client
+// deletes the alias it holds every time it merges a user map. So the sentIM echo has
+// to repeat it, or messaging an aliased buddy renames him back to his screen name.
+func TestMessagingHandler_SendIM_DestCarriesAlias(t *testing.T) {
+	var sentIM types.SentIMEvent
+	for _, event := range sendIMForDest(t, "mikelee", "Mike Lee", "MICHAELLEE") {
+		if event.Type == types.EventTypeSentIM {
+			sentIM, _ = event.Data.(types.SentIMEvent)
+		}
+	}
+
+	assert.Equal(t, "mikelee", sentIM.Dest.AimID)
+	assert.Equal(t, "Mike Lee", sentIM.Dest.DisplayID)
+	assert.Equal(t, "MICHAELLEE", sentIM.Dest.Friendly)
+}
+
+// When the recipient's display name cannot be resolved, displayId is omitted
+// rather than filled in with the aimId, leaving the client's existing name intact.
+func TestMessagingHandler_SendIM_OmitsDestDisplayIDWhenUnresolved(t *testing.T) {
+	var sentIM types.SentIMEvent
+	var conv map[string]interface{}
+	for _, event := range sendIMForDest(t, "mikelee", "", "") {
+		switch event.Type {
+		case types.EventTypeSentIM:
+			sentIM, _ = event.Data.(types.SentIMEvent)
+		case types.EventTypeConversation:
+			data, _ := event.Data.(map[string]interface{})
+			convs, _ := data["conversations"].([]map[string]interface{})
+			require.Len(t, convs, 1)
+			conv = convs[0]
+		}
+	}
+
+	assert.Equal(t, "mikelee", sentIM.Dest.AimID)
+	assert.Empty(t, sentIM.Dest.DisplayID)
+	encoded, err := json.Marshal(sentIM)
+	require.NoError(t, err)
+	assert.NotContains(t, string(encoded), "displayId\":\"mikelee\"")
+
+	require.NotNil(t, conv)
+	assert.Equal(t, "mikelee", conv["aimId"])
+	assert.NotContains(t, conv, "displayId")
 }
 
 func TestMessagingHandler_SendIM(t *testing.T) {
@@ -112,6 +255,8 @@ func TestMessagingHandler_SendIM(t *testing.T) {
 			handler := &MessagingHandler{
 				SessionManager: sessionMgr,
 				ICBMService:    icbmService,
+				LocateService:  stubLocateService(""),
+				FeedbagService: stubFeedbagService("someone", ""),
 				Logger:         slog.Default(),
 			}
 
@@ -149,6 +294,8 @@ func TestMessagingHandler_SendIM_POST(t *testing.T) {
 	handler := &MessagingHandler{
 		SessionManager: sessionMgr,
 		ICBMService:    icbmService,
+		LocateService:  stubLocateService(""),
+		FeedbagService: stubFeedbagService("someone", ""),
 		Logger:         slog.Default(),
 	}
 
@@ -266,6 +413,8 @@ func TestMessagingHandler_SetTyping(t *testing.T) {
 			handler := &MessagingHandler{
 				SessionManager: sessionMgr,
 				ICBMService:    icbmService,
+				LocateService:  stubLocateService(""),
+				FeedbagService: stubFeedbagService("someone", ""),
 				Logger:         slog.Default(),
 			}
 

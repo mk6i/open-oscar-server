@@ -53,9 +53,15 @@ type BuddyGroupInfo struct {
 }
 
 // BuddyPresenceInfo represents presence information for a buddy.
+//
+// AimID is the normalized screen name the web client keys users by; DisplayID
+// preserves the casing and spacing the user signed on with. The client renders
+// DisplayID and falls back to AimID when it is absent.
 type BuddyPresenceInfo struct {
 	AimID      string `json:"aimId" xml:"aimId"`
-	State      string `json:"state" xml:"state"` // "online", "offline", "away", "idle"
+	DisplayID  string `json:"displayId,omitempty" xml:"displayId,omitempty"`
+	Friendly   string `json:"friendly,omitempty" xml:"friendly,omitempty"` // Viewer's private alias, rendered in preference to DisplayID
+	State      string `json:"state" xml:"state"`                           // "online", "offline", "away", "idle"
 	StatusMsg  string `json:"statusMsg,omitempty" xml:"statusMsg,omitempty"`
 	AwayMsg    string `json:"awayMsg,omitempty" xml:"awayMsg,omitempty"`
 	ProfileMsg string `json:"profileMsg,omitempty" xml:"profileMsg,omitempty"`
@@ -102,12 +108,18 @@ func (h *PresenceHandler) GetPresence(w http.ResponseWriter, r *http.Request, se
 		}
 		presenceList := make([]BuddyPresenceInfo, 0, len(users))
 
+		// The client's user-object merge deletes any alias it holds, so every
+		// presence payload has to carry friendly for aliased buddies.
+		aliases := session.Aliases(ctx)
+
 		for _, user := range users {
 			user = strings.TrimSpace(user)
 			if user == "" {
 				continue
 			}
-			presenceList = append(presenceList, h.getUserPresence(ctx, session.OSCARSession, state.NewIdentScreenName(user), wantProfileMsg))
+			info := h.getUserPresence(ctx, session.OSCARSession, state.DisplayScreenName(user), wantProfileMsg)
+			info.Friendly = aliases[info.AimID]
+			presenceList = append(presenceList, info)
 		}
 
 		presenceData.Users = presenceList
@@ -180,7 +192,7 @@ func (h *PresenceHandler) getBuddyListGroups(ctx context.Context, session *state
 
 		// UserInfoQuery performs the blocking check and online lookup; blocked or
 		// offline buddies come back as "offline", preserving the list structure.
-		presence := h.getUserPresence(ctx, session.OSCARSession, state.NewIdentScreenName(item.Name), wantProfileMsg)
+		presence := h.getUserPresence(ctx, session.OSCARSession, state.DisplayScreenName(item.Name), wantProfileMsg)
 		group.Buddies = append(group.Buddies, presence)
 	}
 
@@ -205,22 +217,26 @@ func (h *PresenceHandler) getBuddyListGroups(ctx context.Context, session *state
 // on behalf of the requesting OSCAR session (instance). UserInfoQuery performs
 // the OSCAR blocking check and online lookup internally: blocked and offline
 // users both come back as a locate error, which we surface as "offline".
-func (h *PresenceHandler) getUserPresence(ctx context.Context, instance *state.SessionInstance, target state.IdentScreenName, wantProfileMsg bool) BuddyPresenceInfo {
+func (h *PresenceHandler) getUserPresence(ctx context.Context, instance *state.SessionInstance, target state.DisplayScreenName, wantProfileMsg bool) BuddyPresenceInfo {
+	ident := target.IdentScreenName()
+
 	// Default offline presence
 	presence := BuddyPresenceInfo{
-		AimID:    target.String(),
-		State:    "offline",
-		UserType: "aim",
+		AimID:     ident.String(),
+		DisplayID: target.String(),
+		State:     "offline",
+		UserType:  "aim",
 	}
 
 	// Determine user type
-	if strings.HasPrefix(target.String(), "admin") {
+	if strings.HasPrefix(ident.String(), "admin") {
 		presence.UserType = "admin"
-	} else if isICQScreenName(target.String()) {
+	} else if isICQScreenName(ident.String()) {
 		presence.UserType = "icq"
 	}
 
-	// Web-only sessions have no OSCAR instance to query on behalf of.
+	// The unauthenticated icon endpoint resolves presence without a session, so
+	// there may be no OSCAR instance to query on behalf of.
 	if instance == nil {
 		return presence
 	}
@@ -231,9 +247,9 @@ func (h *PresenceHandler) getUserPresence(ctx context.Context, instance *state.S
 	}
 
 	reply, err := h.LocateService.UserInfoQuery(ctx, instance, wire.SNACFrame{},
-		wire.SNAC_0x02_0x05_LocateUserInfoQuery{Type: uint16(reqType), ScreenName: target.String()})
+		wire.SNAC_0x02_0x05_LocateUserInfoQuery{Type: uint16(reqType), ScreenName: ident.String()})
 	if err != nil {
-		h.Logger.WarnContext(ctx, "failed to query user info", "screenName", target.String(), "error", err)
+		h.Logger.WarnContext(ctx, "failed to query user info", "screenName", ident.String(), "error", err)
 		return presence
 	}
 
@@ -244,6 +260,12 @@ func (h *PresenceHandler) getUserPresence(ctx context.Context, instance *state.S
 	}
 
 	presence.State = "online"
+
+	// The locate reply carries the screen name as the user formatted it, which
+	// beats whatever casing the caller happened to pass in.
+	if info.ScreenName != "" {
+		presence.DisplayID = info.ScreenName
+	}
 
 	if tod, ok := info.Uint32BE(wire.OServiceUserInfoSignonTOD); ok {
 		presence.OnlineTime = int64(tod)
@@ -344,9 +366,6 @@ func (h *PresenceHandler) SetState(w http.ResponseWriter, r *http.Request, sessi
 		}
 	}
 
-	// Queue presence event for other WebAPI sessions watching this user
-	h.broadcastPresenceEvent(session.ScreenName.IdentScreenName(), stateParam, awayMsg, "")
-
 	// Notify the user's own client so its status indicator re-renders. The AIM
 	// client updates its self-presence badge only from "myInfo" events; the
 	// "presence" broadcast above drives buddy dots, not the user's own state.
@@ -365,7 +384,7 @@ func (h *PresenceHandler) SetState(w http.ResponseWriter, r *http.Request, sessi
 	response.Response.StatusCode = 200
 	response.Response.StatusText = "OK"
 	response.Response.Data = map[string]interface{}{
-		"aimId":      session.ScreenName.String(),
+		"aimId":      session.ScreenName.IdentScreenName().String(),
 		"displayId":  session.ScreenName.String(),
 		"state":      stateParam,
 		"awayMsg":    awayMsg,
@@ -395,9 +414,6 @@ func (h *PresenceHandler) SetStatus(w http.ResponseWriter, r *http.Request, sess
 	if err := h.BuddyBroadcaster.BroadcastBuddyArrived(ctx, oscarSession.IdentScreenName(), oscarSession.Session().TLVUserInfo()); err != nil {
 		h.Logger.ErrorContext(ctx, "failed to broadcast status update", "err", err.Error())
 	}
-
-	// Queue status event for other WebAPI sessions
-	h.broadcastPresenceEvent(session.ScreenName.IdentScreenName(), "", "", statusMsg)
 
 	// Notify the user's own client so its status message re-renders. Preserve the
 	// current presence state so a status-only change does not flip the self badge.
@@ -536,8 +552,7 @@ func (h *PresenceHandler) Icon(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	screenName := state.NewIdentScreenName(name)
-	switch h.getUserPresence(r.Context(), instance, screenName, false).State {
+	switch h.getUserPresence(r.Context(), instance, state.DisplayScreenName(name), false).State {
 	case "away":
 		iconURL = "/static/icons/away_" + iconType + "_" + size + ".png"
 	case "idle":
@@ -582,7 +597,7 @@ func (h *PresenceHandler) pushMyInfo(session *state.WebAPISession, webState, awa
 
 	screenName := session.ScreenName.String()
 	myInfo := map[string]interface{}{
-		"aimId":     screenName,
+		"aimId":     session.ScreenName.IdentScreenName().String(),
 		"displayId": screenName,
 		"friendly":  screenName,
 		"state":     webState,
@@ -596,28 +611,4 @@ func (h *PresenceHandler) pushMyInfo(session *state.WebAPISession, webState, awa
 	}
 
 	session.EventQueue.Push(types.EventType("myInfo"), myInfo)
-}
-
-// broadcastPresenceEvent sends presence updates to all WebAPI sessions watching this user
-func (h *PresenceHandler) broadcastPresenceEvent(screenName state.IdentScreenName, stateStr, awayMsg, statusMsg string) {
-	// Get all sessions that have this user in their buddy list
-	// For now, we'll broadcast to all sessions (this should be optimized)
-	// Using background context as this is an async broadcast operation
-	for _, sess := range h.SessionManager.GetAllSessions(context.Background()) {
-		if sess.EventQueue != nil && sess.Events != nil {
-			// Check if session is subscribed to presence events
-			for _, event := range sess.Events {
-				if event == "presence" || event == "myInfo" {
-					eventData := types.PresenceEvent{
-						AimID:     screenName.String(),
-						State:     stateStr,
-						AwayMsg:   awayMsg,
-						StatusMsg: statusMsg,
-					}
-					sess.EventQueue.Push(types.EventTypePresence, eventData)
-					break
-				}
-			}
-		}
-	}
 }

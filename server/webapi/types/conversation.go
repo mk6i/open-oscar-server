@@ -14,12 +14,17 @@ func ConversationEventData(operation string, conversations []map[string]interfac
 }
 
 // ConversationEntry builds one conversation object for the Web AIM client.
+//
+// An empty displayID is omitted rather than sent blank: the client falls back to
+// the name it already has for aimID, whereas any value present here replaces it.
 func ConversationEntry(aimID, displayID, message, msgID, sender string, sent bool, unread int) map[string]interface{} {
 	entry := map[string]interface{}{
 		"aimId":       aimID,
-		"displayId":   displayID,
 		"active":      0,
 		"unreadCount": unread,
+	}
+	if displayID != "" {
+		entry["displayId"] = displayID
 	}
 	if message != "" {
 		entry["lastIM"] = map[string]interface{}{

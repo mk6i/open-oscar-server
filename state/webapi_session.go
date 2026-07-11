@@ -20,6 +20,36 @@ var (
 	ErrNoWebAPISession = errors.New("WebAPI session not found")
 	// ErrWebAPISessionExpired is returned when a WebAPI session has expired.
 	ErrWebAPISessionExpired = errors.New("WebAPI session expired")
+	// ErrWebAPISessionManagerClosed is returned when a session is requested from
+	// a manager that has been shut down.
+	ErrWebAPISessionManagerClosed = errors.New("WebAPI session manager is shut down")
+)
+
+// Web API session lifecycle timeline.
+//
+// A web client keeps its session alive by long-polling GET /aim/fetchEvents.
+// Every authenticated request touches the session (middleware.RequireSession
+// calls TouchSession at request arrival), sliding expiry to now + the TTL. A
+// single poll blocks for up to 60s (the fetchEvents long-poll cap) and the
+// client waits ~500ms (TimeToNextFetch) before re-polling, so in steady state a
+// healthy client touches the session at worst every ~60-65s once jitter is
+// included. That worst-case touch interval is the floor the TTL must clear.
+//
+// If a client hangs up without calling endSession, its last touch was at its
+// last poll: the session then expires webAPISessionTTL later and the reaper
+// sweeps it within one webAPISessionReapInterval tick. So a silent client is
+// removed (and its OSCAR session closed) within TTL + tick of going quiet.
+const (
+	// webAPISessionTTL bounds how long a session survives without a poll. It is
+	// sized to absorb one missed poll cycle: ~60s for the normal cycle, ~60s for
+	// the absorbed miss, plus ~20s of jitter margin. Two consecutive misses mean
+	// the client is genuinely gone and the session is reaped.
+	webAPISessionTTL = 150 * time.Second
+
+	// webAPISessionReapInterval is how often the cleanup goroutine sweeps for
+	// expired sessions (~TTL/5). A dead session lingers at most
+	// webAPISessionTTL + webAPISessionReapInterval before removal.
+	webAPISessionReapInterval = 30 * time.Second
 )
 
 // WebAPISession represents an active Web AIM API session.
@@ -45,6 +75,9 @@ type WebAPISession struct {
 	TempBuddies         map[string]bool                                // Temporary buddies for this session only
 	BuddyListRefresher  func(ctx context.Context) (interface{}, error) // Called on feedbag changes to push buddylist event
 	PermitDenyRefresher func(ctx context.Context) (interface{}, error) // Called on feedbag changes to push permitDeny event
+	BuddyAliasLoader    func(ctx context.Context) (map[string]string, error)
+	aliases             map[string]string // cached BuddyAliasLoader result, nil when unloaded or invalidated
+	aliasMu             sync.Mutex
 	imLog               map[string][]WebAPIStoredIM
 	imLogMu             sync.Mutex
 	logger              *slog.Logger // Logger for debugging
@@ -55,11 +88,61 @@ func (s *WebAPISession) IsExpired() bool {
 	return time.Now().After(s.ExpiresAt)
 }
 
+// Aliases returns this session owner's private buddy aliases, keyed by normalized
+// screen name. Aliases live in the owner's feedbag, so the map is loaded once and
+// cached until a feedbag change invalidates it: a signon that brings a large buddy
+// list online costs one feedbag query instead of one per buddy.
+//
+// The map is owned by the session and must not be mutated by callers.
+//
+// aliasMu is deliberately held across the load rather than released while the
+// feedbag is queried. Another instance of the owner can rename a buddy mid-query,
+// and its FeedbagUpdateItem SNAC invalidates this cache; if the load ran outside
+// the lock, that query's pre-rename result could be stored *after* the
+// invalidation and serve the old alias until the next feedbag change. Holding the
+// lock makes the invalidation wait for the load and then win.
+func (s *WebAPISession) Aliases(ctx context.Context) map[string]string {
+	s.aliasMu.Lock()
+	defer s.aliasMu.Unlock()
+
+	// The loader is wired after the session is created, so an event arriving in
+	// that window has no way to resolve aliases.
+	if s.BuddyAliasLoader == nil {
+		return nil
+	}
+	if s.aliases == nil {
+		aliases, err := s.BuddyAliasLoader(ctx)
+		if err != nil {
+			s.logger.Error("failed to load buddy aliases", "err", err.Error())
+			return nil
+		}
+		s.aliases = aliases
+	}
+	return s.aliases
+}
+
+// InvalidateAliases drops the cached alias map so the next Aliases call reloads it.
+// Callers that change the owner's feedbag must call this: the feedbag service
+// relays FeedbagUpdateItem only to the owner's *other* instances, so a session
+// never sees a SNAC for its own writes.
+func (s *WebAPISession) InvalidateAliases() {
+	s.aliasMu.Lock()
+	defer s.aliasMu.Unlock()
+	s.aliases = nil
+}
+
+// aliasFor returns this session owner's private alias for buddy, or "" when none is
+// set. The web client deletes the alias it holds whenever it merges a user map, so
+// every event naming a buddy has to repeat it.
+func (s *WebAPISession) aliasFor(buddy IdentScreenName) string {
+	// Runs on the SNAC listener goroutine, which has no request context.
+	return s.Aliases(context.Background())[buddy.String()]
+}
+
 // Touch updates the last accessed time and extends expiration if needed.
 func (s *WebAPISession) Touch() {
 	s.LastAccessed = time.Now()
-	// Extend expiration by 60 minutes from last access
-	newExpiry := s.LastAccessed.Add(60 * time.Minute)
+	newExpiry := s.LastAccessed.Add(webAPISessionTTL)
 	if newExpiry.After(s.ExpiresAt) {
 		s.ExpiresAt = newExpiry
 	}
@@ -159,15 +242,20 @@ func (s *WebAPISession) handleIncomingIM(msg wire.SNACMessage) {
 	// client dedupes its conversation list by msgId, silently dropping any
 	// collisions. Mint a fresh random id instead of reusing body.Cookie.
 	msgID := strconv.FormatUint(mrand.Uint64(), 16)
-	partner := body.ScreenName
+	// SNAC user info carries the sender's display screen name. The web client
+	// keys conversations and users by the normalized aimId and only renders
+	// displayId, so the two forms must not be interchanged.
+	partnerDisplay := body.ScreenName
+	partnerAimID := NewIdentScreenName(partnerDisplay).String()
 	nowSec := time.Now().Unix()
-	s.AddStoredIM(partner, partner, messageText, msgID, nowSec)
+	s.AddStoredIM(partnerAimID, partnerAimID, messageText, msgID, nowSec)
 
 	// Create IM event
 	imEvent := types.IMEvent{
 		Source: types.UserInfo{
-			AimID:     body.ScreenName,
-			DisplayID: body.ScreenName,
+			AimID:     partnerAimID,
+			DisplayID: partnerDisplay,
+			Friendly:  s.aliasFor(NewIdentScreenName(partnerAimID)),
 			UserType:  "aim",
 			State:     "online",
 		},
@@ -178,17 +266,26 @@ func (s *WebAPISession) handleIncomingIM(msg wire.SNACMessage) {
 	}
 
 	s.EventQueue.Push(types.EventTypeIM, imEvent)
+	s.logger.Debug("delivered instant message",
+		"from", partnerDisplay,
+		"to", s.ScreenName)
 
 	if s.IsSubscribedTo("conversation") {
+		// unread is 0 here, not 1, because the "im" event pushed above already
+		// causes the client to increment its own persisted per-buddy unread
+		// tally. The "Recent chats" badge is the sum of that persisted tally and
+		// this conversation's unreadCount, so sending 1 here would double-count
+		// the message (badge shows 2 for the first IM). Mirrors the sent-IM path,
+		// which also passes 0.
 		s.EventQueue.Push(types.EventTypeConversation, types.ConversationEventData("update", []map[string]interface{}{
 			types.ConversationEntry(
-				body.ScreenName,
-				body.ScreenName,
+				partnerAimID,
+				partnerDisplay,
 				messageText,
 				msgID,
-				body.ScreenName,
+				partnerAimID,
 				false,
-				1,
+				0,
 			),
 		}))
 	}
@@ -217,7 +314,7 @@ func (s *WebAPISession) handleTypingNotification(msg wire.SNACMessage) {
 	}
 
 	typingEvent := types.TypingEvent{
-		AimID:        body.ScreenName,
+		AimID:        NewIdentScreenName(body.ScreenName).String(),
 		TypingStatus: typingStatus,
 	}
 
@@ -261,8 +358,10 @@ func (s *WebAPISession) handleBuddyArrived(msg wire.SNACMessage) {
 		}
 	}
 
+	buddy := NewIdentScreenName(body.ScreenName)
 	presenceEvent := types.PresenceEvent{
-		AimID:    body.ScreenName,
+		AimID:    buddy.String(),
+		Friendly: s.aliasFor(buddy),
 		State:    stateStr,
 		UserType: "aim",
 	}
@@ -281,8 +380,10 @@ func (s *WebAPISession) handleBuddyDeparted(msg wire.SNACMessage) {
 		return
 	}
 
+	buddy := NewIdentScreenName(body.ScreenName)
 	presenceEvent := types.PresenceEvent{
-		AimID:    body.ScreenName,
+		AimID:    buddy.String(),
+		Friendly: s.aliasFor(buddy),
 		State:    "offline",
 		UserType: "aim",
 	}
@@ -293,6 +394,9 @@ func (s *WebAPISession) handleBuddyDeparted(msg wire.SNACMessage) {
 func (s *WebAPISession) handleFeedbagMessage(msg wire.SNACMessage) {
 	switch msg.Frame.SubGroup {
 	case wire.FeedbagInsertItem, wire.FeedbagUpdateItem, wire.FeedbagDeleteItem:
+		// A buddy item carries its alias, so any feedbag write can change the map.
+		s.InvalidateAliases()
+
 		if s.BuddyListRefresher != nil {
 			groups, err := s.BuddyListRefresher(context.Background())
 			if err != nil {
@@ -323,27 +427,19 @@ func (s *WebAPISession) handleFeedbagMessage(msg wire.SNACMessage) {
 }
 
 // WebAPISessionManager manages Web API sessions with thread-safe operations.
+// Construct it with NewWebAPISessionManager and drive its reaper with Run.
 type WebAPISessionManager struct {
-	sessions      map[string]*WebAPISession          // Keyed by aimsid
-	byUser        map[IdentScreenName]*WebAPISession // Keyed by screen name
-	mu            sync.RWMutex
-	cleanupTicker *time.Ticker
-	stopCleanup   chan struct{}
+	sessions map[string]*WebAPISession // Keyed by aimsid
+	mu       sync.RWMutex
+	closed   bool // set by Shutdown; rejects new sessions and makes drain idempotent
 }
 
-// NewWebAPISessionManager creates a new WebAPI session manager.
+// NewWebAPISessionManager creates a new WebAPI session manager. It does not start
+// any goroutines; call Run to start reaping expired sessions.
 func NewWebAPISessionManager() *WebAPISessionManager {
-	mgr := &WebAPISessionManager{
-		sessions:    make(map[string]*WebAPISession),
-		byUser:      make(map[IdentScreenName]*WebAPISession),
-		stopCleanup: make(chan struct{}),
+	return &WebAPISessionManager{
+		sessions: make(map[string]*WebAPISession),
 	}
-
-	// Start cleanup goroutine to remove expired sessions
-	mgr.cleanupTicker = time.NewTicker(1 * time.Minute)
-	go mgr.cleanupExpiredSessions()
-
-	return mgr
 }
 
 // CreateSession creates a new WebAPI session.
@@ -351,11 +447,10 @@ func (m *WebAPISessionManager) CreateSession(ctx context.Context, screenName Dis
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Check if user already has an active session
-	identName := screenName.IdentScreenName()
-	if existing, exists := m.byUser[identName]; exists {
-		// Remove the old session
-		delete(m.sessions, existing.AimSID)
+	// Refuse to create sessions once shut down: the reaper is stopped, so a
+	// session added now would never be closed or reaped.
+	if m.closed {
+		return nil, ErrWebAPISessionManagerClosed
 	}
 
 	// Generate unique session ID
@@ -374,14 +469,13 @@ func (m *WebAPISessionManager) CreateSession(ctx context.Context, screenName Dis
 		DevID:           devID,
 		CreatedAt:       now,
 		LastAccessed:    now,
-		ExpiresAt:       now.Add(60 * time.Minute), // 60 minute initial expiry
-		FetchTimeout:    60000,                     // 60 seconds default for better stability
-		TimeToNextFetch: 500,                       // 500ms suggested delay
+		ExpiresAt:       now.Add(webAPISessionTTL),
+		FetchTimeout:    60000, // 60 seconds default for better stability
+		TimeToNextFetch: 500,   // 500ms suggested delay
 		logger:          logger,
 	}
 
 	m.sessions[aimsid] = session
-	m.byUser[identName] = session
 
 	// Start listening to OSCAR session message channel
 	session.StartListeningToOSCARSession()
@@ -406,40 +500,23 @@ func (m *WebAPISessionManager) GetSession(ctx context.Context, aimsid string) (*
 	return session, nil
 }
 
-// GetSessionByUser retrieves a session by screen name.
-func (m *WebAPISessionManager) GetSessionByUser(ctx context.Context, screenName IdentScreenName) (*WebAPISession, error) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	session, exists := m.byUser[screenName]
-	if !exists {
-		return nil, ErrNoWebAPISession
-	}
-
-	if session.IsExpired() {
-		return nil, ErrWebAPISessionExpired
-	}
-
-	return session, nil
-}
-
 // RemoveSession removes a session by aimsid.
 func (m *WebAPISessionManager) RemoveSession(ctx context.Context, aimsid string) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	session, exists := m.sessions[aimsid]
 	if !exists {
+		m.mu.Unlock()
 		return ErrNoWebAPISession
 	}
 
 	delete(m.sessions, aimsid)
-	delete(m.byUser, session.ScreenName.IdentScreenName())
+	m.mu.Unlock()
 
-	// CloseSession the event queue to unblock any waiting fetches
-	if session.EventQueue != nil {
-		session.EventQueue.Close()
-	}
+	// Tear down outside the lock: CloseInstance fans out to buddy-departed
+	// broadcasts and signout, which we don't want to run under m.mu.
+	session.EventQueue.Close()
+	session.OSCARSession.CloseInstance()
 
 	return nil
 }
@@ -458,69 +535,70 @@ func (m *WebAPISessionManager) TouchSession(ctx context.Context, aimsid string) 
 	return nil
 }
 
-// GetAllSessions returns all active sessions (for monitoring/admin).
-func (m *WebAPISessionManager) GetAllSessions(ctx context.Context) []*WebAPISession {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	sessions := make([]*WebAPISession, 0, len(m.sessions))
-	for _, session := range m.sessions {
-		if !session.IsExpired() {
-			sessions = append(sessions, session)
-		}
-	}
-	return sessions
-}
-
-// cleanupExpiredSessions periodically removes expired sessions.
-func (m *WebAPISessionManager) cleanupExpiredSessions() {
+// Run reaps expired sessions on a fixed interval until ctx is cancelled. The
+// caller owns the goroutine's lifecycle; typically launch it under the server's
+// errgroup:
+//
+//	g.Go(func() error { mgr.Run(ctx); return nil })
+func (m *WebAPISessionManager) Run(ctx context.Context) {
+	ticker := time.NewTicker(webAPISessionReapInterval)
+	defer ticker.Stop()
 	for {
 		select {
-		case <-m.cleanupTicker.C:
-			m.mu.Lock()
-			now := time.Now()
-			var toRemove []string
-
-			for aimsid, session := range m.sessions {
-				if now.After(session.ExpiresAt) {
-					toRemove = append(toRemove, aimsid)
-				}
-			}
-
-			for _, aimsid := range toRemove {
-				session := m.sessions[aimsid]
-				delete(m.sessions, aimsid)
-				delete(m.byUser, session.ScreenName.IdentScreenName())
-				if session.EventQueue != nil {
-					session.EventQueue.Close()
-				}
-			}
-			m.mu.Unlock()
-
-		case <-m.stopCleanup:
-			m.cleanupTicker.Stop()
+		case <-ticker.C:
+			m.reapExpired()
+		case <-ctx.Done():
 			return
 		}
 	}
 }
 
-// Shutdown stops the session manager and cleans up resources.
-func (m *WebAPISessionManager) Shutdown(ctx context.Context) {
-	close(m.stopCleanup)
-
+// reapExpired removes every expired session and tears it down.
+func (m *WebAPISessionManager) reapExpired() {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	// CloseSession all event queues
-	for _, session := range m.sessions {
-		if session.EventQueue != nil {
-			session.EventQueue.Close()
+	now := time.Now()
+	var expired []*WebAPISession
+	for aimsid, session := range m.sessions {
+		if now.After(session.ExpiresAt) {
+			delete(m.sessions, aimsid)
+			expired = append(expired, session)
 		}
 	}
+	m.mu.Unlock()
 
+	// Tear down outside the lock: CloseInstance fans out to buddy-departed
+	// broadcasts and signout, which we don't want to run under m.mu.
+	for _, session := range expired {
+		session.EventQueue.Close()
+		session.OSCARSession.CloseInstance()
+	}
+}
+
+// Shutdown drains and closes all sessions and blocks further CreateSession
+// calls. The reaper goroutine is stopped separately by cancelling the context
+// passed to Run. Safe to call more than once.
+func (m *WebAPISessionManager) Shutdown() {
+	m.mu.Lock()
+	if m.closed {
+		m.mu.Unlock()
+		return
+	}
+	m.closed = true
+
+	sessions := make([]*WebAPISession, 0, len(m.sessions))
+	for _, session := range m.sessions {
+		sessions = append(sessions, session)
+	}
 	// Clear all sessions
 	m.sessions = make(map[string]*WebAPISession)
-	m.byUser = make(map[IdentScreenName]*WebAPISession)
+	m.mu.Unlock()
+
+	// Tear down outside the lock: CloseInstance fans out to buddy-departed
+	// broadcasts and signout, which we don't want to run under m.mu.
+	for _, session := range sessions {
+		session.EventQueue.Close()
+		session.OSCARSession.CloseInstance()
+	}
 }
 
 // generateSessionID creates a cryptographically secure session ID.
