@@ -894,19 +894,20 @@ func TestRequireSession(t *testing.T) {
 			expectNextCalled:   false,
 		},
 		{
-			name:   "Error_AnonymousSession",
-			aimsid: "anon-session",
+			name:   "Error_NilOSCARSession",
+			aimsid: "no-oscar-session",
 			setupMocks: func(sm *MockWebAPISessionManager, aimsid string) {
 				sess := &state.WebAPISession{
 					AimSID:       aimsid,
-					ScreenName:   state.DisplayScreenName("Guest_abc"),
+					ScreenName:   state.DisplayScreenName("someuser"),
 					LastAccessed: time.Now(),
-					// OSCARSession is nil - anonymous session.
+					// OSCARSession is nil - a broken server invariant, since
+					// startSession never creates a session without one.
 				}
 				sm.On("GetSession", mock.Anything, aimsid).Return(sess, nil)
 			},
-			expectedStatusCode: http.StatusUnauthorized,
-			expectedResponse:   `{"response":{"statusCode":401,"statusText":"invalid or expired session"}}`,
+			expectedStatusCode: http.StatusInternalServerError,
+			expectedResponse:   `{"response":{"statusCode":500,"statusText":"internal server error"}}`,
 			expectNextCalled:   false,
 		},
 		{

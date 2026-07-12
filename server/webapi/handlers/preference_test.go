@@ -189,9 +189,10 @@ func TestPreferenceHandler_SetPreferences_NoOSCARSession(t *testing.T) {
 	rr := httptest.NewRecorder()
 	requireSession(handler.SessionManager, handler.SetPreferences).ServeHTTP(rr, req)
 
-	// Anonymous (nil OSCAR) sessions are rejected by the session middleware
-	// before the handler runs, so no feedbag lookup occurs.
-	assert.Equal(t, http.StatusUnauthorized, rr.Code)
-	assert.Contains(t, rr.Body.String(), "invalid or expired session")
+	// A nil OSCARSession is a broken server invariant (guests are unsupported),
+	// so the session middleware rejects it with a 500 before the handler runs
+	// and no feedbag lookup occurs.
+	assert.Equal(t, http.StatusInternalServerError, rr.Code)
+	assert.Contains(t, rr.Body.String(), "internal server error")
 	fs.AssertNotCalled(t, "Query", mock.Anything, mock.Anything, mock.Anything)
 }

@@ -467,8 +467,8 @@ func TestPresenceHandler_SetState_MyInfoNormalizesAimID(t *testing.T) {
 }
 
 func TestPresenceHandler_SetState_NoOSCARSession_Rejected(t *testing.T) {
-	// Anonymous (web-only, no OSCAR) sessions are rejected by the session
-	// middleware before the handler runs.
+	// A nil OSCARSession is a broken server invariant (guests are unsupported),
+	// so the session middleware rejects it with a 500 before the handler runs.
 	sessionMgr, aimsid := createTestSessionManager("testuser")
 
 	handler := &PresenceHandler{
@@ -482,8 +482,8 @@ func TestPresenceHandler_SetState_NoOSCARSession_Rejected(t *testing.T) {
 	rr := httptest.NewRecorder()
 	requireSession(handler.SessionManager, handler.SetState).ServeHTTP(rr, req)
 
-	assert.Equal(t, http.StatusUnauthorized, rr.Code)
-	assert.Contains(t, rr.Body.String(), "invalid or expired session")
+	assert.Equal(t, http.StatusInternalServerError, rr.Code)
+	assert.Contains(t, rr.Body.String(), "internal server error")
 }
 
 func TestIsICQScreenName(t *testing.T) {
