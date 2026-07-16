@@ -43,6 +43,12 @@ type LocateService interface {
 	DirInfo(ctx context.Context, inFrame wire.SNACFrame, inBody wire.SNAC_0x02_0x0B_LocateGetDirInfo) (wire.SNACMessage, error)
 }
 
+// DirSearchService issues OSCAR ODir directory searches on behalf of the Web
+// AIM member-directory endpoints.
+type DirSearchService interface {
+	InfoQuery(ctx context.Context, inFrame wire.SNACFrame, inBody wire.SNAC_0x0F_0x02_InfoQuery) (wire.SNACMessage, error)
+}
+
 // BuddyListRegistry is the interface for keeping track of users with active
 // buddy lists. Once registered, a user becomes visible to other users' buddy
 // lists and vice versa.
