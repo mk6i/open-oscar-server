@@ -68,6 +68,12 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 		Logger:         logger,
 	}
 
+	memberDirHandler := &handlers.MemberDirHandler{
+		DirSearchService: handler.DirSearchService,
+		LocateService:    handler.LocateService,
+		Logger:           logger,
+	}
+
 	oscarBridgeHandler := &handlers.OSCARBridgeHandler{
 		SessionManager:   sessionManager,
 		OSCARAuthService: handler.AuthService,
@@ -218,6 +224,18 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 				authMiddleware.RequireSession(sessionManager, presenceHandler.GetProfile))))
 
 		mux.HandleFunc("GET /presence/icon", presenceHandler.Icon)
+
+		// Member directory search and self directory-info retrieval. Both use
+		// aimsid-based auth, so we use flexible auth.
+		mux.Handle("GET /memberDir/search", authMiddleware.AuthenticateFlexible(
+			authMiddleware.CORSMiddleware(
+				authMiddleware.RequireSession(sessionManager, memberDirHandler.Search))))
+		mux.Handle("GET /memberDir/get", authMiddleware.AuthenticateFlexible(
+			authMiddleware.CORSMiddleware(
+				authMiddleware.RequireSession(sessionManager, memberDirHandler.Get))))
+		mux.Handle("GET /memberDir/update", authMiddleware.AuthenticateFlexible(
+			authMiddleware.CORSMiddleware(
+				authMiddleware.RequireSession(sessionManager, memberDirHandler.Update))))
 
 		// These endpoints support aimsid-based auth, so we use a flexible auth approach
 		mux.Handle("GET /preference/set", authMiddleware.AuthenticateFlexible(

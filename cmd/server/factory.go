@@ -590,6 +590,7 @@ func WebAPI(deps Container) *webapi.Server {
 		RecalcWarning:      deps.icbmSvc.RestoreWarningLevel,
 		LowerWarnLevel:     deps.icbmSvc.UpdateWarnLevel,
 		FeedbagService:     deps.feedbagSvc,
+		DirSearchService:   foodgroup.NewODirService(logger, deps.sqLiteUserStore),
 	}
 	// Pass SQLiteUserStore as the API key validator (it implements middleware.APIKeyValidator)
 	return webapi.NewServer(deps.cfg.WebAPIListeners, logger, handler, deps.sqLiteUserStore, deps.webAPISessionManager)

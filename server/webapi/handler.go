@@ -26,6 +26,7 @@ type Handler struct {
 	LowerWarnLevel     func(ctx context.Context, instance *state.SessionInstance)
 	ChatSessionManager ChatSessionManager
 	FeedbagService     FeedbagService
+	DirSearchService   DirSearchService
 }
 
 func (h Handler) GetHelloWorldHandler(w http.ResponseWriter, r *http.Request) {
