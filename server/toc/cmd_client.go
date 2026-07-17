@@ -1238,6 +1238,11 @@ func (s OSCARProxy) InitDone(ctx context.Context, instance *state.SessionInstanc
 	if errMsg, isLimited := s.checkRateLimit(ctx, instance, wire.OService, wire.OServiceClientOnline); isLimited {
 		return errMsg
 	}
+	// Per the TiK docs above, the buddy list precedes toc_init_done, so the
+	// contact list is fully submitted by now — even when the client sent no
+	// toc_add_buddy at all. Without this, ClientOnline skips the arrival
+	// broadcast for buddy-less sessions and watchers never see them sign on.
+	instance.SetContactsInit()
 	if err := s.OServiceService.ClientOnline(ctx, wire.BOS, wire.SNAC_0x01_0x02_OServiceClientOnline{}, instance); err != nil {
 		return s.runtimeErr(ctx, fmt.Errorf("OServiceServiceBOS.ClientOnliney: %w", err))
 	}
