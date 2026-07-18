@@ -241,6 +241,78 @@ func TestPresenceHandler_GetPresence(t *testing.T) {
 	}
 }
 
+// TestPresenceHandler_GetPresence_PublishesIconForOnlineBuddiesOnly verifies that
+// the icon is published only for an online, non-blocking user, and that an
+// offline or blocking user is never even looked up — so neither their icon nor
+// its hash leaks to a caller they are invisible to.
+func TestPresenceHandler_GetPresence_PublishesIconForOnlineBuddiesOnly(t *testing.T) {
+	ctx := context.Background()
+
+	feedbagService := &MockFeedbagService{}
+	feedbagService.On("Query", mock.Anything, mock.Anything, mock.Anything).
+		Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{}}, nil).Maybe()
+
+	locateService := &MockLocateService{}
+	locateService.On("UserInfoQuery", mock.Anything, mock.Anything, mock.Anything, screenNameMatcher("onlineuser")).
+		Return(onlineUserInfoReply("onlineuser", 0), nil)
+	locateService.On("UserInfoQuery", mock.Anything, mock.Anything, mock.Anything, screenNameMatcher("offlineuser")).
+		Return(wire.SNACMessage{Body: wire.SNACError{Code: wire.ErrorCodeNotLoggedOn}}, nil)
+
+	iconRetriever := &MockBuddyIconRetriever{}
+	iconRetriever.On("BuddyIconMetadata", mock.Anything, state.NewIdentScreenName("onlineuser")).
+		Return(bartID([]byte{0xab, 0xcd}), nil).Once()
+
+	oscarInstance := state.NewSession().AddInstance()
+	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
+	sess, err := sessionMgr.GetSession(ctx, aimsid)
+	require.NoError(t, err)
+	sess.BaseURL = "http://api.example.com"
+
+	handler := &PresenceHandler{
+		SessionManager: sessionMgr,
+		FeedbagService: feedbagService,
+		LocateService:  locateService,
+		IconSource:     BuddyIconSource{IconRetriever: iconRetriever, Logger: slog.Default()},
+		Logger:         slog.Default(),
+	}
+
+	req, err := http.NewRequest("GET", "/presence/get?aimsid="+aimsid+"&t=onlineuser,offlineuser", nil)
+	require.NoError(t, err)
+	rr := httptest.NewRecorder()
+	requireSession(handler.SessionManager, handler.GetPresence).ServeHTTP(rr, req)
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var got struct {
+		Response struct {
+			Data struct {
+				Users []struct {
+					AimID     string `json:"aimId"`
+					State     string `json:"state"`
+					BuddyIcon string `json:"buddyIcon"`
+				} `json:"users"`
+			} `json:"data"`
+		} `json:"response"`
+	}
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &got))
+
+	icons := map[string]string{}
+	states := map[string]string{}
+	for _, u := range got.Response.Data.Users {
+		icons[u.AimID] = u.BuddyIcon
+		states[u.AimID] = u.State
+	}
+
+	assert.Equal(t, "online", states["onlineuser"])
+	assert.Equal(t,
+		"http://api.example.com/expressions/get?t=onlineuser&type=buddyIcon&bartId=abcd",
+		icons["onlineuser"])
+
+	assert.Equal(t, "offline", states["offlineuser"])
+	assert.Empty(t, icons["offlineuser"])
+	iconRetriever.AssertNotCalled(t, "BuddyIconMetadata", mock.Anything, state.NewIdentScreenName("offlineuser"))
+	iconRetriever.AssertExpectations(t)
+}
+
 // TestPresenceHandler_GetPresence_BuddyListGrouping verifies that bl=1 places
 // each buddy under its own group using realistic feedbag data, where group rows
 // carry ItemID 0 and a distinct nonzero GroupID, and buddy rows reference those

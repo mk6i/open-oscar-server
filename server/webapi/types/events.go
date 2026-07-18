@@ -47,6 +47,7 @@ type PresenceEvent struct {
 	IdleTime   int    `json:"idleTime,omitempty"`   // Minutes idle
 	OnlineTime int64  `json:"onlineTime,omitempty"` // Unix timestamp
 	UserType   string `json:"userType"`             // "aim", "icq", "admin"
+	BuddyIcon  string `json:"buddyIcon,omitempty"`  // Absolute icon URL; empty preserves the client's current icon, the placeholder URL clears it
 }
 
 // IMEvent represents an instant message event.

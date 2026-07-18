@@ -58,6 +58,7 @@ func createTestSessionManagerWithOSCAR(screenName string, oscarSession *state.Se
 		"test-dev",
 		[]string{"im", "presence", "buddylist", "sentIM", "typing"},
 		oscarSession,
+		"",
 		slog.Default(),
 	)
 	return mgr, session.AimSID
@@ -105,7 +106,7 @@ func sendIMForDest(t *testing.T, dest, locateName, alias string) []types.Event {
 
 	mgr := state.NewWebAPISessionManager()
 	session, err := mgr.CreateSession(context.Background(), state.DisplayScreenName("Ann Dupree"),
-		"test-dev", []string{"im", "sentIM", "conversation"}, oscarInstance, slog.Default())
+		"test-dev", []string{"im", "sentIM", "conversation"}, oscarInstance, "", slog.Default())
 	require.NoError(t, err)
 
 	handler := &MessagingHandler{

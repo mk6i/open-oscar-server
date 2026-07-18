@@ -273,7 +273,7 @@ func TestBuddyListManager_GetBuddyListForUser(t *testing.T) {
 				).Once()
 			}
 
-			m := NewBuddyListManager(fs, ls, slog.Default())
+			m := NewBuddyListManager(fs, ls, newTestIconSource(), slog.Default())
 			sess := &state.WebAPISession{
 				ScreenName:   state.DisplayScreenName(owner.String()),
 				OSCARSession: state.NewSession().AddInstance(),
@@ -321,7 +321,7 @@ func TestBuddyListManager_GetBuddyListForUser_DisplayIDFromLocateReply(t *testin
 		}}, nil,
 	).Once()
 
-	m := NewBuddyListManager(fs, ls, slog.Default())
+	m := NewBuddyListManager(fs, ls, newTestIconSource(), slog.Default())
 	sess := &state.WebAPISession{
 		ScreenName:   state.DisplayScreenName("listowner"),
 		OSCARSession: state.NewSession().AddInstance(),
@@ -337,6 +337,86 @@ func TestBuddyListManager_GetBuddyListForUser_DisplayIDFromLocateReply(t *testin
 
 	fs.AssertExpectations(t)
 	ls.AssertExpectations(t)
+}
+
+// Icons are published only for online, non-blocking buddies: an online buddy with
+// an icon gets a content-addressed URL, an online buddy without one gets the
+// hash-less placeholder URL, and an offline (or blocking) buddy gets no icon and
+// is never even looked up, so neither their icon nor its hash leaks.
+func TestBuddyListManager_GetBuddyListForUser_PublishesBuddyIcons(t *testing.T) {
+	ctx := context.Background()
+
+	fb := []wire.FeedbagItem{
+		{Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+			TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{100})}}},
+		{Name: "Buddies", GroupID: 100, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+			TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1, 2, 3})}}},
+		{ItemID: 1, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "onlineicon"},
+		{ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "offlinebud"},
+		{ItemID: 3, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "onlinenoicon"},
+	}
+
+	fs := &MockFeedbagService{}
+	fs.On("Query", mock.Anything, mock.Anything, mock.Anything).Return(
+		wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: fb}}, nil,
+	).Once()
+
+	online := func(name string) wire.SNACMessage {
+		return wire.SNACMessage{Body: wire.SNAC_0x02_0x06_LocateUserInfoReply{
+			TLVUserInfo: wire.TLVUserInfo{ScreenName: name},
+		}}
+	}
+	locateFor := func(name string) any {
+		return mock.MatchedBy(func(q wire.SNAC_0x02_0x05_LocateUserInfoQuery) bool { return q.ScreenName == name })
+	}
+
+	ls := &MockLocateService{}
+	ls.On("UserInfoQuery", mock.Anything, mock.Anything, mock.Anything, locateFor("onlineicon")).
+		Return(online("onlineicon"), nil).Once()
+	ls.On("UserInfoQuery", mock.Anything, mock.Anything, mock.Anything, locateFor("onlinenoicon")).
+		Return(online("onlinenoicon"), nil).Once()
+	ls.On("UserInfoQuery", mock.Anything, mock.Anything, mock.Anything, locateFor("offlinebud")).
+		Return(wire.SNACMessage{}, errors.New("offline")).Once()
+
+	iconRetriever := &MockBuddyIconRetriever{}
+	iconRetriever.On("BuddyIconMetadata", mock.Anything, state.NewIdentScreenName("onlineicon")).
+		Return(bartID([]byte{0xab, 0xcd}), nil).Once()
+	iconRetriever.On("BuddyIconMetadata", mock.Anything, state.NewIdentScreenName("onlinenoicon")).
+		Return(nil, nil).Once()
+
+	m := NewBuddyListManager(fs, ls, BuddyIconSource{
+		IconRetriever: iconRetriever,
+		Logger:        slog.Default(),
+	}, slog.Default())
+
+	sess := &state.WebAPISession{
+		ScreenName:   state.DisplayScreenName("listowner"),
+		OSCARSession: state.NewSession().AddInstance(),
+		BaseURL:      "http://api.example.com",
+	}
+	got, err := m.GetBuddyListForUser(ctx, sess)
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	require.Len(t, got[0].Buddies, 3)
+
+	// onlineicon: content-addressed URL carrying the icon hash.
+	assert.Equal(t, "online", got[0].Buddies[0].State)
+	assert.Equal(t,
+		"http://api.example.com/expressions/get?t=onlineicon&type=buddyIcon&bartId=abcd",
+		got[0].Buddies[0].BuddyIcon)
+
+	// offlinebud: no icon, and its metadata is never queried.
+	assert.Equal(t, "offline", got[0].Buddies[1].State)
+	assert.Empty(t, got[0].Buddies[1].BuddyIcon)
+	iconRetriever.AssertNotCalled(t, "BuddyIconMetadata", mock.Anything, state.NewIdentScreenName("offlinebud"))
+
+	// onlinenoicon: hash-less placeholder URL so a cleared icon still propagates.
+	assert.Equal(t, "online", got[0].Buddies[2].State)
+	assert.Equal(t,
+		"http://api.example.com/expressions/get?t=onlinenoicon&type=buddyIcon",
+		got[0].Buddies[2].BuddyIcon)
+
+	iconRetriever.AssertExpectations(t)
 }
 
 // The feedbag service relays a session's own writes only to the owner's other
@@ -369,7 +449,7 @@ func TestBuddyListManager_SetBuddyAttributeInFeedbag_InvalidatesAliasCache(t *te
 	fs.On("Query", mock.Anything, mock.Anything, mock.Anything).
 		Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: feedbag("MIKE")}}, nil).Once()
 
-	m := NewBuddyListManager(fs, &MockLocateService{}, slog.Default())
+	m := NewBuddyListManager(fs, &MockLocateService{}, newTestIconSource(), slog.Default())
 	sess := &state.WebAPISession{
 		ScreenName:   state.DisplayScreenName("listowner"),
 		OSCARSession: state.NewSession().AddInstance(),

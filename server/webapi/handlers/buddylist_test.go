@@ -377,7 +377,7 @@ func TestBuddyListHandler_AddBuddy(t *testing.T) {
 			sessionManager := &MockWebAPISessionManager{}
 			feedbagService := &MockFeedbagService{}
 			blmFeedbagService := &MockFeedbagService{}
-			blm := NewBuddyListManager(blmFeedbagService, &MockLocateService{}, slog.Default())
+			blm := NewBuddyListManager(blmFeedbagService, &MockLocateService{}, newTestIconSource(), slog.Default())
 			logger := slog.Default()
 
 			handler := &BuddyListHandler{
@@ -514,7 +514,7 @@ func TestBuddyListHandler_AddGroup(t *testing.T) {
 			sm := &MockWebAPISessionManager{}
 			fs := &MockFeedbagService{}
 			blmFs := &MockFeedbagService{}
-			blm := NewBuddyListManager(blmFs, &MockLocateService{}, slog.Default())
+			blm := NewBuddyListManager(blmFs, &MockLocateService{}, newTestIconSource(), slog.Default())
 
 			aimsid := ""
 			if v := tt.queryParams["aimsid"]; len(v) > 0 {
@@ -550,7 +550,7 @@ func TestBuddyListHandler_RemoveBuddy(t *testing.T) {
 	type setupFunc func(*MockWebAPISessionManager, *BuddyListManager, *MockFeedbagService, string) *state.WebAPISession
 
 	newBuddyListManager := func(fs *MockFeedbagService) *BuddyListManager {
-		return NewBuddyListManager(fs, &MockLocateService{}, slog.Default())
+		return NewBuddyListManager(fs, &MockLocateService{}, newTestIconSource(), slog.Default())
 	}
 
 	tests := []struct {
@@ -705,7 +705,7 @@ func TestBuddyListHandler_RemoveGroup(t *testing.T) {
 	type setupFunc func(*MockWebAPISessionManager, *BuddyListManager, *MockFeedbagService, string) *state.WebAPISession
 
 	newBuddyListManager := func(fs *MockFeedbagService) *BuddyListManager {
-		return NewBuddyListManager(fs, &MockLocateService{}, slog.Default())
+		return NewBuddyListManager(fs, &MockLocateService{}, newTestIconSource(), slog.Default())
 	}
 
 	tests := []struct {
@@ -967,7 +967,7 @@ func TestRequireSession(t *testing.T) {
 
 func TestBuddyListHandler_RenameGroup(t *testing.T) {
 	newBLM := func(fs *MockFeedbagService) *BuddyListManager {
-		return NewBuddyListManager(fs, &MockLocateService{}, slog.Default())
+		return NewBuddyListManager(fs, &MockLocateService{}, newTestIconSource(), slog.Default())
 	}
 	sessWithOSCAR := func(aimsid string) *state.WebAPISession {
 		return &state.WebAPISession{
@@ -1052,7 +1052,7 @@ func TestBuddyListHandler_RenameGroup(t *testing.T) {
 
 func TestBuddyListHandler_MoveBuddy(t *testing.T) {
 	newBLM := func(fs *MockFeedbagService) *BuddyListManager {
-		return NewBuddyListManager(fs, &MockLocateService{}, slog.Default())
+		return NewBuddyListManager(fs, &MockLocateService{}, newTestIconSource(), slog.Default())
 	}
 	sessWithOSCAR := func(aimsid string) *state.WebAPISession {
 		return &state.WebAPISession{
@@ -1144,7 +1144,7 @@ func TestBuddyListHandler_MoveBuddy(t *testing.T) {
 
 func TestBuddyListHandler_SetBuddyAttribute(t *testing.T) {
 	newBLM := func(fs *MockFeedbagService) *BuddyListManager {
-		return NewBuddyListManager(fs, &MockLocateService{}, slog.Default())
+		return NewBuddyListManager(fs, &MockLocateService{}, newTestIconSource(), slog.Default())
 	}
 	sessWithOSCAR := func(aimsid string) *state.WebAPISession {
 		return &state.WebAPISession{
@@ -1229,7 +1229,7 @@ func TestBuddyListHandler_SetBuddyAttribute(t *testing.T) {
 
 func TestBuddyListHandler_SetGroupAttribute(t *testing.T) {
 	newBLM := func(fs *MockFeedbagService) *BuddyListManager {
-		return NewBuddyListManager(fs, &MockLocateService{}, slog.Default())
+		return NewBuddyListManager(fs, &MockLocateService{}, newTestIconSource(), slog.Default())
 	}
 	sessWithOSCAR := func(aimsid string) *state.WebAPISession {
 		return &state.WebAPISession{

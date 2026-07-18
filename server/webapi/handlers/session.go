@@ -25,6 +25,7 @@ type SessionHandler struct {
 	OSCARAuthService AuthService
 	FeedbagService   FeedbagService
 	BuddyListManager *BuddyListManager
+	IconSource       BuddyIconSource
 	Logger           *slog.Logger
 	OServiceService  OServiceService
 	FnSessCfg        func(sess *state.Session)
@@ -250,7 +251,16 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create WebAPI session
-	session, err := h.SessionManager.CreateSession(r.Context(), screenName, apiKey.DevID, events, instance, h.Logger)
+	// Record the origin the client reached us on. Asset URLs published to the
+	// client (buddy icons) must be absolute, since the client page is served from
+	// a different origin than this API, and they are built in places that have no
+	// request in hand. Pinning the origin here also keeps those URLs on the same
+	// host as the wellKnownUrls advertised below. It is passed into CreateSession
+	// so it is set before the session is published and its listener goroutine can
+	// read it.
+	baseURL := baseURLFromRequest(r)
+
+	session, err := h.SessionManager.CreateSession(r.Context(), screenName, apiKey.DevID, events, instance, baseURL, h.Logger)
 	if err != nil {
 		h.Logger.ErrorContext(ctx, "failed to create session", "err", err.Error())
 		h.sendError(w, r, http.StatusInternalServerError, "failed to create session")
@@ -275,6 +285,21 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 		return LookupBuddyAliases(ctx, h.FeedbagService, session.OSCARSession)
 	}
 
+	// Wire the buddy-icon URL formatter so presence broadcasts (BuddyArrived) can
+	// publish a buddy's current icon from the hash carried in the SNAC, no lookup.
+	session.BuddyIconURL = func(sn state.IdentScreenName, hash []byte) string {
+		return h.IconSource.URLForHash(session.BaseURL, sn, hash)
+	}
+
+	// Wire the myInfo refresher so a self user-info update (icon upload/clear)
+	// re-renders the identity badge. currentWebState reflects the user's live
+	// presence; PublishedURL reflects the feedbag icon, already updated by the time
+	// the OServiceUserInfoUpdate is relayed.
+	session.MyInfoRefresher = func(ctx context.Context) (interface{}, error) {
+		icon := h.IconSource.PublishedURL(ctx, session.BaseURL, screenName.IdentScreenName())
+		return buildMyInfo(screenName, currentWebState(session.OSCARSession), icon), nil
+	}
+
 	// Wire permit/deny refresher so FeedbagUpdateItem SNACs trigger a permitDeny event.
 	session.PermitDenyRefresher = func(ctx context.Context) (interface{}, error) {
 		frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
@@ -289,27 +314,30 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 		return permitDenyData(reply.Items), nil
 	}
 
+	// Now that every refresher callback is wired, start the OSCAR listener. Doing
+	// this inside CreateSession would race these assignments, since the goroutine
+	// reads the callbacks as it converts SNACs into events.
+	session.StartListeningToOSCARSession()
+
 	// Store client info
 	session.ClientName = clientName
 	session.ClientVersion = clientVersion
 	session.FetchTimeout = timeout
 	session.RemoteAddr = r.RemoteAddr
 
+	// The identity badge renders the user's own icon from myInfo, which is the
+	// only event it binds its self-presence render to. PublishedURL always yields
+	// a URL (the blank placeholder when the user has no icon) so that clearing the
+	// icon propagates to the badge.
+	myIconURL := h.IconSource.PublishedURL(ctx, baseURL, screenName.IdentScreenName())
+
 	// Queue myInfo event for authenticated users
 	if authToken != "" {
 		for _, event := range events {
 			if event == "myInfo" || event == "presence" {
-				myInfoData := map[string]interface{}{
-					"aimId":        screenName.IdentScreenName().String(),
-					"displayId":    screenName.String(),
-					"friendly":     screenName.String(),
-					"state":        "online",
-					"onlineTime":   time.Now().Unix(),
-					"memberSince":  time.Now().Unix() - 86400*30, // 30 days ago
-					"capabilities": []string{},
-					"bot":          false,
-					"service":      "AIM",
-				}
+				myInfoData := buildMyInfo(screenName, "online", myIconURL)
+				myInfoData["onlineTime"] = time.Now().Unix()
+				myInfoData["memberSince"] = time.Now().Unix() - 86400*30 // 30 days ago
 				session.EventQueue.Push(types.EventType("myInfo"), myInfoData)
 				break
 			}
@@ -324,8 +352,6 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now().Unix()
-	scheme := requestScheme(r)
-	baseURL := fmt.Sprintf("%s://%s", scheme, r.Host)
 
 	// Prepare response
 	resp := StartSessionResponse{}
@@ -346,34 +372,26 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if authToken != "" {
-		myInfoPayload := map[string]interface{}{
-			"aimId":        screenName.IdentScreenName().String(),
-			"displayId":    screenName.String(),
-			"friendly":     screenName.String(),
-			"state":        "online",
-			"onlineTime":   time.Now().Unix(),
-			"memberSince":  time.Now().Unix() - 86400*30, // 30 days ago
-			"capabilities": []string{},
-			"bot":          false,
-			"service":      "AIM",
-			"self": map[string]interface{}{
-				"instNum":        1,
-				"loginTime":      time.Now().Unix(),
-				"sessionTimeout": 30,
-				"events":         events,
-				"assertCaps":     []string{},
-				"rightsInfo": map[string]interface{}{
-					"maxDenies":            500,
-					"maxPermits":           500,
-					"maxWatchers":          3000,
-					"maxBuddies":           500,
-					"maxTempBuddies":       160,
-					"maxIMSize":            3987,
-					"minInterIcbmInterval": 1000,
-					"maxSourceEvil":        900,
-					"maxDstEvil":           999,
-					"maxSigLen":            4096,
-				},
+		myInfoPayload := buildMyInfo(screenName, "online", myIconURL)
+		myInfoPayload["onlineTime"] = time.Now().Unix()
+		myInfoPayload["memberSince"] = time.Now().Unix() - 86400*30 // 30 days ago
+		myInfoPayload["self"] = map[string]interface{}{
+			"instNum":        1,
+			"loginTime":      time.Now().Unix(),
+			"sessionTimeout": 30,
+			"events":         events,
+			"assertCaps":     []string{},
+			"rightsInfo": map[string]interface{}{
+				"maxDenies":            500,
+				"maxPermits":           500,
+				"maxWatchers":          3000,
+				"maxBuddies":           500,
+				"maxTempBuddies":       160,
+				"maxIMSize":            3987,
+				"minInterIcbmInterval": 1000,
+				"maxSourceEvil":        900,
+				"maxDstEvil":           999,
+				"maxSigLen":            4096,
 			},
 		}
 		resp.Response.Data.MyInfo = myInfoPayload
@@ -589,6 +607,40 @@ func (h *SessionHandler) sendError(w http.ResponseWriter, r *http.Request, statu
 	SendResponse(w, r, resp, h.Logger)
 }
 
+// buildMyInfo assembles the shared base of a myInfo payload — the user's own
+// identity blob that the AIM client renders in its identity badge.
+//
+// It carries only fields that are safe to repeat on every myInfo: the client's
+// user-object merge deletes friendly and capabilities before merging, so both
+// must be present on each push or the badge loses them. Time-sensitive fields
+// (onlineTime, memberSince) are intentionally excluded — a mid-session refresh
+// omits them so the client keeps the signon time it already has; the startSession
+// builders add them explicitly. buddyIcon is included only when non-empty; an
+// empty value would be dropped by the client merge anyway, and the placeholder
+// URL (not "") is what clears an icon.
+func buildMyInfo(screenName state.DisplayScreenName, webState, buddyIcon string) map[string]interface{} {
+	// The web client compares userType/service case-sensitively; a UIN account must
+	// report ICQ so it renders as an ICQ contact rather than AIM.
+	userType, service := "aim", "AIM"
+	if screenName.IsUIN() {
+		userType, service = "icq", "ICQ"
+	}
+	myInfo := map[string]interface{}{
+		"aimId":        screenName.IdentScreenName().String(),
+		"displayId":    screenName.String(),
+		"friendly":     screenName.String(),
+		"state":        webState,
+		"userType":     userType,
+		"capabilities": []string{},
+		"bot":          false,
+		"service":      service,
+	}
+	if buddyIcon != "" {
+		myInfo["buddyIcon"] = buddyIcon
+	}
+	return myInfo
+}
+
 func requestScheme(r *http.Request) string {
 	if r.TLS != nil {
 		return "https"
@@ -597,4 +649,10 @@ func requestScheme(r *http.Request) string {
 		return proto
 	}
 	return "http"
+}
+
+// baseURLFromRequest returns the absolute base URL the client reached this
+// server on, used to build asset URLs that the client loads directly.
+func baseURLFromRequest(r *http.Request) string {
+	return fmt.Sprintf("%s://%s", requestScheme(r), r.Host)
 }

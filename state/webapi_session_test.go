@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"encoding/hex"
 	"io"
 	"log/slog"
 	"testing"
@@ -286,7 +287,7 @@ func TestWebAPISessionManager_CreateAfterShutdown(t *testing.T) {
 	ctx := context.Background()
 	mgr.Shutdown()
 
-	sess, err := mgr.CreateSession(ctx, DisplayScreenName("testuser"), "dev", []string{"presence"}, nil, nil)
+	sess, err := mgr.CreateSession(ctx, DisplayScreenName("testuser"), "dev", []string{"presence"}, nil, "", nil)
 	assert.Nil(t, sess)
 	assert.ErrorIs(t, err, ErrWebAPISessionManagerClosed)
 }
@@ -301,9 +302,9 @@ func TestWebAPISessionManager_ShutdownDrainsAndClosesSessions(t *testing.T) {
 	inst1 := NewSession().AddInstance()
 	inst2 := NewSession().AddInstance()
 
-	s1, err := mgr.CreateSession(ctx, DisplayScreenName("alice"), "dev", []string{"presence"}, inst1, slog.Default())
+	s1, err := mgr.CreateSession(ctx, DisplayScreenName("alice"), "dev", []string{"presence"}, inst1, "", slog.Default())
 	assert.NoError(t, err)
-	s2, err := mgr.CreateSession(ctx, DisplayScreenName("bob"), "dev", []string{"presence"}, inst2, slog.Default())
+	s2, err := mgr.CreateSession(ctx, DisplayScreenName("bob"), "dev", []string{"presence"}, inst2, "", slog.Default())
 	assert.NoError(t, err)
 
 	mgr.Shutdown()
@@ -335,9 +336,9 @@ func TestWebAPISessionManager_ReapExpired(t *testing.T) {
 	expiredInst := NewSession().AddInstance()
 	liveInst := NewSession().AddInstance()
 
-	expired, err := mgr.CreateSession(ctx, "alice", "dev", []string{"presence"}, expiredInst, slog.Default())
+	expired, err := mgr.CreateSession(ctx, "alice", "dev", []string{"presence"}, expiredInst, "", slog.Default())
 	assert.NoError(t, err)
-	live, err := mgr.CreateSession(ctx, "bob", "dev", []string{"presence"}, liveInst, slog.Default())
+	live, err := mgr.CreateSession(ctx, "bob", "dev", []string{"presence"}, liveInst, "", slog.Default())
 	assert.NoError(t, err)
 
 	// Force alice's session into the past; bob keeps its default future expiry.
@@ -630,4 +631,132 @@ func TestWebAPISession_HandleBuddyArrivedDeparted_NormalizesAimID(t *testing.T) 
 	departed := events[1].Data.(types.PresenceEvent)
 	assert.Equal(t, "mikekelly", departed.AimID)
 	assert.Equal(t, "offline", departed.State)
+}
+
+// A BuddyArrived carries the buddy's current icon as TLV 0x1D, so an icon change
+// rides along on the presence broadcast and must reach the presence event. The
+// stub BuddyIconURL stands in for the handlers-side URL formatter, which state
+// cannot import.
+func TestWebAPISession_PublishesBuddyIconOnPresence(t *testing.T) {
+	newSession := func() *WebAPISession {
+		return &WebAPISession{
+			ScreenName: DisplayScreenName("me"),
+			Events:     []string{"presence"},
+			EventQueue: types.NewEventQueue(10),
+			logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+			BuddyIconURL: func(sn IdentScreenName, hash []byte) string {
+				if len(hash) == 0 {
+					return "placeholder:" + sn.String()
+				}
+				return "icon:" + hex.EncodeToString(hash)
+			},
+		}
+	}
+
+	arrived := func(sess *WebAPISession, screenName string, hash []byte) {
+		info := wire.TLVUserInfo{ScreenName: screenName}
+		if hash != nil {
+			info.Append(wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, wire.BARTID{
+				Type:     wire.BARTTypesBuddyIcon,
+				BARTInfo: wire.BARTInfo{Hash: hash},
+			}))
+		}
+		sess.handleBuddyArrived(wire.SNACMessage{Body: wire.SNAC_0x03_0x0B_BuddyArrived{TLVUserInfo: info}})
+	}
+
+	lastPresence := func(sess *WebAPISession) types.PresenceEvent {
+		events := sess.EventQueue.GetAllEvents()
+		require.Len(t, events, 1)
+		return events[0].Data.(types.PresenceEvent)
+	}
+
+	t.Run("icon hash yields the content-addressed URL", func(t *testing.T) {
+		sess := newSession()
+		arrived(sess, "Mike Kelly", []byte{0xde, 0xad, 0xbe, 0xef})
+		assert.Equal(t, "icon:deadbeef", lastPresence(sess).BuddyIcon)
+	})
+
+	t.Run("no icon TLV yields the placeholder URL", func(t *testing.T) {
+		sess := newSession()
+		arrived(sess, "Mike Kelly", nil)
+		assert.Equal(t, "placeholder:mikekelly", lastPresence(sess).BuddyIcon)
+	})
+
+	t.Run("cleared icon yields a URL naming the sentinel hash", func(t *testing.T) {
+		sess := newSession()
+		arrived(sess, "Mike Kelly", wire.GetClearIconHash())
+		assert.Equal(t, "icon:"+hex.EncodeToString(wire.GetClearIconHash()), lastPresence(sess).BuddyIcon)
+	})
+
+	t.Run("departed omits the icon so the client preserves it", func(t *testing.T) {
+		sess := newSession()
+		sess.handleBuddyDeparted(wire.SNACMessage{Body: wire.SNAC_0x03_0x0C_BuddyDeparted{
+			TLVUserInfo: wire.TLVUserInfo{ScreenName: "Mike Kelly"},
+		}})
+		assert.Empty(t, lastPresence(sess).BuddyIcon)
+	})
+
+	t.Run("no callback wired omits the icon", func(t *testing.T) {
+		sess := newSession()
+		sess.BuddyIconURL = nil
+		arrived(sess, "Mike Kelly", []byte{0x01})
+		assert.Empty(t, lastPresence(sess).BuddyIcon)
+	})
+}
+
+// A user's own icon change is relayed to their session as OServiceUserInfoUpdate,
+// which the pump turns into a myInfo event so the identity badge re-renders.
+func TestWebAPISession_PushesMyInfoOnUserInfoUpdate(t *testing.T) {
+	newSession := func(events ...string) (*WebAPISession, *int) {
+		var refreshes int
+		return &WebAPISession{
+			ScreenName: DisplayScreenName("me"),
+			Events:     events,
+			EventQueue: types.NewEventQueue(10),
+			logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+			MyInfoRefresher: func(_ context.Context) (interface{}, error) {
+				refreshes++
+				return map[string]interface{}{"aimId": "me", "buddyIcon": "icon:new"}, nil
+			},
+		}, &refreshes
+	}
+
+	userInfoUpdate := wire.SNACMessage{Frame: wire.SNACFrame{
+		FoodGroup: wire.OService,
+		SubGroup:  wire.OServiceUserInfoUpdate,
+	}}
+
+	t.Run("subscribed session gets one myInfo event", func(t *testing.T) {
+		sess, refreshes := newSession("myInfo")
+		sess.handleSNACMessage(userInfoUpdate)
+
+		events := sess.EventQueue.GetAllEvents()
+		require.Len(t, events, 1)
+		assert.Equal(t, "myInfo", string(events[0].Type))
+		assert.Equal(t, "icon:new", events[0].Data.(map[string]interface{})["buddyIcon"])
+		assert.Equal(t, 1, *refreshes)
+	})
+
+	t.Run("a presence subscription also delivers myInfo", func(t *testing.T) {
+		sess, _ := newSession("presence")
+		sess.handleSNACMessage(userInfoUpdate)
+		assert.Len(t, sess.EventQueue.GetAllEvents(), 1)
+	})
+
+	t.Run("unsubscribed session gets nothing and does not refresh", func(t *testing.T) {
+		sess, refreshes := newSession("im")
+		sess.handleSNACMessage(userInfoUpdate)
+		assert.Empty(t, sess.EventQueue.GetAllEvents())
+		assert.Equal(t, 0, *refreshes)
+	})
+
+	t.Run("other OService subgroups are ignored", func(t *testing.T) {
+		sess, refreshes := newSession("myInfo")
+		sess.handleSNACMessage(wire.SNACMessage{Frame: wire.SNACFrame{
+			FoodGroup: wire.OService,
+			SubGroup:  wire.OServiceRateParamsQuery,
+		}})
+		assert.Empty(t, sess.EventQueue.GetAllEvents())
+		assert.Equal(t, 0, *refreshes)
+	})
 }

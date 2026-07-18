@@ -31,6 +31,7 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 		OSCARAuthService: handler.AuthService,
 		FeedbagService:   handler.FeedbagService,
 		BuddyListManager: handler.BuddyListManager.(*handlers.BuddyListManager),
+		IconSource:       handler.IconSource,
 		Logger:           logger,
 		OServiceService:  handler.OServiceService,
 	}
@@ -45,6 +46,7 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 		FeedbagService:   handler.FeedbagService,
 		BuddyBroadcaster: handler.BuddyBroadcaster,
 		LocateService:    handler.LocateService,
+		IconSource:       handler.IconSource,
 		Logger:           logger,
 	}
 
@@ -259,11 +261,16 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 			authMiddleware.CORSMiddleware(
 				http.HandlerFunc(oscarBridgeHandler.StartOSCARSession))))
 
-		// Expressions endpoint (for buddy icons, etc.)
-		expressionsHandler := handlers.NewExpressionsHandler(logger)
-		mux.Handle("GET /expressions/get", authMiddleware.AuthenticateFlexible(
-			authMiddleware.CORSMiddleware(
-				http.HandlerFunc(expressionsHandler.Get))))
+		// Expressions endpoint (for buddy icons, etc.).
+		//
+		// Unauthenticated, like /presence/icon: the buddyIcon URLs this serves are
+		// published to the client and loaded as plain <img> sources, which carry
+		// neither an aimsid nor an API key. Threading a session token through them
+		// instead would leak it into the DOM and defeat caching, since these URLs
+		// outlive the session that produced them. Buddy icons are public assets.
+		expressionsHandler := handlers.NewExpressionsHandler(handler.IconSource, logger)
+		mux.Handle("GET /expressions/get", authMiddleware.CORSMiddleware(
+			http.HandlerFunc(expressionsHandler.Get)))
 
 		// Web AIM calls lifestream/* on the API host (e.g. /lifestream/getUserDetails).
 		lifestreamStub := &handlers.UserInfoStubHandler{Logger: logger}

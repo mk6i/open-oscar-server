@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/mk6i/open-oscar-server/server/webapi/handlers"
 	"github.com/mk6i/open-oscar-server/state"
 )
 
@@ -27,6 +28,7 @@ type Handler struct {
 	ChatSessionManager ChatSessionManager
 	FeedbagService     FeedbagService
 	DirSearchService   DirSearchService
+	IconSource         handlers.BuddyIconSource
 }
 
 func (h Handler) GetHelloWorldHandler(w http.ResponseWriter, r *http.Request) {

@@ -73,6 +73,11 @@ func ConvertEventForAMF3(event types.Event) map[string]interface{} {
 			if presenceEvent.OnlineTime > 0 {
 				eventData["onlineTime"] = float64(presenceEvent.OnlineTime)
 			}
+			// This branch flattens PresenceEvent through an explicit allowlist, so
+			// buddyIcon must be added here or it never reaches an AMF3 client.
+			if presenceEvent.BuddyIcon != "" {
+				eventData["buddyIcon"] = presenceEvent.BuddyIcon
+			}
 			result["eventData"] = eventData
 		} else if dataMap, ok := event.Data.(map[string]interface{}); ok {
 			// Already a map, ensure timestamps are float64

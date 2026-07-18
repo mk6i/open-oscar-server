@@ -19,6 +19,7 @@ type PresenceHandler struct {
 	FeedbagService   FeedbagService
 	BuddyBroadcaster BuddyBroadcaster
 	LocateService    LocateService
+	IconSource       BuddyIconSource
 	Logger           *slog.Logger
 }
 
@@ -68,6 +69,7 @@ type BuddyPresenceInfo struct {
 	IdleTime   int    `json:"idleTime,omitempty" xml:"idleTime,omitempty"`
 	OnlineTime int64  `json:"onlineTime,omitempty" xml:"onlineTime,omitempty"`
 	UserType   string `json:"userType" xml:"userType"` // "aim", "icq", "admin"
+	BuddyIcon  string `json:"buddyIcon,omitempty" xml:"buddyIcon,omitempty"`
 }
 
 // GetPresence handles GET /presence/get requests.
@@ -117,7 +119,7 @@ func (h *PresenceHandler) GetPresence(w http.ResponseWriter, r *http.Request, se
 			if user == "" {
 				continue
 			}
-			info := h.getUserPresence(ctx, session.OSCARSession, state.DisplayScreenName(user), wantProfileMsg)
+			info := h.getUserPresence(ctx, session.OSCARSession, session.BaseURL, state.DisplayScreenName(user), wantProfileMsg)
 			info.Friendly = aliases[info.AimID]
 			presenceList = append(presenceList, info)
 		}
@@ -192,7 +194,7 @@ func (h *PresenceHandler) getBuddyListGroups(ctx context.Context, session *state
 
 		// UserInfoQuery performs the blocking check and online lookup; blocked or
 		// offline buddies come back as "offline", preserving the list structure.
-		presence := h.getUserPresence(ctx, session.OSCARSession, state.DisplayScreenName(item.Name), wantProfileMsg)
+		presence := h.getUserPresence(ctx, session.OSCARSession, session.BaseURL, state.DisplayScreenName(item.Name), wantProfileMsg)
 		group.Buddies = append(group.Buddies, presence)
 	}
 
@@ -217,7 +219,7 @@ func (h *PresenceHandler) getBuddyListGroups(ctx context.Context, session *state
 // on behalf of the requesting OSCAR session (instance). UserInfoQuery performs
 // the OSCAR blocking check and online lookup internally: blocked and offline
 // users both come back as a locate error, which we surface as "offline".
-func (h *PresenceHandler) getUserPresence(ctx context.Context, instance *state.SessionInstance, target state.DisplayScreenName, wantProfileMsg bool) BuddyPresenceInfo {
+func (h *PresenceHandler) getUserPresence(ctx context.Context, instance *state.SessionInstance, baseURL string, target state.DisplayScreenName, wantProfileMsg bool) BuddyPresenceInfo {
 	ident := target.IdentScreenName()
 
 	// Default offline presence
@@ -260,6 +262,12 @@ func (h *PresenceHandler) getUserPresence(ctx context.Context, instance *state.S
 	}
 
 	presence.State = "online"
+
+	// Publish the icon only now that locate has confirmed the user is online and
+	// has not blocked the caller. Offline and blocking users return above without
+	// an icon, so neither their icon nor its activity-revealing hash leaks to a
+	// caller they are otherwise invisible to.
+	presence.BuddyIcon = h.IconSource.PublishedURL(ctx, baseURL, ident)
 
 	// The locate reply carries the screen name as the user formatted it, which
 	// beats whatever casing the caller happened to pass in.
@@ -552,7 +560,9 @@ func (h *PresenceHandler) Icon(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	switch h.getUserPresence(r.Context(), instance, state.DisplayScreenName(name), false).State {
+	// This endpoint serves a presence state badge, not the user's buddy icon, so
+	// it has no use for a buddy icon URL.
+	switch h.getUserPresence(r.Context(), instance, "", state.DisplayScreenName(name), false).State {
 	case "away":
 		iconURL = "/static/icons/away_" + iconType + "_" + size + ".png"
 	case "idle":
@@ -595,14 +605,10 @@ func (h *PresenceHandler) pushMyInfo(session *state.WebAPISession, webState, awa
 		return
 	}
 
-	screenName := session.ScreenName.String()
-	myInfo := map[string]interface{}{
-		"aimId":     session.ScreenName.IdentScreenName().String(),
-		"displayId": screenName,
-		"friendly":  screenName,
-		"state":     webState,
-		"userType":  "aim",
-	}
+	// buddyIcon is omitted here (empty) so the client's merge preserves the icon it
+	// already holds; a setState/setStatus does not change the icon. Icon changes
+	// arrive on their own myInfo via the pump's MyInfoRefresher.
+	myInfo := buildMyInfo(session.ScreenName, webState, "")
 	if awayMsg != "" {
 		myInfo["awayMsg"] = awayMsg
 	}

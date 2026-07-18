@@ -1,6 +1,7 @@
 package state
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -61,6 +62,7 @@ type WebAPISession struct {
 	BOSHost             string                                         // BOS host advertised to the web client
 	BOSPort             int                                            // BOS port advertised to the web client
 	UseSSL              bool                                           // Whether the handoff advertised an SSL BOS connection
+	BaseURL             string                                         // Web API base URL advertised to the web client, used to build absolute asset URLs
 	Events              []string                                       // Subscribed event types
 	EventQueue          *types.EventQueue                              // Per-session event queue
 	DevID               string                                         // Developer ID that created this session
@@ -75,12 +77,16 @@ type WebAPISession struct {
 	TempBuddies         map[string]bool                                // Temporary buddies for this session only
 	BuddyListRefresher  func(ctx context.Context) (interface{}, error) // Called on feedbag changes to push buddylist event
 	PermitDenyRefresher func(ctx context.Context) (interface{}, error) // Called on feedbag changes to push permitDeny event
+	MyInfoRefresher     func(ctx context.Context) (interface{}, error) // Called on self user-info updates (e.g. icon change) to push myInfo event
 	BuddyAliasLoader    func(ctx context.Context) (map[string]string, error)
-	aliases             map[string]string // cached BuddyAliasLoader result, nil when unloaded or invalidated
-	aliasMu             sync.Mutex
-	imLog               map[string][]WebAPIStoredIM
-	imLogMu             sync.Mutex
-	logger              *slog.Logger // Logger for debugging
+	// BuddyIconURL formats the absolute buddyIcon URL for a buddy from the icon
+	// hash carried in a presence SNAC. Returns "" when no URL can be published.
+	BuddyIconURL func(screenName IdentScreenName, hash []byte) string
+	aliases      map[string]string // cached BuddyAliasLoader result, nil when unloaded or invalidated
+	aliasMu      sync.Mutex
+	imLog        map[string][]WebAPIStoredIM
+	imLogMu      sync.Mutex
+	logger       *slog.Logger // Logger for debugging
 }
 
 // IsExpired checks if the session has expired.
@@ -198,7 +204,32 @@ func (s *WebAPISession) handleSNACMessage(msg wire.SNACMessage) {
 		s.handleBuddyMessage(msg)
 	case wire.Feedbag:
 		s.handleFeedbagMessage(msg)
+	case wire.OService:
+		s.handleOServiceMessage(msg)
 	}
+}
+
+// handleOServiceMessage handles OService SNAC messages relayed to the session's
+// own OSCAR instance. The only one we surface is OServiceUserInfoUpdate, which the
+// server relays to a user when their own user info changes (notably a buddy icon
+// upload or clear). The client re-renders its identity badge from myInfo events
+// only, so we translate this into a fresh myInfo.
+func (s *WebAPISession) handleOServiceMessage(msg wire.SNACMessage) {
+	if msg.Frame.SubGroup != wire.OServiceUserInfoUpdate {
+		return
+	}
+	if !s.IsSubscribedTo("myInfo") && !s.IsSubscribedTo("presence") {
+		return
+	}
+	if s.MyInfoRefresher == nil {
+		return
+	}
+	data, err := s.MyInfoRefresher(context.Background())
+	if err != nil {
+		s.logger.Error("failed to refresh myInfo after user-info update", "err", err)
+		return
+	}
+	s.EventQueue.Push(types.EventType("myInfo"), data)
 }
 
 // handleICBMMessage handles ICBM (instant messaging) SNAC messages.
@@ -366,6 +397,24 @@ func (s *WebAPISession) handleBuddyArrived(msg wire.SNACMessage) {
 		UserType: "aim",
 	}
 
+	// A BuddyArrived carries the buddy's current icon in TLV 0x1D whenever they
+	// have one, so an icon change (or clear, which arrives as the sentinel hash)
+	// rides along on the presence broadcast. Publish the matching URL: with an
+	// icon it is content-addressed; without one it is the placeholder URL, which
+	// differs from any prior icon URL and so clears a removed icon under the
+	// client's shallow merge. An empty result (no origin known) is omitted, which
+	// preserves whatever icon the client already holds.
+	if s.BuddyIconURL != nil {
+		var hash []byte
+		if b, ok := body.Bytes(wire.OServiceUserInfoBARTInfo); ok {
+			var id wire.BARTID
+			if err := wire.UnmarshalBE(&id, bytes.NewBuffer(b)); err == nil {
+				hash = id.Hash
+			}
+		}
+		presenceEvent.BuddyIcon = s.BuddyIconURL(buddy, hash)
+	}
+
 	s.EventQueue.Push(types.EventTypePresence, presenceEvent)
 }
 
@@ -381,6 +430,8 @@ func (s *WebAPISession) handleBuddyDeparted(msg wire.SNACMessage) {
 	}
 
 	buddy := NewIdentScreenName(body.ScreenName)
+	// BuddyIcon is deliberately omitted: an offline buddy keeps their icon, and
+	// omitting it lets the client's merge preserve the icon it already holds.
 	presenceEvent := types.PresenceEvent{
 		AimID:    buddy.String(),
 		Friendly: s.aliasFor(buddy),
@@ -443,7 +494,13 @@ func NewWebAPISessionManager() *WebAPISessionManager {
 }
 
 // CreateSession creates a new WebAPI session.
-func (m *WebAPISessionManager) CreateSession(ctx context.Context, screenName DisplayScreenName, devID string, events []string, oscarSession *SessionInstance, logger *slog.Logger) (*WebAPISession, error) {
+//
+// The session does not begin listening to its OSCAR instance yet: the caller
+// must wire the session's refresher callbacks (BuddyListRefresher, BuddyIconURL,
+// MyInfoRefresher, ...) and then call StartListeningToOSCARSession. Wiring them
+// after the listener starts would race the goroutine, which reads them as it
+// converts SNACs into events.
+func (m *WebAPISessionManager) CreateSession(ctx context.Context, screenName DisplayScreenName, devID string, events []string, oscarSession *SessionInstance, baseURL string, logger *slog.Logger) (*WebAPISession, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -464,6 +521,7 @@ func (m *WebAPISessionManager) CreateSession(ctx context.Context, screenName Dis
 		AimSID:          aimsid,
 		ScreenName:      screenName,
 		OSCARSession:    oscarSession,
+		BaseURL:         baseURL,
 		Events:          events,
 		EventQueue:      types.NewEventQueue(1000), // Max 1000 events per session
 		DevID:           devID,
@@ -477,8 +535,9 @@ func (m *WebAPISessionManager) CreateSession(ctx context.Context, screenName Dis
 
 	m.sessions[aimsid] = session
 
-	// Start listening to OSCAR session message channel
-	session.StartListeningToOSCARSession()
+	// The caller starts the OSCAR listener (StartListeningToOSCARSession) once it
+	// has wired the session's refresher callbacks; starting it here would race
+	// those assignments.
 
 	return session, nil
 }

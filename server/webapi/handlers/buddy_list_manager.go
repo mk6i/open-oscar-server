@@ -18,14 +18,16 @@ import (
 type BuddyListManager struct {
 	feedbagService FeedbagService
 	locateService  LocateService
+	iconSource     BuddyIconSource
 	logger         *slog.Logger
 }
 
 // NewBuddyListManager creates a new instance of the buddy list manager.
-func NewBuddyListManager(feedbagService FeedbagService, locateService LocateService, logger *slog.Logger) *BuddyListManager {
+func NewBuddyListManager(feedbagService FeedbagService, locateService LocateService, iconSource BuddyIconSource, logger *slog.Logger) *BuddyListManager {
 	return &BuddyListManager{
 		feedbagService: feedbagService,
 		locateService:  locateService,
+		iconSource:     iconSource,
 		logger:         logger,
 	}
 }
@@ -154,7 +156,7 @@ func (m *BuddyListManager) GetBuddyListForUser(ctx context.Context, sess *state.
 			if !ok {
 				continue
 			}
-			info := m.getBuddyInfo(ctx, sess.OSCARSession, b.name)
+			info := m.getBuddyInfo(ctx, sess.OSCARSession, sess.BaseURL, b.name)
 			// The alias belongs in friendly, not displayId: the client renders
 			// friendly in preference to displayId but still shows displayId as
 			// the buddy's actual screen name.
@@ -169,7 +171,7 @@ func (m *BuddyListManager) GetBuddyListForUser(ctx context.Context, sess *state.
 
 // getBuddyInfo retrieves a buddy's current presence by issuing a locate
 // UserInfoQuery on behalf of the requesting session's OSCAR instance.
-func (m *BuddyListManager) getBuddyInfo(ctx context.Context, instance *state.SessionInstance, buddyName string) WebAPIBuddyInfo {
+func (m *BuddyListManager) getBuddyInfo(ctx context.Context, instance *state.SessionInstance, baseURL string, buddyName string) WebAPIBuddyInfo {
 	// Default to offline. The web client keys users by the normalized aimId and
 	// shallow-merges each buddy map onto the shared user object, so a display-form
 	// aimId here overwrites the id every other event is keyed by.
@@ -205,6 +207,11 @@ func (m *BuddyListManager) getBuddyInfo(ctx context.Context, instance *state.Ses
 
 	info.State = "online"
 	info.Capabilities = []string{}
+
+	// Publish the icon only now that locate has confirmed the buddy is online and
+	// has not blocked the caller. Offline and blocking buddies return above without
+	// an icon, so neither their icon nor its activity-revealing hash leaks.
+	info.BuddyIcon = m.iconSource.PublishedURL(ctx, baseURL, ident)
 
 	// The locate reply carries the screen name as the buddy formatted it.
 	if userInfo.ScreenName != "" {
