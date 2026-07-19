@@ -260,7 +260,7 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 	// read it.
 	baseURL := baseURLFromRequest(r)
 
-	session, err := h.SessionManager.CreateSession(r.Context(), screenName, apiKey.DevID, events, instance, baseURL, h.Logger)
+	session, err := h.SessionManager.CreateSession(screenName, apiKey.DevID, events, instance, baseURL, h.Logger)
 	if err != nil {
 		h.Logger.ErrorContext(ctx, "failed to create session", "err", err.Error())
 		h.sendError(w, r, http.StatusInternalServerError, "failed to create session")

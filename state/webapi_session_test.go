@@ -284,10 +284,9 @@ func TestWebAPISessionManager_ShutdownIdempotent(t *testing.T) {
 func TestWebAPISessionManager_CreateAfterShutdown(t *testing.T) {
 	mgr := NewWebAPISessionManager()
 
-	ctx := context.Background()
 	mgr.Shutdown()
 
-	sess, err := mgr.CreateSession(ctx, DisplayScreenName("testuser"), "dev", []string{"presence"}, nil, "", nil)
+	sess, err := mgr.CreateSession(DisplayScreenName("testuser"), "dev", []string{"presence"}, nil, "", nil)
 	assert.Nil(t, sess)
 	assert.ErrorIs(t, err, ErrWebAPISessionManagerClosed)
 }
@@ -302,9 +301,9 @@ func TestWebAPISessionManager_ShutdownDrainsAndClosesSessions(t *testing.T) {
 	inst1 := NewSession().AddInstance()
 	inst2 := NewSession().AddInstance()
 
-	s1, err := mgr.CreateSession(ctx, DisplayScreenName("alice"), "dev", []string{"presence"}, inst1, "", slog.Default())
+	s1, err := mgr.CreateSession(DisplayScreenName("alice"), "dev", []string{"presence"}, inst1, "", slog.Default())
 	assert.NoError(t, err)
-	s2, err := mgr.CreateSession(ctx, DisplayScreenName("bob"), "dev", []string{"presence"}, inst2, "", slog.Default())
+	s2, err := mgr.CreateSession(DisplayScreenName("bob"), "dev", []string{"presence"}, inst2, "", slog.Default())
 	assert.NoError(t, err)
 
 	mgr.Shutdown()
@@ -315,8 +314,7 @@ func TestWebAPISessionManager_ShutdownDrainsAndClosesSessions(t *testing.T) {
 	// Each session's event queue and OSCAR instance were closed: the teardown
 	// loop ran for every collected session.
 	for _, s := range []*WebAPISession{s1, s2} {
-		_, err := s.EventQueue.Fetch(ctx, 0, 10*time.Millisecond)
-		assert.Error(t, err, "event queue should be closed")
+		assertQueueClosed(t, ctx, s)
 	}
 	for _, inst := range []*SessionInstance{inst1, inst2} {
 		select {
@@ -336,9 +334,9 @@ func TestWebAPISessionManager_ReapExpired(t *testing.T) {
 	expiredInst := NewSession().AddInstance()
 	liveInst := NewSession().AddInstance()
 
-	expired, err := mgr.CreateSession(ctx, "alice", "dev", []string{"presence"}, expiredInst, "", slog.Default())
+	expired, err := mgr.CreateSession("alice", "dev", []string{"presence"}, expiredInst, "", slog.Default())
 	assert.NoError(t, err)
-	live, err := mgr.CreateSession(ctx, "bob", "dev", []string{"presence"}, liveInst, "", slog.Default())
+	live, err := mgr.CreateSession("bob", "dev", []string{"presence"}, liveInst, "", slog.Default())
 	assert.NoError(t, err)
 
 	// Force alice's session into the past; bob keeps its default future expiry.
@@ -351,8 +349,7 @@ func TestWebAPISessionManager_ReapExpired(t *testing.T) {
 	assert.Contains(t, mgr.sessions, live.AimSID)
 
 	// Expired session torn down: event queue and OSCAR instance closed.
-	_, err = expired.EventQueue.Fetch(ctx, 0, 10*time.Millisecond)
-	assert.Error(t, err, "expired session's event queue should be closed")
+	assertQueueClosed(t, ctx, expired)
 	select {
 	case <-expiredInst.Closed():
 	default:
@@ -364,6 +361,92 @@ func TestWebAPISessionManager_ReapExpired(t *testing.T) {
 	case <-liveInst.Closed():
 		t.Error("live session's OSCAR instance should not be closed")
 	default:
+	}
+}
+
+// assertQueueClosed asserts the session's event queue is closed: a fetch returns
+// straight away with no events and no error, rather than parking for the timeout.
+func assertQueueClosed(t *testing.T, ctx context.Context, sess *WebAPISession) {
+	t.Helper()
+
+	const timeout = 5 * time.Second
+	start := time.Now()
+
+	events, err := sess.EventQueue.Fetch(ctx, 0, timeout)
+	assert.NoError(t, err)
+	assert.Empty(t, events)
+	assert.Less(t, time.Since(start), timeout/2, "fetch parked instead of returning on a closed queue")
+}
+
+// TestWebAPISessionManager_ShutdownWithoutReaper verifies Shutdown returns when no
+// reaper was ever started. Shutdown must not depend on the caller cancelling the
+// context passed to Run.
+func TestWebAPISessionManager_ShutdownWithoutReaper(t *testing.T) {
+	mgr := NewWebAPISessionManager()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		mgr.Shutdown()
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Shutdown hung waiting for a reaper that was never started")
+	}
+}
+
+// TestWebAPISessionManager_ShutdownJoinsReaper verifies Shutdown stops a running
+// reaper on its own and does not return until that reaper has exited.
+func TestWebAPISessionManager_ShutdownJoinsReaper(t *testing.T) {
+	mgr := NewWebAPISessionManager()
+
+	reaperExited := make(chan struct{})
+	go func() {
+		defer close(reaperExited)
+		mgr.Run(context.Background()) // context is never cancelled: Shutdown must stop it
+	}()
+
+	// Give Run a chance to register itself before shutting down.
+	time.Sleep(50 * time.Millisecond)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		mgr.Shutdown()
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Shutdown hung instead of stopping the reaper")
+	}
+
+	// Shutdown joins the reaper, so it has already exited by the time it returns.
+	select {
+	case <-reaperExited:
+	default:
+		t.Error("Shutdown returned before the reaper exited")
+	}
+}
+
+// TestWebAPISessionManager_RunAfterShutdown verifies a reaper that loses the race
+// with Shutdown never starts, so it cannot reap an already-drained manager.
+func TestWebAPISessionManager_RunAfterShutdown(t *testing.T) {
+	mgr := NewWebAPISessionManager()
+	mgr.Shutdown()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		mgr.Run(context.Background())
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run should be a no-op on a closed manager")
 	}
 }
 

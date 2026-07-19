@@ -2,7 +2,6 @@ package types
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -94,32 +93,40 @@ type TypingEvent struct {
 
 // EventQueue manages a queue of events for a WebAPI session.
 type EventQueue struct {
-	events   []Event
-	seqNum   uint64
-	maxSize  int
-	mu       sync.RWMutex
-	waitChan chan struct{}
-	closed   bool
-	closedMu sync.RWMutex
+	events    []Event
+	seqNum    uint64
+	maxSize   int
+	mu        sync.RWMutex
+	waitChan  chan struct{}
+	closeChan chan struct{}
+	closeOnce sync.Once
+}
+
+// isClosed reports whether Close has been called.
+func (q *EventQueue) isClosed() bool {
+	select {
+	case <-q.closeChan:
+		return true
+	default:
+		return false
+	}
 }
 
 // NewEventQueue creates a new event queue with the specified maximum size.
 func NewEventQueue(maxSize int) *EventQueue {
 	return &EventQueue{
-		events:   make([]Event, 0),
-		maxSize:  maxSize,
-		waitChan: make(chan struct{}, 1),
+		events:    make([]Event, 0),
+		maxSize:   maxSize,
+		waitChan:  make(chan struct{}, 1),
+		closeChan: make(chan struct{}),
 	}
 }
 
 // Push adds an event to the queue.
 func (q *EventQueue) Push(eventType EventType, data interface{}) {
-	q.closedMu.RLock()
-	if q.closed {
-		q.closedMu.RUnlock()
+	if q.isClosed() {
 		return
 	}
-	q.closedMu.RUnlock()
 
 	q.mu.Lock()
 	defer q.mu.Unlock()
@@ -153,12 +160,9 @@ func (q *EventQueue) Push(eventType EventType, data interface{}) {
 
 // Fetch retrieves events from the queue, optionally waiting for new events.
 func (q *EventQueue) Fetch(ctx context.Context, lastSeqNum uint64, timeout time.Duration) ([]Event, error) {
-	q.closedMu.RLock()
-	if q.closed {
-		q.closedMu.RUnlock()
-		return nil, errors.New("event queue is closed")
+	if q.isClosed() {
+		return []Event{}, nil
 	}
-	q.closedMu.RUnlock()
 
 	// First, check if we have any events newer than lastSeqNum
 	q.mu.RLock()
@@ -174,6 +178,9 @@ func (q *EventQueue) Fetch(ctx context.Context, lastSeqNum uint64, timeout time.
 
 	for {
 		select {
+		case <-q.closeChan:
+			return []Event{}, nil
+
 		case <-q.waitChan:
 			// New events may be available
 			q.mu.RLock()
@@ -220,24 +227,10 @@ func (q *EventQueue) GetAllEvents() []Event {
 	return result
 }
 
-// Close closes the event queue, unblocking any waiting fetchers.
+// Close closes the event queue, unblocking any waiting fetchers. Safe to call
+// more than once.
 func (q *EventQueue) Close() {
-	q.closedMu.Lock()
-	defer q.closedMu.Unlock()
-
-	if q.closed {
-		return
-	}
-
-	q.closed = true
-
-	// Send multiple signals to unblock all potential waiters
-notifyWaiters:
-	for i := 0; i < 10; i++ {
-		select {
-		case q.waitChan <- struct{}{}:
-		default:
-			break notifyWaiters
-		}
-	}
+	q.closeOnce.Do(func() {
+		close(q.closeChan)
+	})
 }

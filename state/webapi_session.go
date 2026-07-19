@@ -87,6 +87,7 @@ type WebAPISession struct {
 	imLog        map[string][]WebAPIStoredIM
 	imLogMu      sync.Mutex
 	logger       *slog.Logger // Logger for debugging
+	listeners    sync.WaitGroup
 }
 
 // IsExpired checks if the session has expired.
@@ -172,7 +173,9 @@ func (s *WebAPISession) StartListeningToOSCARSession() {
 	}
 
 	// Start goroutine to listen for OSCAR messages
+	s.listeners.Add(1)
 	go func() {
+		defer s.listeners.Done()
 		msgCh := s.OSCARSession.ReceiveMessage()
 		for {
 			select {
@@ -188,6 +191,15 @@ func (s *WebAPISession) StartListeningToOSCARSession() {
 			}
 		}
 	}()
+}
+
+// Close tears down the session: it releases any parked event fetchers, closes
+// the OSCAR instance, and waits for the listener goroutine to unwind. Safe to
+// call more than once.
+func (s *WebAPISession) Close() {
+	s.EventQueue.Close()
+	s.OSCARSession.CloseInstance()
+	s.listeners.Wait()
 }
 
 // handleSNACMessage converts a SNAC message into WebAPI events and pushes them to the event queue.
@@ -482,7 +494,9 @@ func (s *WebAPISession) handleFeedbagMessage(msg wire.SNACMessage) {
 type WebAPISessionManager struct {
 	sessions map[string]*WebAPISession // Keyed by aimsid
 	mu       sync.RWMutex
-	closed   bool // set by Shutdown; rejects new sessions and makes drain idempotent
+	closed   bool           // set by Shutdown; rejects new sessions and makes drain idempotent
+	stopCh   chan struct{}  // closed by Shutdown to stop the reaper
+	reaperWG sync.WaitGroup // tracks a running reaper so Shutdown can join it
 }
 
 // NewWebAPISessionManager creates a new WebAPI session manager. It does not start
@@ -490,6 +504,7 @@ type WebAPISessionManager struct {
 func NewWebAPISessionManager() *WebAPISessionManager {
 	return &WebAPISessionManager{
 		sessions: make(map[string]*WebAPISession),
+		stopCh:   make(chan struct{}),
 	}
 }
 
@@ -500,7 +515,7 @@ func NewWebAPISessionManager() *WebAPISessionManager {
 // MyInfoRefresher, ...) and then call StartListeningToOSCARSession. Wiring them
 // after the listener starts would race the goroutine, which reads them as it
 // converts SNACs into events.
-func (m *WebAPISessionManager) CreateSession(ctx context.Context, screenName DisplayScreenName, devID string, events []string, oscarSession *SessionInstance, baseURL string, logger *slog.Logger) (*WebAPISession, error) {
+func (m *WebAPISessionManager) CreateSession(screenName DisplayScreenName, devID string, events []string, oscarSession *SessionInstance, baseURL string, logger *slog.Logger) (*WebAPISession, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -574,9 +589,7 @@ func (m *WebAPISessionManager) RemoveSession(ctx context.Context, aimsid string)
 
 	// Tear down outside the lock: CloseInstance fans out to buddy-departed
 	// broadcasts and signout, which we don't want to run under m.mu.
-	session.EventQueue.Close()
-	session.OSCARSession.CloseInstance()
-
+	session.Close()
 	return nil
 }
 
@@ -594,18 +607,35 @@ func (m *WebAPISessionManager) TouchSession(ctx context.Context, aimsid string) 
 	return nil
 }
 
-// Run reaps expired sessions on a fixed interval until ctx is cancelled. The
-// caller owns the goroutine's lifecycle; typically launch it under the server's
-// errgroup:
+// Run reaps expired sessions on a fixed interval until ctx is cancelled or
+// Shutdown is called. The caller owns the goroutine's lifecycle; typically
+// launch it under the server's errgroup:
 //
 //	g.Go(func() error { mgr.Run(ctx); return nil })
+//
+// Run is a no-op once the manager is closed, so a reaper that loses the race
+// with Shutdown never starts reaping a drained manager.
 func (m *WebAPISessionManager) Run(ctx context.Context) {
+	m.mu.Lock()
+	if m.closed {
+		m.mu.Unlock()
+		return
+	}
+	// Registering under m.mu is what makes Shutdown's join sound: Shutdown flips
+	// closed under the same lock, so a reaper either registers before Shutdown
+	// waits or is turned away here.
+	m.reaperWG.Add(1)
+	m.mu.Unlock()
+	defer m.reaperWG.Done()
+
 	ticker := time.NewTicker(webAPISessionReapInterval)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
 			m.reapExpired()
+		case <-m.stopCh:
+			return
 		case <-ctx.Done():
 			return
 		}
@@ -628,14 +658,14 @@ func (m *WebAPISessionManager) reapExpired() {
 	// Tear down outside the lock: CloseInstance fans out to buddy-departed
 	// broadcasts and signout, which we don't want to run under m.mu.
 	for _, session := range expired {
-		session.EventQueue.Close()
-		session.OSCARSession.CloseInstance()
+		session.Close()
 	}
 }
 
-// Shutdown drains and closes all sessions and blocks further CreateSession
-// calls. The reaper goroutine is stopped separately by cancelling the context
-// passed to Run. Safe to call more than once.
+// Shutdown drains and closes all sessions, stops the reaper started by Run, and
+// blocks further CreateSession calls. It does not depend on the caller
+// cancelling Run's context. Safe to call more than once, though only the first
+// call waits for the drain.
 func (m *WebAPISessionManager) Shutdown() {
 	m.mu.Lock()
 	if m.closed {
@@ -643,6 +673,7 @@ func (m *WebAPISessionManager) Shutdown() {
 		return
 	}
 	m.closed = true
+	close(m.stopCh)
 
 	sessions := make([]*WebAPISession, 0, len(m.sessions))
 	for _, session := range m.sessions {
@@ -655,9 +686,9 @@ func (m *WebAPISessionManager) Shutdown() {
 	// Tear down outside the lock: CloseInstance fans out to buddy-departed
 	// broadcasts and signout, which we don't want to run under m.mu.
 	for _, session := range sessions {
-		session.EventQueue.Close()
-		session.OSCARSession.CloseInstance()
+		session.Close()
 	}
+	m.reaperWG.Wait()
 }
 
 // generateSessionID creates a cryptographically secure session ID.

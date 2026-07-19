@@ -84,6 +84,8 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 		Logger:           logger,
 	}
 
+	shutdownCtx, shutdownCancel := context.WithCancel(context.Background())
+
 	for _, l := range listeners {
 		mux := http.NewServeMux()
 
@@ -296,8 +298,6 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 		})
 	}
 
-	shutdownCtx, shutdownCancel := context.WithCancel(context.Background())
-
 	sessionHandler.FnSessCfg = func(sess *state.Session) {
 		sess.OnSessionClose(func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -404,10 +404,12 @@ func (s *Server) ListenAndServe() error {
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.logger.Debug("Initiating graceful shutdown...")
 	s.shutdownCancel() // stop the session reaper so ListenAndServe's errgroup can drain
+
+	s.sessionManager.Shutdown()
+
 	for _, srv := range s.servers {
 		_ = srv.Shutdown(ctx)
 	}
-	s.sessionManager.Shutdown()
 	s.logger.Info("shutdown complete")
 	return nil
 }
