@@ -3004,6 +3004,9 @@ func TestOSCARProxy_RecvClientCmd_InitDone(t *testing.T) {
 			msg := svc.RecvClientCmd(ctx, tc.me, nil, tc.givenCmd, nil, nil)
 
 			assert.Equal(t, tc.wantMsg, msg)
+			// toc_init_done marks the contact list submitted (even if empty)
+			// so that ClientOnline broadcasts the arrival to watchers.
+			assert.True(t, tc.me.ContactsInit())
 		})
 	}
 }
