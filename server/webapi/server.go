@@ -405,10 +405,20 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	s.logger.Debug("Initiating graceful shutdown...")
 	s.shutdownCancel() // stop the session reaper so ListenAndServe's errgroup can drain
 
-	s.sessionManager.Shutdown()
+	var errs []error
+	if err := s.sessionManager.Shutdown(ctx); err != nil {
+		errs = append(errs, fmt.Errorf("draining webapi sessions: %w", err))
+	}
 
 	for _, srv := range s.servers {
-		_ = srv.Shutdown(ctx)
+		if err := srv.Shutdown(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("stopping webapi listener %s: %w", srv.Addr, err))
+		}
+	}
+
+	if err := errors.Join(errs...); err != nil {
+		s.logger.Error("shutdown incomplete", "err", err.Error())
+		return err
 	}
 	s.logger.Info("shutdown complete")
 	return nil

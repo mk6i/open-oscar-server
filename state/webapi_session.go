@@ -88,6 +88,12 @@ type WebAPISession struct {
 	imLogMu      sync.Mutex
 	logger       *slog.Logger // Logger for debugging
 	listeners    sync.WaitGroup
+
+	ctx    context.Context
+	cancel context.CancelFunc
+
+	closeMu sync.Mutex
+	closed  bool
 }
 
 // IsExpired checks if the session has expired.
@@ -143,7 +149,7 @@ func (s *WebAPISession) InvalidateAliases() {
 // every event naming a buddy has to repeat it.
 func (s *WebAPISession) aliasFor(buddy IdentScreenName) string {
 	// Runs on the SNAC listener goroutine, which has no request context.
-	return s.Aliases(context.Background())[buddy.String()]
+	return s.Aliases(s.ctx)[buddy.String()]
 }
 
 // Touch updates the last accessed time and extends expiration if needed.
@@ -172,7 +178,12 @@ func (s *WebAPISession) StartListeningToOSCARSession() {
 		return
 	}
 
-	// Start goroutine to listen for OSCAR messages
+	s.closeMu.Lock()
+	defer s.closeMu.Unlock()
+	if s.closed {
+		return
+	}
+
 	s.listeners.Add(1)
 	go func() {
 		defer s.listeners.Done()
@@ -197,8 +208,18 @@ func (s *WebAPISession) StartListeningToOSCARSession() {
 // the OSCAR instance, and waits for the listener goroutine to unwind. Safe to
 // call more than once.
 func (s *WebAPISession) Close() {
+	s.closeMu.Lock()
+	if s.closed {
+		s.closeMu.Unlock()
+		return
+	}
+	s.closed = true
+	s.closeMu.Unlock()
+
 	s.EventQueue.Close()
 	s.OSCARSession.CloseInstance()
+
+	s.cancel()
 	s.listeners.Wait()
 }
 
@@ -236,7 +257,7 @@ func (s *WebAPISession) handleOServiceMessage(msg wire.SNACMessage) {
 	if s.MyInfoRefresher == nil {
 		return
 	}
-	data, err := s.MyInfoRefresher(context.Background())
+	data, err := s.MyInfoRefresher(s.ctx)
 	if err != nil {
 		s.logger.Error("failed to refresh myInfo after user-info update", "err", err)
 		return
@@ -461,7 +482,7 @@ func (s *WebAPISession) handleFeedbagMessage(msg wire.SNACMessage) {
 		s.InvalidateAliases()
 
 		if s.BuddyListRefresher != nil {
-			groups, err := s.BuddyListRefresher(context.Background())
+			groups, err := s.BuddyListRefresher(s.ctx)
 			if err != nil {
 				s.logger.Error("failed to refresh buddy list after feedbag change", "err", err)
 			} else {
@@ -475,7 +496,7 @@ func (s *WebAPISession) handleFeedbagMessage(msg wire.SNACMessage) {
 					if item.ClassID == wire.FeedbagClassIDPermit ||
 						item.ClassID == wire.FeedbagClassIDDeny ||
 						item.ClassID == wire.FeedbagClassIdPdinfo {
-						pdd, err := s.PermitDenyRefresher(context.Background())
+						pdd, err := s.PermitDenyRefresher(s.ctx)
 						if err != nil {
 							s.logger.Error("failed to refresh permit/deny after feedbag change", "err", err)
 						} else {
@@ -532,7 +553,10 @@ func (m *WebAPISessionManager) CreateSession(screenName DisplayScreenName, devID
 	}
 
 	now := time.Now()
+	sessCtx, sessCancel := context.WithCancel(context.Background())
 	session := &WebAPISession{
+		ctx:             sessCtx,
+		cancel:          sessCancel,
 		AimSID:          aimsid,
 		ScreenName:      screenName,
 		OSCARSession:    oscarSession,
@@ -665,12 +689,13 @@ func (m *WebAPISessionManager) reapExpired() {
 // Shutdown drains and closes all sessions, stops the reaper started by Run, and
 // blocks further CreateSession calls. It does not depend on the caller
 // cancelling Run's context. Safe to call more than once, though only the first
-// call waits for the drain.
-func (m *WebAPISessionManager) Shutdown() {
+// call waits for the drain. The drain is bounded by ctx: Shutdown returns
+// ctx.Err() rather than block forever on a listener that ignores cancellation.
+func (m *WebAPISessionManager) Shutdown(ctx context.Context) error {
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
-		return
+		return nil
 	}
 	m.closed = true
 	close(m.stopCh)
@@ -683,12 +708,23 @@ func (m *WebAPISessionManager) Shutdown() {
 	m.sessions = make(map[string]*WebAPISession)
 	m.mu.Unlock()
 
-	// Tear down outside the lock: CloseInstance fans out to buddy-departed
-	// broadcasts and signout, which we don't want to run under m.mu.
-	for _, session := range sessions {
-		session.Close()
+	drained := make(chan struct{})
+	go func() {
+		defer close(drained)
+		// Tear down outside the lock: CloseInstance fans out to buddy-departed
+		// broadcasts and signout, which we don't want to run under m.mu.
+		for _, session := range sessions {
+			session.Close()
+		}
+		m.reaperWG.Wait()
+	}()
+
+	select {
+	case <-drained:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
 	}
-	m.reaperWG.Wait()
 }
 
 // generateSessionID creates a cryptographically secure session ID.

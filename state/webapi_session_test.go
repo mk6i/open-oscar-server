@@ -271,10 +271,10 @@ func TestWebAPISession_TempBuddiesIndependence(t *testing.T) {
 func TestWebAPISessionManager_ShutdownIdempotent(t *testing.T) {
 	mgr := NewWebAPISessionManager()
 
-	mgr.Shutdown()
+	_ = mgr.Shutdown(context.Background())
 
 	assert.NotPanics(t, func() {
-		mgr.Shutdown()
+		_ = mgr.Shutdown(context.Background())
 	})
 }
 
@@ -284,7 +284,7 @@ func TestWebAPISessionManager_ShutdownIdempotent(t *testing.T) {
 func TestWebAPISessionManager_CreateAfterShutdown(t *testing.T) {
 	mgr := NewWebAPISessionManager()
 
-	mgr.Shutdown()
+	_ = mgr.Shutdown(context.Background())
 
 	sess, err := mgr.CreateSession(DisplayScreenName("testuser"), "dev", []string{"presence"}, nil, "", nil)
 	assert.Nil(t, sess)
@@ -306,7 +306,7 @@ func TestWebAPISessionManager_ShutdownDrainsAndClosesSessions(t *testing.T) {
 	s2, err := mgr.CreateSession(DisplayScreenName("bob"), "dev", []string{"presence"}, inst2, "", slog.Default())
 	assert.NoError(t, err)
 
-	mgr.Shutdown()
+	mgr.Shutdown(context.Background())
 
 	// Maps drained: the collect loop ran over both sessions.
 	assert.Empty(t, mgr.sessions)
@@ -387,7 +387,7 @@ func TestWebAPISessionManager_ShutdownWithoutReaper(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		mgr.Shutdown()
+		mgr.Shutdown(context.Background())
 	}()
 
 	select {
@@ -414,7 +414,7 @@ func TestWebAPISessionManager_ShutdownJoinsReaper(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		mgr.Shutdown()
+		mgr.Shutdown(context.Background())
 	}()
 
 	select {
@@ -435,7 +435,7 @@ func TestWebAPISessionManager_ShutdownJoinsReaper(t *testing.T) {
 // with Shutdown never starts, so it cannot reap an already-drained manager.
 func TestWebAPISessionManager_RunAfterShutdown(t *testing.T) {
 	mgr := NewWebAPISessionManager()
-	mgr.Shutdown()
+	mgr.Shutdown(context.Background())
 
 	done := make(chan struct{})
 	go func() {
@@ -842,4 +842,53 @@ func TestWebAPISession_PushesMyInfoOnUserInfoUpdate(t *testing.T) {
 		assert.Empty(t, sess.EventQueue.GetAllEvents())
 		assert.Equal(t, 0, *refreshes)
 	})
+}
+
+// TestWebAPISessionManager_ShutdownBoundedByContext verifies that Shutdown
+// honors its context instead of blocking indefinitely. A listener goroutine that
+// ignores cancellation must not be able to hold the whole server open: main
+// budgets a few seconds for every server's shutdown combined, so an unbounded
+// wait here means the process never exits.
+func TestWebAPISessionManager_ShutdownBoundedByContext(t *testing.T) {
+	mgr := NewWebAPISessionManager()
+
+	inst := NewSession().AddInstance()
+	sess, err := mgr.CreateSession("alice", "dev", []string{"presence"}, inst, "", slog.Default())
+	assert.NoError(t, err)
+
+	// Stand in for a listener wedged somewhere that never observes cancellation.
+	release := make(chan struct{})
+	defer close(release)
+	sess.listeners.Add(1)
+	go func() {
+		defer sess.listeners.Done()
+		<-release
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	err = mgr.Shutdown(ctx)
+	elapsed := time.Since(start)
+
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.Less(t, elapsed, 2*time.Second, "Shutdown must give up at its deadline, not wait on the stuck listener")
+}
+
+// TestWebAPISession_CloseCancelsSessionContext verifies that Close cancels the
+// context handed to the refresher callbacks. The listener runs feedbag queries
+// through it, and without cancellation Close's wait lasts as long as the query.
+func TestWebAPISession_CloseCancelsSessionContext(t *testing.T) {
+	mgr := NewWebAPISessionManager()
+
+	inst := NewSession().AddInstance()
+	sess, err := mgr.CreateSession("alice", "dev", []string{"presence"}, inst, "", slog.Default())
+	assert.NoError(t, err)
+
+	assert.NoError(t, sess.ctx.Err(), "session context should be live before Close")
+
+	sess.Close()
+
+	assert.ErrorIs(t, sess.ctx.Err(), context.Canceled)
 }

@@ -224,6 +224,10 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 
 	if err = instance.Session().RunOnce(h.FnSessInit(instance)); err != nil {
 		h.Logger.ErrorContext(context.Background(), "failed to init session", "err", err.Error())
+		// Nothing owns the instance yet, so close it here. Left open, it stays
+		// registered in the session manager, counting against the user's
+		// concurrent-instance budget until the server restarts.
+		instance.CloseInstance()
 		h.sendError(w, r, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -246,6 +250,7 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.OServiceService.ClientOnline(ctx, wire.BOS, wire.SNAC_0x01_0x02_OServiceClientOnline{}, instance); err != nil {
 		h.Logger.ErrorContext(ctx, "failed to set client online", "err", err.Error())
+		instance.CloseInstance()
 		h.sendError(w, r, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -263,6 +268,10 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 	session, err := h.SessionManager.CreateSession(screenName, apiKey.DevID, events, instance, baseURL, h.Logger)
 	if err != nil {
 		h.Logger.ErrorContext(ctx, "failed to create session", "err", err.Error())
+		// CreateSession refuses once the manager is shut down, so this is the
+		// path a startSession racing shutdown takes. The WebAPISession that
+		// would have owned the instance was never created.
+		instance.CloseInstance()
 		h.sendError(w, r, http.StatusInternalServerError, "failed to create session")
 		return
 	}
