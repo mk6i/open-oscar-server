@@ -600,6 +600,8 @@ func WebAPI(deps Container) *webapi.Server {
 		// Phase 5 additions for buddy list and messaging
 		BuddyListManager:   buddyListManager,
 		ChatSessionManager: deps.chatSessionManager,
+		ChatService:        foodgroup.NewChatService(deps.chatSessionManager),
+		ChatNavService:     foodgroup.NewChatNavService(logger, deps.sqLiteUserStore),
 		RecalcWarning:      deps.icbmSvc.RestoreWarningLevel,
 		LowerWarnLevel:     deps.icbmSvc.UpdateWarnLevel,
 		FeedbagService:     deps.feedbagSvc,

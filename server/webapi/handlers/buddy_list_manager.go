@@ -38,6 +38,10 @@ type WebAPIBuddyGroup struct {
 	Buddies []WebAPIBuddyInfo `json:"buddies"`
 	Recent  bool              `json:"recent,omitempty"`
 	Smart   interface{}       `json:"smart,omitempty"` // Can be null or number
+	// Imserv marks this group as a group-chat group. The client routes any
+	// buddylist group carrying imserv (and containing an imserv buddy) into its
+	// "Group chats" section instead of "Contacts".
+	Imserv string `json:"imserv,omitempty"`
 }
 
 // WebAPIBuddyInfo represents a buddy in the WebAPI format.
@@ -57,6 +61,10 @@ type WebAPIBuddyInfo struct {
 	BuddyIcon    string   `json:"buddyIcon,omitempty"`
 	Capabilities []string `json:"capabilities,omitempty"`
 	MemberSince  int64    `json:"memberSince,omitempty"`
+	// Imserv, when set, makes the client treat this entry as a group-chat room
+	// (its aa() predicate) rather than a user; MemberCounts is the room's size.
+	Imserv       string `json:"imserv,omitempty"`
+	MemberCounts int    `json:"memberCounts,omitempty"`
 }
 
 // GetBuddyListForUser retrieves and converts the buddy list for a user.
@@ -167,6 +175,28 @@ func (m *BuddyListManager) GetBuddyListForUser(ctx context.Context, sess *state.
 	}
 
 	return out, nil
+}
+
+// CannedGroupChatGroup returns a fake group-chat group for the buddylist feed, so
+// we can confirm the buddylist event drives the client's "Group chats" section.
+// The client routes a group there when the GROUP carries imserv and it contains
+// an imserv buddy.
+// TODO(groupchat): replace with the user's persisted joined rooms.
+func CannedGroupChatGroup() WebAPIBuddyGroup {
+	return WebAPIBuddyGroup{
+		Name:   "Canned Group Chat",
+		Imserv: "4-0-Canned Group Chat",
+		Buddies: []WebAPIBuddyInfo{{
+			AimID:        "4-0-Canned Group Chat",
+			Imserv:       "4-0-Canned Group Chat",
+			Friendly:     "Canned Group Chat",
+			DisplayID:    "Canned Group Chat",
+			MemberCounts: 1,
+			State:        "online",
+			UserType:     "aim",
+			Service:      "AIM",
+		}},
+	}
 }
 
 // getBuddyInfo retrieves a buddy's current presence by issuing a locate

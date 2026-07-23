@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/binary"
@@ -20,10 +21,18 @@ type ICBMService interface {
 	ClientEvent(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x14_ICBMClientEvent) error
 }
 
+// ChatService relays a message to the participants of a chat room. Backed by
+// foodgroup.ChatService. The web client addresses a room like a buddy (via the
+// im/sendIM `t` param), so SendIM routes room targets here.
+type ChatService interface {
+	ChannelMsgToHost(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x0E_0x05_ChatChannelMsgToHost) (*wire.SNACMessage, error)
+}
+
 // MessagingHandler handles Web AIM API messaging endpoints
 type MessagingHandler struct {
 	SessionManager *state.WebAPISessionManager
 	ICBMService    ICBMService
+	ChatService    ChatService
 	LocateService  LocateService
 	FeedbagService FeedbagService
 	Logger         *slog.Logger
@@ -58,6 +67,13 @@ func (h *MessagingHandler) SendIM(w http.ResponseWriter, r *http.Request, sess *
 	message := queryOrFormParam(r, "message")
 	if message == "" {
 		h.sendErrorResponse(w, http.StatusBadRequest, "missing required parameter: message")
+		return
+	}
+
+	// A room is addressed exactly like a buddy: if t names a room this session has
+	// joined, relay through the chat food group instead of ICBM.
+	if chatInstance, isRoom := sess.ChatRoom(recipient); isRoom {
+		h.sendRoomMessage(w, r, sess, chatInstance, recipient, message)
 		return
 	}
 
@@ -163,6 +179,68 @@ func (h *MessagingHandler) SendIM(w http.ResponseWriter, r *http.Request, sess *
 	// Send success response
 	responseData := map[string]interface{}{
 		"msgId": messageID,
+		"state": "delivered",
+	}
+	response := BaseResponse{}
+	response.Response.StatusCode = 200
+	response.Response.StatusText = "OK"
+	response.Response.Data = responseData
+	SendResponse(w, r, response, h.Logger)
+}
+
+// sendRoomMessage relays a message to a joined chat room's participants via the
+// chat food group, then echoes the sender's own line back to their event queue.
+// Mirrors TOC's ChatSend (server/toc/cmd_client.go): reflection is enabled so the
+// server returns the canonical (transformed) message synchronously; other
+// participants receive it via the relay, which excludes the sender.
+func (h *MessagingHandler) sendRoomMessage(w http.ResponseWriter, r *http.Request, sess *state.WebAPISession, chatInstance *state.SessionInstance, roomID, message string) {
+	ctx := r.Context()
+
+	block := wire.TLVRestBlock{}
+	// TLV order matters for AIM 2.x: out of order, screen names do not appear with
+	// each chat message.
+	block.Append(wire.NewTLVBE(wire.ChatTLVEnableReflectionFlag, uint8(1)))
+	block.Append(wire.NewTLVBE(wire.ChatTLVSenderInformation, chatInstance.Session().TLVUserInfo()))
+	block.Append(wire.NewTLVBE(wire.ChatTLVPublicWhisperFlag, []byte{}))
+	block.Append(wire.NewTLVBE(wire.ChatTLVMessageInfo, wire.TLVRestBlock{
+		TLVList: wire.TLVList{
+			wire.NewTLVBE(wire.ChatTLVMessageInfoText, message),
+		},
+	}))
+
+	snac := wire.SNAC_0x0E_0x05_ChatChannelMsgToHost{
+		Channel:      wire.ICBMChannelMIME,
+		TLVRestBlock: block,
+	}
+	reply, err := h.ChatService.ChannelMsgToHost(ctx, chatInstance, wire.SNACFrame{}, snac)
+	if err != nil {
+		h.Logger.ErrorContext(ctx, "failed to send chat message", "room", roomID, "err", err.Error())
+		h.sendErrorResponse(w, http.StatusInternalServerError, "failed to send message")
+		return
+	}
+
+	// Echo the sender's own line. The reflected reply carries the canonical text
+	// and sender; fall back to the raw inputs if reflection returned nothing.
+	senderAimID := sess.ScreenName.IdentScreenName().String()
+	text := message
+	if reply != nil {
+		if body, ok := reply.Body.(wire.SNAC_0x0E_0x06_ChatChannelMsgToClient); ok {
+			if info, ok := body.Bytes(wire.ChatTLVSenderInformation); ok {
+				var userInfo wire.TLVUserInfo
+				if err := wire.UnmarshalBE(&userInfo, bytes.NewReader(info)); err == nil {
+					senderAimID = state.NewIdentScreenName(userInfo.ScreenName).String()
+				}
+			}
+			if msgInfo, ok := body.Bytes(wire.ChatTLVMessageInfo); ok {
+				if reflected, err := wire.UnmarshalChatMessageText(msgInfo); err == nil {
+					text = reflected
+				}
+			}
+		}
+	}
+	sess.PushRoomLine(roomID, senderAimID, text)
+
+	responseData := map[string]interface{}{
 		"state": "delivered",
 	}
 	response := BaseResponse{}

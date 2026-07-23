@@ -26,6 +26,8 @@ type Handler struct {
 	RecalcWarning      func(ctx context.Context, instance *state.SessionInstance) error
 	LowerWarnLevel     func(ctx context.Context, instance *state.SessionInstance)
 	ChatSessionManager ChatSessionManager
+	ChatService        ChatService
+	ChatNavService     ChatNavService
 	FeedbagService     FeedbagService
 	DirSearchService   DirSearchService
 	IconSource         handlers.BuddyIconSource

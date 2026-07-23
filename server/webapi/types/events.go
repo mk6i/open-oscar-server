@@ -23,6 +23,7 @@ const (
 	EventTypeStatus       EventType = "status"
 	EventTypeTyping       EventType = "typing"
 	EventTypePermitDeny   EventType = "permitDeny"
+	EventTypeImserv       EventType = "imserv"
 )
 
 // Event represents an event to be delivered to a web client.
@@ -56,6 +57,86 @@ type IMEvent struct {
 	MsgID     string   `json:"msgId,omitempty"`
 	Timestamp float64  `json:"timestamp"` // float64 for AMF3 encoding
 	AutoResp  bool     `json:"autoresponse,omitempty"`
+}
+
+// RoomIMEvent represents a group-chat (imserv) room line delivered as an `im`
+// event. The web client keys the conversation by Imserv (the room id) via
+// Source.AimID, but reads the individual speaker and text from
+// SpecialData.ImFromImserv — see the client's qv/Fg/kl parsers. SpecialIM must be
+// "imservMsg" for the client to treat the line as a room message.
+type RoomIMEvent struct {
+	Source      UserInfo        `json:"source"`
+	Imserv      string          `json:"imserv"`
+	SpecialIM   string          `json:"specialIM"`
+	SpecialData RoomSpecialData `json:"specialData"`
+	Message     string          `json:"message"`
+	MsgID       string          `json:"msgId,omitempty"`
+	Timestamp   float64         `json:"timestamp"` // float64 for AMF3 encoding
+}
+
+// RoomSpecialData carries the imserv-specific payload of a RoomIMEvent.
+type RoomSpecialData struct {
+	ImFromImserv RoomImFrom `json:"imFromImserv"`
+}
+
+// RoomInviteEvent represents a group-chat invitation, delivered (like a room
+// line) as an `im` event. The presence of SpecialData.Invitation is what flags
+// the event as an invite to the client (predicate `no()`); Imserv is the room id
+// the client passes verbatim to imserv/join to accept.
+type RoomInviteEvent struct {
+	Source      UserInfo          `json:"source"`
+	Imserv      string            `json:"imserv"`
+	Message     string            `json:"message,omitempty"`
+	MsgID       string            `json:"msgId,omitempty"`
+	Timestamp   float64           `json:"timestamp"` // float64 for AMF3 encoding
+	SpecialData RoomInviteSpecial `json:"specialData"`
+}
+
+// RoomInviteSpecial wraps the invitation object.
+type RoomInviteSpecial struct {
+	Invitation RoomInvitation `json:"invitation"`
+}
+
+// RoomInvitation identifies who invited the user and to which room. From is the
+// inviter's screen name (the client renders "<From> has invited you…");
+// GroupName is the room's friendly name.
+type RoomInvitation struct {
+	From      string `json:"from"`
+	GroupName string `json:"groupName"`
+}
+
+// RoomImFrom identifies the speaker of a room line. The client prefers OrigSender
+// and falls back to Sender; both are set to the speaker's aimId. Text is the line
+// text (the client renders this in preference to the top-level Message).
+type RoomImFrom struct {
+	OrigSender string `json:"origSender"`
+	Sender     string `json:"sender"`
+	Text       string `json:"text"`
+}
+
+// ImservEvent carries live group-chat activity (member join/leave) as its own
+// `imserv` event type. The client (parser `rB`) reads RecentActivities and, per
+// room, applies each activity to the roster (`fC`). See RoomActivity.
+type ImservEvent struct {
+	RecentActivities []ImservRoomActivity `json:"recentActivities"`
+}
+
+// ImservRoomActivity groups a room's activity records under its room id.
+type ImservRoomActivity struct {
+	Imserv     string           `json:"imserv"`
+	Activities []ImservActivity `json:"activities"`
+}
+
+// ImservActivity is a single room activity record. Action is the discriminator
+// ("memberJoin" / "memberLeft"); the client takes the affected member from
+// Member1 for both. Member2 mirrors Member1 for a self join/leave. The friendly
+// name is optional and falls back to the screen name client-side.
+type ImservActivity struct {
+	Action              string  `json:"action"`
+	Member1             string  `json:"member1"`
+	Member2             string  `json:"member2"`
+	Member1FriendlyName string  `json:"member1FriendlyName,omitempty"`
+	Timestamp           float64 `json:"timestamp"` // float64 for AMF3 encoding
 }
 
 // SentIMEvent represents a sent instant message event.

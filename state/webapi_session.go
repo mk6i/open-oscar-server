@@ -9,8 +9,11 @@ import (
 	"log/slog"
 	mrand "math/rand/v2"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/mk6i/open-oscar-server/server/webapi/types"
 	"github.com/mk6i/open-oscar-server/wire"
@@ -88,6 +91,16 @@ type WebAPISession struct {
 	imLogMu      sync.Mutex
 	logger       *slog.Logger // Logger for debugging
 	listeners    sync.WaitGroup
+
+	// chatRooms maps a joined room id (the ChatRoom cookie the web client uses as
+	// its im/sendIM target) to that room's dedicated chat SessionInstance. Each
+	// join registers a separate OSCAR chat session here, analogous to TOC's
+	// ChatRegistry. chatRoomsClosed is set once Close has drained the map, so a
+	// join racing teardown cannot re-add (and thereby leak) an instance Close will
+	// never see. Both guarded by chatRoomsMu.
+	chatRooms       map[string]*SessionInstance
+	chatRoomsClosed bool
+	chatRoomsMu     sync.Mutex
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -219,8 +232,209 @@ func (s *WebAPISession) Close() {
 	s.EventQueue.Close()
 	s.OSCARSession.CloseInstance()
 
+	// Close every joined chat instance so each room announces the user's
+	// departure and SignoutChat runs. Their listeners also observe s.ctx below,
+	// but closing the instances is what tears down the room membership.
+	// chatRoomsClosed is set under the same lock so a concurrent AddChatRoom that
+	// arrives after this drain is turned away instead of re-adding an instance
+	// this drain would never close.
+	s.chatRoomsMu.Lock()
+	for _, inst := range s.chatRooms {
+		inst.CloseInstance()
+	}
+	s.chatRooms = nil
+	s.chatRoomsClosed = true
+	s.chatRoomsMu.Unlock()
+
 	s.cancel()
 	s.listeners.Wait()
+}
+
+// AddChatRoom registers a joined room's chat SessionInstance under its room id
+// (the ChatRoom cookie). Returns false if the session is already closing, in
+// which case the caller must close inst itself.
+func (s *WebAPISession) AddChatRoom(roomID string, inst *SessionInstance) bool {
+	// The closed-check and the insert must be atomic with Close's drain, so both
+	// run under chatRoomsMu. A nil map alone can't distinguish "closing" from
+	// "never used yet", which is why Close sets chatRoomsClosed.
+	s.chatRoomsMu.Lock()
+	defer s.chatRoomsMu.Unlock()
+	if s.chatRoomsClosed {
+		return false
+	}
+	if s.chatRooms == nil {
+		s.chatRooms = make(map[string]*SessionInstance)
+	}
+	s.chatRooms[roomID] = inst
+	return true
+}
+
+// ChatRoom returns the chat SessionInstance for a joined room id, or false if
+// the session is not in that room. The web client addresses a room exactly like
+// a buddy, so this is how the im/sendIM path tells a room target from a buddy.
+func (s *WebAPISession) ChatRoom(roomID string) (*SessionInstance, bool) {
+	s.chatRoomsMu.Lock()
+	defer s.chatRoomsMu.Unlock()
+	inst, ok := s.chatRooms[roomID]
+	return inst, ok
+}
+
+// RemoveChatRoom unregisters a joined room and returns its chat SessionInstance
+// so the caller can close it. Returns false if the room was not joined.
+func (s *WebAPISession) RemoveChatRoom(roomID string) (*SessionInstance, bool) {
+	s.chatRoomsMu.Lock()
+	defer s.chatRoomsMu.Unlock()
+	inst, ok := s.chatRooms[roomID]
+	if ok {
+		delete(s.chatRooms, roomID)
+	}
+	return inst, ok
+}
+
+// StartListeningToChatSession converts SNACs relayed to a joined room's chat
+// SessionInstance into web events on this session's queue. roomID is the room's
+// ChatRoom cookie, which the web client uses to key the conversation. The
+// goroutine exits when the chat instance closes (room left) or the web session is
+// torn down. closeMu is held across Add so a concurrent Close either observes the
+// listener or is observed by it — mirrors StartListeningToOSCARSession.
+func (s *WebAPISession) StartListeningToChatSession(roomID string, inst *SessionInstance) {
+	s.closeMu.Lock()
+	defer s.closeMu.Unlock()
+	if s.closed {
+		return
+	}
+
+	s.listeners.Add(1)
+	go func() {
+		defer s.listeners.Done()
+		msgCh := inst.ReceiveMessage()
+		for {
+			select {
+			case <-s.ctx.Done():
+				return
+			case <-inst.Closed():
+				return
+			case msg, ok := <-msgCh:
+				if !ok {
+					return
+				}
+				s.handleChatSNAC(roomID, msg)
+			}
+		}
+	}()
+}
+
+// handleChatSNAC converts a SNAC relayed to a room's chat instance into a web
+// event: chat messages become `im` events, and participant join/leave SNACs
+// become `imserv` activity events that live-update the client's roster.
+func (s *WebAPISession) handleChatSNAC(roomID string, msg wire.SNACMessage) {
+	if s.EventQueue == nil {
+		return
+	}
+	switch body := msg.Body.(type) {
+	case wire.SNAC_0x0E_0x06_ChatChannelMsgToClient:
+		s.handleRoomMessage(roomID, body)
+	case wire.SNAC_0x0E_0x03_ChatUsersJoined:
+		s.handleMembershipChange(roomID, "memberJoin", body.Users)
+	case wire.SNAC_0x0E_0x04_ChatUsersLeft:
+		s.handleMembershipChange(roomID, "memberLeft", body.Users)
+	}
+}
+
+// handleMembershipChange pushes an `imserv` activity event so an existing
+// participant's roster live-updates when someone joins or leaves. Each affected
+// user becomes one activity keyed to the room; the client reads member1 as the
+// affected member for both join and leave. Not gated on a subscription: the
+// event only fires for a room the user has joined, and the client's imserv
+// listener is active whenever its chat controller is. See types.ImservEvent.
+func (s *WebAPISession) handleMembershipChange(roomID, action string, users []wire.TLVUserInfo) {
+	if len(users) == 0 {
+		return
+	}
+	now := float64(time.Now().Unix())
+	activities := make([]types.ImservActivity, 0, len(users))
+	for _, user := range users {
+		// The client keys the member by normalized aimId (matching getMembers) and
+		// renders the display form from the friendly name.
+		aimID := NewIdentScreenName(user.ScreenName).String()
+		activities = append(activities, types.ImservActivity{
+			Action:              action,
+			Member1:             aimID,
+			Member2:             aimID,
+			Member1FriendlyName: user.ScreenName,
+			Timestamp:           now,
+		})
+	}
+	s.EventQueue.Push(types.EventTypeImserv, types.ImservEvent{
+		RecentActivities: []types.ImservRoomActivity{{
+			Imserv:     roomID,
+			Activities: activities,
+		}},
+	})
+}
+
+// handleRoomMessage pushes a relayed room line as an `im` event. The client keys
+// the conversation by the room id but reads the speaker and text from
+// specialData.imFromImserv, so both are populated here. See RoomIMEvent.
+func (s *WebAPISession) handleRoomMessage(roomID string, body wire.SNAC_0x0E_0x06_ChatChannelMsgToClient) {
+	if !s.IsSubscribedTo("im") {
+		return
+	}
+
+	senderInfo, ok := body.Bytes(wire.ChatTLVSenderInformation)
+	if !ok {
+		return
+	}
+	var userInfo wire.TLVUserInfo
+	if err := wire.UnmarshalBE(&userInfo, bytes.NewReader(senderInfo)); err != nil {
+		s.logger.Error("failed to unmarshal chat sender info", "err", err)
+		return
+	}
+
+	msgInfo, ok := body.Bytes(wire.ChatTLVMessageInfo)
+	if !ok {
+		return
+	}
+	text, err := wire.UnmarshalChatMessageText(msgInfo)
+	if err != nil {
+		s.logger.Error("failed to unmarshal chat message text", "err", err)
+		return
+	}
+
+	// The sender screen name is carried as its display form; the client keys the
+	// speaker by the normalized aimId and renders the display form separately.
+	speakerAimID := NewIdentScreenName(userInfo.ScreenName).String()
+	s.PushRoomLine(roomID, speakerAimID, text)
+}
+
+// PushRoomLine queues a group-chat room line as an `im` event. roomID keys the
+// conversation; speakerAimID attributes the line to the participant who spoke.
+// Both the relay listener (incoming lines) and the send path (the sender's own
+// reflected line) funnel through here so every room line has the same shape the
+// client expects — see types.RoomIMEvent.
+func (s *WebAPISession) PushRoomLine(roomID, speakerAimID, text string) {
+	if s.EventQueue == nil || !s.IsSubscribedTo("im") {
+		return
+	}
+	s.EventQueue.Push(types.EventTypeIM, types.RoomIMEvent{
+		Source: types.UserInfo{
+			AimID:    roomID,
+			UserType: "aim",
+			State:    "online",
+		},
+		Imserv:    roomID,
+		SpecialIM: "imservMsg",
+		SpecialData: types.RoomSpecialData{
+			ImFromImserv: types.RoomImFrom{
+				OrigSender: speakerAimID,
+				Sender:     speakerAimID,
+				Text:       text,
+			},
+		},
+		Message:   text,
+		MsgID:     strconv.FormatUint(mrand.Uint64(), 16),
+		Timestamp: float64(time.Now().Unix()),
+	})
 }
 
 // handleSNACMessage converts a SNAC message into WebAPI events and pushes them to the event queue.
@@ -269,10 +483,80 @@ func (s *WebAPISession) handleOServiceMessage(msg wire.SNACMessage) {
 func (s *WebAPISession) handleICBMMessage(msg wire.SNACMessage) {
 	switch msg.Frame.SubGroup {
 	case wire.ICBMChannelMsgToClient:
+		// A chat-room invitation arrives as a channel-2 rendezvous, not a plain
+		// IM. Route it to the invite handler; everything else is a 1:1 message.
+		if body, ok := msg.Body.(wire.SNAC_0x04_0x07_ICBMChannelMsgToClient); ok &&
+			body.ChannelID == wire.ICBMChannelRendezvous {
+			s.handleChatInvite(body)
+			return
+		}
 		s.handleIncomingIM(msg)
 	case wire.ICBMClientEvent:
 		s.handleTypingNotification(msg)
 	}
+}
+
+// handleChatInvite converts an incoming chat-room invitation (a channel-2
+// CapChat rendezvous) into an `im` event carrying specialData.invitation, which
+// is how the web client recognizes and can accept an invite (via imserv/join
+// with the room id). Non-chat rendezvous (file transfer, etc.) are ignored.
+func (s *WebAPISession) handleChatInvite(body wire.SNAC_0x04_0x07_ICBMChannelMsgToClient) {
+	if !s.IsSubscribedTo("im") {
+		return
+	}
+
+	rdinfo, ok := body.Bytes(wire.ICBMTLVData)
+	if !ok {
+		return
+	}
+	var frag wire.ICBMCh2Fragment
+	if err := wire.UnmarshalBE(&frag, bytes.NewReader(rdinfo)); err != nil {
+		return
+	}
+	if frag.Type != wire.ICBMRdvMessagePropose || uuid.UUID(frag.Capability) != wire.CapChat {
+		return
+	}
+
+	svcData, ok := frag.Bytes(wire.ICBMRdvTLVTagsSvcData)
+	if !ok {
+		return
+	}
+	var roomInfo wire.ICBMRoomInfo
+	if err := wire.UnmarshalBE(&roomInfo, bytes.NewReader(svcData)); err != nil {
+		return
+	}
+
+	prompt, _ := frag.String(wire.ICBMRdvTLVTagsInvitation)
+	inviterAimID := NewIdentScreenName(body.ScreenName).String()
+
+	s.EventQueue.Push(types.EventTypeIM, types.RoomInviteEvent{
+		Source: types.UserInfo{
+			AimID:    inviterAimID,
+			UserType: "aim",
+			State:    "online",
+		},
+		Imserv:    roomInfo.Cookie,
+		Message:   prompt,
+		MsgID:     strconv.FormatUint(mrand.Uint64(), 16),
+		Timestamp: float64(time.Now().Unix()),
+		SpecialData: types.RoomInviteSpecial{
+			Invitation: types.RoomInvitation{
+				From:      body.ScreenName,
+				GroupName: roomNameFromCookie(roomInfo.Cookie),
+			},
+		},
+	})
+}
+
+// roomNameFromCookie returns the human room name embedded in a chat room cookie
+// of the form "<exchange>-<instance>-<name>". The name may itself contain "-",
+// so only the first two segments are split off. Falls back to the whole cookie.
+func roomNameFromCookie(cookie string) string {
+	parts := strings.SplitN(cookie, "-", 3)
+	if len(parts) < 3 {
+		return cookie
+	}
+	return parts[2]
 }
 
 // handleIncomingIM handles incoming instant messages.

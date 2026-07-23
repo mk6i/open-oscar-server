@@ -24,6 +24,20 @@ type OServiceService interface {
 	ServiceRequest(ctx context.Context, service uint16, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x01_0x04_OServiceServiceRequest, listener config.Listener) (wire.SNACMessage, error)
 }
 
+// ChatService relays messages to chat room participants. Backed by
+// foodgroup.ChatService, the same instance BOS and TOC use, so web users share
+// rooms with native clients.
+type ChatService interface {
+	ChannelMsgToHost(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x0E_0x05_ChatChannelMsgToHost) (*wire.SNACMessage, error)
+}
+
+// ChatNavService creates chat rooms and serves chat room metadata. Backed by
+// foodgroup.ChatNavService.
+type ChatNavService interface {
+	CreateRoom(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x0E_0x02_ChatRoomInfoUpdate) (wire.SNACMessage, error)
+	RequestRoomInfo(ctx context.Context, inFrame wire.SNACFrame, inBody wire.SNAC_0x0D_0x04_ChatNavRequestRoomInfo) (wire.SNACMessage, error)
+}
+
 type AuthService interface {
 	BUCPChallenge(ctx context.Context, inBody wire.SNAC_0x17_0x06_BUCPChallengeRequest, newUUID func() uuid.UUID) (wire.SNACMessage, error)
 	BUCPLogin(ctx context.Context, inBody wire.SNAC_0x17_0x02_BUCPLoginRequest, advertisedHost string) (wire.SNACMessage, error)
@@ -103,4 +117,7 @@ type OSCARConfig interface {
 
 type ChatSessionManager interface {
 	RemoveUserFromAllChats(user state.IdentScreenName)
+	// AllSessions returns the participants of the chat room identified by
+	// chatCookie, used to serve imserv/getMembers.
+	AllSessions(chatCookie string) []*state.Session
 }

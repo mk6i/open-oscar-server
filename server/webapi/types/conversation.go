@@ -13,6 +13,23 @@ func ConversationEventData(operation string, conversations []map[string]interfac
 	}
 }
 
+// ConversationGroupEntry builds one group-chat conversation object for the Web
+// AIM client's conversation "list". The presence of the imserv field is what
+// makes the client render the entry under "Group Chats" (its aa() predicate);
+// displayID gives the room its name without a getSettings round-trip.
+func ConversationGroupEntry(imserv, displayID string, memberCount int) map[string]interface{} {
+	entry := map[string]interface{}{
+		"imserv":       imserv,
+		"aimId":        imserv,
+		"active":       0,
+		"memberCounts": memberCount,
+	}
+	if displayID != "" {
+		entry["displayId"] = displayID
+	}
+	return entry
+}
+
 // ConversationEntry builds one conversation object for the Web AIM client.
 //
 // An empty displayID is omitted rather than sent blank: the client falls back to

@@ -283,7 +283,13 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 
 	// Wire buddy list refresher so feedbag SNACs from the OSCAR bridge trigger a buddylist event.
 	session.BuddyListRefresher = func(ctx context.Context) (interface{}, error) {
-		return h.BuddyListManager.GetBuddyListForUser(ctx, session)
+		groups, err := h.BuddyListManager.GetBuddyListForUser(ctx, session)
+		if err != nil {
+			return nil, err
+		}
+		// CANNED: keep the fake group chat present across feedbag-driven refreshes.
+		// TODO(groupchat): list the user's joined rooms.
+		return append(groups, CannedGroupChatGroup()), nil
 	}
 
 	// Wire the alias loader so OSCAR-driven im/presence events can repeat the
@@ -353,8 +359,14 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, event := range events {
 			if event == "conversation" {
+				// CANNED: seed a fake group chat so we can confirm the conversation
+				// "list" event drives the client's "Group Chats" section. Real
+				// per-user room membership persistence would replace this list.
+				// TODO(groupchat): load the user's joined rooms and list them here.
 				session.EventQueue.Push(types.EventTypeConversation,
-					types.ConversationEventData("list", nil))
+					types.ConversationEventData("list", []map[string]interface{}{
+						types.ConversationGroupEntry("4-0-Canned Group Chat", "Canned Group Chat", 1),
+					}))
 				break
 			}
 		}
@@ -425,6 +437,9 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 			if buddyGroups == nil {
 				buddyGroups = []WebAPIBuddyGroup{}
 			}
+			// CANNED: surface a fake group chat under the client's "Group chats"
+			// buddy-list section. TODO(groupchat): list the user's joined rooms.
+			buddyGroups = append(buddyGroups, CannedGroupChatGroup())
 			blPayload := map[string]interface{}{"groups": buddyGroups}
 			if resp.Response.Data.Events == nil {
 				resp.Response.Data.Events = make(map[string]interface{})

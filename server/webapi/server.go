@@ -59,9 +59,20 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 	messagingHandler := &handlers.MessagingHandler{
 		SessionManager: sessionManager,
 		ICBMService:    handler.ICBMService,
+		ChatService:    handler.ChatService,
 		LocateService:  handler.LocateService,
 		FeedbagService: handler.FeedbagService,
 		Logger:         logger,
+	}
+
+	imservHandler := &handlers.ImservHandler{
+		SessionManager:  sessionManager,
+		ChatNavService:  handler.ChatNavService,
+		OServiceService: handler.OServiceService,
+		AuthService:     handler.AuthService,
+		ICBMService:     handler.ICBMService,
+		Participants:    handler.ChatSessionManager,
+		Logger:          logger,
 	}
 
 	preferenceHandler := &handlers.PreferenceHandler{
@@ -208,6 +219,31 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 		mux.Handle("GET /im/setTyping", authMiddleware.AuthenticateFlexible(
 			authMiddleware.CORSMiddleware(
 				authMiddleware.RequireSession(sessionManager, messagingHandler.SetTyping))))
+
+		// Group chat (imserv). The client POSTs these like im/sendIM, so accept
+		// both methods. MVP: create/join/leave; the rest of the imserv surface
+		// (invite, getMembers, settings) is not yet implemented.
+		imservRoute := func(h func(http.ResponseWriter, *http.Request, *state.WebAPISession)) http.Handler {
+			return authMiddleware.AuthenticateFlexible(
+				authMiddleware.CORSMiddleware(
+					authMiddleware.RequireSession(sessionManager, h)))
+		}
+		mux.Handle("GET /imserv/create", imservRoute(imservHandler.Create))
+		mux.Handle("POST /imserv/create", imservRoute(imservHandler.Create))
+		mux.Handle("GET /imserv/join", imservRoute(imservHandler.Join))
+		mux.Handle("POST /imserv/join", imservRoute(imservHandler.Join))
+		mux.Handle("GET /imserv/delete", imservRoute(imservHandler.Leave))
+		mux.Handle("POST /imserv/delete", imservRoute(imservHandler.Leave))
+		mux.Handle("GET /imserv/invite", imservRoute(imservHandler.Invite))
+		mux.Handle("POST /imserv/invite", imservRoute(imservHandler.Invite))
+		mux.Handle("GET /imserv/reject", imservRoute(imservHandler.Reject))
+		mux.Handle("POST /imserv/reject", imservRoute(imservHandler.Reject))
+		mux.Handle("GET /imserv/getMembers", imservRoute(imservHandler.GetMembers))
+		mux.Handle("POST /imserv/getMembers", imservRoute(imservHandler.GetMembers))
+		mux.Handle("GET /imserv/getSettings", imservRoute(imservHandler.GetSettings))
+		mux.Handle("POST /imserv/getSettings", imservRoute(imservHandler.GetSettings))
+		mux.Handle("GET /imserv/getRecentActivity", imservRoute(imservHandler.GetRecentActivity))
+		mux.Handle("POST /imserv/getRecentActivity", imservRoute(imservHandler.GetRecentActivity))
 
 		// SetState only requires aimsid, no k parameter needed
 		mux.Handle("GET /presence/setState", authMiddleware.AuthenticateFlexible(

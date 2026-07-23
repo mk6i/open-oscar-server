@@ -306,7 +306,7 @@ func TestWebAPISessionManager_ShutdownDrainsAndClosesSessions(t *testing.T) {
 	s2, err := mgr.CreateSession(DisplayScreenName("bob"), "dev", []string{"presence"}, inst2, "", slog.Default())
 	assert.NoError(t, err)
 
-	mgr.Shutdown(context.Background())
+	_ = mgr.Shutdown(context.Background())
 
 	// Maps drained: the collect loop ran over both sessions.
 	assert.Empty(t, mgr.sessions)
@@ -387,7 +387,7 @@ func TestWebAPISessionManager_ShutdownWithoutReaper(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		mgr.Shutdown(context.Background())
+		_ = mgr.Shutdown(context.Background())
 	}()
 
 	select {
@@ -414,7 +414,7 @@ func TestWebAPISessionManager_ShutdownJoinsReaper(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		mgr.Shutdown(context.Background())
+		_ = mgr.Shutdown(context.Background())
 	}()
 
 	select {
@@ -435,7 +435,7 @@ func TestWebAPISessionManager_ShutdownJoinsReaper(t *testing.T) {
 // with Shutdown never starts, so it cannot reap an already-drained manager.
 func TestWebAPISessionManager_RunAfterShutdown(t *testing.T) {
 	mgr := NewWebAPISessionManager()
-	mgr.Shutdown(context.Background())
+	_ = mgr.Shutdown(context.Background())
 
 	done := make(chan struct{})
 	go func() {
@@ -891,4 +891,194 @@ func TestWebAPISession_CloseCancelsSessionContext(t *testing.T) {
 	sess.Close()
 
 	assert.ErrorIs(t, sess.ctx.Err(), context.Canceled)
+}
+
+func TestWebAPISession_ChatRoomRegistry(t *testing.T) {
+	sess := &WebAPISession{
+		AimSID:     "sid",
+		ScreenName: DisplayScreenName("Ann Dupree"),
+		Events:     []string{"im"},
+		EventQueue: types.NewEventQueue(100),
+		logger:     slog.Default(),
+	}
+
+	inst := NewSession().AddInstance()
+
+	// Not joined yet.
+	_, ok := sess.ChatRoom("room1")
+	assert.False(t, ok)
+
+	require.True(t, sess.AddChatRoom("room1", inst))
+	got, ok := sess.ChatRoom("room1")
+	require.True(t, ok)
+	assert.Equal(t, inst, got)
+
+	removed, ok := sess.RemoveChatRoom("room1")
+	require.True(t, ok)
+	assert.Equal(t, inst, removed)
+
+	_, ok = sess.ChatRoom("room1")
+	assert.False(t, ok)
+}
+
+// PushRoomLine keys the conversation by the room id (Source.AimID/Imserv) while
+// attributing the line to the speaker via specialData.imFromImserv — the shape
+// the AIM web client needs to render "who said what" in a room.
+func TestWebAPISession_PushRoomLine(t *testing.T) {
+	sess := &WebAPISession{
+		AimSID:     "sid",
+		ScreenName: DisplayScreenName("Ann Dupree"),
+		Events:     []string{"im"},
+		EventQueue: types.NewEventQueue(100),
+		logger:     slog.Default(),
+	}
+
+	sess.PushRoomLine("room1", "bob", "hello room")
+
+	events := sess.EventQueue.GetAllEvents()
+	require.Len(t, events, 1)
+	require.Equal(t, types.EventTypeIM, events[0].Type)
+
+	room, ok := events[0].Data.(types.RoomIMEvent)
+	require.True(t, ok)
+	assert.Equal(t, "room1", room.Imserv)
+	assert.Equal(t, "room1", room.Source.AimID)
+	assert.Equal(t, "imservMsg", room.SpecialIM)
+	assert.Equal(t, "bob", room.SpecialData.ImFromImserv.OrigSender)
+	assert.Equal(t, "bob", room.SpecialData.ImFromImserv.Sender)
+	assert.Equal(t, "hello room", room.SpecialData.ImFromImserv.Text)
+}
+
+// A session not subscribed to "im" gets no room events.
+func TestWebAPISession_PushRoomLine_Unsubscribed(t *testing.T) {
+	sess := &WebAPISession{
+		AimSID:     "sid",
+		ScreenName: DisplayScreenName("Ann Dupree"),
+		Events:     []string{"presence"},
+		EventQueue: types.NewEventQueue(100),
+		logger:     slog.Default(),
+	}
+
+	sess.PushRoomLine("room1", "bob", "hello room")
+	assert.Empty(t, sess.EventQueue.GetAllEvents())
+}
+
+// After Close has drained the room map, a racing AddChatRoom must be turned away
+// so the caller closes the instance itself rather than leaking it into a map
+// Close will never revisit.
+func TestWebAPISession_AddChatRoom_RefusedAfterClose(t *testing.T) {
+	mgr := NewWebAPISessionManager()
+	sess, err := mgr.CreateSession(DisplayScreenName("Ann Dupree"), "dev",
+		[]string{"im"}, NewSession().AddInstance(), "", slog.Default())
+	require.NoError(t, err)
+
+	sess.Close()
+
+	inst := NewSession().AddInstance()
+	assert.False(t, sess.AddChatRoom("room1", inst))
+
+	_, ok := sess.ChatRoom("room1")
+	assert.False(t, ok)
+}
+
+// An incoming chat-room invitation (a channel-2 CapChat rendezvous) surfaces as
+// an `im` event carrying specialData.invitation, which is how the web client
+// recognizes and can accept an invite.
+func TestWebAPISession_HandleChatInvite(t *testing.T) {
+	sess := &WebAPISession{
+		AimSID:     "sid",
+		ScreenName: DisplayScreenName("Bob Smith"),
+		Events:     []string{"im"},
+		EventQueue: types.NewEventQueue(100),
+		logger:     slog.Default(),
+	}
+
+	roomInfo := wire.ICBMRoomInfo{Exchange: 4, Cookie: "4-0-Test Room", Instance: 0}
+	frag := wire.ICBMCh2Fragment{
+		Type:       wire.ICBMRdvMessagePropose,
+		Capability: wire.CapChat,
+		TLVRestBlock: wire.TLVRestBlock{
+			TLVList: wire.TLVList{
+				wire.NewTLVBE(wire.ICBMRdvTLVTagsInvitation, "come join"),
+				wire.NewTLVBE(wire.ICBMRdvTLVTagsSvcData, roomInfo),
+			},
+		},
+	}
+	body := wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
+		ChannelID:   wire.ICBMChannelRendezvous,
+		TLVUserInfo: wire.TLVUserInfo{ScreenName: "anndupree"},
+		TLVRestBlock: wire.TLVRestBlock{
+			TLVList: wire.TLVList{wire.NewTLVBE(wire.ICBMTLVData, frag)},
+		},
+	}
+	sess.handleICBMMessage(wire.SNACMessage{
+		Frame: wire.SNACFrame{FoodGroup: wire.ICBM, SubGroup: wire.ICBMChannelMsgToClient},
+		Body:  body,
+	})
+
+	events := sess.EventQueue.GetAllEvents()
+	require.Len(t, events, 1)
+	require.Equal(t, types.EventTypeIM, events[0].Type)
+
+	inv, ok := events[0].Data.(types.RoomInviteEvent)
+	require.True(t, ok, "expected a RoomInviteEvent")
+	assert.Equal(t, "4-0-Test Room", inv.Imserv)
+	assert.Equal(t, "anndupree", inv.Source.AimID)
+	assert.Equal(t, "anndupree", inv.SpecialData.Invitation.From)
+	assert.Equal(t, "Test Room", inv.SpecialData.Invitation.GroupName)
+}
+
+// A relayed ChatUsersJoined/Left SNAC surfaces as an `imserv` activity event so
+// an existing participant's roster live-updates.
+func TestWebAPISession_MembershipChange(t *testing.T) {
+	tests := []struct {
+		name    string
+		snac    wire.SNACMessage
+		action  string
+		member  string
+	}{
+		{
+			name: "join",
+			snac: wire.SNACMessage{
+				Frame: wire.SNACFrame{FoodGroup: wire.Chat, SubGroup: wire.ChatUsersJoined},
+				Body:  wire.SNAC_0x0E_0x03_ChatUsersJoined{Users: []wire.TLVUserInfo{{ScreenName: "Bob Smith"}}},
+			},
+			action: "memberJoin",
+			member: "bobsmith",
+		},
+		{
+			name: "leave",
+			snac: wire.SNACMessage{
+				Frame: wire.SNACFrame{FoodGroup: wire.Chat, SubGroup: wire.ChatUsersLeft},
+				Body:  wire.SNAC_0x0E_0x04_ChatUsersLeft{Users: []wire.TLVUserInfo{{ScreenName: "Bob Smith"}}},
+			},
+			action: "memberLeft",
+			member: "bobsmith",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sess := &WebAPISession{
+				AimSID: "sid", ScreenName: DisplayScreenName("Ann Dupree"),
+				Events: []string{"im", "imserv"}, EventQueue: types.NewEventQueue(100), logger: slog.Default(),
+			}
+			sess.handleChatSNAC("4-0-Test Room", tt.snac)
+
+			events := sess.EventQueue.GetAllEvents()
+			require.Len(t, events, 1)
+			require.Equal(t, types.EventTypeImserv, events[0].Type)
+
+			ev, ok := events[0].Data.(types.ImservEvent)
+			require.True(t, ok)
+			require.Len(t, ev.RecentActivities, 1)
+			assert.Equal(t, "4-0-Test Room", ev.RecentActivities[0].Imserv)
+			require.Len(t, ev.RecentActivities[0].Activities, 1)
+			act := ev.RecentActivities[0].Activities[0]
+			assert.Equal(t, tt.action, act.Action)
+			assert.Equal(t, tt.member, act.Member1)
+			assert.Equal(t, tt.member, act.Member2)
+			assert.Equal(t, "Bob Smith", act.Member1FriendlyName)
+		})
+	}
 }
