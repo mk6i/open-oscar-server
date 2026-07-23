@@ -9,6 +9,7 @@ import (
 
 	"github.com/mk6i/open-oscar-server/server/webapi/handlers"
 	"github.com/mk6i/open-oscar-server/state"
+	"github.com/mk6i/open-oscar-server/wire"
 )
 
 type Handler struct {
@@ -29,6 +30,7 @@ type Handler struct {
 	FeedbagService     FeedbagService
 	DirSearchService   DirSearchService
 	IconSource         handlers.BuddyIconSource
+	SNACRateLimits     wire.SNACRateLimits
 }
 
 func (h Handler) GetHelloWorldHandler(w http.ResponseWriter, r *http.Request) {

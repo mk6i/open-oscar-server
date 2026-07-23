@@ -13,12 +13,14 @@ import (
 	"github.com/mk6i/open-oscar-server/server/webapi/handlers"
 	"github.com/mk6i/open-oscar-server/server/webapi/middleware"
 	"github.com/mk6i/open-oscar-server/state"
+	"github.com/mk6i/open-oscar-server/wire"
 )
 
 func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyValidator middleware.APIKeyValidator, sessionManager *state.WebAPISessionManager) *Server {
 	servers := make([]*http.Server, 0, len(listeners))
 
 	authMiddleware := middleware.NewAuthMiddleware(apiKeyValidator, logger)
+	rateLimiter := handlers.NewRateLimitMiddleware(handler.SNACRateLimits, logger)
 
 	authHandler := &handlers.AuthHandler{
 		AuthService: handler.AuthService,
@@ -89,22 +91,51 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 	for _, l := range listeners {
 		mux := http.NewServeMux()
 
+		// Route builders. Each applies the auth chain, plus the OSCAR rate limiter
+		// for handlers that reach a food group.
+		//
+		// oscarRoute is for handlers that reach an OSCAR food group: the request
+		// is charged against the session's rate class for (foodGroup, subGroup),
+		// the same budget a native OSCAR or TOC client spends. sessionRoute and
+		// stubRoute cover handlers that reach no food group and so have no OSCAR
+		// budget to charge; they are not rate limited here (edge rate limiting by
+		// a reverse proxy is expected to cover them).
+		oscarRoute := func(foodGroup uint16, subGroup uint16, h handlers.SessionHandlerFunc) http.Handler {
+			return authMiddleware.AuthenticateFlexible(
+				authMiddleware.CORSMiddleware(
+					authMiddleware.RequireSession(sessionManager,
+						rateLimiter.OSCAR(foodGroup, subGroup)(h))))
+		}
+		sessionRoute := func(h handlers.SessionHandlerFunc) http.Handler {
+			return authMiddleware.AuthenticateFlexible(
+				authMiddleware.CORSMiddleware(
+					authMiddleware.RequireSession(sessionManager, h)))
+		}
+		// stubRoute is sessionRoute's counterpart for the stub handlers, which
+		// never resolve a session object.
+		stubRoute := func(h http.HandlerFunc) http.Handler {
+			return authMiddleware.AuthenticateFlexible(
+				authMiddleware.CORSMiddleware(h))
+		}
+
 		// Exact root only. Pattern "GET /" matches every GET path in Go 1.22+ (prefix /), which
 		// would steal /getAggregated and other lifestream URLs before stubs/404.
-		mux.HandleFunc("GET /{$}", handler.GetHelloWorldHandler)
+		mux.Handle("GET /{$}", http.HandlerFunc(handler.GetHelloWorldHandler))
 
 		// Authentication endpoint (public - no API key required for user login)
-		// Using pattern with explicit method for Go 1.22+ routing
-		mux.HandleFunc("POST /auth/clientLogin", func(w http.ResponseWriter, r *http.Request) {
+		// Using pattern with explicit method for Go 1.22+ routing.
+		mux.Handle("POST /auth/clientLogin", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Set CORS headers for public endpoint
 			w.Header().Set("Access-Control-Allow-Origin", "*")
 			w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 
 			authHandler.ClientLogin(w, r)
-		})
+		}))
 
-		// Handle OPTIONS for CORS preflight
+		// Handle OPTIONS for CORS preflight. Preflights only set headers and are
+		// cached by the browser for an hour, so they are left unlimited rather
+		// than risking a rejected preflight blocking the login that follows it.
 		mux.HandleFunc("OPTIONS /auth/clientLogin", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Access-Control-Allow-Origin", "*")
 			w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
@@ -112,12 +143,12 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 			w.WriteHeader(http.StatusNoContent)
 		})
 
-		mux.HandleFunc("GET /auth/getToken", func(w http.ResponseWriter, r *http.Request) {
+		mux.Handle("GET /auth/getToken", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Access-Control-Allow-Origin", "*")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 			authHandler.GetToken(w, r)
-		})
+		}))
 
 		mux.HandleFunc("OPTIONS /auth/getToken", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -128,140 +159,105 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 
 		// Web AIM navigates the browser here on File > Logout; clear SSO state
 		// and redirect to the login screen.
-		mux.HandleFunc("GET /auth/logout", authHandler.Logout)
+		mux.Handle("GET /auth/logout", http.HandlerFunc(authHandler.Logout))
 
-		mux.HandleFunc("GET /_cqr/login/login.psp", authHandler.LoginPSP)
-		mux.HandleFunc("POST /_cqr/login/login.psp", authHandler.LoginPSP)
+		// GET renders the login form (a browser navigation), POST submits
+		// credentials.
+		mux.Handle("GET /_cqr/login/login.psp", http.HandlerFunc(authHandler.LoginPSP))
+		mux.Handle("POST /_cqr/login/login.psp", http.HandlerFunc(authHandler.LoginPSP))
 
 		// Authenticated Web AIM API endpoints
-		// SessionInstance management - supports multiple auth methods (k, a, ts+sig_sha256)
-		mux.Handle("GET /aim/startSession", authMiddleware.AuthenticateFlexible(
-			authMiddleware.CORSMiddleware(
-				http.HandlerFunc(sessionHandler.StartSession))))
+		// SessionInstance management - supports multiple auth methods (k, a, ts+sig_sha256).
+		mux.Handle("GET /aim/startSession",
+			authMiddleware.AuthenticateFlexible(
+				authMiddleware.CORSMiddleware(
+					http.HandlerFunc(sessionHandler.StartSession))))
 
 		// End session - uses aimsid for auth, no k required
-		mux.Handle("GET /aim/endSession", authMiddleware.AuthenticateFlexible(
-			authMiddleware.CORSMiddleware(
-				authMiddleware.RequireSession(sessionManager, sessionHandler.EndSession))))
+		mux.Handle("GET /aim/endSession", sessionRoute(sessionHandler.EndSession))
 
-		// Event fetching - uses aimsid for auth, no k required
+		// Event fetching - uses aimsid for auth, no k required. This is the
+		// long-poll loop the client runs continuously; RecoverOnPoll uses it to
+		// surface a rate limit "clear" to an idle session that already recovered.
 		mux.Handle("GET /aim/fetchEvents", authMiddleware.AuthenticateFlexible(
 			authMiddleware.CORSMiddleware(
-				authMiddleware.RequireSession(sessionManager, eventsHandler.FetchEvents))))
+				authMiddleware.RequireSession(sessionManager,
+					rateLimiter.RecoverOnPoll(eventsHandler.FetchEvents)))))
 
-		// Add temp buddy - uses aimsid for auth
-		mux.Handle("GET /aim/addTempBuddy", authMiddleware.AuthenticateFlexible(
-			authMiddleware.CORSMiddleware(
-				authMiddleware.RequireSession(sessionManager, buddyListHandler.AddTempBuddy))))
-
-		mux.Handle("GET /aim/removeTempBuddy", authMiddleware.AuthenticateFlexible(
-			authMiddleware.CORSMiddleware(
-				authMiddleware.RequireSession(sessionManager, buddyListHandler.RemoveTempBuddy))))
+		// Temp buddies are session-local rather than feedbag-backed, but they
+		// are the Web API's equivalent of the BUDDY temp buddy SNACs and are
+		// charged as such.
+		mux.Handle("GET /aim/addTempBuddy", oscarRoute(wire.Buddy, wire.BuddyAddTempBuddies, buddyListHandler.AddTempBuddy))
+		mux.Handle("GET /aim/removeTempBuddy", oscarRoute(wire.Buddy, wire.BuddyDelTempBuddies, buddyListHandler.RemoveTempBuddy))
 
 		aimStub := &handlers.AimStubHandler{Logger: logger}
-		aimRoute := func(h http.HandlerFunc) http.Handler {
-			return authMiddleware.AuthenticateFlexible(
-				authMiddleware.CORSMiddleware(http.HandlerFunc(h)))
-		}
-		mux.Handle("GET /aim/setForwardDomain", aimRoute(aimStub.SetForwardDomain))
-		mux.Handle("GET /aim/getData", aimRoute(aimStub.GetData))
+		mux.Handle("GET /aim/setForwardDomain", stubRoute(aimStub.SetForwardDomain))
+		mux.Handle("GET /aim/getData", stubRoute(aimStub.GetData))
 
 		conversationStub := &handlers.ConversationStubHandler{
 			SessionManager: sessionManager,
 			Logger:         logger,
 		}
-		mux.Handle("GET /conversation/update", aimRoute(conversationStub.Update))
-		mux.Handle("GET /conversation/close", aimRoute(conversationStub.Close))
-		mux.Handle("GET /imlog/markRead", aimRoute(conversationStub.MarkRead))
-		mux.Handle("GET /imlog/fetchStoredIMs", authMiddleware.AuthenticateFlexible(
-			authMiddleware.CORSMiddleware(
-				authMiddleware.RequireSession(sessionManager, conversationStub.FetchStoredIMs))))
+		mux.Handle("GET /conversation/update", stubRoute(conversationStub.Update))
+		mux.Handle("GET /conversation/close", stubRoute(conversationStub.Close))
+		mux.Handle("GET /imlog/markRead", stubRoute(conversationStub.MarkRead))
+		mux.Handle("GET /imlog/fetchStoredIMs", sessionRoute(conversationStub.FetchStoredIMs))
 
 		// Presence and buddy list
 		// GetPresence supports aimsid-based auth, so we use flexible auth
-		mux.Handle("GET /presence/get", authMiddleware.AuthenticateFlexible(
-			authMiddleware.CORSMiddleware(
-				authMiddleware.RequireSession(sessionManager, presenceHandler.GetPresence))))
+		mux.Handle("GET /presence/get", oscarRoute(wire.Feedbag, wire.FeedbagQuery, presenceHandler.GetPresence))
 
-		buddyListRoute := func(h func(http.ResponseWriter, *http.Request, *state.WebAPISession)) http.Handler {
-			return authMiddleware.AuthenticateFlexible(
-				authMiddleware.CORSMiddleware(
-					authMiddleware.RequireSession(sessionManager, h)))
-		}
-		mux.Handle("GET /buddylist/addBuddy", buddyListRoute(buddyListHandler.AddBuddy))
-		mux.Handle("GET /buddylist/addGroup", buddyListRoute(buddyListHandler.AddGroup))
-		mux.Handle("GET /buddylist/removeBuddy", buddyListRoute(buddyListHandler.RemoveBuddy))
-		mux.Handle("GET /buddylist/removeGroup", buddyListRoute(buddyListHandler.RemoveGroup))
-		mux.Handle("GET /buddylist/renameGroup", buddyListRoute(buddyListHandler.RenameGroup))
-		mux.Handle("GET /buddylist/moveBuddy", buddyListRoute(buddyListHandler.MoveBuddy))
-		mux.Handle("GET /buddylist/setBuddyAttribute", buddyListRoute(buddyListHandler.SetBuddyAttribute))
-		mux.Handle("GET /buddylist/setGroupAttribute", buddyListRoute(buddyListHandler.SetGroupAttribute))
+		// Each buddy list route is charged against the feedbag SNAC its handler
+		// ultimately issues, so a client editing the buddy list over HTTP spends
+		// the same budget as one editing it over OSCAR.
+		mux.Handle("GET /buddylist/addBuddy", oscarRoute(wire.Feedbag, wire.FeedbagInsertItem, buddyListHandler.AddBuddy))
+		mux.Handle("GET /buddylist/addGroup", oscarRoute(wire.Feedbag, wire.FeedbagInsertItem, buddyListHandler.AddGroup))
+		mux.Handle("GET /buddylist/removeBuddy", oscarRoute(wire.Feedbag, wire.FeedbagDeleteItem, buddyListHandler.RemoveBuddy))
+		mux.Handle("GET /buddylist/removeGroup", oscarRoute(wire.Feedbag, wire.FeedbagDeleteItem, buddyListHandler.RemoveGroup))
+		mux.Handle("GET /buddylist/renameGroup", oscarRoute(wire.Feedbag, wire.FeedbagUpdateItem, buddyListHandler.RenameGroup))
+		mux.Handle("GET /buddylist/moveBuddy", oscarRoute(wire.Feedbag, wire.FeedbagUpdateItem, buddyListHandler.MoveBuddy))
+		mux.Handle("GET /buddylist/setBuddyAttribute", oscarRoute(wire.Feedbag, wire.FeedbagUpdateItem, buddyListHandler.SetBuddyAttribute))
+		mux.Handle("GET /buddylist/setGroupAttribute", oscarRoute(wire.Feedbag, wire.FeedbagUpdateItem, buddyListHandler.SetGroupAttribute))
 
 		// sendIM supports aimsid-based auth, so we use flexible auth.
 		// The Web AIM client POSTs the message body (non-IE browsers); IE uses GET.
-		sendIMHandler := authMiddleware.AuthenticateFlexible(
-			authMiddleware.CORSMiddleware(
-				authMiddleware.RequireSession(sessionManager, messagingHandler.SendIM)))
+		sendIMHandler := oscarRoute(wire.ICBM, wire.ICBMChannelMsgToHost, messagingHandler.SendIM)
 		mux.Handle("GET /im/sendIM", sendIMHandler)
 		mux.Handle("POST /im/sendIM", sendIMHandler)
 
-		mux.Handle("GET /im/setTyping", authMiddleware.AuthenticateFlexible(
-			authMiddleware.CORSMiddleware(
-				authMiddleware.RequireSession(sessionManager, messagingHandler.SetTyping))))
+		mux.Handle("GET /im/setTyping", oscarRoute(wire.ICBM, wire.ICBMClientEvent, messagingHandler.SetTyping))
 
-		// SetState only requires aimsid, no k parameter needed
-		mux.Handle("GET /presence/setState", authMiddleware.AuthenticateFlexible(
-			authMiddleware.CORSMiddleware(
-				authMiddleware.RequireSession(sessionManager, presenceHandler.SetState))))
+		// SetState only requires aimsid, no k parameter needed. State and status
+		// changes broadcast new user info, the OSERVICE equivalent.
+		mux.Handle("GET /presence/setState", oscarRoute(wire.OService, wire.OServiceSetUserInfoFields, presenceHandler.SetState))
 
 		// These presence endpoints support aimsid-based auth where k is not required
-		mux.Handle("GET /presence/setStatus", authMiddleware.AuthenticateFlexible(
-			authMiddleware.CORSMiddleware(
-				authMiddleware.RequireSession(sessionManager, presenceHandler.SetStatus))))
+		mux.Handle("GET /presence/setStatus", oscarRoute(wire.OService, wire.OServiceSetUserInfoFields, presenceHandler.SetStatus))
+		mux.Handle("GET /presence/setProfile", oscarRoute(wire.Locate, wire.LocateSetInfo, presenceHandler.SetProfile))
+		mux.Handle("GET /presence/getProfile", oscarRoute(wire.Locate, wire.LocateUserInfoQuery, presenceHandler.GetProfile))
 
-		mux.Handle("GET /presence/setProfile", authMiddleware.AuthenticateFlexible(
-			authMiddleware.CORSMiddleware(
-				authMiddleware.RequireSession(sessionManager, presenceHandler.SetProfile))))
-
-		mux.Handle("GET /presence/getProfile", authMiddleware.AuthenticateFlexible(
-			authMiddleware.CORSMiddleware(
-				authMiddleware.RequireSession(sessionManager, presenceHandler.GetProfile))))
-
-		mux.HandleFunc("GET /presence/icon", presenceHandler.Icon)
+		// Unauthenticated, like /expressions/get below. Buddy icons are loaded
+		// as plain <img> sources, many per buddy list render.
+		mux.Handle("GET /presence/icon", http.HandlerFunc(presenceHandler.Icon))
 
 		// Member directory search and self directory-info retrieval. Both use
 		// aimsid-based auth, so we use flexible auth.
-		mux.Handle("GET /memberDir/search", authMiddleware.AuthenticateFlexible(
-			authMiddleware.CORSMiddleware(
-				authMiddleware.RequireSession(sessionManager, memberDirHandler.Search))))
-		mux.Handle("GET /memberDir/get", authMiddleware.AuthenticateFlexible(
-			authMiddleware.CORSMiddleware(
-				authMiddleware.RequireSession(sessionManager, memberDirHandler.Get))))
-		mux.Handle("GET /memberDir/update", authMiddleware.AuthenticateFlexible(
-			authMiddleware.CORSMiddleware(
-				authMiddleware.RequireSession(sessionManager, memberDirHandler.Update))))
+		mux.Handle("GET /memberDir/search", oscarRoute(wire.ODir, wire.ODirInfoQuery, memberDirHandler.Search))
+		mux.Handle("GET /memberDir/get", oscarRoute(wire.Locate, wire.LocateGetDirInfo, memberDirHandler.Get))
+		mux.Handle("GET /memberDir/update", oscarRoute(wire.Locate, wire.LocateSetDirInfo, memberDirHandler.Update))
 
 		// These endpoints support aimsid-based auth, so we use a flexible auth approach
-		mux.Handle("GET /preference/set", authMiddleware.AuthenticateFlexible(
-			authMiddleware.CORSMiddleware(
-				authMiddleware.RequireSession(sessionManager, preferenceHandler.SetPreferences))))
+		mux.Handle("GET /preference/set", oscarRoute(wire.Feedbag, wire.FeedbagUpdateItem, preferenceHandler.SetPreferences))
+		mux.Handle("GET /preference/get", oscarRoute(wire.Feedbag, wire.FeedbagQuery, preferenceHandler.GetPreferences))
+		mux.Handle("GET /preference/setPermitDeny", oscarRoute(wire.Feedbag, wire.FeedbagUpdateItem, preferenceHandler.SetPermitDeny))
+		mux.Handle("GET /preference/getPermitDeny", oscarRoute(wire.Feedbag, wire.FeedbagQuery, preferenceHandler.GetPermitDeny))
 
-		mux.Handle("GET /preference/get", authMiddleware.AuthenticateFlexible(
-			authMiddleware.CORSMiddleware(
-				authMiddleware.RequireSession(sessionManager, preferenceHandler.GetPreferences))))
-
-		mux.Handle("GET /preference/setPermitDeny", authMiddleware.AuthenticateFlexible(
-			authMiddleware.CORSMiddleware(
-				authMiddleware.RequireSession(sessionManager, preferenceHandler.SetPermitDeny))))
-
-		mux.Handle("GET /preference/getPermitDeny", authMiddleware.AuthenticateFlexible(
-			authMiddleware.CORSMiddleware(
-				authMiddleware.RequireSession(sessionManager, preferenceHandler.GetPermitDeny))))
-
-		// OSCAR Bridge endpoint
-		mux.Handle("GET /aim/startOSCARSession", authMiddleware.Authenticate(
-			authMiddleware.CORSMiddleware(
-				http.HandlerFunc(oscarBridgeHandler.StartOSCARSession))))
+		// OSCAR Bridge endpoint. Hands off to a BOS session rather than reaching
+		// a food group, so there is no OSCAR budget to charge.
+		mux.Handle("GET /aim/startOSCARSession",
+			authMiddleware.Authenticate(
+				authMiddleware.CORSMiddleware(
+					http.HandlerFunc(oscarBridgeHandler.StartOSCARSession))))
 
 		// Expressions endpoint (for buddy icons, etc.).
 		//
@@ -271,26 +267,23 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 		// instead would leak it into the DOM and defeat caching, since these URLs
 		// outlive the session that produced them. Buddy icons are public assets.
 		expressionsHandler := handlers.NewExpressionsHandler(handler.IconSource, logger)
-		mux.Handle("GET /expressions/get", authMiddleware.CORSMiddleware(
-			http.HandlerFunc(expressionsHandler.Get)))
+		mux.Handle("GET /expressions/get",
+			authMiddleware.CORSMiddleware(
+				http.HandlerFunc(expressionsHandler.Get)))
 
 		// Web AIM calls lifestream/* on the API host (e.g. /lifestream/getUserDetails).
 		lifestreamStub := &handlers.UserInfoStubHandler{Logger: logger}
-		lifestreamRoute := func(h http.HandlerFunc) http.Handler {
-			return authMiddleware.AuthenticateFlexible(
-				authMiddleware.CORSMiddleware(http.HandlerFunc(h)))
-		}
 		// getUserDetails returns a minimal AIM identity. Every other lifestream/*
 		// method is an unimplemented social-feed feature; the subtree catch-all
 		// acknowledges them with an empty 200 so the client doesn't error.
-		mux.Handle("GET /lifestream/getUserDetails", lifestreamRoute(lifestreamStub.GetUserDetails))
-		mux.Handle("GET /lifestream/", lifestreamRoute(lifestreamStub.EmptyOK))
+		mux.Handle("GET /lifestream/getUserDetails", stubRoute(lifestreamStub.GetUserDetails))
+		mux.Handle("GET /lifestream/", stubRoute(lifestreamStub.EmptyOK))
 
 		// Unmatched paths (pattern "/" matches anything not covered by routes above).
-		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			logger.Debug("webapi 404", "method", r.Method, "path", r.URL.Path)
 			handlers.SendError(w, http.StatusNotFound, "not found")
-		})
+		}))
 
 		servers = append(servers, &http.Server{
 			Addr:    l,

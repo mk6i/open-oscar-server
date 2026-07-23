@@ -91,6 +91,24 @@ type TypingEvent struct {
 	TypingStatus string `json:"typingStatus"`
 }
 
+// RateLimitEvent tells the client that its rate limit status changed.
+//
+// The client reads classes[0] only: it takes the status string and feeds it
+// straight into a switch on "clear" | "warn" | "limit" | "disconnect" to render
+// the in-conversation alert (e.g. "You have been rate limited. Wait for a few
+// moments until you can chat again."). The "clear" alert is only shown if the
+// client's last recorded status was "limit", so this event must be pushed on
+// status transitions rather than on every rate-limited request.
+type RateLimitEvent struct {
+	Classes []RateLimitClass `json:"classes"`
+}
+
+// RateLimitClass is the per-rate-class state carried by a RateLimitEvent.
+type RateLimitClass struct {
+	ID     int    `json:"id"`
+	Status string `json:"status"` // "clear", "warn", "limit", or "disconnect"
+}
+
 // EventQueue manages a queue of events for a WebAPI session.
 type EventQueue struct {
 	events    []Event

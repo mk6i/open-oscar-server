@@ -424,6 +424,50 @@ func (s *Session) EvaluateRateLimit(now time.Time, rateClassID wire.RateLimitCla
 	return status
 }
 
+// RecoverRateLimits recomputes, for each rate class the session is currently
+// limited on, whether enough time has elapsed since the last charged request for
+// the moving average to climb back above the clear threshold, and returns the
+// classes whose status changed (in practice, limited -> clear).
+//
+// Unlike EvaluateRateLimit it does not treat the call as a new request: LastTime
+// is preserved, so successive calls measure the full elapsed time since the last
+// real request rather than the (small) gap between calls. This mirrors how OSCAR's
+// ObserveRateChanges detects recovery on its ticker, and is what lets a repeated
+// poll surface the clear. Classes that are not currently limited are left
+// untouched, so a poll never perturbs a class the user is actively spending.
+func (s *Session) RecoverRateLimits(now time.Time) []RateClassState {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	var changed []RateClassState
+	for i := range s.rateLimitStates {
+		rc := &s.rateLimitStates[i]
+		if !rc.LimitedNow {
+			continue
+		}
+
+		status, newLevel := wire.CheckRateLimit(rc.LastTime, now, rc.RateClass, rc.CurrentLevel, rc.LimitedNow)
+		// Recovery only. A poll must never escalate a limited class: a short
+		// elapsed gap can make CheckRateLimit report disconnect, but an idle
+		// session recovering is not abuse, and disconnect is enforced by
+		// EvaluateRateLimit on real requests instead. While limitedNow the only
+		// non-escalating outcome CheckRateLimit yields is clear, so that is the
+		// sole transition acted on; a still-limited class is left untouched (its
+		// CurrentLevel keeps recovering from the same base, as in
+		// ObserveRateChanges).
+		if status != wire.RateLimitStatusClear {
+			continue
+		}
+
+		rc.CurrentStatus = status
+		rc.CurrentLevel = newLevel
+		rc.LimitedNow = false
+		changed = append(changed, *rc)
+	}
+
+	return changed
+}
+
 // ObserveRateChanges updates rate limit states and returns changes.
 func (s *Session) ObserveRateChanges(now time.Time) (classDelta []RateClassState, stateDelta []RateClassState) {
 	s.mutex.Lock()
@@ -1117,6 +1161,17 @@ func (s *SessionInstance) WarningCh() chan uint16 {
 // Closed blocks until the instance is closed.
 func (s *SessionInstance) Closed() <-chan struct{} {
 	return s.stopCh
+}
+
+// IsClosed reports whether the instance has been closed, without blocking. It is
+// the non-blocking counterpart of Closed.
+func (s *SessionInstance) IsClosed() bool {
+	select {
+	case <-s.stopCh:
+		return true
+	default:
+		return false
+	}
 }
 
 // CloseInstance shuts down the instance's ability to relay messages and removes it from the session.

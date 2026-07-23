@@ -291,6 +291,61 @@ func TestWebAPISessionManager_CreateAfterShutdown(t *testing.T) {
 	assert.ErrorIs(t, err, ErrWebAPISessionManagerClosed)
 }
 
+// A rate-limit disconnect closes the account's OSCAR session; the web session's
+// aimsid must then stop resolving. Before this fix GetSession only checked
+// time-based expiry, so a client told to disconnect could keep issuing charged
+// requests against a dead session (and, downstream, spam clear events on every
+// one of them). Once the aimsid is turned away at RequireSession, neither is
+// possible.
+func TestWebAPISessionManager_GetSession_rejectsAfterRateLimitDisconnect(t *testing.T) {
+	mgr := NewWebAPISessionManager()
+
+	// A rate class that escalates to disconnect after a short back-to-back burst.
+	var classes [5]wire.RateClass
+	for i := range classes {
+		classes[i] = wire.RateClass{
+			ID:              wire.RateLimitClassID(i + 1),
+			WindowSize:      2,
+			ClearLevel:      100,
+			AlertLevel:      80,
+			LimitLevel:      70,
+			DisconnectLevel: 2,
+			MaxLevel:        200,
+		}
+	}
+	inst := NewSession().AddInstance()
+	inst.Session().SetRateClasses(time.Now(), wire.NewRateLimitClasses(classes))
+
+	sess, err := mgr.CreateSession(DisplayScreenName("advbot"), "dev", []string{"presence"}, inst, "", slog.Default())
+	require.NoError(t, err)
+
+	// Healthy session resolves.
+	got, err := mgr.GetSession(context.Background(), sess.AimSID)
+	require.NoError(t, err)
+	assert.Same(t, sess, got)
+
+	// Burst until EvaluateRateLimit escalates to disconnect, which closes the
+	// account's OSCAR session.
+	var status wire.RateLimitStatus
+	now := time.Now()
+	for range 10 {
+		if status = inst.Session().EvaluateRateLimit(now, 1); status == wire.RateLimitStatusDisconnect {
+			break
+		}
+	}
+	require.Equal(t, wire.RateLimitStatusDisconnect, status)
+	require.True(t, inst.IsClosed(), "disconnect must close the OSCAR instance")
+
+	// The aimsid no longer resolves, even though ExpiresAt is far in the future.
+	_, err = mgr.GetSession(context.Background(), sess.AimSID)
+	assert.ErrorIs(t, err, ErrWebAPISessionExpired)
+	assert.False(t, sess.IsExpired(), "the guard must fire on OSCAR close, not on time expiry")
+
+	// The reaper frees the dead entry on its next sweep.
+	mgr.reapExpired()
+	assert.NotContains(t, mgr.sessions, sess.AimSID)
+}
+
 // TestWebAPISessionManager_ShutdownDrainsAndClosesSessions verifies that Shutdown
 // collects every live session and tears it down: it drains the maps and closes
 // each session's event queue and OSCAR instance.
@@ -306,7 +361,7 @@ func TestWebAPISessionManager_ShutdownDrainsAndClosesSessions(t *testing.T) {
 	s2, err := mgr.CreateSession(DisplayScreenName("bob"), "dev", []string{"presence"}, inst2, "", slog.Default())
 	assert.NoError(t, err)
 
-	mgr.Shutdown(context.Background())
+	assert.NoError(t, mgr.Shutdown(context.Background()))
 
 	// Maps drained: the collect loop ran over both sessions.
 	assert.Empty(t, mgr.sessions)
@@ -387,7 +442,8 @@ func TestWebAPISessionManager_ShutdownWithoutReaper(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		mgr.Shutdown(context.Background())
+		// This test is about Shutdown returning at all, not what it returns.
+		_ = mgr.Shutdown(context.Background())
 	}()
 
 	select {
@@ -414,7 +470,8 @@ func TestWebAPISessionManager_ShutdownJoinsReaper(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		mgr.Shutdown(context.Background())
+		// This test is about Shutdown returning at all, not what it returns.
+		_ = mgr.Shutdown(context.Background())
 	}()
 
 	select {
@@ -435,7 +492,7 @@ func TestWebAPISessionManager_ShutdownJoinsReaper(t *testing.T) {
 // with Shutdown never starts, so it cannot reap an already-drained manager.
 func TestWebAPISessionManager_RunAfterShutdown(t *testing.T) {
 	mgr := NewWebAPISessionManager()
-	mgr.Shutdown(context.Background())
+	assert.NoError(t, mgr.Shutdown(context.Background()))
 
 	done := make(chan struct{})
 	go func() {

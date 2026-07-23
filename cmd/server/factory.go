@@ -605,6 +605,10 @@ func WebAPI(deps Container) *webapi.Server {
 		FeedbagService:     deps.feedbagSvc,
 		DirSearchService:   foodgroup.NewODirService(logger, deps.sqLiteUserStore),
 		IconSource:         iconSource,
+		// Same mapping the OSCAR and TOC servers use, so a request that reaches
+		// a food group over HTTP spends the same rate budget as the equivalent
+		// SNAC.
+		SNACRateLimits: deps.snacRateLimits,
 	}
 	// Pass SQLiteUserStore as the API key validator (it implements middleware.APIKeyValidator)
 	return webapi.NewServer(deps.cfg.WebAPIListeners, logger, handler, deps.sqLiteUserStore, deps.webAPISessionManager)

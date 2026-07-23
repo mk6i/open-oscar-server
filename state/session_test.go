@@ -791,6 +791,45 @@ func TestSession_EvaluateRateLimit_ObserveRateChanges(t *testing.T) {
 			assert.Equal(t, wire.RateLimitStatusClear, have)
 		}
 	})
+
+	t.Run("RecoverRateLimits clears an idle limited class without counting as a request", func(t *testing.T) {
+		now := time.Now()
+
+		sess := NewSession()
+		sess.AddInstance()
+		sess.SetRateClasses(now, rateClasses)
+
+		rateClass := rateClasses.Get(3)
+
+		// Drive the class into the limited state.
+		var status wire.RateLimitStatus
+		for status != wire.RateLimitStatusLimited {
+			now = now.Add(1 * time.Second)
+			status = sess.EvaluateRateLimit(now, rateClass.ID)
+		}
+
+		// Shortly after, the class is still limited: RecoverRateLimits reports no
+		// transition and, crucially, does not advance LastTime (so it is not
+		// charged as a request).
+		now = now.Add(1 * time.Second)
+		assert.Empty(t, sess.RecoverRateLimits(now))
+		assert.Equal(t, wire.RateLimitStatusLimited, sess.RateLimitStates()[rateClass.ID-1].CurrentStatus)
+
+		// After a long idle gap the moving average clears; the transition is
+		// reported exactly once.
+		now = now.Add(1 * time.Hour)
+		changed := sess.RecoverRateLimits(now)
+		if assert.Len(t, changed, 1) {
+			assert.Equal(t, rateClass.ID, changed[0].ID)
+			assert.Equal(t, wire.RateLimitStatusClear, changed[0].CurrentStatus)
+			assert.False(t, changed[0].LimitedNow)
+		}
+
+		// Once cleared, further polls report nothing.
+		now = now.Add(1 * time.Second)
+		assert.Empty(t, sess.RecoverRateLimits(now))
+		assert.Equal(t, wire.RateLimitStatusClear, sess.RateLimitStates()[rateClass.ID-1].CurrentStatus)
+	})
 }
 
 func TestSession_SetAndGetFoodGroupVersions(t *testing.T) {
