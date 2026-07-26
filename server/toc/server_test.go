@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net"
 	"sync"
 	"testing"
 
@@ -13,6 +14,45 @@ import (
 
 	"github.com/stretchr/testify/assert"
 )
+
+// ensure ListenAndServe returns immediately when shutdownCtx is already cancelled,
+// simulating Shutdown being called before the goroutine is scheduled
+func TestServer_ListenAndServe_ShutdownBeforeStart(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	s := &Server{
+		shutdownCtx:    ctx,
+		shutdownCancel: cancel,
+		listenerCfg:    []string{":0"},
+	}
+	// simulate Shutdown running before ListenAndServe is scheduled
+	s.cleanupListeners()
+	cancel()
+
+	err := s.ListenAndServe()
+	assert.NoError(t, err)
+	assert.Empty(t, s.listeners)
+}
+
+// ensure tryAddListener appends the listener and returns true when shutdown has
+// not yet started
+func TestServer_tryAddListener(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	s := &Server{
+		shutdownCtx:    ctx,
+		shutdownCancel: cancel,
+	}
+
+	ln, err := net.Listen("tcp", ":0")
+	assert.NoError(t, err)
+
+	assert.True(t, s.tryAddListener(ln))
+	assert.Len(t, s.listeners, 1)
+
+	s.cleanupListeners()
+}
 
 // ensure correct behavior during global context cancellation (server shutdown)
 func TestServer_handleTOCRequest_serverShutdown(t *testing.T) {
