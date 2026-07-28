@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/mk6i/open-oscar-server/state"
@@ -116,6 +117,35 @@ func (s LocateService) SetInfo(ctx context.Context, instance *state.SessionInsta
 		}
 	}
 
+	// update client capabilities (buddy icon, chat, etc...)
+	b, hasCaps := inBody.Bytes(wire.LocateTLVTagsInfoCapabilities)
+	if hasCaps {
+		if len(b)%16 != 0 {
+			return errors.New("capability list must be array of 16-byte values")
+		}
+		var caps [][16]byte
+		for i := 0; i < len(b); i += 16 {
+			var c [16]byte
+			copy(c[:], b[i:i+16])
+			if _, found := omitCaps[c]; found {
+				continue
+			}
+			caps = append(caps, c)
+		}
+		instance.SetCaps(caps)
+	}
+
+	// Detect mobile/wireless clients by capability UUID or login version.
+	// Detection must run before any buddy arrival broadcast below (away
+	// message or capabilities) so that the wireless flag is included in
+	// whichever broadcast fires. The flag is intentionally sticky (set, but
+	// never cleared): the client version is fixed at login, so there is no
+	// "unset" signal for version-based detection, and real clients do not
+	// change capabilities mid-session.
+	if isMobileClient(instance.Caps(), instance.ClientInfo()) {
+		instance.SetUserInfoFlag(wire.OServiceUserFlagWireless)
+	}
+
 	// broadcast away message change to buddies
 	if awayMsg, hasAwayMsg := inBody.String(wire.LocateTLVTagsInfoUnavailableData); hasAwayMsg {
 		if awayMsg != "" {
@@ -131,25 +161,9 @@ func (s LocateService) SetInfo(ctx context.Context, instance *state.SessionInsta
 		}
 	}
 
-	// update client capabilities (buddy icon, chat, etc...)
-	if b, hasCaps := inBody.Bytes(wire.LocateTLVTagsInfoCapabilities); hasCaps {
-		if len(b)%16 != 0 {
-			return errors.New("capability list must be array of 16-byte values")
-		}
-		var caps [][16]byte
-		for i := 0; i < len(b); i += 16 {
-			var c [16]byte
-			copy(c[:], b[i:i+16])
-			if _, found := omitCaps[c]; found {
-				continue
-			}
-			caps = append(caps, c)
-		}
-		instance.SetCaps(caps)
-		if instance.SignonComplete() {
-			if err := s.buddyBroadcaster.BroadcastBuddyArrived(ctx, instance.IdentScreenName(), instance.Session().TLVUserInfo()); err != nil {
-				return err
-			}
+	if hasCaps && instance.SignonComplete() {
+		if err := s.buddyBroadcaster.BroadcastBuddyArrived(ctx, instance.IdentScreenName(), instance.Session().TLVUserInfo()); err != nil {
+			return err
 		}
 	}
 
@@ -322,4 +336,19 @@ func (s LocateService) DirInfo(ctx context.Context, inFrame wire.SNACFrame, inBo
 		},
 		Body: reply,
 	}, nil
+}
+
+// isMobileClient detects mobile/wireless clients by capability UUID or by
+// client ID + version from login TLVs 0x0016–0x0018. See
+// wire.KnownMobileClients for the known signatures and their sourcing.
+func isMobileClient(caps [][16]byte, info state.ClientInfo) bool {
+	if slices.Contains(caps, [16]byte(wire.CapMobileClient)) {
+		return true
+	}
+	for _, sig := range wire.KnownMobileClients {
+		if sig.Matches(info.IDNum, info.MajorVer, info.MinorVer, info.LesserVer) {
+			return true
+		}
+	}
+	return false
 }

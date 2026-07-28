@@ -21,6 +21,18 @@ import (
 func TestOServiceService_ServiceRequest(t *testing.T) {
 	chatRoom := state.NewChatRoom("the-chat-room", state.NewIdentScreenName(""), state.PrivateExchange)
 
+	// makeCookieData builds expected serialized ServerCookie bytes for mock expectations.
+	makeCookieData := func(service uint16, screenName state.DisplayScreenName, chatCookie string) []byte {
+		buf := &bytes.Buffer{}
+		assert.NoError(t, wire.MarshalBE(state.ServerCookie{
+			Service:    service,
+			ScreenName: screenName,
+			ChatCookie: chatCookie,
+			SessionNum: 1,
+		}, buf))
+		return buf.Bytes()
+	}
+
 	cases := []struct {
 		// name is the unit test name
 		name string
@@ -76,15 +88,7 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 				cookieBakerParams: cookieBakerParams{
 					cookieIssueParams: cookieIssueParams{
 						{
-							dataIn: []byte{
-								0x00, 0x07, // admin service
-								0x02, 'm', 'e',
-								0x0,  // no client ID
-								0x0,  // no chat cookie
-								0x0,  // multi conn flag
-								0x0,  // kerberos flag
-								0x01, // session num
-							},
+							dataIn:    makeCookieData(wire.Admin, "me", ""),
 							cookieOut: []byte("the-cookie"),
 						},
 					},
@@ -125,15 +129,7 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 				cookieBakerParams: cookieBakerParams{
 					cookieIssueParams: cookieIssueParams{
 						{
-							dataIn: []byte{
-								0x00, 0x18, // alert service
-								0x02, 'm', 'e',
-								0x0,  // no client ID
-								0x0,  // no chat cookie
-								0x0,  // multi conn flag
-								0x0,  // kerberos flag
-								0x01, // session num
-							},
+							dataIn:    makeCookieData(wire.Alert, "me", ""),
 							cookieOut: []byte("the-cookie"),
 						},
 					},
@@ -174,15 +170,7 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 				cookieBakerParams: cookieBakerParams{
 					cookieIssueParams: cookieIssueParams{
 						{
-							dataIn: []byte{
-								0x00, 0x10, // chatnav service
-								0x02, 'm', 'e',
-								0x0,  // no client ID
-								0x0,  // no chat cookie
-								0x0,  // multi conn flag
-								0x0,  // kerberos flag
-								0x01, // session num
-							},
+							dataIn:    makeCookieData(wire.BART, "me", ""),
 							cookieOut: []byte("the-cookie"),
 						},
 					},
@@ -223,15 +211,7 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 				cookieBakerParams: cookieBakerParams{
 					cookieIssueParams: cookieIssueParams{
 						{
-							dataIn: []byte{
-								0x00, 0x0d, // chatnav service
-								0x02, 'm', 'e',
-								0x0,  // no client ID
-								0x0,  // no chat cookie
-								0x0,  // multi conn flag
-								0x0,  // kerberos flag
-								0x01, // session num
-							},
+							dataIn:    makeCookieData(wire.ChatNav, "me", ""),
 							cookieOut: []byte("the-cookie"),
 						},
 					},
@@ -290,15 +270,7 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 					cookieBakerParams: cookieBakerParams{
 						cookieIssueParams: cookieIssueParams{
 							{
-								dataIn: []byte{
-									0x00, 0x0e, // chat service,
-									0x02, 'm', 'e', // screen name
-									0x00, // no client ID
-									0x11, '4', '-', '0', '-', 't', 'h', 'e', '-', 'c', 'h', 'a', 't', '-', 'r', 'o', 'o', 'm',
-									0x0,  // multi conn flag
-									0x0,  // kerberos flag
-									0x01, // session num
-								},
+								dataIn:    makeCookieData(wire.Chat, "me", "4-0-the-chat-room"),
 								cookieOut: []byte("the-auth-cookie"),
 							},
 						},
@@ -340,15 +312,7 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 				cookieBakerParams: cookieBakerParams{
 					cookieIssueParams: cookieIssueParams{
 						{
-							dataIn: []byte{
-								0x00, 0x0F, // chatnav service
-								0x02, 'm', 'e',
-								0x0,  // no client ID
-								0x0,  // no chat cookie
-								0x0,  // multi conn flag
-								0x0,  // kerberos flag
-								0x01, // session num
-							},
+							dataIn:    makeCookieData(wire.ODir, "me", ""),
 							cookieOut: []byte("the-cookie"),
 						},
 					},
@@ -474,15 +438,7 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 				cookieBakerParams: cookieBakerParams{
 					cookieIssueParams: cookieIssueParams{
 						{
-							dataIn: []byte{
-								0x00, 0x07, // admin service
-								0x02, 'm', 'e',
-								0x0,  // no client ID
-								0x0,  // no chat cookie
-								0x0,  // multi conn flag
-								0x0,  // kerberos flag
-								0x01, // session num
-							},
+							dataIn:    makeCookieData(wire.Admin, "me", ""),
 							cookieOut: []byte("the-cookie"),
 						},
 					},
@@ -528,15 +484,7 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 				cookieBakerParams: cookieBakerParams{
 					cookieIssueParams: cookieIssueParams{
 						{
-							dataIn: []byte{
-								0x00, 0x18, // alert service
-								0x02, 'm', 'e',
-								0x0,  // no client ID
-								0x0,  // no chat cookie
-								0x0,  // multi conn flag
-								0x0,  // kerberos flag
-								0x01, // session num
-							},
+							dataIn:    makeCookieData(wire.Alert, "me", ""),
 							cookieOut: []byte("the-cookie"),
 						},
 					},
@@ -582,15 +530,7 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 				cookieBakerParams: cookieBakerParams{
 					cookieIssueParams: cookieIssueParams{
 						{
-							dataIn: []byte{
-								0x00, 0x10, // BART service
-								0x02, 'm', 'e',
-								0x0,  // no client ID
-								0x0,  // no chat cookie
-								0x0,  // multi conn flag
-								0x0,  // kerberos flag
-								0x01, // session num
-							},
+							dataIn:    makeCookieData(wire.BART, "me", ""),
 							cookieOut: []byte("the-cookie"),
 						},
 					},
@@ -636,15 +576,7 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 				cookieBakerParams: cookieBakerParams{
 					cookieIssueParams: cookieIssueParams{
 						{
-							dataIn: []byte{
-								0x00, 0x0d, // chatnav service
-								0x02, 'm', 'e',
-								0x0,  // no client ID
-								0x0,  // no chat cookie
-								0x0,  // multi conn flag
-								0x0,  // kerberos flag
-								0x01, // session num
-							},
+							dataIn:    makeCookieData(wire.ChatNav, "me", ""),
 							cookieOut: []byte("the-cookie"),
 						},
 					},
@@ -704,15 +636,7 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 					cookieBakerParams: cookieBakerParams{
 						cookieIssueParams: cookieIssueParams{
 							{
-								dataIn: []byte{
-									0x00, 0x0e, // chat service,
-									0x02, 'm', 'e', // screen name
-									0x00, // no client ID
-									0x11, '4', '-', '0', '-', 't', 'h', 'e', '-', 'c', 'h', 'a', 't', '-', 'r', 'o', 'o', 'm',
-									0x0,  // multi conn flag
-									0x0,  // kerberos flag
-									0x01, // session num
-								},
+								dataIn:    makeCookieData(wire.Chat, "me", "4-0-the-chat-room"),
 								cookieOut: []byte("the-auth-cookie"),
 							},
 						},
@@ -759,15 +683,7 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 				cookieBakerParams: cookieBakerParams{
 					cookieIssueParams: cookieIssueParams{
 						{
-							dataIn: []byte{
-								0x00, 0x0F, // ODir service
-								0x02, 'm', 'e',
-								0x0,  // no client ID
-								0x0,  // no chat cookie
-								0x0,  // multi conn flag
-								0x0,  // kerberos flag
-								0x01, // session num
-							},
+							dataIn:    makeCookieData(wire.ODir, "me", ""),
 							cookieOut: []byte("the-cookie"),
 						},
 					},

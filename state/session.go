@@ -741,7 +741,7 @@ func (s *Session) Caps() [][16]byte {
 	caps := make(map[[16]byte]bool)
 
 	for _, instance := range s.instances {
-		for _, c := range instance.caps() {
+		for _, c := range instance.Caps() {
 			caps[c] = true
 		}
 	}
@@ -952,6 +952,20 @@ func (s *Session) userInfo() wire.TLVList {
 	return tlvs
 }
 
+// ClientInfo describes the client software identity reported at login.
+type ClientInfo struct {
+	// ID is the client name and version string (login TLV 0x0003).
+	ID string
+	// IDNum is the numeric client ID (login TLV 0x0016).
+	IDNum uint16
+	// MajorVer is the client major version (login TLV 0x0017).
+	MajorVer uint16
+	// MinorVer is the client minor version (login TLV 0x0018).
+	MinorVer uint16
+	// LesserVer is the client lesser version (login TLV 0x0019).
+	LesserVer uint16
+}
+
 // SessionInstance represents a single client connection instance within a user's
 // session. Multiple SessionInstance objects can belong to the same Session,
 // allowing a user to maintain concurrent connections from different clients or
@@ -980,7 +994,7 @@ type SessionInstance struct {
 	kerberosAuth   bool
 
 	// Per-session client information
-	clientID          string
+	clientInfo        ClientInfo
 	capabilities      [][16]byte
 	foodGroupVersions [wire.MDir + 1]uint16
 	multiConnFlag     wire.MultiConnFlag
@@ -1022,11 +1036,11 @@ func (s *SessionInstance) ChatRoomCookie() string {
 	return s.session.ChatRoomCookie()
 }
 
-// ClientID retrieves the instance's client ID.
-func (s *SessionInstance) ClientID() string {
+// ClientInfo returns the client software identity reported at login.
+func (s *SessionInstance) ClientInfo() ClientInfo {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
-	return s.clientID
+	return s.clientInfo
 }
 
 // DisplayScreenName returns the user's display screen name.
@@ -1049,11 +1063,11 @@ func (s *SessionInstance) UIN() uint32 {
 	return s.session.UIN()
 }
 
-// SetClientID sets the instance's client ID.
-func (s *SessionInstance) SetClientID(clientID string) {
+// SetClientInfo sets the client software identity reported at login.
+func (s *SessionInstance) SetClientInfo(info ClientInfo) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	s.clientID = clientID
+	s.clientInfo = info
 }
 
 // SetTOC2 sets this instance to TOC2. supportsTOC2MsgEnc is true for toc2_login (encoded messaging), false for toc2_signon.
@@ -1406,6 +1420,13 @@ func (s *SessionInstance) SetAwayMessage(awayMessage string) {
 	s.awayMsg = awayMessage
 }
 
+// Caps returns the instance's capability UUIDs.
+func (s *SessionInstance) Caps() [][16]byte {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.capabilities
+}
+
 // SetCaps sets capability UUIDs for the instance.
 func (s *SessionInstance) SetCaps(caps [][16]byte) {
 	s.mutex.Lock()
@@ -1506,13 +1527,6 @@ func (s *SessionInstance) ICQDCInfo() wire.ICQDCInfo {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 	return s.icqDCInfo
-}
-
-// caps retrieves instance capabilities.
-func (s *SessionInstance) caps() [][16]byte {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-	return s.capabilities
 }
 
 //

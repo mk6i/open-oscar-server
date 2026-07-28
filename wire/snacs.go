@@ -97,6 +97,10 @@ const (
 	LoginTLVTagsScreenName                uint16 = 0x01
 	LoginTLVTagsRoastedPassword           uint16 = 0x02
 	LoginTLVTagsClientIdentity            uint16 = 0x03
+	LoginTLVTagsClientIDNumber            uint16 = 0x0016
+	LoginTLVTagsMajorVersion              uint16 = 0x0017
+	LoginTLVTagsMinorVersion              uint16 = 0x0018
+	LoginTLVTagsLesserVersion             uint16 = 0x0019
 	LoginTLVTagsReconnectHere             uint16 = 0x05
 	LoginTLVTagsAuthorizationCookie       uint16 = 0x06
 	LoginTLVTagsErrorSubcode              uint16 = 0x08
@@ -139,6 +143,39 @@ const (
 //
 // Capability IDs
 //
+
+// ClientVersion identifies a client by the ID and version it reports in
+// login TLVs 0x0016 (Client ID Number), 0x0017 (Major Version), 0x0018
+// (Minor Version), and 0x0019 (Lesser Version). A zero MajorVer/MinorVer/
+// LesserVer means "don't care" — no known real client reports 0 for the
+// major/minor field, since that would mean "no version", and mobile
+// signatures observed in packet captures report LesserVer 0, so it is left
+// as a wildcard for them.
+type ClientVersion struct {
+	IDNum     uint16
+	MajorVer  uint16
+	MinorVer  uint16
+	LesserVer uint16
+}
+
+// Matches reports whether the given client ID/major/minor/lesser version
+// matches this signature. Zero-valued MajorVer/MinorVer/LesserVer fields on
+// the signature are treated as wildcards.
+func (v ClientVersion) Matches(idNum, majorVer, minorVer, lesserVer uint16) bool {
+	if v.IDNum != idNum {
+		return false
+	}
+	if v.MajorVer != 0 && v.MajorVer != majorVer {
+		return false
+	}
+	if v.MinorVer != 0 && v.MinorVer != minorVer {
+		return false
+	}
+	if v.LesserVer != 0 && v.LesserVer != lesserVer {
+		return false
+	}
+	return true
+}
 
 var (
 	// CapChat is the UUID that represents an OSCAR client's ability to chat
@@ -194,10 +231,34 @@ var (
 	CapSupportICQ = uuid.MustParse("0946134D-4C7F-11D1-8222-444553540000")
 	// CapUTF8Messages indicates the client supports UTF-8 messages (AIM)
 	CapUTF8Messages = uuid.MustParse("0946134E-4C7F-11D1-8222-444553540000")
+	// CapMobileClient indicates the client is a hiptop/T-mobile mobile client
+	CapMobileClient = uuid.MustParse("09461323-4C7F-11D1-8222-444553540000")
 
 	//
 	// Full UUIDs (non-short format)
 	//
+
+	//
+	// Known mobile client login signatures. Some mobile/wireless clients
+	// don't advertise CapMobileClient, but can be identified by the client
+	// ID and version they report in login TLVs 0x0016-0x0018 instead.
+	//
+
+	// ClientMobileLoginSpoof is the client ID/version signature sent by
+	// "Mobile Login" toggles in AIM spoofer clients (Sean's OscarStuff
+	// family, n3k0de AimRemix), confirmed via packet capture.
+	ClientMobileLoginSpoof = ClientVersion{IDNum: 4, MajorVer: 1, MinorVer: 75}
+	// ClientMX240a is the client ID reported by the MX240a wireless handheld
+	// device.
+	ClientMX240a = ClientVersion{IDNum: 284}
+
+	// KnownMobileClients lists all client ID/version signatures known to
+	// belong to a mobile/wireless client that does not advertise
+	// CapMobileClient.
+	KnownMobileClients = []ClientVersion{
+		ClientMobileLoginSpoof,
+		ClientMX240a,
+	}
 
 	// CapRTFMessages indicates the client supports RTF messages (ICQ)
 	CapRTFMessages = uuid.MustParse("97B12751-243C-4334-AD22-D6ABF73F1492")

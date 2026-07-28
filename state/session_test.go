@@ -167,12 +167,19 @@ func TestSession_SetAndGetUIN(t *testing.T) {
 	assert.Equal(t, uin, s.UIN())
 }
 
-func TestSession_SetAndGetClientID(t *testing.T) {
+func TestSession_SetAndGetClientInfo(t *testing.T) {
 	s := NewSession().AddInstance()
-	assert.Empty(t, s.ClientID())
-	clientID := "AIM Client ID"
-	s.SetClientID(clientID)
-	assert.Equal(t, clientID, s.ClientID())
+	assert.Zero(t, s.ClientInfo())
+
+	info := ClientInfo{
+		ID:        "AIM Client ID",
+		IDNum:     4,
+		MajorVer:  1,
+		MinorVer:  75,
+		LesserVer: 0,
+	}
+	s.SetClientInfo(info)
+	assert.Equal(t, info, s.ClientInfo())
 }
 
 func TestSession_SetAndGetKerberosAuth(t *testing.T) {

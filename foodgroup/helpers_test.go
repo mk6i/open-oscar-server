@@ -927,7 +927,7 @@ func sessOptKerberosAuth(instance *state.SessionInstance) {
 // sessClientID sets the client ID
 func sessClientID(clientID string) func(instance *state.SessionInstance) {
 	return func(instance *state.SessionInstance) {
-		instance.SetClientID(clientID)
+		instance.SetClientInfo(state.ClientInfo{ID: clientID})
 	}
 }
 

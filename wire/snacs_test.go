@@ -292,6 +292,104 @@ func TestCapabilityUUIDs(t *testing.T) {
 	}
 }
 
+func TestClientVersion_Matches(t *testing.T) {
+	tests := []struct {
+		name      string
+		sig       ClientVersion
+		idNum     uint16
+		majorVer  uint16
+		minorVer  uint16
+		lesserVer uint16
+		expected  bool
+	}{
+		{
+			name:     "exact match on all fields",
+			sig:      ClientVersion{IDNum: 4, MajorVer: 1, MinorVer: 75},
+			idNum:    4,
+			majorVer: 1,
+			minorVer: 75,
+			expected: true,
+		},
+		{
+			name:      "lesser version constrained, exact match",
+			sig:       ClientVersion{IDNum: 4, MajorVer: 1, MinorVer: 75, LesserVer: 9},
+			idNum:     4,
+			majorVer:  1,
+			minorVer:  75,
+			lesserVer: 9,
+			expected:  true,
+		},
+		{
+			name:      "lesser version constrained, wrong lesser version",
+			sig:       ClientVersion{IDNum: 4, MajorVer: 1, MinorVer: 75, LesserVer: 9},
+			idNum:     4,
+			majorVer:  1,
+			minorVer:  75,
+			lesserVer: 0,
+			expected:  false,
+		},
+		{
+			name:      "lesser version wildcard ignores lesser version",
+			sig:       ClientVersion{IDNum: 4, MajorVer: 1, MinorVer: 75},
+			idNum:     4,
+			majorVer:  1,
+			minorVer:  75,
+			lesserVer: 42,
+			expected:  true,
+		},
+		{
+			name:     "same client ID, wrong major version",
+			sig:      ClientVersion{IDNum: 4, MajorVer: 1, MinorVer: 75},
+			idNum:    4,
+			majorVer: 5,
+			minorVer: 75,
+			expected: false,
+		},
+		{
+			name:     "same client ID, wrong minor version",
+			sig:      ClientVersion{IDNum: 4, MajorVer: 1, MinorVer: 75},
+			idNum:    4,
+			majorVer: 1,
+			minorVer: 2,
+			expected: false,
+		},
+		{
+			name:     "different client ID",
+			sig:      ClientVersion{IDNum: 4, MajorVer: 1, MinorVer: 75},
+			idNum:    265,
+			majorVer: 1,
+			minorVer: 75,
+			expected: false,
+		},
+		{
+			name:     "ID-only signature ignores version",
+			sig:      ClientVersion{IDNum: 284},
+			idNum:    284,
+			majorVer: 9,
+			minorVer: 9,
+			expected: true,
+		},
+		{
+			name:     "ID-only signature, wrong ID",
+			sig:      ClientVersion{IDNum: 284},
+			idNum:    4,
+			majorVer: 0,
+			minorVer: 0,
+			expected: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.sig.Matches(tt.idNum, tt.majorVer, tt.minorVer, tt.lesserVer))
+		})
+	}
+}
+
+func TestKnownMobileClients(t *testing.T) {
+	assert.Contains(t, KnownMobileClients, ClientMobileLoginSpoof)
+	assert.Contains(t, KnownMobileClients, ClientMX240a)
+}
+
 func TestShortCapHexToUUID(t *testing.T) {
 	tests := []struct {
 		name     string

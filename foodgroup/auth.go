@@ -153,8 +153,14 @@ func (s AuthService) RegisterBOSSession(ctx context.Context, authCookie state.Se
 
 	sess.SetKerberosAuth(authCookie.KerberosAuth == 1)
 
-	// set string containing OSCAR client name and version
-	sess.SetClientID(authCookie.ClientID)
+	// record the client identity reported at login
+	sess.SetClientInfo(state.ClientInfo{
+		ID:        authCookie.ClientID,
+		IDNum:     authCookie.ClientIDNum,
+		MajorVer:  authCookie.MajorVer,
+		MinorVer:  authCookie.MinorVer,
+		LesserVer: authCookie.LesserVer,
+	})
 	sess.Session().SetOfflineMsgCount(u.OfflineMsgCount)
 
 	if _, alreadySet := sess.Session().BuddyIcon(); !alreadySet {
@@ -420,6 +426,10 @@ func (s AuthService) KerberosLogin(ctx context.Context, inBody wire.SNAC_0x050C_
 // loginProperties represents the properties sent by the client at login.
 type loginProperties struct {
 	clientID                string
+	clientIDNum             uint16
+	majorVer                uint16
+	minorVer                uint16
+	lesserVer               uint16
 	isBUCPAuth              bool
 	isFLAPAuth              bool
 	isFLAPJavaAuth          bool
@@ -446,6 +456,18 @@ func (l *loginProperties) fromTLV(list wire.TLVList) error {
 	// extract client name and version
 	if clientID, found := list.String(wire.LoginTLVTagsClientIdentity); found {
 		l.clientID = clientID
+	}
+	if clientIDNum, found := list.Uint16BE(wire.LoginTLVTagsClientIDNumber); found {
+		l.clientIDNum = clientIDNum
+	}
+	if majorVer, found := list.Uint16BE(wire.LoginTLVTagsMajorVersion); found {
+		l.majorVer = majorVer
+	}
+	if minorVer, found := list.Uint16BE(wire.LoginTLVTagsMinorVersion); found {
+		l.minorVer = minorVer
+	}
+	if lesserVer, found := list.Uint16BE(wire.LoginTLVTagsLesserVersion); found {
+		l.lesserVer = lesserVer
 	}
 
 	// get the password from the appropriate TLV. older clients have a
@@ -629,6 +651,10 @@ func (s AuthService) loginSuccessResponse(ctx context.Context, props loginProper
 		ScreenName:    props.screenName,
 		ClientID:      props.clientID,
 		MultiConnFlag: props.multiConnFlag,
+		ClientIDNum:   props.clientIDNum,
+		MajorVer:      props.majorVer,
+		MinorVer:      props.minorVer,
+		LesserVer:     props.lesserVer,
 	}
 	if props.isKerberosPlaintextAuth || props.isKerberosRoastedAuth {
 		loginCookie.KerberosAuth = 1
