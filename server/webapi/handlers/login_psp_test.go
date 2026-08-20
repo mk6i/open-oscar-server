@@ -169,6 +169,15 @@ func TestAuthHandler_LoginPSP_POST_InvalidCredentials(t *testing.T) {
 	assert.Contains(t, rr.Body.String(), "Invalid screen name or password")
 }
 
+func TestDefaultLoginSuccURL(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "http://ras.dev/_cqr/login/login.psp", nil)
+	assert.Equal(t, "http://ras.dev/", defaultLoginSuccURL(req))
+
+	// TLS terminated upstream, so the scheme only survives in the header.
+	req.Header.Set("X-Forwarded-Proto", "https")
+	assert.Equal(t, "https://ras.dev/", defaultLoginSuccURL(req))
+}
+
 func TestSafeLoginRedirectURL(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "http://localhost/_cqr/login/login.psp", nil)
 

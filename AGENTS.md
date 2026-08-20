@@ -15,7 +15,7 @@ AOL/Yahoo and non-commercial.
 | Test                | `go test -race ./...`                                      |
 | Lint (matches CI)   | `gofmt -s -l . && go vet ./...`                            |
 | Run (dev, plain)    | `make run`                                                 |
-| Run (dev, SSL)      | `make run-ssl` (+ `make run-stunnel` in a second terminal) |
+| Run (dev, SSL)      | `make run-ssl` (+ `make run-nginx` in a second terminal)   |
 | Generate config     | `make config`                                              |
 | Regenerate mocks    | `mockery`                                                  |
 | Build Docker images | `make docker-images`                                       |
@@ -26,11 +26,11 @@ The binary in `cmd/server` starts five servers concurrently via `errgroup`:
 
 | Server   | Protocol                   | Default port                        |
 |----------|----------------------------|-------------------------------------|
-| OSCAR    | FLAP/BOS (binary)          | 5190 (5193 via stunnel for SSL)     |
+| OSCAR    | FLAP/BOS (binary)          | 5190, 5191 (5193 via nginx for SSL) |
 | TOC      | TOC (text-based)           | 9898                                |
-| Kerberos | Kerberos auth              | 1088                                |
+| Kerberos | Kerberos auth              | 1088 (`POST /` via nginx on 80/443) |
 | MgmtAPI  | HTTP (management)          | 8080                                |
-| WebAPI   | HTTP (web AIM-style, AMF3) | 9000 (opt-in via `ENABLE_WEBAPI=1`) |
+| WebAPI   | HTTP (web AIM-style, AMF3) | 8081 (opt-in via `ENABLE_WEBAPI`)   |
 
 All five servers share a common dependency container (`Container` in
 `cmd/server/factory.go`) that wires together config, persistence, and business

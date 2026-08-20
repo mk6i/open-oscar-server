@@ -1,0 +1,91 @@
+###############################################################################
+# Build stage – compile OpenSSL 1.0.2u and nginx 1.28.0
+#
+# Why the ancient OpenSSL? AIM 6.2–7.0 begin the TLS handshake with an
+# SSLv2-format ("v2 hello") ClientHello for backward compatibility, even when
+# they go on to negotiate TLS 1.0. OpenSSL 1.1.0 removed the code that parses
+# these SSLv2-style ClientHello records, so any modern OpenSSL (1.1.x / 3.x)
+# rejects the handshake outright. OpenSSL 1.0.2u is the last release that still
+# accepts the v2 hello, so nginx must be linked against it to front these
+# clients.
+###############################################################################
+FROM debian:12.11-slim AS build
+
+ARG OPENSSL_VERSION=1.0.2u
+ARG OPENSSL_TAG=OpenSSL_1_0_2u
+ARG NGINX_VERSION=1.28.0
+
+ARG OPENSSL_URL=https://github.com/openssl/openssl/releases/download/${OPENSSL_TAG}/openssl-${OPENSSL_VERSION}.tar.gz
+ARG NGINX_URL=https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz
+
+# Build prerequisites
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        wget \
+        perl \
+        openssl \
+        libpcre2-dev \
+        zlib1g-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /usr/src
+
+# ---------- OpenSSL ----------------------------------------------------------
+# Sources only. nginx's --with-openssl builds and statically links them itself,
+# so there is no shared library to ship or point LD_LIBRARY_PATH at.
+RUN wget -qO openssl.tar.gz "${OPENSSL_URL}" && \
+    tar xzf openssl.tar.gz
+
+# ---------- nginx ------------------------------------------------------------
+# http serves the Kerberos and Web API backends, which are routed by path;
+# stream carries the OSCAR BOS listener as opaque TCP.
+RUN wget -qO nginx.tar.gz "${NGINX_URL}" && \
+    tar xzf nginx.tar.gz && \
+    cd nginx-${NGINX_VERSION} && \
+    ./configure \
+        --prefix=/etc/nginx \
+        --sbin-path=/usr/local/sbin/nginx \
+        --conf-path=/etc/nginx/nginx.conf \
+        --pid-path=/var/run/nginx.pid \
+        --lock-path=/var/run/nginx.lock \
+        --error-log-path=/dev/stdout \
+        --http-log-path=/dev/stdout \
+        --http-client-body-temp-path=/var/cache/nginx/client_temp \
+        --http-proxy-temp-path=/var/cache/nginx/proxy_temp \
+        --http-fastcgi-temp-path=/var/cache/nginx/fastcgi_temp \
+        --http-uwsgi-temp-path=/var/cache/nginx/uwsgi_temp \
+        --http-scgi-temp-path=/var/cache/nginx/scgi_temp \
+        --user=nobody \
+        --group=nogroup \
+        --with-http_ssl_module \
+        --with-stream \
+        --with-stream_ssl_module \
+        --with-openssl=/usr/src/openssl-${OPENSSL_VERSION} && \
+    make -j"$(nproc)" && \
+    make install
+
+# DH parameters. nginx offers no DHE ciphers at all unless ssl_dhparam is set.
+RUN openssl dhparam -out /etc/nginx/dhparam.pem 2048
+
+###############################################################################
+# Runtime stage – only what we need to run nginx
+###############################################################################
+FROM debian:12.11-slim AS runtime
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends libpcre2-8-0 zlib1g && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY --from=build /usr/local/sbin/nginx    /usr/local/sbin/nginx
+COPY --from=build /etc/nginx/dhparam.pem   /etc/nginx/dhparam.pem
+COPY --from=build /etc/nginx/mime.types    /etc/nginx/mime.types
+
+# Mount points for the user-supplied nginx.conf, server.pem and web client, plus the temp dirs the worker writes buffered bodies to.
+RUN mkdir -p /etc/nginx/certs /srv/client /var/run /var/cache/nginx && \
+    chown nobody:nogroup /var/cache/nginx
+
+EXPOSE 80 443 5193
+
+ENTRYPOINT ["/usr/local/sbin/nginx", "-g", "daemon off;"]

@@ -42,12 +42,17 @@ services:
       - .:/project
     working_dir: /project
 
-  stunnel:
-    image: ras-stunnel:5.75-openssl-1.0.2u
+  nginx:
+    image: ${NGINX_IMAGE:-ras-nginx:1.28.0-openssl-1.0.2u}
+    # nginx resolves the upstream hostname at startup, so the server container
+    # must exist first.
+    depends_on:
+      - open-oscar-server
     ports:
+      - "80:80"
       - "443:443"
       - "5193:5193"
     volumes:
-      - ./config/ssl/stunnel.conf:/etc/stunnel/stunnel.conf:ro
-      - ./certs:/etc/stunnel/certs:ro
-    command: stunnel.conf
+      - ./config/ssl/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+      - ${CLIENT_DIR:-./clients}:/srv/client:ro

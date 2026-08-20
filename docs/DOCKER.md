@@ -22,7 +22,7 @@ cd open-oscar-server
 This builds Docker images for:
 
 - Certificate generation
-- SSL termination
+- SSL termination and HTTP routing (nginx, ports 80/443/5193)
 - The Open OSCAR Server runtime
 
 ```bash

@@ -171,11 +171,7 @@ func clearBOSTokenCookie(w http.ResponseWriter) {
 }
 
 func defaultLoginSuccURL(r *http.Request) string {
-	scheme := "http"
-	if r.TLS != nil {
-		scheme = "https"
-	}
-	return scheme + "://" + r.Host + "/"
+	return requestScheme(r) + "://" + r.Host + "/"
 }
 
 func safeLoginRedirectURL(r *http.Request, succURL string) string {

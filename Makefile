@@ -25,6 +25,11 @@ DOCKER_RUN_GO_RELEASER := @docker run \
 	--workdir /go/src/open-oscar-server \
 	$(DOCKER_IMAGE_TAG_GO_RELEASER)
 OSCAR_HOST ?= ras.dev
+# Tag of the SSL terminator image. docker-compose.yaml defaults to the same
+# value, so keep the two in sync when bumping nginx.
+NGINX_IMAGE ?= ras-nginx:1.28.0-openssl-1.0.2u
+# Host directory holding the web client that nginx serves.
+CLIENT_DIR ?= ./clients
 
 .PHONY: config-basic config-ssl config
 config-basic: ## Generate basic config file template
@@ -97,28 +102,28 @@ release-sign: ## Full GoReleaser on host with Windows signing (needs $(GORELEASE
 docker-image-ras: ## Build Open OSCAR Server image
 	docker build -t ras:latest -f Dockerfile .
 
-.PHONY: docker-image-stunnel
-docker-image-stunnel: ## Build stunnel image pinned to v5.75 / OpenSSL 1.0.2u
-	docker build -t ras-stunnel:5.75-openssl-1.0.2u -f Dockerfile.stunnel .
+.PHONY: docker-image-nginx
+docker-image-nginx: ## Build nginx image pinned to v1.28.0 / OpenSSL 1.0.2u
+	docker build -t $(NGINX_IMAGE) -f Dockerfile.nginx .
 
 .PHONY: docker-image-certgen
 docker-image-certgen: ## Build minimal helper image with openssl & nss tools
 	docker build -t ras-certgen:latest -f Dockerfile.certgen .
 
 .PHONY: docker-images
-docker-images: docker-image-ras docker-image-stunnel docker-image-certgen
+docker-images: docker-image-ras docker-image-nginx docker-image-certgen
 
 .PHONY: docker-run
 docker-run:
-	OSCAR_HOST=$(OSCAR_HOST) docker compose up open-oscar-server stunnel
+	OSCAR_HOST=$(OSCAR_HOST) NGINX_IMAGE=$(NGINX_IMAGE) CLIENT_DIR=$(CLIENT_DIR) docker compose up open-oscar-server nginx
 
 .PHONY: docker-run-bg
 docker-run-bg: ## Run Open OSCAR Server in background with docker-compose
-	OSCAR_HOST=$(OSCAR_HOST) docker compose up -d open-oscar-server stunnel
+	OSCAR_HOST=$(OSCAR_HOST) NGINX_IMAGE=$(NGINX_IMAGE) CLIENT_DIR=$(CLIENT_DIR) docker compose up -d open-oscar-server nginx
 
 .PHONY: docker-run-stop
 docker-run-stop: ## Stop Open OSCAR Server docker-compose services
-	OSCAR_HOST=$(OSCAR_HOST) docker compose down
+	OSCAR_HOST=$(OSCAR_HOST) NGINX_IMAGE=$(NGINX_IMAGE) CLIENT_DIR=$(CLIENT_DIR) docker compose down
 
 .PHONY: run
 run: # run the server with plain socket config
@@ -128,9 +133,9 @@ run: # run the server with plain socket config
 run-ssl: # run the server with ssl socket config
 	./scripts/run_dev.sh ./config/ssl/settings.env
 
-.PHONY: run-stunnel
-run-stunnel: # run stunnel for SSL termination
-	./scripts/run_stunnel.sh ./certs/server.pem
+.PHONY: run-nginx
+run-nginx: # run nginx for SSL termination
+	NGINX_IMAGE=$(NGINX_IMAGE) CLIENT_DIR=$(CLIENT_DIR) ./scripts/run_nginx.sh ./certs/server.pem
 
 ################################################################################
 # SSL Helpers
