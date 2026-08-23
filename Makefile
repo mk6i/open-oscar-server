@@ -154,6 +154,25 @@ docker-nss: ## Create NSS certificate database for AIM 6.x clients
 clean-certs: ## Remove all generated certificates & NSS DB
 	rm -rf certs/*
 
+# Root CA that docker-cert mints, and the common name it is filed under in the
+# keychain.
+CA_CERT ?= ./certs/ca.crt
+CA_CERT_CN ?= Open OSCAR Server Root CA
+
+.PHONY: macos-trust-ca
+macos-trust-ca: ## Trust $(CA_CERT) as a root in the macOS system keychain, replacing any previous copy
+	@[ "$$(uname)" = "Darwin" ] || { echo "macos-trust-ca only runs on macOS"; exit 1; }
+	@[ -f $(CA_CERT) ] || { echo "$(CA_CERT) not found, run 'make docker-cert' first"; exit 1; }
+# Authenticate before the loop below, whose 2>/dev/null would otherwise hide a
+# sudo password failure and report it as "no previous certificate".
+	@sudo -v
+# Every prior copy goes, not just the first: delete-certificate removes one match
+# per call, and a stale root left behind still validates old certs.
+	@while sudo security delete-certificate -c "$(CA_CERT_CN)" /Library/Keychains/System.keychain 2>/dev/null; do \
+		echo "removed previous $(CA_CERT_CN)"; \
+	done
+	sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain $(CA_CERT)
+
 ################################################################################
 # Web API Tools
 ################################################################################
@@ -165,3 +184,17 @@ webapi-keygen: ## Build the Web API key generator tool
 .PHONY: webapi-keygen-install
 webapi-keygen-install: ## Install the Web API key generator tool system-wide
 	go install ./cmd/webapi_keygen
+
+################################################################################
+# Web Clients
+################################################################################
+
+# Seconds between Wayback Machine requests. The archive throttles by refusing
+# connections outright, so raise this rather than retrying harder if a run
+# starts stalling.
+WAYBACK_DELAY ?= 2.5
+
+.PHONY: fetch-aim-express
+fetch-aim-express: ## Mirror the archived AIM Express web clients from the Wayback Machine into $(CLIENT_DIR)
+	mkdir -p $(CLIENT_DIR)
+	./scripts/grab-gromit.sh -o $(CLIENT_DIR) -d $(WAYBACK_DELAY)

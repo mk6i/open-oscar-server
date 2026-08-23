@@ -120,6 +120,11 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 		// would steal /getAggregated and other lifestream URLs before stubs/404.
 		mux.Handle("GET /{$}", http.HandlerFunc(handler.GetHelloWorldHandler))
 
+		// Unauthenticated and outside every middleware: Flash Player fetches the
+		// policy before it has a session, and refuses to look at a redirect or an
+		// error envelope.
+		mux.Handle("GET /crossdomain.xml", &handlers.CrossDomainPolicyHandler{Logger: logger})
+
 		// Authentication endpoint (public - no API key required for user login)
 		// Using pattern with explicit method for Go 1.22+ routing.
 		mux.Handle("POST /auth/clientLogin", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -157,8 +162,12 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 		// and redirect to the login screen.
 		mux.Handle("GET /auth/logout", http.HandlerFunc(authHandler.Logout))
 
-		mux.Handle("GET /_cqr/login/login.psp", http.HandlerFunc(authHandler.LoginPSP))
-		mux.Handle("POST /_cqr/login/login.psp", http.HandlerFunc(authHandler.LoginPSP))
+		// Wrapped in CORS: besides the browser navigation that renders the form,
+		// the client fetches this cross-origin for its client2Web SSO handoff, and
+		// a response without Access-Control-Allow-Origin reaches it as an ioError.
+		loginPSP := authMiddleware.CORSMiddleware(http.HandlerFunc(authHandler.LoginPSP))
+		mux.Handle("GET /_cqr/login/login.psp", loginPSP)
+		mux.Handle("POST /_cqr/login/login.psp", loginPSP)
 
 		// Authenticated Web AIM API endpoints
 		// SessionInstance management - supports multiple auth methods (k, a, ts+sig_sha256).
@@ -260,10 +269,12 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 
 		// Web AIM calls lifestream/* on the API host (e.g. /lifestream/getUserDetails).
 		lifestreamStub := &handlers.UserInfoStubHandler{Logger: logger}
-		// getUserDetails returns a minimal AIM identity. Every other lifestream/*
-		// method is an unimplemented social-feed feature; the subtree catch-all
-		// acknowledges them with an empty 200 so the client doesn't error.
+		// getUserDetails returns a minimal AIM identity and getServices the service
+		// list behind it. Every other lifestream/* method is an unimplemented
+		// social-feed feature; the subtree catch-all acknowledges them with an
+		// empty 200 so the client doesn't error.
 		mux.Handle("GET /lifestream/getUserDetails", stubRoute(lifestreamStub.GetUserDetails))
+		mux.Handle("GET /lifestream/getServices", stubRoute(lifestreamStub.GetServices))
 		mux.Handle("GET /lifestream/heyGetNotifications", stubRoute(lifestreamStub.HeyGetNotifications))
 		mux.Handle("GET /lifestream/", stubRoute(lifestreamStub.EmptyOK))
 

@@ -32,6 +32,49 @@ type NotificationsData struct {
 	Activities []string `json:"activities" xml:"activities>activity"`
 }
 
+// ServicesData lists the IM services the account can sign on to.
+type ServicesData struct {
+	// Services is always sent, empty included: the client iterates it
+	// unconditionally on a 200.
+	Services []Service `json:"services" xml:"services>service"`
+}
+
+// Service describes one signed-on or linkable IM service. Every field is sent
+// even when false or empty, because the client reads each one unconditionally
+// rather than testing for its presence.
+type Service struct {
+	Name       string `json:"name" xml:"name"`
+	Service    string `json:"service" xml:"service"`
+	Associated bool   `json:"associated" xml:"associated"`
+	Online     bool   `json:"online" xml:"online"`
+	// Roster is a third-party friend list available to import, not the buddy
+	// list; this server federates with nothing, so there is never one.
+	Roster     bool   `json:"roster" xml:"roster"`
+	HaveRoster bool   `json:"haveRoster" xml:"haveRoster"`
+	AutoLogin  bool   `json:"autoLogin" xml:"autoLogin"`
+	SignupURL  string `json:"signupURL" xml:"signupURL"`
+}
+
+// GetServices advertises AIM as the only service, already signed on. The client
+// asks at sign-on to build its service list and to decide whether to offer a
+// link-account prompt for the others.
+func (h *UserInfoStubHandler) GetServices(w http.ResponseWriter, r *http.Request) {
+	resp := BaseResponse{}
+	resp.Response.StatusCode = 200
+	resp.Response.StatusText = "OK"
+	resp.Response.Data = &ServicesData{
+		Services: []Service{
+			{
+				Name:       "aim",
+				Service:    "aim",
+				Associated: true,
+				Online:     true,
+			},
+		},
+	}
+	SendResponse(w, r, resp, h.Logger)
+}
+
 func (h *UserInfoStubHandler) GetUserDetails(w http.ResponseWriter, r *http.Request) {
 	resp := BaseResponse{}
 	resp.Response.StatusCode = 200

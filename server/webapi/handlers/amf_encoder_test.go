@@ -1,12 +1,15 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
 	goAMF3 "github.com/breign/goAMF3"
+
+	"github.com/mk6i/open-oscar-server/server/webapi/types"
 )
 
 func TestAMFEncoderBasicTypes(t *testing.T) {
@@ -451,5 +454,86 @@ func TestAMFErrorEnvelopeCarriesData(t *testing.T) {
 	}
 	if len(data) != 0 {
 		t.Errorf("data: expected empty, got %v", data)
+	}
+}
+
+// The buddylist and preference events carry a pointer payload. goAMF3 emits
+// nothing for a value it cannot encode, so a pointer that reaches it writes the
+// key and truncates the stream there, taking every later field with it.
+func TestAMFEncoderPointerEventData(t *testing.T) {
+	encoder := NewAMFEncoder(nil)
+
+	event := ConvertEventForAMF3(types.Event{
+		Type:      types.EventTypeBuddyList,
+		SeqNum:    1,
+		Timestamp: 1787277769,
+		Data: &BuddyListData{
+			Groups: []WebAPIBuddyGroup{{
+				Name:    "Friends",
+				Buddies: []WebAPIBuddyInfo{{AimID: "mk6i"}},
+			}},
+		},
+	})
+
+	encoded, err := encoder.EncodeAMF(map[string]interface{}{
+		"events":     []interface{}{event},
+		"lastSeqNum": 1,
+	}, AMF3)
+	if err != nil {
+		t.Fatalf("EncodeAMF() error = %v", err)
+	}
+
+	decoded, ok := goAMF3.DecodeAMF3(encoded).(map[string]interface{})
+	if !ok {
+		t.Fatalf("DecodeAMF3() = %#v, want map", goAMF3.DecodeAMF3(encoded))
+	}
+
+	// Present only if the stream survived past the event: it is written after it.
+	if got := fmt.Sprintf("%v", decoded["lastSeqNum"]); got != "1" {
+		t.Errorf("lastSeqNum = %v, want 1", got)
+	}
+
+	events, ok := decoded["events"].([]interface{})
+	if !ok || len(events) != 1 {
+		t.Fatalf("events = %#v, want 1 element", decoded["events"])
+	}
+	eventMap, ok := events[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("events[0] = %#v, want map", events[0])
+	}
+	eventData, ok := eventMap["eventData"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("eventData = %#v, want map", eventMap["eventData"])
+	}
+	groups, ok := eventData["groups"].([]interface{})
+	if !ok || len(groups) != 1 {
+		t.Fatalf("groups = %#v, want 1 element", eventData["groups"])
+	}
+	group, ok := groups[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("groups[0] = %#v, want map", groups[0])
+	}
+	if got := group["name"]; got != "Friends" {
+		t.Errorf("groups[0].name = %#v, want Friends", got)
+	}
+}
+
+func TestAMFEncoderNilPointerEventData(t *testing.T) {
+	encoder := NewAMFEncoder(nil)
+
+	encoded, err := encoder.EncodeAMF(map[string]interface{}{
+		"eventData":  (*BuddyListData)(nil),
+		"lastSeqNum": 2,
+	}, AMF3)
+	if err != nil {
+		t.Fatalf("EncodeAMF() error = %v", err)
+	}
+
+	decoded, ok := goAMF3.DecodeAMF3(encoded).(map[string]interface{})
+	if !ok {
+		t.Fatalf("DecodeAMF3() = %#v, want map", goAMF3.DecodeAMF3(encoded))
+	}
+	if got := fmt.Sprintf("%v", decoded["lastSeqNum"]); got != "2" {
+		t.Errorf("lastSeqNum = %v, want 2", got)
 	}
 }

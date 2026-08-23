@@ -398,9 +398,11 @@ func (h *SessionHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 		FetchBaseURL: fmt.Sprintf("%s/aim/fetchEvents?aimsid=%s&seqNum=0", baseURL, session.AimSID),
 		// Add wellKnownUrls for other clients that might use it.
 		WellKnownUrls: &WellKnownUrls{
-			WebApiBase:        baseURL + "/",
-			FetchBaseURL:      baseURL + "/aim/fetchEvents",
-			LifestreamApiBase: baseURL + "/",
+			WebApiBase:   baseURL + "/",
+			FetchBaseURL: baseURL + "/aim/fetchEvents",
+			// The client appends the bare method name to this base, so it has to
+			// carry the /lifestream/ path the routes are registered under.
+			LifestreamApiBase: baseURL + "/lifestream/",
 		},
 		Events: &StartSessionEvents{},
 	}

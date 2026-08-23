@@ -85,8 +85,8 @@ func (h *EventsHandler) FetchEvents(w http.ResponseWriter, r *http.Request, sess
 		LastSeqNum:      newLastSeqNum,
 		TimeToNextFetch: session.TimeToNextFetch,
 		// Include fetchBaseURL with updated sequence number for next request
-		FetchBaseURL: fmt.Sprintf("http://%s/aim/fetchEvents?aimsid=%s&seqNum=%d",
-			r.Host, aimsid, newLastSeqNum),
+		FetchBaseURL: fmt.Sprintf("%s/aim/fetchEvents?aimsid=%s&seqNum=%d",
+			baseURLFromRequest(r), aimsid, newLastSeqNum),
 	}
 
 	// AMF3 clients (e.g. Gromit) take the events reshaped: timestamps as floats
@@ -100,8 +100,8 @@ func (h *EventsHandler) FetchEvents(w http.ResponseWriter, r *http.Request, sess
 					"events":          ConvertEventsForAMF3(events),
 					"lastSeqNum":      newLastSeqNum,
 					"timeToNextFetch": session.TimeToNextFetch,
-					"fetchBaseURL": fmt.Sprintf("http://%s/aim/fetchEvents?aimsid=%s&seqNum=%d",
-						r.Host, aimsid, newLastSeqNum),
+					"fetchBaseURL": fmt.Sprintf("%s/aim/fetchEvents?aimsid=%s&seqNum=%d",
+						baseURLFromRequest(r), aimsid, newLastSeqNum),
 				},
 				"statusCode":       200,
 				"statusText":       "OK",

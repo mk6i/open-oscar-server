@@ -21,7 +21,7 @@ services:
          && echo \"basicConstraints=critical,CA:FALSE\" > server.ext
          && echo \"keyUsage=critical,digitalSignature,keyEncipherment\" >> server.ext
          && echo \"extendedKeyUsage=serverAuth\" >> server.ext
-         && echo \"subjectAltName=DNS:${OSCAR_HOST},DNS:api.oscar.aol.com,DNS:api.screenname.aol.com,DNS:login.oscar.aol.com,DNS:my.screenname.aol.com\" >> server.ext
+         && echo \"subjectAltName=DNS:${OSCAR_HOST},DNS:api.oscar.aol.com,DNS:api.screenname.aol.com,DNS:login.oscar.aol.com,DNS:my.screenname.aol.com,DNS:api.aim.net\" >> server.ext
          && openssl x509 -req
          -in server.csr
          -CA ca.crt -CAkey ca-key.pem -CAcreateserial

@@ -109,13 +109,19 @@ func (e *AMFEncoder) sanitizeForAMF3(data interface{}) interface{} {
 		}
 		return result
 	default:
-		// For other types, use reflection to check if it's a struct
-		// and convert to map
+		// goAMF3 writes nothing for a value it cannot encode, which truncates the
+		// object mid-key, so pointers and structs are reduced to maps first.
 		rv := reflect.ValueOf(data)
-		if rv.Kind() == reflect.Struct {
-			return e.structToMap(rv)
+		if rv.Kind() == reflect.Pointer {
+			if rv.IsNil() {
+				return map[string]interface{}{}
+			}
+			rv = rv.Elem()
 		}
-		return data
+		if rv.Kind() == reflect.Struct {
+			return e.sanitizeForAMF3(e.structToMap(rv))
+		}
+		return rv.Interface()
 	}
 }
 
