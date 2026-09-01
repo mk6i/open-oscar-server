@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/mk6i/open-oscar-server/server/webapi/amf3"
 )
 
 // Web API status codes. These are the client's own vocabulary, not HTTP codes,
@@ -253,7 +255,7 @@ func sendErrorEnvelope(w http.ResponseWriter, r *http.Request, httpStatus int, r
 	case format == "xml" || strings.Contains(contentType, "xml"):
 		sendXMLError(w, httpStatus, resp)
 	case format == "amf" || format == "amf3" || strings.Contains(contentType, "amf"):
-		sendAMFError(w, r, httpStatus, resp, nil)
+		sendAMFError(w, httpStatus, resp)
 	default:
 		sendJSONError(w, httpStatus, resp)
 	}
@@ -423,9 +425,7 @@ func isValidCallback(callback string) bool {
 
 // sendAMF sends an AMF response
 func sendAMF(w http.ResponseWriter, r *http.Request, data interface{}, logger *slog.Logger) {
-	encoder := NewAMFEncoder(logger)
-
-	amfData, err := encoder.EncodeAMF(data)
+	amfData, err := amf3.Marshal(data)
 	if err != nil {
 		if logger != nil {
 			logger.Error("failed to encode AMF response",
@@ -465,13 +465,11 @@ func sendAMF(w http.ResponseWriter, r *http.Request, data interface{}, logger *s
 	}
 }
 
-// sendAMFError sends an AMF error response
-func sendAMFError(w http.ResponseWriter, r *http.Request, httpStatus int, resp ErrorResponse, logger *slog.Logger) {
-	encoder := NewAMFEncoder(logger)
-
-	amfData, err := encoder.EncodeAMF(resp)
+// sendAMFError sends an AMF error response, falling back to JSON for a payload
+// AMF3 cannot represent.
+func sendAMFError(w http.ResponseWriter, httpStatus int, resp ErrorResponse) {
+	amfData, err := amf3.Marshal(resp)
 	if err != nil {
-		// If AMF encoding fails, fall back to JSON error
 		sendJSONError(w, httpStatus, resp)
 		return
 	}

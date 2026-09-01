@@ -1,5 +1,5 @@
-github.com/breign/goAMF3 v1.0.1-0.20250916173039-e43798221950 h1:4TpGDBqh7wsi7UvgoE85EknpgpYy2Yj5ZHahqwbF2LE=
-github.com/breign/goAMF3 v1.0.1-0.20250916173039-e43798221950/go.mod h1:ZN4htA6gGwnzqpHTfuRD+Ryt+Nj8sEIyecdQhFn4smY=
+github.com/breign/goAMF3 v1.0.2 h1:LiZ2iAvjiFJ/ISMHiwGaBD26aovB1LVI9p53ORFr8Gc=
+github.com/breign/goAMF3 v1.0.2/go.mod h1:ZN4htA6gGwnzqpHTfuRD+Ryt+Nj8sEIyecdQhFn4smY=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1VwoXQT9A3Wy9MM3WgvqSxFWenqJduM=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/dustin/go-humanize v1.0.1 h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=

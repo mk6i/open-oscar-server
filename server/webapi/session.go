@@ -375,11 +375,19 @@ func (s *Session) handleIncomingIM(msg wire.SNACMessage) {
 	s.AddStoredIM(partnerAimID, partnerAimID, messageText, msgID, timestamp)
 
 	if isOffline {
+		// The client resolves an offline sender from aimId and friendly alone,
+		// so friendly falls back to the sender's own formatting when the viewer
+		// has no alias for them.
+		friendly := s.aliasFor(state.NewIdentScreenName(partnerAimID))
+		if friendly == "" {
+			friendly = partnerDisplay
+		}
 		s.EventQueue.Push(EventTypeOfflineIM, OfflineIMEvent{
 			AimID:     partnerAimID,
+			Friendly:  friendly,
 			Message:   messageText,
 			MsgID:     msgID,
-			Timestamp: float64(timestamp),
+			Timestamp: timestamp,
 			AutoResp:  autoResponse,
 		})
 		s.logger.Debug("delivered offline instant message",
@@ -397,7 +405,7 @@ func (s *Session) handleIncomingIM(msg wire.SNACMessage) {
 			},
 			Message:   messageText,
 			MsgID:     msgID,
-			Timestamp: float64(timestamp),
+			Timestamp: timestamp,
 			AutoResp:  autoResponse,
 		})
 		s.logger.Debug("delivered instant message",
@@ -854,14 +862,11 @@ func (s *Session) AddStoredIM(partnerAimID, sender, message, msgID string, date 
 }
 
 // StoredIM is one entry in a fetchStoredIMs reply.
-//
-// Date is a float because AMF3 encodes whole numbers in 29 bits, which a Unix
-// timestamp overflows.
 type StoredIM struct {
-	Sender  string  `json:"sender" xml:"sender"`
-	Message string  `json:"message" xml:"message"`
-	MsgID   string  `json:"msgId" xml:"msgId"`
-	Date    float64 `json:"date" xml:"date"`
+	Sender  string `json:"sender" xml:"sender"`
+	Message string `json:"message" xml:"message"`
+	MsgID   string `json:"msgId" xml:"msgId"`
+	Date    int64  `json:"date" xml:"date"`
 }
 
 // StoredIMQuery describes filters for fetchStoredIMs.
@@ -940,7 +945,7 @@ func (s *Session) GetStoredIMs(q StoredIMQuery) []StoredIM {
 			Sender:  msg.Sender,
 			Message: msg.Message,
 			MsgID:   msg.MsgID,
-			Date:    float64(msg.Date),
+			Date:    msg.Date,
 		}
 	}
 	return out

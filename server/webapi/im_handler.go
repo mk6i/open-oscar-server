@@ -78,8 +78,7 @@ func (h *MessagingHandler) SendIM(w http.ResponseWriter, r *http.Request, sess *
 		binary.BigEndian.Uint16([]byte{0x80, 0x00}), // Version bits
 		time.Now().UnixNano()&0xffffffffffff)
 
-	now := float64(time.Now().Unix())
-	nowSec := time.Now().Unix()
+	now := time.Now().Unix()
 	// The client sends t as the normalized aimId it keys the conversation by, so
 	// it is never a source of display names.
 	recipientIdent := state.NewIdentScreenName(recipient)
@@ -152,7 +151,7 @@ func (h *MessagingHandler) SendIM(w http.ResponseWriter, r *http.Request, sess *
 		}
 	}
 
-	sess.AddStoredIM(recipientIdent.String(), sess.ScreenName.IdentScreenName().String(), message, messageID, nowSec)
+	sess.AddStoredIM(recipientIdent.String(), sess.ScreenName.IdentScreenName().String(), message, messageID, now)
 
 	recipientDisplay := h.resolveDisplayName(ctx, sess.OSCARSession, recipientIdent)
 	// The alias lives in the sender's feedbag, so unlike the display name it cannot
@@ -207,7 +206,7 @@ func (h *MessagingHandler) resolveDisplayName(ctx context.Context, instance *sta
 // "Mike Lee" to "mikelee" the moment you message him. Omitting displayId leaves the
 // client's existing name untouched. The merge also deletes any alias it holds, so
 // friendly has to be repeated here even though the buddy list already sent it.
-func (h *MessagingHandler) pushSenderWebAPIEvents(sess *Session, recipient state.IdentScreenName, recipientDisplay, recipientAlias, message, messageID string, now float64, autoResponse bool) {
+func (h *MessagingHandler) pushSenderWebAPIEvents(sess *Session, recipient state.IdentScreenName, recipientDisplay, recipientAlias, message, messageID string, now int64, autoResponse bool) {
 	senderAimID := sess.ScreenName.IdentScreenName().String()
 	recipientAimID := recipient.String()
 
@@ -216,12 +215,14 @@ func (h *MessagingHandler) pushSenderWebAPIEvents(sess *Session, recipient state
 			AimID:     senderAimID,
 			DisplayID: sess.ScreenName.String(),
 			UserType:  "aim",
+			State:     "online",
 		},
 		Dest: UserInfo{
 			AimID:     recipientAimID,
 			DisplayID: recipientDisplay,
 			Friendly:  recipientAlias,
 			UserType:  "aim",
+			State:     "online",
 		},
 		Message:   message,
 		MsgID:     messageID,

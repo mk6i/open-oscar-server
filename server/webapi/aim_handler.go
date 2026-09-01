@@ -597,30 +597,7 @@ func (h *AimHandler) FetchEvents(w http.ResponseWriter, r *http.Request, session
 			baseURLFromRequest(r), aimsid, newLastSeqNum),
 	}
 
-	// AMF3 clients (e.g. Gromit) take the events reshaped: timestamps as floats
-	// and the source/dest user objects flattened. That is a payload difference,
-	// not just an encoding one, so it stays here rather than in the encoder.
-	format := strings.ToLower(r.URL.Query().Get("f"))
-	if format == "amf" || format == "amf3" {
-		amfResp := map[string]interface{}{
-			"response": map[string]interface{}{
-				"data": map[string]interface{}{
-					"events":          ConvertEventsForAMF3(events),
-					"lastSeqNum":      newLastSeqNum,
-					"timeToNextFetch": session.TimeToNextFetch,
-					"fetchBaseURL": fmt.Sprintf("%s/aim/fetchEvents?aimsid=%s&seqNum=%d",
-						baseURLFromRequest(r), aimsid, newLastSeqNum),
-				},
-				"statusCode":       200,
-				"statusText":       "OK",
-				"statusDetailCode": 0,
-			},
-		}
-		SendResponse(w, r, amfResp, h.Logger)
-	} else {
-		// Send response in requested format (JSON, JSONP, or XML)
-		SendOK(w, r, data, h.Logger)
-	}
+	SendOK(w, r, data, h.Logger)
 
 	if len(events) > 0 {
 		h.Logger.DebugContext(ctx, "events fetched",

@@ -54,8 +54,10 @@ type IMEvent struct {
 	Source    UserInfo `json:"source" xml:"source"`
 	Message   string   `json:"message" xml:"message"`
 	MsgID     string   `json:"msgId,omitempty" xml:"msgId,omitempty"`
-	Timestamp float64  `json:"timestamp" xml:"timestamp"` // float64 for AMF3 encoding
-	AutoResp  bool     `json:"autoresponse,omitempty" xml:"autoresponse,omitempty"`
+	Timestamp int64    `json:"timestamp" xml:"timestamp"`
+	// AutoResp is always sent to AMF clients, false included, because the client
+	// reads it unconditionally when it builds the message.
+	AutoResp bool `json:"autoresponse,omitempty" xml:"autoresponse,omitempty" amf3:"autoresponse"`
 }
 
 // OfflineIMEvent represents a message that was stored while the user was signed
@@ -66,21 +68,28 @@ type IMEvent struct {
 // buddy list it already holds. Timestamp is when the sender sent the message, not
 // when it was delivered.
 type OfflineIMEvent struct {
-	AimID     string  `json:"aimId" xml:"aimId"`
-	Message   string  `json:"message" xml:"message"`
-	MsgID     string  `json:"msgId,omitempty" xml:"msgId,omitempty"`
-	Timestamp float64 `json:"timestamp" xml:"timestamp"` // float64 for AMF3 encoding
-	AutoResp  bool    `json:"autoresponse,omitempty" xml:"autoresponse,omitempty"`
+	AimID string `json:"aimId" xml:"aimId"`
+	// Friendly is the sender's display name. The client resolves an offline
+	// sender from this pair alone, so without it the message renders under the
+	// normalized aimId.
+	Friendly  string `json:"friendly,omitempty" xml:"friendly,omitempty"`
+	Message   string `json:"message" xml:"message"`
+	MsgID     string `json:"msgId,omitempty" xml:"msgId,omitempty"`
+	Timestamp int64  `json:"timestamp" xml:"timestamp"`
+	AutoResp  bool   `json:"autoresponse,omitempty" xml:"autoresponse,omitempty" amf3:"autoresponse"`
 }
 
 // SentIMEvent represents a sent instant message event.
+// The AMF3 spellings differ from the documented JSON ones: the client reads the
+// sender from "source" and the flag from "autoresponse", while the spec names
+// them "sender" and "autoResponse".
 type SentIMEvent struct {
-	Sender    UserInfo `json:"sender" xml:"sender"` // Sender user info
-	Dest      UserInfo `json:"dest" xml:"dest"`     // Destination user info
+	Sender    UserInfo `json:"sender" xml:"sender" amf3:"source"`
+	Dest      UserInfo `json:"dest" xml:"dest"`
 	Message   string   `json:"message" xml:"message"`
 	MsgID     string   `json:"msgId,omitempty" xml:"msgId,omitempty"`
-	Timestamp float64  `json:"timestamp" xml:"timestamp"` // float64 for AMF3 encoding
-	AutoResp  bool     `json:"autoResponse,omitempty" xml:"autoResponse,omitempty"`
+	Timestamp int64    `json:"timestamp" xml:"timestamp"`
+	AutoResp  bool     `json:"autoResponse,omitempty" xml:"autoResponse,omitempty" amf3:"autoresponse"`
 }
 
 // UserInfo represents basic user information in events.
@@ -92,12 +101,12 @@ type SentIMEvent struct {
 // per aimId, and that merge deletes friendly before applying the map. An alias
 // therefore has to be repeated on every user map, or it is lost.
 type UserInfo struct {
-	AimID      string  `json:"aimId" xml:"aimId"`
-	DisplayID  string  `json:"displayId,omitempty" xml:"displayId,omitempty"`
-	Friendly   string  `json:"friendly,omitempty" xml:"friendly,omitempty"`
-	UserType   string  `json:"userType,omitempty" xml:"userType,omitempty"`
-	State      string  `json:"state,omitempty" xml:"state,omitempty"`
-	OnlineTime float64 `json:"onlineTime,omitempty" xml:"onlineTime,omitempty"` // float64 for AMF3 encoding
+	AimID      string `json:"aimId" xml:"aimId"`
+	DisplayID  string `json:"displayId,omitempty" xml:"displayId,omitempty"`
+	Friendly   string `json:"friendly,omitempty" xml:"friendly,omitempty"`
+	UserType   string `json:"userType,omitempty" xml:"userType,omitempty"`
+	State      string `json:"state,omitempty" xml:"state,omitempty"`
+	OnlineTime int64  `json:"onlineTime,omitempty" xml:"onlineTime,omitempty"`
 }
 
 // TypingEvent represents a typing notification event.
@@ -290,15 +299,12 @@ type ConversationEntryData struct {
 }
 
 // LastIM is the most recent message in a conversation.
-//
-// Timestamp is a float because AMF3 encodes whole numbers in 29 bits, which a
-// Unix timestamp overflows.
 type LastIM struct {
-	Message   string  `json:"message" xml:"message"`
-	MsgID     string  `json:"msgId" xml:"msgId"`
-	Sender    string  `json:"sender" xml:"sender"`
-	Sent      bool    `json:"sent" xml:"sent"`
-	Timestamp float64 `json:"timestamp" xml:"timestamp"`
+	Message   string `json:"message" xml:"message"`
+	MsgID     string `json:"msgId" xml:"msgId"`
+	Sender    string `json:"sender" xml:"sender"`
+	Sent      bool   `json:"sent" xml:"sent"`
+	Timestamp int64  `json:"timestamp" xml:"timestamp"`
 }
 
 // ConversationEventData builds a conversation fetchEvents payload.
@@ -326,7 +332,7 @@ func ConversationEntry(aimID, displayID, message, msgID, sender string, sent boo
 			MsgID:     msgID,
 			Sender:    sender,
 			Sent:      sent,
-			Timestamp: float64(time.Now().Unix()),
+			Timestamp: time.Now().Unix(),
 		}
 	}
 	return entry

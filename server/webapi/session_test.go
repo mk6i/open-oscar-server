@@ -1112,7 +1112,7 @@ func TestSession_OfflineIM(t *testing.T) {
 		assert.Equal(t, "mikekelly", offline.AimID)
 		assert.Equal(t, "sent while you were out", offline.Message)
 		assert.NotEmpty(t, offline.MsgID)
-		assert.Equal(t, float64(sentAt), offline.Timestamp)
+		assert.Equal(t, int64(sentAt), offline.Timestamp)
 	})
 
 	t.Run("no send time yields an im event", func(t *testing.T) {
@@ -1142,7 +1142,7 @@ func TestSession_OfflineIM(t *testing.T) {
 
 		stored := sess.GetStoredIMs(StoredIMQuery{PartnerAimID: "mikekelly", NToGet: 10})
 		require.Len(t, stored, 1)
-		assert.Equal(t, float64(sentAt), stored[0].Date)
+		assert.Equal(t, int64(sentAt), stored[0].Date)
 	})
 
 	// Only a live IM is filtered on subscription here. Retrieval answers the
@@ -1226,7 +1226,7 @@ func TestSession_GetStoredIMs(t *testing.T) {
 	})
 	assert.Len(t, msgs, 2)
 	assert.Equal(t, "msg-2", msgs[0].MsgID)
-	assert.Equal(t, float64(200), msgs[0].Date)
+	assert.Equal(t, int64(200), msgs[0].Date)
 	assert.Equal(t, "hello", msgs[1].Message)
 
 	msgs = sess.GetStoredIMs(StoredIMQuery{

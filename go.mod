@@ -3,7 +3,7 @@ module github.com/mk6i/open-oscar-server
 go 1.26.2
 
 require (
-	github.com/breign/goAMF3 v1.0.1-0.20250916173039-e43798221950
+	github.com/breign/goAMF3 v1.0.2
 	github.com/golang-migrate/migrate/v4 v4.19.1
 	github.com/google/uuid v1.6.0
 	github.com/joho/godotenv v1.5.1

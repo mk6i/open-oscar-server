@@ -302,7 +302,7 @@ func (h *PreferenceHandler) GetPreferences(w http.ResponseWriter, r *http.Reques
 
 	// AMF clients (e.g. Gromit) expect the payload shaped a specific way. Pref
 	// values are already numeric 0/1, which is what these clients expect.
-	format := strings.ToLower(r.URL.Query().Get("f"))
+	format := requestFormat(r)
 	if format == "amf" || format == "amf3" {
 		amfPrefs := prefs.Map()
 		// Ensure prefs is never empty for Gromit.
