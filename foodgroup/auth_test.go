@@ -927,6 +927,76 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:           "mobile client version TLVs parsed, login OK",
+			advertisedHost: "127.0.0.1:5190",
+			inputSNAC: wire.SNAC_0x17_0x02_BUCPLoginRequest{
+				TLVRestBlock: wire.TLVRestBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.LoginTLVTagsScreenName, user.DisplayScreenName),
+						wire.NewTLVBE(wire.LoginTLVTagsPasswordHash, user.StrongMD5Pass),
+						wire.NewTLVBE(wire.LoginTLVTagsClientIDNumber, uint16(4)),
+						wire.NewTLVBE(wire.LoginTLVTagsMajorVersion, uint16(1)),
+						wire.NewTLVBE(wire.LoginTLVTagsMinorVersion, uint16(75)),
+						wire.NewTLVBE(wire.LoginTLVTagsLesserVersion, uint16(0)),
+						wire.NewTLVBE(wire.LoginTLVTagsMultiConnFlags, wire.MultiConnFlagsRecentClient),
+					},
+				},
+			},
+			mockParams: mockParams{
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{
+							screenName: user.IdentScreenName,
+							result:     &user,
+						},
+					},
+				},
+				cookieBakerParams: cookieBakerParams{
+					cookieIssueParams: cookieIssueParams{
+						{
+							dataIn: func() []byte {
+								loginCookie := state.ServerCookie{
+									ScreenName:    user.DisplayScreenName,
+									MultiConnFlag: uint8(wire.MultiConnFlagsRecentClient),
+									ClientIDNum:   4,
+									MajorVer:      1,
+									MinorVer:      75,
+								}
+								buf := &bytes.Buffer{}
+								assert.NoError(t, wire.MarshalBE(loginCookie, buf))
+								return buf.Bytes()
+							}(),
+							cookieOut: []byte("the-cookie"),
+						},
+					},
+				},
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams: retrieveSessionParams{
+						{
+							screenName: user.IdentScreenName,
+							result:     nil,
+						},
+					},
+				},
+			},
+			expectOutput: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.BUCP,
+					SubGroup:  wire.BUCPLoginResponse,
+				},
+				Body: wire.SNAC_0x17_0x03_BUCPLoginResponse{
+					TLVRestBlock: wire.TLVRestBlock{
+						TLVList: wire.TLVList{
+							wire.NewTLVBE(wire.LoginTLVTagsScreenName, user.DisplayScreenName),
+							wire.NewTLVBE(wire.LoginTLVTagsReconnectHere, "127.0.0.1:5190"),
+							wire.NewTLVBE(wire.LoginTLVTagsAuthorizationCookie, []byte("the-cookie")),
+							wire.NewTLVBE(wire.OServiceTLVTagsSSLState, uint8(0x00)),
+						},
+					},
+				},
+			},
+		},
 	}
 
 	for _, tc := range cases {
@@ -2385,6 +2455,68 @@ func TestAuthService_RegisterBOSSession(t *testing.T) {
 						},
 					},
 				},
+			},
+		},
+		{
+			// verifies that client version TLVs (0x0016-0x0019), which are only
+			// present at auth-stage login, survive the round trip through the
+			// auth cookie and land correctly on the session instance
+			name: "client identity carried through auth cookie onto session instance",
+			cookie: state.ServerCookie{
+				ScreenName:  screenName,
+				ClientID:    "AOL Instant Messenger, version 5.2.3255/WIN32",
+				ClientIDNum: 4,
+				MajorVer:    1,
+				MinorVer:    75,
+				LesserVer:   9,
+			},
+			mockParams: mockParams{
+				sessionRegistryParams: sessionRegistryParams{
+					addSessionParams: addSessionParams{
+						{
+							screenName:  screenName,
+							doMultiSess: false,
+							result:      newTestInstance(screenName),
+						},
+					},
+				},
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{
+							screenName: screenName.IdentScreenName(),
+							result: &state.User{
+								IdentScreenName:   screenName.IdentScreenName(),
+								DisplayScreenName: screenName,
+							},
+						},
+					},
+				},
+				accountManagerParams: accountManagerParams{
+					accountManagerConfirmStatusParams: accountManagerConfirmStatusParams{
+						{
+							screenName:    screenName.IdentScreenName(),
+							confirmStatus: true,
+						},
+					},
+				},
+				bartItemManagerParams: bartItemManagerParams{
+					buddyIconMetadataParams: buddyIconMetadataParams{
+						{
+							screenName: screenName.IdentScreenName(),
+							result:     nil,
+						},
+					},
+				},
+			},
+			wantSess: func(instance *state.SessionInstance) bool {
+				want := state.ClientInfo{
+					ID:        "AOL Instant Messenger, version 5.2.3255/WIN32",
+					IDNum:     4,
+					MajorVer:  1,
+					MinorVer:  75,
+					LesserVer: 9,
+				}
+				return assert.Equal(t, want, instance.ClientInfo())
 			},
 		},
 	}

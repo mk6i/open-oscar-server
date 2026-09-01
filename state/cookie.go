@@ -31,6 +31,14 @@ type ServerCookie struct {
 	// KerberosAuth indicates whether the client used Kerberos for authentication.
 	KerberosAuth uint8
 	SessionNum   uint8
+	// ClientIDNum is the numeric client ID (login TLV 0x0016).
+	ClientIDNum uint16
+	// MajorVer is the client major version (login TLV 0x0017).
+	MajorVer uint16
+	// MinorVer is the client minor version (login TLV 0x0018).
+	MinorVer uint16
+	// LesserVer is the client lesser version (login TLV 0x0019).
+	LesserVer uint16
 }
 
 func NewHMACCookieBaker() (HMACCookieBaker, error) {

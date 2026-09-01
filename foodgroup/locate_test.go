@@ -2,9 +2,11 @@ package foodgroup
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -759,6 +761,62 @@ func TestLocateService_SetInfo(t *testing.T) {
 				assert.True(t, session.Instance(1).Profile().IsZero())
 			},
 		},
+		{
+			name: "clear away message during sign on flow",
+			instance: func() *state.SessionInstance {
+				instance := newTestInstance("user_screen_name")
+				instance.SetUserInfoFlag(wire.OServiceUserFlagUnavailable)
+				instance.SetAwayMessage("this is my away message!")
+				return instance
+			}(),
+			inBody: wire.SNAC_0x02_0x04_LocateSetInfo{
+				TLVRestBlock: wire.TLVRestBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.LocateTLVTagsInfoUnavailableData, ""),
+					},
+				},
+			},
+			mockParams: mockParams{
+				buddyBroadcasterParams: buddyBroadcasterParams{
+					broadcastBuddyArrivedParams: broadcastBuddyArrivedParams{},
+				},
+			},
+			checkSession: func(t *testing.T, session *state.Session) {
+				assert.Zero(t, session.Instance(1).UserInfoBitmask()&wire.OServiceUserFlagUnavailable)
+				awayMsg, _ := session.Instance(1).AwayMessage()
+				assert.Empty(t, awayMsg)
+			},
+		},
+		{
+			name: "clear away message after sign on flow",
+			instance: func() *state.SessionInstance {
+				instance := newTestInstance("user_screen_name", sessOptSignonComplete)
+				instance.SetUserInfoFlag(wire.OServiceUserFlagUnavailable)
+				instance.SetAwayMessage("this is my away message!")
+				return instance
+			}(),
+			inBody: wire.SNAC_0x02_0x04_LocateSetInfo{
+				TLVRestBlock: wire.TLVRestBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.LocateTLVTagsInfoUnavailableData, ""),
+					},
+				},
+			},
+			mockParams: mockParams{
+				buddyBroadcasterParams: buddyBroadcasterParams{
+					broadcastBuddyArrivedParams: broadcastBuddyArrivedParams{
+						{
+							screenName: state.DisplayScreenName("user_screen_name"),
+						},
+					},
+				},
+			},
+			checkSession: func(t *testing.T, session *state.Session) {
+				assert.Zero(t, session.Instance(1).UserInfoBitmask()&wire.OServiceUserFlagUnavailable)
+				awayMsg, _ := session.Instance(1).AwayMessage()
+				assert.Empty(t, awayMsg)
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -835,6 +893,163 @@ func TestLocateService_SetInfo_SetCaps(t *testing.T) {
 		{9, 70, 19, 70, 76, 127, 17, 209, 130, 34, 68, 69, 83, 84, 0, 0},
 	}
 	assert.ElementsMatch(t, expect, instance.Session().Caps())
+}
+
+func TestLocateService_SetInfo_WirelessFlag(t *testing.T) {
+	cases := []struct {
+		name     string
+		caps     []byte
+		wantFlag bool
+	}{
+		{
+			name:     "mobile client cap sets wireless flag",
+			caps:     wire.CapMobileClient[:],
+			wantFlag: true,
+		},
+		{
+			name:     "non-mobile cap does not set wireless flag",
+			caps:     wire.CapChat[:],
+			wantFlag: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := NewLocateService(nil, newMockMessageRelayer(t), nil, nil, nil, nil)
+			instance := newTestInstance("screen-name")
+			inBody := wire.SNAC_0x02_0x04_LocateSetInfo{
+				TLVRestBlock: wire.TLVRestBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.LocateTLVTagsInfoCapabilities, tc.caps),
+					},
+				},
+			}
+			assert.NoError(t, svc.SetInfo(context.Background(), instance, inBody))
+			hasFlag := instance.UserInfoBitmask()&wire.OServiceUserFlagWireless != 0
+			assert.Equal(t, tc.wantFlag, hasFlag)
+		})
+	}
+}
+
+func TestLocateService_SetInfo_WirelessFlagPersistsAfterMobileCapRemoved(t *testing.T) {
+	svc := NewLocateService(nil, newMockMessageRelayer(t), nil, nil, nil, nil)
+	instance := newTestInstance("screen-name")
+
+	makeBody := func(caps []byte) wire.SNAC_0x02_0x04_LocateSetInfo {
+		return wire.SNAC_0x02_0x04_LocateSetInfo{
+			TLVRestBlock: wire.TLVRestBlock{
+				TLVList: wire.TLVList{
+					wire.NewTLVBE(wire.LocateTLVTagsInfoCapabilities, caps),
+				},
+			},
+		}
+	}
+
+	mobileCap := wire.CapMobileClient
+	require.NoError(t, svc.SetInfo(context.Background(), instance, makeBody(mobileCap[:])))
+	assert.NotZero(t, instance.UserInfoBitmask()&wire.OServiceUserFlagWireless, "wireless flag should be set after mobile cap")
+
+	chatCap := wire.CapChat
+	require.NoError(t, svc.SetInfo(context.Background(), instance, makeBody(chatCap[:])))
+	assert.NotZero(t, instance.UserInfoBitmask()&wire.OServiceUserFlagWireless, "wireless flag should persist after removing mobile cap")
+}
+
+func TestLocateService_SetInfo_WirelessFlagSetButNotBroadcastBeforeSignon(t *testing.T) {
+	// Before signon completes there is nobody to notify, so no buddy arrival
+	// broadcast should fire — but the wireless flag must still be recorded on
+	// the instance so it is included in the initial arrival broadcast sent
+	// once signon completes. The mock broadcaster has no expectations set, so
+	// any BroadcastBuddyArrived call fails the test.
+	svc := NewLocateService(nil, newMockMessageRelayer(t), nil, nil, nil, nil)
+	svc.buddyBroadcaster = newMockbuddyBroadcaster(t)
+
+	instance := newTestInstance("screen-name") // signon not complete
+	inBody := wire.SNAC_0x02_0x04_LocateSetInfo{
+		TLVRestBlock: wire.TLVRestBlock{
+			TLVList: wire.TLVList{
+				wire.NewTLVBE(wire.LocateTLVTagsInfoCapabilities, wire.CapMobileClient[:]),
+			},
+		},
+	}
+	require.NoError(t, svc.SetInfo(context.Background(), instance, inBody))
+	assert.NotZero(t, instance.UserInfoBitmask()&wire.OServiceUserFlagWireless, "wireless flag should be set even before signon completes")
+}
+
+func TestLocateService_SetInfo_WirelessFlagIncludedInCapsBroadcast(t *testing.T) {
+	// the buddy arrival broadcast triggered by a post-signon capabilities
+	// update must include the wireless flag in the broadcast user info
+	buddyUpdateBroadcaster := newMockbuddyBroadcaster(t)
+	buddyUpdateBroadcaster.EXPECT().
+		BroadcastBuddyArrived(mock.Anything, state.NewIdentScreenName("screen-name"), mock.MatchedBy(func(userInfo wire.TLVUserInfo) bool {
+			flags, _ := userInfo.Uint16BE(wire.OServiceUserInfoUserFlags)
+			return flags&wire.OServiceUserFlagWireless != 0
+		})).
+		Return(nil)
+
+	svc := NewLocateService(nil, newMockMessageRelayer(t), nil, nil, nil, nil)
+	svc.buddyBroadcaster = buddyUpdateBroadcaster
+
+	instance := newTestInstance("screen-name", sessOptSignonComplete)
+	inBody := wire.SNAC_0x02_0x04_LocateSetInfo{
+		TLVRestBlock: wire.TLVRestBlock{
+			TLVList: wire.TLVList{
+				wire.NewTLVBE(wire.LocateTLVTagsInfoCapabilities, wire.CapMobileClient[:]),
+			},
+		},
+	}
+	assert.NoError(t, svc.SetInfo(context.Background(), instance, inBody))
+}
+
+func TestLocateService_SetInfo_WirelessFlagIncludedInAwayMessageBroadcast(t *testing.T) {
+	// the buddy arrival broadcast triggered by an away-message update must
+	// include the wireless flag in the broadcast user info, even when the
+	// same SetInfo call carries no capabilities TLV (version-based mobile
+	// detection relies solely on ClientInfo restored at login)
+	buddyUpdateBroadcaster := newMockbuddyBroadcaster(t)
+	buddyUpdateBroadcaster.EXPECT().
+		BroadcastBuddyArrived(mock.Anything, state.NewIdentScreenName("screen-name"), mock.MatchedBy(func(userInfo wire.TLVUserInfo) bool {
+			flags, _ := userInfo.Uint16BE(wire.OServiceUserInfoUserFlags)
+			return flags&wire.OServiceUserFlagWireless != 0
+		})).
+		Return(nil)
+
+	svc := NewLocateService(nil, newMockMessageRelayer(t), nil, nil, nil, nil)
+	svc.buddyBroadcaster = buddyUpdateBroadcaster
+
+	instance := newTestInstance("screen-name", sessOptSignonComplete)
+	instance.SetClientInfo(state.ClientInfo{IDNum: 4, MajorVer: 1, MinorVer: 75})
+
+	inBody := wire.SNAC_0x02_0x04_LocateSetInfo{
+		TLVRestBlock: wire.TLVRestBlock{
+			TLVList: wire.TLVList{
+				wire.NewTLVBE(wire.LocateTLVTagsInfoUnavailableData, "brb"),
+			},
+		},
+	}
+	assert.NoError(t, svc.SetInfo(context.Background(), instance, inBody))
+}
+
+func TestLocateService_SetInfo_CapsBroadcastError(t *testing.T) {
+	// a buddy arrival broadcast failure triggered by a post-signon
+	// capabilities update must propagate the error to the caller
+	wantErr := errors.New("broadcast failed")
+	buddyUpdateBroadcaster := newMockbuddyBroadcaster(t)
+	buddyUpdateBroadcaster.EXPECT().
+		BroadcastBuddyArrived(mock.Anything, state.NewIdentScreenName("screen-name"), mock.Anything).
+		Return(wantErr)
+
+	svc := NewLocateService(nil, newMockMessageRelayer(t), nil, nil, nil, nil)
+	svc.buddyBroadcaster = buddyUpdateBroadcaster
+
+	instance := newTestInstance("screen-name", sessOptSignonComplete)
+	inBody := wire.SNAC_0x02_0x04_LocateSetInfo{
+		TLVRestBlock: wire.TLVRestBlock{
+			TLVList: wire.TLVList{
+				wire.NewTLVBE(wire.LocateTLVTagsInfoCapabilities, wire.CapChat[:]),
+			},
+		},
+	}
+	assert.ErrorIs(t, svc.SetInfo(context.Background(), instance, inBody), wantErr)
 }
 
 func TestLocateService_RightsQuery(t *testing.T) {
@@ -988,6 +1203,146 @@ func TestLocateService_DirInfo(t *testing.T) {
 			outputSNAC, err := svc.DirInfo(context.Background(), tt.inputSNAC.Frame, tt.inputSNAC.Body.(wire.SNAC_0x02_0x0B_LocateGetDirInfo))
 			assert.NoError(t, err)
 			assert.Equal(t, tt.expectOutput, outputSNAC)
+		})
+	}
+}
+
+func TestLocateService_SetInfo_WirelessFlagByVersion(t *testing.T) {
+	svc := NewLocateService(nil, newMockMessageRelayer(t), nil, nil, nil, nil)
+
+	cases := []struct {
+		name     string
+		info     state.ClientInfo
+		wantFlag bool
+	}{
+		{
+			name:     "client ID 4 + version 1.75 sets wireless flag",
+			info:     state.ClientInfo{IDNum: 4, MajorVer: 1, MinorVer: 75},
+			wantFlag: true,
+		},
+		{
+			name:     "client ID 284 (MX240a) sets wireless flag",
+			info:     state.ClientInfo{IDNum: 284},
+			wantFlag: true,
+		},
+		{
+			name:     "client ID 265 (normal AIM) does not set wireless flag",
+			info:     state.ClientInfo{IDNum: 265},
+			wantFlag: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			instance := newTestInstance("screen-name")
+			instance.SetClientInfo(tc.info)
+			assert.NoError(t, svc.SetInfo(context.Background(), instance, wire.SNAC_0x02_0x04_LocateSetInfo{}))
+			hasFlag := instance.UserInfoBitmask()&wire.OServiceUserFlagWireless != 0
+			assert.Equal(t, tc.wantFlag, hasFlag)
+		})
+	}
+}
+
+func TestLocateService_SetInfo_NormalDesktopClientNotFlaggedWireless(t *testing.T) {
+	// A real AIM 5.2 desktop login, per the captured "Normal Login" packet
+	// signature (client ID 265, major 5, minor 2), sending the standard
+	// desktop capability set (chat, voice, file transfer, direct ICBM,
+	// avatar) and an away message. None of that should ever cause the
+	// wireless flag to be set or broadcast, even though "Mobile Login"
+	// spoofers send an identical capability list and differ only in the
+	// client ID/version TLVs.
+	buddyUpdateBroadcaster := newMockbuddyBroadcaster(t)
+	buddyUpdateBroadcaster.EXPECT().
+		BroadcastBuddyArrived(mock.Anything, state.NewIdentScreenName("screen-name"), mock.MatchedBy(func(userInfo wire.TLVUserInfo) bool {
+			flags, _ := userInfo.Uint16BE(wire.OServiceUserInfoUserFlags)
+			return flags&wire.OServiceUserFlagWireless == 0
+		})).
+		Return(nil).
+		Times(2) // once for the caps update, once for the away message
+
+	svc := NewLocateService(nil, newMockMessageRelayer(t), nil, nil, nil, nil)
+	svc.buddyBroadcaster = buddyUpdateBroadcaster
+
+	instance := newTestInstance("screen-name", sessOptSignonComplete)
+	instance.SetClientInfo(state.ClientInfo{
+		ID:       "AOL Instant Messenger, version 5.2.3255/WIN32",
+		IDNum:    265,
+		MajorVer: 5,
+		MinorVer: 2,
+	})
+
+	var caps []byte
+	for _, c := range []uuid.UUID{wire.CapChat, wire.CapVoiceChat, wire.CapFileTransfer, wire.CapDirectICBM, wire.CapAvatarService} {
+		caps = append(caps, c[:]...)
+	}
+	require.NoError(t, svc.SetInfo(context.Background(), instance, wire.SNAC_0x02_0x04_LocateSetInfo{
+		TLVRestBlock: wire.TLVRestBlock{
+			TLVList: wire.TLVList{
+				wire.NewTLVBE(wire.LocateTLVTagsInfoCapabilities, caps),
+			},
+		},
+	}))
+	assert.Zero(t, instance.UserInfoBitmask()&wire.OServiceUserFlagWireless)
+
+	require.NoError(t, svc.SetInfo(context.Background(), instance, wire.SNAC_0x02_0x04_LocateSetInfo{
+		TLVRestBlock: wire.TLVRestBlock{
+			TLVList: wire.TLVList{
+				wire.NewTLVBE(wire.LocateTLVTagsInfoUnavailableData, "brb"),
+			},
+		},
+	}))
+	assert.Zero(t, instance.UserInfoBitmask()&wire.OServiceUserFlagWireless)
+}
+
+func TestIsMobileClient(t *testing.T) {
+	cases := []struct {
+		name       string
+		caps       [][16]byte
+		info       state.ClientInfo
+		wantMobile bool
+	}{
+		{
+			name:       "CapMobileClient UUID returns true",
+			caps:       [][16]byte{[16]byte(wire.CapMobileClient)},
+			wantMobile: true,
+		},
+		{
+			name:       "no mobile caps or version returns false",
+			caps:       [][16]byte{},
+			wantMobile: false,
+		},
+		{
+			name:       "client ID 4 + version 1.75 (mobile login spoof signature) returns true",
+			info:       state.ClientInfo{IDNum: 4, MajorVer: 1, MinorVer: 75},
+			wantMobile: true,
+		},
+		{
+			name:       "client ID 4 + wrong version returns false",
+			info:       state.ClientInfo{IDNum: 4, MajorVer: 5, MinorVer: 2},
+			wantMobile: false,
+		},
+		{
+			name:       "client ID 284 (MX240a) returns true",
+			info:       state.ClientInfo{IDNum: 284},
+			wantMobile: true,
+		},
+		{
+			name:       "client ID 265 (normal AIM) returns false",
+			info:       state.ClientInfo{IDNum: 265},
+			wantMobile: false,
+		},
+		{
+			name:       "cap + version both present, still returns true",
+			caps:       [][16]byte{[16]byte(wire.CapMobileClient)},
+			info:       state.ClientInfo{IDNum: 4, MajorVer: 1, MinorVer: 75},
+			wantMobile: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := isMobileClient(tc.caps, tc.info)
+			assert.Equal(t, tc.wantMobile, got)
 		})
 	}
 }
