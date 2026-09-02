@@ -158,7 +158,7 @@ func amf3Fields(v reflect.Value, out map[string]any) error {
 	t := v.Type()
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
-		name, omitEmpty, ok := amf3FieldKey(f)
+		name, omitEmpty, omitZero, ok := amf3FieldKey(f)
 		if !ok {
 			continue
 		}
@@ -182,13 +182,16 @@ func amf3Fields(v reflect.Value, out map[string]any) error {
 		if omitEmpty && isEmptyValue(fv) {
 			continue
 		}
+		if omitZero && isZeroValue(fv) {
+			continue
+		}
 
 		val, err := amf3Value(fv)
 		if err != nil {
 			return fmt.Errorf("%s.%s: %w", t.Name(), f.Name, err)
 		}
 		if val == nil {
-			if omitEmpty {
+			if omitEmpty || omitZero {
 				continue
 			}
 			// A field the client dereferences unconditionally, such as a
@@ -204,16 +207,16 @@ func amf3Fields(v reflect.Value, out map[string]any) error {
 // amf3FieldKey returns the AMF3 name for f and whether it is written at all. An
 // amf3 tag replaces the json tag outright, so a field that must always be present
 // in AMF but is omitempty in JSON just names itself in amf3.
-func amf3FieldKey(f reflect.StructField) (name string, omitEmpty, ok bool) {
+func amf3FieldKey(f reflect.StructField) (name string, omitEmpty, omitZero, ok bool) {
 	tag, tagged := f.Tag.Lookup("amf3")
 	if !tagged {
 		tag = f.Tag.Get("json")
 	}
 	if tag == "-" {
-		return "", false, false
+		return "", false, false, false
 	}
 	name, opts, _ := strings.Cut(tag, ",")
-	return name, hasTagOption(opts, "omitempty"), true
+	return name, hasTagOption(opts, "omitempty"), hasTagOption(opts, "omitzero"), true
 }
 
 // hasTagOption reports whether the comma-separated tag options contain want.
@@ -226,6 +229,24 @@ func hasTagOption(opts, want string) bool {
 		}
 	}
 	return false
+}
+
+var zeroerType = reflect.TypeOf((*interface{ IsZero() bool })(nil)).Elem()
+
+// isZeroValue reports whether v is the zero value omitzero suppresses, mirroring
+// encoding/json including the IsZero override. Unlike omitempty, an empty-but-non-nil
+// slice or map is not zero.
+func isZeroValue(v reflect.Value) bool {
+	if v.Type().Implements(zeroerType) {
+		if v.Kind() == reflect.Pointer && v.IsNil() {
+			return true
+		}
+		return v.Interface().(interface{ IsZero() bool }).IsZero()
+	}
+	if v.CanAddr() && reflect.PointerTo(v.Type()).Implements(zeroerType) {
+		return v.Addr().Interface().(interface{ IsZero() bool }).IsZero()
+	}
+	return v.IsZero()
 }
 
 // isEmptyValue reports whether v is the zero value that omitempty suppresses.

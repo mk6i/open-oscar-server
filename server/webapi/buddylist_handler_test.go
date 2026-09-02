@@ -1,6 +1,7 @@
 package webapi
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -35,6 +36,7 @@ func TestBuddyListHandler_AddBuddy(t *testing.T) {
 				session := &Session{
 					AimSID:       aimsid,
 					ScreenName:   state.DisplayScreenName("testuser"),
+					OSCARSession: state.NewSession().AddInstance(),
 					EventQueue:   NewEventQueue(100),
 					LastAccessed: time.Now(),
 				}
@@ -47,42 +49,10 @@ func TestBuddyListHandler_AddBuddy(t *testing.T) {
 				// addBuddyToFeedbag calls UpsertItem twice: once for group order update, once for buddy insert
 				fs.EXPECT().UpsertItem(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 					Return((*wire.SNACMessage)(nil), nil)
-				blmFs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-					Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: nil}}, nil).Once()
 				return session
 			},
 			expectedStatusCode: http.StatusOK,
-			expectedResponse:   `{"response":{"statusCode":200,"statusText":"OK","data":{"buddyInfo":{"aimId":"newbuddy","displayId":"newbuddy","state":"offline","userType":"aim"},"resultCode":"success"}}}`,
-		},
-		{
-			name: "Success_EventPushSkippedOnBLMError",
-			queryParams: map[string][]string{
-				"aimsid": {"test-session"},
-				"buddy":  {"newbuddy"},
-				"group":  {"Friends"},
-			},
-			setupMocks: func(sm *mockSessionResolver, fs *mockFeedbagService, blmFs *mockFeedbagService, aimsid string) *Session {
-				session := &Session{
-					AimSID:       aimsid,
-					ScreenName:   state.DisplayScreenName("testuser"),
-					EventQueue:   NewEventQueue(100),
-					LastAccessed: time.Now(),
-				}
-
-				items := []wire.FeedbagItem{
-					{GroupID: 1, ItemID: 0, ClassID: wire.FeedbagClassIdGroup, Name: "Friends"},
-				}
-				fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-					Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: items}}, nil).Once()
-				// addBuddyToFeedbag calls UpsertItem twice: once for group order update, once for buddy insert
-				fs.EXPECT().UpsertItem(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-					Return((*wire.SNACMessage)(nil), nil)
-				blmFs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-					Return(wire.SNACMessage{}, errors.New("feedbag unavailable")).Once()
-				return session
-			},
-			expectedStatusCode: http.StatusOK,
-			expectedResponse:   `{"response":{"statusCode":200,"statusText":"OK","data":{"buddyInfo":{"aimId":"newbuddy","displayId":"newbuddy","state":"offline","userType":"aim"},"resultCode":"success"}}}`,
+			expectedResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{}}}`,
 		},
 		{
 			name: "Error_BuddyAlreadyExists",
@@ -95,6 +65,7 @@ func TestBuddyListHandler_AddBuddy(t *testing.T) {
 				session := &Session{
 					AimSID:       aimsid,
 					ScreenName:   state.DisplayScreenName("testuser"),
+					OSCARSession: state.NewSession().AddInstance(),
 					EventQueue:   NewEventQueue(100),
 					LastAccessed: time.Now(),
 				}
@@ -109,7 +80,7 @@ func TestBuddyListHandler_AddBuddy(t *testing.T) {
 				return session
 			},
 			expectedStatusCode: http.StatusOK,
-			expectedResponse:   `{"response":{"statusCode":200,"statusText":"OK","data":{"resultCode":"alreadyExists"}}}`,
+			expectedResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{"resultCode":"alreadyExists"}}}`,
 		},
 		{
 			name: "Error_MissingBuddyParameter",
@@ -180,6 +151,7 @@ func TestBuddyListHandler_AddGroup(t *testing.T) {
 		return &Session{
 			AimSID:       aimsid,
 			ScreenName:   state.DisplayScreenName("testuser"),
+			OSCARSession: state.NewSession().AddInstance(),
 			EventQueue:   NewEventQueue(100),
 			LastAccessed: time.Now(),
 		}
@@ -211,28 +183,10 @@ func TestBuddyListHandler_AddGroup(t *testing.T) {
 					Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: nil}}, nil).Once()
 				fs.EXPECT().UpsertItem(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 					Return((*wire.SNACMessage)(nil), nil).Once()
-				blmFs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-					Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: nil}}, nil).Once()
 				return sess
 			},
 			expectedStatusCode: http.StatusOK,
-			expectedResponse:   `{"response":{"statusCode":200,"statusText":"OK","data":{"resultCode":"success"}}}`,
-		},
-		{
-			name:        "Success_EventPushSkippedOnBLMError",
-			queryParams: map[string][]string{"aimsid": {"sess"}, "group": {"NewGroup"}},
-			setup: func(sm *mockSessionResolver, fs *mockFeedbagService, blmFs *mockFeedbagService, aimsid string) *Session {
-				sess := newSession(aimsid)
-				fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-					Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: nil}}, nil).Once()
-				fs.EXPECT().UpsertItem(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-					Return((*wire.SNACMessage)(nil), nil).Once()
-				blmFs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-					Return(wire.SNACMessage{}, errors.New("feedbag unavailable")).Once()
-				return sess
-			},
-			expectedStatusCode: http.StatusOK,
-			expectedResponse:   `{"response":{"statusCode":200,"statusText":"OK","data":{"resultCode":"success"}}}`,
+			expectedResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{}}}`,
 		},
 		{
 			name:        "Success_GroupAlreadyExists",
@@ -247,7 +201,7 @@ func TestBuddyListHandler_AddGroup(t *testing.T) {
 				return sess
 			},
 			expectedStatusCode: http.StatusOK,
-			expectedResponse:   `{"response":{"statusCode":200,"statusText":"OK","data":{"resultCode":"alreadyExists"}}}`,
+			expectedResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{"resultCode":"alreadyExists"}}}`,
 		},
 		{
 			name:        "Error_FeedbagQueryFails",
@@ -259,7 +213,7 @@ func TestBuddyListHandler_AddGroup(t *testing.T) {
 				return sess
 			},
 			expectedStatusCode: http.StatusOK,
-			expectedResponse:   `{"response":{"statusCode":200,"statusText":"OK","data":{"resultCode":"error"}}}`,
+			expectedResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{"resultCode":"error"}}}`,
 		},
 	}
 
@@ -342,42 +296,10 @@ func TestBuddyListHandler_RemoveBuddy(t *testing.T) {
 					Return((*wire.SNACMessage)(nil), nil).Once()
 				fs.EXPECT().UpsertItem(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 					Return((*wire.SNACMessage)(nil), nil).Once()
-				// Second Query for GetBuddyListForUser event push
-				fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-					Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: nil}}, nil).Once()
 				return sess
 			},
 			expectedStatusCode: http.StatusOK,
-			expectedResponse:   `{"response":{"statusCode":200,"statusText":"OK","data":{"resultCode":"success"}}}`,
-		},
-		{
-			name:        "Success_EventPushSkippedOnBLMError",
-			queryParams: map[string][]string{"aimsid": {"sess"}, "buddy": {"someBuddy"}, "group": {"Friends"}},
-			setup: func(sm *mockSessionResolver, blm *BuddyListManager, fs *mockFeedbagService, aimsid string) *Session {
-				sess := &Session{
-					AimSID:       aimsid,
-					ScreenName:   state.DisplayScreenName("testuser"),
-					OSCARSession: state.NewSession().AddInstance(),
-					EventQueue:   NewEventQueue(100),
-					LastAccessed: time.Now(),
-				}
-				items := []wire.FeedbagItem{
-					{GroupID: 1, ItemID: 0, ClassID: wire.FeedbagClassIdGroup, Name: "Friends"},
-					{GroupID: 1, ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, Name: "someBuddy"},
-				}
-				fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-					Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: items}}, nil).Once()
-				fs.EXPECT().DeleteItem(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-					Return((*wire.SNACMessage)(nil), nil).Once()
-				fs.EXPECT().UpsertItem(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-					Return((*wire.SNACMessage)(nil), nil).Once()
-				// BLM query fails — response should still be success
-				fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-					Return(wire.SNACMessage{}, errors.New("feedbag unavailable")).Once()
-				return sess
-			},
-			expectedStatusCode: http.StatusOK,
-			expectedResponse:   `{"response":{"statusCode":200,"statusText":"OK","data":{"resultCode":"success"}}}`,
+			expectedResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{}}}`,
 		},
 		{
 			name:        "Success_BuddyNotFound",
@@ -398,7 +320,7 @@ func TestBuddyListHandler_RemoveBuddy(t *testing.T) {
 				return sess
 			},
 			expectedStatusCode: http.StatusOK,
-			expectedResponse:   `{"response":{"statusCode":200,"statusText":"OK","data":{"resultCode":"notFound"}}}`,
+			expectedResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{"resultCode":"notFound"}}}`,
 		},
 		{
 			name:        "Success_GroupNotFound",
@@ -415,7 +337,7 @@ func TestBuddyListHandler_RemoveBuddy(t *testing.T) {
 				return sess
 			},
 			expectedStatusCode: http.StatusOK,
-			expectedResponse:   `{"response":{"statusCode":200,"statusText":"OK","data":{"resultCode":"notFound"}}}`,
+			expectedResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{"resultCode":"notFound"}}}`,
 		},
 	}
 
@@ -502,47 +424,10 @@ func TestBuddyListHandler_RemoveGroup(t *testing.T) {
 					Return((*wire.SNACMessage)(nil), nil).Once()
 				fs.EXPECT().UpsertItem(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 					Return((*wire.SNACMessage)(nil), nil).Once()
-				// Second Query for GetBuddyListForUser event push
-				fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-					Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: nil}}, nil).Once()
 				return sess
 			},
 			expectedStatusCode: http.StatusOK,
-			expectedResponse:   `{"response":{"statusCode":200,"statusText":"OK","data":{"resultCode":"success"}}}`,
-		},
-		{
-			name:        "Success_EventPushSkippedOnBLMError",
-			queryParams: map[string][]string{"aimsid": {"sess"}, "group": {"Friends"}},
-			setup: func(sm *mockSessionResolver, blm *BuddyListManager, fs *mockFeedbagService, aimsid string) *Session {
-				sess := &Session{
-					AimSID:       aimsid,
-					ScreenName:   state.DisplayScreenName("testuser"),
-					OSCARSession: state.NewSession().AddInstance(),
-					EventQueue:   NewEventQueue(100),
-					LastAccessed: time.Now(),
-				}
-				items := []wire.FeedbagItem{
-					{
-						GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup, Name: "",
-						TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{
-							wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1}),
-						}},
-					},
-					{GroupID: 1, ItemID: 0, ClassID: wire.FeedbagClassIdGroup, Name: "Friends"},
-				}
-				fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-					Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: items}}, nil).Once()
-				fs.EXPECT().DeleteItem(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-					Return((*wire.SNACMessage)(nil), nil).Once()
-				fs.EXPECT().UpsertItem(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-					Return((*wire.SNACMessage)(nil), nil).Once()
-				// BLM query fails — response should still be success
-				fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-					Return(wire.SNACMessage{}, errors.New("feedbag unavailable")).Once()
-				return sess
-			},
-			expectedStatusCode: http.StatusOK,
-			expectedResponse:   `{"response":{"statusCode":200,"statusText":"OK","data":{"resultCode":"success"}}}`,
+			expectedResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{}}}`,
 		},
 		{
 			name:        "Success_GroupNotFound",
@@ -559,7 +444,7 @@ func TestBuddyListHandler_RemoveGroup(t *testing.T) {
 				return sess
 			},
 			expectedStatusCode: http.StatusOK,
-			expectedResponse:   `{"response":{"statusCode":200,"statusText":"OK","data":{"resultCode":"notFound"}}}`,
+			expectedResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{"resultCode":"notFound"}}}`,
 		},
 	}
 
@@ -657,7 +542,7 @@ func TestRequireSession(t *testing.T) {
 				sm.EXPECT().TouchSession(mock.Anything, aimsid).Return(nil)
 			},
 			expectedStatusCode: http.StatusOK,
-			expectedResponse:   `{"response":{"statusCode":200,"statusText":"OK","data":{}}}`,
+			expectedResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{}}}`,
 			expectNextCalled:   true,
 		},
 	}
@@ -672,7 +557,7 @@ func TestRequireSession(t *testing.T) {
 				nextCalled = true
 				resp := BaseResponse{}
 				resp.Response.StatusCode = 200
-				resp.Response.StatusText = "OK"
+				resp.Response.StatusText = "Ok"
 				SendResponse(w, r, resp, slog.Default())
 			}
 
@@ -738,12 +623,10 @@ func TestBuddyListHandler_RenameGroup(t *testing.T) {
 					Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: items}}, nil).Once()
 				fs.EXPECT().UpsertItem(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 					Return((*wire.SNACMessage)(nil), nil).Once()
-				fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-					Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: nil}}, nil).Once()
 				return sessWithOSCAR(aimsid)
 			},
 			expectStatusCode: http.StatusOK,
-			expectResponse:   `{"response":{"statusCode":200,"statusText":"OK","data":{"resultCode":"success"}}}`,
+			expectResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{}}}`,
 		},
 		{
 			name:        "NotFound",
@@ -754,7 +637,7 @@ func TestBuddyListHandler_RenameGroup(t *testing.T) {
 				return sessWithOSCAR(aimsid)
 			},
 			expectStatusCode: http.StatusOK,
-			expectResponse:   `{"response":{"statusCode":200,"statusText":"OK","data":{"resultCode":"notFound"}}}`,
+			expectResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{"resultCode":"notFound"}}}`,
 		},
 	}
 
@@ -826,12 +709,10 @@ func TestBuddyListHandler_MoveBuddy(t *testing.T) {
 					Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: items}}, nil).Once()
 				fs.EXPECT().UpsertItem(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 					Return((*wire.SNACMessage)(nil), nil).Once()
-				fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-					Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: nil}}, nil).Once()
 				return sessWithOSCAR(aimsid)
 			},
 			expectStatusCode: http.StatusOK,
-			expectResponse:   `{"response":{"statusCode":200,"statusText":"OK","data":{"resultCode":"success"}}}`,
+			expectResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{}}}`,
 		},
 		{
 			name:        "NotFound_Buddy",
@@ -845,7 +726,7 @@ func TestBuddyListHandler_MoveBuddy(t *testing.T) {
 				return sessWithOSCAR(aimsid)
 			},
 			expectStatusCode: http.StatusOK,
-			expectResponse:   `{"response":{"statusCode":200,"statusText":"OK","data":{"resultCode":"notFound"}}}`,
+			expectResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{"resultCode":"notFound"}}}`,
 		},
 	}
 
@@ -913,12 +794,10 @@ func TestBuddyListHandler_SetBuddyAttribute(t *testing.T) {
 					Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: items}}, nil).Once()
 				fs.EXPECT().UpsertItem(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 					Return((*wire.SNACMessage)(nil), nil).Once()
-				fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-					Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: nil}}, nil).Once()
 				return sessWithOSCAR(aimsid)
 			},
 			expectStatusCode: http.StatusOK,
-			expectResponse:   `{"response":{"statusCode":200,"statusText":"OK","data":{"resultCode":"success"}}}`,
+			expectResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{}}}`,
 		},
 		{
 			name:        "NotFound",
@@ -929,7 +808,7 @@ func TestBuddyListHandler_SetBuddyAttribute(t *testing.T) {
 				return sessWithOSCAR(aimsid)
 			},
 			expectStatusCode: http.StatusOK,
-			expectResponse:   `{"response":{"statusCode":200,"statusText":"OK","data":{"resultCode":"notFound"}}}`,
+			expectResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{"resultCode":"notFound"}}}`,
 		},
 	}
 
@@ -997,12 +876,10 @@ func TestBuddyListHandler_SetGroupAttribute(t *testing.T) {
 					Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: items}}, nil).Once()
 				fs.EXPECT().UpsertItem(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 					Return((*wire.SNACMessage)(nil), nil).Once()
-				fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-					Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: nil}}, nil).Once()
 				return sessWithOSCAR(aimsid)
 			},
 			expectStatusCode: http.StatusOK,
-			expectResponse:   `{"response":{"statusCode":200,"statusText":"OK","data":{"resultCode":"success"}}}`,
+			expectResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{}}}`,
 		},
 		{
 			name:        "NotFound",
@@ -1013,7 +890,7 @@ func TestBuddyListHandler_SetGroupAttribute(t *testing.T) {
 				return sessWithOSCAR(aimsid)
 			},
 			expectStatusCode: http.StatusOK,
-			expectResponse:   `{"response":{"statusCode":200,"statusText":"OK","data":{"resultCode":"notFound"}}}`,
+			expectResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{"resultCode":"notFound"}}}`,
 		},
 	}
 
@@ -1035,6 +912,156 @@ func TestBuddyListHandler_SetGroupAttribute(t *testing.T) {
 
 			assert.Equal(t, tt.expectStatusCode, rr.Code)
 			assert.JSONEq(t, tt.expectResponse, rr.Body.String())
+		})
+	}
+}
+
+func TestBuddyListHandler_AddBuddy_PreAuthorized(t *testing.T) {
+	tests := []struct {
+		name          string
+		screenName    string
+		buddy         string
+		preAuthorized string
+		authMsg       string
+		grantErr      error
+		wantGrant     bool
+	}{
+		{
+			name:          "no grant without preAuthorized",
+			screenName:    "100002",
+			buddy:         "100001",
+			preAuthorized: "",
+			wantGrant:     false,
+		},
+		{
+			name:          "icq->icq grant carries the authorization message",
+			screenName:    "100002",
+			buddy:         "100001",
+			preAuthorized: "1",
+			authMsg:       "Hello! Please add me to your buddylist.",
+			wantGrant:     true,
+		},
+		{
+			// The grant is not gated on protocol: the store no-ops for a user who
+			// cannot hold one, so an aim->aim add is granted the same way.
+			name:          "aim->aim is granted too",
+			screenName:    "mike",
+			buddy:         "joemama",
+			preAuthorized: "1",
+			wantGrant:     true,
+		},
+		{
+			// The buddy is on the list either way. Reporting an error here would
+			// only make the client retry an add that already succeeded.
+			name:          "a failed grant does not fail the add",
+			screenName:    "100002",
+			buddy:         "100001",
+			preAuthorized: "1",
+			grantErr:      errors.New("record failed"),
+			wantGrant:     true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sm := newMockSessionResolver(t)
+			fs := newMockFeedbagService(t)
+			blmFs := newMockFeedbagService(t)
+
+			// The grant is recorded against the caller, so the instance has to
+			// carry their identity.
+			oscarSess := state.NewSession()
+			oscarSess.SetIdentScreenName(state.NewIdentScreenName(tt.screenName))
+
+			session := &Session{
+				AimSID:       "sid",
+				OSCARSession: oscarSess.AddInstance(),
+				ScreenName:   state.DisplayScreenName(tt.screenName),
+				EventQueue:   NewEventQueue(100),
+				LastAccessed: time.Now(),
+			}
+			sm.EXPECT().GetSession(mock.Anything, "sid").Return(session, nil)
+			sm.EXPECT().TouchSession(mock.Anything, "sid").Return(nil).Maybe()
+
+			items := []wire.FeedbagItem{
+				{GroupID: 1, ItemID: 0, ClassID: wire.FeedbagClassIdGroup, Name: "Friends"},
+			}
+			fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
+				Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: items}}, nil).Once()
+
+			// The pending flag is what this used to set. Capture it to confirm it
+			// is gone, whatever preAuthorized says.
+			var sawPending, sawBuddyItem bool
+			fs.EXPECT().UpsertItem(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+				RunAndReturn(func(_ context.Context, _ *state.SessionInstance, _ wire.SNACFrame, upserted []wire.FeedbagItem) (*wire.SNACMessage, error) {
+					for _, item := range upserted {
+						if item.ClassID != wire.FeedbagClassIdBuddy {
+							continue
+						}
+						sawBuddyItem = true
+						if item.HasTag(wire.FeedbagAttributesPending) {
+							sawPending = true
+						}
+						break
+					}
+					return nil, nil
+				})
+
+			// No expectation in the ungranted case: an unexpected call fails the
+			// test, which is the assertion.
+			var grants int
+			var gotGrantor state.IdentScreenName
+			var gotFrame wire.SNACFrame
+			var gotBody wire.SNAC_0x13_0x14_FeedbagPreAuthorizeBuddy
+			if tt.wantGrant {
+				fs.EXPECT().PreAuthorizeBuddy(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+					RunAndReturn(func(_ context.Context, instance *state.SessionInstance, frame wire.SNACFrame, body wire.SNAC_0x13_0x14_FeedbagPreAuthorizeBuddy) (*wire.SNACMessage, error) {
+						grants++
+						gotGrantor = instance.IdentScreenName()
+						gotFrame = frame
+						gotBody = body
+						return nil, tt.grantErr
+					}).Once()
+			}
+
+			h := &BuddyListHandler{
+				FeedbagService: fs,
+				BuddyListManager: &BuddyListManager{
+					feedbagService: blmFs,
+					iconSource:     newTestIconSource(t),
+					logger:         slog.Default(),
+				},
+				Logger: slog.Default(),
+			}
+
+			query := "aimsid=sid&buddy=" + tt.buddy + "&group=Friends"
+			if tt.preAuthorized != "" {
+				query += "&preAuthorized=" + tt.preAuthorized
+			}
+			if tt.authMsg != "" {
+				query += "&authorizationMsg=" + url.QueryEscape(tt.authMsg)
+			}
+			req := httptest.NewRequest(http.MethodGet, "/buddylist/addBuddy?"+query, nil)
+			rr := httptest.NewRecorder()
+			requireSession(sm, h.AddBuddy).ServeHTTP(rr, req)
+
+			assert.Equal(t, http.StatusOK, rr.Code)
+			// The handler claims no outcome either way; whether the item was
+			// stored is conveyed by the async buddylist event, not this reply.
+			assert.JSONEq(t, `{"response":{"statusCode":200,"statusText":"Ok","data":{}}}`, rr.Body.String())
+			assert.True(t, sawBuddyItem, "expected a buddy item to be upserted")
+			assert.False(t, sawPending, "preAuthorized must not mark the stored item pending")
+
+			if !tt.wantGrant {
+				return
+			}
+			assert.Equal(t, 1, grants, "expected exactly one pre-authorization")
+			assert.Equal(t, wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagPreAuthorizeBuddy}, gotFrame)
+			// The grant flows from the caller to the buddy they added: the buddy
+			// may now add the caller back without a prompt.
+			assert.Equal(t, state.NewIdentScreenName(tt.screenName), gotGrantor)
+			assert.Equal(t, tt.buddy, gotBody.ScreenName)
+			assert.Equal(t, tt.authMsg, gotBody.Message)
 		})
 	}
 }

@@ -22,43 +22,28 @@ type MessagingHandler struct {
 	Logger         *slog.Logger
 }
 
-// queryOrFormParam returns a request parameter from the query string or, for POST
-// requests, from application/x-www-form-urlencoded body fields. The Web AIM client
-// sends t/offlineIM/etc. on the query string and puts message in the POST body.
-func queryOrFormParam(r *http.Request, key string) string {
-	if v := r.URL.Query().Get(key); v != "" {
-		return v
-	}
-	if r.Method == http.MethodPost {
-		if err := r.ParseForm(); err == nil {
-			return r.FormValue(key)
-		}
-	}
-	return ""
-}
-
 // SendIM handles the /im/sendIM endpoint for sending instant messages
 func (h *MessagingHandler) SendIM(w http.ResponseWriter, r *http.Request, sess *Session) {
 	ctx := r.Context()
 
 	// Parse parameters
-	recipient := queryOrFormParam(r, "t")
+	recipient := param(r, "t")
 	if recipient == "" {
 		SendError(w, r, http.StatusBadRequest, "missing required parameter: t (recipient)")
 		return
 	}
 
-	message := queryOrFormParam(r, "message")
+	message := param(r, "message")
 	if message == "" {
 		SendError(w, r, http.StatusBadRequest, "missing required parameter: message")
 		return
 	}
 
 	// Parse optional parameters
-	autoResponse := queryOrFormParam(r, "autoResponse") == "1"
+	autoResponse := param(r, "autoResponse") == "1"
 	// The client sets offlineIM once it believes the recipient is offline and
 	// storable; it sends the literal "true" rather than "1".
-	offlineIM := queryOrFormParam(r, "offlineIM") == "true" || queryOrFormParam(r, "offlineIM") == "1"
+	offlineIM := param(r, "offlineIM") == "true" || param(r, "offlineIM") == "1"
 
 	// Generate message cookie
 	var cookie [8]byte
@@ -115,6 +100,11 @@ func (h *MessagingHandler) SendIM(w http.ResponseWriter, r *http.Request, sess *
 		SubGroup:  wire.ICBMChannelMsgToHost,
 		RequestID: wire.ReqIDFromServer,
 	}
+	// Recorded before the send: ChannelMsgToHost delivers synchronously, so an
+	// ICBMClientErr can reach the pump before it returns. A mapping left by a failed
+	// send ages out under sentIMCookieLimit.
+	sess.RecordSentIM(cookieUint64, messageID)
+
 	resp, err := h.ICBMService.ChannelMsgToHost(r.Context(), sess.OSCARSession, frame, clientIM)
 
 	if err != nil {

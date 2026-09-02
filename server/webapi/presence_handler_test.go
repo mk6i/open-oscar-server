@@ -3,6 +3,7 @@ package webapi
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -114,13 +115,23 @@ func TestPresenceHandler_GetPresence(t *testing.T) {
 			},
 		},
 		{
-			name:        "Error_TooManyTargets",
-			queryParams: "t=u1,u2,u3,u4,u5,u6,u7,u8,u9,u10,u11",
-			// No UserInfoQuery should be issued; the request is rejected up front.
-			setupMocks:         func(fr *mockFeedbagService, ls *mockLocateService) {},
-			expectedStatusCode: http.StatusBadRequest,
+			// A full search page: memberDir/search returns 20 profiles and the
+			// client asks about every one, plus the keyword when it is a UIN.
+			// This is the largest list a real client sends, and it must be served
+			// whole — anything but a 200 costs the user the entire page.
+			name:        "Success_FullSearchPage",
+			queryParams: "t=" + strings.Join(searchPageTargets(21), "&t="),
+			setupMocks: func(fr *mockFeedbagService, ls *mockLocateService) {
+				ls.EXPECT().UserInfoQuery(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+					RunAndReturn(func(_ context.Context, _ *state.SessionInstance, _ wire.SNACFrame, body wire.SNAC_0x02_0x05_LocateUserInfoQuery) (wire.SNACMessage, error) {
+						return onlineUserInfoReply(body.ScreenName, 0), nil
+					}).Times(21)
+			},
+			expectedStatusCode: http.StatusOK,
 			checkResponse: func(t *testing.T, body string) {
-				assert.Contains(t, body, "too many screen names requested")
+				assert.Contains(t, body, `"statusCode":200`)
+				assert.Contains(t, body, `"user0"`)
+				assert.Contains(t, body, `"user20"`)
 			},
 		},
 	}
@@ -634,4 +645,244 @@ func queuedMyInfo(session *Session) *MyInfo {
 		}
 	}
 	return myInfo
+}
+
+func TestPresenceHandler_SetState_Occupied(t *testing.T) {
+	// ICQ's Busy, which is a selectable connect state and must be accepted.
+	oscarInstance := state.NewSession().AddInstance()
+	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
+
+	broadcaster := newMockBuddyBroadcaster(t)
+	broadcaster.EXPECT().BroadcastBuddyArrived(mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	handler := &PresenceHandler{
+		SessionManager:   sessionMgr,
+		BuddyBroadcaster: broadcaster,
+		Logger:           slog.Default(),
+	}
+
+	req, err := http.NewRequest("GET", "/presence/setState?aimsid="+aimsid+"&view=occupied&away=", nil)
+	assert.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+	requireSession(handler.SessionManager, handler.SetState).ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusOK, rr.Code)
+
+	assert.Equal(t, wire.OServiceUserStatusBusy, oscarInstance.UserStatusBitmask())
+
+	// The state must survive the round trip: a later myInfo push reads it back
+	// through currentWebState, and reporting "away" or "online" there would undo
+	// the change in the user's own UI.
+	assert.Equal(t, "occupied", currentWebState(oscarInstance))
+
+	session, err := sessionMgr.GetSession(context.Background(), aimsid)
+	assert.NoError(t, err)
+	myInfo := queuedMyInfo(session)
+	assert.NotNil(t, myInfo, "expected a myInfo event to be queued")
+	assert.Equal(t, "occupied", myInfo.State)
+}
+
+func TestPresenceHandler_GetPresence_MdirAttachesProfile(t *testing.T) {
+	// Search results are populated from this call, and a user carrying no nested
+	// "profile" object is dropped by clients, so a found user would not render.
+	ctx := context.Background()
+
+	dirReply := wire.SNAC_0x02_0x0C_LocateGetDirReply{Status: wire.LocateGetDirReplyOK}
+	dirReply.Append(wire.NewTLVBE(wire.ODirTLVFirstName, "Bob"))
+	dirReply.Append(wire.NewTLVBE(wire.ODirTLVLastName, "Smith"))
+	dirReply.Append(wire.NewTLVBE(wire.ODirTLVCity, "Reno"))
+
+	feedbagService := newMockFeedbagService(t)
+	feedbagService.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
+		Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{}}, nil).Maybe()
+
+	locateService := newMockLocateService(t)
+	locateService.EXPECT().UserInfoQuery(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(onlineUserInfoReply("founduser", 0), nil)
+	locateService.EXPECT().DirInfo(mock.Anything, mock.Anything, mock.Anything).
+		Return(wire.SNACMessage{Body: dirReply}, nil)
+
+	oscarInstance := state.NewSession().AddInstance()
+	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
+	_, err := sessionMgr.GetSession(ctx, aimsid)
+	require.NoError(t, err)
+
+	handler := &PresenceHandler{
+		SessionManager: sessionMgr,
+		FeedbagService: feedbagService,
+		LocateService:  locateService,
+		Logger:         slog.Default(),
+	}
+
+	req, err := http.NewRequest("GET", "/presence/get?aimsid="+aimsid+"&mdir=1&t=founduser", nil)
+	require.NoError(t, err)
+	rr := httptest.NewRecorder()
+	requireSession(handler.SessionManager, handler.GetPresence).ServeHTTP(rr, req)
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var got struct {
+		Response struct {
+			Data struct {
+				Users []struct {
+					AimID   string            `json:"aimId"`
+					Profile *BuddyProfileInfo `json:"profile"`
+				} `json:"users"`
+			} `json:"data"`
+		} `json:"response"`
+	}
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &got))
+	require.Len(t, got.Response.Data.Users, 1)
+
+	profile := got.Response.Data.Users[0].Profile
+	require.NotNil(t, profile, "mdir=1 must carry a profile object")
+	assert.Equal(t, "Bob", profile.FirstName)
+	assert.Equal(t, "Smith", profile.LastName)
+	require.Len(t, profile.HomeAddress, 1)
+	assert.Equal(t, "Reno", profile.HomeAddress[0].City)
+}
+
+func TestPresenceHandler_GetPresence_MdirProfileIsEmptyNotAbsent(t *testing.T) {
+	// A user with no directory record must still render, or a freshly created
+	// account can never be found.
+	ctx := context.Background()
+
+	feedbagService := newMockFeedbagService(t)
+	feedbagService.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
+		Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{}}, nil).Maybe()
+
+	locateService := newMockLocateService(t)
+	locateService.EXPECT().UserInfoQuery(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(onlineUserInfoReply("blankuser", 0), nil)
+	locateService.EXPECT().DirInfo(mock.Anything, mock.Anything, mock.Anything).
+		Return(wire.SNACMessage{Body: wire.SNAC_0x02_0x0C_LocateGetDirReply{Status: wire.LocateGetDirReplyOK}}, nil)
+
+	oscarInstance := state.NewSession().AddInstance()
+	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
+	_, err := sessionMgr.GetSession(ctx, aimsid)
+	require.NoError(t, err)
+
+	handler := &PresenceHandler{
+		SessionManager: sessionMgr,
+		FeedbagService: feedbagService,
+		LocateService:  locateService,
+		Logger:         slog.Default(),
+	}
+
+	req, _ := http.NewRequest("GET", "/presence/get?aimsid="+aimsid+"&mdir=1&t=blankuser", nil)
+	rr := httptest.NewRecorder()
+	requireSession(handler.SessionManager, handler.GetPresence).ServeHTTP(rr, req)
+
+	// The key must be present and non-null, which is what the client tests for.
+	assert.Contains(t, rr.Body.String(), `"profile":{}`)
+}
+
+func TestPresenceHandler_GetPresence_NoMdirOmitsProfile(t *testing.T) {
+	// Without mdir the directory is not consulted at all — the mock asserts that by
+	// having no DirInfo expectation.
+	ctx := context.Background()
+
+	feedbagService := newMockFeedbagService(t)
+	feedbagService.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
+		Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{}}, nil).Maybe()
+
+	locateService := newMockLocateService(t)
+	locateService.EXPECT().UserInfoQuery(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(onlineUserInfoReply("someuser", 0), nil)
+
+	oscarInstance := state.NewSession().AddInstance()
+	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
+	_, err := sessionMgr.GetSession(ctx, aimsid)
+	require.NoError(t, err)
+
+	handler := &PresenceHandler{
+		SessionManager: sessionMgr,
+		FeedbagService: feedbagService,
+		LocateService:  locateService,
+		Logger:         slog.Default(),
+	}
+
+	req, _ := http.NewRequest("GET", "/presence/get?aimsid="+aimsid+"&t=someuser", nil)
+	rr := httptest.NewRecorder()
+	requireSession(handler.SessionManager, handler.GetPresence).ServeHTTP(rr, req)
+
+	assert.NotContains(t, rr.Body.String(), `"profile"`)
+}
+
+func TestPresenceHandler_GetPresence_EmptyQueryRendersBothArrays(t *testing.T) {
+	ctx := context.Background()
+
+	// No expectations on either service: naming no list must cost no lookups.
+	feedbagService := newMockFeedbagService(t)
+	locateService := newMockLocateService(t)
+
+	oscarInstance := state.NewSession().AddInstance()
+	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
+	_, err := sessionMgr.GetSession(ctx, aimsid)
+	require.NoError(t, err)
+
+	handler := &PresenceHandler{
+		SessionManager: sessionMgr,
+		FeedbagService: feedbagService,
+		LocateService:  locateService,
+		Logger:         slog.Default(),
+	}
+
+	req, _ := http.NewRequest("GET", "/presence/get?aimsid="+aimsid+"&f=json&mdir=1", nil)
+	rr := httptest.NewRecorder()
+	requireSession(handler.SessionManager, handler.GetPresence).ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.Contains(t, rr.Body.String(), `"users":[]`)
+	assert.Contains(t, rr.Body.String(), `"groups":[]`)
+}
+
+func TestPresenceHandler_GetPresence_TruncatesOversizedTargetList(t *testing.T) {
+	ctx := context.Background()
+
+	feedbagService := newMockFeedbagService(t)
+
+	var queried int
+	locateService := newMockLocateService(t)
+	locateService.EXPECT().UserInfoQuery(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(func(_ context.Context, _ *state.SessionInstance, _ wire.SNACFrame, body wire.SNAC_0x02_0x05_LocateUserInfoQuery) (wire.SNACMessage, error) {
+			queried++
+			return onlineUserInfoReply(body.ScreenName, 0), nil
+		})
+
+	oscarInstance := state.NewSession().AddInstance()
+	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
+	_, err := sessionMgr.GetSession(ctx, aimsid)
+	require.NoError(t, err)
+
+	handler := &PresenceHandler{
+		SessionManager: sessionMgr,
+		FeedbagService: feedbagService,
+		LocateService:  locateService,
+		Logger:         slog.Default(),
+	}
+
+	query := "/presence/get?aimsid=" + aimsid + "&f=json"
+	for i := 0; i < maxPresenceTargets+8; i++ {
+		query += fmt.Sprintf("&t=user%d", i)
+	}
+	req, _ := http.NewRequest("GET", query, nil)
+	rr := httptest.NewRecorder()
+	requireSession(handler.SessionManager, handler.GetPresence).ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.Contains(t, rr.Body.String(), `"statusCode":200`)
+	assert.Equal(t, maxPresenceTargets, queried, "the list is cut to the cap, not refused")
+
+	// A full search page has to fit: 20 profiles plus the searched-for UIN.
+	assert.GreaterOrEqual(t, maxPresenceTargets, 21)
+}
+
+// searchPageTargets builds n distinct screen names, standing in for the hits of a
+// member-directory search page.
+func searchPageTargets(n int) []string {
+	names := make([]string, 0, n)
+	for i := 0; i < n; i++ {
+		names = append(names, fmt.Sprintf("user%d", i))
+	}
+	return names
 }

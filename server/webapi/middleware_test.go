@@ -208,6 +208,51 @@ func TestCORSMiddleware_DoesNotConsumePOSTBody(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
+// Some clients POST the whole parameter set in the body, so an auth layer reading
+// only the query string sees no credential. Reading the body here does not cost the
+// handler its parameters: ParseForm caches onto the request.
+func TestAuthenticateFlexible_ReadsCredentialsFromPOSTBody(t *testing.T) {
+	tests := []struct {
+		name        string
+		body        string
+		contentType string
+	}{
+		{
+			name:        "declared form body",
+			body:        "aimsid=abc&message=hello",
+			contentType: "application/x-www-form-urlencoded",
+		},
+		{
+			// No Content-Type announced; the request is form data all the same.
+			name: "untyped form body",
+			body: "aimsid=abc&message=hello",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := newTestMiddleware(&stubValidator{})
+			reached := false
+			h := m.CORSMiddleware(m.AuthenticateFlexible(
+				http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					reached = true
+					assert.Equal(t, "hello", param(r, "message"))
+					w.WriteHeader(http.StatusOK)
+				})))
+
+			r := httptest.NewRequest(http.MethodPost, "/im/sendIM", strings.NewReader(tt.body))
+			if tt.contentType != "" {
+				r.Header.Set("Content-Type", tt.contentType)
+			}
+			w := httptest.NewRecorder()
+			h.ServeHTTP(w, r)
+
+			assert.True(t, reached, "request was rejected before reaching the handler")
+			assert.Equal(t, http.StatusOK, w.Code)
+		})
+	}
+}
+
 // The auth layer's own rejections must be JSONP-wrapped too, otherwise a client
 // already in JSONP mode gets a script-tag syntax error instead of the reason.
 func TestAuthErrorsHonorJSONP(t *testing.T) {

@@ -147,6 +147,24 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 			w.WriteHeader(http.StatusNoContent)
 		})
 
+		// No SSO cookie is involved, so this sits outside the session middleware.
+		// Both methods, since clients differ on which they use.
+		getInfo := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			authHandler.GetInfo(w, r)
+		})
+		mux.Handle("GET /auth/getInfo", getInfo)
+		mux.Handle("POST /auth/getInfo", getInfo)
+
+		mux.HandleFunc("OPTIONS /auth/getInfo", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			w.WriteHeader(http.StatusNoContent)
+		})
+
 		// Web AIM navigates the browser here on File > Logout; clear SSO state
 		// and redirect to the login screen.
 		mux.Handle("GET /auth/logout", http.HandlerFunc(authHandler.Logout))
@@ -160,10 +178,13 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 
 		// Authenticated Web AIM API endpoints
 		// SessionInstance management - supports multiple auth methods (k, a, ts+sig_sha256).
-		mux.Handle("GET /aim/startSession",
-			authMiddleware.CORSMiddleware(
-				authMiddleware.AuthenticateFlexible(
-					http.HandlerFunc(aimHandler.StartSession))))
+		//
+		// Both methods: Go 1.22 patterns are method-exact and clients differ.
+		startSession := authMiddleware.CORSMiddleware(
+			authMiddleware.AuthenticateFlexible(
+				http.HandlerFunc(aimHandler.StartSession)))
+		mux.Handle("GET /aim/startSession", startSession)
+		mux.Handle("POST /aim/startSession", startSession)
 
 		// End session - uses aimsid for auth, no k required
 		mux.Handle("GET /aim/endSession", sessionRoute(aimHandler.EndSession))
@@ -234,7 +255,10 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 		// aimsid-based auth, so we use flexible auth.
 		mux.Handle("GET /memberDir/search", oscarRoute(wire.ODir, wire.ODirInfoQuery, memberDirHandler.Search))
 		mux.Handle("GET /memberDir/get", oscarRoute(wire.Locate, wire.LocateGetDirInfo, memberDirHandler.Get))
-		mux.Handle("GET /memberDir/update", oscarRoute(wire.Locate, wire.LocateSetDirInfo, memberDirHandler.Update))
+		// Both methods: Go 1.22 patterns are method-exact and clients differ.
+		memberDirUpdate := oscarRoute(wire.Locate, wire.LocateSetDirInfo, memberDirHandler.Update)
+		mux.Handle("GET /memberDir/update", memberDirUpdate)
+		mux.Handle("POST /memberDir/update", memberDirUpdate)
 
 		// These endpoints support aimsid-based auth, so we use a flexible auth approach
 		mux.Handle("GET /preference/set", oscarRoute(wire.Feedbag, wire.FeedbagUpdateItem, preferenceHandler.SetPreferences))
@@ -254,8 +278,10 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 		mux.Handle("GET /expressions/get",
 			authMiddleware.CORSMiddleware(
 				http.HandlerFunc(expressionsHandler.Get)))
+		// WithBinaryBody: the body is the raw image, and a missed parameter lookup
+		// would otherwise feed it to ParseForm and consume it.
 		mux.Handle("POST /expressions/upload",
-			oscarRoute(wire.BART, wire.BARTUploadQuery, expressionsHandler.Upload))
+			WithBinaryBody(oscarRoute(wire.BART, wire.BARTUploadQuery, expressionsHandler.Upload)))
 
 		// Web AIM calls lifestream/* on the API host (e.g. /lifestream/getUserDetails).
 		lifestreamStub := &UserInfoStubHandler{Logger: logger}
@@ -465,7 +491,7 @@ func (h Handler) GetHelloWorldHandler(w http.ResponseWriter, r *http.Request) {
 	resp := map[string]interface{}{
 		"response": map[string]interface{}{
 			"statusCode": 200,
-			"statusText": "OK",
+			"statusText": "Ok",
 			"data":       map[string]interface{}{},
 		},
 	}

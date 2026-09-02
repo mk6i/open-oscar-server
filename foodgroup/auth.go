@@ -665,6 +665,7 @@ func (s AuthService) loginSuccessResponse(ctx context.Context, props loginProper
 		ScreenName:    props.screenName,
 		ClientID:      props.clientID,
 		MultiConnFlag: props.multiConnFlag,
+		TokenTTL:      uint32(props.tokenTTL.Seconds()),
 	}
 	if props.isKerberosPlaintextAuth || props.isKerberosRoastedAuth {
 		loginCookie.KerberosAuth = 1

@@ -80,6 +80,7 @@ func TestBuddyListManager_GetBuddyListForUser(t *testing.T) {
 			want: []BuddyGroup{
 				{
 					Name: "Buddies",
+					ID:   100,
 					Buddies: []BuddyInfo{
 						offlineWebAPIBuddy("user1", "user1"),
 						offlineWebAPIBuddy("user2", "user2"),
@@ -120,6 +121,7 @@ func TestBuddyListManager_GetBuddyListForUser(t *testing.T) {
 			want: []BuddyGroup{
 				{
 					Name: "Buddies",
+					ID:   100,
 					// The buddy is offline, so no locate reply supplies a display
 					// name and displayId falls back to the normalized feedbag name.
 					Buddies: []BuddyInfo{withAlias(offlineWebAPIBuddy("bob", "bob"), "Bob Smith")},
@@ -140,6 +142,7 @@ func TestBuddyListManager_GetBuddyListForUser(t *testing.T) {
 			want: []BuddyGroup{
 				{
 					Name:    "Buddies",
+					ID:      100,
 					Buddies: []BuddyInfo{offlineWebAPIBuddy("mikekelly", "Mike Kelly")},
 				},
 			},
@@ -161,6 +164,7 @@ func TestBuddyListManager_GetBuddyListForUser(t *testing.T) {
 			want: []BuddyGroup{
 				{
 					Name:    "Buddies",
+					ID:      100,
 					Buddies: []BuddyInfo{offlineWebAPIBuddy("alice", "alice")},
 				},
 			},
@@ -182,10 +186,12 @@ func TestBuddyListManager_GetBuddyListForUser(t *testing.T) {
 			want: []BuddyGroup{
 				{
 					Name:    "Buddies",
+					ID:      100,
 					Buddies: []BuddyInfo{offlineWebAPIBuddy("friend1", "friend1")},
 				},
 				{
 					Name:    "Family",
+					ID:      200,
 					Buddies: []BuddyInfo{offlineWebAPIBuddy("mom", "mom")},
 				},
 			},
@@ -205,6 +211,7 @@ func TestBuddyListManager_GetBuddyListForUser(t *testing.T) {
 			want: []BuddyGroup{
 				{
 					Name: "Buddies",
+					ID:   100,
 					Buddies: []BuddyInfo{
 						offlineWebAPIBuddy("secondinslice", "secondInSlice"),
 						offlineWebAPIBuddy("firstinslice", "firstInSlice"),
@@ -229,10 +236,12 @@ func TestBuddyListManager_GetBuddyListForUser(t *testing.T) {
 			want: []BuddyGroup{
 				{
 					Name:    "Family",
+					ID:      200,
 					Buddies: []BuddyInfo{offlineWebAPIBuddy("infamily", "inFamily")},
 				},
 				{
 					Name:    "Buddies",
+					ID:      100,
 					Buddies: []BuddyInfo{offlineWebAPIBuddy("inbuddies", "inBuddies")},
 				},
 			},
@@ -251,6 +260,7 @@ func TestBuddyListManager_GetBuddyListForUser(t *testing.T) {
 			want: []BuddyGroup{
 				{
 					Name:    "Buddies",
+					ID:      100,
 					Buddies: []BuddyInfo{offlineWebAPIBuddy("solo", "solo")},
 				},
 			},

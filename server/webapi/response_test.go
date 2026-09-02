@@ -63,7 +63,7 @@ func TestSendResponseIncludesRequestID(t *testing.T) {
 	resp := BaseResponse{
 		Response: ResponseBody{
 			StatusCode: 200,
-			StatusText: "OK",
+			StatusText: "Ok",
 			Data:       map[string]string{"resultCode": "success"},
 		},
 	}
@@ -71,7 +71,7 @@ func TestSendResponseIncludesRequestID(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, rr.Code)
 	body := strings.TrimSpace(rr.Body.String())
-	assert.Equal(t, `{"response":{"statusCode":200,"statusText":"OK","requestId":"req-42","data":{"resultCode":"success"}}}`, body)
+	assert.Equal(t, `{"response":{"statusCode":200,"statusText":"Ok","requestId":"req-42","data":{"resultCode":"success"}}}`, body)
 }
 
 // A JSONP error must arrive as an executable callback, not as bare JSON in a

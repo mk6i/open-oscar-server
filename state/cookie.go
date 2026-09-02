@@ -31,6 +31,10 @@ type ServerCookie struct {
 	// KerberosAuth indicates whether the client used Kerberos for authentication.
 	KerberosAuth uint8
 	SessionNum   uint8
+	// TokenTTL is the lifetime in seconds this cookie was granted. Subtracted from
+	// the expiry, it gives the instant the cookie was issued — for a login cookie,
+	// when its owner authenticated. Zero means unspecified.
+	TokenTTL uint32
 }
 
 func NewHMACCookieBaker() (HMACCookieBaker, error) {

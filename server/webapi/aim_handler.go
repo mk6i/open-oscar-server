@@ -140,24 +140,20 @@ func (h *AimHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse parameters
-	params := r.URL.Query()
-
-	// Get authentication token if provided
-	authToken := params.Get("a")
+	authToken := param(r, "a")
 
 	// Get client info
-	clientName := params.Get("clientName")
+	clientName := param(r, "clientName")
 	if clientName == "" {
 		clientName = "WebAIM"
 	}
-	clientVersion := params.Get("clientVersion")
+	clientVersion := param(r, "clientVersion")
 	if clientVersion == "" {
 		clientVersion = "1.0"
 	}
 
 	// Get events to subscribe to
-	eventsParam := params.Get("events")
+	eventsParam := param(r, "events")
 	var events []string
 	if eventsParam != "" {
 		events = strings.Split(eventsParam, ",")
@@ -175,7 +171,7 @@ func (h *AimHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 
 	// Get timeout settings
 	timeout := 60000 // Default 60 seconds for better stability with Gromit
-	if t := params.Get("timeout"); t != "" {
+	if t := param(r, "timeout"); t != "" {
 		if val, err := strconv.Atoi(t); err == nil && val > 0 {
 			timeout = val * 1000 // Convert to milliseconds
 		}
@@ -587,6 +583,12 @@ func (h *AimHandler) FetchEvents(w http.ResponseWriter, r *http.Request, session
 		newLastSeqNum = events[len(events)-1].SeqNum
 	}
 
+	// A nil slice renders as JSON null, which a client reading data.events
+	// strictly rejects.
+	if events == nil {
+		events = []Event{}
+	}
+
 	// Prepare response
 	data := &FetchEventsData{
 		Events:          events,
@@ -811,7 +813,7 @@ func (h *AimHandler) StartOSCARSession(w http.ResponseWriter, r *http.Request) {
 
 	resp := &StartOSCARSessionResponse{}
 	resp.Response.StatusCode = 200
-	resp.Response.StatusText = "OK"
+	resp.Response.StatusText = "Ok"
 	resp.Response.Data.Host = host
 	resp.Response.Data.Port = port
 	// Base64, the encoding the client decodes the cookie with.

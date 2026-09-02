@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -20,8 +21,8 @@ import (
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
-// testAuthService implements AuthService for ClientLogin tests (only FLAPLogin and
-// CrackCookie are exercised).
+// testAuthService implements AuthService for the auth-handler tests (only
+// FLAPLogin and CrackCookie are exercised).
 type testAuthService struct {
 	flapLogin   func(ctx context.Context, inFrame wire.FLAPSignonFrame, endpointCfg config.Endpoint) (wire.TLVRestBlock, error)
 	crackCookie func(authCookie []byte) (state.ServerCookie, time.Time, error)
@@ -62,7 +63,11 @@ func crackSignedCookieExpiring(remaining time.Duration) func([]byte) (state.Serv
 		if !ok {
 			return state.ServerCookie{}, time.Time{}, errors.New("bad signature")
 		}
-		return state.ServerCookie{ScreenName: state.DisplayScreenName(name)}, time.Now().Add(remaining), nil
+		return state.ServerCookie{
+			Service:    wire.BOS,
+			ScreenName: state.DisplayScreenName(name),
+			TokenTTL:   uint32(shortTermTTL.Seconds()),
+		}, time.Now().Add(remaining), nil
 	}
 }
 
@@ -839,4 +844,302 @@ func TestSafeLoginRedirectURL(t *testing.T) {
 
 	assert.Equal(t, "http://localhost:8000/", safeLoginRedirectURL(req, "http://localhost:8000/"))
 	assert.Equal(t, "http://localhost/", safeLoginRedirectURL(req, "http://evil.example/"))
+}
+
+// getInfoHandler builds a handler whose CrackCookie returns cookie, expiring at
+// shortTermTTL from now unless the caller says otherwise.
+func getInfoHandler(cookie state.ServerCookie) *AuthHandler {
+	return &AuthHandler{
+		AuthService: &testAuthService{
+			crackCookie: func([]byte) (state.ServerCookie, time.Time, error) {
+				return cookie, time.Now().Add(time.Duration(cookie.TokenTTL) * time.Second), nil
+			},
+		},
+		Logger: slog.Default(),
+	}
+}
+
+func getInfoGET(h *AuthHandler, query string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodGet, "/auth/getInfo?f=json&devId=ic1"+query, nil)
+	rr := httptest.NewRecorder()
+	h.GetInfo(rr, req)
+	return rr
+}
+
+func TestAuthHandler_GetInfo(t *testing.T) {
+	validToken := base64.URLEncoding.EncodeToString(signedCookieFor("ChattingChuck"))
+
+	tests := []struct {
+		name      string
+		query     string
+		crack     func([]byte) (state.ServerCookie, time.Time, error)
+		checkBody func(*testing.T, string)
+	}{
+		{
+			name:  "Success",
+			query: "&a=" + url.QueryEscape(validToken),
+			checkBody: func(t *testing.T, body string) {
+				assert.Contains(t, body, `"statusCode":200`)
+				assert.Contains(t, body, `"userData":{"loginId":"ChattingChuck","displayName":"ChattingChuck"}`)
+				// getInfo reports; it does not mint. A token in the reply means
+				// renewal has crept back in.
+				assert.NotContains(t, body, `"token"`)
+				assert.NotContains(t, body, `"expiresIn"`)
+			},
+		},
+		{
+			name:  "NoToken",
+			query: "",
+			checkBody: func(t *testing.T, body string) {
+				assert.Contains(t, body, `"statusCode":401`)
+				// The web client re-authenticates from data.redirectURL on any
+				// non-200, and reports a hard failure without it.
+				assert.Contains(t, body, `"redirectURL":"http://example.com/_cqr/login/login.psp"`)
+				assert.NotContains(t, body, "userData")
+			},
+		},
+		{
+			name:  "MalformedToken",
+			query: "&a=not-base64!!",
+			checkBody: func(t *testing.T, body string) {
+				assert.Contains(t, body, `"statusCode":401`)
+				assert.Contains(t, body, `"redirectURL":`)
+				assert.NotContains(t, body, "userData")
+			},
+		},
+		{
+			name:  "RejectedToken",
+			query: "&a=" + url.QueryEscape(base64.URLEncoding.EncodeToString([]byte("unsigned"))),
+			checkBody: func(t *testing.T, body string) {
+				assert.Contains(t, body, `"statusCode":401`)
+				assert.Contains(t, body, `"redirectURL":`)
+				assert.NotContains(t, body, "userData")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler := &AuthHandler{
+				AuthService: &testAuthService{crackCookie: crackSignedCookie},
+				Logger:      slog.Default(),
+			}
+			tt.checkBody(t, getInfoGET(handler, tt.query).Body.String())
+		})
+	}
+}
+
+// TestAuthHandler_GetInfo_RejectsNonLoginTokens covers the one thing CrackCookie does
+// not check: what the cookie is for. One key signs every cookie, so a service-transfer
+// cookie verifies like a login token while recording no authentication.
+func TestAuthHandler_GetInfo_RejectsNonLoginTokens(t *testing.T) {
+	tests := []struct {
+		name       string
+		cookie     state.ServerCookie
+		wantStatus int
+	}{
+		{
+			name:       "login cookie is accepted",
+			cookie:     state.ServerCookie{Service: wire.BOS, ScreenName: "chuck", TokenTTL: 3600},
+			wantStatus: 200,
+		},
+		{
+			name:       "chat transfer cookie is refused",
+			cookie:     state.ServerCookie{Service: wire.Chat, ScreenName: "chuck", ChatCookie: "room-1"},
+			wantStatus: 401,
+		},
+		{
+			name:       "bart transfer cookie is refused",
+			cookie:     state.ServerCookie{Service: wire.BART, ScreenName: "chuck", SessionNum: 1},
+			wantStatus: 401,
+		},
+		{
+			name:       "chatnav transfer cookie is refused",
+			cookie:     state.ServerCookie{Service: wire.ChatNav, ScreenName: "chuck", SessionNum: 1},
+			wantStatus: 401,
+		},
+		{
+			// The one transfer cookie issued as wire.BOS
+			// (foodgroup/oservice.go:662). wire.BOS is the zero value, so only the
+			// absent grant distinguishes it from a login.
+			name:       "linked-account transfer cookie is refused",
+			cookie:     state.ServerCookie{Service: wire.BOS, ScreenName: "chuck", MultiConnFlag: 1},
+			wantStatus: 401,
+		},
+		{
+			// A login cookie has no room to belong to, so one carrying a chat
+			// cookie did not come from a login.
+			name:       "login cookie carrying a chat cookie is refused",
+			cookie:     state.ServerCookie{Service: wire.BOS, ScreenName: "chuck", ChatCookie: "room-1", TokenTTL: 3600},
+			wantStatus: 401,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			token := base64.URLEncoding.EncodeToString(signedCookieFor("chuck"))
+			body := getInfoGET(getInfoHandler(tt.cookie), "&a="+url.QueryEscape(token)).Body.String()
+
+			assert.Contains(t, body, fmt.Sprintf(`"statusCode":%d`, tt.wantStatus))
+			if tt.wantStatus != 200 {
+				assert.NotContains(t, body, "chuck")
+			}
+		})
+	}
+}
+
+// TestAuthHandler_GetInfo_Freshness drives both outcomes from one cookie, varying only
+// reqAuthFreshness. A test that used a different cookie per outcome could pass because
+// the cookie was rejected rather than because the freshness rule fired.
+func TestAuthHandler_GetInfo_Freshness(t *testing.T) {
+	// Authenticated an hour ago: expiry is a full grant from then, so it sits
+	// shortTermTTL-minus-an-hour in the future.
+	hourOldAuth := func([]byte) (state.ServerCookie, time.Time, error) {
+		cookie := state.ServerCookie{
+			Service:    wire.BOS,
+			ScreenName: "ChattingChuck",
+			TokenTTL:   uint32(shortTermTTL.Seconds()),
+		}
+		return cookie, time.Now().Add(shortTermTTL - time.Hour), nil
+	}
+	handler := &AuthHandler{
+		AuthService: &testAuthService{crackCookie: hourOldAuth},
+		Logger:      slog.Default(),
+	}
+	token := url.QueryEscape(base64.URLEncoding.EncodeToString(signedCookieFor("ChattingChuck")))
+
+	t.Run("within the default window", func(t *testing.T) {
+		body := getInfoGET(handler, "&a="+token).Body.String()
+
+		assert.Contains(t, body, `"statusCode":200`)
+		assert.Contains(t, body, `"loginId":"ChattingChuck"`)
+	})
+
+	t.Run("stale against a narrower window redirects", func(t *testing.T) {
+		body := getInfoGET(handler, "&a="+token+"&reqAuthFreshness=60").Body.String()
+
+		assert.Contains(t, body, `"statusCode":330`)
+		assert.Contains(t, body, `"redirectURL":"http://example.com/_cqr/login/login.psp"`)
+		// 330 says "authenticate again", so it must not also answer the question.
+		assert.NotContains(t, body, "userData")
+	})
+
+	t.Run("fresh against a window that still covers it", func(t *testing.T) {
+		body := getInfoGET(handler, "&a="+token+"&reqAuthFreshness=7200").Body.String()
+
+		assert.Contains(t, body, `"statusCode":200`)
+	})
+
+	t.Run("unusable reqAuthFreshness is a parameter error", func(t *testing.T) {
+		body := getInfoGET(handler, "&a="+token+"&reqAuthFreshness=soon").Body.String()
+
+		assert.Contains(t, body, `"statusCode":462`)
+	})
+
+	t.Run("a cookie naming no grant is refused, not waved through", func(t *testing.T) {
+		// Without a TokenTTL there is no issue instant, so no freshness claim can
+		// be made; answering 200 would assert one.
+		noTTL := getInfoHandler(state.ServerCookie{Service: wire.BOS, ScreenName: "ChattingChuck"})
+		body := getInfoGET(noTTL, "&a="+token+"&reqAuthFreshness=99999999").Body.String()
+
+		assert.Contains(t, body, `"statusCode":401`)
+		assert.NotContains(t, body, "userData")
+	})
+}
+
+// TestAuthHandler_GetInfo_AcceptsGETAndPOST pins that the parameters may arrive either
+// way, which is the reason the route is registered for both methods.
+func TestAuthHandler_GetInfo_AcceptsGETAndPOST(t *testing.T) {
+	token := base64.URLEncoding.EncodeToString(signedCookieFor("ChattingChuck"))
+	cookie := state.ServerCookie{
+		Service:    wire.BOS,
+		ScreenName: "ChattingChuck",
+		TokenTTL:   uint32(shortTermTTL.Seconds()),
+	}
+
+	getBody := getInfoGET(getInfoHandler(cookie), "&a="+url.QueryEscape(token)).Body.String()
+
+	form := url.Values{"f": {"json"}, "devId": {"ic1"}, "a": {token}}
+	req := httptest.NewRequest(http.MethodPost, "/auth/getInfo", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+	getInfoHandler(cookie).GetInfo(rr, req)
+
+	assert.Contains(t, getBody, `"loginId":"ChattingChuck"`)
+	assert.Equal(t, getBody, rr.Body.String())
+}
+
+// TestAuthHandler_GetInfo_EchoesRequestID covers the paths that hand-build their
+// envelope, bypassing SendOK. Only a BaseResponse gets the request id filled in by
+// normalizeEnvelope, and a JSONP client discards a reply that is missing it.
+func TestAuthHandler_GetInfo_EchoesRequestID(t *testing.T) {
+	token := url.QueryEscape(base64.URLEncoding.EncodeToString(signedCookieFor("ChattingChuck")))
+	staleAuth := &AuthHandler{
+		AuthService: &testAuthService{crackCookie: func([]byte) (state.ServerCookie, time.Time, error) {
+			cookie := state.ServerCookie{Service: wire.BOS, ScreenName: "ChattingChuck", TokenTTL: uint32(shortTermTTL.Seconds())}
+			return cookie, time.Now().Add(shortTermTTL - time.Hour), nil
+		}},
+		Logger: slog.Default(),
+	}
+	ok := &AuthHandler{
+		AuthService: &testAuthService{crackCookie: crackSignedCookie},
+		Logger:      slog.Default(),
+	}
+
+	tests := []struct {
+		name       string
+		handler    *AuthHandler
+		query      string
+		wantStatus int
+	}{
+		{name: "200", handler: ok, query: "&a=" + token, wantStatus: 200},
+		{name: "330", handler: staleAuth, query: "&a=" + token + "&reqAuthFreshness=60", wantStatus: 330},
+		{name: "401", handler: ok, query: "", wantStatus: 401},
+		{name: "462", handler: ok, query: "&a=" + token + "&reqAuthFreshness=soon", wantStatus: 462},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := getInfoGET(tt.handler, tt.query+"&r=req-42").Body.String()
+
+			assert.Contains(t, body, fmt.Sprintf(`"statusCode":%d`, tt.wantStatus))
+			assert.Contains(t, body, `"requestId":"req-42"`)
+		})
+	}
+}
+
+// TestAuthHandler_GetInfo_RefusesRenewal covers the clients that still ask this
+// endpoint for a replacement token. Refusing is what lets them recover: any non-200
+// sends them back through a full login.
+func TestAuthHandler_GetInfo_RefusesRenewal(t *testing.T) {
+	token := url.QueryEscape(base64.URLEncoding.EncodeToString(signedCookieFor("ChattingChuck")))
+	handler := &AuthHandler{
+		AuthService: &testAuthService{crackCookie: crackSignedCookie},
+		Logger:      slog.Default(),
+	}
+
+	t.Run("a renewal request is refused even with a good token", func(t *testing.T) {
+		body := getInfoGET(handler, "&a="+token+"&renewToken=true").Body.String()
+
+		assert.Contains(t, body, `"statusCode":401`)
+		assert.Contains(t, body, `"redirectURL":`)
+		// Neither an answer nor a token: the caller is told to log in again.
+		assert.NotContains(t, body, "userData")
+		assert.NotContains(t, body, `"token"`)
+	})
+
+	t.Run("renewToken=false still gets an answer", func(t *testing.T) {
+		// Only an actual request to renew is refused. A client spelling out that
+		// it does not want one is asking the question this endpoint answers.
+		body := getInfoGET(handler, "&a="+token+"&renewToken=false").Body.String()
+
+		assert.Contains(t, body, `"statusCode":200`)
+		assert.Contains(t, body, `"loginId":"ChattingChuck"`)
+	})
+
+	t.Run("an ordinary request is unaffected", func(t *testing.T) {
+		body := getInfoGET(handler, "&a="+token).Body.String()
+
+		assert.Contains(t, body, `"statusCode":200`)
+	})
 }

@@ -113,21 +113,17 @@ func newErrorResponseDetail(statusCode, detailCode int, message string) ErrorRes
 // requestFormat returns the format the client asked for. A POST sends "f" in
 // its body, as clientLogin does.
 func requestFormat(r *http.Request) string {
-	format := strings.ToLower(r.URL.Query().Get("f"))
-	if format == "" && r.Method == http.MethodPost {
-		_ = r.ParseForm()
-		format = strings.ToLower(r.FormValue("f"))
-	}
-	return format
+	return strings.ToLower(param(r, "f"))
 }
 
-// requestIDFromRequest returns the Web AIM client request correlation id from the
-// "r" query parameter. JSONP callbacks require this echoed in response.requestId.
+// requestIDFromRequest returns the client's correlation id from the "r" parameter,
+// echoed in response.requestId on every path. It may arrive in the POST body, so it
+// is read from either location.
 func requestIDFromRequest(r *http.Request) string {
 	if r == nil {
 		return ""
 	}
-	return r.URL.Query().Get("r")
+	return param(r, "r")
 }
 
 // normalizeEnvelope fills in the envelope fields a handler does not set itself:
@@ -212,7 +208,7 @@ func SendErrorDetail(w http.ResponseWriter, r *http.Request, httpStatus, statusC
 func SendOK(w http.ResponseWriter, r *http.Request, data interface{}, logger *slog.Logger) {
 	resp := BaseResponse{}
 	resp.Response.StatusCode = 200
-	resp.Response.StatusText = "OK"
+	resp.Response.StatusText = "Ok"
 	resp.Response.Data = data
 	SendResponse(w, r, resp, logger)
 }

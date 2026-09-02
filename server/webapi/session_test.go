@@ -3,6 +3,7 @@ package webapi
 import (
 	"context"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"log/slog"
 	"testing"
@@ -1251,4 +1252,200 @@ func TestSession_GetStoredIMs_NormalizesPartner(t *testing.T) {
 	})
 	require.Len(t, msgs, 1)
 	assert.Equal(t, "msg-1", msgs[0].MsgID)
+}
+
+// A session gets no insert/update/delete SNAC for a feedbag change it made itself —
+// those reach only a user's *other* instances. FeedbagStatus is the one notification
+// it does receive, so it drives the roster event for the client's own edits.
+func TestSession_FeedbagStatusRefreshesBuddyList(t *testing.T) {
+	tests := []struct {
+		name      string
+		events    []string
+		results   []uint16
+		body      any
+		wantEvent bool
+	}{
+		{
+			name:      "stored item refreshes the roster",
+			events:    []string{"buddylist"},
+			results:   []uint16{0x0000},
+			wantEvent: true,
+		},
+		{
+			// The declined item is still worth a refresh: the roster is how the
+			// client discovers the buddy was not stored, since it is absent from it.
+			name:      "declined item still refreshes the roster",
+			events:    []string{"buddylist"},
+			results:   []uint16{feedbagResultAuthRequired},
+			wantEvent: true,
+		},
+		{
+			name:      "no event when not subscribed",
+			events:    []string{"presence"},
+			results:   []uint16{0x0000},
+			wantEvent: false,
+		},
+		{
+			name:      "a body of the wrong type still refreshes",
+			events:    []string{"buddylist"},
+			body:      wire.SNAC_0x13_0x06_FeedbagReply{},
+			wantEvent: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			refreshed := 0
+			sess := &Session{
+				ScreenName: state.DisplayScreenName("me"),
+				Events:     tt.events,
+				EventQueue: NewEventQueue(10),
+				logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+				BuddyListRefresher: func(_ context.Context) (interface{}, error) {
+					refreshed++
+					return &BuddyListData{Groups: []BuddyGroup{}}, nil
+				},
+			}
+
+			body := tt.body
+			if body == nil {
+				body = wire.SNAC_0x13_0x0E_FeedbagStatus{Results: tt.results}
+			}
+			sess.handleFeedbagMessage(wire.SNACMessage{
+				Frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagStatus},
+				Body:  body,
+			})
+
+			var got int
+			for _, event := range sess.EventQueue.GetAllEvents() {
+				if event.Type == EventTypeBuddyList {
+					got++
+				}
+			}
+			if tt.wantEvent {
+				assert.Equal(t, 1, got)
+				assert.Equal(t, 1, refreshed)
+			} else {
+				assert.Zero(t, got)
+				assert.Zero(t, refreshed, "an unsubscribed session should not even query the roster")
+			}
+		})
+	}
+}
+
+func TestSession_HandleClientError(t *testing.T) {
+	const (
+		cookie = uint64(0xDEADBEEFCAFEF00D)
+		msgID  = "11112222-3333-4444-8000-555566667777"
+	)
+
+	tests := []struct {
+		name string
+		// events is what the session subscribed to at startSession.
+		events []string
+		// record seeds the cookie->msgId map the way a prior im/sendIM would.
+		record    bool
+		channelID uint16
+		wantEvent bool
+		wantCooki string
+		wantChan  string
+	}{
+		{
+			name:      "im channel names the message this session sent",
+			events:    []string{"im"},
+			record:    true,
+			channelID: wire.ICBMChannelIM,
+			wantEvent: true,
+			wantCooki: msgID,
+			wantChan:  "im",
+		},
+		{
+			name:      "rendezvous channel is reported as data",
+			events:    []string{"im"},
+			record:    true,
+			channelID: wire.ICBMChannelRendezvous,
+			wantEvent: true,
+			wantCooki: msgID,
+			wantChan:  "data",
+		},
+		{
+			// Another instance of the account sent the message, so this session
+			// has no msgId for it and must not invent one.
+			name:      "unknown cookie yields an empty msgId",
+			events:    []string{"im"},
+			record:    false,
+			channelID: wire.ICBMChannelIM,
+			wantEvent: true,
+			wantCooki: "",
+			wantChan:  "im",
+		},
+		{
+			name:      "not subscribed to im",
+			events:    []string{"presence"},
+			record:    true,
+			channelID: wire.ICBMChannelIM,
+			wantEvent: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sess := &Session{
+				Events:     tt.events,
+				EventQueue: NewEventQueue(10),
+			}
+			if tt.record {
+				sess.RecordSentIM(cookie, msgID)
+			}
+
+			sess.handleSNACMessage(wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.ICBM,
+					SubGroup:  wire.ICBMClientErr,
+				},
+				Body: wire.SNAC_0x04_0x0B_ICBMClientErr{
+					Cookie:     cookie,
+					ChannelID:  tt.channelID,
+					ScreenName: "Mike Kelly",
+					Code:       0x0004,
+				},
+			})
+
+			events := sess.EventQueue.GetAllEvents()
+			if !tt.wantEvent {
+				assert.Empty(t, events)
+				return
+			}
+
+			require.Len(t, events, 1)
+			assert.Equal(t, EventTypeClientError, events[0].Type)
+			got := events[0].Data.(ClientErrorEvent)
+			assert.Equal(t, tt.wantCooki, got.Cookie)
+			assert.Equal(t, tt.wantChan, got.Channel)
+			// The client keys users by the normalized id and renders the sender's
+			// own formatting, so both forms have to survive the translation.
+			assert.Equal(t, "mikekelly", got.Source.AimID)
+			assert.Equal(t, "Mike Kelly", got.Source.DisplayID)
+		})
+	}
+}
+
+func TestSession_RecordSentIMEvictsOldestCookie(t *testing.T) {
+	sess := &Session{}
+
+	for i := 0; i <= sentIMCookieLimit; i++ {
+		sess.RecordSentIM(uint64(i), fmt.Sprintf("msg-%d", i))
+	}
+
+	// The map is capped, so the oldest send is forgotten while the newest and the
+	// one that pushed the map over its limit are both still resolvable.
+	assert.Equal(t, "", sess.msgIDForCookie(0))
+	assert.Equal(t, "msg-1", sess.msgIDForCookie(1))
+	assert.Equal(t, fmt.Sprintf("msg-%d", sentIMCookieLimit), sess.msgIDForCookie(uint64(sentIMCookieLimit)))
+	assert.Len(t, sess.sentIMs, sentIMCookieLimit)
+
+	// A repeat cookie updates in place rather than consuming another slot.
+	sess.RecordSentIM(1, "msg-1-again")
+	assert.Equal(t, "msg-1-again", sess.msgIDForCookie(1))
+	assert.Len(t, sess.sentIMs, sentIMCookieLimit)
 }

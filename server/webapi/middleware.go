@@ -145,7 +145,7 @@ func NewAuthMiddleware(validator APIKeyValidator, logger *slog.Logger) *AuthMidd
 // session.OSCARSession as non-nil.
 func (m *AuthMiddleware) RequireSession(sm SessionResolver, next func(http.ResponseWriter, *http.Request, *Session)) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		aimsid := r.URL.Query().Get("aimsid")
+		aimsid := param(r, "aimsid")
 		if aimsid == "" {
 			SendError(w, r, http.StatusBadRequest, "missing aimsid parameter")
 			return
@@ -164,11 +164,7 @@ func (m *AuthMiddleware) RequireSession(sm SessionResolver, next func(http.Respo
 func (m *AuthMiddleware) Authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Extract API key from 'k' parameter (query or form)
-		apiKey := r.URL.Query().Get("k")
-		if apiKey == "" {
-			// Try form value for POST requests
-			apiKey = r.FormValue("k")
-		}
+		apiKey := param(r, "k")
 
 		if apiKey == "" {
 			SendEnvelopeStatus(w, r, http.StatusBadRequest, "required parameter 'k' is missing", m.Logger)
@@ -331,7 +327,7 @@ func (m *AuthMiddleware) AuthenticateFlexible(next http.Handler) http.Handler {
 
 		// Priority 1: Check for session-based auth (aimsid)
 		// According to the spec, when aimsid is provided, k is not required
-		if aimsid := r.URL.Query().Get("aimsid"); aimsid != "" {
+		if aimsid := param(r, "aimsid"); aimsid != "" {
 			// The handler itself will validate the aimsid
 			// We just need to pass the request through without requiring k
 			m.Logger.DebugContext(ctx, "using aimsid authentication", "aimsid", aimsid[:min(16, len(aimsid))]+"...")
@@ -340,11 +336,11 @@ func (m *AuthMiddleware) AuthenticateFlexible(next http.Handler) http.Handler {
 		}
 
 		// Priority 2: AOL token auth — user identity is in the token; k is optional.
-		if token := r.URL.Query().Get("a"); token != "" {
-			key, r := m.resolveAPIKeyCached(r, r.URL.Query().Get("k"))
+		if token := param(r, "a"); token != "" {
+			key, r := m.resolveAPIKeyCached(r, param(r, "k"))
 			ctx := r.Context()
 			if key == nil {
-				devKey := r.URL.Query().Get("k")
+				devKey := param(r, "k")
 				key = &state.WebAPIKey{
 					DevID:     "aim_web",
 					DevKey:    devKey,
@@ -360,8 +356,8 @@ func (m *AuthMiddleware) AuthenticateFlexible(next http.Handler) http.Handler {
 		}
 
 		// Priority 3: Check for signed request auth
-		if ts := r.URL.Query().Get("ts"); ts != "" {
-			if sig := r.URL.Query().Get("sig_sha256"); sig != "" {
+		if ts := param(r, "ts"); ts != "" {
+			if sig := param(r, "sig_sha256"); sig != "" {
 				// For now, signed requests still require 'k' parameter for API key validation
 				// The signature provides additional security on top of the API key
 				// When full signature validation is implemented, this can be made optional
@@ -371,11 +367,7 @@ func (m *AuthMiddleware) AuthenticateFlexible(next http.Handler) http.Handler {
 		}
 
 		// Priority 4: Fall back to API key requirement
-		apiKey := r.URL.Query().Get("k")
-		if apiKey == "" {
-			// Try form value for POST requests
-			apiKey = r.FormValue("k")
-		}
+		apiKey := param(r, "k")
 
 		if apiKey == "" {
 			SendEnvelopeStatus(w, r, http.StatusBadRequest, "authentication required: provide aimsid or k parameter", m.Logger)

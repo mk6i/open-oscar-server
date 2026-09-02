@@ -34,7 +34,10 @@ func NewBuddyListManager(feedbagService FeedbagService, locateService LocateServ
 
 // BuddyGroup represents a group in the WebAPI buddy list format.
 type BuddyGroup struct {
-	Name    string      `json:"name" xml:"name"`
+	Name string `json:"name" xml:"name"`
+	// ID is the feedbag group id, read strictly by clients. It follows Name to keep
+	// the rendered element order unchanged.
+	ID      int         `json:"id" xml:"id"`
 	Buddies []BuddyInfo `json:"buddies" xml:"buddies>buddy"`
 	Recent  bool        `json:"recent,omitempty" xml:"recent,omitempty"`
 	// Smart is null or a number. It is a pointer rather than an interface so
@@ -153,7 +156,7 @@ func (m *BuddyListManager) GetBuddyListForUser(ctx context.Context, sess *Sessio
 		if groupName == "" {
 			groupName = "Buddies"
 		}
-		wg := BuddyGroup{Name: groupName, Buddies: []BuddyInfo{}}
+		wg := BuddyGroup{ID: int(gid), Name: groupName, Buddies: []BuddyInfo{}}
 		for _, bid := range g.order {
 			b, ok := g.buddies[bid]
 			if !ok {
@@ -225,7 +228,9 @@ func (m *BuddyListManager) getBuddyInfo(ctx context.Context, instance *state.Ses
 		info.OnlineTime = int64(tod)
 	}
 
-	if userInfo.IsAway() {
+	if st := statusBitState(userInfo.TLVUserInfo); st != "" {
+		info.State = st
+	} else if userInfo.IsAway() {
 		info.State = "away"
 		if msg, ok := userInfo.LocateInfo.String(wire.LocateTLVTagsInfoUnavailableData); ok {
 			info.AwayMsg = msg

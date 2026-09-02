@@ -78,7 +78,7 @@ func TestAimHandler_AddTempBuddy(t *testing.T) {
 				LastAccessed: time.Now(),
 			},
 			expectedStatusCode: http.StatusOK,
-			expectedResponse:   `{"response":{"statusCode":200,"statusText":"OK","data":{"buddyNames":["buddy1"],"resultCode":"success"}}}`,
+			expectedResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{"buddyNames":["buddy1"],"resultCode":"success"}}}`,
 			checkSession: func(t *testing.T, session *Session) {
 				assert.NotNil(t, session.TempBuddies)
 				assert.True(t, session.TempBuddies["buddy1"])
@@ -99,7 +99,7 @@ func TestAimHandler_AddTempBuddy(t *testing.T) {
 				LastAccessed: time.Now(),
 			},
 			expectedStatusCode: http.StatusOK,
-			expectedResponse:   `{"response":{"statusCode":200,"statusText":"OK","data":{"buddyNames":["buddy1","buddy2","buddy3"],"resultCode":"success"}}}`,
+			expectedResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{"buddyNames":["buddy1","buddy2","buddy3"],"resultCode":"success"}}}`,
 			checkSession: func(t *testing.T, session *Session) {
 				assert.NotNil(t, session.TempBuddies)
 				assert.True(t, session.TempBuddies["buddy1"])
@@ -124,7 +124,7 @@ func TestAimHandler_AddTempBuddy(t *testing.T) {
 				LastAccessed: time.Now(),
 			},
 			expectedStatusCode: http.StatusOK,
-			expectedResponse:   `{"response":{"statusCode":200,"statusText":"OK","data":{"buddyNames":["buddy2"],"resultCode":"success"}}}`,
+			expectedResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{"buddyNames":["buddy2"],"resultCode":"success"}}}`,
 			checkSession: func(t *testing.T, session *Session) {
 				assert.NotNil(t, session.TempBuddies)
 				assert.True(t, session.TempBuddies["buddy1"])
@@ -160,7 +160,7 @@ func TestAimHandler_AddTempBuddy(t *testing.T) {
 				LastAccessed: time.Now(),
 			},
 			expectedStatusCode: http.StatusOK,
-			expectedResponse:   `{"response":{"statusCode":200,"statusText":"OK","data":{"buddyNames":["  buddy1  ","buddy2 "," buddy3"],"resultCode":"success"}}}`,
+			expectedResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{"buddyNames":["  buddy1  ","buddy2 "," buddy3"],"resultCode":"success"}}}`,
 			checkSession: func(t *testing.T, session *Session) {
 				assert.NotNil(t, session.TempBuddies)
 				assert.True(t, session.TempBuddies["buddy1"])

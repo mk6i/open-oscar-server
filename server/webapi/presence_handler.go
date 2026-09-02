@@ -22,9 +22,7 @@ type PresenceHandler struct {
 	Logger           *slog.Logger
 }
 
-// maxPresenceTargets caps how many screen names a single presence/get request
-// may query in target-list ("t=") mode.
-const maxPresenceTargets = 10
+const maxPresenceTargets = 32
 
 // ProfileData is the getProfile payload.
 type ProfileData struct {
@@ -44,10 +42,29 @@ type SetStateData struct {
 	OnlineTime int64  `json:"onlineTime" xml:"onlineTime"`
 }
 
-// PresenceData contains presence information.
+// presenceTargets returns the screen names a presence/get request asks about.
+// Both spellings of the list are accepted and combined: one t carrying comma-
+// separated names, and t repeated once per name.
+func presenceTargets(r *http.Request) []string {
+	var targets []string
+	for _, value := range paramValues(r, "t") {
+		for _, name := range strings.Split(value, ",") {
+			if name = strings.TrimSpace(name); name != "" {
+				targets = append(targets, name)
+			}
+		}
+	}
+	return targets
+}
+
+// PresenceData contains presence information. Each query fills in one field and
+// leaves the other nil.
+//
+// omitzero, not omitempty: a query matching nothing must still render its key as an
+// empty array, since clients read data.groups and data.users strictly.
 type PresenceData struct {
-	Groups []BuddyGroupInfo    `json:"groups,omitempty" xml:"groups>group,omitempty"`
-	Users  []BuddyPresenceInfo `json:"users,omitempty" xml:"users>user,omitempty"`
+	Groups []BuddyGroupInfo    `json:"groups,omitzero" xml:"groups>group,omitempty"`
+	Users  []BuddyPresenceInfo `json:"users,omitzero" xml:"users>user,omitempty"`
 }
 
 // BuddyGroupInfo represents a buddy group with its members.
@@ -73,6 +90,25 @@ type BuddyPresenceInfo struct {
 	OnlineTime int64  `json:"onlineTime,omitempty" xml:"onlineTime,omitempty"`
 	UserType   string `json:"userType" xml:"userType"` // "aim", "icq", "admin"
 	BuddyIcon  string `json:"buddyIcon,omitempty" xml:"buddyIcon,omitempty"`
+	// Profile carries member-directory fields, present only under mdir=1. It must be
+	// non-nil even when empty: clients treat a missing profile as "not a user".
+	Profile *BuddyProfileInfo `json:"profile,omitempty" xml:"profile,omitempty"`
+}
+
+// BuddyProfileInfo is the nested "profile" object carried under mdir=1. Gender and
+// birth date are absent because the directory record has nowhere to store them.
+type BuddyProfileInfo struct {
+	FriendlyName string             `json:"friendlyName,omitempty" xml:"friendlyName,omitempty"`
+	FirstName    string             `json:"firstName,omitempty" xml:"firstName,omitempty"`
+	LastName     string             `json:"lastName,omitempty" xml:"lastName,omitempty"`
+	HomeAddress  []BuddyAddressInfo `json:"homeAddress,omitempty" xml:"homeAddress,omitempty"`
+}
+
+// BuddyAddressInfo is one entry of a profile's homeAddress array.
+type BuddyAddressInfo struct {
+	City    string `json:"city,omitempty" xml:"city,omitempty"`
+	State   string `json:"state,omitempty" xml:"state,omitempty"`
+	Country string `json:"country,omitempty" xml:"country,omitempty"`
 }
 
 // GetPresence handles GET /presence/get requests.
@@ -83,9 +119,10 @@ func (h *PresenceHandler) GetPresence(w http.ResponseWriter, r *http.Request, se
 	// Check if buddy list is requested
 	getBuddyList := r.URL.Query().Get("bl") == "1"
 	wantProfileMsg := r.URL.Query().Get("profileMsg") == "1"
+	// mdir asks for member-directory fields alongside presence.
+	wantDirInfo := isTrueParam(r.URL.Query().Get("mdir"))
 
-	// Get target users if specified
-	targetUsers := r.URL.Query().Get("t")
+	targetUsers := presenceTargets(r)
 
 	// Create PresenceData struct to hold the response data
 	presenceData := PresenceData{}
@@ -99,33 +136,36 @@ func (h *PresenceHandler) GetPresence(w http.ResponseWriter, r *http.Request, se
 			groups = []BuddyGroupInfo{}
 		}
 		presenceData.Groups = groups
-	} else if targetUsers != "" {
+	} else if len(targetUsers) > 0 {
 		// Get presence for specific users
-		users := strings.Split(targetUsers, ",")
-		if len(users) > maxPresenceTargets {
-			SendError(w, r, http.StatusBadRequest, fmt.Sprintf("too many screen names requested (max %d)", maxPresenceTargets))
-			return
+		if len(targetUsers) > maxPresenceTargets {
+			// truncate rather than reject
+			h.Logger.WarnContext(ctx, "presence get: truncating oversized target list",
+				"aimsid", session.AimSID,
+				"requested", len(targetUsers),
+				"cap", maxPresenceTargets,
+			)
+			targetUsers = targetUsers[:maxPresenceTargets]
 		}
-		presenceList := make([]BuddyPresenceInfo, 0, len(users))
+		presenceList := make([]BuddyPresenceInfo, 0, len(targetUsers))
 
 		// The client's user-object merge deletes any alias it holds, so every
 		// presence payload has to carry friendly for aliased buddies.
 		aliases := session.Aliases(ctx)
 
-		for _, user := range users {
-			user = strings.TrimSpace(user)
-			if user == "" {
-				continue
-			}
+		for _, user := range targetUsers {
 			info := h.getUserPresence(ctx, session.OSCARSession, session.BaseURL, state.DisplayScreenName(user), wantProfileMsg)
 			info.Friendly = aliases[info.AimID]
+			if wantDirInfo {
+				info.Profile = h.directoryProfile(ctx, user)
+			}
 			presenceList = append(presenceList, info)
 		}
 
 		presenceData.Users = presenceList
 	} else {
-		// No specific request, return empty data
 		presenceData.Groups = []BuddyGroupInfo{}
+		presenceData.Users = []BuddyPresenceInfo{}
 	}
 
 	// Send response in requested format
@@ -136,6 +176,37 @@ func (h *PresenceHandler) GetPresence(w http.ResponseWriter, r *http.Request, se
 		"buddy_list", getBuddyList,
 		"targets", targetUsers,
 	)
+}
+
+// directoryProfile reads a user's member-directory record for the mdir=1 profile
+// object. It never returns nil: a user with no directory record must still appear
+// as an empty profile rather than be dropped.
+func (h *PresenceHandler) directoryProfile(ctx context.Context, screenName string) *BuddyProfileInfo {
+	profile := &BuddyProfileInfo{}
+
+	reply, err := h.LocateService.DirInfo(ctx, wire.SNACFrame{}, wire.SNAC_0x02_0x0B_LocateGetDirInfo{ScreenName: screenName})
+	if err != nil {
+		h.Logger.ErrorContext(ctx, "presence: directory lookup failed",
+			"screenName", screenName, "err", err.Error())
+		return profile
+	}
+	body, ok := reply.Body.(wire.SNAC_0x02_0x0C_LocateGetDirReply)
+	if !ok {
+		return profile
+	}
+
+	profile.FirstName, _ = body.String(wire.ODirTLVFirstName)
+	profile.LastName, _ = body.String(wire.ODirTLVLastName)
+	profile.FriendlyName, _ = body.String(wire.ODirTLVNickName)
+
+	city, _ := body.String(wire.ODirTLVCity)
+	stateName, _ := body.String(wire.ODirTLVState)
+	country, _ := body.String(wire.ODirTLVCountry)
+	if city != "" || stateName != "" || country != "" {
+		profile.HomeAddress = []BuddyAddressInfo{{City: city, State: stateName, Country: country}}
+	}
+
+	return profile
 }
 
 // getBuddyListGroups retrieves the buddy list organized by groups.
@@ -274,10 +345,10 @@ func (h *PresenceHandler) getUserPresence(ctx context.Context, instance *state.S
 		presence.OnlineTime = int64(tod)
 	}
 
-	if info.IsAway() {
+	if st := statusBitState(info.TLVUserInfo); st != "" {
+		presence.State = st
+	} else if info.IsAway() {
 		presence.State = "away"
-	} else if status, ok := info.Uint32BE(wire.OServiceUserInfoStatus); ok && status&wire.OServiceUserStatusDND != 0 {
-		presence.State = "dnd"
 	}
 
 	if idle, ok := info.Uint16BE(wire.OServiceUserInfoIdleTime); ok && idle > 0 {
@@ -343,6 +414,10 @@ func (h *PresenceHandler) SetState(w http.ResponseWriter, r *http.Request, sessi
 		statusBitmask = wire.OServiceUserStatusInvisible
 	case "dnd":
 		statusBitmask = wire.OServiceUserStatusDND
+	case "occupied":
+		// ICQ's Busy, a distinct status bit from DND.
+		statusBitmask = wire.OServiceUserStatusBusy
+		oscarSession.SetUserInfoFlag(wire.OServiceUserFlagUnavailable)
 	default:
 		SendError(w, r, http.StatusBadRequest, "invalid state parameter")
 		return
@@ -549,13 +624,38 @@ func (h *PresenceHandler) Icon(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, iconURL, http.StatusFound)
 }
 
+// statusBitState reports the web state named by a user's ICQ status bits, or ""
+// when neither Busy nor DND is set. Callers must consult it before IsAway(): Busy
+// and DND also raise the unavailable flag, so an away-first test reports every busy
+// user as away.
+func statusBitState(info wire.TLVUserInfo) string {
+	status, ok := info.Uint32BE(wire.OServiceUserInfoStatus)
+	if !ok {
+		return ""
+	}
+	switch {
+	case status&wire.OServiceUserStatusBusy != 0:
+		return "occupied"
+	case status&wire.OServiceUserStatusDND != 0:
+		return "dnd"
+	}
+	return ""
+}
+
 // currentWebState maps an OSCAR session's presence flags to the web state string
-// the AIM client expects ("online", "away", "idle", "invisible").
+// the clients expect ("online", "away", "idle", "invisible", "occupied", "dnd").
 func currentWebState(instance *state.SessionInstance) string {
 	sess := instance.Session()
+	bitmask := instance.UserStatusBitmask()
 	switch {
 	case sess.Invisible():
 		return "invisible"
+	// Checked before Away: both set the unavailable flag, so an occupied user would
+	// otherwise report back as away on the next myInfo.
+	case bitmask&wire.OServiceUserStatusBusy != 0:
+		return "occupied"
+	case bitmask&wire.OServiceUserStatusDND != 0:
+		return "dnd"
 	case sess.Away():
 		return "away"
 	case instance.Idle():

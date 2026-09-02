@@ -84,6 +84,9 @@ type Session struct {
 	aliasMu      sync.Mutex
 	imLog        map[string][]WebAPIStoredIM
 	imLogMu      sync.Mutex
+	sentIMs      map[uint64]string // OSCAR message cookie -> the msgId given to the client
+	sentIMOrder  []uint64          // insertion order of sentIMs, oldest first
+	sentIMMu     sync.Mutex
 	// IMRateClassID is the rate class that sending an IM spends. The web client
 	// renders any rate limit event as the IM banner, so only this class's updates
 	// may reach it. Zero disables the alert.
@@ -318,6 +321,8 @@ func (s *Session) handleICBMMessage(msg wire.SNACMessage) {
 		s.handleIncomingIM(msg)
 	case wire.ICBMClientEvent:
 		s.handleTypingNotification(msg)
+	case wire.ICBMClientErr:
+		s.handleClientError(msg)
 	}
 }
 
@@ -388,6 +393,7 @@ func (s *Session) handleIncomingIM(msg wire.SNACMessage) {
 			Message:   messageText,
 			MsgID:     msgID,
 			Timestamp: timestamp,
+			Imf:       imfPlainText,
 			AutoResp:  autoResponse,
 		})
 		s.logger.Debug("delivered offline instant message",
@@ -406,6 +412,7 @@ func (s *Session) handleIncomingIM(msg wire.SNACMessage) {
 			Message:   messageText,
 			MsgID:     msgID,
 			Timestamp: timestamp,
+			Imf:       imfPlainText,
 			AutoResp:  autoResponse,
 		})
 		s.logger.Debug("delivered instant message",
@@ -432,6 +439,40 @@ func (s *Session) handleIncomingIM(msg wire.SNACMessage) {
 			),
 		}))
 	}
+}
+
+// handleClientError translates ICBMClientErr — the recipient reporting that it
+// could not handle a message already delivered to it — into a clientError event
+// for the sender. Only OSCAR clients raise this SNAC.
+func (s *Session) handleClientError(msg wire.SNACMessage) {
+	if !s.IsSubscribedTo("im") {
+		return
+	}
+
+	body, ok := msg.Body.(wire.SNAC_0x04_0x0B_ICBMClientErr)
+	if !ok {
+		return
+	}
+
+	// The SNAC names the erroring party by their own formatting, so both the
+	// normalized aimId and displayId are sent, along with the viewer's alias.
+	sender := state.NewIdentScreenName(body.ScreenName)
+
+	channel := "im"
+	if body.ChannelID == wire.ICBMChannelRendezvous {
+		channel = "data"
+	}
+
+	s.EventQueue.Push(EventTypeClientError, ClientErrorEvent{
+		Source: UserInfo{
+			AimID:     sender.String(),
+			DisplayID: body.ScreenName,
+			Friendly:  s.aliasFor(sender),
+			UserType:  "aim",
+		},
+		Cookie:  s.msgIDForCookie(body.Cookie),
+		Channel: channel,
+	})
 }
 
 // handleTypingNotification handles typing notifications.
@@ -491,6 +532,8 @@ func (s *Session) handleBuddyArrived(msg wire.SNACMessage) {
 	// with updated user flags/status bits, not BuddyDeparted.
 	if body.IsInvisible() {
 		stateStr = "offline"
+	} else if st := statusBitState(body.TLVUserInfo); st != "" {
+		stateStr = st
 	} else if body.IsAway() {
 		stateStr = "away"
 	} else if mask, ok := body.Uint32BE(wire.OServiceUserInfoStatus); ok {
@@ -554,20 +597,50 @@ func (s *Session) handleBuddyDeparted(msg wire.SNACMessage) {
 	s.EventQueue.Push(EventTypePresence, presenceEvent)
 }
 
+// feedbagResultAuthRequired is the per-item feedbag result meaning the target's ICQ
+// settings require authorization, so the item was not stored.
+const feedbagResultAuthRequired = uint16(0x000E)
+
+// refreshBuddyList re-reads the roster and pushes it to the client. Runs on the SNAC
+// listener goroutine, so it uses the session context rather than a request context.
+func (s *Session) refreshBuddyList() {
+	// A buddy item carries its alias, so any feedbag write can change the map.
+	s.InvalidateAliases()
+
+	if s.BuddyListRefresher == nil {
+		return
+	}
+	payload, err := s.BuddyListRefresher(s.ctx)
+	if err != nil {
+		s.logger.Error("failed to refresh buddy list after feedbag change", "err", err)
+		return
+	}
+	s.EventQueue.Push(EventTypeBuddyList, payload)
+}
+
 func (s *Session) handleFeedbagMessage(msg wire.SNACMessage) {
 	switch msg.Frame.SubGroup {
-	case wire.FeedbagInsertItem, wire.FeedbagUpdateItem, wire.FeedbagDeleteItem:
-		// A buddy item carries its alias, so any feedbag write can change the map.
-		s.InvalidateAliases()
-
-		if s.BuddyListRefresher != nil {
-			payload, err := s.BuddyListRefresher(s.ctx)
-			if err != nil {
-				s.logger.Error("failed to refresh buddy list after feedbag change", "err", err)
-			} else {
-				s.EventQueue.Push(EventTypeBuddyList, payload)
+	case wire.FeedbagStatus:
+		// Insert/update/delete below reach only a user's *other* instances, so this
+		// is the one notification a session gets for its own feedbag write.
+		if !s.IsSubscribedTo(string(EventTypeBuddyList)) {
+			return
+		}
+		if body, ok := msg.Body.(wire.SNAC_0x13_0x0E_FeedbagStatus); ok {
+			// A buddy declined for authorization is not stored, and is simply
+			// absent from the refreshed roster.
+			for _, result := range body.Results {
+				if result == feedbagResultAuthRequired {
+					s.logger.Info("feedbag item declined pending authorization")
+					break
+				}
 			}
 		}
+		s.refreshBuddyList()
+
+	case wire.FeedbagInsertItem, wire.FeedbagUpdateItem, wire.FeedbagDeleteItem:
+		s.refreshBuddyList()
+
 		if s.PermitDenyRefresher != nil {
 			// An insert and an update both relay an UpdateItem body; only a
 			// delete carries a DeleteItem body.
@@ -832,6 +905,44 @@ func generateSessionID() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(bytes), nil
+}
+
+// sentIMCookieLimit bounds the cookie->msgId map. An error arrives within seconds
+// of the send, so a small window suffices; the oldest entry is evicted once full.
+const sentIMCookieLimit = 256
+
+// RecordSentIM remembers the msgId handed out for an outgoing message, keyed by the
+// OSCAR cookie that message carries on the wire. The two are unrelated by
+// construction, so a clientError — which names its message by cookie — could not
+// otherwise say which message it refers to.
+func (s *Session) RecordSentIM(cookie uint64, msgID string) {
+	if s == nil || msgID == "" {
+		return
+	}
+	s.sentIMMu.Lock()
+	defer s.sentIMMu.Unlock()
+	if s.sentIMs == nil {
+		s.sentIMs = make(map[uint64]string)
+	}
+	if _, seen := s.sentIMs[cookie]; !seen {
+		s.sentIMOrder = append(s.sentIMOrder, cookie)
+	}
+	s.sentIMs[cookie] = msgID
+	if len(s.sentIMOrder) > sentIMCookieLimit {
+		delete(s.sentIMs, s.sentIMOrder[0])
+		s.sentIMOrder = s.sentIMOrder[1:]
+	}
+}
+
+// msgIDForCookie resolves an OSCAR message cookie back to the msgId handed out for
+// it, or "" when the message is not one this session sent.
+func (s *Session) msgIDForCookie(cookie uint64) string {
+	if s == nil {
+		return ""
+	}
+	s.sentIMMu.Lock()
+	defer s.sentIMMu.Unlock()
+	return s.sentIMs[cookie]
 }
 
 // WebAPIStoredIM is one message in a Web AIM session's in-memory IM log.

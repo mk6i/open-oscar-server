@@ -211,3 +211,33 @@ func TestMarshalAMF3ByteSlice(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, []byte{1, 2, 3}, m["raw"])
 }
+
+// TestMarshalAMF3_OmitZero pins the omitzero option: unlike omitempty it suppresses
+// only the zero value, so an empty-but-non-nil slice still encodes.
+func TestMarshalAMF3_OmitZero(t *testing.T) {
+	type payload struct {
+		Users []string `json:"users,omitzero"`
+	}
+
+	tests := []struct {
+		name  string
+		value payload
+		want  string
+	}{
+		{name: "nil is omitted", value: payload{}, want: ""},
+		{name: "empty is kept", value: payload{Users: []string{}}, want: "users"},
+		{name: "populated is kept", value: payload{Users: []string{"bob"}}, want: "users"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b, err := MarshalAMF3(tt.value)
+			assert.NoError(t, err)
+			if tt.want == "" {
+				assert.NotContains(t, string(b), "users")
+			} else {
+				assert.Contains(t, string(b), "users")
+			}
+		})
+	}
+}

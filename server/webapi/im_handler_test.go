@@ -503,3 +503,62 @@ func TestMessagingHandler_SetTyping_MissingAimsid(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, rr.Code)
 	assert.Contains(t, rr.Body.String(), "missing aimsid parameter")
 }
+
+// ChannelMsgToHost delivers before it returns, so an ICBMClientErr can reach the pump
+// while SendIM is still inside that call. Recording the cookie->msgId mapping after
+// the send loses that race and emits a clientError naming no message. The interleaving
+// is driven deterministically by handling the error SNAC from inside the mock.
+func TestMessagingHandler_SendIM_ClientErrorDuringSendNamesTheMessage(t *testing.T) {
+	oscarInstance := state.NewSession().AddInstance()
+	icbmService := newMockICBMService(t)
+
+	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
+	sess, err := sessionMgr.GetSession(context.Background(), aimsid)
+	require.NoError(t, err)
+
+	icbmService.EXPECT().
+		ChannelMsgToHost(mock.Anything, oscarInstance, mock.AnythingOfType("wire.SNACFrame"), mock.AnythingOfType("wire.SNAC_0x04_0x06_ICBMChannelMsgToHost")).
+		Run(func(_ context.Context, _ *state.SessionInstance, _ wire.SNACFrame, inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) {
+			sess.handleSNACMessage(wire.SNACMessage{
+				Frame: wire.SNACFrame{FoodGroup: wire.ICBM, SubGroup: wire.ICBMClientErr},
+				Body: wire.SNAC_0x04_0x0B_ICBMClientErr{
+					Cookie:     inBody.Cookie,
+					ChannelID:  wire.ICBMChannelIM,
+					ScreenName: "Recipient",
+				},
+			})
+		}).
+		Return(nil, nil)
+
+	handler := &MessagingHandler{
+		ICBMService:    icbmService,
+		LocateService:  stubLocateService(t, ""),
+		FeedbagService: stubFeedbagService(t, "someone", ""),
+		Logger:         slog.Default(),
+	}
+
+	req, reqErr := http.NewRequest("GET", "/im/sendIM?aimsid="+aimsid+"&t=recipient&message=hello", nil)
+	require.NoError(t, reqErr)
+	rr := httptest.NewRecorder()
+	requireSession(sessionMgr, handler.SendIM).ServeHTTP(rr, req)
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var sentMsgID string
+	var clientErr ClientErrorEvent
+	for _, event := range sess.EventQueue.GetAllEvents() {
+		switch event.Type {
+		case EventTypeSentIM:
+			if e, ok := event.Data.(SentIMEvent); ok {
+				sentMsgID = e.MsgID
+			}
+		case EventTypeClientError:
+			clientErr, _ = event.Data.(ClientErrorEvent)
+		}
+	}
+
+	// The cookie the client is told about must be the msgId it was handed for the
+	// very message that failed.
+	require.NotEmpty(t, sentMsgID)
+	assert.Equal(t, sentMsgID, clientErr.Cookie)
+	assert.Equal(t, "recipient", clientErr.Source.AimID)
+}

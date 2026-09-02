@@ -75,6 +75,7 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 							ttlIn: state.DefaultCookieTTL,
 							dataIn: func() []byte {
 								loginCookie := state.ServerCookie{
+									TokenTTL:      uint32((state.DefaultCookieTTL).Seconds()),
 									ScreenName:    user.DisplayScreenName,
 									MultiConnFlag: uint8(wire.MultiConnFlagsRecentClient),
 								}
@@ -140,6 +141,7 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 							ttlIn: time.Hour,
 							dataIn: func() []byte {
 								loginCookie := state.ServerCookie{
+									TokenTTL:   uint32((time.Hour).Seconds()),
 									ScreenName: user.DisplayScreenName,
 								}
 								buf := &bytes.Buffer{}
@@ -195,6 +197,7 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 							ttlIn: state.DefaultCookieTTL,
 							dataIn: func() []byte {
 								loginCookie := state.ServerCookie{
+									TokenTTL:      uint32((state.DefaultCookieTTL).Seconds()),
 									ScreenName:    user.DisplayScreenName,
 									MultiConnFlag: uint8(wire.MultiConnFlagsRecentClient),
 								}
@@ -323,6 +326,7 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 							ttlIn: state.DefaultCookieTTL,
 							dataIn: func() []byte {
 								loginCookie := state.ServerCookie{
+									TokenTTL:   uint32((state.DefaultCookieTTL).Seconds()),
 									ScreenName: user.DisplayScreenName,
 									ClientID:   "ICQ 2000b",
 								}
@@ -527,6 +531,7 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 							ttlIn: state.DefaultCookieTTL,
 							dataIn: func() []byte {
 								loginCookie := state.ServerCookie{
+									TokenTTL:   uint32((state.DefaultCookieTTL).Seconds()),
 									ScreenName: user.DisplayScreenName,
 								}
 								buf := &bytes.Buffer{}
@@ -677,6 +682,7 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 							ttlIn: state.DefaultCookieTTL,
 							dataIn: func() []byte {
 								loginCookie := state.ServerCookie{
+									TokenTTL:   uint32((state.DefaultCookieTTL).Seconds()),
 									ScreenName: user.DisplayScreenName,
 								}
 								buf := &bytes.Buffer{}
@@ -753,6 +759,7 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 							ttlIn: state.DefaultCookieTTL,
 							dataIn: func() []byte {
 								loginCookie := state.ServerCookie{
+									TokenTTL:   uint32((state.DefaultCookieTTL).Seconds()),
 									ScreenName: user.DisplayScreenName,
 								}
 								buf := &bytes.Buffer{}
@@ -807,6 +814,7 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 							ttlIn: state.DefaultCookieTTL,
 							dataIn: func() []byte {
 								loginCookie := state.ServerCookie{
+									TokenTTL:   uint32((state.DefaultCookieTTL).Seconds()),
 									ScreenName: user.DisplayScreenName,
 								}
 								buf := &bytes.Buffer{}
@@ -870,6 +878,7 @@ func TestAuthService_BUCPLoginRequest(t *testing.T) {
 							ttlIn: state.DefaultCookieTTL,
 							dataIn: func() []byte {
 								loginCookie := state.ServerCookie{
+									TokenTTL:   uint32((state.DefaultCookieTTL).Seconds()),
 									ScreenName: user.DisplayScreenName,
 								}
 								buf := &bytes.Buffer{}
@@ -1029,6 +1038,7 @@ func TestAuthService_FLAPLogin(t *testing.T) {
 							ttlIn: state.DefaultCookieTTL,
 							dataIn: func() []byte {
 								loginCookie := state.ServerCookie{
+									TokenTTL:   uint32((state.DefaultCookieTTL).Seconds()),
 									ScreenName: user.DisplayScreenName,
 								}
 								buf := &bytes.Buffer{}
@@ -1076,6 +1086,7 @@ func TestAuthService_FLAPLogin(t *testing.T) {
 							ttlIn: time.Hour,
 							dataIn: func() []byte {
 								loginCookie := state.ServerCookie{
+									TokenTTL:   uint32((time.Hour).Seconds()),
 									ScreenName: user.DisplayScreenName,
 								}
 								buf := &bytes.Buffer{}
@@ -1123,6 +1134,7 @@ func TestAuthService_FLAPLogin(t *testing.T) {
 							ttlIn: maxTokenTTL,
 							dataIn: func() []byte {
 								loginCookie := state.ServerCookie{
+									TokenTTL:   uint32((maxTokenTTL).Seconds()),
 									ScreenName: user.DisplayScreenName,
 								}
 								buf := &bytes.Buffer{}
@@ -1213,6 +1225,7 @@ func TestAuthService_FLAPLogin(t *testing.T) {
 							ttlIn: state.DefaultCookieTTL,
 							dataIn: func() []byte {
 								loginCookie := state.ServerCookie{
+									TokenTTL:   uint32((state.DefaultCookieTTL).Seconds()),
 									ScreenName: user.DisplayScreenName,
 								}
 								buf := &bytes.Buffer{}
@@ -1260,6 +1273,7 @@ func TestAuthService_FLAPLogin(t *testing.T) {
 							ttlIn: state.DefaultCookieTTL,
 							dataIn: func() []byte {
 								loginCookie := state.ServerCookie{
+									TokenTTL:   uint32((state.DefaultCookieTTL).Seconds()),
 									ScreenName: user.DisplayScreenName,
 									ClientID:   "ICQ 2000b",
 								}
@@ -1395,6 +1409,7 @@ func TestAuthService_FLAPLogin(t *testing.T) {
 							ttlIn: state.DefaultCookieTTL,
 							dataIn: func() []byte {
 								loginCookie := state.ServerCookie{
+									TokenTTL:   uint32((state.DefaultCookieTTL).Seconds()),
 									ScreenName: user.DisplayScreenName,
 								}
 								buf := &bytes.Buffer{}
@@ -1449,6 +1464,7 @@ func TestAuthService_FLAPLogin(t *testing.T) {
 							ttlIn: state.DefaultCookieTTL,
 							dataIn: func() []byte {
 								loginCookie := state.ServerCookie{
+									TokenTTL:   uint32((state.DefaultCookieTTL).Seconds()),
 									ScreenName: user.DisplayScreenName,
 								}
 								buf := &bytes.Buffer{}
@@ -1495,6 +1511,7 @@ func TestAuthService_FLAPLogin(t *testing.T) {
 							ttlIn: state.DefaultCookieTTL,
 							dataIn: func() []byte {
 								loginCookie := state.ServerCookie{
+									TokenTTL:   uint32((state.DefaultCookieTTL).Seconds()),
 									ScreenName: user.DisplayScreenName,
 								}
 								buf := &bytes.Buffer{}
@@ -1565,6 +1582,7 @@ func TestAuthService_FLAPLogin(t *testing.T) {
 							ttlIn: state.DefaultCookieTTL,
 							dataIn: func() []byte {
 								loginCookie := state.ServerCookie{
+									TokenTTL:   uint32((state.DefaultCookieTTL).Seconds()),
 									ScreenName: user.DisplayScreenName,
 									ClientID:   "AOL Instant Messenger (TM) version 1.1.19 for Java",
 								}
@@ -1722,6 +1740,7 @@ func TestAuthService_KerberosLogin(t *testing.T) {
 							ttlIn: state.DefaultCookieTTL,
 							dataIn: func() []byte {
 								loginCookie := state.ServerCookie{
+									TokenTTL:      uint32((state.DefaultCookieTTL).Seconds()),
 									Service:       wire.BOS,
 									ScreenName:    user.DisplayScreenName,
 									ClientID:      "",
@@ -1861,6 +1880,7 @@ func TestAuthService_KerberosLogin(t *testing.T) {
 							ttlIn: state.DefaultCookieTTL,
 							dataIn: func() []byte {
 								loginCookie := state.ServerCookie{
+									TokenTTL:      uint32((state.DefaultCookieTTL).Seconds()),
 									Service:       wire.BOS,
 									ScreenName:    user.DisplayScreenName,
 									ClientID:      "",

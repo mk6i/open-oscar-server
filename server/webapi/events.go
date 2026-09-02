@@ -23,6 +23,7 @@ const (
 	EventTypeSessionEnded EventType = "sessionEnded"
 	EventTypeTyping       EventType = "typing"
 	EventTypePermitDeny   EventType = "permitDeny"
+	EventTypeClientError  EventType = "clientError"
 )
 
 // Event represents an event to be delivered to a web client.
@@ -49,15 +50,20 @@ type PresenceEvent struct {
 	BuddyIcon  string `json:"buddyIcon,omitempty" xml:"buddyIcon,omitempty"`   // Absolute icon URL; empty preserves the client's current icon, the placeholder URL clears it
 }
 
+// imfPlainText is the message-format tag put on delivered IMs; bodies are always
+// plain text.
+const imfPlainText = "plain"
+
 // IMEvent represents an instant message event.
 type IMEvent struct {
 	Source    UserInfo `json:"source" xml:"source"`
 	Message   string   `json:"message" xml:"message"`
 	MsgID     string   `json:"msgId,omitempty" xml:"msgId,omitempty"`
 	Timestamp int64    `json:"timestamp" xml:"timestamp"`
-	// AutoResp is always sent to AMF clients, false included, because the client
-	// reads it unconditionally when it builds the message.
-	AutoResp bool `json:"autoresponse,omitempty" xml:"autoresponse,omitempty" amf3:"autoresponse"`
+	// Imf is read strictly and then ignored, so its only job is to exist.
+	Imf string `json:"imf" xml:"imf"`
+	// AutoResp is always sent, false included: clients read it unconditionally.
+	AutoResp bool `json:"autoresponse" xml:"autoresponse" amf3:"autoresponse"`
 }
 
 // OfflineIMEvent represents a message that was stored while the user was signed
@@ -76,7 +82,9 @@ type OfflineIMEvent struct {
 	Message   string `json:"message" xml:"message"`
 	MsgID     string `json:"msgId,omitempty" xml:"msgId,omitempty"`
 	Timestamp int64  `json:"timestamp" xml:"timestamp"`
-	AutoResp  bool   `json:"autoresponse,omitempty" xml:"autoresponse,omitempty" amf3:"autoresponse"`
+	// Imf and AutoResp must be present, as on IMEvent.
+	Imf      string `json:"imf" xml:"imf"`
+	AutoResp bool   `json:"autoresponse" xml:"autoresponse" amf3:"autoresponse"`
 }
 
 // SentIMEvent represents a sent instant message event.
@@ -90,6 +98,18 @@ type SentIMEvent struct {
 	MsgID     string   `json:"msgId,omitempty" xml:"msgId,omitempty"`
 	Timestamp int64    `json:"timestamp" xml:"timestamp"`
 	AutoResp  bool     `json:"autoResponse,omitempty" xml:"autoResponse,omitempty" amf3:"autoresponse"`
+}
+
+// ClientErrorEvent tells a sender that the recipient rejected a message the server
+// had already delivered. im/sendIM answers synchronously when the ICBM service
+// itself refuses a send; a rejection from the recipient's own client arrives here
+// instead. Channel "data" names the rendezvous channel.
+type ClientErrorEvent struct {
+	Source UserInfo `json:"source" xml:"source"`
+	// Cookie names the failed message by the msgId im/sendIM returned. It is empty
+	// when another instance of the account sent the message.
+	Cookie  string `json:"cookie" xml:"cookie"`
+	Channel string `json:"channel" xml:"channel"`
 }
 
 // UserInfo represents basic user information in events.
