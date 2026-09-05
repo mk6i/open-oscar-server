@@ -16,10 +16,10 @@ import (
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
-func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyValidator APIKeyValidator, sessionManager *SessionManager) *Server {
+func NewServer(listeners []string, logger *slog.Logger, handler Handler, sessionManager *SessionManager) *Server {
 	servers := make([]*http.Server, 0, len(listeners))
 
-	authMiddleware := NewAuthMiddleware(apiKeyValidator, logger)
+	authMiddleware := NewAuthMiddleware(logger)
 	rateLimiter := NewRateLimitMiddleware(handler.SNACRateLimits, logger)
 
 	authHandler := &AuthHandler{
@@ -80,30 +80,27 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 	for _, l := range listeners {
 		mux := http.NewServeMux()
 
-		// CORSMiddleware wraps the auth layer rather than the other way around, so
-		// that responses the auth layer rejects (400 missing key, 403 bad key, 429
-		// rate limited) still carry Access-Control-Allow-Origin. A browser blocks a
-		// cross-origin response without that header, and the Web AIM client reads
-		// the resulting status-0 empty response as a CORS failure and permanently
-		// switches its whole request pipeline to JSONP.
+		// CORSMiddleware wraps the session layer rather than the other way around,
+		// so that responses the session layer rejects (400 missing aimsid, 401
+		// expired session) still carry Access-Control-Allow-Origin. A browser
+		// blocks a cross-origin response without that header, and the Web AIM
+		// client reads the resulting status-0 empty response as a CORS failure and
+		// permanently switches its whole request pipeline to JSONP.
 		//
 		// oscarRoute charges the request against the rate class for (foodGroup,
 		// subGroup) before the handler runs; sessionRoute and stubRoute reach no
 		// food group and so are not rate limited here.
 		oscarRoute := func(foodGroup uint16, subGroup uint16, h SessionHandlerFunc) http.Handler {
 			return authMiddleware.CORSMiddleware(
-				authMiddleware.AuthenticateFlexible(
-					authMiddleware.RequireSession(sessionManager,
-						rateLimiter.OSCAR(foodGroup, subGroup)(h))))
+				authMiddleware.RequireSession(sessionManager,
+					rateLimiter.OSCAR(foodGroup, subGroup)(h)))
 		}
 		sessionRoute := func(h SessionHandlerFunc) http.Handler {
 			return authMiddleware.CORSMiddleware(
-				authMiddleware.AuthenticateFlexible(
-					authMiddleware.RequireSession(sessionManager, h)))
+				authMiddleware.RequireSession(sessionManager, h))
 		}
 		stubRoute := func(h http.HandlerFunc) http.Handler {
-			return authMiddleware.CORSMiddleware(
-				authMiddleware.AuthenticateFlexible(h))
+			return authMiddleware.CORSMiddleware(h)
 		}
 
 		mux.Handle("GET /{$}", http.HandlerFunc(handler.GetHelloWorldHandler))
@@ -173,13 +170,10 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 		mux.Handle("GET /_cqr/login/login.psp", loginPSP)
 		mux.Handle("POST /_cqr/login/login.psp", loginPSP)
 
-		startSession := authMiddleware.CORSMiddleware(
-			authMiddleware.AuthenticateFlexible(
-				http.HandlerFunc(aimHandler.StartSession)))
+		startSession := authMiddleware.CORSMiddleware(http.HandlerFunc(aimHandler.StartSession))
 		mux.Handle("GET /aim/startSession", startSession)
 		mux.Handle("POST /aim/startSession", startSession)
 
-		// End session - uses aimsid for auth, no k required
 		mux.Handle("GET /aim/endSession", sessionRoute(aimHandler.EndSession))
 
 		mux.Handle("GET /aim/fetchEvents", sessionRoute(aimHandler.FetchEvents))
@@ -194,9 +188,7 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 		// OSCAR Bridge endpoint. Hands off to a BOS session rather than reaching
 		// a food group, so there is no OSCAR budget to charge.
 		mux.Handle("GET /aim/startOSCARSession",
-			authMiddleware.CORSMiddleware(
-				authMiddleware.Authenticate(
-					http.HandlerFunc(aimHandler.StartOSCARSession))))
+			authMiddleware.CORSMiddleware(http.HandlerFunc(aimHandler.StartOSCARSession)))
 
 		conversationStub := &ConversationStubHandler{
 			Logger: logger,
@@ -207,7 +199,6 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 		mux.Handle("GET /imlog/fetchStoredIMs", sessionRoute(conversationStub.FetchStoredIMs))
 
 		// Presence and buddy list
-		// GetPresence supports aimsid-based auth, so we use flexible auth
 		mux.Handle("GET /presence/get", oscarRoute(wire.Feedbag, wire.FeedbagQuery, presenceHandler.GetPresence))
 
 		mux.Handle("GET /buddylist/addBuddy", oscarRoute(wire.Feedbag, wire.FeedbagInsertItem, buddyListHandler.AddBuddy))
@@ -219,7 +210,6 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 		mux.Handle("GET /buddylist/setBuddyAttribute", oscarRoute(wire.Feedbag, wire.FeedbagUpdateItem, buddyListHandler.SetBuddyAttribute))
 		mux.Handle("GET /buddylist/setGroupAttribute", oscarRoute(wire.Feedbag, wire.FeedbagUpdateItem, buddyListHandler.SetGroupAttribute))
 
-		// sendIM supports aimsid-based auth, so we use flexible auth.
 		// The Web AIM client POSTs the message body (non-IE browsers); IE uses GET.
 		sendIMHandler := oscarRoute(wire.ICBM, wire.ICBMChannelMsgToHost, messagingHandler.SendIM)
 		mux.Handle("GET /im/sendIM", sendIMHandler)
@@ -227,10 +217,8 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 
 		mux.Handle("GET /im/setTyping", oscarRoute(wire.ICBM, wire.ICBMClientEvent, messagingHandler.SetTyping))
 
-		// SetState only requires aimsid, no k parameter needed
 		mux.Handle("GET /presence/setState", oscarRoute(wire.OService, wire.OServiceSetUserInfoFields, presenceHandler.SetState))
 
-		// These presence endpoints support aimsid-based auth where k is not required
 		mux.Handle("GET /presence/setStatus", oscarRoute(wire.OService, wire.OServiceSetUserInfoFields, presenceHandler.SetStatus))
 		mux.Handle("GET /presence/setProfile", oscarRoute(wire.Locate, wire.LocateSetInfo, presenceHandler.SetProfile))
 		mux.Handle("GET /presence/getProfile", oscarRoute(wire.Locate, wire.LocateUserInfoQuery, presenceHandler.GetProfile))
@@ -245,7 +233,6 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, apiKeyV
 		mux.Handle("GET /memberDir/update", memberDirUpdate)
 		mux.Handle("POST /memberDir/update", memberDirUpdate)
 
-		// These endpoints support aimsid-based auth, so we use a flexible auth approach
 		mux.Handle("GET /preference/set", oscarRoute(wire.Feedbag, wire.FeedbagUpdateItem, preferenceHandler.SetPreferences))
 		mux.Handle("GET /preference/get", oscarRoute(wire.Feedbag, wire.FeedbagQuery, preferenceHandler.GetPreferences))
 		mux.Handle("GET /preference/setPermitDeny", oscarRoute(wire.Feedbag, wire.FeedbagUpdateItem, preferenceHandler.SetPermitDeny))

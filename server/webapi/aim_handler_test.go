@@ -1,7 +1,6 @@
 package webapi
 
 import (
-	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -324,14 +323,9 @@ func testListener(sslAvailable bool) config.ListenerGroup {
 	return g
 }
 
-// bridgeRequest builds a startOSCARSession request carrying the API key the
-// middleware would have put on the context.
-func bridgeRequest(query string, apiKey *state.WebAPIKey) *http.Request {
-	req := httptest.NewRequest(http.MethodGet, "/aim/startOSCARSession?"+query, nil)
-	if apiKey != nil {
-		req = req.WithContext(context.WithValue(req.Context(), ContextKeyAPIKey, apiKey))
-	}
-	return req
+// bridgeRequest builds a startOSCARSession request.
+func bridgeRequest(query string) *http.Request {
+	return httptest.NewRequest(http.MethodGet, "/aim/startOSCARSession?"+query, nil)
 }
 
 // bridgeData is the data object of a successful startOSCARSession response.
@@ -349,12 +343,10 @@ type bridgeData struct {
 
 func TestAimHandler_StartOSCARSession(t *testing.T) {
 	validToken := base64.URLEncoding.EncodeToString(signedCookieFor("testuser"))
-	unrestrictedKey := &state.WebAPIKey{DevID: "dev123"}
 
 	tests := []struct {
 		name         string
 		query        string
-		apiKey       *state.WebAPIKey
 		sslAvailable bool
 		expectedCode int
 		checkBody    func(t *testing.T, body string)
@@ -363,7 +355,6 @@ func TestAimHandler_StartOSCARSession(t *testing.T) {
 			// No tlsCertName, which is how the client reads "connect in the clear".
 			name:         "Success_Plaintext",
 			query:        "a=" + validToken,
-			apiKey:       unrestrictedKey,
 			expectedCode: http.StatusOK,
 			checkBody: func(t *testing.T, body string) {
 				got := decodeBridgeData(t, body)
@@ -376,7 +367,6 @@ func TestAimHandler_StartOSCARSession(t *testing.T) {
 		{
 			name:         "Success_TLS",
 			query:        "a=" + validToken + "&useTLS=1",
-			apiKey:       unrestrictedKey,
 			sslAvailable: true,
 			expectedCode: http.StatusOK,
 			checkBody: func(t *testing.T, body string) {
@@ -392,7 +382,6 @@ func TestAimHandler_StartOSCARSession(t *testing.T) {
 			// rather than failing the handoff.
 			name:         "TLSRequestedButUnavailable_DegradesToPlaintext",
 			query:        "a=" + validToken + "&useTLS=true",
-			apiKey:       unrestrictedKey,
 			sslAvailable: false,
 			expectedCode: http.StatusOK,
 			checkBody: func(t *testing.T, body string) {
@@ -404,7 +393,6 @@ func TestAimHandler_StartOSCARSession(t *testing.T) {
 		{
 			name:         "Error_MissingToken",
 			query:        "",
-			apiKey:       unrestrictedKey,
 			expectedCode: http.StatusUnauthorized,
 			checkBody: func(t *testing.T, body string) {
 				assert.Contains(t, body, "authentication token required")
@@ -413,7 +401,6 @@ func TestAimHandler_StartOSCARSession(t *testing.T) {
 		{
 			name:         "Error_TokenNotBase64",
 			query:        "a=not!valid!base64",
-			apiKey:       unrestrictedKey,
 			expectedCode: http.StatusUnauthorized,
 			checkBody: func(t *testing.T, body string) {
 				assert.Contains(t, body, "invalid or expired token")
@@ -424,37 +411,9 @@ func TestAimHandler_StartOSCARSession(t *testing.T) {
 			// past its expiry.
 			name:         "Error_TokenFailsSignatureCheck",
 			query:        "a=" + base64.URLEncoding.EncodeToString([]byte("forged")),
-			apiKey:       unrestrictedKey,
 			expectedCode: http.StatusUnauthorized,
 			checkBody: func(t *testing.T, body string) {
 				assert.Contains(t, body, "invalid or expired token")
-			},
-		},
-		{
-			name:         "Error_NoAPIKeyOnContext",
-			query:        "a=" + validToken,
-			apiKey:       nil,
-			expectedCode: http.StatusInternalServerError,
-			checkBody: func(t *testing.T, body string) {
-				assert.Contains(t, body, "internal server error")
-			},
-		},
-		{
-			name:         "Error_APIKeyLacksBridgeCapability",
-			query:        "a=" + validToken,
-			apiKey:       &state.WebAPIKey{DevID: "dev123", Capabilities: []string{"presence"}},
-			expectedCode: http.StatusForbidden,
-			checkBody: func(t *testing.T, body string) {
-				assert.Contains(t, body, "OSCAR bridge not enabled")
-			},
-		},
-		{
-			name:         "Success_APIKeyGrantsBridgeCapability",
-			query:        "a=" + validToken,
-			apiKey:       &state.WebAPIKey{DevID: "dev123", Capabilities: []string{"presence", "oscar_bridge"}},
-			expectedCode: http.StatusOK,
-			checkBody: func(t *testing.T, body string) {
-				assert.Equal(t, 200, decodeBridgeData(t, body).Response.StatusCode)
 			},
 		},
 	}
@@ -468,7 +427,7 @@ func TestAimHandler_StartOSCARSession(t *testing.T) {
 			}
 
 			rr := httptest.NewRecorder()
-			handler.StartOSCARSession(rr, bridgeRequest(tt.query, tt.apiKey))
+			handler.StartOSCARSession(rr, bridgeRequest(tt.query))
 
 			assert.Equal(t, tt.expectedCode, rr.Code)
 			tt.checkBody(t, rr.Body.String())
@@ -498,7 +457,7 @@ func TestAimHandler_StartOSCARSession_ReencodesCookie(t *testing.T) {
 	}
 
 	rr := httptest.NewRecorder()
-	handler.StartOSCARSession(rr, bridgeRequest("a="+urlSafe, &state.WebAPIKey{DevID: "dev123"}))
+	handler.StartOSCARSession(rr, bridgeRequest("a="+urlSafe))
 
 	assert.Equal(t, http.StatusOK, rr.Code)
 	assert.Equal(t, rawCookie, cracked, "the baker sees the decoded cookie")

@@ -21,14 +21,14 @@ import (
 
 // requireSession wraps next with the session-resolving auth middleware for tests.
 func requireSession(sm SessionResolver, next func(http.ResponseWriter, *http.Request, *Session)) http.Handler {
-	return NewAuthMiddleware(nil, slog.Default()).RequireSession(sm, next)
+	return NewAuthMiddleware(slog.Default()).RequireSession(sm, next)
 }
 
 // createTestSessionManager creates a SessionManager with a pre-populated session.
 // createTestSessionManagerWithOSCAR creates a SessionManager with an OSCAR session instance set.
 func createTestSessionManagerWithOSCAR(screenName string, oscarSession *state.SessionInstance) (*SessionManager, string) {
 	mgr := NewSessionManager()
-	session, _ := mgr.CreateSession(state.DisplayScreenName(screenName), "test-dev", []string{"im", "presence", "buddylist", "sentIM", "typing"}, oscarSession, "", slog.Default())
+	session, _ := mgr.CreateSession(state.DisplayScreenName(screenName), []string{"im", "presence", "buddylist", "sentIM", "typing"}, oscarSession, "", slog.Default())
 	return mgr, session.AimSID
 }
 
@@ -73,7 +73,7 @@ func sendIMForDest(t *testing.T, dest, locateName, alias string) []Event {
 		Return(nil, nil)
 
 	mgr := NewSessionManager()
-	session, err := mgr.CreateSession(state.DisplayScreenName("Ann Dupree"), "test-dev", []string{"im", "sentIM", "conversation"}, oscarInstance, "", slog.Default())
+	session, err := mgr.CreateSession(state.DisplayScreenName("Ann Dupree"), []string{"im", "sentIM", "conversation"}, oscarInstance, "", slog.Default())
 	require.NoError(t, err)
 
 	handler := &MessagingHandler{

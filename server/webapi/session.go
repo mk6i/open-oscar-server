@@ -63,7 +63,6 @@ type Session struct {
 	BaseURL             string                                         // Web API base URL advertised to the web client, used to build absolute asset URLs
 	Events              []string                                       // Subscribed event types
 	EventQueue          *EventQueue                                    // Per-session event queue
-	DevID               string                                         // Developer ID that created this session
 	ClientName          string                                         // Client application name
 	ClientVersion       string                                         // Client application version
 	CreatedAt           time.Time                                      // SessionInstance creation time
@@ -693,7 +692,7 @@ func NewSessionManager() *SessionManager {
 // MyInfoRefresher, ...) and then call StartListeningToOSCARSession. Wiring them
 // after the listener starts would race the goroutine, which reads them as it
 // converts SNACs into events.
-func (m *SessionManager) CreateSession(screenName state.DisplayScreenName, devID string, events []string, oscarSession *state.SessionInstance, baseURL string, logger *slog.Logger) (*Session, error) {
+func (m *SessionManager) CreateSession(screenName state.DisplayScreenName, events []string, oscarSession *state.SessionInstance, baseURL string, logger *slog.Logger) (*Session, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -720,7 +719,6 @@ func (m *SessionManager) CreateSession(screenName state.DisplayScreenName, devID
 		BaseURL:         baseURL,
 		Events:          events,
 		EventQueue:      NewEventQueue(1000), // Max 1000 events per session
-		DevID:           devID,
 		CreatedAt:       now,
 		LastAccessed:    now,
 		ExpiresAt:       now.Add(webAPISessionTTL),

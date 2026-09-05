@@ -174,18 +174,6 @@ macos-trust-ca: ## Trust $(CA_CERT) as a root in the macOS system keychain, repl
 	sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain $(CA_CERT)
 
 ################################################################################
-# Web API Tools
-################################################################################
-
-.PHONY: webapi-keygen
-webapi-keygen: ## Build the Web API key generator tool
-	go build -o webapi_keygen ./cmd/webapi_keygen
-
-.PHONY: webapi-keygen-install
-webapi-keygen-install: ## Install the Web API key generator tool system-wide
-	go install ./cmd/webapi_keygen
-
-################################################################################
 # Web Clients
 ################################################################################
 

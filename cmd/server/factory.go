@@ -414,7 +414,6 @@ func MgmtAPI(deps Container) *http.Server {
 		deps.sqLiteUserStore,        // feedbagManager
 		deps.sqLiteUserStore,        // accountManager
 		deps.sqLiteUserStore,        // profileRetriever
-		deps.sqLiteUserStore,        // webAPIKeyManager
 		deps.sqLiteUserStore,        // icqProfileManager
 		state.NewAccountCreator(deps.sqLiteUserStore.InsertUser),
 		logger,
@@ -601,7 +600,7 @@ func WebAPI(deps Container) *webapi.Server {
 		SNACRateLimits:     deps.snacRateLimits,
 	}
 
-	return webapi.NewServer(deps.cfg.WebAPIListeners, logger, handler, deps.sqLiteUserStore, deps.webAPISessionManager)
+	return webapi.NewServer(deps.cfg.WebAPIListeners, logger, handler, deps.webAPISessionManager)
 }
 
 // ICQLegacy creates a legacy ICQ server for v2-v5 protocols.

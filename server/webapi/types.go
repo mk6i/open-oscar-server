@@ -15,11 +15,6 @@ type SessionResolver interface {
 	TouchSession(ctx context.Context, aimsid string) error
 }
 
-// APIKeyValidator validates the dev_key a client sends as its "k" parameter.
-type APIKeyValidator interface {
-	GetAPIKeyByDevKey(ctx context.Context, devKey string) (*state.WebAPIKey, error)
-}
-
 // AuthService cracks auth cookies and registers the BOS sessions they name.
 type AuthService interface {
 	CrackCookie(authCookie []byte) (state.ServerCookie, time.Time, error)

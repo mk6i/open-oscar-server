@@ -561,7 +561,7 @@ func TestRequireSession(t *testing.T) {
 				SendResponse(w, r, resp, slog.Default())
 			}
 
-			authMiddleware := NewAuthMiddleware(nil, slog.Default())
+			authMiddleware := NewAuthMiddleware(slog.Default())
 			wrapped := authMiddleware.RequireSession(sm, next)
 
 			reqURL := "/buddylist/test"

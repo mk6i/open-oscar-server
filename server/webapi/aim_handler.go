@@ -133,13 +133,6 @@ type StartSessionData struct {
 func (h *AimHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// Get API key info from context (set by auth middleware)
-	apiKey, ok := ctx.Value(ContextKeyAPIKey).(*state.WebAPIKey)
-	if !ok {
-		SendEnvelopeStatus(w, r, http.StatusInternalServerError, "internal server error", h.Logger)
-		return
-	}
-
 	authToken := param(r, "a")
 
 	// Get client info
@@ -274,7 +267,7 @@ func (h *AimHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 	// read it.
 	baseURL := baseURLFromRequest(r)
 
-	session, err := h.SessionManager.CreateSession(screenName, apiKey.DevID, events, instance, baseURL, h.Logger)
+	session, err := h.SessionManager.CreateSession(screenName, events, instance, baseURL, h.Logger)
 	if err != nil {
 		h.Logger.ErrorContext(ctx, "failed to create session", "err", err.Error())
 		// CreateSession refuses once the manager is shut down, so this is the
@@ -497,7 +490,6 @@ func (h *AimHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 	h.Logger.DebugContext(ctx, "session started",
 		"aimsid", session.AimSID,
 		"screen_name", screenName,
-		"dev_id", apiKey.DevID,
 		"events", events,
 		"format", r.URL.Query().Get("f"),
 	)
@@ -753,22 +745,6 @@ func (h *AimHandler) StartOSCARSession(w http.ResponseWriter, r *http.Request) {
 		"remote_addr", r.RemoteAddr,
 		"user_agent", r.UserAgent())
 
-	// Get API key info from context (set by auth middleware)
-	apiKey, ok := ctx.Value(ContextKeyAPIKey).(*state.WebAPIKey)
-	if !ok {
-		h.Logger.Error("API key not found in context")
-		SendError(w, r, http.StatusInternalServerError, "internal server error")
-		return
-	}
-
-	// Verify that this API key has permission to create OSCAR sessions
-	if !hasOSCARBridgeCapability(apiKey) {
-		h.Logger.Warn("API key lacks OSCAR bridge capability",
-			"dev_id", apiKey.DevID)
-		SendError(w, r, http.StatusForbidden, "OSCAR bridge not enabled for this application")
-		return
-	}
-
 	params := r.URL.Query()
 
 	token := params.Get("a")
@@ -836,22 +812,6 @@ func (h *AimHandler) StartOSCARSession(w http.ResponseWriter, r *http.Request) {
 		"bos_host", host,
 		"bos_port", port,
 		"use_tls", useTLS)
-}
-
-// hasOSCARBridgeCapability checks if the API key has permission to create OSCAR bridges.
-func hasOSCARBridgeCapability(apiKey *state.WebAPIKey) bool {
-	if len(apiKey.Capabilities) == 0 {
-		return true // No restrictions if capabilities not specified
-	}
-
-	// Check if OSCAR bridge is explicitly enabled
-	for _, cap := range apiKey.Capabilities {
-		if cap == "oscar_bridge" || cap == "*" {
-			return true
-		}
-	}
-
-	return false
 }
 
 // parseBoolParam parses a boolean parameter from query string.

@@ -70,7 +70,7 @@ func TestSessionManager_CreateAfterShutdown(t *testing.T) {
 
 	_ = mgr.Shutdown(context.Background())
 
-	sess, err := mgr.CreateSession(state.DisplayScreenName("testuser"), "dev", []string{"presence"}, nil, "", nil)
+	sess, err := mgr.CreateSession(state.DisplayScreenName("testuser"), []string{"presence"}, nil, "", nil)
 	assert.Nil(t, sess)
 	assert.ErrorIs(t, err, ErrWebAPISessionManagerClosed)
 }
@@ -149,7 +149,7 @@ func TestSessionManager_GetSession_rejectsAfterRateLimitDisconnect(t *testing.T)
 	inst := state.NewSession().AddInstance()
 	inst.Session().SetRateClasses(time.Now(), wire.NewRateLimitClasses(classes))
 
-	sess, err := mgr.CreateSession(state.DisplayScreenName("advbot"), "dev", []string{"presence"}, inst, "", slog.Default())
+	sess, err := mgr.CreateSession(state.DisplayScreenName("advbot"), []string{"presence"}, inst, "", slog.Default())
 	require.NoError(t, err)
 
 	// Healthy session resolves.
@@ -189,9 +189,9 @@ func TestSessionManager_ShutdownDrainsAndClosesSessions(t *testing.T) {
 	inst1 := state.NewSession().AddInstance()
 	inst2 := state.NewSession().AddInstance()
 
-	s1, err := mgr.CreateSession(state.DisplayScreenName("alice"), "dev", []string{"presence"}, inst1, "", slog.Default())
+	s1, err := mgr.CreateSession(state.DisplayScreenName("alice"), []string{"presence"}, inst1, "", slog.Default())
 	assert.NoError(t, err)
-	s2, err := mgr.CreateSession(state.DisplayScreenName("bob"), "dev", []string{"presence"}, inst2, "", slog.Default())
+	s2, err := mgr.CreateSession(state.DisplayScreenName("bob"), []string{"presence"}, inst2, "", slog.Default())
 	assert.NoError(t, err)
 
 	assert.NoError(t, mgr.Shutdown(context.Background()))
@@ -222,9 +222,9 @@ func TestSessionManager_ReapExpired(t *testing.T) {
 	expiredInst := state.NewSession().AddInstance()
 	liveInst := state.NewSession().AddInstance()
 
-	expired, err := mgr.CreateSession("alice", "dev", []string{"presence"}, expiredInst, "", slog.Default())
+	expired, err := mgr.CreateSession("alice", []string{"presence"}, expiredInst, "", slog.Default())
 	assert.NoError(t, err)
-	live, err := mgr.CreateSession("bob", "dev", []string{"presence"}, liveInst, "", slog.Default())
+	live, err := mgr.CreateSession("bob", []string{"presence"}, liveInst, "", slog.Default())
 	assert.NoError(t, err)
 
 	// Force alice's session into the past; bob keeps its default future expiry.
@@ -814,7 +814,7 @@ func TestSessionManager_ShutdownBoundedByContext(t *testing.T) {
 	mgr := NewSessionManager()
 
 	inst := state.NewSession().AddInstance()
-	sess, err := mgr.CreateSession("alice", "dev", []string{"presence"}, inst, "", slog.Default())
+	sess, err := mgr.CreateSession("alice", []string{"presence"}, inst, "", slog.Default())
 	assert.NoError(t, err)
 
 	// Stand in for a listener wedged somewhere that never observes cancellation.
@@ -844,7 +844,7 @@ func TestSession_CloseCancelsSessionContext(t *testing.T) {
 	mgr := NewSessionManager()
 
 	inst := state.NewSession().AddInstance()
-	sess, err := mgr.CreateSession("alice", "dev", []string{"presence"}, inst, "", slog.Default())
+	sess, err := mgr.CreateSession("alice", []string{"presence"}, inst, "", slog.Default())
 	assert.NoError(t, err)
 
 	assert.NoError(t, sess.ctx.Err(), "session context should be live before Close")
@@ -949,7 +949,7 @@ func TestSession_BootReleasesParkedFetcherWithSessionEnded(t *testing.T) {
 	mgr := NewSessionManager()
 	inst := state.NewSession().AddInstance()
 
-	sess, err := mgr.CreateSession(state.DisplayScreenName("mike"), "dev", []string{"presence"}, inst, "", slog.Default())
+	sess, err := mgr.CreateSession(state.DisplayScreenName("mike"), []string{"presence"}, inst, "", slog.Default())
 	require.NoError(t, err)
 	sess.StartListeningToOSCARSession()
 
@@ -986,7 +986,7 @@ func TestSession_SelfCloseEmitsNoSessionEndedEvent(t *testing.T) {
 	mgr := NewSessionManager()
 	inst := state.NewSession().AddInstance()
 
-	sess, err := mgr.CreateSession(state.DisplayScreenName("mike"), "dev", []string{"presence"}, inst, "", slog.Default())
+	sess, err := mgr.CreateSession(state.DisplayScreenName("mike"), []string{"presence"}, inst, "", slog.Default())
 	require.NoError(t, err)
 	sess.StartListeningToOSCARSession()
 

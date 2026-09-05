@@ -18,14 +18,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/mk6i/open-oscar-server/config"
 	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
-func NewManagementAPI(bld config.Build, listener string, userManager UserManager, sessionRetriever SessionRetriever, buddyBroadcaster BuddyBroadcaster, chatRoomRetriever ChatRoomRetriever, chatRoomCreator ChatRoomCreator, chatRoomDeleter ChatRoomDeleter, chatSessionRetriever ChatSessionRetriever, directoryManager DirectoryManager, messageRelayer MessageRelayer, bartAssetManager BARTAssetManager, feedbagRetriever FeedBagRetriever, feedbagManager FeedbagManager, accountManager AccountManager, profileRetriever ProfileRetriever, webAPIKeyManager WebAPIKeyManager, icqProfileManager ICQProfileManager, createAccount state.CreateAccountFunc, logger *slog.Logger) *Server {
+func NewManagementAPI(bld config.Build, listener string, userManager UserManager, sessionRetriever SessionRetriever, buddyBroadcaster BuddyBroadcaster, chatRoomRetriever ChatRoomRetriever, chatRoomCreator ChatRoomCreator, chatRoomDeleter ChatRoomDeleter, chatSessionRetriever ChatSessionRetriever, directoryManager DirectoryManager, messageRelayer MessageRelayer, bartAssetManager BARTAssetManager, feedbagRetriever FeedBagRetriever, feedbagManager FeedbagManager, accountManager AccountManager, profileRetriever ProfileRetriever, icqProfileManager ICQProfileManager, createAccount state.CreateAccountFunc, logger *slog.Logger) *Server {
 	mux := http.NewServeMux()
 
 	// Handlers for '/user' route
@@ -107,23 +105,6 @@ func NewManagementAPI(bld config.Build, listener string, userManager UserManager
 	// Handlers for '/version' route
 	mux.HandleFunc("GET /version", func(w http.ResponseWriter, r *http.Request) {
 		getVersionHandler(w, bld)
-	})
-
-	// Handlers for '/admin/webapi/keys' route - Web API key management
-	mux.HandleFunc("POST /admin/webapi/keys", func(w http.ResponseWriter, r *http.Request) {
-		postWebAPIKeyHandler(w, r, webAPIKeyManager, uuid.New, logger)
-	})
-	mux.HandleFunc("GET /admin/webapi/keys", func(w http.ResponseWriter, r *http.Request) {
-		getWebAPIKeysHandler(w, r, webAPIKeyManager, logger)
-	})
-	mux.HandleFunc("GET /admin/webapi/keys/{id}", func(w http.ResponseWriter, r *http.Request) {
-		getWebAPIKeyHandler(w, r, webAPIKeyManager, logger)
-	})
-	mux.HandleFunc("PUT /admin/webapi/keys/{id}", func(w http.ResponseWriter, r *http.Request) {
-		putWebAPIKeyHandler(w, r, webAPIKeyManager, logger)
-	})
-	mux.HandleFunc("DELETE /admin/webapi/keys/{id}", func(w http.ResponseWriter, r *http.Request) {
-		deleteWebAPIKeyHandler(w, r, webAPIKeyManager, logger)
 	})
 
 	// Handlers for '/directory/category' route

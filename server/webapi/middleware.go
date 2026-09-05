@@ -1,135 +1,25 @@
 package webapi
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strings"
-	"sync"
 	"time"
-
-	"github.com/patrickmn/go-cache"
-	"golang.org/x/time/rate"
 
 	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
-// contextKey is a custom type for context keys to avoid collisions.
-type contextKey string
-
-const (
-	// ContextKeyAPIKey is the context key for storing the validated API key.
-	ContextKeyAPIKey contextKey = "api_key"
-	// contextKeyResolvedAPIKey caches an API key lookup across middlewares
-	// handling the same request. Unexported: it is an internal memo, not
-	// something handlers should read.
-	contextKeyResolvedAPIKey contextKey = "resolved_api_key"
-)
-
-// RateLimitInfo contains rate limit metadata for a request.
-type RateLimitInfo struct {
-	Limit     int   // Total requests allowed per window
-	Remaining int   // Requests remaining in current window
-	Reset     int64 // Unix timestamp when the window resets
-	Allowed   bool  // Whether the request is allowed
-}
-
-// rateLimiterEntry tracks rate limiting data for a single devID.
-type rateLimiterEntry struct {
-	limiter    *rate.Limiter
-	limit      int
-	windowSize time.Duration
-	lastReset  time.Time
-}
-
-// RateLimiter manages per-devID rate limiting for the Web API.
-type RateLimiter struct {
-	limiters   *cache.Cache
-	mu         sync.RWMutex
-	windowSize time.Duration // Rate limit window size (default: 1 minute)
-}
-
-// NewRateLimiter creates a new rate limiter with automatic cleanup.
-func NewRateLimiter() *RateLimiter {
-	// Create cache with 5 minute expiration and 10 minute cleanup interval
-	c := cache.New(5*time.Minute, 10*time.Minute)
-	return &RateLimiter{
-		limiters:   c,
-		windowSize: time.Minute, // Default 1 minute window
-	}
-}
-
-// CheckRateLimit checks if a request from the given devID is allowed and returns rate limit info.
-func (r *RateLimiter) CheckRateLimit(devID string, limit int) RateLimitInfo {
-	if limit <= 0 {
-		return RateLimitInfo{
-			Reset:   time.Now().Add(r.windowSize).Unix(),
-			Allowed: true,
-		}
-	}
-
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	now := time.Now()
-
-	// Get or create limiter entry for this devID
-	var entry *rateLimiterEntry
-	if val, found := r.limiters.Get(devID); found {
-		entry = val.(*rateLimiterEntry)
-		// Check if limit has changed
-		if entry.limit != limit {
-			// Recreate limiter with new limit
-			entry.limiter = rate.NewLimiter(rate.Every(r.windowSize/time.Duration(limit)), limit)
-			entry.limit = limit
-		}
-	} else {
-		// Create new limiter with burst equal to limit (allows initial burst)
-		entry = &rateLimiterEntry{
-			limiter:    rate.NewLimiter(rate.Every(r.windowSize/time.Duration(limit)), limit),
-			limit:      limit,
-			windowSize: r.windowSize,
-			lastReset:  now,
-		}
-		r.limiters.Set(devID, entry, cache.DefaultExpiration)
-	}
-
-	// Check if request is allowed
-	allowed := entry.limiter.Allow()
-
-	// Calculate remaining requests (approximate based on tokens available)
-	tokens := entry.limiter.Tokens()
-	remaining := int(tokens)
-	if remaining < 0 {
-		remaining = 0
-	}
-
-	// Calculate reset time (next window start)
-	resetTime := now.Add(r.windowSize).Unix()
-
-	return RateLimitInfo{
-		Limit:     limit,
-		Remaining: remaining,
-		Reset:     resetTime,
-		Allowed:   allowed,
-	}
-}
-
-// AuthMiddleware provides authentication and rate limiting for Web API endpoints.
+// AuthMiddleware provides session resolution and CORS handling for Web API
+// endpoints.
 type AuthMiddleware struct {
-	Validator   APIKeyValidator
-	RateLimiter *RateLimiter
-	Logger      *slog.Logger
+	Logger *slog.Logger
 }
 
 // NewAuthMiddleware creates a new authentication middleware instance.
-func NewAuthMiddleware(validator APIKeyValidator, logger *slog.Logger) *AuthMiddleware {
+func NewAuthMiddleware(logger *slog.Logger) *AuthMiddleware {
 	return &AuthMiddleware{
-		Validator:   validator,
-		RateLimiter: NewRateLimiter(),
-		Logger:      logger,
+		Logger: logger,
 	}
 }
 
@@ -139,9 +29,8 @@ func NewAuthMiddleware(validator APIKeyValidator, logger *slog.Logger) *AuthMidd
 // holds a long-polling client's session open (see the session lifecycle timeline
 // on state's Session manager).
 //
-// A session with a nil OSCARSession is rejected as a 500: startSession no longer
-// creates such sessions (anonymous guests are unsupported), so a nil is a broken
-// server invariant, not a client error. This lets downstream handlers treat
+// startSession is the only thing that creates a session and it always attaches an
+// OSCAR session (anonymous guests are unsupported), so downstream handlers treat
 // session.OSCARSession as non-nil.
 func (m *AuthMiddleware) RequireSession(sm SessionResolver, next func(http.ResponseWriter, *http.Request, *Session)) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -160,116 +49,37 @@ func (m *AuthMiddleware) RequireSession(sm SessionResolver, next func(http.Respo
 	})
 }
 
-// Authenticate is an HTTP middleware that validates API keys and enforces rate limits.
-func (m *AuthMiddleware) Authenticate(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Extract API key from 'k' parameter (query or form)
-		apiKey := param(r, "k")
-
-		if apiKey == "" {
-			SendEnvelopeStatus(w, r, http.StatusBadRequest, "required parameter 'k' is missing", m.Logger)
-			return
-		}
-
-		// Validate API key
-		key, r := m.resolveAPIKeyCached(r, apiKey)
-		ctx := r.Context()
-		if key == nil {
-			m.Logger.DebugContext(ctx, "invalid API key attempted", "key", apiKey[:min(8, len(apiKey))]+"...")
-			SendEnvelopeStatus(w, r, http.StatusForbidden, "invalid API key", m.Logger)
-			return
-		}
-
-		// Check rate limit
-		rateLimitInfo := m.RateLimiter.CheckRateLimit(key.DevID, key.RateLimit)
-
-		// Always add rate limit headers
-		w.Header().Set("X-RateLimit-Limit", fmt.Sprintf("%d", rateLimitInfo.Limit))
-		w.Header().Set("X-RateLimit-Remaining", fmt.Sprintf("%d", rateLimitInfo.Remaining))
-		w.Header().Set("X-RateLimit-Reset", fmt.Sprintf("%d", rateLimitInfo.Reset))
-
-		if !rateLimitInfo.Allowed {
-			m.Logger.WarnContext(ctx, "rate limit exceeded", "dev_id", key.DevID, "limit", key.RateLimit)
-			// Add Retry-After header
-			retryAfter := rateLimitInfo.Reset - time.Now().Unix()
-			if retryAfter < 1 {
-				retryAfter = 1
-			}
-			w.Header().Set("Retry-After", fmt.Sprintf("%d", retryAfter))
-			SendEnvelopeStatus(w, r, http.StatusTooManyRequests, "rate limit exceeded", m.Logger)
-			return
-		}
-
-		// Add API key info to context for use in handlers
-		ctx = context.WithValue(ctx, ContextKeyAPIKey, key)
-
-		// Log the API request
-		m.Logger.InfoContext(ctx, "API request authenticated",
-			"dev_id", key.DevID,
-			"app_name", key.AppName,
-			"method", r.Method,
-			"path", r.URL.Path,
-		)
-
-		// Pass to next handler with enriched context
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
-}
-
-// CORSMiddleware emits CORS headers and answers preflight requests.
+// CORSMiddleware emits CORS headers and answers preflight requests. Every origin
+// is allowed; the aimsid session is the security boundary.
 //
-// It must be the OUTERMOST middleware on every route. A response that the auth
+// It must be the OUTERMOST middleware on every route. A response that the session
 // layer rejects still needs an Access-Control-Allow-Origin header: without one
 // the browser blocks the response, and the Web AIM client reads a status-0 empty
 // response as "CORS blocked" and permanently downgrades its whole request
 // pipeline to JSONP (aim.client.js onXhrFailed_ clears its useXhr flag and never
-// sets it again). A single 400/403/429 from the auth layer is enough to latch it.
+// sets it again). A single 400/401 from the session layer is enough to latch it.
 //
-// Running ahead of authentication means the key is not in the request context
-// yet, so this resolves it itself to find the key's origin allowlist. The lookup
-// is memoized on the request context, so the auth middleware downstream reuses it
-// rather than hitting the store a second time.
+// It reads nothing from the request body, so a POST body reaches the handler
+// unconsumed.
 func (m *AuthMiddleware) CORSMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Only the query parameter is consulted here: reading the form would
-		// consume a POST body before the handler sees it.
-		key, r := m.resolveAPIKeyCached(r, r.URL.Query().Get("k"))
-
-		// If there is no API key (e.g. using aimsid auth), allow all origins.
-		// This is safe because the actual authentication is handled by the session.
-		var allowedOrigins []string
-		if key != nil {
-			allowedOrigins = key.AllowedOrigins
-		} else {
-			// For session-based auth without API key, allow all origins
-			// The session itself provides the security boundary
-			m.Logger.DebugContext(r.Context(), "CORS handling for non-API-key auth (aimsid/token)")
-			allowedOrigins = []string{"*"}
-		}
-
 		origin := r.Header.Get("Origin")
 
 		// The response body varies with the request Origin, so it must not be
 		// cached under a single key across origins.
 		w.Header().Add("Vary", "Origin")
 
-		// Check if origin is allowed
-		if m.isOriginAllowed(origin, allowedOrigins) {
-			if len(allowedOrigins) == 1 && allowedOrigins[0] == "*" {
-				// For wildcard, set the actual origin to allow credentials
-				if origin != "" {
-					w.Header().Set("Access-Control-Allow-Origin", origin)
-				} else {
-					w.Header().Set("Access-Control-Allow-Origin", "*")
-				}
-			} else {
-				w.Header().Set("Access-Control-Allow-Origin", origin)
-			}
-			w.Header().Set("Access-Control-Allow-Credentials", "true")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-			w.Header().Set("Access-Control-Max-Age", "3600")
+		// Echoing the origin back, rather than sending "*", is what lets the
+		// client send credentials.
+		if origin != "" {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+		} else {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
 		}
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		w.Header().Set("Access-Control-Max-Age", "3600")
 
 		// Handle preflight requests
 		if r.Method == "OPTIONS" {
@@ -280,183 +90,6 @@ func (m *AuthMiddleware) CORSMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
-
-// isOriginAllowed checks if an origin is in the allowed list.
-func (m *AuthMiddleware) isOriginAllowed(origin string, allowedOrigins []string) bool {
-	// If no origins specified, allow all (for backward compatibility/development)
-	if len(allowedOrigins) == 0 {
-		return true
-	}
-
-	origin = strings.ToLower(origin)
-	for _, allowed := range allowedOrigins {
-		allowed = strings.ToLower(allowed)
-
-		// Exact match
-		if origin == allowed {
-			return true
-		}
-
-		// Wildcard support (e.g., "*.example.com")
-		if strings.HasPrefix(allowed, "*.") {
-			domain := allowed[2:]
-			if strings.HasSuffix(origin, domain) {
-				return true
-			}
-		}
-
-		// Allow all origins (development only)
-		if allowed == "*" {
-			m.Logger.Warn("wildcard origin (*) used - should not be used in production")
-			return true
-		}
-	}
-
-	return false
-}
-
-// AuthenticateFlexible is an HTTP middleware that supports multiple authentication methods:
-// 1. aimsid (session ID) - no k required
-// 2. a (AOL token) - no k required
-// 3. ts + sig_sha256 (signed request) - no k required
-// 4. k (API key) - fallback if no other auth provided
-// This follows the Web AIM API specification where k is not required when aimsid is present.
-func (m *AuthMiddleware) AuthenticateFlexible(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
-
-		// Priority 1: Check for session-based auth (aimsid)
-		// According to the spec, when aimsid is provided, k is not required
-		if aimsid := param(r, "aimsid"); aimsid != "" {
-			// The handler itself will validate the aimsid
-			// We just need to pass the request through without requiring k
-			m.Logger.DebugContext(ctx, "using aimsid authentication", "aimsid", aimsid[:min(16, len(aimsid))]+"...")
-			next.ServeHTTP(w, r)
-			return
-		}
-
-		// Priority 2: AOL token auth — user identity is in the token; k is optional.
-		if token := param(r, "a"); token != "" {
-			key, r := m.resolveAPIKeyCached(r, param(r, "k"))
-			ctx := r.Context()
-			if key == nil {
-				devKey := param(r, "k")
-				key = &state.WebAPIKey{
-					DevID:     "aim_web",
-					DevKey:    devKey,
-					AppName:   "AIM Web Client",
-					IsActive:  true,
-					RateLimit: 600,
-				}
-			}
-			ctx = context.WithValue(ctx, ContextKeyAPIKey, key)
-			m.Logger.DebugContext(ctx, "using token authentication", "dev_id", key.DevID)
-			next.ServeHTTP(w, r.WithContext(ctx))
-			return
-		}
-
-		// Priority 3: Check for signed request auth
-		if ts := param(r, "ts"); ts != "" {
-			if sig := param(r, "sig_sha256"); sig != "" {
-				// For now, signed requests still require 'k' parameter for API key validation
-				// The signature provides additional security on top of the API key
-				// When full signature validation is implemented, this can be made optional
-				m.Logger.DebugContext(ctx, "signed request detected, falling through to API key validation")
-				// Don't return here - continue to API key validation below
-			}
-		}
-
-		// Priority 4: Fall back to API key requirement
-		apiKey := param(r, "k")
-
-		if apiKey == "" {
-			SendEnvelopeStatus(w, r, http.StatusBadRequest, "authentication required: provide aimsid or k parameter", m.Logger)
-			return
-		}
-
-		key, r := m.resolveAPIKeyCached(r, apiKey)
-		ctx = r.Context()
-		if key == nil {
-			m.Logger.DebugContext(ctx, "invalid API key attempted", "key", apiKey[:min(8, len(apiKey))]+"...")
-			SendEnvelopeStatus(w, r, http.StatusForbidden, "invalid API key", m.Logger)
-			return
-		}
-
-		// Check rate limit
-		rateLimitInfo := m.RateLimiter.CheckRateLimit(key.DevID, key.RateLimit)
-
-		// Always add rate limit headers
-		w.Header().Set("X-RateLimit-Limit", fmt.Sprintf("%d", rateLimitInfo.Limit))
-		w.Header().Set("X-RateLimit-Remaining", fmt.Sprintf("%d", rateLimitInfo.Remaining))
-		w.Header().Set("X-RateLimit-Reset", fmt.Sprintf("%d", rateLimitInfo.Reset))
-
-		if !rateLimitInfo.Allowed {
-			m.Logger.WarnContext(ctx, "rate limit exceeded", "dev_id", key.DevID, "limit", key.RateLimit)
-			// Add Retry-After header
-			retryAfter := rateLimitInfo.Reset - time.Now().Unix()
-			if retryAfter < 1 {
-				retryAfter = 1
-			}
-			w.Header().Set("Retry-After", fmt.Sprintf("%d", retryAfter))
-			SendEnvelopeStatus(w, r, http.StatusTooManyRequests, "rate limit exceeded", m.Logger)
-			return
-		}
-
-		// Add API key info to context for use in handlers
-		ctx = context.WithValue(ctx, ContextKeyAPIKey, key)
-
-		// Log the API request
-		m.Logger.InfoContext(ctx, "API request authenticated via key",
-			"dev_id", key.DevID,
-			"app_name", key.AppName,
-			"method", r.Method,
-			"path", r.URL.Path,
-		)
-
-		// Pass to next handler with enriched context
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
-}
-
-// resolvedAPIKey memoizes one API key lookup for the lifetime of a request.
-// A nil key is a cached result too: it records that devKey is unknown or
-// inactive, which is what lets the auth layer skip a repeat lookup.
-type resolvedAPIKey struct {
-	devKey string
-	key    *state.WebAPIKey
-}
-
-// resolveAPIKeyCached resolves devKey, reusing the result of an earlier lookup on
-// the same request. It returns the key (nil when devKey is empty, unknown, or
-// inactive) along with a request carrying the memoized result, which callers must
-// pass down the chain for the caching to take effect.
-func (m *AuthMiddleware) resolveAPIKeyCached(r *http.Request, devKey string) (*state.WebAPIKey, *http.Request) {
-	if devKey == "" {
-		return nil, r
-	}
-	if cached, ok := r.Context().Value(contextKeyResolvedAPIKey).(*resolvedAPIKey); ok && cached.devKey == devKey {
-		return cached.key, r
-	}
-	key := m.resolveAPIKey(r.Context(), devKey)
-	ctx := context.WithValue(r.Context(), contextKeyResolvedAPIKey, &resolvedAPIKey{devKey: devKey, key: key})
-	return key, r.WithContext(ctx)
-}
-
-func (m *AuthMiddleware) resolveAPIKey(ctx context.Context, devKey string) *state.WebAPIKey {
-	if devKey == "" {
-		return nil
-	}
-	key, err := m.Validator.GetAPIKeyByDevKey(ctx, devKey)
-	if err != nil || key == nil || !key.IsActive {
-		return nil
-	}
-	return key
-}
-
-// minRetryAfter floors the Retry-After hint sent with a rate-limited response.
-// The computed wait can round down to nothing when a class is barely over its
-// limit, and a hint of zero invites an immediate retry.
-const minRetryAfter = 1 * time.Second
 
 // SessionHandlerFunc is the session-aware handler shape that
 // AuthMiddleware.RequireSession invokes once it has resolved an aimsid.
@@ -542,6 +175,11 @@ func (l *RateLimitMiddleware) OSCAR(foodGroup uint16, subGroup uint16) func(Sess
 		}
 	}
 }
+
+// minRetryAfter floors the Retry-After hint sent with a rate-limited response.
+// The computed wait can round down to nothing when a class is barely over its
+// limit, and a hint of zero invites an immediate retry.
+const minRetryAfter = 1 * time.Second
 
 // retryAfterFor returns how long the client must wait for its next request on
 // this class to clear the limit.

@@ -356,10 +356,10 @@ func TestMemberDirHandler_Update_QueryValuesAreNotUnescapedTwice(t *testing.T) {
 
 func TestServer_MemberDirUpdateIsRoutedForGETAndPOST(t *testing.T) {
 	// Go 1.22 mux patterns are method-exact, so registering only GET sends a POST to
-	// the catch-all 404. Neither request below carries credentials, so a routed one
-	// is rejected by the auth middleware (400) and an unrouted one 404s.
+	// the catch-all 404. Neither request below carries an aimsid, so a routed one
+	// is rejected by the session middleware (400) and an unrouted one 404s.
 	srv := NewServer([]string{"127.0.0.1:0"}, slog.Default(), Handler{Logger: slog.Default()},
-		nil, NewSessionManager())
+		NewSessionManager())
 	require.NotEmpty(t, srv.servers)
 	mux := srv.servers[0].Handler
 
