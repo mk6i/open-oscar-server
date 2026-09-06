@@ -598,6 +598,7 @@ func WebAPI(deps Container) *webapi.Server {
 		IconSource:         iconSource,
 		BARTService:        bartService,
 		SNACRateLimits:     deps.snacRateLimits,
+		AllowedOrigins:     deps.cfg.WebAPIAllowedOrigins,
 	}
 
 	return webapi.NewServer(deps.cfg.WebAPIListeners, logger, handler, deps.webAPISessionManager)

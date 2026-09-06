@@ -31,14 +31,9 @@ NGINX_IMAGE ?= ras-nginx:1.28.0-openssl-1.0.2u
 # Host directory holding the web client that nginx serves.
 CLIENT_DIR ?= ./clients
 
-.PHONY: config-basic config-ssl config
-config-basic: ## Generate basic config file template
-	go run ./cmd/config_generator unix config/settings.env basic
-
-config-ssl: ## Generate SSL config file template
-	go run ./cmd/config_generator unix config/ssl/settings.env ssl
-
-config: config-basic config-ssl ## Generate all config file templates from Config struct
+.PHONY: config
+config: ## Generate all config file templates from Config struct
+	go generate ./config
 
 .PHONY: lint
 lint: ## Run formatting and static analysis checks

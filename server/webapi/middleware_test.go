@@ -20,148 +20,230 @@ import (
 )
 
 func newTestMiddleware() *AuthMiddleware {
-	return NewAuthMiddleware(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	return NewAuthMiddleware(discardLogger())
 }
 
 // The Web AIM client permanently downgrades to JSONP when a cross-origin
-// response arrives without Access-Control-Allow-Origin, so every response the
-// session layer rejects must still carry CORS headers. That only holds while
-// CORSMiddleware wraps the session middleware.
-func TestCORSMiddleware_HeadersOnSessionRejection(t *testing.T) {
-	// The session layer reports failures in the response envelope rather than the
-	// HTTP status, so the envelope's statusCode is what identifies a rejection.
+// response arrives without Access-Control-Allow-Origin: it reads the response
+// the browser blocked as a status-0 empty one, and aim.client.js onXhrFailed_
+// clears its useXhr flag and never sets it again. One uncovered response is
+// enough to latch that, so the CORS layer wraps the whole mux and every layer
+// below it — routed, rejected, and unrouted alike — answers with the header.
+//
+// These cases go through the handler the listener actually serves, so they
+// cover the configured allowlist end to end rather than the options struct.
+func TestServer_CORS(t *testing.T) {
+	// What most cases are configured with; a case overrides it to exercise the
+	// wildcard and empty modes.
+	defaultOrigins := []string{"https://ras.dev", "http://ras.dev", "http://localhost:8000"}
+
 	tests := []struct {
-		name         string
-		query        string
-		wantEnvelope string
+		name string
+		// nil means defaultOrigins.
+		allowedOrigins []string
+		method         string
+		path           string
+		origin         string
+		// Setting reqMethod makes the request a preflight.
+		reqMethod   string
+		reqHeaders  string
+		wantStatus  int
+		wantOrigin  string
+		wantMethods string
+		wantHeaders string
+		wantMaxAge  string
 	}{
+		// Each layer that can produce a response must carry the header.
 		{
-			name:         "missing aimsid",
-			query:        "?f=json",
-			wantEnvelope: `"statusCode":400`,
+			name: "public auth endpoint", method: http.MethodPost, path: "/auth/clientLogin",
+			origin: "https://ras.dev", wantStatus: http.StatusBadRequest, wantOrigin: "https://ras.dev",
 		},
 		{
-			name:         "unknown aimsid",
-			query:        "?f=json&aimsid=nosuchsession",
-			wantEnvelope: `"statusCode":401`,
+			name: "session rejection", method: http.MethodGet, path: "/aim/fetchEvents",
+			origin: "https://ras.dev", wantStatus: http.StatusBadRequest, wantOrigin: "https://ras.dev",
+		},
+		{
+			name: "stub route", method: http.MethodGet, path: "/aim/getData",
+			origin: "https://ras.dev", wantStatus: http.StatusOK, wantOrigin: "https://ras.dev",
+		},
+		{
+			name: "unrouted 404", method: http.MethodGet, path: "/service/getAttributes/nope",
+			origin: "https://ras.dev", wantStatus: http.StatusNotFound, wantOrigin: "https://ras.dev",
+		},
+
+		// An origin is the scheme, host and port together, so the allowlist
+		// admits exactly what it names and nothing adjacent.
+		{
+			name: "allowed origin, other scheme", method: http.MethodGet, path: "/aim/getData",
+			origin: "http://ras.dev", wantStatus: http.StatusOK, wantOrigin: "http://ras.dev",
+		},
+		{
+			name: "allowed origin, other port", method: http.MethodGet, path: "/aim/getData",
+			origin: "http://localhost:8000", wantStatus: http.StatusOK, wantOrigin: "http://localhost:8000",
+		},
+		{
+			name: "different port is a different origin", method: http.MethodGet, path: "/aim/getData",
+			origin: "http://localhost", wantStatus: http.StatusOK,
+		},
+		{
+			name: "different scheme is a different origin", method: http.MethodGet, path: "/aim/getData",
+			origin: "https://localhost:8000", wantStatus: http.StatusOK,
+		},
+		{
+			// The suffix a naive HasSuffix check would wave through.
+			name: "attacker-registrable suffix", method: http.MethodGet, path: "/aim/getData",
+			origin: "https://ras.dev.evil.example", wantStatus: http.StatusOK,
+		},
+		{
+			name: "unlisted origin", method: http.MethodGet, path: "/aim/getData",
+			origin: "http://evil.example", wantStatus: http.StatusOK,
+		},
+		{
+			// A same-origin request sends no Origin, so there is nothing to allow.
+			name: "no origin header", method: http.MethodGet, path: "/aim/getData",
+			wantStatus: http.StatusOK,
+		},
+
+		// A preflight is answered by the CORS layer alone: it reaches no route,
+		// so it needs no aimsid and 404s on no path.
+		{
+			name: "preflight GET", method: http.MethodOptions, path: "/im/sendIM",
+			origin: "https://ras.dev", reqMethod: http.MethodGet,
+			wantStatus: http.StatusNoContent, wantOrigin: "https://ras.dev",
+			wantMethods: http.MethodGet, wantMaxAge: "3600",
+		},
+		{
+			// Lowercase, as the Fetch spec requires a browser to send it: the
+			// CORS layer matches these names byte for byte.
+			name: "preflight POST with a header", method: http.MethodOptions, path: "/im/sendIM",
+			origin: "https://ras.dev", reqMethod: http.MethodPost, reqHeaders: "content-type",
+			wantStatus: http.StatusNoContent, wantOrigin: "https://ras.dev",
+			wantMethods: http.MethodPost, wantHeaders: "content-type", wantMaxAge: "3600",
+		},
+		{
+			name: "preflight on an unrouted path", method: http.MethodOptions, path: "/totally/unrouted",
+			origin: "https://ras.dev", reqMethod: http.MethodPost,
+			wantStatus: http.StatusNoContent, wantOrigin: "https://ras.dev",
+			wantMethods: http.MethodPost, wantMaxAge: "3600",
+		},
+		{
+			// Every route is a GET or a POST, so anything else is refused with
+			// no CORS headers and the browser never sends the real request.
+			name: "preflight PUT refused", method: http.MethodOptions, path: "/im/sendIM",
+			origin: "https://ras.dev", reqMethod: http.MethodPut, wantStatus: http.StatusNoContent,
+		},
+		{
+			name: "preflight DELETE refused", method: http.MethodOptions, path: "/im/sendIM",
+			origin: "https://ras.dev", reqMethod: http.MethodDelete, wantStatus: http.StatusNoContent,
+		},
+		{
+			name: "preflight with an unlisted header refused", method: http.MethodOptions, path: "/im/sendIM",
+			origin: "https://ras.dev", reqMethod: http.MethodGet, reqHeaders: "x-not-allowed",
+			wantStatus: http.StatusNoContent,
+		},
+
+		// The configured modes.
+		{
+			name: "wildcard allows any origin", allowedOrigins: []string{"*"},
+			method: http.MethodGet, path: "/aim/getData", origin: "http://never.seen.example",
+			wantStatus: http.StatusOK, wantOrigin: "http://never.seen.example",
+		},
+		{
+			// envconfig splits on commas without trimming.
+			name: "entries are trimmed", allowedOrigins: []string{" https://ras.dev ", "  "},
+			method: http.MethodGet, path: "/aim/getData", origin: "https://ras.dev",
+			wantStatus: http.StatusOK, wantOrigin: "https://ras.dev",
+		},
+		{
+			// An unset or empty value means "any origin", same as a lone *.
+			name: "empty allowlist allows any origin", allowedOrigins: []string{"  "},
+			method: http.MethodGet, path: "/aim/getData", origin: "http://never.seen.example",
+			wantStatus: http.StatusOK, wantOrigin: "http://never.seen.example",
+		},
+		{
+			name: "unset allowlist allows any origin", allowedOrigins: []string{},
+			method: http.MethodGet, path: "/aim/getData", origin: "http://never.seen.example",
+			wantStatus: http.StatusOK, wantOrigin: "http://never.seen.example",
+		},
+		{
+			// A wildcard may also stand in for the port.
+			name: "port wildcard matches any port", allowedOrigins: []string{"http://localhost:*"},
+			method: http.MethodGet, path: "/aim/getData", origin: "http://localhost:9999",
+			wantStatus: http.StatusOK, wantOrigin: "http://localhost:9999",
+		},
+		{
+			name: "port wildcard does not match another host", allowedOrigins: []string{"http://localhost:*"},
+			method: http.MethodGet, path: "/aim/getData", origin: "http://evil.example:9999",
+			wantStatus: http.StatusOK,
+		},
+		{
+			// One wildcard per entry, standing in for 0 or more characters.
+			name: "subdomain wildcard matches", allowedOrigins: []string{"https://*.example.com"},
+			method: http.MethodGet, path: "/aim/getData", origin: "https://web.example.com",
+			wantStatus: http.StatusOK, wantOrigin: "https://web.example.com",
+		},
+		{
+			name: "subdomain wildcard does not match another domain", allowedOrigins: []string{"https://*.example.com"},
+			method: http.MethodGet, path: "/aim/getData", origin: "https://web.evil.example",
+			wantStatus: http.StatusOK,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := newTestMiddleware()
-			var reachedHandler bool
-			h := m.CORSMiddleware(m.RequireSession(&stubSessionResolver{},
-				func(w http.ResponseWriter, _ *http.Request, _ *Session) {
-					reachedHandler = true
-					w.WriteHeader(http.StatusOK)
-				}))
+			origins := tt.allowedOrigins
+			if origins == nil {
+				origins = defaultOrigins
+			}
+			h := testServerHandler(t, origins)
 
-			r := httptest.NewRequest(http.MethodGet, "/im/sendIM"+tt.query, nil)
-			r.Header.Set("Origin", "http://localhost:8000")
+			r := httptest.NewRequest(tt.method, tt.path, nil)
+			if tt.origin != "" {
+				r.Header.Set("Origin", tt.origin)
+			}
+			if tt.reqMethod != "" {
+				r.Header.Set("Access-Control-Request-Method", tt.reqMethod)
+			}
+			if tt.reqHeaders != "" {
+				r.Header.Set("Access-Control-Request-Headers", tt.reqHeaders)
+			}
 			w := httptest.NewRecorder()
 			h.ServeHTTP(w, r)
 
-			assert.False(t, reachedHandler, "session layer should have rejected the request")
-			assert.Contains(t, w.Body.String(), tt.wantEnvelope)
-			assert.Equal(t, "http://localhost:8000", w.Header().Get("Access-Control-Allow-Origin"))
-			assert.Equal(t, "Origin", w.Header().Get("Vary"))
+			assert.Equal(t, tt.wantStatus, w.Code)
+			// An allowed origin is echoed back rather than answered with "*";
+			// a rejected one gets no header at all, so the browser blocks it.
+			assert.Equal(t, tt.wantOrigin, w.Header().Get("Access-Control-Allow-Origin"))
+			assert.Contains(t, w.Header().Get("Vary"), "Origin")
+
+			// Credentials are not enabled, so the browser is never told to send them.
+			assert.Empty(t, w.Header().Get("Access-Control-Allow-Credentials"))
+
+			// These answer a preflight and mean nothing on any other response.
+			assert.Equal(t, tt.wantMethods, w.Header().Get("Access-Control-Allow-Methods"))
+			assert.Equal(t, tt.wantHeaders, strings.ToLower(w.Header().Get("Access-Control-Allow-Headers")))
+			assert.Equal(t, tt.wantMaxAge, w.Header().Get("Access-Control-Max-Age"))
 		})
 	}
 }
 
-// A 404 for an endpoint this server does not implement (/service/getAttributes,
-// /metrics/sendIM) must reach the client as a 404 rather than as a blocked
-// response.
-func TestCORSMiddleware_HeadersOn404(t *testing.T) {
-	m := newTestMiddleware()
-	h := m.CORSMiddleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusNotFound)
-	}))
-
-	r := httptest.NewRequest(http.MethodGet, "/service/getAttributes?f=json&aimsid=abc", nil)
-	r.Header.Set("Origin", "http://localhost:8000")
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, r)
-
-	assert.Equal(t, http.StatusNotFound, w.Code)
-	assert.Equal(t, "http://localhost:8000", w.Header().Get("Access-Control-Allow-Origin"))
+// testServerHandler builds the handler the listener actually serves, so the CORS
+// layer under test is the one NewServer configures.
+func testServerHandler(t *testing.T, allowedOrigins []string) http.Handler {
+	t.Helper()
+	handler := Handler{
+		Logger:         slog.Default(),
+		AllowedOrigins: allowedOrigins,
+	}
+	srv := NewServer([]string{"127.0.0.1:0"}, slog.Default(), handler, NewSessionManager())
+	require.NotEmpty(t, srv.servers)
+	return srv.servers[0].Handler
 }
 
-// Every origin is allowed now that per-key allowlists are gone, so an origin the
-// server has never heard of still gets a usable response rather than one the
-// browser blocks.
-func TestCORSMiddleware_AllowsEveryOrigin(t *testing.T) {
-	m := newTestMiddleware()
-	h := m.CORSMiddleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-
-	t.Run("unknown origin is echoed back", func(t *testing.T) {
-		r := httptest.NewRequest(http.MethodGet, "/im/sendIM", nil)
-		r.Header.Set("Origin", "http://never.seen.example")
-		w := httptest.NewRecorder()
-		h.ServeHTTP(w, r)
-
-		// Echoing the origin rather than "*" is what makes the response usable
-		// with credentials.
-		assert.Equal(t, "http://never.seen.example", w.Header().Get("Access-Control-Allow-Origin"))
-		assert.Equal(t, "true", w.Header().Get("Access-Control-Allow-Credentials"))
-		assert.Equal(t, "Origin", w.Header().Get("Vary"))
-	})
-
-	// A same-origin request sends no Origin at all; there is nothing to echo.
-	t.Run("no origin header falls back to a wildcard", func(t *testing.T) {
-		r := httptest.NewRequest(http.MethodGet, "/im/sendIM", nil)
-		w := httptest.NewRecorder()
-		h.ServeHTTP(w, r)
-
-		assert.Equal(t, "*", w.Header().Get("Access-Control-Allow-Origin"))
-	})
+func discardLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
-func TestCORSMiddleware_PreflightShortCircuits(t *testing.T) {
-	m := newTestMiddleware()
-	var reachedNext bool
-	h := m.CORSMiddleware(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
-		reachedNext = true
-	}))
-
-	r := httptest.NewRequest(http.MethodOptions, "/im/sendIM", nil)
-	r.Header.Set("Origin", "http://localhost:8000")
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, r)
-
-	assert.Equal(t, http.StatusNoContent, w.Code)
-	assert.False(t, reachedNext, "preflight must not reach the wrapped handler")
-	assert.Equal(t, "http://localhost:8000", w.Header().Get("Access-Control-Allow-Origin"))
-	assert.Contains(t, w.Header().Get("Access-Control-Allow-Methods"), "POST")
-}
-
-// A POST body must survive the middleware chain: CORSMiddleware reads nothing
-// from the request, so it never parses the form.
-func TestCORSMiddleware_DoesNotConsumePOSTBody(t *testing.T) {
-	m := newTestMiddleware()
-	h := m.CORSMiddleware(m.RequireSession(okSessionResolver{},
-		func(w http.ResponseWriter, r *http.Request, _ *Session) {
-			body, err := io.ReadAll(r.Body)
-			require.NoError(t, err)
-			assert.Equal(t, "message=hello", string(body))
-			w.WriteHeader(http.StatusOK)
-		}))
-
-	r := httptest.NewRequest(http.MethodPost, "/im/sendIM?aimsid=abc", strings.NewReader("message=hello"))
-	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	r.Header.Set("Origin", "http://localhost:8000")
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, r)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-}
-
-// Some clients POST the whole parameter set in the body, so a session layer
-// reading only the query string sees no aimsid. Reading the body here does not
-// cost the handler its parameters: ParseForm caches onto the request.
 func TestRequireSession_ReadsAimsidFromPOSTBody(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -184,12 +266,12 @@ func TestRequireSession_ReadsAimsidFromPOSTBody(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			m := newTestMiddleware()
 			reached := false
-			h := m.CORSMiddleware(m.RequireSession(okSessionResolver{},
+			h := m.RequireSession(okSessionResolver{},
 				func(w http.ResponseWriter, r *http.Request, _ *Session) {
 					reached = true
 					assert.Equal(t, "hello", param(r, "message"))
 					w.WriteHeader(http.StatusOK)
-				}))
+				})
 
 			r := httptest.NewRequest(http.MethodPost, "/im/sendIM", strings.NewReader(tt.body))
 			if tt.contentType != "" {

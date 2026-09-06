@@ -32,6 +32,52 @@ type Build struct {
 	Date    string `json:"date"`
 }
 
+func validateAllowedOrigin(origin string) error {
+	const format = "Valid format: SCHEME://HOST[:PORT] with at most one * (e.g., https://example.com, http://localhost:*)"
+
+	reject := func(reason string) error {
+		return fmt.Errorf("invalid web API allowed origin %q: %s. %s", origin, reason, format)
+	}
+
+	if strings.Count(origin, "*") > 1 {
+		return reject("only one wildcard is allowed per origin")
+	}
+
+	scheme, host, ok := cutOriginScheme(origin)
+	if !ok {
+		return reject("scheme must be http or https, and cannot itself be a wildcard")
+	}
+
+	if host == "" {
+		return reject("missing host")
+	}
+
+	// An origin is a scheme, host and port and nothing else.
+	if strings.ContainsAny(host, "/?#@") {
+		return reject("must not have a trailing slash, path, query, fragment or userinfo")
+	}
+
+	// A browser omits the port when it is the default for the scheme, so an
+	// entry that spells it out can never match.
+	if (scheme == "http" && strings.HasSuffix(host, ":80")) ||
+		(scheme == "https" && strings.HasSuffix(host, ":443")) {
+		return fmt.Errorf("invalid web API allowed origin %q: a browser omits the default port, so this would never match. Use %q", origin, origin[:strings.LastIndex(origin, ":")])
+	}
+
+	return nil
+}
+
+// cutOriginScheme splits an origin into its scheme and the rest.
+func cutOriginScheme(origin string) (scheme string, rest string, ok bool) {
+	lower := strings.ToLower(origin)
+	for _, s := range []string{"http", "https"} {
+		if prefix := s + "://"; strings.HasPrefix(lower, prefix) {
+			return s, origin[len(prefix):], true
+		}
+	}
+	return "", "", false
+}
+
 // ListenerGroup is a set of related BOS endpoints: one plaintext, and
 // optionally one for SSL clients. Both listen in plaintext — a load balancer
 // terminates TLS and forwards decrypted traffic to the SSL endpoint. Pairing
@@ -92,7 +138,8 @@ func (e Endpoint) AdvertisedHost() string {
 	return e.Group.BOSAdvertisedHostPlain
 }
 
-//go:generate go run ../cmd/config_generator unix settings.env ssl
+//go:generate go run ../cmd/config_generator unix settings.env basic
+//go:generate go run ../cmd/config_generator unix ssl/settings.env ssl
 type Config struct {
 	BOSListeners            []string `envconfig:"OSCAR_LISTENERS" required:"true" basic:"LOCAL://0.0.0.0:5190" ssl:"LOCAL://0.0.0.0:5190" description:"Network listeners for core OSCAR services. For multi-homed servers, allows users to connect from multiple networks. For example, you can allow both LAN and Internet clients to connect to the same server using different connection settings.\n\nFormat:\n\t- Comma-separated list of [NAME]://[HOSTNAME]:[PORT]\n\t- Listener names and ports must be unique\n\t- Listener names are user-defined\n\t- Each listener needs a listener in OSCAR_ADVERTISED_LISTENERS_PLAIN\n\nExamples:\n\t// Listen on all interfaces\n\tLAN://0.0.0.0:5190\n\t// Separate Internet and LAN config\n\tWAN://142.250.176.206:5190,LAN://192.168.1.10:5191"`
 	BOSAdvertisedHostsPlain []string `envconfig:"OSCAR_ADVERTISED_LISTENERS_PLAIN" required:"true" basic:"LOCAL://127.0.0.1:5190" ssl:"LOCAL://ras.dev:5190" description:"Hostnames published by the server that clients connect to for accessing various OSCAR services. These hostnames are NOT the bind addresses. For multi-homed use servers, allows clients to connect using separate hostnames per network.\n\nFormat:\n\t- Comma-separated list of [NAME]://[HOSTNAME]:[PORT]\n\t- Each listener config must correspond to a config in OSCAR_LISTENERS\n\t- Clients MUST be able to connect to these hostnames\n\nExamples:\n\t// Local LAN config, server behind NAT\n\tLAN://192.168.1.10:5190\n\t// Separate Internet and LAN config\n\tWAN://aim.example.com:5190,LAN://192.168.1.10:5191"`
@@ -102,6 +149,7 @@ type Config struct {
 	TOCListeners            []string `envconfig:"TOC_LISTENERS" required:"true" basic:"0.0.0.0:9898" ssl:"0.0.0.0:9898" description:"Network listeners for TOC protocol service.\n\nFormat: Comma-separated list of hostname:port pairs.\n\nExamples:\n\t// All interfaces\n\t0.0.0.0:9898\n\t// Multiple listeners\n\t0.0.0.0:9898,192.168.1.10:9899"`
 	APIListener             string   `envconfig:"API_LISTENER" required:"true" basic:"127.0.0.1:8080" ssl:"127.0.0.1:8080" description:"Network listener for management API binds to. Only 1 listener can be specified. (Default 127.0.0.1 restricts to same machine only)."`
 	WebAPIListeners         []string `envconfig:"WEBAPI_LISTENERS" required:"false" basic:"0.0.0.0:8081" ssl:"0.0.0.0:8081" description:"Network listeners for WebAPI. See OSCAR_LISTENERS doc for more details.\n\nExamples:\n\t// Listen on all interfaces\n\tLAN://0.0.0.0:8081\n\t// Separate Internet and LAN config\n\tWAN://142.250.176.206:8081,LAN://192.168.1.10:8082"`
+	WebAPIAllowedOrigins    []string `envconfig:"WEBAPI_ALLOWED_ORIGINS" required:"false" basic:"http://localhost:*" ssl:"http://localhost:*" description:"Origins allowed to call the WebAPI from a browser (CORS). A browser blocks a cross-origin response whose origin is not listed here, so the client serving the web app must appear in this list.\n\nFormat:\n\t- Comma-separated list of [SCHEME]://[HOSTNAME]:[PORT]\n\t- An origin is the scheme, host and port together: a client served from another port needs its own entry\n\t- Omit the port when it is the scheme default, the way a browser writes it: https://aim.example.com, not https://aim.example.com:443\n\t- No trailing slash, path, query or fragment\n\t- An entry may contain one wildcard (*) standing in for 0 or more characters, in the host or the port: https://*.example.com, http://localhost:* . Only one wildcard per entry, the scheme cannot be wildcarded, and matching one costs a little more per request\n\t- A lone * allows any origin, which is also what an unset or empty value means\n\nExamples:\n\t// Single origin\n\thttps://ras.dev\n\t// Web app on a separate port, plus the API host itself\n\thttp://localhost:8000,https://ras.dev\n\t// Any origin (development only)\n\t*"`
 
 	DBPath                 string `envconfig:"DB_PATH" required:"true" basic:"oscar.sqlite" ssl:"oscar.sqlite" description:"The path to the SQLite database file. The file and DB schema are auto-created if they doesn't exist."`
 	DisableAuth            bool   `envconfig:"DISABLE_AUTH" required:"true" basic:"true" ssl:"true" description:"Disable password check and auto-create new users at login time. Useful for quickly creating new accounts during development without having to register new users via the management API."`
@@ -386,5 +434,16 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// Validate WebAPIAllowedOrigins (format: scheme://host[:port], or * for any).
+	// An empty list is valid and means any origin is allowed.
+	for _, origin := range c.WebAPIAllowedOrigins {
+		origin = strings.TrimSpace(origin)
+		if origin == "" || origin == "*" {
+			continue
+		}
+		if err := validateAllowedOrigin(origin); err != nil {
+			return err
+		}
+	}
 	return nil
 }

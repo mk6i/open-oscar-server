@@ -707,6 +707,264 @@ func TestConfigValidate(t *testing.T) {
 			wantErr:     true,
 			errContains: "invalid web API listener \"invalid-format\": address invalid-format: missing port in address",
 		},
+		{
+			name: "valid multiple web API allowed origins",
+			config: Config{
+				TOCListeners:         []string{"0.0.0.0:9898"},
+				APIListener:          "127.0.0.1:8080",
+				WebAPIListeners:      []string{"0.0.0.0:8081"},
+				WebAPIAllowedOrigins: []string{"https://aim.example.com", "http://localhost:8000", " http://ras.dev "},
+			},
+			wantErr: false,
+		},
+		{
+			name: "wildcard web API allowed origin",
+			config: Config{
+				TOCListeners:         []string{"0.0.0.0:9898"},
+				APIListener:          "127.0.0.1:8080",
+				WebAPIListeners:      []string{"0.0.0.0:8081"},
+				WebAPIAllowedOrigins: []string{"*"},
+			},
+			wantErr: false,
+		},
+		{
+			// An empty list is a valid setting meaning "allow any origin", not a
+			// misconfiguration. There is no way to express "deny all".
+			name: "empty web API allowed origins",
+			config: Config{
+				TOCListeners:    []string{"0.0.0.0:9898"},
+				APIListener:     "127.0.0.1:8080",
+				WebAPIListeners: []string{"0.0.0.0:8081"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "whitespace-only web API allowed origins",
+			config: Config{
+				TOCListeners:         []string{"0.0.0.0:9898"},
+				APIListener:          "127.0.0.1:8080",
+				WebAPIListeners:      []string{"0.0.0.0:8081"},
+				WebAPIAllowedOrigins: []string{"  ", ""},
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid web API allowed origin - trailing slash",
+			config: Config{
+				TOCListeners:         []string{"0.0.0.0:9898"},
+				APIListener:          "127.0.0.1:8080",
+				WebAPIListeners:      []string{"0.0.0.0:8081"},
+				WebAPIAllowedOrigins: []string{"http://localhost:8000/"},
+			},
+			wantErr:     true,
+			errContains: "invalid web API allowed origin \"http://localhost:8000/\": must not have a trailing slash, path, query, fragment or userinfo",
+		},
+		{
+			name: "invalid web API allowed origin - has a path",
+			config: Config{
+				TOCListeners:         []string{"0.0.0.0:9898"},
+				APIListener:          "127.0.0.1:8080",
+				WebAPIListeners:      []string{"0.0.0.0:8081"},
+				WebAPIAllowedOrigins: []string{"https://aim.example.com/client"},
+			},
+			wantErr:     true,
+			errContains: "must not have a trailing slash, path, query, fragment or userinfo",
+		},
+		{
+			name: "invalid web API allowed origin - missing scheme",
+			config: Config{
+				TOCListeners:         []string{"0.0.0.0:9898"},
+				APIListener:          "127.0.0.1:8080",
+				WebAPIListeners:      []string{"0.0.0.0:8081"},
+				WebAPIAllowedOrigins: []string{"aim.example.com"},
+			},
+			wantErr:     true,
+			errContains: "scheme must be http or https",
+		},
+		{
+			name: "invalid web API allowed origin - unsupported scheme",
+			config: Config{
+				TOCListeners:         []string{"0.0.0.0:9898"},
+				APIListener:          "127.0.0.1:8080",
+				WebAPIListeners:      []string{"0.0.0.0:8081"},
+				WebAPIAllowedOrigins: []string{"ftp://aim.example.com"},
+			},
+			wantErr:     true,
+			errContains: "scheme must be http or https",
+		},
+		{
+			name: "valid web API allowed origin - port wildcard",
+			config: Config{
+				TOCListeners:         []string{"0.0.0.0:9898"},
+				APIListener:          "127.0.0.1:8080",
+				WebAPIListeners:      []string{"0.0.0.0:8081"},
+				WebAPIAllowedOrigins: []string{"http://localhost:*"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid web API allowed origin - host wildcard with port",
+			config: Config{
+				TOCListeners:         []string{"0.0.0.0:9898"},
+				APIListener:          "127.0.0.1:8080",
+				WebAPIListeners:      []string{"0.0.0.0:8081"},
+				WebAPIAllowedOrigins: []string{"http://*:8000", "https://*"},
+			},
+			wantErr: false,
+		},
+		{
+			// Underscores are legal in a host and browsers send them verbatim.
+			name: "valid web API allowed origin - underscore host",
+			config: Config{
+				TOCListeners:         []string{"0.0.0.0:9898"},
+				APIListener:          "127.0.0.1:8080",
+				WebAPIListeners:      []string{"0.0.0.0:8081"},
+				WebAPIAllowedOrigins: []string{"http://my_host:8080"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid web API allowed origin - IPv6 literal",
+			config: Config{
+				TOCListeners:         []string{"0.0.0.0:9898"},
+				APIListener:          "127.0.0.1:8080",
+				WebAPIListeners:      []string{"0.0.0.0:8081"},
+				WebAPIAllowedOrigins: []string{"http://[::1]:8000"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid web API allowed origin - two wildcards",
+			config: Config{
+				TOCListeners:         []string{"0.0.0.0:9898"},
+				APIListener:          "127.0.0.1:8080",
+				WebAPIListeners:      []string{"0.0.0.0:8081"},
+				WebAPIAllowedOrigins: []string{"http://*.example.*"},
+			},
+			wantErr:     true,
+			errContains: "only one wildcard is allowed per origin",
+		},
+		{
+			name: "invalid web API allowed origin - wildcard scheme",
+			config: Config{
+				TOCListeners:         []string{"0.0.0.0:9898"},
+				APIListener:          "127.0.0.1:8080",
+				WebAPIListeners:      []string{"0.0.0.0:8081"},
+				WebAPIAllowedOrigins: []string{"*://example.com"},
+			},
+			wantErr:     true,
+			errContains: "cannot itself be a wildcard",
+		},
+		{
+			name: "invalid web API allowed origin - wildcard with default port",
+			config: Config{
+				TOCListeners:         []string{"0.0.0.0:9898"},
+				APIListener:          "127.0.0.1:8080",
+				WebAPIListeners:      []string{"0.0.0.0:8081"},
+				WebAPIAllowedOrigins: []string{"https://*.example.com:443"},
+			},
+			wantErr:     true,
+			errContains: "a browser omits the default port, so this would never match. Use \"https://*.example.com\"",
+		},
+		{
+			name: "invalid web API allowed origin - wildcard with path",
+			config: Config{
+				TOCListeners:         []string{"0.0.0.0:9898"},
+				APIListener:          "127.0.0.1:8080",
+				WebAPIListeners:      []string{"0.0.0.0:8081"},
+				WebAPIAllowedOrigins: []string{"http://localhost:*/x"},
+			},
+			wantErr:     true,
+			errContains: "must not have a trailing slash, path, query, fragment or userinfo",
+		},
+		{
+			name: "invalid web API allowed origin - explicit https default port",
+			config: Config{
+				TOCListeners:         []string{"0.0.0.0:9898"},
+				APIListener:          "127.0.0.1:8080",
+				WebAPIListeners:      []string{"0.0.0.0:8081"},
+				WebAPIAllowedOrigins: []string{"https://ras.dev:443"},
+			},
+			wantErr:     true,
+			errContains: "a browser omits the default port, so this would never match. Use \"https://ras.dev\"",
+		},
+		{
+			name: "invalid web API allowed origin - explicit http default port",
+			config: Config{
+				TOCListeners:         []string{"0.0.0.0:9898"},
+				APIListener:          "127.0.0.1:8080",
+				WebAPIListeners:      []string{"0.0.0.0:8081"},
+				WebAPIAllowedOrigins: []string{"http://localhost:80"},
+			},
+			wantErr:     true,
+			errContains: "a browser omits the default port, so this would never match. Use \"http://localhost\"",
+		},
+		{
+			name: "invalid web API allowed origin - userinfo",
+			config: Config{
+				TOCListeners:         []string{"0.0.0.0:9898"},
+				APIListener:          "127.0.0.1:8080",
+				WebAPIListeners:      []string{"0.0.0.0:8081"},
+				WebAPIAllowedOrigins: []string{"http://user@example.com"},
+			},
+			wantErr:     true,
+			errContains: "must not have a trailing slash, path, query, fragment or userinfo",
+		},
+		{
+			name: "invalid web API allowed origin - forced empty query",
+			config: Config{
+				TOCListeners:         []string{"0.0.0.0:9898"},
+				APIListener:          "127.0.0.1:8080",
+				WebAPIListeners:      []string{"0.0.0.0:8081"},
+				WebAPIAllowedOrigins: []string{"https://example.com?"},
+			},
+			wantErr:     true,
+			errContains: "must not have a trailing slash, path, query, fragment or userinfo",
+		},
+		{
+			// A non-default port is part of the origin and must be kept.
+			name: "valid web API allowed origin - non-default port",
+			config: Config{
+				TOCListeners:         []string{"0.0.0.0:9898"},
+				APIListener:          "127.0.0.1:8080",
+				WebAPIListeners:      []string{"0.0.0.0:8081"},
+				WebAPIAllowedOrigins: []string{"http://localhost:8000", "https://ras.dev:8443"},
+			},
+			wantErr: false,
+		},
+		{
+			// rs/cors matches case-insensitively, so this does work at runtime.
+			name: "valid web API allowed origin - uppercase",
+			config: Config{
+				TOCListeners:         []string{"0.0.0.0:9898"},
+				APIListener:          "127.0.0.1:8080",
+				WebAPIListeners:      []string{"0.0.0.0:8081"},
+				WebAPIAllowedOrigins: []string{"HTTPS://RAS.DEV"},
+			},
+			wantErr: false,
+		},
+		{
+			// rs/cors supports one wildcard per entry.
+			name: "valid web API allowed origin - subdomain wildcard",
+			config: Config{
+				TOCListeners:         []string{"0.0.0.0:9898"},
+				APIListener:          "127.0.0.1:8080",
+				WebAPIListeners:      []string{"0.0.0.0:8081"},
+				WebAPIAllowedOrigins: []string{"https://*.example.com"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid web API allowed origin - missing host",
+			config: Config{
+				TOCListeners:         []string{"0.0.0.0:9898"},
+				APIListener:          "127.0.0.1:8080",
+				WebAPIListeners:      []string{"0.0.0.0:8081"},
+				WebAPIAllowedOrigins: []string{"https://"},
+			},
+			wantErr:     true,
+			errContains: "missing host",
+		},
 	}
 
 	for _, tt := range tests {

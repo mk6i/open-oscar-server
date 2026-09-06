@@ -10,13 +10,12 @@ import (
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
-// AuthMiddleware provides session resolution and CORS handling for Web API
-// endpoints.
+// AuthMiddleware resolves the aimsid session for Web API endpoints.
 type AuthMiddleware struct {
 	Logger *slog.Logger
 }
 
-// NewAuthMiddleware creates a new authentication middleware instance.
+// NewAuthMiddleware creates a new session middleware instance.
 func NewAuthMiddleware(logger *slog.Logger) *AuthMiddleware {
 	return &AuthMiddleware{
 		Logger: logger,
@@ -46,48 +45,6 @@ func (m *AuthMiddleware) RequireSession(sm SessionResolver, next func(http.Respo
 		}
 		_ = sm.TouchSession(r.Context(), aimsid)
 		next(w, r, session)
-	})
-}
-
-// CORSMiddleware emits CORS headers and answers preflight requests. Every origin
-// is allowed; the aimsid session is the security boundary.
-//
-// It must be the OUTERMOST middleware on every route. A response that the session
-// layer rejects still needs an Access-Control-Allow-Origin header: without one
-// the browser blocks the response, and the Web AIM client reads a status-0 empty
-// response as "CORS blocked" and permanently downgrades its whole request
-// pipeline to JSONP (aim.client.js onXhrFailed_ clears its useXhr flag and never
-// sets it again). A single 400/401 from the session layer is enough to latch it.
-//
-// It reads nothing from the request body, so a POST body reaches the handler
-// unconsumed.
-func (m *AuthMiddleware) CORSMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		origin := r.Header.Get("Origin")
-
-		// The response body varies with the request Origin, so it must not be
-		// cached under a single key across origins.
-		w.Header().Add("Vary", "Origin")
-
-		// Echoing the origin back, rather than sending "*", is what lets the
-		// client send credentials.
-		if origin != "" {
-			w.Header().Set("Access-Control-Allow-Origin", origin)
-		} else {
-			w.Header().Set("Access-Control-Allow-Origin", "*")
-		}
-		w.Header().Set("Access-Control-Allow-Credentials", "true")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-		w.Header().Set("Access-Control-Max-Age", "3600")
-
-		// Handle preflight requests
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-
-		next.ServeHTTP(w, r)
 	})
 }
 
