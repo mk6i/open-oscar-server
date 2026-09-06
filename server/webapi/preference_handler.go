@@ -369,7 +369,7 @@ func effectiveBuddyPrefs(list wire.TLVList) *PreferenceData {
 
 // prefFieldIndex maps a preference name to its PreferenceData field.
 var prefFieldIndex = func() map[string]int {
-	t := reflect.TypeOf(PreferenceData{})
+	t := reflect.TypeFor[PreferenceData]()
 	index := make(map[string]int, t.NumField())
 	for i := 0; i < t.NumField(); i++ {
 		name, _, _ := strings.Cut(t.Field(i).Tag.Get("json"), ",")
@@ -419,8 +419,8 @@ func (p *PreferenceData) Map() map[string]any {
 func (p *PreferenceData) Len() int {
 	fields := reflect.ValueOf(p).Elem()
 	n := 0
-	for i := 0; i < fields.NumField(); i++ {
-		if !fields.Field(i).IsNil() {
+	for _, field := range fields.Fields() {
+		if !field.IsNil() {
 			n++
 		}
 	}
@@ -493,8 +493,8 @@ func (h *PreferenceHandler) SetPermitDeny(w http.ResponseWriter, r *http.Request
 
 	// Handle permit list updates
 	if pdAllow := r.URL.Query().Get("pdAllow"); pdAllow != "" {
-		users := strings.Split(pdAllow, ",")
-		for _, user := range users {
+		users := strings.SplitSeq(pdAllow, ",")
+		for user := range users {
 			user = strings.TrimSpace(user)
 			if user != "" {
 				fl.PermitUser(user)
@@ -503,8 +503,8 @@ func (h *PreferenceHandler) SetPermitDeny(w http.ResponseWriter, r *http.Request
 	}
 
 	if pdAllowRemove := r.URL.Query().Get("pdAllowRemove"); pdAllowRemove != "" {
-		users := strings.Split(pdAllowRemove, ",")
-		for _, user := range users {
+		users := strings.SplitSeq(pdAllowRemove, ",")
+		for user := range users {
 			user = strings.TrimSpace(user)
 			if user != "" {
 				fl.DeletePermit(user)
@@ -514,8 +514,8 @@ func (h *PreferenceHandler) SetPermitDeny(w http.ResponseWriter, r *http.Request
 
 	// Handle deny list updates
 	if pdBlock := r.URL.Query().Get("pdBlock"); pdBlock != "" {
-		users := strings.Split(pdBlock, ",")
-		for _, user := range users {
+		users := strings.SplitSeq(pdBlock, ",")
+		for user := range users {
 			user = strings.TrimSpace(user)
 			if user != "" {
 				fl.DenyUser(user)
@@ -524,8 +524,8 @@ func (h *PreferenceHandler) SetPermitDeny(w http.ResponseWriter, r *http.Request
 	}
 
 	if pdBlockRemove := r.URL.Query().Get("pdBlockRemove"); pdBlockRemove != "" {
-		users := strings.Split(pdBlockRemove, ",")
-		for _, user := range users {
+		users := strings.SplitSeq(pdBlockRemove, ",")
+		for user := range users {
 			user = strings.TrimSpace(user)
 			if user != "" {
 				fl.DeleteDeny(user)

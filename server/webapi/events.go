@@ -28,10 +28,10 @@ const (
 
 // Event represents an event to be delivered to a web client.
 type Event struct {
-	Type      EventType   `json:"type" xml:"type"`
-	SeqNum    uint64      `json:"seqNum" xml:"seqNum"`
-	Timestamp int64       `json:"timestamp" xml:"timestamp"`
-	Data      interface{} `json:"eventData" xml:"eventData"`
+	Type      EventType `json:"type" xml:"type"`
+	SeqNum    uint64    `json:"seqNum" xml:"seqNum"`
+	Timestamp int64     `json:"timestamp" xml:"timestamp"`
+	Data      any       `json:"eventData" xml:"eventData"`
 }
 
 // PresenceEvent represents a presence change event.
@@ -156,7 +156,7 @@ type RateLimitClass struct {
 // EventQueue manages a queue of events for a WebAPI session.
 type EventQueue struct {
 	events    []Event
-	seqNum    uint64
+	seqNum    atomic.Uint64
 	maxSize   int
 	mu        sync.RWMutex
 	waitChan  chan struct{}
@@ -185,7 +185,7 @@ func NewEventQueue(maxSize int) *EventQueue {
 }
 
 // Push adds an event to the queue.
-func (q *EventQueue) Push(eventType EventType, data interface{}) {
+func (q *EventQueue) Push(eventType EventType, data any) {
 	if q.isClosed() {
 		return
 	}
@@ -194,7 +194,7 @@ func (q *EventQueue) Push(eventType EventType, data interface{}) {
 	defer q.mu.Unlock()
 
 	// Increment sequence number atomically
-	seqNum := atomic.AddUint64(&q.seqNum, 1)
+	seqNum := q.seqNum.Add(1)
 
 	event := Event{
 		Type:      eventType,

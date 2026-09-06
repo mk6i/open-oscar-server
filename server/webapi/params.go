@@ -86,7 +86,7 @@ func bodyValues(r *http.Request, key string) []string {
 func targetNames(r *http.Request) []string {
 	var targets []string
 	for _, value := range paramValues(r, "t") {
-		for _, name := range strings.Split(value, ",") {
+		for name := range strings.SplitSeq(value, ",") {
 			if name = strings.TrimSpace(name); name != "" {
 				targets = append(targets, name)
 			}

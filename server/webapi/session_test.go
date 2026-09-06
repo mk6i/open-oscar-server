@@ -523,7 +523,7 @@ func TestSession_FeedbagSNACRefreshesPermitDeny(t *testing.T) {
 				ScreenName: state.DisplayScreenName("me"),
 				EventQueue: NewEventQueue(10),
 				logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
-				PermitDenyRefresher: func(_ context.Context) (interface{}, error) {
+				PermitDenyRefresher: func(_ context.Context) (any, error) {
 					return map[string]any{"pdMode": "denySome"}, nil
 				},
 			}
@@ -758,9 +758,9 @@ func TestSession_PushesMyInfoOnUserInfoUpdate(t *testing.T) {
 			Events:     events,
 			EventQueue: NewEventQueue(10),
 			logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
-			MyInfoRefresher: func(_ context.Context) (interface{}, error) {
+			MyInfoRefresher: func(_ context.Context) (any, error) {
 				refreshes++
-				return map[string]interface{}{"aimId": "me", "buddyIcon": "icon:new"}, nil
+				return map[string]any{"aimId": "me", "buddyIcon": "icon:new"}, nil
 			},
 		}, &refreshes
 	}
@@ -777,7 +777,7 @@ func TestSession_PushesMyInfoOnUserInfoUpdate(t *testing.T) {
 		events := sess.EventQueue.GetAllEvents()
 		require.Len(t, events, 1)
 		assert.Equal(t, "myInfo", string(events[0].Type))
-		assert.Equal(t, "icon:new", events[0].Data.(map[string]interface{})["buddyIcon"])
+		assert.Equal(t, "icon:new", events[0].Data.(map[string]any)["buddyIcon"])
 		assert.Equal(t, 1, *refreshes)
 	})
 
@@ -820,11 +820,9 @@ func TestSessionManager_ShutdownBoundedByContext(t *testing.T) {
 	// Stand in for a listener wedged somewhere that never observes cancellation.
 	release := make(chan struct{})
 	defer close(release)
-	sess.listeners.Add(1)
-	go func() {
-		defer sess.listeners.Done()
+	sess.listeners.Go(func() {
 		<-release
-	}()
+	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
@@ -1084,7 +1082,7 @@ func TestSession_FeedbagStatusRefreshesBuddyList(t *testing.T) {
 				Events:     tt.events,
 				EventQueue: NewEventQueue(10),
 				logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
-				BuddyListRefresher: func(_ context.Context) (interface{}, error) {
+				BuddyListRefresher: func(_ context.Context) (any, error) {
 					refreshed++
 					return &BuddyListData{Groups: []BuddyGroup{}}, nil
 				},

@@ -67,7 +67,7 @@ type ResponseBody struct {
 	// Data is never omitted. Every Web API method sends a data element even when
 	// it carries no payload, and the client dereferences response.data on any
 	// success; SendResponse substitutes an empty object when a handler sets none.
-	Data interface{} `json:"data" xml:"data"`
+	Data any `json:"data" xml:"data"`
 }
 
 // ErrorResponse represents an error response with proper XML/JSON support.
@@ -86,7 +86,7 @@ type ErrorResponse struct {
 		// Data carries an empty object for the same reason the JSONP error path
 		// sends one: a client callback that reaches response.data on a failure
 		// throws a TypeError when it is absent.
-		Data interface{} `json:"data" xml:"data"`
+		Data any `json:"data" xml:"data"`
 	} `json:"response"`
 }
 
@@ -130,7 +130,7 @@ func requestIDFromRequest(r *http.Request) string {
 // the request correlation id, and an empty data object for a response that
 // carries no payload. Both are things every encoder needs and none can infer —
 // and encoding/xml has no way to render a nil data at all.
-func normalizeEnvelope(r *http.Request, data interface{}) interface{} {
+func normalizeEnvelope(r *http.Request, data any) any {
 	br, ok := data.(BaseResponse)
 	if !ok {
 		return data
@@ -146,7 +146,7 @@ func normalizeEnvelope(r *http.Request, data interface{}) interface{} {
 
 // SendResponse sends a response in the requested format (JSON, JSONP, XML, or AMF).
 // This is the centralized function that all handlers should use for responses.
-func SendResponse(w http.ResponseWriter, r *http.Request, data interface{}, logger *slog.Logger) {
+func SendResponse(w http.ResponseWriter, r *http.Request, data any, logger *slog.Logger) {
 	data = normalizeEnvelope(r, data)
 
 	format := requestFormat(r)
@@ -205,7 +205,7 @@ func SendErrorDetail(w http.ResponseWriter, r *http.Request, httpStatus, statusC
 //
 // Pass nil for a bare acknowledgement: SendResponse substitutes the empty data
 // object the client dereferences unconditionally on success.
-func SendOK(w http.ResponseWriter, r *http.Request, data interface{}, logger *slog.Logger) {
+func SendOK(w http.ResponseWriter, r *http.Request, data any, logger *slog.Logger) {
 	resp := BaseResponse{}
 	resp.Response.StatusCode = 200
 	resp.Response.StatusText = "Ok"
@@ -321,7 +321,7 @@ func sendXMLError(w http.ResponseWriter, httpStatus int, resp ErrorResponse) {
 }
 
 // sendJSON sends a JSON response.
-func sendJSON(w http.ResponseWriter, data interface{}, logger *slog.Logger) {
+func sendJSON(w http.ResponseWriter, data any, logger *slog.Logger) {
 	w.Header().Set("Content-Type", "application/json")
 	body, err := json.Marshal(data)
 	if err != nil {
@@ -339,7 +339,7 @@ func sendJSON(w http.ResponseWriter, data interface{}, logger *slog.Logger) {
 }
 
 // sendXML sends an XML response.
-func sendXML(w http.ResponseWriter, data interface{}, logger *slog.Logger) {
+func sendXML(w http.ResponseWriter, data any, logger *slog.Logger) {
 	w.Header().Set("Content-Type", "text/xml; charset=utf-8")
 
 	// Every payload is a struct whose xml tags name its elements, and the
@@ -374,7 +374,7 @@ func jsonpCallback(r *http.Request) string {
 }
 
 // sendJSONP sends a JSONP response with the specified callback.
-func sendJSONP(w http.ResponseWriter, r *http.Request, callback string, data interface{}, logger *slog.Logger) {
+func sendJSONP(w http.ResponseWriter, r *http.Request, callback string, data any, logger *slog.Logger) {
 	// Validate callback to prevent XSS. This is the one error here that cannot be
 	// delivered as JSONP: there is no callback name safe to write.
 	if !isValidCallback(callback) {
@@ -420,7 +420,7 @@ func isValidCallback(callback string) bool {
 }
 
 // sendAMF sends an AMF response
-func sendAMF(w http.ResponseWriter, r *http.Request, data interface{}, logger *slog.Logger) {
+func sendAMF(w http.ResponseWriter, r *http.Request, data any, logger *slog.Logger) {
 	amfData, err := wire.MarshalAMF3(data)
 	if err != nil {
 		if logger != nil {
@@ -440,10 +440,7 @@ func sendAMF(w http.ResponseWriter, r *http.Request, data interface{}, logger *s
 	if logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
 		hexPreview := ""
 		if len(amfData) > 0 {
-			previewLen := len(amfData)
-			if previewLen > 64 {
-				previewLen = 64
-			}
+			previewLen := min(len(amfData), 64)
 			hexPreview = hex.EncodeToString(amfData[:previewLen])
 		}
 

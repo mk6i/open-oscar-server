@@ -8,6 +8,7 @@ import (
 	"errors"
 	"log/slog"
 	mrand "math/rand/v2"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -57,23 +58,23 @@ const (
 
 // Session represents an active Web AIM API session.
 type Session struct {
-	AimSID              string                                         // Unique session ID for web client
-	ScreenName          state.DisplayScreenName                        // User identity
-	OSCARSession        *state.SessionInstance                         // Bridge to existing OSCAR session
-	BaseURL             string                                         // Web API base URL advertised to the web client, used to build absolute asset URLs
-	Events              []string                                       // Subscribed event types
-	EventQueue          *EventQueue                                    // Per-session event queue
-	ClientName          string                                         // Client application name
-	ClientVersion       string                                         // Client application version
-	CreatedAt           time.Time                                      // SessionInstance creation time
-	LastAccessed        time.Time                                      // Last activity time
-	ExpiresAt           time.Time                                      // SessionInstance expiration time
-	FetchTimeout        int                                            // Long-polling timeout in milliseconds
-	TimeToNextFetch     int                                            // Suggested delay before next fetch
-	RemoteAddr          string                                         // Client IP address
-	BuddyListRefresher  func(ctx context.Context) (interface{}, error) // Called on feedbag changes to push buddylist event
-	PermitDenyRefresher func(ctx context.Context) (interface{}, error) // Called on feedbag changes to push permitDeny event
-	MyInfoRefresher     func(ctx context.Context) (interface{}, error) // Called on self user-info updates (e.g. icon change) to push myInfo event
+	AimSID              string                                 // Unique session ID for web client
+	ScreenName          state.DisplayScreenName                // User identity
+	OSCARSession        *state.SessionInstance                 // Bridge to existing OSCAR session
+	BaseURL             string                                 // Web API base URL advertised to the web client, used to build absolute asset URLs
+	Events              []string                               // Subscribed event types
+	EventQueue          *EventQueue                            // Per-session event queue
+	ClientName          string                                 // Client application name
+	ClientVersion       string                                 // Client application version
+	CreatedAt           time.Time                              // SessionInstance creation time
+	LastAccessed        time.Time                              // Last activity time
+	ExpiresAt           time.Time                              // SessionInstance expiration time
+	FetchTimeout        int                                    // Long-polling timeout in milliseconds
+	TimeToNextFetch     int                                    // Suggested delay before next fetch
+	RemoteAddr          string                                 // Client IP address
+	BuddyListRefresher  func(ctx context.Context) (any, error) // Called on feedbag changes to push buddylist event
+	PermitDenyRefresher func(ctx context.Context) (any, error) // Called on feedbag changes to push permitDeny event
+	MyInfoRefresher     func(ctx context.Context) (any, error) // Called on self user-info updates (e.g. icon change) to push myInfo event
 	BuddyAliasLoader    func(ctx context.Context) (map[string]string, error)
 	// BuddyIconURL formats the absolute buddyIcon URL for a buddy from the icon
 	// hash carried in a presence SNAC. Returns "" when no URL can be published.
@@ -166,12 +167,7 @@ func (s *Session) Touch() {
 
 // IsSubscribedTo checks if the session is subscribed to a specific event type.
 func (s *Session) IsSubscribedTo(eventType string) bool {
-	for _, event := range s.Events {
-		if event == eventType {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(s.Events, eventType)
 }
 
 // StartListeningToOSCARSession starts a goroutine that listens to the OSCAR session's
@@ -183,9 +179,7 @@ func (s *Session) StartListeningToOSCARSession() {
 		return
 	}
 
-	s.listeners.Add(1)
-	go func() {
-		defer s.listeners.Done()
+	s.listeners.Go(func() {
 		msgCh := s.OSCARSession.ReceiveMessage()
 		for {
 			select {
@@ -209,7 +203,7 @@ func (s *Session) StartListeningToOSCARSession() {
 				return
 			}
 		}
-	}()
+	})
 }
 
 // Close tears down the session: it releases any parked event fetchers, closes
@@ -627,11 +621,8 @@ func (s *Session) handleFeedbagMessage(msg wire.SNACMessage) {
 		if body, ok := msg.Body.(wire.SNAC_0x13_0x0E_FeedbagStatus); ok {
 			// A buddy declined for authorization is not stored, and is simply
 			// absent from the refreshed roster.
-			for _, result := range body.Results {
-				if result == feedbagResultAuthRequired {
-					s.logger.Info("feedbag item declined pending authorization")
-					break
-				}
+			if slices.Contains(body.Results, feedbagResultAuthRequired) {
+				s.logger.Info("feedbag item declined pending authorization")
 			}
 		}
 		s.refreshBuddyList()

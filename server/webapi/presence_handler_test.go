@@ -445,7 +445,7 @@ func TestPresenceHandler_SetState_MyInfoNormalizesAimID(t *testing.T) {
 	// The setState response body carries the same identity fields.
 	var resp struct {
 		Response struct {
-			Data map[string]interface{} `json:"data"`
+			Data map[string]any `json:"data"`
 		} `json:"response"`
 	}
 	assert.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
@@ -862,7 +862,7 @@ func TestPresenceHandler_GetPresence_TruncatesOversizedTargetList(t *testing.T) 
 	}
 
 	query := "/presence/get?aimsid=" + aimsid + "&f=json"
-	for i := 0; i < maxPresenceTargets+8; i++ {
+	for i := range maxPresenceTargets + 8 {
 		query += fmt.Sprintf("&t=user%d", i)
 	}
 	req, _ := http.NewRequest("GET", query, nil)
@@ -881,7 +881,7 @@ func TestPresenceHandler_GetPresence_TruncatesOversizedTargetList(t *testing.T) 
 // member-directory search page.
 func searchPageTargets(n int) []string {
 	names := make([]string, 0, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		names = append(names, fmt.Sprintf("user%d", i))
 	}
 	return names

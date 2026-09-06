@@ -106,7 +106,7 @@ type StartSessionEvents struct {
 	MyInfo     *MyInfo         `json:"myInfo,omitempty" xml:"myInfo,omitempty"`
 	BuddyList  *BuddyListData  `json:"buddylist,omitempty" xml:"buddylist,omitempty"`
 	Preference *PreferenceData `json:"preference,omitempty" xml:"preference,omitempty"`
-	PermitDeny interface{}     `json:"permitDeny,omitempty" xml:"permitDeny,omitempty"`
+	PermitDeny any             `json:"permitDeny,omitempty" xml:"permitDeny,omitempty"`
 }
 
 // BuddyListData is the buddylist event payload and the buddy list half of the
@@ -286,7 +286,7 @@ func (h *AimHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 	// Wire buddy list refresher so feedbag SNACs from the OSCAR bridge trigger a buddylist event.
 	// The refresher yields the whole buddylist event payload, not just the groups,
 	// so the session that pushes it does not have to know the payload's shape.
-	session.BuddyListRefresher = func(ctx context.Context) (interface{}, error) {
+	session.BuddyListRefresher = func(ctx context.Context) (any, error) {
 		groups, err := h.BuddyListManager.GetBuddyListForUser(ctx, session)
 		if err != nil {
 			return nil, err
@@ -312,13 +312,13 @@ func (h *AimHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 	// re-renders the identity badge. currentWebState reflects the user's live
 	// presence; PublishedURL reflects the feedbag icon, already updated by the time
 	// the OServiceUserInfoUpdate is relayed.
-	session.MyInfoRefresher = func(ctx context.Context) (interface{}, error) {
+	session.MyInfoRefresher = func(ctx context.Context) (any, error) {
 		icon := h.IconSource.PublishedURL(ctx, session.BaseURL, screenName.IdentScreenName())
 		return buildMyInfo(screenName, currentWebState(session.OSCARSession), icon), nil
 	}
 
 	// Wire permit/deny refresher so FeedbagUpdateItem SNACs trigger a permitDeny event.
-	session.PermitDenyRefresher = func(ctx context.Context) (interface{}, error) {
+	session.PermitDenyRefresher = func(ctx context.Context) (any, error) {
 		frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
 		fb, err := h.FeedbagService.Query(ctx, session.OSCARSession, frame)
 		if err != nil {
@@ -449,7 +449,7 @@ func (h *AimHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 			// populates. Both the block/unblock menu action and the "blocked"
 			// presence state read that model and no-op silently while it is
 			// empty, so the session has to start with one.
-			var pdPayload interface{} = PermitDenyData{PDMode: "permitAll"}
+			var pdPayload any = PermitDenyData{PDMode: "permitAll"}
 			if pdd, err := session.PermitDenyRefresher(ctx); err != nil {
 				h.Logger.ErrorContext(ctx, "failed to get permit/deny settings", "err", err.Error())
 			} else {

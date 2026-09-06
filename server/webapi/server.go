@@ -356,11 +356,11 @@ func (h Handler) GetHelloWorldHandler(w http.ResponseWriter, r *http.Request) {
 	// Must return the same JSON envelope as other Web AIM APIs.
 	h.Logger.Info("webapi root GET", "remote", r.RemoteAddr, "host", r.Host, "path", r.URL.Path)
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	resp := map[string]interface{}{
-		"response": map[string]interface{}{
+	resp := map[string]any{
+		"response": map[string]any{
 			"statusCode": 200,
 			"statusText": "Ok",
-			"data":       map[string]interface{}{},
+			"data":       map[string]any{},
 		},
 	}
 	_ = json.NewEncoder(w).Encode(resp)
