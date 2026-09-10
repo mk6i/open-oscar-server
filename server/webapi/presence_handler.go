@@ -2,11 +2,16 @@ package webapi
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
@@ -75,6 +80,9 @@ type BuddyPresenceInfo struct {
 	OnlineTime int64  `json:"onlineTime,omitempty" xml:"onlineTime,omitempty"`
 	UserType   string `json:"userType" xml:"userType"` // "aim", "icq", "admin"
 	BuddyIcon  string `json:"buddyIcon,omitempty" xml:"buddyIcon,omitempty"`
+	// MoodIcon carries the mood token in its id parameter. It supersedes State on
+	// the client, so it is left empty for a buddy who is not visibly online.
+	MoodIcon string `json:"moodIcon,omitempty" xml:"moodIcon,omitempty"`
 	// Profile carries member-directory fields, present only under mdir=1. It must be
 	// non-nil even when empty: clients treat a missing profile as "not a user".
 	Profile *BuddyProfileInfo `json:"profile,omitempty" xml:"profile,omitempty"`
@@ -351,6 +359,10 @@ func (h *PresenceHandler) getUserPresence(ctx context.Context, instance *state.S
 		}
 	}
 
+	// Read last, once State has settled: a mood is suppressed for a buddy who is
+	// not visibly online.
+	presence.MoodIcon = moodIconURL(baseURL, presence.State, userInfoCaps(info.TLVUserInfo))
+
 	return presence
 }
 
@@ -457,29 +469,45 @@ func (h *PresenceHandler) SetStatus(w http.ResponseWriter, r *http.Request, sess
 	statusMsg := r.URL.Query().Get("statusMsg")
 	statusCode := r.URL.Query().Get("statusCode")
 
-	// Store status message in session (this would normally be stored in a profile/status service)
-	// For now, we'll broadcast it as part of presence
+	moodID := r.URL.Query().Get("mood")
+	m, hasMood := moodByID(moodID)
+	if r.URL.Query().Has("mood") {
+		instanceCaps := session.OSCARSession.Caps()
+		caps := make([][16]byte, 0, len(instanceCaps)+1)
+		for _, c := range instanceCaps {
+			if !isMoodCap(c) {
+				caps = append(caps, c)
+			}
+		}
+		if hasMood {
+			caps = append(caps, m.Cap)
+		}
 
-	oscarSession := session.OSCARSession
-	// In OSCAR, status messages are typically part of the profile
-	// We'll need to extend this based on the actual implementation
-
-	// Broadcast presence update with new status
-	if err := h.BuddyBroadcaster.BroadcastBuddyArrived(ctx, oscarSession.IdentScreenName(), oscarSession.Session().TLVUserInfo()); err != nil {
-		h.Logger.ErrorContext(ctx, "failed to broadcast status update", "err", err.Error())
+		setInfo := wire.SNAC_0x02_0x04_LocateSetInfo{
+			TLVRestBlock: wire.TLVRestBlock{
+				TLVList: wire.TLVList{
+					wire.NewTLVBE(wire.LocateTLVTagsInfoCapabilities, caps),
+				},
+			},
+		}
+		if err := h.LocateService.SetInfo(ctx, session.OSCARSession, setInfo); err != nil {
+			h.Logger.ErrorContext(ctx, "failed to set mood capability", "err", err.Error())
+			SendError(w, r, http.StatusInternalServerError, "failed to save status")
+			return
+		}
 	}
 
 	// Notify the user's own client so its status message re-renders. Preserve the
 	// current presence state so a status-only change does not flip the self badge.
-	h.pushMyInfo(session, currentWebState(oscarSession), oscarSession.Session().AwayMessage(), statusMsg)
+	h.pushMyInfo(session, currentWebState(session.OSCARSession), session.OSCARSession.Session().AwayMessage(), statusMsg)
 
 	h.Logger.InfoContext(ctx, "status message updated",
 		"screenName", session.ScreenName.String(),
 		"statusMsg", statusMsg,
 		"statusCode", statusCode,
+		"mood", moodID,
 	)
 
-	// Send success response
 	SendOK(w, r, nil, h.Logger)
 }
 
@@ -662,9 +690,151 @@ func (h *PresenceHandler) pushMyInfo(session *Session, webState, awayMsg, status
 	// buddyIcon is omitted here (empty) so the client's merge preserves the icon it
 	// already holds; a setState/setStatus does not change the icon. Icon changes
 	// arrive on their own myInfo via the pump's MyInfoRefresher.
-	myInfo := buildMyInfo(session.ScreenName, webState, "")
+	moodIcon := moodIconURL(session.BaseURL, webState, session.OSCARSession.Session().Caps())
+	myInfo := buildMyInfo(session.ScreenName, webState, "", moodIcon)
 	myInfo.AwayMsg = awayMsg
 	myInfo.StatusMsg = statusMsg
 
 	session.EventQueue.Push(EventType("myInfo"), myInfo)
+}
+
+// A mood is a capability UUID ICQ clients advertise; Web API clients name the
+// same moods with a token string.
+
+// Invented capabilities for the four moods ICQ never assigned a UUID to, so at
+// least clients of this server resolve them. Namespaced under "MOOD" in ASCII
+// and ending in the mood number, they cannot collide with a genuine capability.
+var (
+	capMoodHavingFun = uuid.MustParse("4D4F4F44-0000-0000-0000-00000000000D")
+	capMoodLove      = uuid.MustParse("4D4F4F44-0000-0000-0000-00000000003D")
+	capMoodWeekend   = uuid.MustParse("4D4F4F44-0000-0000-0000-000000000042")
+	capMoodOnTheWay  = uuid.MustParse("4D4F4F44-0000-0000-0000-000000000053")
+)
+
+// mood is one ICQ XStatus mood, in both of the forms it travels in.
+type mood struct {
+	ID  string    // the token Web API clients exchange, e.g. "0icqmood6"
+	Cap uuid.UUID // the capability OSCAR clients advertise
+}
+
+// moods lists every mood in the order ICQ web clients enumerate them. Where two
+// moods share a capability, the one listed first is its canonical name.
+var moods = []mood{
+	{ID: "0icqmood0", Cap: wire.CapXStatusShopping},  // shopping
+	{ID: "0icqmood1", Cap: wire.CapXStatusBathing},   // bathing
+	{ID: "0icqmood2", Cap: wire.CapXStatusSleepy},    // tired
+	{ID: "0icqmood3", Cap: wire.CapXStatusParty},     // party
+	{ID: "0icqmood4", Cap: wire.CapXStatusBeer},      // beer
+	{ID: "0icqmood5", Cap: wire.CapXStatusThinking},  // thinking
+	{ID: "0icqmood6", Cap: wire.CapXStatusPlate},     // eating
+	{ID: "0icqmood7", Cap: wire.CapXStatusTV},        // tv
+	{ID: "0icqmood8", Cap: wire.CapXStatusMeeting},   // friends
+	{ID: "0icqmood9", Cap: wire.CapXStatusCoffee},    // coffee
+	{ID: "0icqmood10", Cap: wire.CapXStatusMusic},    // music
+	{ID: "0icqmood11", Cap: wire.CapXStatusSuit},     // business
+	{ID: "0icqmood12", Cap: wire.CapXStatusCinema},   // cinema
+	{ID: "0icqmood13", Cap: capMoodHavingFun},        // having fun
+	{ID: "0icqmood14", Cap: wire.CapXStatusPhone},    // phone
+	{ID: "0icqmood81", Cap: wire.CapXStatusConsole},  // gamepad
+	{ID: "0icqmood16", Cap: wire.CapXStatusStudying}, // studying
+	{ID: "0icqmood17", Cap: wire.CapXStatusSick},     // sick
+	{ID: "0icqmood70", Cap: wire.CapXStatusSleeping}, // sleeping
+	{ID: "0icqmood19", Cap: wire.CapXStatusSurfing},  // surfing
+	{ID: "0icqmood20", Cap: wire.CapXStatusInternet}, // internet
+	{ID: "0icqmood21", Cap: wire.CapXStatusWorking},  // working
+	{ID: "0icqmood22", Cap: wire.CapXStatusTyping},   // typing
+	{ID: "0icqmood23", Cap: wire.CapXStatusAngry},    // angry
+	{ID: "0icqmood66", Cap: capMoodWeekend},          // weekend
+	{ID: "0icqmood15", Cap: wire.CapXStatusConsole},  // PSP
+	{ID: "0icqmood71", Cap: wire.CapXStatusMobile},   // on mobile
+	{ID: "0icqmood18", Cap: wire.CapXStatusSleeping}, // fall asleep
+	{ID: "0icqmood68", Cap: wire.CapXStatusRestroom}, // WC
+	{ID: "0icqmood77", Cap: wire.CapXStatusQuestion}, // confused
+	{ID: "0icqmood83", Cap: capMoodOnTheWay},         // on the way
+	{ID: "0icqmood61", Cap: capMoodLove},             // love
+	{ID: "0icqmood76", Cap: wire.CapXStatusInLove},   // in love
+	{ID: "0icqmood85", Cap: wire.CapXStatusSearch},   // searching
+	{ID: "0icqmood84", Cap: wire.CapXStatusWriting},  // diary
+}
+
+var (
+	moodsByID  = indexMoodsByID()
+	moodsByCap = indexMoodsByCap()
+)
+
+func indexMoodsByID() map[string]mood {
+	index := make(map[string]mood, len(moods))
+	for _, m := range moods {
+		index[m.ID] = m
+	}
+	return index
+}
+
+func indexMoodsByCap() map[uuid.UUID]mood {
+	index := make(map[uuid.UUID]mood, len(moods))
+	for _, m := range moods {
+		if _, taken := index[m.Cap]; !taken {
+			index[m.Cap] = m
+		}
+	}
+	return index
+}
+
+// userInfoCaps returns the capability UUIDs a user info block advertises.
+func userInfoCaps(info wire.TLVUserInfo) [][16]byte {
+	b, ok := info.Bytes(wire.OServiceUserInfoOscarCaps)
+	if !ok {
+		return nil
+	}
+	caps := make([][16]byte, 0, len(b)/16)
+	for chunk := range slices.Chunk(b, 16) {
+		if len(chunk) < 16 {
+			break
+		}
+		caps = append(caps, [16]byte(chunk))
+	}
+	return caps
+}
+
+// moodIconURL returns the mood icon URL for the mood advertised in caps, or ""
+// when there is none. A mood supersedes webState on the client, so a user who is
+// not visibly online never gets one.
+func moodIconURL(baseURL, webState string, caps [][16]byte) string {
+	if webState == "offline" || webState == "invisible" {
+		return ""
+	}
+	for _, c := range caps {
+		if m, ok := moodByCap(c); ok {
+			return baseURL + "/mood?id=" + moodIconID(m.ID)
+		}
+	}
+	return ""
+}
+
+// moodByID returns the mood named by a Web API mood token.
+func moodByID(id string) (mood, bool) {
+	m, ok := moodsByID[id]
+	return m, ok
+}
+
+// moodByCap returns the mood advertised by a capability UUID.
+func moodByCap(c [16]byte) (mood, bool) {
+	m, ok := moodsByCap[uuid.UUID(c)]
+	return m, ok
+}
+
+// isMoodCap reports whether c is a known mood capability.
+func isMoodCap(c [16]byte) bool {
+	_, ok := moodByCap(c)
+	return ok
+}
+
+// moodIconID encodes a mood token for the id parameter of a mood icon URL: hex
+// of a two-byte big-endian length followed by the token, which is how ICQ
+// clients read it. An unencodable token yields "", which clients read as no mood.
+func moodIconID(id string) string {
+	if id == "" || len(id) > math.MaxUint16 {
+		return ""
+	}
+	return fmt.Sprintf("%04x%s", len(id), hex.EncodeToString([]byte(id)))
 }

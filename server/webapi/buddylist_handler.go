@@ -183,6 +183,7 @@ func (h *BuddyListHandler) addBuddyToFeedbag(ctx context.Context, sess *Session,
 	}
 
 	fl := state.NewFeedbagList(reply.Items, rand.Intn)
+	target := state.NewIdentScreenName(buddyName)
 
 	fl.AddGroup(groupName)
 	if pending := fl.PendingUpdates(); len(pending) > 0 {
@@ -211,6 +212,23 @@ func (h *BuddyListHandler) addBuddyToFeedbag(ctx context.Context, sess *Session,
 					buddyItems[item.GroupID] = nil
 				}
 				buddyItems[item.GroupID] = append(buddyItems[item.GroupID], item)
+			}
+		}
+
+		// An ICQ contact requiring authorization is declined rather than stored,
+		// reported only as result 0x000E on a SNAC a web client never sees, leaving
+		// it holding a buddy no roster lists. Mark ICQ-to-ICQ adds pending up front
+		// instead: UpsertItem stores the item either way, keeping the flag when
+		// authorization is required and stripping it when not. Only this pairing
+		// needs it; elsewhere a stray flag would publish a contact as awaiting an
+		// authorization never requested.
+		if sess.OSCARSession.UIN() != 0 && target.UIN() != 0 {
+			for _, buddies := range buddyItems {
+				for i := range buddies {
+					if state.NewIdentScreenName(buddies[i].Name) == target {
+						buddies[i].Append(wire.NewTLVBE(wire.FeedbagAttributesPending, []byte{}))
+					}
+				}
 			}
 		}
 

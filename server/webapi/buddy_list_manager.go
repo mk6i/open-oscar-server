@@ -48,19 +48,22 @@ type BuddyGroup struct {
 
 // BuddyInfo represents a buddy in the WebAPI format.
 type BuddyInfo struct {
-	AimID        string   `json:"aimId" xml:"aimId"`
-	DisplayID    string   `json:"displayId" xml:"displayId"`
-	Friendly     string   `json:"friendly,omitempty" xml:"friendly,omitempty"` // Viewer's private alias, rendered in preference to DisplayID
-	State        string   `json:"state" xml:"state"`                           // "online", "offline", "away", "idle"
-	StatusMsg    string   `json:"statusMsg,omitempty" xml:"statusMsg,omitempty"`
-	AwayMsg      string   `json:"awayMsg,omitempty" xml:"awayMsg,omitempty"`
-	OnlineTime   int64    `json:"onlineTime,omitempty" xml:"onlineTime,omitempty"`
-	IdleTime     int      `json:"idleTime,omitempty" xml:"idleTime,omitempty"` // Minutes idle
-	UserType     string   `json:"userType" xml:"userType"`                     // "aim", "icq", "admin"
-	Bot          bool     `json:"bot" xml:"bot"`
-	Service      string   `json:"service,omitempty" xml:"service,omitempty"` // "AIM", "ICQ" (Web AIM client compares case-sensitively)
-	PresenceIcon string   `json:"presenceIcon,omitempty" xml:"presenceIcon,omitempty"`
-	BuddyIcon    string   `json:"buddyIcon,omitempty" xml:"buddyIcon,omitempty"`
+	AimID        string `json:"aimId" xml:"aimId"`
+	DisplayID    string `json:"displayId" xml:"displayId"`
+	Friendly     string `json:"friendly,omitempty" xml:"friendly,omitempty"` // Viewer's private alias, rendered in preference to DisplayID
+	State        string `json:"state" xml:"state"`                           // "online", "offline", "away", "idle"
+	StatusMsg    string `json:"statusMsg,omitempty" xml:"statusMsg,omitempty"`
+	AwayMsg      string `json:"awayMsg,omitempty" xml:"awayMsg,omitempty"`
+	OnlineTime   int64  `json:"onlineTime,omitempty" xml:"onlineTime,omitempty"`
+	IdleTime     int    `json:"idleTime,omitempty" xml:"idleTime,omitempty"` // Minutes idle
+	UserType     string `json:"userType" xml:"userType"`                     // "aim", "icq", "admin"
+	Bot          bool   `json:"bot" xml:"bot"`
+	Service      string `json:"service,omitempty" xml:"service,omitempty"` // "AIM", "ICQ" (Web AIM client compares case-sensitively)
+	PresenceIcon string `json:"presenceIcon,omitempty" xml:"presenceIcon,omitempty"`
+	BuddyIcon    string `json:"buddyIcon,omitempty" xml:"buddyIcon,omitempty"`
+	// MoodIcon carries the mood token in its id parameter. It supersedes State on
+	// the client, so it is left empty for a buddy who is not visibly online.
+	MoodIcon     string   `json:"moodIcon,omitempty" xml:"moodIcon,omitempty"`
 	Capabilities []string `json:"capabilities,omitempty" xml:"capabilities>capability,omitempty"`
 	MemberSince  int64    `json:"memberSince,omitempty" xml:"memberSince,omitempty"`
 }
@@ -243,6 +246,10 @@ func (m *BuddyListManager) getBuddyInfo(ctx context.Context, instance *state.Ses
 			info.State = "idle"
 		}
 	}
+
+	// Read last, once State has settled: a mood is suppressed for a buddy who is
+	// not visibly online.
+	info.MoodIcon = moodIconURL(baseURL, info.State, userInfoCaps(userInfo.TLVUserInfo))
 
 	return info
 }

@@ -124,7 +124,7 @@ func TestAMFTimestampsAreDoubles(t *testing.T) {
 // myInfo carries the timestamps most likely to overflow, and reaches the encoder
 // as a struct rather than a map.
 func TestAMFMyInfoTimestampsAreDoubles(t *testing.T) {
-	mi := buildMyInfo("ChattingChuck", "online", "")
+	mi := buildMyInfo("ChattingChuck", "online", "", "")
 	mi.OnlineTime = 1700000000
 	mi.MemberSince = 1500000000
 	mi.Self = &MyInfoSelf{InstNum: 1, LoginTime: 1700000001, Events: []string{}, AssertCaps: []string{}}
@@ -179,6 +179,8 @@ func TestAMFPresenceCarriesEveryField(t *testing.T) {
 			AimID:      "mikekelly",
 			Friendly:   "Mike",
 			State:      "away",
+			MoodIcon:   "http://host/mood?id=0009306963716d6f6f6436",
+			MoodTitle:  "Eating",
 			StatusMsg:  "at lunch",
 			AwayMsg:    "back soon",
 			IdleTime:   5,
@@ -191,6 +193,8 @@ func TestAMFPresenceCarriesEveryField(t *testing.T) {
 	assert.Equal(t, "mikekelly", eventData["aimId"])
 	assert.Equal(t, "Mike", eventData["friendly"])
 	assert.Equal(t, "away", eventData["state"])
+	assert.Equal(t, "http://host/mood?id=0009306963716d6f6f6436", eventData["moodIcon"])
+	assert.Equal(t, "Eating", eventData["moodTitle"])
 	assert.Equal(t, "at lunch", eventData["statusMsg"])
 	assert.Equal(t, "back soon", eventData["awayMsg"])
 	assert.Equal(t, int32(5), eventData["idleTime"])

@@ -58,7 +58,12 @@ type MyInfo struct {
 	Capabilities []string `json:"capabilities" xml:"capabilities>capability"`
 	// BuddyIcon is omitted when empty so the client's merge preserves the icon it
 	// already holds.
-	BuddyIcon   string      `json:"buddyIcon,omitempty" xml:"buddyIcon,omitempty"`
+	BuddyIcon string `json:"buddyIcon,omitempty" xml:"buddyIcon,omitempty"`
+	// MoodIcon carries the mood token in its id parameter. Unlike BuddyIcon it
+	// must be sent on every myInfo: omitting it clears the mood.
+	MoodIcon string `json:"moodIcon,omitempty" xml:"moodIcon,omitempty"`
+	// MoodTitle labels the mood. Empty falls back to the client's own name for it.
+	MoodTitle   string      `json:"moodTitle,omitempty" xml:"moodTitle,omitempty"`
 	AwayMsg     string      `json:"awayMsg,omitempty" xml:"awayMsg,omitempty"`
 	StatusMsg   string      `json:"statusMsg,omitempty" xml:"statusMsg,omitempty"`
 	OnlineTime  int64       `json:"onlineTime,omitempty" xml:"onlineTime,omitempty"`
@@ -314,7 +319,9 @@ func (h *AimHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 	// the OServiceUserInfoUpdate is relayed.
 	session.MyInfoRefresher = func(ctx context.Context) (any, error) {
 		icon := h.IconSource.PublishedURL(ctx, session.BaseURL, screenName.IdentScreenName())
-		return buildMyInfo(screenName, currentWebState(session.OSCARSession), icon), nil
+		webState := currentWebState(session.OSCARSession)
+		mood := moodIconURL(session.BaseURL, webState, session.OSCARSession.Session().Caps())
+		return buildMyInfo(screenName, webState, icon, mood), nil
 	}
 
 	// Wire permit/deny refresher so FeedbagUpdateItem SNACs trigger a permitDeny event.
@@ -373,7 +380,8 @@ func (h *AimHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 		Events: &StartSessionEvents{},
 	}
 
-	myInfoPayload := buildMyInfo(screenName, "online", myIconURL)
+	myMoodURL := moodIconURL(baseURL, "online", session.OSCARSession.Session().Caps())
+	myInfoPayload := buildMyInfo(screenName, "online", myIconURL, myMoodURL)
 	myInfoPayload.OnlineTime = time.Now().Unix()
 	myInfoPayload.MemberSince = time.Now().Unix() - 86400*30 // 30 days ago
 	myInfoPayload.Self = &MyInfoSelf{
@@ -403,7 +411,7 @@ func (h *AimHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 	// myInfo and presence render the identity badge from the same payload and the
 	// client subscribes to both, which a per-subscription loop would queue twice.
 	if slices.Contains(events, "myInfo") || slices.Contains(events, "presence") {
-		myInfoData := buildMyInfo(screenName, "online", myIconURL)
+		myInfoData := buildMyInfo(screenName, "online", myIconURL, myMoodURL)
 		myInfoData.OnlineTime = time.Now().Unix()
 		myInfoData.MemberSince = time.Now().Unix() - 86400*30 // 30 days ago
 		session.EventQueue.Push(EventTypeMyInfo, myInfoData)
@@ -861,8 +869,9 @@ func seedRateLimitAlert(session *Session, classID wire.RateLimitClassID) {
 // omits them so the client keeps the signon time it already has; the
 // builders add them explicitly. buddyIcon is included only when non-empty; an
 // empty value would be dropped by the client merge anyway, and the placeholder
-// URL (not "") is what clears an icon.
-func buildMyInfo(screenName state.DisplayScreenName, webState, buddyIcon string) *MyInfo {
+// URL (not "") is what clears an icon. moodIcon is a parameter rather than a
+// field the callers set, because omitting it clears the user's mood.
+func buildMyInfo(screenName state.DisplayScreenName, webState, buddyIcon, moodIcon string) *MyInfo {
 	// The web client compares userType/service case-sensitively; a UIN account must
 	// report ICQ so it renders as an ICQ contact rather than AIM.
 	userType, service := "aim", "AIM"
@@ -880,6 +889,7 @@ func buildMyInfo(screenName state.DisplayScreenName, webState, buddyIcon string)
 		Bot:          false,
 		Service:      service,
 		BuddyIcon:    buddyIcon,
+		MoodIcon:     moodIcon,
 	}
 }
 

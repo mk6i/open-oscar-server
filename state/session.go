@@ -1515,6 +1515,13 @@ func (s *SessionInstance) caps() [][16]byte {
 	return s.capabilities
 }
 
+// Caps returns a copy of this instance's capability UUIDs.
+func (s *SessionInstance) Caps() [][16]byte {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return slices.Clone(s.capabilities)
+}
+
 //
 // Message Sending
 //

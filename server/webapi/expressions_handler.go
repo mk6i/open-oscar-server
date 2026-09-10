@@ -165,7 +165,7 @@ func (h *ExpressionsHandler) Upload(w http.ResponseWriter, r *http.Request, sess
 
 	var bartType uint16
 	switch t := r.URL.Query().Get("type"); t {
-	case "buddyIcon", "bigBuddyIcon":
+	case "buddyIcon", "bigBuddyIcon", "largeBuddyIcon":
 		bartType = wire.BARTTypesBuddyIcon
 	case "":
 		SendErrorDetail(w, r, http.StatusBadRequest, statusMissingParameter, 0,

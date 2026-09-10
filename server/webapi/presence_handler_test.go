@@ -2,14 +2,19 @@ package webapi
 
 import (
 	"context"
+	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -885,4 +890,333 @@ func searchPageTargets(n int) []string {
 		names = append(names, fmt.Sprintf("user%d", i))
 	}
 	return names
+}
+
+func TestMoodByID(t *testing.T) {
+	tests := []struct {
+		name string
+		id   string
+		want mood
+		ok   bool
+	}{
+		{
+			name: "mood with a real ICQ capability",
+			id:   "0icqmood6",
+			want: mood{ID: "0icqmood6", Cap: wire.CapXStatusPlate},
+			ok:   true,
+		},
+		{
+			name: "mood with a placeholder capability",
+			id:   "0icqmood13",
+			want: mood{ID: "0icqmood13", Cap: capMoodHavingFun},
+			ok:   true,
+		},
+		{
+			name: "unknown token",
+			id:   "0icqmood999",
+		},
+		{
+			name: "token missing the leading zero",
+			id:   "icqmood6",
+		},
+		{
+			name: "empty token",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := moodByID(tt.id)
+			assert.Equal(t, tt.ok, ok)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestMoodByCap(t *testing.T) {
+	tests := []struct {
+		name   string
+		cap    uuid.UUID
+		wantID string
+		ok     bool
+	}{
+		{
+			name:   "capability used by one mood",
+			cap:    wire.CapXStatusBeer,
+			wantID: "0icqmood4",
+			ok:     true,
+		},
+		{
+			name:   "capability shared by two moods returns the canonical one",
+			cap:    wire.CapXStatusConsole,
+			wantID: "0icqmood81",
+			ok:     true,
+		},
+		{
+			name:   "other shared capability returns the canonical one",
+			cap:    wire.CapXStatusSleeping,
+			wantID: "0icqmood70",
+			ok:     true,
+		},
+		{
+			name:   "placeholder capability",
+			cap:    capMoodOnTheWay,
+			wantID: "0icqmood83",
+			ok:     true,
+		},
+		{
+			name: "capability that is not a mood",
+			cap:  wire.CapChat,
+		},
+		{
+			name: "nil capability",
+			cap:  uuid.Nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := moodByCap(tt.cap)
+			assert.Equal(t, tt.ok, ok)
+			assert.Equal(t, tt.wantID, got.ID)
+			assert.Equal(t, tt.ok, isMoodCap(tt.cap))
+		})
+	}
+}
+
+// TestMoodsRoundTrip verifies every token resolves to itself and every
+// capability to a token that carries it.
+func TestMoodsRoundTrip(t *testing.T) {
+	canonical := make(map[uuid.UUID]string)
+
+	for _, m := range moods {
+		t.Run(m.ID, func(t *testing.T) {
+			byID, ok := moodByID(m.ID)
+			assert.True(t, ok)
+			assert.Equal(t, m, byID)
+
+			// A mood with no capability is invisible to other users.
+			assert.NotEqual(t, uuid.Nil, m.Cap)
+
+			byCap, ok := moodByCap(m.Cap)
+			assert.True(t, ok)
+			assert.Equal(t, m.Cap, byCap.Cap)
+		})
+
+		if first, seen := canonical[m.Cap]; seen {
+			// A shared capability resolves to whichever mood is listed first.
+			byCap, _ := moodByCap(m.Cap)
+			assert.Equal(t, first, byCap.ID)
+			continue
+		}
+		canonical[m.Cap] = m.ID
+	}
+}
+
+func TestMoodIconID(t *testing.T) {
+	tests := []struct {
+		name string
+		id   string
+		want string
+	}{
+		{
+			name: "encodes length prefix and token bytes",
+			id:   "0icqmood6",
+			want: "0009306963716d6f6f6436",
+		},
+		{
+			name: "encodes a two digit mood",
+			id:   "0icqmood23",
+			want: "000a306963716d6f6f643233",
+		},
+		{
+			name: "empty token encodes to nothing",
+			id:   "",
+			want: "",
+		},
+		{
+			name: "oversized token encodes to nothing",
+			id:   strings.Repeat("a", math.MaxUint16+1),
+			want: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, moodIconID(tt.id))
+		})
+	}
+}
+
+// TestMoodIconIDDecodes verifies every token encodes to something ICQ clients can
+// decode: even-length hex whose length prefix matches the token that follows.
+func TestMoodIconIDDecodes(t *testing.T) {
+	for _, m := range moods {
+		t.Run(m.ID, func(t *testing.T) {
+			encoded := moodIconID(m.ID)
+			assert.Zero(t, len(encoded)%2)
+
+			raw, err := hex.DecodeString(encoded)
+			assert.NoError(t, err)
+
+			assert.Equal(t, len(m.ID), int(binary.BigEndian.Uint16(raw[:2])))
+			assert.Equal(t, m.ID, string(raw[2:]))
+		})
+	}
+}
+
+// setStatusCaps drives setStatus and returns the capability list that reached
+// LocateService.SetInfo, or nil when SetInfo was never called.
+func setStatusCaps(t *testing.T, instance *state.SessionInstance, query string) ([][16]byte, *Session, int) {
+	t.Helper()
+
+	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", instance)
+
+	var gotCaps [][16]byte
+	var called bool
+	locate := newMockLocateService(t)
+	locate.EXPECT().SetInfo(mock.Anything, mock.Anything, mock.Anything).
+		Run(func(_ context.Context, _ *state.SessionInstance, inBody wire.SNAC_0x02_0x04_LocateSetInfo) {
+			called = true
+			b, ok := inBody.Bytes(wire.LocateTLVTagsInfoCapabilities)
+			require.True(t, ok, "setStatus must always send a capabilities TLV")
+			require.Zero(t, len(b)%16)
+			gotCaps = userInfoCaps(wire.TLVUserInfo{
+				TLVBlock: wire.TLVBlock{
+					TLVList: wire.TLVList{wire.NewTLVBE(wire.OServiceUserInfoOscarCaps, b)},
+				},
+			})
+			// Apply it, as the real service would, so a follow-up call sees it.
+			instance.SetCaps(gotCaps)
+		}).Return(nil).Maybe()
+
+	handler := &PresenceHandler{
+		SessionManager: sessionMgr,
+		LocateService:  locate,
+		Logger:         slog.Default(),
+	}
+
+	req, err := http.NewRequest("GET", "/presence/setStatus?aimsid="+aimsid+query, nil)
+	require.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+	requireSession(handler.SessionManager, handler.SetStatus).ServeHTTP(rr, req)
+
+	session, err := sessionMgr.GetSession(context.Background(), aimsid)
+	require.NoError(t, err)
+
+	if !called {
+		return nil, session, rr.Code
+	}
+	return gotCaps, session, rr.Code
+}
+
+func TestPresenceHandler_SetStatus_Mood(t *testing.T) {
+	tests := []struct {
+		name string
+		// query is appended to the request, after aimsid.
+		query string
+		// wantCaps is the capability list that must reach SetInfo. A nil value
+		// means SetInfo must not be called at all.
+		wantCaps [][16]byte
+		// wantMoodIcon is the id parameter expected on the queued myInfo, or ""
+		// for no mood.
+		wantMoodID string
+	}{
+		{
+			name:       "a known mood is advertised as its capability",
+			query:      "&mood=0icqmood6",
+			wantCaps:   [][16]byte{wire.CapXStatusPlate},
+			wantMoodID: "0icqmood6",
+		},
+		{
+			name:       "a mood with only a placeholder capability still resolves",
+			query:      "&mood=0icqmood13",
+			wantCaps:   [][16]byte{capMoodHavingFun},
+			wantMoodID: "0icqmood13",
+		},
+		{
+			// The client sends mood= alongside every plain state change, so this
+			// is the path back to a moodless online/away/invisible.
+			name:     "an empty mood clears the capability",
+			query:    "&mood=",
+			wantCaps: [][16]byte{},
+		},
+		{
+			name:     "an unrecognized mood clears the capability",
+			query:    "&mood=0icqmood999",
+			wantCaps: [][16]byte{},
+		},
+		{
+			// A status-message-only update must leave the mood alone.
+			name:  "an absent mood parameter leaves capabilities untouched",
+			query: "&statusMsg=hello",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			instance := state.NewSession().AddInstance()
+
+			gotCaps, session, code := setStatusCaps(t, instance, tt.query)
+			assert.Equal(t, http.StatusOK, code)
+			assert.Equal(t, tt.wantCaps, gotCaps)
+
+			myInfo := queuedMyInfo(session)
+			require.NotNil(t, myInfo, "setStatus must queue a myInfo event")
+			if tt.wantMoodID == "" {
+				assert.Empty(t, myInfo.MoodIcon)
+				return
+			}
+			assert.Equal(t, "/mood?id="+moodIconID(tt.wantMoodID), myInfo.MoodIcon)
+		})
+	}
+}
+
+func TestPresenceHandler_SetStatus_MoodReplacesRatherThanAccumulates(t *testing.T) {
+	instance := state.NewSession().AddInstance()
+
+	_, _, code := setStatusCaps(t, instance, "&mood=0icqmood6")
+	assert.Equal(t, http.StatusOK, code)
+
+	gotCaps, _, code := setStatusCaps(t, instance, "&mood=0icqmood4")
+	assert.Equal(t, http.StatusOK, code)
+	assert.Equal(t, [][16]byte{wire.CapXStatusBeer}, gotCaps, "the previous mood must be dropped")
+}
+
+func TestPresenceHandler_SetStatus_PreservesNonMoodCaps(t *testing.T) {
+	// The capability list is rewritten wholesale, so anything the instance
+	// advertises that is not a mood has to be carried over.
+	instance := state.NewSession().AddInstance()
+	instance.SetCaps([][16]byte{wire.CapChat, wire.CapXStatusBeer})
+
+	gotCaps, _, code := setStatusCaps(t, instance, "&mood=0icqmood6")
+	assert.Equal(t, http.StatusOK, code)
+	assert.Equal(t, [][16]byte{wire.CapChat, wire.CapXStatusPlate}, gotCaps)
+
+	gotCaps, _, code = setStatusCaps(t, instance, "&mood=")
+	assert.Equal(t, http.StatusOK, code)
+	assert.Equal(t, [][16]byte{wire.CapChat}, gotCaps, "clearing a mood must keep the other caps")
+}
+
+func TestPresenceHandler_SetStatus_SetInfoError(t *testing.T) {
+	instance := state.NewSession().AddInstance()
+	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", instance)
+
+	locate := newMockLocateService(t)
+	locate.EXPECT().SetInfo(mock.Anything, mock.Anything, mock.Anything).Return(io.EOF)
+
+	handler := &PresenceHandler{
+		SessionManager: sessionMgr,
+		LocateService:  locate,
+		Logger:         slog.Default(),
+	}
+
+	req, err := http.NewRequest("GET", "/presence/setStatus?aimsid="+aimsid+"&mood=0icqmood6", nil)
+	require.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+	requireSession(handler.SessionManager, handler.SetStatus).ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusInternalServerError, rr.Code)
 }

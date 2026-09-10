@@ -39,9 +39,14 @@ type Event struct {
 // alias it already holds, so a presence update that omits it silently renames the
 // buddy back to their screen name. See UserInfo.
 type PresenceEvent struct {
-	AimID      string `json:"aimId" xml:"aimId"`
-	Friendly   string `json:"friendly,omitempty" xml:"friendly,omitempty"`
-	State      string `json:"state" xml:"state"` // "online", "offline", "away", "idle"
+	AimID    string `json:"aimId" xml:"aimId"`
+	Friendly string `json:"friendly,omitempty" xml:"friendly,omitempty"`
+	State    string `json:"state" xml:"state"` // "online", "offline", "away", "idle"
+	// MoodIcon carries the mood token in its id parameter. It supersedes State on
+	// the client, so it is left empty for offline buddies.
+	MoodIcon string `json:"moodIcon,omitempty" xml:"moodIcon,omitempty"`
+	// MoodTitle labels the mood. Empty falls back to the client's own name for it.
+	MoodTitle  string `json:"moodTitle,omitempty" xml:"moodTitle,omitempty"`
 	StatusMsg  string `json:"statusMsg,omitempty" xml:"statusMsg,omitempty"`
 	AwayMsg    string `json:"awayMsg,omitempty" xml:"awayMsg,omitempty"`
 	IdleTime   int    `json:"idleTime,omitempty" xml:"idleTime,omitempty"`     // Minutes idle
