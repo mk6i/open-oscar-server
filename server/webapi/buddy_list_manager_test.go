@@ -21,7 +21,6 @@ func offlineWebAPIBuddy(aimID, displayID string) BuddyInfo {
 		State:     "offline",
 		UserType:  "aim",
 		Bot:       false,
-		Service:   "AIM",
 	}
 }
 
@@ -144,6 +143,31 @@ func TestBuddyListManager_GetBuddyListForUser(t *testing.T) {
 					Name:    "Buddies",
 					ID:      100,
 					Buddies: []BuddyInfo{offlineWebAPIBuddy("mikekelly", "Mike Kelly")},
+				},
+			},
+		},
+		{
+			name: "uin buddy is tagged icq",
+			fb: []wire.FeedbagItem{
+				{
+					Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+					TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{100})}},
+				},
+				{Name: "Buddies", GroupID: 100, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+					TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1})}}},
+				{ItemID: 1, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "100003"},
+			},
+			want: []BuddyGroup{
+				{
+					Name: "Buddies",
+					ID:   100,
+					Buddies: []BuddyInfo{{
+						AimID:     "100003",
+						DisplayID: "100003",
+						State:     "offline",
+						UserType:  "icq",
+						Service:   "icq",
+					}},
 				},
 			},
 		},

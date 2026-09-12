@@ -343,6 +343,27 @@ func TestSessionManager_RunAfterShutdown(t *testing.T) {
 // The client deletes the alias it holds each time it merges a user map, so every
 // event naming a buddy has to repeat it. An incoming IM and a presence change both
 // carry a user map, and both would otherwise rename an aliased buddy.
+func TestSession_UINBuddyReportsICQOnArrivalAndDeparture(t *testing.T) {
+	sess := &Session{
+		ScreenName: state.DisplayScreenName("me"),
+		Events:     []string{"presence"},
+		EventQueue: NewEventQueue(10),
+		logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	sess.handleBuddyArrived(wire.SNACMessage{Body: wire.SNAC_0x03_0x0B_BuddyArrived{
+		TLVUserInfo: wire.TLVUserInfo{ScreenName: "100003"},
+	}})
+	sess.handleBuddyDeparted(wire.SNACMessage{Body: wire.SNAC_0x03_0x0C_BuddyDeparted{
+		TLVUserInfo: wire.TLVUserInfo{ScreenName: "100003"},
+	}})
+
+	events := sess.EventQueue.GetAllEvents()
+	require.Len(t, events, 2)
+	assert.Equal(t, "icq", events[0].Data.(PresenceEvent).UserType)
+	assert.Equal(t, "icq", events[1].Data.(PresenceEvent).UserType)
+}
+
 func TestSession_RepeatsBuddyAliasOnOSCAREvents(t *testing.T) {
 	newSession := func() *Session {
 		return &Session{

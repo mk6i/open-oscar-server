@@ -21,22 +21,20 @@ import (
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
-func TestBuildMyInfo_UserTypeAndService(t *testing.T) {
+func TestBuildMyInfo_UserType(t *testing.T) {
 	tests := []struct {
 		name       string
 		screenName string
 		wantType   string
-		wantSvc    string
 	}{
-		{"aim screen name", "mikekelly", "aim", "AIM"},
-		{"icq uin", "123456789", "icq", "ICQ"},
+		{"aim screen name", "mikekelly", "aim"},
+		{"icq uin", "123456789", "icq"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mi := buildMyInfo(state.DisplayScreenName(tt.screenName), "online", "", "")
 			assert.Equal(t, tt.wantType, mi.UserType)
-			assert.Equal(t, tt.wantSvc, mi.Service)
 		})
 	}
 }

@@ -361,7 +361,8 @@ func (s *Session) handleIncomingIM(msg wire.SNACMessage) {
 	// keys conversations and users by the normalized aimId and only renders
 	// displayId, so the two forms must not be interchanged.
 	partnerDisplay := body.ScreenName
-	partnerAimID := state.NewIdentScreenName(partnerDisplay).String()
+	partner := state.NewIdentScreenName(partnerDisplay)
+	partnerAimID := partner.String()
 
 	// An offline message is logged under the time it was sent, so the stored-IM
 	// history it lands in stays in the order the conversation happened.
@@ -375,7 +376,7 @@ func (s *Session) handleIncomingIM(msg wire.SNACMessage) {
 		// The client resolves an offline sender from aimId and friendly alone,
 		// so friendly falls back to the sender's own formatting when the viewer
 		// has no alias for them.
-		friendly := s.aliasFor(state.NewIdentScreenName(partnerAimID))
+		friendly := s.aliasFor(partner)
 		if friendly == "" {
 			friendly = partnerDisplay
 		}
@@ -397,8 +398,8 @@ func (s *Session) handleIncomingIM(msg wire.SNACMessage) {
 			Source: UserInfo{
 				AimID:     partnerAimID,
 				DisplayID: partnerDisplay,
-				Friendly:  s.aliasFor(state.NewIdentScreenName(partnerAimID)),
-				UserType:  "aim",
+				Friendly:  s.aliasFor(partner),
+				UserType:  userTypeFor(partner),
 				State:     "online",
 			},
 			Message:   messageText,
@@ -460,7 +461,7 @@ func (s *Session) handleClientError(msg wire.SNACMessage) {
 			AimID:     sender.String(),
 			DisplayID: body.ScreenName,
 			Friendly:  s.aliasFor(sender),
-			UserType:  "aim",
+			UserType:  userTypeFor(sender),
 		},
 		Cookie:  s.msgIDForCookie(body.Cookie),
 		Channel: channel,
@@ -541,11 +542,7 @@ func (s *Session) handleBuddyArrived(msg wire.SNACMessage) {
 		AimID:    buddy.String(),
 		Friendly: s.aliasFor(buddy),
 		State:    stateStr,
-		UserType: "aim",
-	}
-
-	if buddy.UIN() > 0 {
-		presenceEvent.UserType = "icq"
+		UserType: userTypeFor(buddy),
 	}
 
 	presenceEvent.MoodIcon = moodIconURL(s.BaseURL, stateStr, userInfoCaps(body.TLVUserInfo))
@@ -589,7 +586,7 @@ func (s *Session) handleBuddyDeparted(msg wire.SNACMessage) {
 		AimID:    buddy.String(),
 		Friendly: s.aliasFor(buddy),
 		State:    "offline",
-		UserType: "aim",
+		UserType: userTypeFor(buddy),
 	}
 
 	s.EventQueue.Push(EventTypePresence, presenceEvent)

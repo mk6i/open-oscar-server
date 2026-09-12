@@ -463,27 +463,6 @@ func TestPresenceHandler_SetState_MyInfoNormalizesAimID(t *testing.T) {
 	assert.Equal(t, "Mike Kelly", myInfo.Friendly)
 }
 
-func TestIsICQScreenName(t *testing.T) {
-	tests := []struct {
-		name       string
-		screenName string
-		expected   bool
-	}{
-		{"ICQ_Number", "123456789", true},
-		{"AIM_Name", "cooluser", false},
-		{"AIM_WithNumbers", "cool123", false},
-		{"Empty", "", false},
-		{"Single_Digit", "5", true},
-		{"Mixed_Chars", "12abc34", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, isICQScreenName(tt.screenName))
-		})
-	}
-}
-
 func TestPresenceHandler_Icon(t *testing.T) {
 	tests := []struct {
 		name               string

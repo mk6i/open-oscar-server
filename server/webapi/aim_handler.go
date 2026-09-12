@@ -55,7 +55,7 @@ type MyInfo struct {
 	State     string `json:"state" xml:"state"`
 	UserType  string `json:"userType" xml:"userType"` // "aim", "icq"
 	Bot       bool   `json:"bot" xml:"bot"`
-	Service   string `json:"service" xml:"service"` // "AIM", "ICQ" (compared case-sensitively)
+	Service   string `json:"service,omitempty" xml:"service,omitempty"` // Non-native network; omitted for AIM
 	// Capabilities is always sent, empty included, because the client iterates it
 	// unconditionally.
 	Capabilities []string `json:"capabilities" xml:"capabilities>capability"`
@@ -112,6 +112,7 @@ type StartSessionEvents struct {
 	BuddyList  *BuddyListData  `json:"buddylist,omitempty" xml:"buddylist,omitempty"`
 	Preference *PreferenceData `json:"preference,omitempty" xml:"preference,omitempty"`
 	PermitDeny any             `json:"permitDeny,omitempty" xml:"permitDeny,omitempty"`
+	Service    *ServiceData    `json:"service,omitempty" xml:"service,omitempty"`
 }
 
 // BuddyListData is the buddylist event payload and the buddy list half of the
@@ -436,6 +437,12 @@ func (h *AimHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 	if slices.Contains(events, "conversation") {
 		session.EventQueue.Push(EventTypeConversation,
 			ConversationEventData("list", nil))
+	}
+
+	if slices.Contains(events, string(EventTypeService)) {
+		svcPayload := newServiceData()
+		data.Events.Service = svcPayload
+		session.EventQueue.Push(EventTypeService, svcPayload)
 	}
 
 	// The remaining seeds also populate the response payload, so they stay keyed off
@@ -888,22 +895,16 @@ func seedRateLimitAlert(session *Session, classID wire.RateLimitClassID) {
 // URL (not "") is what clears an icon. moodIcon is a parameter rather than a
 // field the callers set, because omitting it clears the user's mood.
 func buildMyInfo(screenName state.DisplayScreenName, webState, buddyIcon, moodIcon string) *MyInfo {
-	// The web client compares userType/service case-sensitively; a UIN account must
-	// report ICQ so it renders as an ICQ contact rather than AIM.
-	userType, service := "aim", "AIM"
-	if screenName.IsUIN() {
-		userType, service = "icq", "ICQ"
-	}
 	return &MyInfo{
 		AimID:     screenName.IdentScreenName().String(),
 		DisplayID: screenName.String(),
 		Friendly:  screenName.String(),
 		State:     webState,
-		UserType:  userType,
+		UserType:  userTypeFor(screenName.IdentScreenName()),
+		Service:   serviceFor(screenName.IdentScreenName()),
 		// Never nil: the client iterates capabilities unconditionally.
 		Capabilities: []string{},
 		Bot:          false,
-		Service:      service,
 		BuddyIcon:    buddyIcon,
 		MoodIcon:     moodIcon,
 	}

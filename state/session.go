@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
 	"github.com/mk6i/open-oscar-server/wire"
 )
 

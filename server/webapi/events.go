@@ -5,6 +5,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/mk6i/open-oscar-server/state"
 )
 
 // EventType defines the type of WebAPI event.
@@ -24,6 +26,7 @@ const (
 	EventTypeTyping       EventType = "typing"
 	EventTypePermitDeny   EventType = "permitDeny"
 	EventTypeClientError  EventType = "clientError"
+	EventTypeService      EventType = "service"
 )
 
 // Event represents an event to be delivered to a web client.
@@ -48,13 +51,72 @@ type PresenceEvent struct {
 	AwayMsg    string `json:"awayMsg,omitempty" xml:"awayMsg,omitempty"`
 	IdleTime   int    `json:"idleTime,omitempty" xml:"idleTime,omitempty"`     // Minutes idle
 	OnlineTime int64  `json:"onlineTime,omitempty" xml:"onlineTime,omitempty"` // Unix timestamp
-	UserType   string `json:"userType" xml:"userType"`                         // "aim", "icq", "admin"
+	UserType   string `json:"userType" xml:"userType"`                         // "aim", "icq"
 	BuddyIcon  string `json:"buddyIcon,omitempty" xml:"buddyIcon,omitempty"`   // Absolute icon URL; empty preserves the client's current icon, the placeholder URL clears it
 }
 
 // imfPlainText is the message-format tag put on delivered IMs; bodies are always
 // plain text.
 const imfPlainText = "plain"
+
+// User-type tags, which clients compare case-sensitively.
+const (
+	userTypeAIM = "aim"
+	userTypeICQ = "icq"
+)
+
+// serviceICQ names ICQ in both a user's service tag and the config list the
+// client joins it to.
+const serviceICQ = "icq"
+
+// userTypeFor returns the user-type tag for a screen name. A numeric screen
+// name is an ICQ UIN.
+func userTypeFor(sn state.IdentScreenName) string {
+	if sn.UIN() != 0 {
+		return userTypeICQ
+	}
+	return userTypeAIM
+}
+
+// serviceFor returns the network tag for a screen name, empty for AIM. An absent
+// tag reads as the native network.
+func serviceFor(sn state.IdentScreenName) string {
+	if userTypeFor(sn) == userTypeICQ {
+		return serviceICQ
+	}
+	return ""
+}
+
+// ServiceData is the service event payload and the service half of the
+// startSession seed.
+type ServiceData struct {
+	ServiceConfigs []ServiceConfig `json:"serviceConfigs" xml:"serviceConfigs>serviceConfig"`
+}
+
+// ServiceConfig describes one network a user's service tag can name. The client
+// looks the tag up by Name and renders FriendlyName as the user's label.
+type ServiceConfig struct {
+	Name            string `json:"name" xml:"name"`
+	FriendlyName    string `json:"friendlyName" xml:"friendlyName"`
+	Associated      bool   `json:"associated" xml:"associated"`
+	ConnectionState string `json:"connectionState" xml:"connectionState"`
+}
+
+// newServiceData lists the networks a user's service tag can name. ICQ is the
+// only one, since an AIM user carries no tag. An associated network the client
+// reads as unconnected prompts it to open a connection.
+func newServiceData() *ServiceData {
+	return &ServiceData{
+		ServiceConfigs: []ServiceConfig{
+			{
+				Name:            serviceICQ,
+				FriendlyName:    "ICQ",
+				Associated:      true,
+				ConnectionState: "connected",
+			},
+		},
+	}
+}
 
 // IMEvent represents an instant message event.
 type IMEvent struct {

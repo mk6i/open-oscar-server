@@ -39,7 +39,7 @@ type SetStateData struct {
 	State      string `json:"state" xml:"state"`
 	AwayMsg    string `json:"awayMsg" xml:"awayMsg"`
 	StatusMsg  string `json:"statusMsg" xml:"statusMsg"`
-	UserType   string `json:"userType" xml:"userType"`
+	UserType   string `json:"userType" xml:"userType"` // "aim", "icq"
 	OnlineTime int64  `json:"onlineTime" xml:"onlineTime"`
 }
 
@@ -74,7 +74,8 @@ type BuddyPresenceInfo struct {
 	ProfileMsg string `json:"profileMsg,omitempty" xml:"profileMsg,omitempty"`
 	IdleTime   int    `json:"idleTime,omitempty" xml:"idleTime,omitempty"`
 	OnlineTime int64  `json:"onlineTime,omitempty" xml:"onlineTime,omitempty"`
-	UserType   string `json:"userType" xml:"userType"` // "aim", "icq", "admin"
+	UserType   string `json:"userType" xml:"userType"`                   // "aim", "icq"
+	Service    string `json:"service,omitempty" xml:"service,omitempty"` // Non-native network; omitted for AIM
 	BuddyIcon  string `json:"buddyIcon,omitempty" xml:"buddyIcon,omitempty"`
 	MoodIcon   string `json:"moodIcon,omitempty" xml:"moodIcon,omitempty"`
 	// Profile carries member-directory fields, present only under mdir=1. It must be
@@ -280,14 +281,8 @@ func (h *PresenceHandler) getUserPresence(ctx context.Context, instance *state.S
 		AimID:     ident.String(),
 		DisplayID: target.String(),
 		State:     "offline",
-		UserType:  "aim",
-	}
-
-	// Determine user type
-	if strings.HasPrefix(ident.String(), "admin") {
-		presence.UserType = "admin"
-	} else if isICQScreenName(ident.String()) {
-		presence.UserType = "icq"
+		UserType:  userTypeFor(ident),
+		Service:   serviceFor(ident),
 	}
 
 	// The unauthenticated icon endpoint resolves presence without a session, so
@@ -356,19 +351,6 @@ func (h *PresenceHandler) getUserPresence(ctx context.Context, instance *state.S
 	presence.MoodIcon = moodIconURL(baseURL, presence.State, userInfoCaps(info.TLVUserInfo))
 
 	return presence
-}
-
-// isICQScreenName checks if a screen name is an ICQ number.
-func isICQScreenName(screenName string) bool {
-	if len(screenName) == 0 {
-		return false
-	}
-	for _, r := range screenName {
-		if r < '0' || r > '9' {
-			return false
-		}
-	}
-	return true
 }
 
 // SetState handles GET /presence/setState requests to update user's presence state.
@@ -448,7 +430,7 @@ func (h *PresenceHandler) SetState(w http.ResponseWriter, r *http.Request, sessi
 		State:      stateParam,
 		AwayMsg:    awayMsg,
 		StatusMsg:  "",
-		UserType:   "aim",
+		UserType:   userTypeFor(session.ScreenName.IdentScreenName()),
 		OnlineTime: time.Now().Unix(),
 	}, h.Logger)
 }

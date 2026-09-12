@@ -204,14 +204,14 @@ func (h *MessagingHandler) pushSenderWebAPIEvents(sess *Session, recipient state
 		Sender: UserInfo{
 			AimID:     senderAimID,
 			DisplayID: sess.ScreenName.String(),
-			UserType:  "aim",
+			UserType:  userTypeFor(sess.ScreenName.IdentScreenName()),
 			State:     "online",
 		},
 		Dest: UserInfo{
 			AimID:     recipientAimID,
 			DisplayID: recipientDisplay,
 			Friendly:  recipientAlias,
-			UserType:  "aim",
+			UserType:  userTypeFor(recipient),
 			State:     "online",
 		},
 		Message:   message,

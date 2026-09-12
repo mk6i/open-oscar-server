@@ -56,6 +56,16 @@ func TestStrictKeys_BuddyGroupID(t *testing.T) {
 	assert.Contains(t, body, `"id":0`)
 }
 
+func TestStrictKeys_BuddyUserType(t *testing.T) {
+	// A buddy's userType is read strictly, so an absent key costs the whole roster
+	// rather than that one entry.
+	body := renderJSON(t, BuddyListData{Groups: []BuddyGroup{{
+		Name: "Buddies", Buddies: []BuddyInfo{{AimID: "chattingchuck", DisplayID: "ChattingChuck", State: "offline", UserType: "aim"}},
+	}}})
+
+	assert.Contains(t, body, `"userType":"aim"`)
+}
+
 func TestStrictKeys_PresenceUsers(t *testing.T) {
 	// Each query fills in one field, and a match of none must still render that
 	// field as an empty array rather than drop it: a client reading data.users or

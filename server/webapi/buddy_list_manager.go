@@ -56,9 +56,9 @@ type BuddyInfo struct {
 	AwayMsg      string   `json:"awayMsg,omitempty" xml:"awayMsg,omitempty"`
 	OnlineTime   int64    `json:"onlineTime,omitempty" xml:"onlineTime,omitempty"`
 	IdleTime     int      `json:"idleTime,omitempty" xml:"idleTime,omitempty"` // Minutes idle
-	UserType     string   `json:"userType" xml:"userType"`                     // "aim", "icq", "admin"
+	UserType     string   `json:"userType" xml:"userType"`                     // "aim", "icq"
 	Bot          bool     `json:"bot" xml:"bot"`
-	Service      string   `json:"service,omitempty" xml:"service,omitempty"` // "AIM", "ICQ" (Web AIM client compares case-sensitively)
+	Service      string   `json:"service,omitempty" xml:"service,omitempty"` // Non-native network; omitted for AIM
 	PresenceIcon string   `json:"presenceIcon,omitempty" xml:"presenceIcon,omitempty"`
 	BuddyIcon    string   `json:"buddyIcon,omitempty" xml:"buddyIcon,omitempty"`
 	MoodIcon     string   `json:"moodIcon,omitempty" xml:"moodIcon,omitempty"`
@@ -191,9 +191,9 @@ func (m *BuddyListManager) getBuddyInfo(ctx context.Context, instance *state.Ses
 		AimID:     ident.String(),
 		DisplayID: buddyName,
 		State:     "offline",
-		UserType:  "aim",
+		UserType:  userTypeFor(ident),
+		Service:   serviceFor(ident),
 		Bot:       false,
-		Service:   "AIM",
 	}
 
 	reply, err := m.locateService.UserInfoQuery(ctx, instance, wire.SNACFrame{},
