@@ -42,6 +42,8 @@ type PresenceEvent struct {
 	AimID      string `json:"aimId" xml:"aimId"`
 	Friendly   string `json:"friendly,omitempty" xml:"friendly,omitempty"`
 	State      string `json:"state" xml:"state"` // "online", "offline", "away", "idle"
+	MoodIcon   string `json:"moodIcon,omitempty" xml:"moodIcon,omitempty"`
+	MoodTitle  string `json:"moodTitle,omitempty" xml:"moodTitle,omitempty"`
 	StatusMsg  string `json:"statusMsg,omitempty" xml:"statusMsg,omitempty"`
 	AwayMsg    string `json:"awayMsg,omitempty" xml:"awayMsg,omitempty"`
 	IdleTime   int    `json:"idleTime,omitempty" xml:"idleTime,omitempty"`     // Minutes idle

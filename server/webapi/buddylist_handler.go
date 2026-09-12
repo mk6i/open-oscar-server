@@ -183,6 +183,7 @@ func (h *BuddyListHandler) addBuddyToFeedbag(ctx context.Context, sess *Session,
 	}
 
 	fl := state.NewFeedbagList(reply.Items, rand.Intn)
+	target := state.NewIdentScreenName(buddyName)
 
 	fl.AddGroup(groupName)
 	if pending := fl.PendingUpdates(); len(pending) > 0 {
@@ -211,6 +212,16 @@ func (h *BuddyListHandler) addBuddyToFeedbag(ctx context.Context, sess *Session,
 					buddyItems[item.GroupID] = nil
 				}
 				buddyItems[item.GroupID] = append(buddyItems[item.GroupID], item)
+			}
+		}
+
+		if sess.OSCARSession.UIN() != 0 && target.UIN() != 0 {
+			for _, buddies := range buddyItems {
+				for i := range buddies {
+					if state.NewIdentScreenName(buddies[i].Name) == target {
+						buddies[i].Append(wire.NewTLVBE(wire.FeedbagAttributesPending, []byte{}))
+					}
+				}
 			}
 		}
 

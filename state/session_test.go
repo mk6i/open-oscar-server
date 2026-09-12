@@ -2519,3 +2519,92 @@ func TestSession_InstanceNumberAssignment(t *testing.T) {
 		})
 	})
 }
+
+func TestSessionInstance_Caps(t *testing.T) {
+	t.Run("returns the instance's own capabilities, not the session's union", func(t *testing.T) {
+		sess := NewSession()
+		first := sess.AddInstance()
+		second := sess.AddInstance()
+
+		first.SetCaps([][16]byte{wire.CapChat})
+		second.SetCaps([][16]byte{wire.CapFileTransfer})
+
+		assert.Equal(t, [][16]byte{wire.CapChat}, first.Caps())
+		assert.Len(t, sess.Caps(), 2)
+	})
+
+	t.Run("returns a copy the caller cannot write through", func(t *testing.T) {
+		instance := NewSession().AddInstance()
+		instance.SetCaps([][16]byte{wire.CapChat})
+
+		caps := instance.Caps()
+		caps[0] = wire.CapFileTransfer
+
+		assert.Equal(t, [][16]byte{wire.CapChat}, instance.Caps())
+	})
+
+	t.Run("an instance with no capabilities returns an empty list", func(t *testing.T) {
+		assert.Empty(t, NewSession().AddInstance().Caps())
+	})
+}
+
+func TestSessionInstance_SetMood(t *testing.T) {
+	t.Run("advertises the mood alongside the existing capabilities", func(t *testing.T) {
+		instance := NewSession().AddInstance()
+		instance.SetCaps([][16]byte{wire.CapChat})
+
+		instance.SetMood(wire.CapXStatusBeer)
+
+		assert.Equal(t, [][16]byte{wire.CapChat, wire.CapXStatusBeer}, instance.Caps())
+	})
+
+	t.Run("a second mood replaces the first", func(t *testing.T) {
+		// A client shows one mood at a time, so the moods must not accumulate.
+		instance := NewSession().AddInstance()
+		instance.SetCaps([][16]byte{wire.CapChat})
+
+		instance.SetMood(wire.CapXStatusBeer)
+		instance.SetMood(wire.CapXStatusMusic)
+
+		assert.Equal(t, [][16]byte{wire.CapChat, wire.CapXStatusMusic}, instance.Caps())
+	})
+
+	t.Run("panics on a capability that is not a mood", func(t *testing.T) {
+		instance := NewSession().AddInstance()
+		assert.Panics(t, func() {
+			instance.SetMood(wire.CapChat)
+		})
+	})
+}
+
+func TestSessionInstance_ClearMood(t *testing.T) {
+	t.Run("removes the mood and keeps every other capability", func(t *testing.T) {
+		instance := NewSession().AddInstance()
+		instance.SetCaps([][16]byte{wire.CapChat, wire.CapFileTransfer})
+		instance.SetMood(wire.CapXStatusBeer)
+
+		instance.ClearMood()
+
+		assert.Equal(t, [][16]byte{wire.CapChat, wire.CapFileTransfer}, instance.Caps())
+	})
+
+	t.Run("is a no-op when no mood is set", func(t *testing.T) {
+		instance := NewSession().AddInstance()
+		instance.SetCaps([][16]byte{wire.CapChat})
+
+		instance.ClearMood()
+
+		assert.Equal(t, [][16]byte{wire.CapChat}, instance.Caps())
+	})
+
+	t.Run("removes a mood a client advertised through SetCaps", func(t *testing.T) {
+		// An ICQ client sets its mood by sending it in its own capability list,
+		// so a mood can arrive without SetMood ever being called.
+		instance := NewSession().AddInstance()
+		instance.SetCaps([][16]byte{wire.CapXStatusBeer, wire.CapChat})
+
+		instance.ClearMood()
+
+		assert.Equal(t, [][16]byte{wire.CapChat}, instance.Caps())
+	})
+}

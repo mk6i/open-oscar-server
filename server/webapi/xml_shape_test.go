@@ -118,7 +118,7 @@ func TestXMLItemNamesMatchSpec(t *testing.T) {
 // myInfo is the payload the spec documents in the most detail, and the one the
 // old hand-built XML truncated to two fields.
 func TestXMLMyInfoCarriesEveryField(t *testing.T) {
-	mi := buildMyInfo(state.DisplayScreenName("ChattingChuck"), "away", "http://host/icon")
+	mi := buildMyInfo(state.DisplayScreenName("ChattingChuck"), "away", "http://host/icon", "")
 	mi.OnlineTime = 100
 	mi.AwayMsg = "I'm busy right now chatting."
 

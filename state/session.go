@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
@@ -1351,6 +1352,24 @@ func (s *SessionInstance) closeOnly() {
 // User Settings / Attributes
 //
 
+// Caps returns a copy of this instance's capability UUIDs. Unlike Session.Caps
+// it does not merge the other instances, so a caller rewriting this instance's
+// list does not adopt theirs.
+func (s *SessionInstance) Caps() [][16]byte {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return slices.Clone(s.capabilities)
+}
+
+// ClearMood removes the mood capability the instance advertises, if any. The
+// user then presents whatever presence state they are in.
+func (s *SessionInstance) ClearMood() {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	s.clearMood()
+}
+
 // ClearUserInfoFlag clears a flag from the user info bitmask.
 func (s *SessionInstance) ClearUserInfoFlag(flag uint16) (flags uint16) {
 	s.mutex.Lock()
@@ -1425,6 +1444,24 @@ func (s *SessionInstance) SetKerberosAuth(enabled bool) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	s.kerberosAuth = enabled
+}
+
+// SetMood replaces the mood capability the instance advertises. A client shows
+// one mood at a time, so whichever mood was set before is dropped.
+//
+// It panics when mood is not a mood capability: the caller resolves it from the
+// mood table, so anything else is a programming error rather than bad input.
+func (s *SessionInstance) SetMood(mood uuid.UUID) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	if !wire.IsMoodCap(mood) {
+		panic("uuid is not a mood capability")
+	}
+
+	s.clearMood()
+
+	s.capabilities = append(s.capabilities, mood)
 }
 
 // SetMultiConnFlag sets the multi-connection flag for this instance.
@@ -1513,6 +1550,14 @@ func (s *SessionInstance) caps() [][16]byte {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 	return s.capabilities
+}
+
+// clearMood drops every mood capability the instance advertises. The caller must
+// hold s.mutex.
+func (s *SessionInstance) clearMood() {
+	s.capabilities = slices.DeleteFunc(s.capabilities, func(cap [16]byte) bool {
+		return wire.IsMoodCap(cap)
+	})
 }
 
 //

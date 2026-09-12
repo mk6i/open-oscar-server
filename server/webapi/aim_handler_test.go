@@ -34,7 +34,7 @@ func TestBuildMyInfo_UserTypeAndService(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mi := buildMyInfo(state.DisplayScreenName(tt.screenName), "online", "")
+			mi := buildMyInfo(state.DisplayScreenName(tt.screenName), "online", "", "")
 			assert.Equal(t, tt.wantType, mi.UserType)
 			assert.Equal(t, tt.wantSvc, mi.Service)
 		})
@@ -43,11 +43,11 @@ func TestBuildMyInfo_UserTypeAndService(t *testing.T) {
 
 func TestBuildMyInfo_BuddyIcon(t *testing.T) {
 	t.Run("included when set", func(t *testing.T) {
-		mi := buildMyInfo(state.DisplayScreenName("mikekelly"), "away", "http://x/icon")
+		mi := buildMyInfo(state.DisplayScreenName("mikekelly"), "away", "http://x/icon", "")
 		assert.Equal(t, "http://x/icon", mi.BuddyIcon)
 	})
 	t.Run("omitted when empty so the client merge preserves the current icon", func(t *testing.T) {
-		mi := buildMyInfo(state.DisplayScreenName("mikekelly"), "away", "")
+		mi := buildMyInfo(state.DisplayScreenName("mikekelly"), "away", "", "")
 		assert.Empty(t, mi.BuddyIcon)
 
 		// omitempty is what actually keeps it out of the payload.

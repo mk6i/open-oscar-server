@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -75,6 +76,7 @@ type BuddyPresenceInfo struct {
 	OnlineTime int64  `json:"onlineTime,omitempty" xml:"onlineTime,omitempty"`
 	UserType   string `json:"userType" xml:"userType"` // "aim", "icq", "admin"
 	BuddyIcon  string `json:"buddyIcon,omitempty" xml:"buddyIcon,omitempty"`
+	MoodIcon   string `json:"moodIcon,omitempty" xml:"moodIcon,omitempty"`
 	// Profile carries member-directory fields, present only under mdir=1. It must be
 	// non-nil even when empty: clients treat a missing profile as "not a user".
 	Profile *BuddyProfileInfo `json:"profile,omitempty" xml:"profile,omitempty"`
@@ -351,6 +353,8 @@ func (h *PresenceHandler) getUserPresence(ctx context.Context, instance *state.S
 		}
 	}
 
+	presence.MoodIcon = moodIconURL(baseURL, presence.State, userInfoCaps(info.TLVUserInfo))
+
 	return presence
 }
 
@@ -457,29 +461,44 @@ func (h *PresenceHandler) SetStatus(w http.ResponseWriter, r *http.Request, sess
 	statusMsg := r.URL.Query().Get("statusMsg")
 	statusCode := r.URL.Query().Get("statusCode")
 
-	// Store status message in session (this would normally be stored in a profile/status service)
-	// For now, we'll broadcast it as part of presence
+	if r.URL.Query().Has("mood") {
+		moodID := r.URL.Query().Get("mood")
+		if moodID == "" {
+			session.OSCARSession.ClearMood()
+		} else {
+			m, hasMood := wire.MoodByID(moodID)
+			if !hasMood {
+				SendError(w, r, http.StatusBadRequest, "invalid mood ID")
+				return
+			}
 
-	oscarSession := session.OSCARSession
-	// In OSCAR, status messages are typically part of the profile
-	// We'll need to extend this based on the actual implementation
-
-	// Broadcast presence update with new status
-	if err := h.BuddyBroadcaster.BroadcastBuddyArrived(ctx, oscarSession.IdentScreenName(), oscarSession.Session().TLVUserInfo()); err != nil {
-		h.Logger.ErrorContext(ctx, "failed to broadcast status update", "err", err.Error())
+			session.OSCARSession.SetMood(m.Cap)
+		}
+		setInfo := wire.SNAC_0x02_0x04_LocateSetInfo{
+			TLVRestBlock: wire.TLVRestBlock{
+				TLVList: wire.TLVList{
+					wire.NewTLVBE(wire.LocateTLVTagsInfoCapabilities, session.OSCARSession.Caps()),
+				},
+			},
+		}
+		if err := h.LocateService.SetInfo(ctx, session.OSCARSession, setInfo); err != nil {
+			h.Logger.ErrorContext(ctx, "failed to set mood capability", "err", err.Error())
+			SendError(w, r, http.StatusInternalServerError, "failed to save status")
+			return
+		}
 	}
 
 	// Notify the user's own client so its status message re-renders. Preserve the
 	// current presence state so a status-only change does not flip the self badge.
-	h.pushMyInfo(session, currentWebState(oscarSession), oscarSession.Session().AwayMessage(), statusMsg)
+	h.pushMyInfo(session, currentWebState(session.OSCARSession), session.OSCARSession.Session().AwayMessage(), statusMsg)
 
 	h.Logger.InfoContext(ctx, "status message updated",
 		"screenName", session.ScreenName.String(),
 		"statusMsg", statusMsg,
 		"statusCode", statusCode,
+		"mood", r.URL.Query().Get("mood"),
 	)
 
-	// Send success response
 	SendOK(w, r, nil, h.Logger)
 }
 
@@ -662,9 +681,41 @@ func (h *PresenceHandler) pushMyInfo(session *Session, webState, awayMsg, status
 	// buddyIcon is omitted here (empty) so the client's merge preserves the icon it
 	// already holds; a setState/setStatus does not change the icon. Icon changes
 	// arrive on their own myInfo via the pump's MyInfoRefresher.
-	myInfo := buildMyInfo(session.ScreenName, webState, "")
+	moodIcon := moodIconURL(session.BaseURL, webState, session.OSCARSession.Session().Caps())
+	myInfo := buildMyInfo(session.ScreenName, webState, "", moodIcon)
 	myInfo.AwayMsg = awayMsg
 	myInfo.StatusMsg = statusMsg
 
 	session.EventQueue.Push(EventType("myInfo"), myInfo)
+}
+
+// userInfoCaps returns the capability UUIDs a user info block advertises.
+func userInfoCaps(info wire.TLVUserInfo) [][16]byte {
+	b, ok := info.Bytes(wire.OServiceUserInfoOscarCaps)
+	if !ok {
+		return nil
+	}
+	caps := make([][16]byte, 0, len(b)/16)
+	for chunk := range slices.Chunk(b, 16) {
+		if len(chunk) < 16 {
+			break
+		}
+		caps = append(caps, [16]byte(chunk))
+	}
+	return caps
+}
+
+// moodIconURL returns the mood icon URL for the mood advertised in caps, or ""
+// when there is none. A mood supersedes webState on the client, so a user who is
+// not visibly online never gets one.
+func moodIconURL(baseURL, webState string, caps [][16]byte) string {
+	if webState == "offline" || webState == "invisible" {
+		return ""
+	}
+	for _, c := range caps {
+		if m, ok := wire.MoodByCap(c); ok {
+			return baseURL + "/mood?id=" + wire.MoodIconID(m.ID)
+		}
+	}
+	return ""
 }

@@ -925,6 +925,9 @@ func TestBuddyListHandler_AddBuddy_PreAuthorized(t *testing.T) {
 		authMsg       string
 		grantErr      error
 		wantGrant     bool
+		// wantPending follows the account pairing alone: the two icq->icq cases
+		// differ only in preAuthorized yet expect the same value.
+		wantPending bool
 	}{
 		{
 			name:          "no grant without preAuthorized",
@@ -932,6 +935,7 @@ func TestBuddyListHandler_AddBuddy_PreAuthorized(t *testing.T) {
 			buddy:         "100001",
 			preAuthorized: "",
 			wantGrant:     false,
+			wantPending:   true,
 		},
 		{
 			name:          "icq->icq grant carries the authorization message",
@@ -940,6 +944,7 @@ func TestBuddyListHandler_AddBuddy_PreAuthorized(t *testing.T) {
 			preAuthorized: "1",
 			authMsg:       "Hello! Please add me to your buddylist.",
 			wantGrant:     true,
+			wantPending:   true,
 		},
 		{
 			// The grant is not gated on protocol: the store no-ops for a user who
@@ -949,6 +954,7 @@ func TestBuddyListHandler_AddBuddy_PreAuthorized(t *testing.T) {
 			buddy:         "joemama",
 			preAuthorized: "1",
 			wantGrant:     true,
+			wantPending:   false,
 		},
 		{
 			// The buddy is on the list either way. Reporting an error here would
@@ -959,6 +965,7 @@ func TestBuddyListHandler_AddBuddy_PreAuthorized(t *testing.T) {
 			preAuthorized: "1",
 			grantErr:      errors.New("record failed"),
 			wantGrant:     true,
+			wantPending:   true,
 		},
 	}
 
@@ -972,6 +979,9 @@ func TestBuddyListHandler_AddBuddy_PreAuthorized(t *testing.T) {
 			// carry their identity.
 			oscarSess := state.NewSession()
 			oscarSess.SetIdentScreenName(state.NewIdentScreenName(tt.screenName))
+			// UIN is stored separately from the screen name, so an ICQ session
+			// reads as AIM until it is set.
+			oscarSess.SetUIN(state.NewIdentScreenName(tt.screenName).UIN())
 
 			session := &Session{
 				AimSID:       "sid",
@@ -989,8 +999,7 @@ func TestBuddyListHandler_AddBuddy_PreAuthorized(t *testing.T) {
 			fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
 				Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: items}}, nil).Once()
 
-			// The pending flag is what this used to set. Capture it to confirm it
-			// is gone, whatever preAuthorized says.
+			// Capture the pending flag to confirm preAuthorized does not drive it.
 			var sawPending, sawBuddyItem bool
 			fs.EXPECT().UpsertItem(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 				RunAndReturn(func(_ context.Context, _ *state.SessionInstance, _ wire.SNACFrame, upserted []wire.FeedbagItem) (*wire.SNACMessage, error) {
@@ -1050,7 +1059,8 @@ func TestBuddyListHandler_AddBuddy_PreAuthorized(t *testing.T) {
 			// stored is conveyed by the async buddylist event, not this reply.
 			assert.JSONEq(t, `{"response":{"statusCode":200,"statusText":"Ok","data":{}}}`, rr.Body.String())
 			assert.True(t, sawBuddyItem, "expected a buddy item to be upserted")
-			assert.False(t, sawPending, "preAuthorized must not mark the stored item pending")
+			assert.Equal(t, tt.wantPending, sawPending,
+				"the pending flag must follow the account pairing, not preAuthorized")
 
 			if !tt.wantGrant {
 				return
@@ -1062,6 +1072,102 @@ func TestBuddyListHandler_AddBuddy_PreAuthorized(t *testing.T) {
 			assert.Equal(t, state.NewIdentScreenName(tt.screenName), gotGrantor)
 			assert.Equal(t, tt.buddy, gotBody.ScreenName)
 			assert.Equal(t, tt.authMsg, gotBody.Message)
+		})
+	}
+}
+
+// icq->icq adds are marked pending up front so the item is stored either way:
+// the decline a web client never sees would otherwise leave it holding a buddy
+// no roster lists. The other pairings already store the item, where a stray flag
+// would publish them as awaiting an authorization nobody requested.
+func TestBuddyListHandler_AddBuddy_PendingFlagFollowsPairing(t *testing.T) {
+	tests := []struct {
+		name        string
+		screenName  string
+		buddy       string
+		wantPending bool
+	}{
+		{
+			name:        "icq->icq is marked pending",
+			screenName:  "100002",
+			buddy:       "100001",
+			wantPending: true,
+		},
+		{
+			name:       "icq->aim is not",
+			screenName: "100002",
+			buddy:      "mike",
+		},
+		{
+			name:       "aim->icq is not; the feedbag service marks it itself",
+			screenName: "mike",
+			buddy:      "100001",
+		},
+		{
+			name:       "aim->aim is not",
+			screenName: "mike",
+			buddy:      "joemama",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sm := newMockSessionResolver(t)
+			fs := newMockFeedbagService(t)
+
+			oscarSess := state.NewSession()
+			oscarSess.SetIdentScreenName(state.NewIdentScreenName(tt.screenName))
+			oscarSess.SetUIN(state.NewIdentScreenName(tt.screenName).UIN())
+
+			session := &Session{
+				AimSID:       "sid",
+				OSCARSession: oscarSess.AddInstance(),
+				ScreenName:   state.DisplayScreenName(tt.screenName),
+				EventQueue:   NewEventQueue(100),
+				LastAccessed: time.Now(),
+			}
+			sm.EXPECT().GetSession(mock.Anything, "sid").Return(session, nil)
+			sm.EXPECT().TouchSession(mock.Anything, "sid").Return(nil).Maybe()
+
+			items := []wire.FeedbagItem{
+				{GroupID: 1, ItemID: 0, ClassID: wire.FeedbagClassIdGroup, Name: "Friends"},
+			}
+			fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
+				Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: items}}, nil).Once()
+
+			var sawBuddyItem, sawPending bool
+			fs.EXPECT().UpsertItem(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+				RunAndReturn(func(_ context.Context, _ *state.SessionInstance, _ wire.SNACFrame, upserted []wire.FeedbagItem) (*wire.SNACMessage, error) {
+					for _, item := range upserted {
+						if item.ClassID != wire.FeedbagClassIdBuddy {
+							continue
+						}
+						sawBuddyItem = true
+						if item.HasTag(wire.FeedbagAttributesPending) {
+							sawPending = true
+						}
+					}
+					return nil, nil
+				})
+
+			h := &BuddyListHandler{
+				FeedbagService: fs,
+				BuddyListManager: &BuddyListManager{
+					feedbagService: newMockFeedbagService(t),
+					iconSource:     newTestIconSource(t),
+					logger:         slog.Default(),
+				},
+				Logger: slog.Default(),
+			}
+
+			req := httptest.NewRequest(http.MethodGet,
+				"/buddylist/addBuddy?aimsid=sid&buddy="+tt.buddy+"&group=Friends", nil)
+			rr := httptest.NewRecorder()
+			requireSession(sm, h.AddBuddy).ServeHTTP(rr, req)
+
+			assert.Equal(t, http.StatusOK, rr.Code)
+			assert.True(t, sawBuddyItem, "expected a buddy item to be upserted")
+			assert.Equal(t, tt.wantPending, sawPending)
 		})
 	}
 }

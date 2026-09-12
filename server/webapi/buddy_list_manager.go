@@ -61,6 +61,7 @@ type BuddyInfo struct {
 	Service      string   `json:"service,omitempty" xml:"service,omitempty"` // "AIM", "ICQ" (Web AIM client compares case-sensitively)
 	PresenceIcon string   `json:"presenceIcon,omitempty" xml:"presenceIcon,omitempty"`
 	BuddyIcon    string   `json:"buddyIcon,omitempty" xml:"buddyIcon,omitempty"`
+	MoodIcon     string   `json:"moodIcon,omitempty" xml:"moodIcon,omitempty"`
 	Capabilities []string `json:"capabilities,omitempty" xml:"capabilities>capability,omitempty"`
 	MemberSince  int64    `json:"memberSince,omitempty" xml:"memberSince,omitempty"`
 }
@@ -243,6 +244,8 @@ func (m *BuddyListManager) getBuddyInfo(ctx context.Context, instance *state.Ses
 			info.State = "idle"
 		}
 	}
+
+	info.MoodIcon = moodIconURL(baseURL, info.State, userInfoCaps(userInfo.TLVUserInfo))
 
 	return info
 }

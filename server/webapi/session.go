@@ -544,6 +544,12 @@ func (s *Session) handleBuddyArrived(msg wire.SNACMessage) {
 		UserType: "aim",
 	}
 
+	if buddy.UIN() > 0 {
+		presenceEvent.UserType = "icq"
+	}
+
+	presenceEvent.MoodIcon = moodIconURL(s.BaseURL, stateStr, userInfoCaps(body.TLVUserInfo))
+
 	// A BuddyArrived carries the buddy's current icon in TLV 0x1D whenever they
 	// have one, so an icon change (or clear, which arrives as the sentinel hash)
 	// rides along on the presence broadcast. Publish the matching URL: with an

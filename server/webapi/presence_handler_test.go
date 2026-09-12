@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -637,6 +638,7 @@ func TestPresenceHandler_GetProfile(t *testing.T) {
 }
 
 // queuedMyInfo returns the myInfo event the session has queued, if any.
+// queuedMyInfo returns the myInfo event the session has queued, if any.
 func queuedMyInfo(session *Session) *MyInfo {
 	var myInfo *MyInfo
 	for _, event := range session.EventQueue.GetAllEvents() {
@@ -885,4 +887,171 @@ func searchPageTargets(n int) []string {
 		names = append(names, fmt.Sprintf("user%d", i))
 	}
 	return names
+}
+
+// setStatusCaps drives setStatus and returns the capability list that reached
+// LocateService.SetInfo, or nil when SetInfo was never called.
+func setStatusCaps(t *testing.T, instance *state.SessionInstance, query string) ([][16]byte, *Session, int) {
+	t.Helper()
+
+	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", instance)
+
+	var gotCaps [][16]byte
+	var called bool
+	locate := newMockLocateService(t)
+	locate.EXPECT().SetInfo(mock.Anything, mock.Anything, mock.Anything).
+		Run(func(_ context.Context, _ *state.SessionInstance, inBody wire.SNAC_0x02_0x04_LocateSetInfo) {
+			called = true
+			b, ok := inBody.Bytes(wire.LocateTLVTagsInfoCapabilities)
+			require.True(t, ok, "setStatus must always send a capabilities TLV")
+			require.Zero(t, len(b)%16)
+			gotCaps = userInfoCaps(wire.TLVUserInfo{
+				TLVBlock: wire.TLVBlock{
+					TLVList: wire.TLVList{wire.NewTLVBE(wire.OServiceUserInfoOscarCaps, b)},
+				},
+			})
+			// Apply it, as the real service would, so a follow-up call sees it.
+			instance.SetCaps(gotCaps)
+		}).Return(nil).Maybe()
+
+	handler := &PresenceHandler{
+		SessionManager: sessionMgr,
+		LocateService:  locate,
+		Logger:         slog.Default(),
+	}
+
+	req, err := http.NewRequest("GET", "/presence/setStatus?aimsid="+aimsid+query, nil)
+	require.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+	requireSession(handler.SessionManager, handler.SetStatus).ServeHTTP(rr, req)
+
+	session, err := sessionMgr.GetSession(context.Background(), aimsid)
+	require.NoError(t, err)
+
+	if !called {
+		return nil, session, rr.Code
+	}
+	return gotCaps, session, rr.Code
+}
+
+func TestPresenceHandler_SetStatus_Mood(t *testing.T) {
+	tests := []struct {
+		name string
+		// query is appended to the request, after aimsid.
+		query string
+		// wantCaps is the capability list that must reach SetInfo. A nil value
+		// means SetInfo must not be called at all.
+		wantCaps [][16]byte
+		// wantMoodIcon is the id parameter expected on the queued myInfo, or ""
+		// for no mood.
+		wantMoodID string
+		// wantCode defaults to 200.
+		wantCode int
+	}{
+		{
+			name:       "a known mood is advertised as its capability",
+			query:      "&mood=0icqmood6",
+			wantCaps:   [][16]byte{wire.CapXStatusPlate},
+			wantMoodID: "0icqmood6",
+		},
+		{
+			name:       "a mood with only a placeholder capability still resolves",
+			query:      "&mood=0icqmood13",
+			wantCaps:   [][16]byte{wire.CapMoodHavingFun},
+			wantMoodID: "0icqmood13",
+		},
+		{
+			// The client sends mood= alongside every plain state change, so this
+			// is the path back to a moodless online/away/invisible.
+			name:     "an empty mood clears the capability",
+			query:    "&mood=",
+			wantCaps: [][16]byte{},
+		},
+		{
+			// A token the server cannot map is a client bug, not a reset: the
+			// mood the user is actually showing is left alone.
+			name:     "an unrecognized mood is rejected",
+			query:    "&mood=0icqmood999",
+			wantCode: http.StatusBadRequest,
+		},
+		{
+			// A status-message-only update must leave the mood alone.
+			name:  "an absent mood parameter leaves capabilities untouched",
+			query: "&statusMsg=hello",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			instance := state.NewSession().AddInstance()
+
+			gotCaps, session, code := setStatusCaps(t, instance, tt.query)
+
+			if tt.wantCode != 0 {
+				assert.Equal(t, tt.wantCode, code)
+				assert.Nil(t, gotCaps, "a rejected mood must not reach SetInfo")
+				return
+			}
+
+			assert.Equal(t, http.StatusOK, code)
+			assert.Equal(t, tt.wantCaps, gotCaps)
+
+			myInfo := queuedMyInfo(session)
+			require.NotNil(t, myInfo, "setStatus must queue a myInfo event")
+			if tt.wantMoodID == "" {
+				assert.Empty(t, myInfo.MoodIcon)
+				return
+			}
+			assert.Equal(t, "/mood?id="+wire.MoodIconID(tt.wantMoodID), myInfo.MoodIcon)
+		})
+	}
+}
+
+func TestPresenceHandler_SetStatus_MoodReplacesRatherThanAccumulates(t *testing.T) {
+	instance := state.NewSession().AddInstance()
+
+	_, _, code := setStatusCaps(t, instance, "&mood=0icqmood6")
+	assert.Equal(t, http.StatusOK, code)
+
+	gotCaps, _, code := setStatusCaps(t, instance, "&mood=0icqmood4")
+	assert.Equal(t, http.StatusOK, code)
+	assert.Equal(t, [][16]byte{wire.CapXStatusBeer}, gotCaps, "the previous mood must be dropped")
+}
+
+func TestPresenceHandler_SetStatus_PreservesNonMoodCaps(t *testing.T) {
+	// The capability list is rewritten wholesale, so anything the instance
+	// advertises that is not a mood has to be carried over.
+	instance := state.NewSession().AddInstance()
+	instance.SetCaps([][16]byte{wire.CapChat, wire.CapXStatusBeer})
+
+	gotCaps, _, code := setStatusCaps(t, instance, "&mood=0icqmood6")
+	assert.Equal(t, http.StatusOK, code)
+	assert.Equal(t, [][16]byte{wire.CapChat, wire.CapXStatusPlate}, gotCaps)
+
+	gotCaps, _, code = setStatusCaps(t, instance, "&mood=")
+	assert.Equal(t, http.StatusOK, code)
+	assert.Equal(t, [][16]byte{wire.CapChat}, gotCaps, "clearing a mood must keep the other caps")
+}
+
+func TestPresenceHandler_SetStatus_SetInfoError(t *testing.T) {
+	instance := state.NewSession().AddInstance()
+	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", instance)
+
+	locate := newMockLocateService(t)
+	locate.EXPECT().SetInfo(mock.Anything, mock.Anything, mock.Anything).Return(io.EOF)
+
+	handler := &PresenceHandler{
+		SessionManager: sessionMgr,
+		LocateService:  locate,
+		Logger:         slog.Default(),
+	}
+
+	req, err := http.NewRequest("GET", "/presence/setStatus?aimsid="+aimsid+"&mood=0icqmood6", nil)
+	require.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+	requireSession(handler.SessionManager, handler.SetStatus).ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusInternalServerError, rr.Code)
 }

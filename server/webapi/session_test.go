@@ -1230,3 +1230,90 @@ func TestSession_RecordSentIMEvictsOldestCookie(t *testing.T) {
 	assert.Equal(t, "msg-1-again", sess.msgIDForCookie(1))
 	assert.Len(t, sess.sentIMs, sentIMCookieLimit)
 }
+
+// A buddy's mood rides along in the capability list of a BuddyArrived, so the
+// presence event has to carry it as a mood icon URL.
+func TestSession_PublishesMoodOnPresence(t *testing.T) {
+	newSession := func() *Session {
+		return &Session{
+			ScreenName: state.DisplayScreenName("me"),
+			BaseURL:    "http://host",
+			Events:     []string{"presence"},
+			EventQueue: NewEventQueue(10),
+			logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+		}
+	}
+
+	// arrived delivers a BuddyArrived carrying a raw capabilities TLV value.
+	arrived := func(sess *Session, caps []byte, invisible bool) PresenceEvent {
+		info := wire.TLVUserInfo{ScreenName: "Mike Kelly"}
+		if caps != nil {
+			info.Append(wire.NewTLVBE(wire.OServiceUserInfoOscarCaps, caps))
+		}
+		if invisible {
+			info.Append(wire.NewTLVBE(wire.OServiceUserInfoStatus, wire.OServiceUserStatusInvisible))
+		}
+		sess.handleBuddyArrived(wire.SNACMessage{Body: wire.SNAC_0x03_0x0B_BuddyArrived{TLVUserInfo: info}})
+
+		events := sess.EventQueue.GetAllEvents()
+		require.Len(t, events, 1)
+		return events[0].Data.(PresenceEvent)
+	}
+
+	capBytes := func(caps ...[16]byte) []byte {
+		var b []byte
+		for _, c := range caps {
+			b = append(b, c[:]...)
+		}
+		return b
+	}
+
+	t.Run("a mood capability yields the mood icon URL", func(t *testing.T) {
+		got := arrived(newSession(), capBytes(wire.CapXStatusBeer), false)
+		assert.Equal(t, "http://host/mood?id="+wire.MoodIconID("0icqmood4"), got.MoodIcon)
+	})
+
+	t.Run("a placeholder capability resolves too", func(t *testing.T) {
+		got := arrived(newSession(), capBytes(wire.CapMoodOnTheWay), false)
+		assert.Equal(t, "http://host/mood?id="+wire.MoodIconID("0icqmood83"), got.MoodIcon)
+	})
+
+	t.Run("a shared capability resolves to the canonical mood", func(t *testing.T) {
+		// Console is reachable from 0icqmood15 and 0icqmood81; the table's first
+		// entry wins, so the client is told the one it labels "gamepad".
+		got := arrived(newSession(), capBytes(wire.CapXStatusConsole), false)
+		assert.Equal(t, "http://host/mood?id="+wire.MoodIconID("0icqmood81"), got.MoodIcon)
+	})
+
+	t.Run("a mood is found after other capabilities", func(t *testing.T) {
+		got := arrived(newSession(), capBytes(wire.CapChat, wire.CapXStatusBeer), false)
+		assert.Equal(t, "http://host/mood?id="+wire.MoodIconID("0icqmood4"), got.MoodIcon)
+	})
+
+	t.Run("capabilities carrying no mood yield no icon", func(t *testing.T) {
+		assert.Empty(t, arrived(newSession(), capBytes(wire.CapChat), false).MoodIcon)
+	})
+
+	t.Run("no capabilities TLV yields no icon", func(t *testing.T) {
+		assert.Empty(t, arrived(newSession(), nil, false).MoodIcon)
+	})
+
+	t.Run("a trailing partial capability is ignored", func(t *testing.T) {
+		// A truncated final chunk must not be read as a capability, nor panic.
+		truncated := append(capBytes(wire.CapXStatusBeer), 0x01, 0x02, 0x03)
+		got := arrived(newSession(), truncated, false)
+		assert.Equal(t, "http://host/mood?id="+wire.MoodIconID("0icqmood4"), got.MoodIcon)
+	})
+
+	t.Run("a partial capability alone yields no icon", func(t *testing.T) {
+		assert.Empty(t, arrived(newSession(), []byte{0x01, 0x02, 0x03}, false).MoodIcon)
+	})
+
+	t.Run("an invisible buddy shows no mood", func(t *testing.T) {
+		// A mood supersedes state on the client, so one here would render the
+		// buddy as present instead of offline.
+		got := arrived(newSession(), capBytes(wire.CapXStatusBeer), true)
+		assert.Equal(t, "offline", got.State)
+		assert.Empty(t, got.MoodIcon)
+	})
+}

@@ -42,6 +42,7 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, session
 		AuthService:      handler.AuthService,
 		FeedbagService:   handler.FeedbagService,
 		ICBMService:      handler.ICBMService,
+		LocateService:    handler.LocateService,
 		OServiceService:  handler.OServiceService,
 		BuddyListManager: handler.BuddyListManager,
 		BuddyService:     handler.BuddyService,
