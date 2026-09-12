@@ -1034,3 +1034,39 @@ func TestPresenceHandler_SetStatus_SetInfoError(t *testing.T) {
 
 	assert.Equal(t, http.StatusInternalServerError, rr.Code)
 }
+
+func TestPresenceHandler_SetState_MyInfoCarriesBuddyIcon(t *testing.T) {
+	// Mandarin replaces its identity from each myInfo rather than merging into it,
+	// clearing its avatar when buddyIcon is absent.
+	oscarInstance := state.NewSession().AddInstance()
+	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
+
+	session, err := sessionMgr.GetSession(context.Background(), aimsid)
+	require.NoError(t, err)
+	session.BaseURL = "http://api.example.com"
+
+	broadcaster := newMockBuddyBroadcaster(t)
+	broadcaster.EXPECT().BroadcastBuddyArrived(mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	iconRetriever := newMockBuddyIconRetriever(t)
+	iconRetriever.EXPECT().BuddyIconMetadata(mock.Anything, state.NewIdentScreenName("testuser")).
+		Return(bartID([]byte{0xab, 0xcd}), nil)
+
+	handler := &PresenceHandler{
+		SessionManager:   sessionMgr,
+		BuddyBroadcaster: broadcaster,
+		IconSource:       BuddyIconSource{IconRetriever: iconRetriever, Logger: slog.Default()},
+		Logger:           slog.Default(),
+	}
+
+	req, err := http.NewRequest("GET", "/presence/setState?aimsid="+aimsid+"&state=away", nil)
+	require.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+	requireSession(handler.SessionManager, handler.SetState).ServeHTTP(rr, req)
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	myInfo := queuedMyInfo(session)
+	require.NotNil(t, myInfo, "expected a myInfo event to be queued")
+	assert.Equal(t, "http://api.example.com/expressions/get?t=testuser&type=buddyIcon&bartId=abcd", myInfo.BuddyIcon)
+}

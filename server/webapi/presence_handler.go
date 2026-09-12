@@ -415,7 +415,7 @@ func (h *PresenceHandler) SetState(w http.ResponseWriter, r *http.Request, sessi
 	// "presence" broadcast above drives buddy dots, not the user's own state.
 	// Without this, changing to Busy/Away leaves the user still showing as
 	// available in their own UI.
-	h.pushMyInfo(session, stateParam, awayMsg, "")
+	h.pushMyInfo(ctx, session, stateParam, awayMsg, "")
 
 	h.Logger.InfoContext(ctx, "presence state updated",
 		"screenName", session.ScreenName.String(),
@@ -472,7 +472,7 @@ func (h *PresenceHandler) SetStatus(w http.ResponseWriter, r *http.Request, sess
 
 	// Notify the user's own client so its status message re-renders. Preserve the
 	// current presence state so a status-only change does not flip the self badge.
-	h.pushMyInfo(session, currentWebState(session.OSCARSession), session.OSCARSession.Session().AwayMessage(), statusMsg)
+	h.pushMyInfo(ctx, session, currentWebState(session.OSCARSession), session.OSCARSession.Session().AwayMessage(), statusMsg)
 
 	h.Logger.InfoContext(ctx, "status message updated",
 		"screenName", session.ScreenName.String(),
@@ -655,16 +655,14 @@ func currentWebState(instance *state.SessionInstance) string {
 // re-renders its self-presence badge. The client binds its identity-badge render
 // to "myInfo" events only, so state changes made via setState/setStatus are
 // invisible in the user's own UI unless a myInfo event is delivered.
-func (h *PresenceHandler) pushMyInfo(session *Session, webState, awayMsg, statusMsg string) {
+func (h *PresenceHandler) pushMyInfo(ctx context.Context, session *Session, webState, awayMsg, statusMsg string) {
 	if !session.IsSubscribedTo("myInfo") && !session.IsSubscribedTo("presence") {
 		return
 	}
 
-	// buddyIcon is omitted here (empty) so the client's merge preserves the icon it
-	// already holds; a setState/setStatus does not change the icon. Icon changes
-	// arrive on their own myInfo via the pump's MyInfoRefresher.
+	icon := h.IconSource.PublishedURL(ctx, session.BaseURL, session.ScreenName.IdentScreenName())
 	moodIcon := moodIconURL(session.BaseURL, webState, session.OSCARSession.Session().Caps())
-	myInfo := buildMyInfo(session.ScreenName, webState, "", moodIcon)
+	myInfo := buildMyInfo(session.ScreenName, webState, icon, moodIcon)
 	myInfo.AwayMsg = awayMsg
 	myInfo.StatusMsg = statusMsg
 
