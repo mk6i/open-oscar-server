@@ -224,6 +224,14 @@ func validateConfigMigration() error {
 	return nil
 }
 
+func loginRateLimit(cfg config.Config) (rate.Limit, int, time.Duration) {
+	if cfg.MaxLoginsPerIPPerMinute == 0 {
+		return rate.Inf, 0, time.Minute
+	}
+	limit := rate.Every(time.Minute / time.Duration(cfg.MaxLoginsPerIPPerMinute))
+	return limit, cfg.MaxLoginsPerIPPerMinute, time.Minute
+}
+
 // Helper function to check if a slice contains a string
 func contains(slice []string, item string) bool {
 	for _, s := range slice {
@@ -350,7 +358,7 @@ func OSCAR(deps Container) *oscar.Server {
 		}.Handle,
 		oServiceService,
 		deps.snacRateLimits,
-		oscar.NewIPRateLimiter(rate.Every(1*time.Minute), 10, 1*time.Minute),
+		oscar.NewIPRateLimiter(loginRateLimit(deps.cfg)),
 		deps.Listeners,
 		deps.icbmSvc.RestoreWarningLevel,
 		deps.icbmSvc.UpdateWarnLevel,
@@ -500,7 +508,7 @@ func TOC(deps Container) *toc.Server {
 			SessionRetriever:  deps.inMemorySessionManager,
 			RandIntn:          rand.Intn,
 		},
-		toc.NewIPRateLimiter(rate.Every(1*time.Minute), 10, 1*time.Minute),
+		toc.NewIPRateLimiter(loginRateLimit(deps.cfg)),
 		deps.icbmSvc.RestoreWarningLevel,
 		deps.icbmSvc.UpdateWarnLevel,
 	)

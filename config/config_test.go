@@ -561,6 +561,25 @@ func TestConfigValidate(t *testing.T) {
 			wantErr:     true,
 			errContains: "APIListener is required and cannot be empty",
 		},
+		{
+			name: "per-IP login limit disabled",
+			config: Config{
+				TOCListeners:            []string{"0.0.0.0:9898"},
+				APIListener:             "127.0.0.1:8080",
+				MaxLoginsPerIPPerMinute: 0,
+			},
+			wantErr: false,
+		},
+		{
+			name: "negative per-IP login limit",
+			config: Config{
+				TOCListeners:            []string{"0.0.0.0:9898"},
+				APIListener:             "127.0.0.1:8080",
+				MaxLoginsPerIPPerMinute: -1,
+			},
+			wantErr:     true,
+			errContains: "invalid MAX_LOGINS_PER_IP_PER_MINUTE -1: must be 0 (disabled) or greater",
+		},
 	}
 
 	for _, tt := range tests {
