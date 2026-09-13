@@ -327,7 +327,7 @@ func (h *PresenceHandler) getUserPresence(ctx context.Context, instance *state.S
 		presence.OnlineTime = int64(tod)
 	}
 
-	if st := statusBitState(info.TLVUserInfo); st != "" {
+	if st := statusBitState(info.TLVUserInfo, instance.IdentScreenName().UIN() == 0); st != "" {
 		presence.State = st
 	} else if info.IsAway() {
 		presence.State = "away"
@@ -397,6 +397,11 @@ func (h *PresenceHandler) SetState(w http.ResponseWriter, r *http.Request, sessi
 	// Update OSCAR session status
 	oscarSession.SetUserStatusBitmask(statusBitmask)
 
+	reportedState := stateParam
+	if st := statusMaskState(statusBitmask, oscarSession.IdentScreenName().UIN() == 0); st != "" {
+		reportedState = st
+	}
+
 	// Broadcast presence update
 	if statusBitmask&wire.OServiceUserStatusInvisible != 0 {
 		// User going invisible - broadcast departure
@@ -415,7 +420,7 @@ func (h *PresenceHandler) SetState(w http.ResponseWriter, r *http.Request, sessi
 	// "presence" broadcast above drives buddy dots, not the user's own state.
 	// Without this, changing to Busy/Away leaves the user still showing as
 	// available in their own UI.
-	h.pushMyInfo(ctx, session, stateParam, awayMsg, "")
+	h.pushMyInfo(ctx, session, reportedState, awayMsg, "")
 
 	h.Logger.InfoContext(ctx, "presence state updated",
 		"screenName", session.ScreenName.String(),
@@ -427,7 +432,7 @@ func (h *PresenceHandler) SetState(w http.ResponseWriter, r *http.Request, sessi
 	SendOK(w, r, &SetStateData{
 		AimID:      session.ScreenName.IdentScreenName().String(),
 		DisplayID:  session.ScreenName.String(),
-		State:      stateParam,
+		State:      reportedState,
 		AwayMsg:    awayMsg,
 		StatusMsg:  "",
 		UserType:   userTypeFor(session.ScreenName.IdentScreenName()),
@@ -596,7 +601,8 @@ func (h *PresenceHandler) Icon(w http.ResponseWriter, r *http.Request) {
 	// This endpoint serves a presence state badge, not the user's buddy icon, so
 	// it has no use for a buddy icon URL.
 	switch h.getUserPresence(r.Context(), instance, "", state.DisplayScreenName(name), false).State {
-	case "away":
+	// occupied and dnd have no badge of their own and both mean unavailable.
+	case "away", "occupied", "dnd":
 		iconURL = "/static/icons/away_" + iconType + "_" + size + ".png"
 	case "idle":
 		iconURL = "/static/icons/idle_" + iconType + "_" + size + ".png"
@@ -614,34 +620,43 @@ func (h *PresenceHandler) Icon(w http.ResponseWriter, r *http.Request) {
 // when neither Busy nor DND is set. Callers must consult it before IsAway(): Busy
 // and DND also raise the unavailable flag, so an away-first test reports every busy
 // user as away.
-func statusBitState(info wire.TLVUserInfo) string {
+func statusBitState(info wire.TLVUserInfo, isAIMCaller bool) string {
 	status, ok := info.Uint32BE(wire.OServiceUserInfoStatus)
 	if !ok {
 		return ""
 	}
+	return statusMaskState(status, isAIMCaller)
+}
+
+// statusMaskState names the web state a status bitmask describes, or "" when
+// neither Busy nor DND is set.
+func statusMaskState(status uint32, isAIMCaller bool) string {
+	var st string
 	switch {
 	case status&wire.OServiceUserStatusBusy != 0:
-		return "occupied"
+		st = "occupied"
 	case status&wire.OServiceUserStatusDND != 0:
-		return "dnd"
+		st = "dnd"
+	default:
+		return ""
 	}
-	return ""
+	if isAIMCaller {
+		return "away"
+	}
+	return st
 }
 
 // currentWebState maps an OSCAR session's presence flags to the web state string
 // the clients expect ("online", "away", "idle", "invisible", "occupied", "dnd").
 func currentWebState(instance *state.SessionInstance) string {
 	sess := instance.Session()
-	bitmask := instance.UserStatusBitmask()
-	switch {
-	case sess.Invisible():
+	if sess.Invisible() {
 		return "invisible"
-	// Checked before Away: both set the unavailable flag, so an occupied user would
-	// otherwise report back as away on the next myInfo.
-	case bitmask&wire.OServiceUserStatusBusy != 0:
-		return "occupied"
-	case bitmask&wire.OServiceUserStatusDND != 0:
-		return "dnd"
+	}
+	if st := statusMaskState(instance.UserStatusBitmask(), instance.IdentScreenName().UIN() == 0); st != "" {
+		return st
+	}
+	switch {
 	case sess.Away():
 		return "away"
 	case instance.Idle():

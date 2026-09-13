@@ -629,38 +629,57 @@ func queuedMyInfo(session *Session) *MyInfo {
 }
 
 func TestPresenceHandler_SetState_Occupied(t *testing.T) {
-	// ICQ's Busy, which is a selectable connect state and must be accepted.
-	oscarInstance := state.NewSession().AddInstance()
-	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
-
-	broadcaster := newMockBuddyBroadcaster(t)
-	broadcaster.EXPECT().BroadcastBuddyArrived(mock.Anything, mock.Anything, mock.Anything).Return(nil)
-
-	handler := &PresenceHandler{
-		SessionManager:   sessionMgr,
-		BuddyBroadcaster: broadcaster,
-		Logger:           slog.Default(),
+	// ICQ's Busy, which is a selectable connect state and must be accepted. An AIM
+	// caller is told "away" instead, since AIM 8 draws "occupied" as offline.
+	tests := []struct {
+		name       string
+		screenName string
+		wantState  string
+	}{
+		{name: "icq account", screenName: "100003", wantState: "occupied"},
+		{name: "aim account", screenName: "testuser", wantState: "away"},
 	}
 
-	req, err := http.NewRequest("GET", "/presence/setState?aimsid="+aimsid+"&view=occupied&away=", nil)
-	assert.NoError(t, err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// The account that decides the reported state is read off the OSCAR session.
+			oscarSession := state.NewSession()
+			oscarSession.SetIdentScreenName(state.NewIdentScreenName(tt.screenName))
+			oscarInstance := oscarSession.AddInstance()
+			sessionMgr, aimsid := createTestSessionManagerWithOSCAR(tt.screenName, oscarInstance)
 
-	rr := httptest.NewRecorder()
-	requireSession(handler.SessionManager, handler.SetState).ServeHTTP(rr, req)
-	assert.Equal(t, http.StatusOK, rr.Code)
+			session, err := sessionMgr.GetSession(context.Background(), aimsid)
+			assert.NoError(t, err)
 
-	assert.Equal(t, wire.OServiceUserStatusBusy, oscarInstance.UserStatusBitmask())
+			broadcaster := newMockBuddyBroadcaster(t)
+			broadcaster.EXPECT().BroadcastBuddyArrived(mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
-	// The state must survive the round trip: a later myInfo push reads it back
-	// through currentWebState, and reporting "away" or "online" there would undo
-	// the change in the user's own UI.
-	assert.Equal(t, "occupied", currentWebState(oscarInstance))
+			handler := &PresenceHandler{
+				SessionManager:   sessionMgr,
+				BuddyBroadcaster: broadcaster,
+				Logger:           slog.Default(),
+			}
 
-	session, err := sessionMgr.GetSession(context.Background(), aimsid)
-	assert.NoError(t, err)
-	myInfo := queuedMyInfo(session)
-	assert.NotNil(t, myInfo, "expected a myInfo event to be queued")
-	assert.Equal(t, "occupied", myInfo.State)
+			req, err := http.NewRequest("GET", "/presence/setState?aimsid="+aimsid+"&view=occupied&away=", nil)
+			assert.NoError(t, err)
+
+			rr := httptest.NewRecorder()
+			requireSession(handler.SessionManager, handler.SetState).ServeHTTP(rr, req)
+			assert.Equal(t, http.StatusOK, rr.Code)
+
+			// The Busy bit reaches OSCAR either way; only the reported state differs.
+			assert.Equal(t, wire.OServiceUserStatusBusy, oscarInstance.UserStatusBitmask())
+			assert.Contains(t, rr.Body.String(), `"state":"`+tt.wantState+`"`)
+
+			// The state must survive the round trip: a later myInfo push reads it back
+			// through currentWebState, and "online" there would undo the change.
+			assert.Equal(t, tt.wantState, currentWebState(oscarInstance))
+
+			myInfo := queuedMyInfo(session)
+			assert.NotNil(t, myInfo, "expected a myInfo event to be queued")
+			assert.Equal(t, tt.wantState, myInfo.State)
+		})
+	}
 }
 
 func TestPresenceHandler_GetPresence_MdirAttachesProfile(t *testing.T) {

@@ -525,16 +525,12 @@ func (s *Session) handleBuddyArrived(msg wire.SNACMessage) {
 	// with updated user flags/status bits, not BuddyDeparted.
 	if body.IsInvisible() {
 		stateStr = "offline"
-	} else if st := statusBitState(body.TLVUserInfo); st != "" {
+	} else if st := statusBitState(body.TLVUserInfo, s.ScreenName.IdentScreenName().UIN() == 0); st != "" {
 		stateStr = st
 	} else if body.IsAway() {
 		stateStr = "away"
-	} else if mask, ok := body.Uint32BE(wire.OServiceUserInfoStatus); ok {
-		if mask&wire.OServiceUserStatusDND == wire.OServiceUserStatusDND {
-			stateStr = "dnd"
-		} else if mask&wire.OServiceUserStatusAway == wire.OServiceUserStatusAway {
-			stateStr = "away"
-		}
+	} else if mask, ok := body.Uint32BE(wire.OServiceUserInfoStatus); ok && mask&wire.OServiceUserStatusAway != 0 {
+		stateStr = "away"
 	}
 
 	buddy := state.NewIdentScreenName(body.ScreenName)
