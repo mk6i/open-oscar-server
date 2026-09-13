@@ -769,60 +769,169 @@ func TestSession_PublishesBuddyIconOnPresence(t *testing.T) {
 	})
 }
 
-// A user's own icon change is relayed to their session as OServiceUserInfoUpdate,
-// which the pump turns into a myInfo event so the identity badge re-renders.
+// A change to a user's own info is relayed to their session as
+// OServiceUserInfoUpdate, which the pump turns into a myInfo event so the
+// identity badge re-renders.
 func TestSession_PushesMyInfoOnUserInfoUpdate(t *testing.T) {
-	newSession := func(events ...string) (*Session, *int) {
-		var refreshes int
+	newSession := func(events ...string) *Session {
 		return &Session{
-			ScreenName: state.DisplayScreenName("me"),
-			Events:     events,
-			EventQueue: NewEventQueue(10),
-			logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
-			MyInfoRefresher: func(_ context.Context) (any, error) {
-				refreshes++
-				return map[string]any{"aimId": "me", "buddyIcon": "icon:new"}, nil
+			ScreenName:   state.DisplayScreenName("me"),
+			OSCARSession: state.NewSession().AddInstance(),
+			BaseURL:      "http://api.example.com",
+			Events:       events,
+			EventQueue:   NewEventQueue(10),
+			logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
+			BuddyIconURL: func(sn state.IdentScreenName, hash []byte) string {
+				if len(hash) == 0 {
+					return "placeholder:" + sn.String()
+				}
+				return "icon:" + hex.EncodeToString(hash)
 			},
-		}, &refreshes
+		}
 	}
 
-	userInfoUpdate := wire.SNACMessage{Frame: wire.SNACFrame{
-		FoodGroup: wire.OService,
-		SubGroup:  wire.OServiceUserInfoUpdate,
-	}}
+	update := func(info wire.TLVUserInfo) wire.SNACMessage {
+		return wire.SNACMessage{
+			Frame: wire.SNACFrame{
+				FoodGroup: wire.OService,
+				SubGroup:  wire.OServiceUserInfoUpdate,
+			},
+			Body: wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate{
+				UserInfo: []wire.TLVUserInfo{info},
+			},
+		}
+	}
 
-	t.Run("subscribed session gets one myInfo event", func(t *testing.T) {
-		sess, refreshes := newSession("myInfo")
-		sess.handleSNACMessage(userInfoUpdate)
-
+	lastMyInfo := func(t *testing.T, sess *Session) *MyInfo {
+		t.Helper()
 		events := sess.EventQueue.GetAllEvents()
 		require.Len(t, events, 1)
-		assert.Equal(t, "myInfo", string(events[0].Type))
-		assert.Equal(t, "icon:new", events[0].Data.(map[string]any)["buddyIcon"])
-		assert.Equal(t, 1, *refreshes)
+		require.Equal(t, EventTypeMyInfo, events[0].Type)
+		return events[0].Data.(*MyInfo)
+	}
+
+	t.Run("subscribed session gets one myInfo built from the SNAC", func(t *testing.T) {
+		sess := newSession("myInfo")
+		sess.handleSNACMessage(update(wire.TLVUserInfo{ScreenName: "Mike Kelly"}))
+
+		myInfo := lastMyInfo(t, sess)
+		assert.Equal(t, "mikekelly", myInfo.AimID)
+		assert.Equal(t, "Mike Kelly", myInfo.DisplayID)
+		assert.Equal(t, "Mike Kelly", myInfo.Friendly)
+		assert.Equal(t, "online", myInfo.State)
 	})
 
 	t.Run("a presence subscription also delivers myInfo", func(t *testing.T) {
-		sess, _ := newSession("presence")
-		sess.handleSNACMessage(userInfoUpdate)
+		sess := newSession("presence")
+		sess.handleSNACMessage(update(wire.TLVUserInfo{ScreenName: "me"}))
 		assert.Len(t, sess.EventQueue.GetAllEvents(), 1)
 	})
 
-	t.Run("unsubscribed session gets nothing and does not refresh", func(t *testing.T) {
-		sess, refreshes := newSession("im")
-		sess.handleSNACMessage(userInfoUpdate)
+	t.Run("unsubscribed session gets nothing", func(t *testing.T) {
+		sess := newSession("im")
+		sess.handleSNACMessage(update(wire.TLVUserInfo{ScreenName: "me"}))
 		assert.Empty(t, sess.EventQueue.GetAllEvents())
-		assert.Equal(t, 0, *refreshes)
 	})
 
 	t.Run("other OService subgroups are ignored", func(t *testing.T) {
-		sess, refreshes := newSession("myInfo")
+		sess := newSession("myInfo")
 		sess.handleSNACMessage(wire.SNACMessage{Frame: wire.SNACFrame{
 			FoodGroup: wire.OService,
 			SubGroup:  wire.OServiceRateParamsQuery,
 		}})
 		assert.Empty(t, sess.EventQueue.GetAllEvents())
-		assert.Equal(t, 0, *refreshes)
+	})
+
+	t.Run("an update carrying no user info block pushes nothing", func(t *testing.T) {
+		sess := newSession("myInfo")
+		sess.handleSNACMessage(wire.SNACMessage{
+			Frame: wire.SNACFrame{
+				FoodGroup: wire.OService,
+				SubGroup:  wire.OServiceUserInfoUpdate,
+			},
+			Body: wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate{},
+		})
+		assert.Empty(t, sess.EventQueue.GetAllEvents())
+	})
+
+	t.Run("the away message comes from the session", func(t *testing.T) {
+		sess := newSession("myInfo")
+		// Session.AwayMessage reads only instances that are actually away.
+		sess.OSCARSession.SetUserInfoFlag(wire.OServiceUserFlagUnavailable)
+		sess.OSCARSession.SetAwayMessage("brb")
+
+		info := wire.TLVUserInfo{ScreenName: "me"}
+		info.Append(wire.NewTLVBE(wire.OServiceUserInfoUserFlags, wire.OServiceUserFlagUnavailable))
+		sess.handleSNACMessage(update(info))
+
+		myInfo := lastMyInfo(t, sess)
+		assert.Equal(t, "away", myInfo.State)
+		assert.Equal(t, "brb", myInfo.AwayMsg)
+	})
+
+	t.Run("a mood capability publishes its icon", func(t *testing.T) {
+		sess := newSession("myInfo")
+
+		info := wire.TLVUserInfo{ScreenName: "me"}
+		info.Append(wire.NewTLVBE(wire.OServiceUserInfoOscarCaps, wire.CapXStatusPlate[:]))
+		sess.handleSNACMessage(update(info))
+
+		assert.Equal(t, "http://api.example.com/mood?id="+wire.MoodIconID("0icqmood6"), lastMyInfo(t, sess).MoodIcon)
+	})
+
+	t.Run("the icon hash yields the content-addressed URL", func(t *testing.T) {
+		sess := newSession("myInfo")
+
+		info := wire.TLVUserInfo{ScreenName: "me"}
+		info.Append(wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, wire.BARTID{
+			Type:     wire.BARTTypesBuddyIcon,
+			BARTInfo: wire.BARTInfo{Hash: []byte{0xde, 0xad, 0xbe, 0xef}},
+		}))
+		sess.handleSNACMessage(update(info))
+
+		assert.Equal(t, "icon:deadbeef", lastMyInfo(t, sess).BuddyIcon)
+	})
+
+	t.Run("no icon TLV yields the placeholder URL, which clears a removed icon", func(t *testing.T) {
+		sess := newSession("myInfo")
+		sess.handleSNACMessage(update(wire.TLVUserInfo{ScreenName: "me"}))
+		assert.Equal(t, "placeholder:me", lastMyInfo(t, sess).BuddyIcon)
+	})
+
+	t.Run("the state is read off the user info block", func(t *testing.T) {
+		tests := []struct {
+			name       string
+			screenName string
+			flags      uint16
+			status     uint32
+			idle       uint16
+			want       string
+		}{
+			{name: "invisible", screenName: "me", status: wire.OServiceUserStatusInvisible, want: "invisible"},
+			{name: "icq busy", screenName: "100003", status: wire.OServiceUserStatusBusy, want: "occupied"},
+			{name: "aim busy reports away", screenName: "me", status: wire.OServiceUserStatusBusy, want: "away"},
+			{name: "icq dnd", screenName: "100003", status: wire.OServiceUserStatusDND, want: "dnd"},
+			{name: "away flag", screenName: "me", flags: wire.OServiceUserFlagUnavailable, want: "away"},
+			{name: "away status bit", screenName: "me", status: wire.OServiceUserStatusAway, want: "away"},
+			{name: "idle", screenName: "me", idle: 5, want: "idle"},
+			{name: "nothing set", screenName: "me", want: "online"},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				sess := newSession("myInfo")
+
+				info := wire.TLVUserInfo{ScreenName: tt.screenName}
+				info.Append(wire.NewTLVBE(wire.OServiceUserInfoUserFlags, tt.flags))
+				info.Append(wire.NewTLVBE(wire.OServiceUserInfoStatus, tt.status))
+				if tt.idle > 0 {
+					info.Append(wire.NewTLVBE(wire.OServiceUserInfoIdleTime, tt.idle))
+				}
+				sess.handleSNACMessage(update(info))
+
+				assert.Equal(t, tt.want, lastMyInfo(t, sess).State)
+			})
+		}
 	})
 }
 

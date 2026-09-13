@@ -387,10 +387,10 @@ func TestPresenceHandler_SetState_InvalidState(t *testing.T) {
 	assert.Contains(t, rr.Body.String(), "invalid state parameter")
 }
 
-func TestPresenceHandler_SetState_EmitsMyInfoEvent(t *testing.T) {
-	// The AIM client re-renders its own status badge only from "myInfo" events,
-	// so setState must queue one on the user's own session for the change to be
-	// visible in their UI.
+func TestPresenceHandler_SetState_AppliesAwayState(t *testing.T) {
+	// setState only mutates the OSCAR session and broadcasts; the identity badge
+	// re-renders from the myInfo the SNAC pump raises, so the handler queues
+	// no event of its own.
 	oscarInstance := state.NewSession().AddInstance()
 	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
 
@@ -410,20 +410,28 @@ func TestPresenceHandler_SetState_EmitsMyInfoEvent(t *testing.T) {
 	requireSession(handler.SessionManager, handler.SetState).ServeHTTP(rr, req)
 	assert.Equal(t, http.StatusOK, rr.Code)
 
+	assert.True(t, oscarInstance.Session().Away())
+	assert.Equal(t, "brb", oscarInstance.Session().AwayMessage())
+	assert.Equal(t, wire.OServiceUserStatusAway, oscarInstance.UserStatusBitmask())
+
+	var resp struct {
+		Response struct {
+			Data SetStateData `json:"data"`
+		} `json:"response"`
+	}
+	assert.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+	assert.Equal(t, "away", resp.Response.Data.State)
+	assert.Equal(t, "brb", resp.Response.Data.AwayMsg)
+	assert.Equal(t, "testuser", resp.Response.Data.AimID)
+
 	session, err := sessionMgr.GetSession(context.Background(), aimsid)
 	assert.NoError(t, err)
-
-	myInfo := queuedMyInfo(session)
-	assert.NotNil(t, myInfo, "expected a myInfo event to be queued")
-	assert.Equal(t, "away", myInfo.State)
-	assert.Equal(t, "brb", myInfo.AwayMsg)
-	assert.Equal(t, "testuser", myInfo.AimID)
+	assert.Empty(t, session.EventQueue.GetAllEvents())
 }
 
-func TestPresenceHandler_SetState_MyInfoNormalizesAimID(t *testing.T) {
-	// The client shallow-merges myInfo onto the shared user object, so aimId must
-	// be the normalized id while displayId and friendly keep the user's own
-	// casing and spacing.
+func TestPresenceHandler_SetState_NormalizesAimID(t *testing.T) {
+	// The client keys users by the normalized aimId, so the response must carry
+	// that while displayId keeps the user's own casing and spacing.
 	oscarInstance := state.NewSession().AddInstance()
 	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("Mike Kelly", oscarInstance)
 
@@ -452,15 +460,6 @@ func TestPresenceHandler_SetState_MyInfoNormalizesAimID(t *testing.T) {
 	assert.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
 	assert.Equal(t, "mikekelly", resp.Response.Data["aimId"])
 	assert.Equal(t, "Mike Kelly", resp.Response.Data["displayId"])
-
-	session, err := sessionMgr.GetSession(context.Background(), aimsid)
-	assert.NoError(t, err)
-
-	myInfo := queuedMyInfo(session)
-	require.NotNil(t, myInfo, "expected a myInfo event to be queued")
-	assert.Equal(t, "mikekelly", myInfo.AimID)
-	assert.Equal(t, "Mike Kelly", myInfo.DisplayID)
-	assert.Equal(t, "Mike Kelly", myInfo.Friendly)
 }
 
 func TestPresenceHandler_Icon(t *testing.T) {
@@ -616,18 +615,6 @@ func TestPresenceHandler_GetProfile(t *testing.T) {
 	assert.Contains(t, body, `"testuser"`)
 }
 
-// queuedMyInfo returns the myInfo event the session has queued, if any.
-// queuedMyInfo returns the myInfo event the session has queued, if any.
-func queuedMyInfo(session *Session) *MyInfo {
-	var myInfo *MyInfo
-	for _, event := range session.EventQueue.GetAllEvents() {
-		if event.Type == "myInfo" {
-			myInfo, _ = event.Data.(*MyInfo)
-		}
-	}
-	return myInfo
-}
-
 func TestPresenceHandler_SetState_Occupied(t *testing.T) {
 	// ICQ's Busy, which is a selectable connect state and must be accepted. An AIM
 	// caller is told "away" instead, since AIM 8 draws "occupied" as offline.
@@ -647,9 +634,6 @@ func TestPresenceHandler_SetState_Occupied(t *testing.T) {
 			oscarSession.SetIdentScreenName(state.NewIdentScreenName(tt.screenName))
 			oscarInstance := oscarSession.AddInstance()
 			sessionMgr, aimsid := createTestSessionManagerWithOSCAR(tt.screenName, oscarInstance)
-
-			session, err := sessionMgr.GetSession(context.Background(), aimsid)
-			assert.NoError(t, err)
 
 			broadcaster := newMockBuddyBroadcaster(t)
 			broadcaster.EXPECT().BroadcastBuddyArrived(mock.Anything, mock.Anything, mock.Anything).Return(nil)
@@ -671,13 +655,9 @@ func TestPresenceHandler_SetState_Occupied(t *testing.T) {
 			assert.Equal(t, wire.OServiceUserStatusBusy, oscarInstance.UserStatusBitmask())
 			assert.Contains(t, rr.Body.String(), `"state":"`+tt.wantState+`"`)
 
-			// The state must survive the round trip: a later myInfo push reads it back
-			// through currentWebState, and "online" there would undo the change.
-			assert.Equal(t, tt.wantState, currentWebState(oscarInstance))
-
-			myInfo := queuedMyInfo(session)
-			assert.NotNil(t, myInfo, "expected a myInfo event to be queued")
-			assert.Equal(t, tt.wantState, myInfo.State)
+			// The state must survive the round trip: the myInfo raised by the
+			// user info update reads the Busy bit back off the wire.
+			assert.Equal(t, tt.wantState, selfWebState(oscarSession.TLVUserInfo(), oscarSession.IdentScreenName().UIN() == 0))
 		})
 	}
 }
@@ -889,7 +869,7 @@ func searchPageTargets(n int) []string {
 
 // setStatusCaps drives setStatus and returns the capability list that reached
 // LocateService.SetInfo, or nil when SetInfo was never called.
-func setStatusCaps(t *testing.T, instance *state.SessionInstance, query string) ([][16]byte, *Session, int) {
+func setStatusCaps(t *testing.T, instance *state.SessionInstance, query string) ([][16]byte, int) {
 	t.Helper()
 
 	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", instance)
@@ -924,13 +904,10 @@ func setStatusCaps(t *testing.T, instance *state.SessionInstance, query string) 
 	rr := httptest.NewRecorder()
 	requireSession(handler.SessionManager, handler.SetStatus).ServeHTTP(rr, req)
 
-	session, err := sessionMgr.GetSession(context.Background(), aimsid)
-	require.NoError(t, err)
-
 	if !called {
-		return nil, session, rr.Code
+		return nil, rr.Code
 	}
-	return gotCaps, session, rr.Code
+	return gotCaps, rr.Code
 }
 
 func TestPresenceHandler_SetStatus_Mood(t *testing.T) {
@@ -941,23 +918,18 @@ func TestPresenceHandler_SetStatus_Mood(t *testing.T) {
 		// wantCaps is the capability list that must reach SetInfo. A nil value
 		// means SetInfo must not be called at all.
 		wantCaps [][16]byte
-		// wantMoodIcon is the id parameter expected on the queued myInfo, or ""
-		// for no mood.
-		wantMoodID string
 		// wantCode defaults to 200.
 		wantCode int
 	}{
 		{
-			name:       "a known mood is advertised as its capability",
-			query:      "&mood=0icqmood6",
-			wantCaps:   [][16]byte{wire.CapXStatusPlate},
-			wantMoodID: "0icqmood6",
+			name:     "a known mood is advertised as its capability",
+			query:    "&mood=0icqmood6",
+			wantCaps: [][16]byte{wire.CapXStatusPlate},
 		},
 		{
-			name:       "a mood with only a placeholder capability still resolves",
-			query:      "&mood=0icqmood13",
-			wantCaps:   [][16]byte{wire.CapMoodHavingFun},
-			wantMoodID: "0icqmood13",
+			name:     "a mood with only a placeholder capability still resolves",
+			query:    "&mood=0icqmood13",
+			wantCaps: [][16]byte{wire.CapMoodHavingFun},
 		},
 		{
 			// The client sends mood= alongside every plain state change, so this
@@ -984,7 +956,7 @@ func TestPresenceHandler_SetStatus_Mood(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			instance := state.NewSession().AddInstance()
 
-			gotCaps, session, code := setStatusCaps(t, instance, tt.query)
+			gotCaps, code := setStatusCaps(t, instance, tt.query)
 
 			if tt.wantCode != 0 {
 				assert.Equal(t, tt.wantCode, code)
@@ -994,14 +966,6 @@ func TestPresenceHandler_SetStatus_Mood(t *testing.T) {
 
 			assert.Equal(t, http.StatusOK, code)
 			assert.Equal(t, tt.wantCaps, gotCaps)
-
-			myInfo := queuedMyInfo(session)
-			require.NotNil(t, myInfo, "setStatus must queue a myInfo event")
-			if tt.wantMoodID == "" {
-				assert.Empty(t, myInfo.MoodIcon)
-				return
-			}
-			assert.Equal(t, "/mood?id="+wire.MoodIconID(tt.wantMoodID), myInfo.MoodIcon)
 		})
 	}
 }
@@ -1009,10 +973,10 @@ func TestPresenceHandler_SetStatus_Mood(t *testing.T) {
 func TestPresenceHandler_SetStatus_MoodReplacesRatherThanAccumulates(t *testing.T) {
 	instance := state.NewSession().AddInstance()
 
-	_, _, code := setStatusCaps(t, instance, "&mood=0icqmood6")
+	_, code := setStatusCaps(t, instance, "&mood=0icqmood6")
 	assert.Equal(t, http.StatusOK, code)
 
-	gotCaps, _, code := setStatusCaps(t, instance, "&mood=0icqmood4")
+	gotCaps, code := setStatusCaps(t, instance, "&mood=0icqmood4")
 	assert.Equal(t, http.StatusOK, code)
 	assert.Equal(t, [][16]byte{wire.CapXStatusBeer}, gotCaps, "the previous mood must be dropped")
 }
@@ -1023,11 +987,11 @@ func TestPresenceHandler_SetStatus_PreservesNonMoodCaps(t *testing.T) {
 	instance := state.NewSession().AddInstance()
 	instance.SetCaps([][16]byte{wire.CapChat, wire.CapXStatusBeer})
 
-	gotCaps, _, code := setStatusCaps(t, instance, "&mood=0icqmood6")
+	gotCaps, code := setStatusCaps(t, instance, "&mood=0icqmood6")
 	assert.Equal(t, http.StatusOK, code)
 	assert.Equal(t, [][16]byte{wire.CapChat, wire.CapXStatusPlate}, gotCaps)
 
-	gotCaps, _, code = setStatusCaps(t, instance, "&mood=")
+	gotCaps, code = setStatusCaps(t, instance, "&mood=")
 	assert.Equal(t, http.StatusOK, code)
 	assert.Equal(t, [][16]byte{wire.CapChat}, gotCaps, "clearing a mood must keep the other caps")
 }
@@ -1052,40 +1016,4 @@ func TestPresenceHandler_SetStatus_SetInfoError(t *testing.T) {
 	requireSession(handler.SessionManager, handler.SetStatus).ServeHTTP(rr, req)
 
 	assert.Equal(t, http.StatusInternalServerError, rr.Code)
-}
-
-func TestPresenceHandler_SetState_MyInfoCarriesBuddyIcon(t *testing.T) {
-	// Mandarin replaces its identity from each myInfo rather than merging into it,
-	// clearing its avatar when buddyIcon is absent.
-	oscarInstance := state.NewSession().AddInstance()
-	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
-
-	session, err := sessionMgr.GetSession(context.Background(), aimsid)
-	require.NoError(t, err)
-	session.BaseURL = "http://api.example.com"
-
-	broadcaster := newMockBuddyBroadcaster(t)
-	broadcaster.EXPECT().BroadcastBuddyArrived(mock.Anything, mock.Anything, mock.Anything).Return(nil)
-
-	iconRetriever := newMockBuddyIconRetriever(t)
-	iconRetriever.EXPECT().BuddyIconMetadata(mock.Anything, state.NewIdentScreenName("testuser")).
-		Return(bartID([]byte{0xab, 0xcd}), nil)
-
-	handler := &PresenceHandler{
-		SessionManager:   sessionMgr,
-		BuddyBroadcaster: broadcaster,
-		IconSource:       BuddyIconSource{IconRetriever: iconRetriever, Logger: slog.Default()},
-		Logger:           slog.Default(),
-	}
-
-	req, err := http.NewRequest("GET", "/presence/setState?aimsid="+aimsid+"&state=away", nil)
-	require.NoError(t, err)
-
-	rr := httptest.NewRecorder()
-	requireSession(handler.SessionManager, handler.SetState).ServeHTTP(rr, req)
-	require.Equal(t, http.StatusOK, rr.Code)
-
-	myInfo := queuedMyInfo(session)
-	require.NotNil(t, myInfo, "expected a myInfo event to be queued")
-	assert.Equal(t, "http://api.example.com/expressions/get?t=testuser&type=buddyIcon&bartId=abcd", myInfo.BuddyIcon)
 }

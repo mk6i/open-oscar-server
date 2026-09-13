@@ -330,17 +330,6 @@ func (h *AimHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 		return h.IconSource.URLForHash(session.BaseURL, sn, hash)
 	}
 
-	// Wire the myInfo refresher so a self user-info update (icon upload/clear)
-	// re-renders the identity badge. currentWebState reflects the user's live
-	// presence; PublishedURL reflects the feedbag icon, already updated by the time
-	// the OServiceUserInfoUpdate is relayed.
-	session.MyInfoRefresher = func(ctx context.Context) (any, error) {
-		icon := h.IconSource.PublishedURL(ctx, session.BaseURL, screenName.IdentScreenName())
-		webState := currentWebState(session.OSCARSession)
-		mood := moodIconURL(session.BaseURL, webState, session.OSCARSession.Session().Caps())
-		return buildMyInfo(screenName, webState, icon, mood), nil
-	}
-
 	// Wire permit/deny refresher so FeedbagUpdateItem SNACs trigger a permitDeny event.
 	session.PermitDenyRefresher = func(ctx context.Context) (any, error) {
 		frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}

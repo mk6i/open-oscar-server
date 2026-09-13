@@ -74,7 +74,6 @@ type Session struct {
 	RemoteAddr          string                                 // Client IP address
 	BuddyListRefresher  func(ctx context.Context) (any, error) // Called on feedbag changes to push buddylist event
 	PermitDenyRefresher func(ctx context.Context) (any, error) // Called on feedbag changes to push permitDeny event
-	MyInfoRefresher     func(ctx context.Context) (any, error) // Called on self user-info updates (e.g. icon change) to push myInfo event
 	BuddyAliasLoader    func(ctx context.Context) (map[string]string, error)
 	// BuddyIconURL formats the absolute buddyIcon URL for a buddy from the icon
 	// hash carried in a presence SNAC. Returns "" when no URL can be published.
@@ -254,20 +253,43 @@ func (s *Session) handleOServiceMessage(msg wire.SNACMessage) {
 // handleUserInfoUpdate surfaces OServiceUserInfoUpdate, which the server relays to
 // a user when their own user info changes (notably a buddy icon upload or clear).
 // The client re-renders its identity badge from myInfo events only, so we
-// translate this into a fresh myInfo.
+// translate this into a fresh myInfo. The away message is the one field read off
+// the session, since no user info block carries the text.
 func (s *Session) handleUserInfoUpdate(msg wire.SNACMessage) {
 	if !s.IsSubscribedTo("myInfo") && !s.IsSubscribedTo("presence") {
 		return
 	}
-	if s.MyInfoRefresher == nil {
+
+	body, ok := msg.Body.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
+	if !ok || len(body.UserInfo) == 0 {
 		return
 	}
-	data, err := s.MyInfoRefresher(s.ctx)
-	if err != nil {
-		s.logger.Error("failed to refresh myInfo after user-info update", "err", err)
-		return
+	// Block 0 is the session's aggregated user info; any blocks after it
+	// describe individual instances.
+	info := body.UserInfo[0]
+
+	screenName := state.DisplayScreenName(info.ScreenName)
+	webState := selfWebState(info, screenName.IdentScreenName().UIN() == 0)
+
+	// A missing icon TLV yields a nil hash, which publishes the placeholder URL
+	// and so clears an icon the client still holds.
+	var hash []byte
+	if b, ok := info.Bytes(wire.OServiceUserInfoBARTInfo); ok {
+		var id wire.BARTID
+		if err := wire.UnmarshalBE(&id, bytes.NewBuffer(b)); err == nil {
+			hash = id.Hash
+		}
 	}
-	s.EventQueue.Push(EventType("myInfo"), data)
+
+	myInfo := buildMyInfo(
+		screenName,
+		webState,
+		s.BuddyIconURL(screenName.IdentScreenName(), hash),
+		moodIconURL(s.BaseURL, webState, userInfoCaps(info)),
+	)
+	myInfo.AwayMsg = s.OSCARSession.Session().AwayMessage()
+
+	s.EventQueue.Push(EventTypeMyInfo, myInfo)
 }
 
 // handleRateLimitUpdate translates a rate limit status change — broadcast by the
@@ -679,9 +701,9 @@ func NewSessionManager() *SessionManager {
 //
 // The session does not begin listening to its OSCAR instance yet: the caller
 // must wire the session's refresher callbacks (BuddyListRefresher, BuddyIconURL,
-// MyInfoRefresher, ...) and then call StartListeningToOSCARSession. Wiring them
-// after the listener starts would race the goroutine, which reads them as it
-// converts SNACs into events.
+// ...) and then call StartListeningToOSCARSession. Wiring them after the
+// listener starts would race the goroutine, which reads them as it converts
+// SNACs into events.
 func (m *SessionManager) CreateSession(screenName state.DisplayScreenName, events []string, oscarSession *state.SessionInstance, baseURL string, logger *slog.Logger) (*Session, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

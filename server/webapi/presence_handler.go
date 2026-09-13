@@ -415,13 +415,6 @@ func (h *PresenceHandler) SetState(w http.ResponseWriter, r *http.Request, sessi
 		}
 	}
 
-	// Notify the user's own client so its status indicator re-renders. The AIM
-	// client updates its self-presence badge only from "myInfo" events; the
-	// "presence" broadcast above drives buddy dots, not the user's own state.
-	// Without this, changing to Busy/Away leaves the user still showing as
-	// available in their own UI.
-	h.pushMyInfo(ctx, session, reportedState, awayMsg, "")
-
 	h.Logger.InfoContext(ctx, "presence state updated",
 		"screenName", session.ScreenName.String(),
 		"state", stateParam,
@@ -474,10 +467,6 @@ func (h *PresenceHandler) SetStatus(w http.ResponseWriter, r *http.Request, sess
 			return
 		}
 	}
-
-	// Notify the user's own client so its status message re-renders. Preserve the
-	// current presence state so a status-only change does not flip the self badge.
-	h.pushMyInfo(ctx, session, currentWebState(session.OSCARSession), session.OSCARSession.Session().AwayMessage(), statusMsg)
 
 	h.Logger.InfoContext(ctx, "status message updated",
 		"screenName", session.ScreenName.String(),
@@ -646,42 +635,26 @@ func statusMaskState(status uint32, isAIMCaller bool) string {
 	return st
 }
 
-// currentWebState maps an OSCAR session's presence flags to the web state string
-// the clients expect ("online", "away", "idle", "invisible", "occupied", "dnd").
-func currentWebState(instance *state.SessionInstance) string {
-	sess := instance.Session()
-	if sess.Invisible() {
+// selfWebState maps a user's own user info block to the web state string the
+// clients expect ("online", "away", "idle", "invisible", "occupied", "dnd").
+// Invisibility yields "invisible", not the "offline" a buddy sees.
+func selfWebState(info wire.TLVUserInfo, isAIMCaller bool) string {
+	if info.IsInvisible() {
 		return "invisible"
 	}
-	if st := statusMaskState(instance.UserStatusBitmask(), instance.IdentScreenName().UIN() == 0); st != "" {
+	if st := statusBitState(info, isAIMCaller); st != "" {
 		return st
 	}
-	switch {
-	case sess.Away():
+	if info.IsAway() {
 		return "away"
-	case instance.Idle():
+	}
+	if mask, ok := info.Uint32BE(wire.OServiceUserInfoStatus); ok && mask&wire.OServiceUserStatusAway != 0 {
+		return "away"
+	}
+	if idle, ok := info.Uint16BE(wire.OServiceUserInfoIdleTime); ok && idle > 0 {
 		return "idle"
-	default:
-		return "online"
 	}
-}
-
-// pushMyInfo queues a "myInfo" event on the user's own session so the AIM client
-// re-renders its self-presence badge. The client binds its identity-badge render
-// to "myInfo" events only, so state changes made via setState/setStatus are
-// invisible in the user's own UI unless a myInfo event is delivered.
-func (h *PresenceHandler) pushMyInfo(ctx context.Context, session *Session, webState, awayMsg, statusMsg string) {
-	if !session.IsSubscribedTo("myInfo") && !session.IsSubscribedTo("presence") {
-		return
-	}
-
-	icon := h.IconSource.PublishedURL(ctx, session.BaseURL, session.ScreenName.IdentScreenName())
-	moodIcon := moodIconURL(session.BaseURL, webState, session.OSCARSession.Session().Caps())
-	myInfo := buildMyInfo(session.ScreenName, webState, icon, moodIcon)
-	myInfo.AwayMsg = awayMsg
-	myInfo.StatusMsg = statusMsg
-
-	session.EventQueue.Push(EventType("myInfo"), myInfo)
+	return "online"
 }
 
 // userInfoCaps returns the capability UUIDs a user info block advertises.
