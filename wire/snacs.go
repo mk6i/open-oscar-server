@@ -1594,9 +1594,23 @@ type BARTID struct {
 	BARTInfo
 }
 
-type BartIDsWName struct {
-	ScreenName string   `oscar:"len_prefix=uint8"`
-	IDs        []BARTID `oscar:"len_prefix=uint8"`
+// StatusText returns the status message text a status string BART item carries.
+// It returns "" for an item of another type, one without the data flag, and one
+// holding empty text — all of which mean the user has no status message.
+func (b BARTID) StatusText() string {
+	if b.Type != BARTTypesStatusStr || b.Flags&BARTFlagsData == 0 {
+		return ""
+	}
+	var status BARTStatus
+	if err := UnmarshalBE(&status, bytes.NewReader(b.Hash)); err != nil {
+		return ""
+	}
+	return status.Status
+}
+
+type BARTStatus struct {
+	Status string   `oscar:"len_prefix=uint16"`
+	IDs    []BARTID `oscar:"len_prefix=uint16"`
 }
 type BartQueryReplyID struct {
 	QueryID BARTID

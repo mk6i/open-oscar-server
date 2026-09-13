@@ -1,6 +1,7 @@
 package webapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -255,6 +256,62 @@ func TestPresenceHandler_GetPresence_PublishesIconForOnlineBuddiesOnly(t *testin
 // each buddy under its own group using realistic feedbag data, where group rows
 // carry ItemID 0 and a distinct nonzero GroupID, and buddy rows reference those
 // GroupIDs. This is the shape the OSCAR feedbag actually stores.
+// A buddy's status message rides in the BART TLV, next to the icon reference.
+func TestPresenceHandler_GetPresence_PublishesStatusMessage(t *testing.T) {
+	ctx := context.Background()
+
+	withStatus := wire.TLVUserInfo{ScreenName: "hasstatus"}
+	withStatus.Append(wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, []wire.BARTID{testStatusBART}))
+
+	locateService := newMockLocateService(t)
+	locateService.EXPECT().UserInfoQuery(mock.Anything, mock.Anything, mock.Anything, screenNameMatcher("hasstatus")).
+		Return(wire.SNACMessage{Body: wire.SNAC_0x02_0x06_LocateUserInfoReply{TLVUserInfo: withStatus}}, nil)
+	locateService.EXPECT().UserInfoQuery(mock.Anything, mock.Anything, mock.Anything, screenNameMatcher("nostatus")).
+		Return(onlineUserInfoReply("nostatus", 0), nil)
+
+	iconRetriever := newMockBuddyIconRetriever(t)
+	iconRetriever.EXPECT().BuddyIconMetadata(mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+
+	oscarInstance := state.NewSession().AddInstance()
+	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
+	sess, err := sessionMgr.GetSession(ctx, aimsid)
+	require.NoError(t, err)
+	sess.BaseURL = "http://api.example.com"
+
+	handler := &PresenceHandler{
+		SessionManager: sessionMgr,
+		LocateService:  locateService,
+		IconSource:     BuddyIconSource{IconRetriever: iconRetriever, Logger: slog.Default()},
+		Logger:         slog.Default(),
+	}
+
+	req, err := http.NewRequest("GET", "/presence/get?aimsid="+aimsid+"&t=hasstatus,nostatus", nil)
+	require.NoError(t, err)
+	rr := httptest.NewRecorder()
+	requireSession(handler.SessionManager, handler.GetPresence).ServeHTTP(rr, req)
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var got struct {
+		Response struct {
+			Data struct {
+				Users []struct {
+					AimID     string `json:"aimId"`
+					StatusMsg string `json:"statusMsg"`
+				} `json:"users"`
+			} `json:"data"`
+		} `json:"response"`
+	}
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &got))
+	require.Len(t, got.Response.Data.Users, 2)
+
+	byName := map[string]string{}
+	for _, u := range got.Response.Data.Users {
+		byName[u.AimID] = u.StatusMsg
+	}
+	assert.Equal(t, "brb", byName["hasstatus"])
+	assert.Empty(t, byName["nostatus"])
+}
+
 func TestPresenceHandler_GetPresence_BuddyListGrouping(t *testing.T) {
 	feedbagService := newMockFeedbagService(t)
 	locateService := newMockLocateService(t)
@@ -997,10 +1054,17 @@ func setStatusCaps(t *testing.T, instance *state.SessionInstance, query string) 
 			instance.SetCaps(gotCaps)
 		}).Return(nil).Maybe()
 
+	oservice := newMockOServiceService(t)
+	oservice.EXPECT().
+		SetUserInfoFields(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(nil).
+		Maybe()
+
 	handler := &PresenceHandler{
-		SessionManager: sessionMgr,
-		LocateService:  locate,
-		Logger:         slog.Default(),
+		SessionManager:  sessionMgr,
+		LocateService:   locate,
+		OServiceService: oservice,
+		Logger:          slog.Default(),
 	}
 
 	req, err := http.NewRequest("GET", "/presence/setStatus?aimsid="+aimsid+query, nil)
@@ -1013,6 +1077,166 @@ func setStatusCaps(t *testing.T, instance *state.SessionInstance, query string) 
 		return nil, rr.Code
 	}
 	return gotCaps, rr.Code
+}
+
+// A state change must not blank the status message: the client renders both from
+// the same payload.
+func TestPresenceHandler_SetState_PreservesStatusMessage(t *testing.T) {
+	oscarInstance := state.NewSession().AddInstance()
+	oscarInstance.Session().SetStatus(testStatusBART)
+	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
+
+	oservice := newMockOServiceService(t)
+	oservice.EXPECT().
+		SetUserInfoFields(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(nil)
+
+	locate := newMockLocateService(t)
+	locate.EXPECT().SetInfo(mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	handler := &PresenceHandler{
+		SessionManager:  sessionMgr,
+		LocateService:   locate,
+		OServiceService: oservice,
+		Logger:          slog.Default(),
+	}
+
+	req, err := http.NewRequest("GET", "/presence/setState?aimsid="+aimsid+"&state=online", nil)
+	require.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+	requireSession(handler.SessionManager, handler.SetState).ServeHTTP(rr, req)
+	require.Equal(t, http.StatusOK, rr.Code)
+	assert.Contains(t, rr.Body.String(), `"statusMsg":"brb"`)
+}
+
+func TestPresenceHandler_SetStatus_StatusMessage(t *testing.T) {
+	tests := []struct {
+		name string
+		// query is appended to the request, after aimsid.
+		query string
+		// wantStatusMsg is the text that must reach OSCAR, when wantSet is true.
+		wantStatusMsg string
+		wantSet       bool
+	}{
+		{
+			name:          "a status message is sent as a BART status item",
+			query:         "&statusMsg=out+to+lunch",
+			wantStatusMsg: "out to lunch",
+			wantSet:       true,
+		},
+		{
+			// The client clears the status message by sending an empty one.
+			name:    "an empty status message clears it",
+			query:   "&statusMsg=",
+			wantSet: true,
+		},
+		{
+			name:  "an absent status message parameter leaves it alone",
+			query: "&mood=",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			oscarInstance := state.NewSession().AddInstance()
+			sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
+
+			var gotBody wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields
+			oservice := newMockOServiceService(t)
+			if tt.wantSet {
+				oservice.EXPECT().
+					SetUserInfoFields(mock.Anything, oscarInstance, wire.SNACFrame{}, mock.Anything).
+					Run(func(_ context.Context, _ *state.SessionInstance, _ wire.SNACFrame, inBody wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields) {
+						gotBody = inBody
+					}).
+					Return(nil)
+			}
+
+			locate := newMockLocateService(t)
+			locate.EXPECT().SetInfo(mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+
+			handler := &PresenceHandler{
+				SessionManager:  sessionMgr,
+				LocateService:   locate,
+				OServiceService: oservice,
+				Logger:          slog.Default(),
+			}
+
+			req, err := http.NewRequest("GET", "/presence/setStatus?aimsid="+aimsid+tt.query, nil)
+			require.NoError(t, err)
+
+			rr := httptest.NewRecorder()
+			requireSession(handler.SessionManager, handler.SetStatus).ServeHTTP(rr, req)
+			require.Equal(t, http.StatusOK, rr.Code)
+
+			if !tt.wantSet {
+				return
+			}
+
+			b, hasBART := gotBody.Bytes(wire.OServiceUserInfoBARTInfo)
+			require.True(t, hasBART, "setStatus must send a BART TLV")
+
+			var gotID wire.BARTID
+			require.NoError(t, wire.UnmarshalBE(&gotID, bytes.NewReader(b)))
+			assert.Equal(t, wire.BARTTypesStatusStr, gotID.Type)
+			assert.Equal(t, wire.BARTFlagsData, gotID.Flags)
+
+			// The hash field carries the text itself, not a digest of it.
+			var gotStatus wire.BARTStatus
+			require.NoError(t, wire.UnmarshalBE(&gotStatus, bytes.NewReader(gotID.Hash)))
+			assert.Equal(t, tt.wantStatusMsg, gotStatus.Status)
+		})
+	}
+}
+
+func TestPresenceHandler_SetStatus_StatusMessageError(t *testing.T) {
+	oscarInstance := state.NewSession().AddInstance()
+	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
+
+	oservice := newMockOServiceService(t)
+	oservice.EXPECT().
+		SetUserInfoFields(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(io.EOF)
+
+	handler := &PresenceHandler{
+		SessionManager:  sessionMgr,
+		OServiceService: oservice,
+		Logger:          slog.Default(),
+	}
+
+	req, err := http.NewRequest("GET", "/presence/setStatus?aimsid="+aimsid+"&statusMsg=nope", nil)
+	require.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+	requireSession(handler.SessionManager, handler.SetStatus).ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusInternalServerError, rr.Code)
+	assert.Contains(t, rr.Body.String(), "failed to set status")
+}
+
+func TestPresenceHandler_SetStatus_StatusMessageTooLong(t *testing.T) {
+	// An overlong message would wrap the one-byte length prefix and corrupt the
+	// user info block.
+	oscarInstance := state.NewSession().AddInstance()
+	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
+
+	// No EXPECT: nothing may reach OSCAR.
+	handler := &PresenceHandler{
+		SessionManager:  sessionMgr,
+		OServiceService: newMockOServiceService(t),
+		Logger:          slog.Default(),
+	}
+
+	tooLong := strings.Repeat("a", maxStatusMsgLen+1)
+	req, err := http.NewRequest("GET", "/presence/setStatus?aimsid="+aimsid+"&statusMsg="+tooLong, nil)
+	require.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+	requireSession(handler.SessionManager, handler.SetStatus).ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusBadRequest, rr.Code)
+	assert.Contains(t, rr.Body.String(), "status message too large")
 }
 
 func TestPresenceHandler_SetStatus_Mood(t *testing.T) {

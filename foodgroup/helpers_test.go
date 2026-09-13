@@ -1,12 +1,15 @@
 package foodgroup
 
 import (
+	"bytes"
 	"context"
 	"net/mail"
 	"net/netip"
+	"testing"
 	"time"
 
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 
 	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
@@ -977,6 +980,36 @@ func sessOptBuddyIcon(icon wire.BARTID) func(instance *state.SessionInstance) {
 	return func(instance *state.SessionInstance) {
 		instance.Session().SetBuddyIcon(icon)
 	}
+}
+
+// sessOptStatus sets the status message BART item on the session object.
+func sessOptStatus(status wire.BARTID) func(instance *state.SessionInstance) {
+	return func(instance *state.SessionInstance) {
+		instance.Session().SetStatus(status)
+	}
+}
+
+// newTestStatusBARTID builds the status message BART item a client sends, which
+// carries the text itself rather than a hash of it.
+func newTestStatusBARTID(t *testing.T, statusMsg string) wire.BARTID {
+	t.Helper()
+	b := &bytes.Buffer{}
+	require.NoError(t, wire.MarshalBE(wire.BARTStatus{Status: statusMsg}, b))
+	return wire.BARTID{
+		Type: wire.BARTTypesStatusStr,
+		BARTInfo: wire.BARTInfo{
+			Flags: wire.BARTFlagsData,
+			Hash:  b.Bytes(),
+		},
+	}
+}
+
+// statusMsgOf unpacks the text from a status message BART item.
+func statusMsgOf(t *testing.T, id wire.BARTID) string {
+	t.Helper()
+	var status wire.BARTStatus
+	require.NoError(t, wire.UnmarshalBE(&status, bytes.NewReader(id.Hash)))
+	return status.Status
 }
 
 // sessOptOfflineMsgCount sets the offline message count on the session object.

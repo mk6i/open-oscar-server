@@ -229,6 +229,8 @@ func (m *BuddyListManager) getBuddyInfo(ctx context.Context, instance *state.Ses
 		info.OnlineTime = int64(tod)
 	}
 
+	info.StatusMsg = userStatusMsg(userInfo.TLVUserInfo)
+
 	if st := statusBitState(userInfo.TLVUserInfo, instance.IdentScreenName().UIN() == 0); st != "" {
 		info.State = st
 	} else if userInfo.IsAway() {

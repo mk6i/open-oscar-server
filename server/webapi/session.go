@@ -273,13 +273,7 @@ func (s *Session) handleUserInfoUpdate(msg wire.SNACMessage) {
 
 	// A missing icon TLV yields a nil hash, which publishes the placeholder URL
 	// and so clears an icon the client still holds.
-	var hash []byte
-	if b, ok := info.Bytes(wire.OServiceUserInfoBARTInfo); ok {
-		var id wire.BARTID
-		if err := wire.UnmarshalBE(&id, bytes.NewBuffer(b)); err == nil {
-			hash = id.Hash
-		}
-	}
+	hash := buddyIconHash(info)
 
 	myInfo := buildMyInfo(
 		screenName,
@@ -288,6 +282,7 @@ func (s *Session) handleUserInfoUpdate(msg wire.SNACMessage) {
 		moodIconURL(s.BaseURL, webState, userInfoCaps(info)),
 	)
 	myInfo.AwayMsg = s.OSCARSession.Session().AwayMessage()
+	myInfo.StatusMsg = userStatusMsg(info)
 
 	s.EventQueue.Push(EventTypeMyInfo, myInfo)
 }
@@ -564,6 +559,7 @@ func (s *Session) handleBuddyArrived(msg wire.SNACMessage) {
 	}
 
 	presenceEvent.MoodIcon = moodIconURL(s.BaseURL, stateStr, userInfoCaps(body.TLVUserInfo))
+	presenceEvent.StatusMsg = userStatusMsg(body.TLVUserInfo)
 
 	// A BuddyArrived carries the buddy's current icon in TLV 0x1D whenever they
 	// have one, so an icon change (or clear, which arrives as the sentinel hash)
@@ -573,17 +569,52 @@ func (s *Session) handleBuddyArrived(msg wire.SNACMessage) {
 	// client's shallow merge. An empty result (no origin known) is omitted, which
 	// preserves whatever icon the client already holds.
 	if s.BuddyIconURL != nil {
-		var hash []byte
-		if b, ok := body.Bytes(wire.OServiceUserInfoBARTInfo); ok {
-			var id wire.BARTID
-			if err := wire.UnmarshalBE(&id, bytes.NewBuffer(b)); err == nil {
-				hash = id.Hash
-			}
-		}
-		presenceEvent.BuddyIcon = s.BuddyIconURL(buddy, hash)
+		presenceEvent.BuddyIcon = s.BuddyIconURL(buddy, buddyIconHash(body.TLVUserInfo))
 	}
 
 	s.EventQueue.Push(EventTypePresence, presenceEvent)
+}
+
+// bartIDs returns the BART items a user info block carries. They travel as a list
+// in one TLV: a user's buddy icon and status message ride in it together.
+func bartIDs(info wire.TLVUserInfo) []wire.BARTID {
+	b, ok := info.Bytes(wire.OServiceUserInfoBARTInfo)
+	if !ok {
+		return nil
+	}
+	var ids []wire.BARTID
+	if err := wire.UnmarshalBE(&ids, bytes.NewReader(b)); err != nil {
+		return nil
+	}
+	return ids
+}
+
+// buddyIconHash returns the buddy icon hash carried in a user info block, or nil
+// when it carries none.
+func buddyIconHash(info wire.TLVUserInfo) []byte {
+	for _, id := range bartIDs(info) {
+		if id.Type == wire.BARTTypesBuddyIcon || id.Type == wire.BARTTypesBuddyIconSmall {
+			return id.Hash
+		}
+	}
+	return nil
+}
+
+// userStatusMsg returns the status message carried in a user info block, or ""
+// when it carries none.
+func userStatusMsg(info wire.TLVUserInfo) string {
+	for _, id := range bartIDs(info) {
+		if msg := id.StatusText(); msg != "" {
+			return msg
+		}
+	}
+	return ""
+}
+
+// sessionStatusMsg returns the status message a session currently advertises.
+func sessionStatusMsg(instance *state.SessionInstance) string {
+	status, _ := instance.Session().Status()
+	return status.StatusText()
 }
 
 // handleBuddyDeparted handles when a buddy goes offline.
