@@ -18,10 +18,19 @@ func newMockMessageRelayer(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockMessageRelayer {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockMessageRelayer{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -54,7 +63,7 @@ type mockMessageRelayer_RelayToOtherInstances_Call struct {
 //   - ctx context.Context
 //   - instance *state.SessionInstance
 //   - msg wire.SNACMessage
-func (_e *mockMessageRelayer_Expecter) RelayToOtherInstances(ctx interface{}, instance interface{}, msg interface{}) *mockMessageRelayer_RelayToOtherInstances_Call {
+func (_e *mockMessageRelayer_Expecter) RelayToOtherInstances(ctx any, instance any, msg any) *mockMessageRelayer_RelayToOtherInstances_Call {
 	return &mockMessageRelayer_RelayToOtherInstances_Call{Call: _e.mock.On("RelayToOtherInstances", ctx, instance, msg)}
 }
 
@@ -106,7 +115,7 @@ type mockMessageRelayer_RelayToScreenName_Call struct {
 //   - ctx context.Context
 //   - screenName state.IdentScreenName
 //   - msg wire.SNACMessage
-func (_e *mockMessageRelayer_Expecter) RelayToScreenName(ctx interface{}, screenName interface{}, msg interface{}) *mockMessageRelayer_RelayToScreenName_Call {
+func (_e *mockMessageRelayer_Expecter) RelayToScreenName(ctx any, screenName any, msg any) *mockMessageRelayer_RelayToScreenName_Call {
 	return &mockMessageRelayer_RelayToScreenName_Call{Call: _e.mock.On("RelayToScreenName", ctx, screenName, msg)}
 }
 
@@ -158,7 +167,7 @@ type mockMessageRelayer_RelayToScreenNameActiveOnly_Call struct {
 //   - ctx context.Context
 //   - screenName state.IdentScreenName
 //   - msg wire.SNACMessage
-func (_e *mockMessageRelayer_Expecter) RelayToScreenNameActiveOnly(ctx interface{}, screenName interface{}, msg interface{}) *mockMessageRelayer_RelayToScreenNameActiveOnly_Call {
+func (_e *mockMessageRelayer_Expecter) RelayToScreenNameActiveOnly(ctx any, screenName any, msg any) *mockMessageRelayer_RelayToScreenNameActiveOnly_Call {
 	return &mockMessageRelayer_RelayToScreenNameActiveOnly_Call{Call: _e.mock.On("RelayToScreenNameActiveOnly", ctx, screenName, msg)}
 }
 
@@ -210,7 +219,7 @@ type mockMessageRelayer_RelayToScreenNames_Call struct {
 //   - ctx context.Context
 //   - screenNames []state.IdentScreenName
 //   - msg wire.SNACMessage
-func (_e *mockMessageRelayer_Expecter) RelayToScreenNames(ctx interface{}, screenNames interface{}, msg interface{}) *mockMessageRelayer_RelayToScreenNames_Call {
+func (_e *mockMessageRelayer_Expecter) RelayToScreenNames(ctx any, screenNames any, msg any) *mockMessageRelayer_RelayToScreenNames_Call {
 	return &mockMessageRelayer_RelayToScreenNames_Call{Call: _e.mock.On("RelayToScreenNames", ctx, screenNames, msg)}
 }
 
@@ -262,7 +271,7 @@ type mockMessageRelayer_RelayToSelf_Call struct {
 //   - ctx context.Context
 //   - instance *state.SessionInstance
 //   - msg wire.SNACMessage
-func (_e *mockMessageRelayer_Expecter) RelayToSelf(ctx interface{}, instance interface{}, msg interface{}) *mockMessageRelayer_RelayToSelf_Call {
+func (_e *mockMessageRelayer_Expecter) RelayToSelf(ctx any, instance any, msg any) *mockMessageRelayer_RelayToSelf_Call {
 	return &mockMessageRelayer_RelayToSelf_Call{Call: _e.mock.On("RelayToSelf", ctx, instance, msg)}
 }
 

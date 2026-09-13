@@ -17,10 +17,19 @@ func newMockChatSessionRegistry(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockChatSessionRegistry {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockChatSessionRegistry{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -41,11 +50,11 @@ func (_m *mockChatSessionRegistry) EXPECT() *mockChatSessionRegistry_Expecter {
 // AddSession provides a mock function for the type mockChatSessionRegistry
 func (_mock *mockChatSessionRegistry) AddSession(ctx context.Context, chatCookie string, screenName state.DisplayScreenName, cfg ...func(sess *state.Session)) (*state.SessionInstance, error) {
 	// func(sess *state.Session)
-	_va := make([]interface{}, len(cfg))
+	_va := make([]any, len(cfg))
 	for _i := range cfg {
 		_va[_i] = cfg[_i]
 	}
-	var _ca []interface{}
+	var _ca []any
 	_ca = append(_ca, ctx, chatCookie, screenName)
 	_ca = append(_ca, _va...)
 	ret := _mock.Called(_ca...)
@@ -84,9 +93,9 @@ type mockChatSessionRegistry_AddSession_Call struct {
 //   - chatCookie string
 //   - screenName state.DisplayScreenName
 //   - cfg ...func(sess *state.Session)
-func (_e *mockChatSessionRegistry_Expecter) AddSession(ctx interface{}, chatCookie interface{}, screenName interface{}, cfg ...interface{}) *mockChatSessionRegistry_AddSession_Call {
+func (_e *mockChatSessionRegistry_Expecter) AddSession(ctx any, chatCookie any, screenName any, cfg ...any) *mockChatSessionRegistry_AddSession_Call {
 	return &mockChatSessionRegistry_AddSession_Call{Call: _e.mock.On("AddSession",
-		append([]interface{}{ctx, chatCookie, screenName}, cfg...)...)}
+		append([]any{ctx, chatCookie, screenName}, cfg...)...)}
 }
 
 func (_c *mockChatSessionRegistry_AddSession_Call) Run(run func(ctx context.Context, chatCookie string, screenName state.DisplayScreenName, cfg ...func(sess *state.Session))) *mockChatSessionRegistry_AddSession_Call {
@@ -144,7 +153,7 @@ type mockChatSessionRegistry_RemoveSession_Call struct {
 
 // RemoveSession is a helper method to define mock.On call
 //   - sess *state.Session
-func (_e *mockChatSessionRegistry_Expecter) RemoveSession(sess interface{}) *mockChatSessionRegistry_RemoveSession_Call {
+func (_e *mockChatSessionRegistry_Expecter) RemoveSession(sess any) *mockChatSessionRegistry_RemoveSession_Call {
 	return &mockChatSessionRegistry_RemoveSession_Call{Call: _e.mock.On("RemoveSession", sess)}
 }
 

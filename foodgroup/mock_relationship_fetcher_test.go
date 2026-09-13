@@ -17,10 +17,19 @@ func newMockRelationshipFetcher(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockRelationshipFetcher {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockRelationshipFetcher{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -75,7 +84,7 @@ type mockRelationshipFetcher_AllRelationships_Call struct {
 //   - ctx context.Context
 //   - me state.IdentScreenName
 //   - filter []state.IdentScreenName
-func (_e *mockRelationshipFetcher_Expecter) AllRelationships(ctx interface{}, me interface{}, filter interface{}) *mockRelationshipFetcher_AllRelationships_Call {
+func (_e *mockRelationshipFetcher_Expecter) AllRelationships(ctx any, me any, filter any) *mockRelationshipFetcher_AllRelationships_Call {
 	return &mockRelationshipFetcher_AllRelationships_Call{Call: _e.mock.On("AllRelationships", ctx, me, filter)}
 }
 
@@ -147,7 +156,7 @@ type mockRelationshipFetcher_Relationship_Call struct {
 //   - ctx context.Context
 //   - me state.IdentScreenName
 //   - them state.IdentScreenName
-func (_e *mockRelationshipFetcher_Expecter) Relationship(ctx interface{}, me interface{}, them interface{}) *mockRelationshipFetcher_Relationship_Call {
+func (_e *mockRelationshipFetcher_Expecter) Relationship(ctx any, me any, them any) *mockRelationshipFetcher_Relationship_Call {
 	return &mockRelationshipFetcher_Relationship_Call{Call: _e.mock.On("Relationship", ctx, me, them)}
 }
 

@@ -17,10 +17,19 @@ func newMockChatRoomRetriever(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockChatRoomRetriever {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockChatRoomRetriever{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -74,7 +83,7 @@ type mockChatRoomRetriever_AllChatRooms_Call struct {
 // AllChatRooms is a helper method to define mock.On call
 //   - ctx context.Context
 //   - exchange uint16
-func (_e *mockChatRoomRetriever_Expecter) AllChatRooms(ctx interface{}, exchange interface{}) *mockChatRoomRetriever_AllChatRooms_Call {
+func (_e *mockChatRoomRetriever_Expecter) AllChatRooms(ctx any, exchange any) *mockChatRoomRetriever_AllChatRooms_Call {
 	return &mockChatRoomRetriever_AllChatRooms_Call{Call: _e.mock.On("AllChatRooms", ctx, exchange)}
 }
 

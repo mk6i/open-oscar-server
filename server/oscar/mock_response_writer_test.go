@@ -15,10 +15,19 @@ func newMockResponseWriter(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockResponseWriter {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockResponseWriter{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -61,7 +70,7 @@ type mockResponseWriter_SendSNAC_Call struct {
 // SendSNAC is a helper method to define mock.On call
 //   - frame wire.SNACFrame
 //   - body any
-func (_e *mockResponseWriter_Expecter) SendSNAC(frame interface{}, body interface{}) *mockResponseWriter_SendSNAC_Call {
+func (_e *mockResponseWriter_Expecter) SendSNAC(frame any, body any) *mockResponseWriter_SendSNAC_Call {
 	return &mockResponseWriter_SendSNAC_Call{Call: _e.mock.On("SendSNAC", frame, body)}
 }
 

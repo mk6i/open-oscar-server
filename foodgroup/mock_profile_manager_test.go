@@ -18,10 +18,19 @@ func newMockProfileManager(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockProfileManager {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockProfileManager{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -73,7 +82,7 @@ type mockProfileManager_FindByAIMEmail_Call struct {
 // FindByAIMEmail is a helper method to define mock.On call
 //   - ctx context.Context
 //   - email string
-func (_e *mockProfileManager_Expecter) FindByAIMEmail(ctx interface{}, email interface{}) *mockProfileManager_FindByAIMEmail_Call {
+func (_e *mockProfileManager_Expecter) FindByAIMEmail(ctx any, email any) *mockProfileManager_FindByAIMEmail_Call {
 	return &mockProfileManager_FindByAIMEmail_Call{Call: _e.mock.On("FindByAIMEmail", ctx, email)}
 }
 
@@ -141,7 +150,7 @@ type mockProfileManager_FindByAIMKeyword_Call struct {
 // FindByAIMKeyword is a helper method to define mock.On call
 //   - ctx context.Context
 //   - keyword string
-func (_e *mockProfileManager_Expecter) FindByAIMKeyword(ctx interface{}, keyword interface{}) *mockProfileManager_FindByAIMKeyword_Call {
+func (_e *mockProfileManager_Expecter) FindByAIMKeyword(ctx any, keyword any) *mockProfileManager_FindByAIMKeyword_Call {
 	return &mockProfileManager_FindByAIMKeyword_Call{Call: _e.mock.On("FindByAIMKeyword", ctx, keyword)}
 }
 
@@ -209,7 +218,7 @@ type mockProfileManager_FindByAIMNameAndAddr_Call struct {
 // FindByAIMNameAndAddr is a helper method to define mock.On call
 //   - ctx context.Context
 //   - info state.AIMNameAndAddr
-func (_e *mockProfileManager_Expecter) FindByAIMNameAndAddr(ctx interface{}, info interface{}) *mockProfileManager_FindByAIMNameAndAddr_Call {
+func (_e *mockProfileManager_Expecter) FindByAIMNameAndAddr(ctx any, info any) *mockProfileManager_FindByAIMNameAndAddr_Call {
 	return &mockProfileManager_FindByAIMNameAndAddr_Call{Call: _e.mock.On("FindByAIMNameAndAddr", ctx, info)}
 }
 
@@ -276,7 +285,7 @@ type mockProfileManager_InterestList_Call struct {
 
 // InterestList is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *mockProfileManager_Expecter) InterestList(ctx interface{}) *mockProfileManager_InterestList_Call {
+func (_e *mockProfileManager_Expecter) InterestList(ctx any) *mockProfileManager_InterestList_Call {
 	return &mockProfileManager_InterestList_Call{Call: _e.mock.On("InterestList", ctx)}
 }
 
@@ -337,7 +346,7 @@ type mockProfileManager_Profile_Call struct {
 // Profile is a helper method to define mock.On call
 //   - ctx context.Context
 //   - screenName state.IdentScreenName
-func (_e *mockProfileManager_Expecter) Profile(ctx interface{}, screenName interface{}) *mockProfileManager_Profile_Call {
+func (_e *mockProfileManager_Expecter) Profile(ctx any, screenName any) *mockProfileManager_Profile_Call {
 	return &mockProfileManager_Profile_Call{Call: _e.mock.On("Profile", ctx, screenName)}
 }
 
@@ -395,7 +404,7 @@ type mockProfileManager_SetDirectoryInfo_Call struct {
 //   - ctx context.Context
 //   - screenName state.IdentScreenName
 //   - info state.AIMNameAndAddr
-func (_e *mockProfileManager_Expecter) SetDirectoryInfo(ctx interface{}, screenName interface{}, info interface{}) *mockProfileManager_SetDirectoryInfo_Call {
+func (_e *mockProfileManager_Expecter) SetDirectoryInfo(ctx any, screenName any, info any) *mockProfileManager_SetDirectoryInfo_Call {
 	return &mockProfileManager_SetDirectoryInfo_Call{Call: _e.mock.On("SetDirectoryInfo", ctx, screenName, info)}
 }
 
@@ -458,7 +467,7 @@ type mockProfileManager_SetKeywords_Call struct {
 //   - ctx context.Context
 //   - screenName state.IdentScreenName
 //   - keywords [5]string
-func (_e *mockProfileManager_Expecter) SetKeywords(ctx interface{}, screenName interface{}, keywords interface{}) *mockProfileManager_SetKeywords_Call {
+func (_e *mockProfileManager_Expecter) SetKeywords(ctx any, screenName any, keywords any) *mockProfileManager_SetKeywords_Call {
 	return &mockProfileManager_SetKeywords_Call{Call: _e.mock.On("SetKeywords", ctx, screenName, keywords)}
 }
 
@@ -521,7 +530,7 @@ type mockProfileManager_SetProfile_Call struct {
 //   - ctx context.Context
 //   - screenName state.IdentScreenName
 //   - profile state.UserProfile
-func (_e *mockProfileManager_Expecter) SetProfile(ctx interface{}, screenName interface{}, profile interface{}) *mockProfileManager_SetProfile_Call {
+func (_e *mockProfileManager_Expecter) SetProfile(ctx any, screenName any, profile any) *mockProfileManager_SetProfile_Call {
 	return &mockProfileManager_SetProfile_Call{Call: _e.mock.On("SetProfile", ctx, screenName, profile)}
 }
 
@@ -594,7 +603,7 @@ type mockProfileManager_User_Call struct {
 // User is a helper method to define mock.On call
 //   - ctx context.Context
 //   - screenName state.IdentScreenName
-func (_e *mockProfileManager_Expecter) User(ctx interface{}, screenName interface{}) *mockProfileManager_User_Call {
+func (_e *mockProfileManager_Expecter) User(ctx any, screenName any) *mockProfileManager_User_Call {
 	return &mockProfileManager_User_Call{Call: _e.mock.On("User", ctx, screenName)}
 }
 

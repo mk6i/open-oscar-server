@@ -19,10 +19,19 @@ func newMockOServiceService(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockOServiceService {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockOServiceService{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -67,7 +76,7 @@ type mockOServiceService_ClientOnline_Call struct {
 //   - service uint16
 //   - inBody wire.SNAC_0x01_0x02_OServiceClientOnline
 //   - instance *state.SessionInstance
-func (_e *mockOServiceService_Expecter) ClientOnline(ctx interface{}, service interface{}, inBody interface{}, instance interface{}) *mockOServiceService_ClientOnline_Call {
+func (_e *mockOServiceService_Expecter) ClientOnline(ctx any, service any, inBody any, instance any) *mockOServiceService_ClientOnline_Call {
 	return &mockOServiceService_ClientOnline_Call{Call: _e.mock.On("ClientOnline", ctx, service, inBody, instance)}
 }
 
@@ -138,7 +147,7 @@ type mockOServiceService_ClientVersions_Call struct {
 //   - instance *state.SessionInstance
 //   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x01_0x17_OServiceClientVersions
-func (_e *mockOServiceService_Expecter) ClientVersions(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}) *mockOServiceService_ClientVersions_Call {
+func (_e *mockOServiceService_Expecter) ClientVersions(ctx any, instance any, inFrame any, inBody any) *mockOServiceService_ClientVersions_Call {
 	return &mockOServiceService_ClientVersions_Call{Call: _e.mock.On("ClientVersions", ctx, instance, inFrame, inBody)}
 }
 
@@ -204,7 +213,7 @@ type mockOServiceService_HostOnline_Call struct {
 
 // HostOnline is a helper method to define mock.On call
 //   - service uint16
-func (_e *mockOServiceService_Expecter) HostOnline(service interface{}) *mockOServiceService_HostOnline_Call {
+func (_e *mockOServiceService_Expecter) HostOnline(service any) *mockOServiceService_HostOnline_Call {
 	return &mockOServiceService_HostOnline_Call{Call: _e.mock.On("HostOnline", service)}
 }
 
@@ -257,7 +266,7 @@ type mockOServiceService_IdleNotification_Call struct {
 //   - ctx context.Context
 //   - instance *state.SessionInstance
 //   - inBody wire.SNAC_0x01_0x11_OServiceIdleNotification
-func (_e *mockOServiceService_Expecter) IdleNotification(ctx interface{}, instance interface{}, inBody interface{}) *mockOServiceService_IdleNotification_Call {
+func (_e *mockOServiceService_Expecter) IdleNotification(ctx any, instance any, inBody any) *mockOServiceService_IdleNotification_Call {
 	return &mockOServiceService_IdleNotification_Call{Call: _e.mock.On("IdleNotification", ctx, instance, inBody)}
 }
 
@@ -319,7 +328,7 @@ type mockOServiceService_ProbeReq_Call struct {
 // ProbeReq is a helper method to define mock.On call
 //   - ctx context.Context
 //   - inFrame wire.SNACFrame
-func (_e *mockOServiceService_Expecter) ProbeReq(ctx interface{}, inFrame interface{}) *mockOServiceService_ProbeReq_Call {
+func (_e *mockOServiceService_Expecter) ProbeReq(ctx any, inFrame any) *mockOServiceService_ProbeReq_Call {
 	return &mockOServiceService_ProbeReq_Call{Call: _e.mock.On("ProbeReq", ctx, inFrame)}
 }
 
@@ -377,7 +386,7 @@ type mockOServiceService_RateParamsQuery_Call struct {
 //   - ctx context.Context
 //   - instance *state.SessionInstance
 //   - inFrame wire.SNACFrame
-func (_e *mockOServiceService_Expecter) RateParamsQuery(ctx interface{}, instance interface{}, inFrame interface{}) *mockOServiceService_RateParamsQuery_Call {
+func (_e *mockOServiceService_Expecter) RateParamsQuery(ctx any, instance any, inFrame any) *mockOServiceService_RateParamsQuery_Call {
 	return &mockOServiceService_RateParamsQuery_Call{Call: _e.mock.On("RateParamsQuery", ctx, instance, inFrame)}
 }
 
@@ -429,7 +438,7 @@ type mockOServiceService_RateParamsSubAdd_Call struct {
 //   - ctx context.Context
 //   - instance *state.SessionInstance
 //   - inBody wire.SNAC_0x01_0x08_OServiceRateParamsSubAdd
-func (_e *mockOServiceService_Expecter) RateParamsSubAdd(ctx interface{}, instance interface{}, inBody interface{}) *mockOServiceService_RateParamsSubAdd_Call {
+func (_e *mockOServiceService_Expecter) RateParamsSubAdd(ctx any, instance any, inBody any) *mockOServiceService_RateParamsSubAdd_Call {
 	return &mockOServiceService_RateParamsSubAdd_Call{Call: _e.mock.On("RateParamsSubAdd", ctx, instance, inBody)}
 }
 
@@ -504,7 +513,7 @@ type mockOServiceService_ServiceRequest_Call struct {
 //   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x01_0x04_OServiceServiceRequest
 //   - listenerGroup config.ListenerGroup
-func (_e *mockOServiceService_Expecter) ServiceRequest(ctx interface{}, service interface{}, instance interface{}, inFrame interface{}, inBody interface{}, listenerGroup interface{}) *mockOServiceService_ServiceRequest_Call {
+func (_e *mockOServiceService_Expecter) ServiceRequest(ctx any, service any, instance any, inFrame any, inBody any, listenerGroup any) *mockOServiceService_ServiceRequest_Call {
 	return &mockOServiceService_ServiceRequest_Call{Call: _e.mock.On("ServiceRequest", ctx, service, instance, inFrame, inBody, listenerGroup)}
 }
 
@@ -570,7 +579,7 @@ type mockOServiceService_SetPrivacyFlags_Call struct {
 // SetPrivacyFlags is a helper method to define mock.On call
 //   - ctx context.Context
 //   - inBody wire.SNAC_0x01_0x14_OServiceSetPrivacyFlags
-func (_e *mockOServiceService_Expecter) SetPrivacyFlags(ctx interface{}, inBody interface{}) *mockOServiceService_SetPrivacyFlags_Call {
+func (_e *mockOServiceService_Expecter) SetPrivacyFlags(ctx any, inBody any) *mockOServiceService_SetPrivacyFlags_Call {
 	return &mockOServiceService_SetPrivacyFlags_Call{Call: _e.mock.On("SetPrivacyFlags", ctx, inBody)}
 }
 
@@ -603,29 +612,20 @@ func (_c *mockOServiceService_SetPrivacyFlags_Call) RunAndReturn(run func(ctx co
 }
 
 // SetUserInfoFields provides a mock function for the type mockOServiceService
-func (_mock *mockOServiceService) SetUserInfoFields(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields) (wire.SNACMessage, error) {
+func (_mock *mockOServiceService) SetUserInfoFields(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields) error {
 	ret := _mock.Called(ctx, instance, inFrame, inBody)
 
 	if len(ret) == 0 {
 		panic("no return value specified for SetUserInfoFields")
 	}
 
-	var r0 wire.SNACMessage
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields) (wire.SNACMessage, error)); ok {
-		return returnFunc(ctx, instance, inFrame, inBody)
-	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields) wire.SNACMessage); ok {
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields) error); ok {
 		r0 = returnFunc(ctx, instance, inFrame, inBody)
 	} else {
-		r0 = ret.Get(0).(wire.SNACMessage)
+		r0 = ret.Error(0)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields) error); ok {
-		r1 = returnFunc(ctx, instance, inFrame, inBody)
-	} else {
-		r1 = ret.Error(1)
-	}
-	return r0, r1
+	return r0
 }
 
 // mockOServiceService_SetUserInfoFields_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetUserInfoFields'
@@ -638,7 +638,7 @@ type mockOServiceService_SetUserInfoFields_Call struct {
 //   - instance *state.SessionInstance
 //   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields
-func (_e *mockOServiceService_Expecter) SetUserInfoFields(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}) *mockOServiceService_SetUserInfoFields_Call {
+func (_e *mockOServiceService_Expecter) SetUserInfoFields(ctx any, instance any, inFrame any, inBody any) *mockOServiceService_SetUserInfoFields_Call {
 	return &mockOServiceService_SetUserInfoFields_Call{Call: _e.mock.On("SetUserInfoFields", ctx, instance, inFrame, inBody)}
 }
 
@@ -670,12 +670,12 @@ func (_c *mockOServiceService_SetUserInfoFields_Call) Run(run func(ctx context.C
 	return _c
 }
 
-func (_c *mockOServiceService_SetUserInfoFields_Call) Return(sNACMessage wire.SNACMessage, err error) *mockOServiceService_SetUserInfoFields_Call {
-	_c.Call.Return(sNACMessage, err)
+func (_c *mockOServiceService_SetUserInfoFields_Call) Return(err error) *mockOServiceService_SetUserInfoFields_Call {
+	_c.Call.Return(err)
 	return _c
 }
 
-func (_c *mockOServiceService_SetUserInfoFields_Call) RunAndReturn(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields) (wire.SNACMessage, error)) *mockOServiceService_SetUserInfoFields_Call {
+func (_c *mockOServiceService_SetUserInfoFields_Call) RunAndReturn(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields) error) *mockOServiceService_SetUserInfoFields_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -706,7 +706,7 @@ type mockOServiceService_UserInfoQuery_Call struct {
 //   - ctx context.Context
 //   - instance *state.SessionInstance
 //   - inFrame wire.SNACFrame
-func (_e *mockOServiceService_Expecter) UserInfoQuery(ctx interface{}, instance interface{}, inFrame interface{}) *mockOServiceService_UserInfoQuery_Call {
+func (_e *mockOServiceService_Expecter) UserInfoQuery(ctx any, instance any, inFrame any) *mockOServiceService_UserInfoQuery_Call {
 	return &mockOServiceService_UserInfoQuery_Call{Call: _e.mock.On("UserInfoQuery", ctx, instance, inFrame)}
 }
 

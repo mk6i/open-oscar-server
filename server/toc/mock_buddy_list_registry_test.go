@@ -17,10 +17,19 @@ func newMockBuddyListRegistry(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockBuddyListRegistry {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockBuddyListRegistry{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -63,7 +72,7 @@ type mockBuddyListRegistry_RegisterBuddyList_Call struct {
 // RegisterBuddyList is a helper method to define mock.On call
 //   - ctx context.Context
 //   - user state.IdentScreenName
-func (_e *mockBuddyListRegistry_Expecter) RegisterBuddyList(ctx interface{}, user interface{}) *mockBuddyListRegistry_RegisterBuddyList_Call {
+func (_e *mockBuddyListRegistry_Expecter) RegisterBuddyList(ctx any, user any) *mockBuddyListRegistry_RegisterBuddyList_Call {
 	return &mockBuddyListRegistry_RegisterBuddyList_Call{Call: _e.mock.On("RegisterBuddyList", ctx, user)}
 }
 
@@ -120,7 +129,7 @@ type mockBuddyListRegistry_UnregisterBuddyList_Call struct {
 // UnregisterBuddyList is a helper method to define mock.On call
 //   - ctx context.Context
 //   - user state.IdentScreenName
-func (_e *mockBuddyListRegistry_Expecter) UnregisterBuddyList(ctx interface{}, user interface{}) *mockBuddyListRegistry_UnregisterBuddyList_Call {
+func (_e *mockBuddyListRegistry_Expecter) UnregisterBuddyList(ctx any, user any) *mockBuddyListRegistry_UnregisterBuddyList_Call {
 	return &mockBuddyListRegistry_UnregisterBuddyList_Call{Call: _e.mock.On("UnregisterBuddyList", ctx, user)}
 }
 

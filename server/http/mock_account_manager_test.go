@@ -18,10 +18,19 @@ func newMockAccountManager(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockAccountManager {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockAccountManager{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -73,7 +82,7 @@ type mockAccountManager_ConfirmStatus_Call struct {
 // ConfirmStatus is a helper method to define mock.On call
 //   - ctx context.Context
 //   - screenName state.IdentScreenName
-func (_e *mockAccountManager_Expecter) ConfirmStatus(ctx interface{}, screenName interface{}) *mockAccountManager_ConfirmStatus_Call {
+func (_e *mockAccountManager_Expecter) ConfirmStatus(ctx any, screenName any) *mockAccountManager_ConfirmStatus_Call {
 	return &mockAccountManager_ConfirmStatus_Call{Call: _e.mock.On("ConfirmStatus", ctx, screenName)}
 }
 
@@ -141,7 +150,7 @@ type mockAccountManager_EmailAddress_Call struct {
 // EmailAddress is a helper method to define mock.On call
 //   - ctx context.Context
 //   - screenName state.IdentScreenName
-func (_e *mockAccountManager_Expecter) EmailAddress(ctx interface{}, screenName interface{}) *mockAccountManager_EmailAddress_Call {
+func (_e *mockAccountManager_Expecter) EmailAddress(ctx any, screenName any) *mockAccountManager_EmailAddress_Call {
 	return &mockAccountManager_EmailAddress_Call{Call: _e.mock.On("EmailAddress", ctx, screenName)}
 }
 
@@ -207,7 +216,7 @@ type mockAccountManager_RegStatus_Call struct {
 // RegStatus is a helper method to define mock.On call
 //   - ctx context.Context
 //   - screenName state.IdentScreenName
-func (_e *mockAccountManager_Expecter) RegStatus(ctx interface{}, screenName interface{}) *mockAccountManager_RegStatus_Call {
+func (_e *mockAccountManager_Expecter) RegStatus(ctx any, screenName any) *mockAccountManager_RegStatus_Call {
 	return &mockAccountManager_RegStatus_Call{Call: _e.mock.On("RegStatus", ctx, screenName)}
 }
 
@@ -265,7 +274,7 @@ type mockAccountManager_SetBotStatus_Call struct {
 //   - ctx context.Context
 //   - isBot bool
 //   - screenName state.IdentScreenName
-func (_e *mockAccountManager_Expecter) SetBotStatus(ctx interface{}, isBot interface{}, screenName interface{}) *mockAccountManager_SetBotStatus_Call {
+func (_e *mockAccountManager_Expecter) SetBotStatus(ctx any, isBot any, screenName any) *mockAccountManager_SetBotStatus_Call {
 	return &mockAccountManager_SetBotStatus_Call{Call: _e.mock.On("SetBotStatus", ctx, isBot, screenName)}
 }
 
@@ -328,7 +337,7 @@ type mockAccountManager_UpdateSuspendedStatus_Call struct {
 //   - ctx context.Context
 //   - suspendedStatus uint16
 //   - screenName state.IdentScreenName
-func (_e *mockAccountManager_Expecter) UpdateSuspendedStatus(ctx interface{}, suspendedStatus interface{}, screenName interface{}) *mockAccountManager_UpdateSuspendedStatus_Call {
+func (_e *mockAccountManager_Expecter) UpdateSuspendedStatus(ctx any, suspendedStatus any, screenName any) *mockAccountManager_UpdateSuspendedStatus_Call {
 	return &mockAccountManager_UpdateSuspendedStatus_Call{Call: _e.mock.On("UpdateSuspendedStatus", ctx, suspendedStatus, screenName)}
 }
 

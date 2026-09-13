@@ -18,10 +18,19 @@ func newMockDepartureNotifier(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockDepartureNotifier {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockDepartureNotifier{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -65,7 +74,7 @@ type mockDepartureNotifier_BroadcastBuddyArrived_Call struct {
 //   - ctx context.Context
 //   - screenName state.IdentScreenName
 //   - userInfo wire.TLVUserInfo
-func (_e *mockDepartureNotifier_Expecter) BroadcastBuddyArrived(ctx interface{}, screenName interface{}, userInfo interface{}) *mockDepartureNotifier_BroadcastBuddyArrived_Call {
+func (_e *mockDepartureNotifier_Expecter) BroadcastBuddyArrived(ctx any, screenName any, userInfo any) *mockDepartureNotifier_BroadcastBuddyArrived_Call {
 	return &mockDepartureNotifier_BroadcastBuddyArrived_Call{Call: _e.mock.On("BroadcastBuddyArrived", ctx, screenName, userInfo)}
 }
 
@@ -127,7 +136,7 @@ type mockDepartureNotifier_BroadcastBuddyDeparted_Call struct {
 // BroadcastBuddyDeparted is a helper method to define mock.On call
 //   - ctx context.Context
 //   - screenName state.IdentScreenName
-func (_e *mockDepartureNotifier_Expecter) BroadcastBuddyDeparted(ctx interface{}, screenName interface{}) *mockDepartureNotifier_BroadcastBuddyDeparted_Call {
+func (_e *mockDepartureNotifier_Expecter) BroadcastBuddyDeparted(ctx any, screenName any) *mockDepartureNotifier_BroadcastBuddyDeparted_Call {
 	return &mockDepartureNotifier_BroadcastBuddyDeparted_Call{Call: _e.mock.On("BroadcastBuddyDeparted", ctx, screenName)}
 }
 

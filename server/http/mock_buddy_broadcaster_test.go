@@ -17,10 +17,19 @@ func newMockBuddyBroadcaster(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockBuddyBroadcaster {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockBuddyBroadcaster{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -65,7 +74,7 @@ type mockBuddyBroadcaster_BroadcastVisibility_Call struct {
 //   - you *state.SessionInstance
 //   - filter []state.IdentScreenName
 //   - sendDepartures bool
-func (_e *mockBuddyBroadcaster_Expecter) BroadcastVisibility(ctx interface{}, you interface{}, filter interface{}, sendDepartures interface{}) *mockBuddyBroadcaster_BroadcastVisibility_Call {
+func (_e *mockBuddyBroadcaster_Expecter) BroadcastVisibility(ctx any, you any, filter any, sendDepartures any) *mockBuddyBroadcaster_BroadcastVisibility_Call {
 	return &mockBuddyBroadcaster_BroadcastVisibility_Call{Call: _e.mock.On("BroadcastVisibility", ctx, you, filter, sendDepartures)}
 }
 

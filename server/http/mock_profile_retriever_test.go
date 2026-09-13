@@ -17,10 +17,19 @@ func newMockProfileRetriever(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockProfileRetriever {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockProfileRetriever{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -72,7 +81,7 @@ type mockProfileRetriever_Profile_Call struct {
 // Profile is a helper method to define mock.On call
 //   - ctx context.Context
 //   - screenName state.IdentScreenName
-func (_e *mockProfileRetriever_Expecter) Profile(ctx interface{}, screenName interface{}) *mockProfileRetriever_Profile_Call {
+func (_e *mockProfileRetriever_Expecter) Profile(ctx any, screenName any) *mockProfileRetriever_Profile_Call {
 	return &mockProfileRetriever_Profile_Call{Call: _e.mock.On("Profile", ctx, screenName)}
 }
 

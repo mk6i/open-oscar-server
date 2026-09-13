@@ -18,10 +18,19 @@ func newMockBuddyService(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockBuddyService {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockBuddyService{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -77,7 +86,7 @@ type mockBuddyService_AddTempBuddies_Call struct {
 //   - instance *state.SessionInstance
 //   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x03_0x0F_BuddyAddTempBuddies
-func (_e *mockBuddyService_Expecter) AddTempBuddies(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}) *mockBuddyService_AddTempBuddies_Call {
+func (_e *mockBuddyService_Expecter) AddTempBuddies(ctx any, instance any, inFrame any, inBody any) *mockBuddyService_AddTempBuddies_Call {
 	return &mockBuddyService_AddTempBuddies_Call{Call: _e.mock.On("AddTempBuddies", ctx, instance, inFrame, inBody)}
 }
 
@@ -145,7 +154,7 @@ type mockBuddyService_DelTempBuddies_Call struct {
 //   - ctx context.Context
 //   - instance *state.SessionInstance
 //   - inBody wire.SNAC_0x03_0x10_BuddyDelTempBuddies
-func (_e *mockBuddyService_Expecter) DelTempBuddies(ctx interface{}, instance interface{}, inBody interface{}) *mockBuddyService_DelTempBuddies_Call {
+func (_e *mockBuddyService_Expecter) DelTempBuddies(ctx any, instance any, inBody any) *mockBuddyService_DelTempBuddies_Call {
 	return &mockBuddyService_DelTempBuddies_Call{Call: _e.mock.On("DelTempBuddies", ctx, instance, inBody)}
 }
 

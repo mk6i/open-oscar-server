@@ -21,10 +21,19 @@ func newMockAuthService(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockAuthService {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockAuthService{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -77,7 +86,7 @@ type mockAuthService_BUCPChallenge_Call struct {
 //   - ctx context.Context
 //   - inBody wire.SNAC_0x17_0x06_BUCPChallengeRequest
 //   - newUUID func() uuid.UUID
-func (_e *mockAuthService_Expecter) BUCPChallenge(ctx interface{}, inBody interface{}, newUUID interface{}) *mockAuthService_BUCPChallenge_Call {
+func (_e *mockAuthService_Expecter) BUCPChallenge(ctx any, inBody any, newUUID any) *mockAuthService_BUCPChallenge_Call {
 	return &mockAuthService_BUCPChallenge_Call{Call: _e.mock.On("BUCPChallenge", ctx, inBody, newUUID)}
 }
 
@@ -149,7 +158,7 @@ type mockAuthService_BUCPLogin_Call struct {
 //   - ctx context.Context
 //   - inBody wire.SNAC_0x17_0x02_BUCPLoginRequest
 //   - endpointCfg config.Endpoint
-func (_e *mockAuthService_Expecter) BUCPLogin(ctx interface{}, inBody interface{}, endpointCfg interface{}) *mockAuthService_BUCPLogin_Call {
+func (_e *mockAuthService_Expecter) BUCPLogin(ctx any, inBody any, endpointCfg any) *mockAuthService_BUCPLogin_Call {
 	return &mockAuthService_BUCPLogin_Call{Call: _e.mock.On("BUCPLogin", ctx, inBody, endpointCfg)}
 }
 
@@ -225,7 +234,7 @@ type mockAuthService_CrackCookie_Call struct {
 
 // CrackCookie is a helper method to define mock.On call
 //   - authCookie []byte
-func (_e *mockAuthService_Expecter) CrackCookie(authCookie interface{}) *mockAuthService_CrackCookie_Call {
+func (_e *mockAuthService_Expecter) CrackCookie(authCookie any) *mockAuthService_CrackCookie_Call {
 	return &mockAuthService_CrackCookie_Call{Call: _e.mock.On("CrackCookie", authCookie)}
 }
 
@@ -287,7 +296,7 @@ type mockAuthService_FLAPLogin_Call struct {
 //   - ctx context.Context
 //   - inFrame wire.FLAPSignonFrame
 //   - endpointCfg config.Endpoint
-func (_e *mockAuthService_Expecter) FLAPLogin(ctx interface{}, inFrame interface{}, endpointCfg interface{}) *mockAuthService_FLAPLogin_Call {
+func (_e *mockAuthService_Expecter) FLAPLogin(ctx any, inFrame any, endpointCfg any) *mockAuthService_FLAPLogin_Call {
 	return &mockAuthService_FLAPLogin_Call{Call: _e.mock.On("FLAPLogin", ctx, inFrame, endpointCfg)}
 }
 
@@ -359,7 +368,7 @@ type mockAuthService_KerberosLogin_Call struct {
 //   - ctx context.Context
 //   - inBody wire.SNAC_0x050C_0x0002_KerberosLoginRequest
 //   - endpointCfg config.Endpoint
-func (_e *mockAuthService_Expecter) KerberosLogin(ctx interface{}, inBody interface{}, endpointCfg interface{}) *mockAuthService_KerberosLogin_Call {
+func (_e *mockAuthService_Expecter) KerberosLogin(ctx any, inBody any, endpointCfg any) *mockAuthService_KerberosLogin_Call {
 	return &mockAuthService_KerberosLogin_Call{Call: _e.mock.On("KerberosLogin", ctx, inBody, endpointCfg)}
 }
 
@@ -433,7 +442,7 @@ type mockAuthService_RegisterBOSSession_Call struct {
 //   - ctx context.Context
 //   - authCookie state.ServerCookie
 //   - sessCfg func(sess *state.Session)
-func (_e *mockAuthService_Expecter) RegisterBOSSession(ctx interface{}, authCookie interface{}, sessCfg interface{}) *mockAuthService_RegisterBOSSession_Call {
+func (_e *mockAuthService_Expecter) RegisterBOSSession(ctx any, authCookie any, sessCfg any) *mockAuthService_RegisterBOSSession_Call {
 	return &mockAuthService_RegisterBOSSession_Call{Call: _e.mock.On("RegisterBOSSession", ctx, authCookie, sessCfg)}
 }
 
@@ -507,7 +516,7 @@ type mockAuthService_RegisterChatSession_Call struct {
 //   - ctx context.Context
 //   - authCookie state.ServerCookie
 //   - sessCfg func(sess *state.Session)
-func (_e *mockAuthService_Expecter) RegisterChatSession(ctx interface{}, authCookie interface{}, sessCfg interface{}) *mockAuthService_RegisterChatSession_Call {
+func (_e *mockAuthService_Expecter) RegisterChatSession(ctx any, authCookie any, sessCfg any) *mockAuthService_RegisterChatSession_Call {
 	return &mockAuthService_RegisterChatSession_Call{Call: _e.mock.On("RegisterChatSession", ctx, authCookie, sessCfg)}
 }
 
@@ -580,7 +589,7 @@ type mockAuthService_RetrieveBOSSession_Call struct {
 // RetrieveBOSSession is a helper method to define mock.On call
 //   - ctx context.Context
 //   - authCookie state.ServerCookie
-func (_e *mockAuthService_Expecter) RetrieveBOSSession(ctx interface{}, authCookie interface{}) *mockAuthService_RetrieveBOSSession_Call {
+func (_e *mockAuthService_Expecter) RetrieveBOSSession(ctx any, authCookie any) *mockAuthService_RetrieveBOSSession_Call {
 	return &mockAuthService_RetrieveBOSSession_Call{Call: _e.mock.On("RetrieveBOSSession", ctx, authCookie)}
 }
 
@@ -626,7 +635,7 @@ type mockAuthService_Signout_Call struct {
 // Signout is a helper method to define mock.On call
 //   - ctx context.Context
 //   - session *state.Session
-func (_e *mockAuthService_Expecter) Signout(ctx interface{}, session interface{}) *mockAuthService_Signout_Call {
+func (_e *mockAuthService_Expecter) Signout(ctx any, session any) *mockAuthService_Signout_Call {
 	return &mockAuthService_Signout_Call{Call: _e.mock.On("Signout", ctx, session)}
 }
 
@@ -672,7 +681,7 @@ type mockAuthService_SignoutChat_Call struct {
 // SignoutChat is a helper method to define mock.On call
 //   - ctx context.Context
 //   - instance *state.Session
-func (_e *mockAuthService_Expecter) SignoutChat(ctx interface{}, instance interface{}) *mockAuthService_SignoutChat_Call {
+func (_e *mockAuthService_Expecter) SignoutChat(ctx any, instance any) *mockAuthService_SignoutChat_Call {
 	return &mockAuthService_SignoutChat_Call{Call: _e.mock.On("SignoutChat", ctx, instance)}
 }
 

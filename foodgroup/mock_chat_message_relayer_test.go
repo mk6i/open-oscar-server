@@ -18,10 +18,19 @@ func newMockChatMessageRelayer(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockChatMessageRelayer {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockChatMessageRelayer{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -65,7 +74,7 @@ type mockChatMessageRelayer_AllSessions_Call struct {
 
 // AllSessions is a helper method to define mock.On call
 //   - chatCookie string
-func (_e *mockChatMessageRelayer_Expecter) AllSessions(chatCookie interface{}) *mockChatMessageRelayer_AllSessions_Call {
+func (_e *mockChatMessageRelayer_Expecter) AllSessions(chatCookie any) *mockChatMessageRelayer_AllSessions_Call {
 	return &mockChatMessageRelayer_AllSessions_Call{Call: _e.mock.On("AllSessions", chatCookie)}
 }
 
@@ -108,7 +117,7 @@ type mockChatMessageRelayer_RelayToAllExcept_Call struct {
 //   - chatCookie string
 //   - except state.IdentScreenName
 //   - msg wire.SNACMessage
-func (_e *mockChatMessageRelayer_Expecter) RelayToAllExcept(ctx interface{}, chatCookie interface{}, except interface{}, msg interface{}) *mockChatMessageRelayer_RelayToAllExcept_Call {
+func (_e *mockChatMessageRelayer_Expecter) RelayToAllExcept(ctx any, chatCookie any, except any, msg any) *mockChatMessageRelayer_RelayToAllExcept_Call {
 	return &mockChatMessageRelayer_RelayToAllExcept_Call{Call: _e.mock.On("RelayToAllExcept", ctx, chatCookie, except, msg)}
 }
 
@@ -166,7 +175,7 @@ type mockChatMessageRelayer_RelayToScreenName_Call struct {
 //   - chatCookie string
 //   - recipient state.IdentScreenName
 //   - msg wire.SNACMessage
-func (_e *mockChatMessageRelayer_Expecter) RelayToScreenName(ctx interface{}, chatCookie interface{}, recipient interface{}, msg interface{}) *mockChatMessageRelayer_RelayToScreenName_Call {
+func (_e *mockChatMessageRelayer_Expecter) RelayToScreenName(ctx any, chatCookie any, recipient any, msg any) *mockChatMessageRelayer_RelayToScreenName_Call {
 	return &mockChatMessageRelayer_RelayToScreenName_Call{Call: _e.mock.On("RelayToScreenName", ctx, chatCookie, recipient, msg)}
 }
 

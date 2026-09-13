@@ -18,10 +18,19 @@ func newMockClientSideBuddyListManager(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockClientSideBuddyListManager {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockClientSideBuddyListManager{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -65,7 +74,7 @@ type mockClientSideBuddyListManager_AddBuddy_Call struct {
 //   - ctx context.Context
 //   - me state.IdentScreenName
 //   - them state.IdentScreenName
-func (_e *mockClientSideBuddyListManager_Expecter) AddBuddy(ctx interface{}, me interface{}, them interface{}) *mockClientSideBuddyListManager_AddBuddy_Call {
+func (_e *mockClientSideBuddyListManager_Expecter) AddBuddy(ctx any, me any, them any) *mockClientSideBuddyListManager_AddBuddy_Call {
 	return &mockClientSideBuddyListManager_AddBuddy_Call{Call: _e.mock.On("AddBuddy", ctx, me, them)}
 }
 
@@ -128,7 +137,7 @@ type mockClientSideBuddyListManager_DenyBuddy_Call struct {
 //   - ctx context.Context
 //   - me state.IdentScreenName
 //   - them state.IdentScreenName
-func (_e *mockClientSideBuddyListManager_Expecter) DenyBuddy(ctx interface{}, me interface{}, them interface{}) *mockClientSideBuddyListManager_DenyBuddy_Call {
+func (_e *mockClientSideBuddyListManager_Expecter) DenyBuddy(ctx any, me any, them any) *mockClientSideBuddyListManager_DenyBuddy_Call {
 	return &mockClientSideBuddyListManager_DenyBuddy_Call{Call: _e.mock.On("DenyBuddy", ctx, me, them)}
 }
 
@@ -191,7 +200,7 @@ type mockClientSideBuddyListManager_PermitBuddy_Call struct {
 //   - ctx context.Context
 //   - me state.IdentScreenName
 //   - them state.IdentScreenName
-func (_e *mockClientSideBuddyListManager_Expecter) PermitBuddy(ctx interface{}, me interface{}, them interface{}) *mockClientSideBuddyListManager_PermitBuddy_Call {
+func (_e *mockClientSideBuddyListManager_Expecter) PermitBuddy(ctx any, me any, them any) *mockClientSideBuddyListManager_PermitBuddy_Call {
 	return &mockClientSideBuddyListManager_PermitBuddy_Call{Call: _e.mock.On("PermitBuddy", ctx, me, them)}
 }
 
@@ -254,7 +263,7 @@ type mockClientSideBuddyListManager_RemoveBuddy_Call struct {
 //   - ctx context.Context
 //   - me state.IdentScreenName
 //   - them state.IdentScreenName
-func (_e *mockClientSideBuddyListManager_Expecter) RemoveBuddy(ctx interface{}, me interface{}, them interface{}) *mockClientSideBuddyListManager_RemoveBuddy_Call {
+func (_e *mockClientSideBuddyListManager_Expecter) RemoveBuddy(ctx any, me any, them any) *mockClientSideBuddyListManager_RemoveBuddy_Call {
 	return &mockClientSideBuddyListManager_RemoveBuddy_Call{Call: _e.mock.On("RemoveBuddy", ctx, me, them)}
 }
 
@@ -317,7 +326,7 @@ type mockClientSideBuddyListManager_RemoveDenyBuddy_Call struct {
 //   - ctx context.Context
 //   - me state.IdentScreenName
 //   - them state.IdentScreenName
-func (_e *mockClientSideBuddyListManager_Expecter) RemoveDenyBuddy(ctx interface{}, me interface{}, them interface{}) *mockClientSideBuddyListManager_RemoveDenyBuddy_Call {
+func (_e *mockClientSideBuddyListManager_Expecter) RemoveDenyBuddy(ctx any, me any, them any) *mockClientSideBuddyListManager_RemoveDenyBuddy_Call {
 	return &mockClientSideBuddyListManager_RemoveDenyBuddy_Call{Call: _e.mock.On("RemoveDenyBuddy", ctx, me, them)}
 }
 
@@ -380,7 +389,7 @@ type mockClientSideBuddyListManager_RemovePermitBuddy_Call struct {
 //   - ctx context.Context
 //   - me state.IdentScreenName
 //   - them state.IdentScreenName
-func (_e *mockClientSideBuddyListManager_Expecter) RemovePermitBuddy(ctx interface{}, me interface{}, them interface{}) *mockClientSideBuddyListManager_RemovePermitBuddy_Call {
+func (_e *mockClientSideBuddyListManager_Expecter) RemovePermitBuddy(ctx any, me any, them any) *mockClientSideBuddyListManager_RemovePermitBuddy_Call {
 	return &mockClientSideBuddyListManager_RemovePermitBuddy_Call{Call: _e.mock.On("RemovePermitBuddy", ctx, me, them)}
 }
 
@@ -443,7 +452,7 @@ type mockClientSideBuddyListManager_SetPDMode_Call struct {
 //   - ctx context.Context
 //   - me state.IdentScreenName
 //   - pdMode wire.FeedbagPDMode
-func (_e *mockClientSideBuddyListManager_Expecter) SetPDMode(ctx interface{}, me interface{}, pdMode interface{}) *mockClientSideBuddyListManager_SetPDMode_Call {
+func (_e *mockClientSideBuddyListManager_Expecter) SetPDMode(ctx any, me any, pdMode any) *mockClientSideBuddyListManager_SetPDMode_Call {
 	return &mockClientSideBuddyListManager_SetPDMode_Call{Call: _e.mock.On("SetPDMode", ctx, me, pdMode)}
 }
 

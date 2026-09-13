@@ -18,10 +18,19 @@ func newMockLocateService(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockLocateService {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockLocateService{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -74,7 +83,7 @@ type mockLocateService_DirInfo_Call struct {
 //   - ctx context.Context
 //   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x02_0x0B_LocateGetDirInfo
-func (_e *mockLocateService_Expecter) DirInfo(ctx interface{}, inFrame interface{}, inBody interface{}) *mockLocateService_DirInfo_Call {
+func (_e *mockLocateService_Expecter) DirInfo(ctx any, inFrame any, inBody any) *mockLocateService_DirInfo_Call {
 	return &mockLocateService_DirInfo_Call{Call: _e.mock.On("DirInfo", ctx, inFrame, inBody)}
 }
 
@@ -147,7 +156,7 @@ type mockLocateService_SetDirInfo_Call struct {
 //   - instance *state.SessionInstance
 //   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x02_0x09_LocateSetDirInfo
-func (_e *mockLocateService_Expecter) SetDirInfo(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}) *mockLocateService_SetDirInfo_Call {
+func (_e *mockLocateService_Expecter) SetDirInfo(ctx any, instance any, inFrame any, inBody any) *mockLocateService_SetDirInfo_Call {
 	return &mockLocateService_SetDirInfo_Call{Call: _e.mock.On("SetDirInfo", ctx, instance, inFrame, inBody)}
 }
 
@@ -215,7 +224,7 @@ type mockLocateService_SetInfo_Call struct {
 //   - ctx context.Context
 //   - instance *state.SessionInstance
 //   - inBody wire.SNAC_0x02_0x04_LocateSetInfo
-func (_e *mockLocateService_Expecter) SetInfo(ctx interface{}, instance interface{}, inBody interface{}) *mockLocateService_SetInfo_Call {
+func (_e *mockLocateService_Expecter) SetInfo(ctx any, instance any, inBody any) *mockLocateService_SetInfo_Call {
 	return &mockLocateService_SetInfo_Call{Call: _e.mock.On("SetInfo", ctx, instance, inBody)}
 }
 
@@ -288,7 +297,7 @@ type mockLocateService_UserInfoQuery_Call struct {
 //   - instance *state.SessionInstance
 //   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x02_0x05_LocateUserInfoQuery
-func (_e *mockLocateService_Expecter) UserInfoQuery(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}) *mockLocateService_UserInfoQuery_Call {
+func (_e *mockLocateService_Expecter) UserInfoQuery(ctx any, instance any, inFrame any, inBody any) *mockLocateService_UserInfoQuery_Call {
 	return &mockLocateService_UserInfoQuery_Call{Call: _e.mock.On("UserInfoQuery", ctx, instance, inFrame, inBody)}
 }
 

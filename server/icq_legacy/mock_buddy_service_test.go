@@ -18,10 +18,19 @@ func newMockBuddyService(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockBuddyService {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockBuddyService{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -77,7 +86,7 @@ type mockBuddyService_AddBuddies_Call struct {
 //   - instance *state.SessionInstance
 //   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x03_0x04_BuddyAddBuddies
-func (_e *mockBuddyService_Expecter) AddBuddies(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}) *mockBuddyService_AddBuddies_Call {
+func (_e *mockBuddyService_Expecter) AddBuddies(ctx any, instance any, inFrame any, inBody any) *mockBuddyService_AddBuddies_Call {
 	return &mockBuddyService_AddBuddies_Call{Call: _e.mock.On("AddBuddies", ctx, instance, inFrame, inBody)}
 }
 

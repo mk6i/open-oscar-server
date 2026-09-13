@@ -18,10 +18,19 @@ func newMockMessageRelayer(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockMessageRelayer {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockMessageRelayer{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -54,7 +63,7 @@ type mockMessageRelayer_RelayToScreenName_Call struct {
 //   - ctx context.Context
 //   - screenName state.IdentScreenName
 //   - msg wire.SNACMessage
-func (_e *mockMessageRelayer_Expecter) RelayToScreenName(ctx interface{}, screenName interface{}, msg interface{}) *mockMessageRelayer_RelayToScreenName_Call {
+func (_e *mockMessageRelayer_Expecter) RelayToScreenName(ctx any, screenName any, msg any) *mockMessageRelayer_RelayToScreenName_Call {
 	return &mockMessageRelayer_RelayToScreenName_Call{Call: _e.mock.On("RelayToScreenName", ctx, screenName, msg)}
 }
 

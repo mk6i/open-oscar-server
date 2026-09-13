@@ -17,10 +17,19 @@ func newMockRateLimitUpdater(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockRateLimitUpdater {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockRateLimitUpdater{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -52,7 +61,7 @@ type mockRateLimitUpdater_MonitorRateLimits_Call struct {
 // MonitorRateLimits is a helper method to define mock.On call
 //   - ctx context.Context
 //   - session *state.Session
-func (_e *mockRateLimitUpdater_Expecter) MonitorRateLimits(ctx interface{}, session interface{}) *mockRateLimitUpdater_MonitorRateLimits_Call {
+func (_e *mockRateLimitUpdater_Expecter) MonitorRateLimits(ctx any, session any) *mockRateLimitUpdater_MonitorRateLimits_Call {
 	return &mockRateLimitUpdater_MonitorRateLimits_Call{Call: _e.mock.On("MonitorRateLimits", ctx, session)}
 }
 

@@ -17,10 +17,19 @@ func newMockUserManager(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockUserManager {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockUserManager{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -73,7 +82,7 @@ type mockUserManager_AllUsers_Call struct {
 
 // AllUsers is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *mockUserManager_Expecter) AllUsers(ctx interface{}) *mockUserManager_AllUsers_Call {
+func (_e *mockUserManager_Expecter) AllUsers(ctx any) *mockUserManager_AllUsers_Call {
 	return &mockUserManager_AllUsers_Call{Call: _e.mock.On("AllUsers", ctx)}
 }
 
@@ -125,7 +134,7 @@ type mockUserManager_DeleteUser_Call struct {
 // DeleteUser is a helper method to define mock.On call
 //   - ctx context.Context
 //   - screenName state.IdentScreenName
-func (_e *mockUserManager_Expecter) DeleteUser(ctx interface{}, screenName interface{}) *mockUserManager_DeleteUser_Call {
+func (_e *mockUserManager_Expecter) DeleteUser(ctx any, screenName any) *mockUserManager_DeleteUser_Call {
 	return &mockUserManager_DeleteUser_Call{Call: _e.mock.On("DeleteUser", ctx, screenName)}
 }
 
@@ -182,7 +191,7 @@ type mockUserManager_InsertUser_Call struct {
 // InsertUser is a helper method to define mock.On call
 //   - ctx context.Context
 //   - u state.User
-func (_e *mockUserManager_Expecter) InsertUser(ctx interface{}, u interface{}) *mockUserManager_InsertUser_Call {
+func (_e *mockUserManager_Expecter) InsertUser(ctx any, u any) *mockUserManager_InsertUser_Call {
 	return &mockUserManager_InsertUser_Call{Call: _e.mock.On("InsertUser", ctx, u)}
 }
 
@@ -240,7 +249,7 @@ type mockUserManager_SetUserPassword_Call struct {
 //   - ctx context.Context
 //   - screenName state.IdentScreenName
 //   - newPassword string
-func (_e *mockUserManager_Expecter) SetUserPassword(ctx interface{}, screenName interface{}, newPassword interface{}) *mockUserManager_SetUserPassword_Call {
+func (_e *mockUserManager_Expecter) SetUserPassword(ctx any, screenName any, newPassword any) *mockUserManager_SetUserPassword_Call {
 	return &mockUserManager_SetUserPassword_Call{Call: _e.mock.On("SetUserPassword", ctx, screenName, newPassword)}
 }
 
@@ -313,7 +322,7 @@ type mockUserManager_User_Call struct {
 // User is a helper method to define mock.On call
 //   - ctx context.Context
 //   - screenName state.IdentScreenName
-func (_e *mockUserManager_Expecter) User(ctx interface{}, screenName interface{}) *mockUserManager_User_Call {
+func (_e *mockUserManager_Expecter) User(ctx any, screenName any) *mockUserManager_User_Call {
 	return &mockUserManager_User_Call{Call: _e.mock.On("User", ctx, screenName)}
 }
 

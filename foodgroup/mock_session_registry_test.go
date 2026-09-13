@@ -17,10 +17,19 @@ func newMockSessionRegistry(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockSessionRegistry {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockSessionRegistry{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -41,11 +50,11 @@ func (_m *mockSessionRegistry) EXPECT() *mockSessionRegistry_Expecter {
 // AddSession provides a mock function for the type mockSessionRegistry
 func (_mock *mockSessionRegistry) AddSession(ctx context.Context, screenName state.DisplayScreenName, doMultiSess bool, cfg ...func(sess *state.Session)) (*state.SessionInstance, error) {
 	// func(sess *state.Session)
-	_va := make([]interface{}, len(cfg))
+	_va := make([]any, len(cfg))
 	for _i := range cfg {
 		_va[_i] = cfg[_i]
 	}
-	var _ca []interface{}
+	var _ca []any
 	_ca = append(_ca, ctx, screenName, doMultiSess)
 	_ca = append(_ca, _va...)
 	ret := _mock.Called(_ca...)
@@ -84,9 +93,9 @@ type mockSessionRegistry_AddSession_Call struct {
 //   - screenName state.DisplayScreenName
 //   - doMultiSess bool
 //   - cfg ...func(sess *state.Session)
-func (_e *mockSessionRegistry_Expecter) AddSession(ctx interface{}, screenName interface{}, doMultiSess interface{}, cfg ...interface{}) *mockSessionRegistry_AddSession_Call {
+func (_e *mockSessionRegistry_Expecter) AddSession(ctx any, screenName any, doMultiSess any, cfg ...any) *mockSessionRegistry_AddSession_Call {
 	return &mockSessionRegistry_AddSession_Call{Call: _e.mock.On("AddSession",
-		append([]interface{}{ctx, screenName, doMultiSess}, cfg...)...)}
+		append([]any{ctx, screenName, doMultiSess}, cfg...)...)}
 }
 
 func (_c *mockSessionRegistry_AddSession_Call) Run(run func(ctx context.Context, screenName state.DisplayScreenName, doMultiSess bool, cfg ...func(sess *state.Session))) *mockSessionRegistry_AddSession_Call {
@@ -144,7 +153,7 @@ type mockSessionRegistry_RemoveSession_Call struct {
 
 // RemoveSession is a helper method to define mock.On call
 //   - session *state.Session
-func (_e *mockSessionRegistry_Expecter) RemoveSession(session interface{}) *mockSessionRegistry_RemoveSession_Call {
+func (_e *mockSessionRegistry_Expecter) RemoveSession(session any) *mockSessionRegistry_RemoveSession_Call {
 	return &mockSessionRegistry_RemoveSession_Call{Call: _e.mock.On("RemoveSession", session)}
 }
 

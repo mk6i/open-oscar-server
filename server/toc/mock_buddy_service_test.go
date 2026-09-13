@@ -18,10 +18,19 @@ func newMockBuddyService(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockBuddyService {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockBuddyService{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -77,7 +86,7 @@ type mockBuddyService_AddBuddies_Call struct {
 //   - instance *state.SessionInstance
 //   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x03_0x04_BuddyAddBuddies
-func (_e *mockBuddyService_Expecter) AddBuddies(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}) *mockBuddyService_AddBuddies_Call {
+func (_e *mockBuddyService_Expecter) AddBuddies(ctx any, instance any, inFrame any, inBody any) *mockBuddyService_AddBuddies_Call {
 	return &mockBuddyService_AddBuddies_Call{Call: _e.mock.On("AddBuddies", ctx, instance, inFrame, inBody)}
 }
 
@@ -145,7 +154,7 @@ type mockBuddyService_BroadcastBuddyArrived_Call struct {
 //   - ctx context.Context
 //   - screenName state.IdentScreenName
 //   - userInfo wire.TLVUserInfo
-func (_e *mockBuddyService_Expecter) BroadcastBuddyArrived(ctx interface{}, screenName interface{}, userInfo interface{}) *mockBuddyService_BroadcastBuddyArrived_Call {
+func (_e *mockBuddyService_Expecter) BroadcastBuddyArrived(ctx any, screenName any, userInfo any) *mockBuddyService_BroadcastBuddyArrived_Call {
 	return &mockBuddyService_BroadcastBuddyArrived_Call{Call: _e.mock.On("BroadcastBuddyArrived", ctx, screenName, userInfo)}
 }
 
@@ -207,7 +216,7 @@ type mockBuddyService_BroadcastBuddyDeparted_Call struct {
 // BroadcastBuddyDeparted is a helper method to define mock.On call
 //   - ctx context.Context
 //   - screenName state.IdentScreenName
-func (_e *mockBuddyService_Expecter) BroadcastBuddyDeparted(ctx interface{}, screenName interface{}) *mockBuddyService_BroadcastBuddyDeparted_Call {
+func (_e *mockBuddyService_Expecter) BroadcastBuddyDeparted(ctx any, screenName any) *mockBuddyService_BroadcastBuddyDeparted_Call {
 	return &mockBuddyService_BroadcastBuddyDeparted_Call{Call: _e.mock.On("BroadcastBuddyDeparted", ctx, screenName)}
 }
 
@@ -265,7 +274,7 @@ type mockBuddyService_DelBuddies_Call struct {
 //   - ctx context.Context
 //   - instance *state.SessionInstance
 //   - inBody wire.SNAC_0x03_0x05_BuddyDelBuddies
-func (_e *mockBuddyService_Expecter) DelBuddies(ctx interface{}, instance interface{}, inBody interface{}) *mockBuddyService_DelBuddies_Call {
+func (_e *mockBuddyService_Expecter) DelBuddies(ctx any, instance any, inBody any) *mockBuddyService_DelBuddies_Call {
 	return &mockBuddyService_DelBuddies_Call{Call: _e.mock.On("DelBuddies", ctx, instance, inBody)}
 }
 
@@ -327,7 +336,7 @@ type mockBuddyService_RightsQuery_Call struct {
 // RightsQuery is a helper method to define mock.On call
 //   - ctx context.Context
 //   - inFrame wire.SNACFrame
-func (_e *mockBuddyService_Expecter) RightsQuery(ctx interface{}, inFrame interface{}) *mockBuddyService_RightsQuery_Call {
+func (_e *mockBuddyService_Expecter) RightsQuery(ctx any, inFrame any) *mockBuddyService_RightsQuery_Call {
 	return &mockBuddyService_RightsQuery_Call{Call: _e.mock.On("RightsQuery", ctx, inFrame)}
 }
 

@@ -17,10 +17,19 @@ func newMockUserLookupService(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockUserLookupService {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockUserLookupService{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -73,7 +82,7 @@ type mockUserLookupService_FindByEmail_Call struct {
 //   - ctx context.Context
 //   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x0A_0x02_UserLookupFindByEmail
-func (_e *mockUserLookupService_Expecter) FindByEmail(ctx interface{}, inFrame interface{}, inBody interface{}) *mockUserLookupService_FindByEmail_Call {
+func (_e *mockUserLookupService_Expecter) FindByEmail(ctx any, inFrame any, inBody any) *mockUserLookupService_FindByEmail_Call {
 	return &mockUserLookupService_FindByEmail_Call{Call: _e.mock.On("FindByEmail", ctx, inFrame, inBody)}
 }
 

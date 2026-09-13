@@ -18,10 +18,19 @@ func newMockPermitDenyService(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockPermitDenyService {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockPermitDenyService{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -65,7 +74,7 @@ type mockPermitDenyService_AddDenyListEntries_Call struct {
 //   - ctx context.Context
 //   - instance *state.SessionInstance
 //   - inBody wire.SNAC_0x09_0x07_PermitDenyAddDenyListEntries
-func (_e *mockPermitDenyService_Expecter) AddDenyListEntries(ctx interface{}, instance interface{}, inBody interface{}) *mockPermitDenyService_AddDenyListEntries_Call {
+func (_e *mockPermitDenyService_Expecter) AddDenyListEntries(ctx any, instance any, inBody any) *mockPermitDenyService_AddDenyListEntries_Call {
 	return &mockPermitDenyService_AddDenyListEntries_Call{Call: _e.mock.On("AddDenyListEntries", ctx, instance, inBody)}
 }
 
@@ -128,7 +137,7 @@ type mockPermitDenyService_AddPermListEntries_Call struct {
 //   - ctx context.Context
 //   - instance *state.SessionInstance
 //   - inBody wire.SNAC_0x09_0x05_PermitDenyAddPermListEntries
-func (_e *mockPermitDenyService_Expecter) AddPermListEntries(ctx interface{}, instance interface{}, inBody interface{}) *mockPermitDenyService_AddPermListEntries_Call {
+func (_e *mockPermitDenyService_Expecter) AddPermListEntries(ctx any, instance any, inBody any) *mockPermitDenyService_AddPermListEntries_Call {
 	return &mockPermitDenyService_AddPermListEntries_Call{Call: _e.mock.On("AddPermListEntries", ctx, instance, inBody)}
 }
 
@@ -191,7 +200,7 @@ type mockPermitDenyService_DelDenyListEntries_Call struct {
 //   - ctx context.Context
 //   - instance *state.SessionInstance
 //   - inBody wire.SNAC_0x09_0x08_PermitDenyDelDenyListEntries
-func (_e *mockPermitDenyService_Expecter) DelDenyListEntries(ctx interface{}, instance interface{}, inBody interface{}) *mockPermitDenyService_DelDenyListEntries_Call {
+func (_e *mockPermitDenyService_Expecter) DelDenyListEntries(ctx any, instance any, inBody any) *mockPermitDenyService_DelDenyListEntries_Call {
 	return &mockPermitDenyService_DelDenyListEntries_Call{Call: _e.mock.On("DelDenyListEntries", ctx, instance, inBody)}
 }
 
@@ -254,7 +263,7 @@ type mockPermitDenyService_DelPermListEntries_Call struct {
 //   - ctx context.Context
 //   - instance *state.SessionInstance
 //   - inBody wire.SNAC_0x09_0x06_PermitDenyDelPermListEntries
-func (_e *mockPermitDenyService_Expecter) DelPermListEntries(ctx interface{}, instance interface{}, inBody interface{}) *mockPermitDenyService_DelPermListEntries_Call {
+func (_e *mockPermitDenyService_Expecter) DelPermListEntries(ctx any, instance any, inBody any) *mockPermitDenyService_DelPermListEntries_Call {
 	return &mockPermitDenyService_DelPermListEntries_Call{Call: _e.mock.On("DelPermListEntries", ctx, instance, inBody)}
 }
 
@@ -316,7 +325,7 @@ type mockPermitDenyService_RightsQuery_Call struct {
 // RightsQuery is a helper method to define mock.On call
 //   - ctx context.Context
 //   - inFrame wire.SNACFrame
-func (_e *mockPermitDenyService_Expecter) RightsQuery(ctx interface{}, inFrame interface{}) *mockPermitDenyService_RightsQuery_Call {
+func (_e *mockPermitDenyService_Expecter) RightsQuery(ctx any, inFrame any) *mockPermitDenyService_RightsQuery_Call {
 	return &mockPermitDenyService_RightsQuery_Call{Call: _e.mock.On("RightsQuery", ctx, inFrame)}
 }
 

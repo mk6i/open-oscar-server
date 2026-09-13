@@ -16,10 +16,19 @@ func newMockCookieBaker(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockCookieBaker {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockCookieBaker{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -78,7 +87,7 @@ type mockCookieBaker_Crack_Call struct {
 
 // Crack is a helper method to define mock.On call
 //   - data []byte
-func (_e *mockCookieBaker_Expecter) Crack(data interface{}) *mockCookieBaker_Crack_Call {
+func (_e *mockCookieBaker_Expecter) Crack(data any) *mockCookieBaker_Crack_Call {
 	return &mockCookieBaker_Crack_Call{Call: _e.mock.On("Crack", data)}
 }
 
@@ -141,7 +150,7 @@ type mockCookieBaker_Issue_Call struct {
 // Issue is a helper method to define mock.On call
 //   - data []byte
 //   - ttl time.Duration
-func (_e *mockCookieBaker_Expecter) Issue(data interface{}, ttl interface{}) *mockCookieBaker_Issue_Call {
+func (_e *mockCookieBaker_Expecter) Issue(data any, ttl any) *mockCookieBaker_Issue_Call {
 	return &mockCookieBaker_Issue_Call{Call: _e.mock.On("Issue", data, ttl)}
 }
 

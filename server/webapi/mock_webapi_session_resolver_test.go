@@ -16,10 +16,19 @@ func newMockSessionResolver(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockSessionResolver {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockSessionResolver{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -73,7 +82,7 @@ type mockSessionResolver_GetSession_Call struct {
 // GetSession is a helper method to define mock.On call
 //   - ctx context.Context
 //   - aimsid string
-func (_e *mockSessionResolver_Expecter) GetSession(ctx interface{}, aimsid interface{}) *mockSessionResolver_GetSession_Call {
+func (_e *mockSessionResolver_Expecter) GetSession(ctx any, aimsid any) *mockSessionResolver_GetSession_Call {
 	return &mockSessionResolver_GetSession_Call{Call: _e.mock.On("GetSession", ctx, aimsid)}
 }
 
@@ -130,7 +139,7 @@ type mockSessionResolver_TouchSession_Call struct {
 // TouchSession is a helper method to define mock.On call
 //   - ctx context.Context
 //   - aimsid string
-func (_e *mockSessionResolver_Expecter) TouchSession(ctx interface{}, aimsid interface{}) *mockSessionResolver_TouchSession_Call {
+func (_e *mockSessionResolver_Expecter) TouchSession(ctx any, aimsid any) *mockSessionResolver_TouchSession_Call {
 	return &mockSessionResolver_TouchSession_Call{Call: _e.mock.On("TouchSession", ctx, aimsid)}
 }
 

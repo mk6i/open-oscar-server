@@ -17,10 +17,19 @@ func newMockICQUserUpdater(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockICQUserUpdater {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockICQUserUpdater{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -64,7 +73,7 @@ type mockICQUserUpdater_SetAffiliations_Call struct {
 //   - ctx context.Context
 //   - name state.IdentScreenName
 //   - data state.ICQAffiliations
-func (_e *mockICQUserUpdater_Expecter) SetAffiliations(ctx interface{}, name interface{}, data interface{}) *mockICQUserUpdater_SetAffiliations_Call {
+func (_e *mockICQUserUpdater_Expecter) SetAffiliations(ctx any, name any, data any) *mockICQUserUpdater_SetAffiliations_Call {
 	return &mockICQUserUpdater_SetAffiliations_Call{Call: _e.mock.On("SetAffiliations", ctx, name, data)}
 }
 
@@ -127,7 +136,7 @@ type mockICQUserUpdater_SetBasicInfo_Call struct {
 //   - ctx context.Context
 //   - name state.IdentScreenName
 //   - data state.ICQBasicInfo
-func (_e *mockICQUserUpdater_Expecter) SetBasicInfo(ctx interface{}, name interface{}, data interface{}) *mockICQUserUpdater_SetBasicInfo_Call {
+func (_e *mockICQUserUpdater_Expecter) SetBasicInfo(ctx any, name any, data any) *mockICQUserUpdater_SetBasicInfo_Call {
 	return &mockICQUserUpdater_SetBasicInfo_Call{Call: _e.mock.On("SetBasicInfo", ctx, name, data)}
 }
 
@@ -190,7 +199,7 @@ type mockICQUserUpdater_SetHomepageCategory_Call struct {
 //   - ctx context.Context
 //   - name state.IdentScreenName
 //   - data state.ICQHomepageCategory
-func (_e *mockICQUserUpdater_Expecter) SetHomepageCategory(ctx interface{}, name interface{}, data interface{}) *mockICQUserUpdater_SetHomepageCategory_Call {
+func (_e *mockICQUserUpdater_Expecter) SetHomepageCategory(ctx any, name any, data any) *mockICQUserUpdater_SetHomepageCategory_Call {
 	return &mockICQUserUpdater_SetHomepageCategory_Call{Call: _e.mock.On("SetHomepageCategory", ctx, name, data)}
 }
 
@@ -253,7 +262,7 @@ type mockICQUserUpdater_SetICQInfo_Call struct {
 //   - ctx context.Context
 //   - name state.IdentScreenName
 //   - info state.ICQInfo
-func (_e *mockICQUserUpdater_Expecter) SetICQInfo(ctx interface{}, name interface{}, info interface{}) *mockICQUserUpdater_SetICQInfo_Call {
+func (_e *mockICQUserUpdater_Expecter) SetICQInfo(ctx any, name any, info any) *mockICQUserUpdater_SetICQInfo_Call {
 	return &mockICQUserUpdater_SetICQInfo_Call{Call: _e.mock.On("SetICQInfo", ctx, name, info)}
 }
 
@@ -316,7 +325,7 @@ type mockICQUserUpdater_SetInterests_Call struct {
 //   - ctx context.Context
 //   - name state.IdentScreenName
 //   - data state.ICQInterests
-func (_e *mockICQUserUpdater_Expecter) SetInterests(ctx interface{}, name interface{}, data interface{}) *mockICQUserUpdater_SetInterests_Call {
+func (_e *mockICQUserUpdater_Expecter) SetInterests(ctx any, name any, data any) *mockICQUserUpdater_SetInterests_Call {
 	return &mockICQUserUpdater_SetInterests_Call{Call: _e.mock.On("SetInterests", ctx, name, data)}
 }
 
@@ -379,7 +388,7 @@ type mockICQUserUpdater_SetMoreInfo_Call struct {
 //   - ctx context.Context
 //   - name state.IdentScreenName
 //   - data state.ICQMoreInfo
-func (_e *mockICQUserUpdater_Expecter) SetMoreInfo(ctx interface{}, name interface{}, data interface{}) *mockICQUserUpdater_SetMoreInfo_Call {
+func (_e *mockICQUserUpdater_Expecter) SetMoreInfo(ctx any, name any, data any) *mockICQUserUpdater_SetMoreInfo_Call {
 	return &mockICQUserUpdater_SetMoreInfo_Call{Call: _e.mock.On("SetMoreInfo", ctx, name, data)}
 }
 
@@ -442,7 +451,7 @@ type mockICQUserUpdater_SetPermissions_Call struct {
 //   - ctx context.Context
 //   - name state.IdentScreenName
 //   - data state.ICQPermissions
-func (_e *mockICQUserUpdater_Expecter) SetPermissions(ctx interface{}, name interface{}, data interface{}) *mockICQUserUpdater_SetPermissions_Call {
+func (_e *mockICQUserUpdater_Expecter) SetPermissions(ctx any, name any, data any) *mockICQUserUpdater_SetPermissions_Call {
 	return &mockICQUserUpdater_SetPermissions_Call{Call: _e.mock.On("SetPermissions", ctx, name, data)}
 }
 
@@ -505,7 +514,7 @@ type mockICQUserUpdater_SetUserNotes_Call struct {
 //   - ctx context.Context
 //   - name state.IdentScreenName
 //   - data state.ICQUserNotes
-func (_e *mockICQUserUpdater_Expecter) SetUserNotes(ctx interface{}, name interface{}, data interface{}) *mockICQUserUpdater_SetUserNotes_Call {
+func (_e *mockICQUserUpdater_Expecter) SetUserNotes(ctx any, name any, data any) *mockICQUserUpdater_SetUserNotes_Call {
 	return &mockICQUserUpdater_SetUserNotes_Call{Call: _e.mock.On("SetUserNotes", ctx, name, data)}
 }
 
@@ -568,7 +577,7 @@ type mockICQUserUpdater_SetWorkInfo_Call struct {
 //   - ctx context.Context
 //   - name state.IdentScreenName
 //   - data state.ICQWorkInfo
-func (_e *mockICQUserUpdater_Expecter) SetWorkInfo(ctx interface{}, name interface{}, data interface{}) *mockICQUserUpdater_SetWorkInfo_Call {
+func (_e *mockICQUserUpdater_Expecter) SetWorkInfo(ctx any, name any, data any) *mockICQUserUpdater_SetWorkInfo_Call {
 	return &mockICQUserUpdater_SetWorkInfo_Call{Call: _e.mock.On("SetWorkInfo", ctx, name, data)}
 }
 

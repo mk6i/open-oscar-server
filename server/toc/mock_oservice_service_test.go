@@ -19,10 +19,19 @@ func newMockOServiceService(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockOServiceService {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockOServiceService{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -67,7 +76,7 @@ type mockOServiceService_ClientOnline_Call struct {
 //   - service uint16
 //   - inBody wire.SNAC_0x01_0x02_OServiceClientOnline
 //   - instance *state.SessionInstance
-func (_e *mockOServiceService_Expecter) ClientOnline(ctx interface{}, service interface{}, inBody interface{}, instance interface{}) *mockOServiceService_ClientOnline_Call {
+func (_e *mockOServiceService_Expecter) ClientOnline(ctx any, service any, inBody any, instance any) *mockOServiceService_ClientOnline_Call {
 	return &mockOServiceService_ClientOnline_Call{Call: _e.mock.On("ClientOnline", ctx, service, inBody, instance)}
 }
 
@@ -135,7 +144,7 @@ type mockOServiceService_IdleNotification_Call struct {
 //   - ctx context.Context
 //   - instance *state.SessionInstance
 //   - inBody wire.SNAC_0x01_0x11_OServiceIdleNotification
-func (_e *mockOServiceService_Expecter) IdleNotification(ctx interface{}, instance interface{}, inBody interface{}) *mockOServiceService_IdleNotification_Call {
+func (_e *mockOServiceService_Expecter) IdleNotification(ctx any, instance any, inBody any) *mockOServiceService_IdleNotification_Call {
 	return &mockOServiceService_IdleNotification_Call{Call: _e.mock.On("IdleNotification", ctx, instance, inBody)}
 }
 
@@ -186,7 +195,7 @@ type mockOServiceService_MonitorRateLimits_Call struct {
 // MonitorRateLimits is a helper method to define mock.On call
 //   - ctx context.Context
 //   - session *state.Session
-func (_e *mockOServiceService_Expecter) MonitorRateLimits(ctx interface{}, session interface{}) *mockOServiceService_MonitorRateLimits_Call {
+func (_e *mockOServiceService_Expecter) MonitorRateLimits(ctx any, session any) *mockOServiceService_MonitorRateLimits_Call {
 	return &mockOServiceService_MonitorRateLimits_Call{Call: _e.mock.On("MonitorRateLimits", ctx, session)}
 }
 
@@ -256,7 +265,7 @@ type mockOServiceService_ServiceRequest_Call struct {
 //   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x01_0x04_OServiceServiceRequest
 //   - listenerGroup config.ListenerGroup
-func (_e *mockOServiceService_Expecter) ServiceRequest(ctx interface{}, service interface{}, instance interface{}, inFrame interface{}, inBody interface{}, listenerGroup interface{}) *mockOServiceService_ServiceRequest_Call {
+func (_e *mockOServiceService_Expecter) ServiceRequest(ctx any, service any, instance any, inFrame any, inBody any, listenerGroup any) *mockOServiceService_ServiceRequest_Call {
 	return &mockOServiceService_ServiceRequest_Call{Call: _e.mock.On("ServiceRequest", ctx, service, instance, inFrame, inBody, listenerGroup)}
 }
 

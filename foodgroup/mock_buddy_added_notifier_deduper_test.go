@@ -17,10 +17,19 @@ func newMockBuddyAddedNotifierDeduper(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockBuddyAddedNotifierDeduper {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockBuddyAddedNotifierDeduper{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -73,7 +82,7 @@ type mockBuddyAddedNotifierDeduper_HasBuddyAddedNotification_Call struct {
 //   - ctx context.Context
 //   - granter state.IdentScreenName
 //   - requester state.IdentScreenName
-func (_e *mockBuddyAddedNotifierDeduper_Expecter) HasBuddyAddedNotification(ctx interface{}, granter interface{}, requester interface{}) *mockBuddyAddedNotifierDeduper_HasBuddyAddedNotification_Call {
+func (_e *mockBuddyAddedNotifierDeduper_Expecter) HasBuddyAddedNotification(ctx any, granter any, requester any) *mockBuddyAddedNotifierDeduper_HasBuddyAddedNotification_Call {
 	return &mockBuddyAddedNotifierDeduper_HasBuddyAddedNotification_Call{Call: _e.mock.On("HasBuddyAddedNotification", ctx, granter, requester)}
 }
 
@@ -136,7 +145,7 @@ type mockBuddyAddedNotifierDeduper_RecordBuddyAddedNotification_Call struct {
 //   - ctx context.Context
 //   - granter state.IdentScreenName
 //   - requester state.IdentScreenName
-func (_e *mockBuddyAddedNotifierDeduper_Expecter) RecordBuddyAddedNotification(ctx interface{}, granter interface{}, requester interface{}) *mockBuddyAddedNotifierDeduper_RecordBuddyAddedNotification_Call {
+func (_e *mockBuddyAddedNotifierDeduper_Expecter) RecordBuddyAddedNotification(ctx any, granter any, requester any) *mockBuddyAddedNotifierDeduper_RecordBuddyAddedNotification_Call {
 	return &mockBuddyAddedNotifierDeduper_RecordBuddyAddedNotification_Call{Call: _e.mock.On("RecordBuddyAddedNotification", ctx, granter, requester)}
 }
 

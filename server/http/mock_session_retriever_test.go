@@ -15,10 +15,19 @@ func newMockSessionRetriever(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockSessionRetriever {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockSessionRetriever{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -108,7 +117,7 @@ type mockSessionRetriever_RetrieveSession_Call struct {
 
 // RetrieveSession is a helper method to define mock.On call
 //   - screenName state.IdentScreenName
-func (_e *mockSessionRetriever_Expecter) RetrieveSession(screenName interface{}) *mockSessionRetriever_RetrieveSession_Call {
+func (_e *mockSessionRetriever_Expecter) RetrieveSession(screenName any) *mockSessionRetriever_RetrieveSession_Call {
 	return &mockSessionRetriever_RetrieveSession_Call{Call: _e.mock.On("RetrieveSession", screenName)}
 }
 

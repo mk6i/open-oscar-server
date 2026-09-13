@@ -15,10 +15,19 @@ func newMockChatSessionRetriever(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockChatSessionRetriever {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockChatSessionRetriever{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -62,7 +71,7 @@ type mockChatSessionRetriever_AllSessions_Call struct {
 
 // AllSessions is a helper method to define mock.On call
 //   - cookie string
-func (_e *mockChatSessionRetriever_Expecter) AllSessions(cookie interface{}) *mockChatSessionRetriever_AllSessions_Call {
+func (_e *mockChatSessionRetriever_Expecter) AllSessions(cookie any) *mockChatSessionRetriever_AllSessions_Call {
 	return &mockChatSessionRetriever_AllSessions_Call{Call: _e.mock.On("AllSessions", cookie)}
 }
 

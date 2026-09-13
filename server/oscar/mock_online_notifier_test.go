@@ -15,10 +15,19 @@ func newMockOnlineNotifier(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockOnlineNotifier {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockOnlineNotifier{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -60,7 +69,7 @@ type mockOnlineNotifier_HostOnline_Call struct {
 
 // HostOnline is a helper method to define mock.On call
 //   - service uint16
-func (_e *mockOnlineNotifier_Expecter) HostOnline(service interface{}) *mockOnlineNotifier_HostOnline_Call {
+func (_e *mockOnlineNotifier_Expecter) HostOnline(service any) *mockOnlineNotifier_HostOnline_Call {
 	return &mockOnlineNotifier_HostOnline_Call{Call: _e.mock.On("HostOnline", service)}
 }
 

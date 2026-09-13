@@ -18,10 +18,19 @@ func newMockFeedbagService(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockFeedbagService {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockFeedbagService{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -77,7 +86,7 @@ type mockFeedbagService_DeleteItem_Call struct {
 //   - instance *state.SessionInstance
 //   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x13_0x0A_FeedbagDeleteItem
-func (_e *mockFeedbagService_Expecter) DeleteItem(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}) *mockFeedbagService_DeleteItem_Call {
+func (_e *mockFeedbagService_Expecter) DeleteItem(ctx any, instance any, inFrame any, inBody any) *mockFeedbagService_DeleteItem_Call {
 	return &mockFeedbagService_DeleteItem_Call{Call: _e.mock.On("DeleteItem", ctx, instance, inFrame, inBody)}
 }
 
@@ -145,7 +154,7 @@ type mockFeedbagService_EndCluster_Call struct {
 //   - ctx context.Context
 //   - instance *state.SessionInstance
 //   - inFrame wire.SNACFrame
-func (_e *mockFeedbagService_Expecter) EndCluster(ctx interface{}, instance interface{}, inFrame interface{}) *mockFeedbagService_EndCluster_Call {
+func (_e *mockFeedbagService_Expecter) EndCluster(ctx any, instance any, inFrame any) *mockFeedbagService_EndCluster_Call {
 	return &mockFeedbagService_EndCluster_Call{Call: _e.mock.On("EndCluster", ctx, instance, inFrame)}
 }
 
@@ -220,7 +229,7 @@ type mockFeedbagService_PreAuthorizeBuddy_Call struct {
 //   - instance *state.SessionInstance
 //   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x13_0x14_FeedbagPreAuthorizeBuddy
-func (_e *mockFeedbagService_Expecter) PreAuthorizeBuddy(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}) *mockFeedbagService_PreAuthorizeBuddy_Call {
+func (_e *mockFeedbagService_Expecter) PreAuthorizeBuddy(ctx any, instance any, inFrame any, inBody any) *mockFeedbagService_PreAuthorizeBuddy_Call {
 	return &mockFeedbagService_PreAuthorizeBuddy_Call{Call: _e.mock.On("PreAuthorizeBuddy", ctx, instance, inFrame, inBody)}
 }
 
@@ -297,7 +306,7 @@ type mockFeedbagService_Query_Call struct {
 //   - ctx context.Context
 //   - instance *state.SessionInstance
 //   - inFrame wire.SNACFrame
-func (_e *mockFeedbagService_Expecter) Query(ctx interface{}, instance interface{}, inFrame interface{}) *mockFeedbagService_Query_Call {
+func (_e *mockFeedbagService_Expecter) Query(ctx any, instance any, inFrame any) *mockFeedbagService_Query_Call {
 	return &mockFeedbagService_Query_Call{Call: _e.mock.On("Query", ctx, instance, inFrame)}
 }
 
@@ -370,7 +379,7 @@ type mockFeedbagService_QueryIfModified_Call struct {
 //   - instance *state.SessionInstance
 //   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x13_0x05_FeedbagQueryIfModified
-func (_e *mockFeedbagService_Expecter) QueryIfModified(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}) *mockFeedbagService_QueryIfModified_Call {
+func (_e *mockFeedbagService_Expecter) QueryIfModified(ctx any, instance any, inFrame any, inBody any) *mockFeedbagService_QueryIfModified_Call {
 	return &mockFeedbagService_QueryIfModified_Call{Call: _e.mock.On("QueryIfModified", ctx, instance, inFrame, inBody)}
 }
 
@@ -439,7 +448,7 @@ type mockFeedbagService_RequestAuthorizeToHost_Call struct {
 //   - instance *state.SessionInstance
 //   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x13_0x18_FeedbagRequestAuthorizationToHost
-func (_e *mockFeedbagService_Expecter) RequestAuthorizeToHost(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}) *mockFeedbagService_RequestAuthorizeToHost_Call {
+func (_e *mockFeedbagService_Expecter) RequestAuthorizeToHost(ctx any, instance any, inFrame any, inBody any) *mockFeedbagService_RequestAuthorizeToHost_Call {
 	return &mockFeedbagService_RequestAuthorizeToHost_Call{Call: _e.mock.On("RequestAuthorizeToHost", ctx, instance, inFrame, inBody)}
 }
 
@@ -508,7 +517,7 @@ type mockFeedbagService_RespondAuthorizeToHost_Call struct {
 //   - instance state.IdentScreenName
 //   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost
-func (_e *mockFeedbagService_Expecter) RespondAuthorizeToHost(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}) *mockFeedbagService_RespondAuthorizeToHost_Call {
+func (_e *mockFeedbagService_Expecter) RespondAuthorizeToHost(ctx any, instance any, inFrame any, inBody any) *mockFeedbagService_RespondAuthorizeToHost_Call {
 	return &mockFeedbagService_RespondAuthorizeToHost_Call{Call: _e.mock.On("RespondAuthorizeToHost", ctx, instance, inFrame, inBody)}
 }
 
@@ -575,7 +584,7 @@ type mockFeedbagService_RightsQuery_Call struct {
 // RightsQuery is a helper method to define mock.On call
 //   - ctx context.Context
 //   - inFrame wire.SNACFrame
-func (_e *mockFeedbagService_Expecter) RightsQuery(ctx interface{}, inFrame interface{}) *mockFeedbagService_RightsQuery_Call {
+func (_e *mockFeedbagService_Expecter) RightsQuery(ctx any, inFrame any) *mockFeedbagService_RightsQuery_Call {
 	return &mockFeedbagService_RightsQuery_Call{Call: _e.mock.On("RightsQuery", ctx, inFrame)}
 }
 
@@ -623,7 +632,7 @@ type mockFeedbagService_StartCluster_Call struct {
 //   - instance *state.SessionInstance
 //   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x13_0x11_FeedbagStartCluster
-func (_e *mockFeedbagService_Expecter) StartCluster(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}) *mockFeedbagService_StartCluster_Call {
+func (_e *mockFeedbagService_Expecter) StartCluster(ctx any, instance any, inFrame any, inBody any) *mockFeedbagService_StartCluster_Call {
 	return &mockFeedbagService_StartCluster_Call{Call: _e.mock.On("StartCluster", ctx, instance, inFrame, inBody)}
 }
 
@@ -703,7 +712,7 @@ type mockFeedbagService_UpsertItem_Call struct {
 //   - instance *state.SessionInstance
 //   - inFrame wire.SNACFrame
 //   - items []wire.FeedbagItem
-func (_e *mockFeedbagService_Expecter) UpsertItem(ctx interface{}, instance interface{}, inFrame interface{}, items interface{}) *mockFeedbagService_UpsertItem_Call {
+func (_e *mockFeedbagService_Expecter) UpsertItem(ctx any, instance any, inFrame any, items any) *mockFeedbagService_UpsertItem_Call {
 	return &mockFeedbagService_UpsertItem_Call{Call: _e.mock.On("UpsertItem", ctx, instance, inFrame, items)}
 }
 
@@ -770,7 +779,7 @@ type mockFeedbagService_Use_Call struct {
 // Use is a helper method to define mock.On call
 //   - ctx context.Context
 //   - instance *state.SessionInstance
-func (_e *mockFeedbagService_Expecter) Use(ctx interface{}, instance interface{}) *mockFeedbagService_Use_Call {
+func (_e *mockFeedbagService_Expecter) Use(ctx any, instance any) *mockFeedbagService_Use_Call {
 	return &mockFeedbagService_Use_Call{Call: _e.mock.On("Use", ctx, instance)}
 }
 

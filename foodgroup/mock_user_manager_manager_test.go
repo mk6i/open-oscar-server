@@ -18,10 +18,19 @@ func newMockUserManager(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockUserManager {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockUserManager{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -64,7 +73,7 @@ type mockUserManager_InsertUser_Call struct {
 // InsertUser is a helper method to define mock.On call
 //   - ctx context.Context
 //   - u state.User
-func (_e *mockUserManager_Expecter) InsertUser(ctx interface{}, u interface{}) *mockUserManager_InsertUser_Call {
+func (_e *mockUserManager_Expecter) InsertUser(ctx any, u any) *mockUserManager_InsertUser_Call {
 	return &mockUserManager_InsertUser_Call{Call: _e.mock.On("InsertUser", ctx, u)}
 }
 
@@ -123,7 +132,7 @@ type mockUserManager_SetWarnLevel_Call struct {
 //   - user state.IdentScreenName
 //   - lastWarnUpdate time.Time
 //   - lastWarnLevel uint16
-func (_e *mockUserManager_Expecter) SetWarnLevel(ctx interface{}, user interface{}, lastWarnUpdate interface{}, lastWarnLevel interface{}) *mockUserManager_SetWarnLevel_Call {
+func (_e *mockUserManager_Expecter) SetWarnLevel(ctx any, user any, lastWarnUpdate any, lastWarnLevel any) *mockUserManager_SetWarnLevel_Call {
 	return &mockUserManager_SetWarnLevel_Call{Call: _e.mock.On("SetWarnLevel", ctx, user, lastWarnUpdate, lastWarnLevel)}
 }
 
@@ -201,7 +210,7 @@ type mockUserManager_User_Call struct {
 // User is a helper method to define mock.On call
 //   - ctx context.Context
 //   - screenName state.IdentScreenName
-func (_e *mockUserManager_Expecter) User(ctx interface{}, screenName interface{}) *mockUserManager_User_Call {
+func (_e *mockUserManager_Expecter) User(ctx any, screenName any) *mockUserManager_User_Call {
 	return &mockUserManager_User_Call{Call: _e.mock.On("User", ctx, screenName)}
 }
 

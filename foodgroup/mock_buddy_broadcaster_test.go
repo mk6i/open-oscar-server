@@ -18,10 +18,19 @@ func newMockbuddyBroadcaster(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockbuddyBroadcaster {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockbuddyBroadcaster{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -65,7 +74,7 @@ type mockbuddyBroadcaster_BroadcastBuddyArrived_Call struct {
 //   - ctx context.Context
 //   - screenName state.IdentScreenName
 //   - userInfo wire.TLVUserInfo
-func (_e *mockbuddyBroadcaster_Expecter) BroadcastBuddyArrived(ctx interface{}, screenName interface{}, userInfo interface{}) *mockbuddyBroadcaster_BroadcastBuddyArrived_Call {
+func (_e *mockbuddyBroadcaster_Expecter) BroadcastBuddyArrived(ctx any, screenName any, userInfo any) *mockbuddyBroadcaster_BroadcastBuddyArrived_Call {
 	return &mockbuddyBroadcaster_BroadcastBuddyArrived_Call{Call: _e.mock.On("BroadcastBuddyArrived", ctx, screenName, userInfo)}
 }
 
@@ -127,7 +136,7 @@ type mockbuddyBroadcaster_BroadcastBuddyDeparted_Call struct {
 // BroadcastBuddyDeparted is a helper method to define mock.On call
 //   - ctx context.Context
 //   - screenName state.IdentScreenName
-func (_e *mockbuddyBroadcaster_Expecter) BroadcastBuddyDeparted(ctx interface{}, screenName interface{}) *mockbuddyBroadcaster_BroadcastBuddyDeparted_Call {
+func (_e *mockbuddyBroadcaster_Expecter) BroadcastBuddyDeparted(ctx any, screenName any) *mockbuddyBroadcaster_BroadcastBuddyDeparted_Call {
 	return &mockbuddyBroadcaster_BroadcastBuddyDeparted_Call{Call: _e.mock.On("BroadcastBuddyDeparted", ctx, screenName)}
 }
 
@@ -186,7 +195,7 @@ type mockbuddyBroadcaster_BroadcastVisibility_Call struct {
 //   - you *state.SessionInstance
 //   - filter []state.IdentScreenName
 //   - sendDepartures bool
-func (_e *mockbuddyBroadcaster_Expecter) BroadcastVisibility(ctx interface{}, you interface{}, filter interface{}, sendDepartures interface{}) *mockbuddyBroadcaster_BroadcastVisibility_Call {
+func (_e *mockbuddyBroadcaster_Expecter) BroadcastVisibility(ctx any, you any, filter any, sendDepartures any) *mockbuddyBroadcaster_BroadcastVisibility_Call {
 	return &mockbuddyBroadcaster_BroadcastVisibility_Call{Call: _e.mock.On("BroadcastVisibility", ctx, you, filter, sendDepartures)}
 }
 

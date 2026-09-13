@@ -15,10 +15,19 @@ func newMockChatSessionManager(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockChatSessionManager {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockChatSessionManager{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -49,7 +58,7 @@ type mockChatSessionManager_RemoveUserFromAllChats_Call struct {
 
 // RemoveUserFromAllChats is a helper method to define mock.On call
 //   - user state.IdentScreenName
-func (_e *mockChatSessionManager_Expecter) RemoveUserFromAllChats(user interface{}) *mockChatSessionManager_RemoveUserFromAllChats_Call {
+func (_e *mockChatSessionManager_Expecter) RemoveUserFromAllChats(user any) *mockChatSessionManager_RemoveUserFromAllChats_Call {
 	return &mockChatSessionManager_RemoveUserFromAllChats_Call{Call: _e.mock.On("RemoveUserFromAllChats", user)}
 }
 

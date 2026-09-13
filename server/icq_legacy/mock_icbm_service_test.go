@@ -18,10 +18,19 @@ func newMockICBMService(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockICBMService {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockICBMService{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -77,7 +86,7 @@ type mockICBMService_ChannelMsgToHost_Call struct {
 //   - instance *state.SessionInstance
 //   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost
-func (_e *mockICBMService_Expecter) ChannelMsgToHost(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}) *mockICBMService_ChannelMsgToHost_Call {
+func (_e *mockICBMService_Expecter) ChannelMsgToHost(ctx any, instance any, inFrame any, inBody any) *mockICBMService_ChannelMsgToHost_Call {
 	return &mockICBMService_ChannelMsgToHost_Call{Call: _e.mock.On("ChannelMsgToHost", ctx, instance, inFrame, inBody)}
 }
 

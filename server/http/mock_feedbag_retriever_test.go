@@ -18,10 +18,19 @@ func newMockFeedBagRetriever(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockFeedBagRetriever {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockFeedBagRetriever{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -75,7 +84,7 @@ type mockFeedBagRetriever_BuddyIconMetadata_Call struct {
 // BuddyIconMetadata is a helper method to define mock.On call
 //   - ctx context.Context
 //   - screenName state.IdentScreenName
-func (_e *mockFeedBagRetriever_Expecter) BuddyIconMetadata(ctx interface{}, screenName interface{}) *mockFeedBagRetriever_BuddyIconMetadata_Call {
+func (_e *mockFeedBagRetriever_Expecter) BuddyIconMetadata(ctx any, screenName any) *mockFeedBagRetriever_BuddyIconMetadata_Call {
 	return &mockFeedBagRetriever_BuddyIconMetadata_Call{Call: _e.mock.On("BuddyIconMetadata", ctx, screenName)}
 }
 

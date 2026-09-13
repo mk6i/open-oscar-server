@@ -17,10 +17,19 @@ func newMockDirectoryManager(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockDirectoryManager {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockDirectoryManager{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -73,7 +82,7 @@ type mockDirectoryManager_Categories_Call struct {
 
 // Categories is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *mockDirectoryManager_Expecter) Categories(ctx interface{}) *mockDirectoryManager_Categories_Call {
+func (_e *mockDirectoryManager_Expecter) Categories(ctx any) *mockDirectoryManager_Categories_Call {
 	return &mockDirectoryManager_Categories_Call{Call: _e.mock.On("Categories", ctx)}
 }
 
@@ -134,7 +143,7 @@ type mockDirectoryManager_CreateCategory_Call struct {
 // CreateCategory is a helper method to define mock.On call
 //   - ctx context.Context
 //   - name string
-func (_e *mockDirectoryManager_Expecter) CreateCategory(ctx interface{}, name interface{}) *mockDirectoryManager_CreateCategory_Call {
+func (_e *mockDirectoryManager_Expecter) CreateCategory(ctx any, name any) *mockDirectoryManager_CreateCategory_Call {
 	return &mockDirectoryManager_CreateCategory_Call{Call: _e.mock.On("CreateCategory", ctx, name)}
 }
 
@@ -201,7 +210,7 @@ type mockDirectoryManager_CreateKeyword_Call struct {
 //   - ctx context.Context
 //   - name string
 //   - categoryID uint8
-func (_e *mockDirectoryManager_Expecter) CreateKeyword(ctx interface{}, name interface{}, categoryID interface{}) *mockDirectoryManager_CreateKeyword_Call {
+func (_e *mockDirectoryManager_Expecter) CreateKeyword(ctx any, name any, categoryID any) *mockDirectoryManager_CreateKeyword_Call {
 	return &mockDirectoryManager_CreateKeyword_Call{Call: _e.mock.On("CreateKeyword", ctx, name, categoryID)}
 }
 
@@ -263,7 +272,7 @@ type mockDirectoryManager_DeleteCategory_Call struct {
 // DeleteCategory is a helper method to define mock.On call
 //   - ctx context.Context
 //   - categoryID uint8
-func (_e *mockDirectoryManager_Expecter) DeleteCategory(ctx interface{}, categoryID interface{}) *mockDirectoryManager_DeleteCategory_Call {
+func (_e *mockDirectoryManager_Expecter) DeleteCategory(ctx any, categoryID any) *mockDirectoryManager_DeleteCategory_Call {
 	return &mockDirectoryManager_DeleteCategory_Call{Call: _e.mock.On("DeleteCategory", ctx, categoryID)}
 }
 
@@ -320,7 +329,7 @@ type mockDirectoryManager_DeleteKeyword_Call struct {
 // DeleteKeyword is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id uint8
-func (_e *mockDirectoryManager_Expecter) DeleteKeyword(ctx interface{}, id interface{}) *mockDirectoryManager_DeleteKeyword_Call {
+func (_e *mockDirectoryManager_Expecter) DeleteKeyword(ctx any, id any) *mockDirectoryManager_DeleteKeyword_Call {
 	return &mockDirectoryManager_DeleteKeyword_Call{Call: _e.mock.On("DeleteKeyword", ctx, id)}
 }
 
@@ -388,7 +397,7 @@ type mockDirectoryManager_KeywordsByCategory_Call struct {
 // KeywordsByCategory is a helper method to define mock.On call
 //   - ctx context.Context
 //   - categoryID uint8
-func (_e *mockDirectoryManager_Expecter) KeywordsByCategory(ctx interface{}, categoryID interface{}) *mockDirectoryManager_KeywordsByCategory_Call {
+func (_e *mockDirectoryManager_Expecter) KeywordsByCategory(ctx any, categoryID any) *mockDirectoryManager_KeywordsByCategory_Call {
 	return &mockDirectoryManager_KeywordsByCategory_Call{Call: _e.mock.On("KeywordsByCategory", ctx, categoryID)}
 }
 

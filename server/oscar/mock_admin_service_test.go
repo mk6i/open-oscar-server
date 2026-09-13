@@ -18,10 +18,19 @@ func newMockAdminService(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockAdminService {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockAdminService{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -74,7 +83,7 @@ type mockAdminService_ConfirmRequest_Call struct {
 //   - ctx context.Context
 //   - instance *state.SessionInstance
 //   - inFrame wire.SNACFrame
-func (_e *mockAdminService_Expecter) ConfirmRequest(ctx interface{}, instance interface{}, inFrame interface{}) *mockAdminService_ConfirmRequest_Call {
+func (_e *mockAdminService_Expecter) ConfirmRequest(ctx any, instance any, inFrame any) *mockAdminService_ConfirmRequest_Call {
 	return &mockAdminService_ConfirmRequest_Call{Call: _e.mock.On("ConfirmRequest", ctx, instance, inFrame)}
 }
 
@@ -147,7 +156,7 @@ type mockAdminService_InfoChangeRequest_Call struct {
 //   - instance *state.SessionInstance
 //   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x07_0x04_AdminInfoChangeRequest
-func (_e *mockAdminService_Expecter) InfoChangeRequest(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}) *mockAdminService_InfoChangeRequest_Call {
+func (_e *mockAdminService_Expecter) InfoChangeRequest(ctx any, instance any, inFrame any, inBody any) *mockAdminService_InfoChangeRequest_Call {
 	return &mockAdminService_InfoChangeRequest_Call{Call: _e.mock.On("InfoChangeRequest", ctx, instance, inFrame, inBody)}
 }
 
@@ -225,7 +234,7 @@ type mockAdminService_InfoQuery_Call struct {
 //   - instance *state.SessionInstance
 //   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x07_0x02_AdminInfoQuery
-func (_e *mockAdminService_Expecter) InfoQuery(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}) *mockAdminService_InfoQuery_Call {
+func (_e *mockAdminService_Expecter) InfoQuery(ctx any, instance any, inFrame any, inBody any) *mockAdminService_InfoQuery_Call {
 	return &mockAdminService_InfoQuery_Call{Call: _e.mock.On("InfoQuery", ctx, instance, inFrame, inBody)}
 }
 

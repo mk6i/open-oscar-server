@@ -17,10 +17,19 @@ func newMockChatRoomCreator(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockChatRoomCreator {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockChatRoomCreator{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -63,7 +72,7 @@ type mockChatRoomCreator_CreateChatRoom_Call struct {
 // CreateChatRoom is a helper method to define mock.On call
 //   - ctx context.Context
 //   - chatRoom *state.ChatRoom
-func (_e *mockChatRoomCreator_Expecter) CreateChatRoom(ctx interface{}, chatRoom interface{}) *mockChatRoomCreator_CreateChatRoom_Call {
+func (_e *mockChatRoomCreator_Expecter) CreateChatRoom(ctx any, chatRoom any) *mockChatRoomCreator_CreateChatRoom_Call {
 	return &mockChatRoomCreator_CreateChatRoom_Call{Call: _e.mock.On("CreateChatRoom", ctx, chatRoom)}
 }
 

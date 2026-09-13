@@ -18,10 +18,19 @@ func newMockChatNavService(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockChatNavService {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockChatNavService{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -75,7 +84,7 @@ type mockChatNavService_CreateRoom_Call struct {
 //   - instance *state.SessionInstance
 //   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x0E_0x02_ChatRoomInfoUpdate
-func (_e *mockChatNavService_Expecter) CreateRoom(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}) *mockChatNavService_CreateRoom_Call {
+func (_e *mockChatNavService_Expecter) CreateRoom(ctx any, instance any, inFrame any, inBody any) *mockChatNavService_CreateRoom_Call {
 	return &mockChatNavService_CreateRoom_Call{Call: _e.mock.On("CreateRoom", ctx, instance, inFrame, inBody)}
 }
 
@@ -152,7 +161,7 @@ type mockChatNavService_ExchangeInfo_Call struct {
 //   - ctx context.Context
 //   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x0D_0x03_ChatNavRequestExchangeInfo
-func (_e *mockChatNavService_Expecter) ExchangeInfo(ctx interface{}, inFrame interface{}, inBody interface{}) *mockChatNavService_ExchangeInfo_Call {
+func (_e *mockChatNavService_Expecter) ExchangeInfo(ctx any, inFrame any, inBody any) *mockChatNavService_ExchangeInfo_Call {
 	return &mockChatNavService_ExchangeInfo_Call{Call: _e.mock.On("ExchangeInfo", ctx, inFrame, inBody)}
 }
 
@@ -214,7 +223,7 @@ type mockChatNavService_RequestChatRights_Call struct {
 // RequestChatRights is a helper method to define mock.On call
 //   - ctx context.Context
 //   - inFrame wire.SNACFrame
-func (_e *mockChatNavService_Expecter) RequestChatRights(ctx interface{}, inFrame interface{}) *mockChatNavService_RequestChatRights_Call {
+func (_e *mockChatNavService_Expecter) RequestChatRights(ctx any, inFrame any) *mockChatNavService_RequestChatRights_Call {
 	return &mockChatNavService_RequestChatRights_Call{Call: _e.mock.On("RequestChatRights", ctx, inFrame)}
 }
 
@@ -281,7 +290,7 @@ type mockChatNavService_RequestRoomInfo_Call struct {
 //   - ctx context.Context
 //   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x0D_0x04_ChatNavRequestRoomInfo
-func (_e *mockChatNavService_Expecter) RequestRoomInfo(ctx interface{}, inFrame interface{}, inBody interface{}) *mockChatNavService_RequestRoomInfo_Call {
+func (_e *mockChatNavService_Expecter) RequestRoomInfo(ctx any, inFrame any, inBody any) *mockChatNavService_RequestRoomInfo_Call {
 	return &mockChatNavService_RequestRoomInfo_Call{Call: _e.mock.On("RequestRoomInfo", ctx, inFrame, inBody)}
 }
 

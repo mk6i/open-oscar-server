@@ -17,10 +17,19 @@ func newMockICQUserFinder(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockICQUserFinder {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockICQUserFinder{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -72,7 +81,7 @@ type mockICQUserFinder_FindByICQEmail_Call struct {
 // FindByICQEmail is a helper method to define mock.On call
 //   - ctx context.Context
 //   - email string
-func (_e *mockICQUserFinder_Expecter) FindByICQEmail(ctx interface{}, email interface{}) *mockICQUserFinder_FindByICQEmail_Call {
+func (_e *mockICQUserFinder_Expecter) FindByICQEmail(ctx any, email any) *mockICQUserFinder_FindByICQEmail_Call {
 	return &mockICQUserFinder_FindByICQEmail_Call{Call: _e.mock.On("FindByICQEmail", ctx, email)}
 }
 
@@ -141,7 +150,7 @@ type mockICQUserFinder_FindByICQInterests_Call struct {
 //   - ctx context.Context
 //   - code uint16
 //   - keywords []string
-func (_e *mockICQUserFinder_Expecter) FindByICQInterests(ctx interface{}, code interface{}, keywords interface{}) *mockICQUserFinder_FindByICQInterests_Call {
+func (_e *mockICQUserFinder_Expecter) FindByICQInterests(ctx any, code any, keywords any) *mockICQUserFinder_FindByICQInterests_Call {
 	return &mockICQUserFinder_FindByICQInterests_Call{Call: _e.mock.On("FindByICQInterests", ctx, code, keywords)}
 }
 
@@ -214,7 +223,7 @@ type mockICQUserFinder_FindByICQKeyword_Call struct {
 // FindByICQKeyword is a helper method to define mock.On call
 //   - ctx context.Context
 //   - keyword string
-func (_e *mockICQUserFinder_Expecter) FindByICQKeyword(ctx interface{}, keyword interface{}) *mockICQUserFinder_FindByICQKeyword_Call {
+func (_e *mockICQUserFinder_Expecter) FindByICQKeyword(ctx any, keyword any) *mockICQUserFinder_FindByICQKeyword_Call {
 	return &mockICQUserFinder_FindByICQKeyword_Call{Call: _e.mock.On("FindByICQKeyword", ctx, keyword)}
 }
 
@@ -284,7 +293,7 @@ type mockICQUserFinder_FindByICQName_Call struct {
 //   - firstName string
 //   - lastName string
 //   - nickName string
-func (_e *mockICQUserFinder_Expecter) FindByICQName(ctx interface{}, firstName interface{}, lastName interface{}, nickName interface{}) *mockICQUserFinder_FindByICQName_Call {
+func (_e *mockICQUserFinder_Expecter) FindByICQName(ctx any, firstName any, lastName any, nickName any) *mockICQUserFinder_FindByICQName_Call {
 	return &mockICQUserFinder_FindByICQName_Call{Call: _e.mock.On("FindByICQName", ctx, firstName, lastName, nickName)}
 }
 
@@ -360,7 +369,7 @@ type mockICQUserFinder_FindByUIN_Call struct {
 // FindByUIN is a helper method to define mock.On call
 //   - ctx context.Context
 //   - UIN uint32
-func (_e *mockICQUserFinder_Expecter) FindByUIN(ctx interface{}, UIN interface{}) *mockICQUserFinder_FindByUIN_Call {
+func (_e *mockICQUserFinder_Expecter) FindByUIN(ctx any, UIN any) *mockICQUserFinder_FindByUIN_Call {
 	return &mockICQUserFinder_FindByUIN_Call{Call: _e.mock.On("FindByUIN", ctx, UIN)}
 }
 
@@ -428,7 +437,7 @@ type mockICQUserFinder_SearchICQUsers_Call struct {
 // SearchICQUsers is a helper method to define mock.On call
 //   - ctx context.Context
 //   - c state.ICQUserSearchCriteria
-func (_e *mockICQUserFinder_Expecter) SearchICQUsers(ctx interface{}, c interface{}) *mockICQUserFinder_SearchICQUsers_Call {
+func (_e *mockICQUserFinder_Expecter) SearchICQUsers(ctx any, c any) *mockICQUserFinder_SearchICQUsers_Call {
 	return &mockICQUserFinder_SearchICQUsers_Call{Call: _e.mock.On("SearchICQUsers", ctx, c)}
 }
 

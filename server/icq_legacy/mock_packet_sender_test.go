@@ -16,10 +16,19 @@ func newMockPacketSender(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockPacketSender {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockPacketSender{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -62,7 +71,7 @@ type mockPacketSender_SendPacket_Call struct {
 // SendPacket is a helper method to define mock.On call
 //   - addr *net.UDPAddr
 //   - packet []byte
-func (_e *mockPacketSender_Expecter) SendPacket(addr interface{}, packet interface{}) *mockPacketSender_SendPacket_Call {
+func (_e *mockPacketSender_Expecter) SendPacket(addr any, packet any) *mockPacketSender_SendPacket_Call {
 	return &mockPacketSender_SendPacket_Call{Call: _e.mock.On("SendPacket", addr, packet)}
 }
 
@@ -119,7 +128,7 @@ type mockPacketSender_SendToSession_Call struct {
 // SendToSession is a helper method to define mock.On call
 //   - session *LegacySession
 //   - packet []byte
-func (_e *mockPacketSender_Expecter) SendToSession(session interface{}, packet interface{}) *mockPacketSender_SendToSession_Call {
+func (_e *mockPacketSender_Expecter) SendToSession(session any, packet any) *mockPacketSender_SendToSession_Call {
 	return &mockPacketSender_SendToSession_Call{Call: _e.mock.On("SendToSession", session, packet)}
 }
 

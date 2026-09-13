@@ -18,10 +18,19 @@ func newMockICBMService(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockICBMService {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockICBMService{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -77,7 +86,7 @@ type mockICBMService_ChannelMsgToHost_Call struct {
 //   - instance *state.SessionInstance
 //   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost
-func (_e *mockICBMService_Expecter) ChannelMsgToHost(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}) *mockICBMService_ChannelMsgToHost_Call {
+func (_e *mockICBMService_Expecter) ChannelMsgToHost(ctx any, instance any, inFrame any, inBody any) *mockICBMService_ChannelMsgToHost_Call {
 	return &mockICBMService_ChannelMsgToHost_Call{Call: _e.mock.On("ChannelMsgToHost", ctx, instance, inFrame, inBody)}
 }
 
@@ -146,7 +155,7 @@ type mockICBMService_ClientErr_Call struct {
 //   - instance *state.SessionInstance
 //   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x04_0x0B_ICBMClientErr
-func (_e *mockICBMService_Expecter) ClientErr(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}) *mockICBMService_ClientErr_Call {
+func (_e *mockICBMService_Expecter) ClientErr(ctx any, instance any, inFrame any, inBody any) *mockICBMService_ClientErr_Call {
 	return &mockICBMService_ClientErr_Call{Call: _e.mock.On("ClientErr", ctx, instance, inFrame, inBody)}
 }
 
@@ -215,7 +224,7 @@ type mockICBMService_ClientEvent_Call struct {
 //   - instance *state.SessionInstance
 //   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x04_0x14_ICBMClientEvent
-func (_e *mockICBMService_Expecter) ClientEvent(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}) *mockICBMService_ClientEvent_Call {
+func (_e *mockICBMService_Expecter) ClientEvent(ctx any, instance any, inFrame any, inBody any) *mockICBMService_ClientEvent_Call {
 	return &mockICBMService_ClientEvent_Call{Call: _e.mock.On("ClientEvent", ctx, instance, inFrame, inBody)}
 }
 
@@ -293,7 +302,7 @@ type mockICBMService_EvilRequest_Call struct {
 //   - instance *state.SessionInstance
 //   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x04_0x08_ICBMEvilRequest
-func (_e *mockICBMService_Expecter) EvilRequest(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}) *mockICBMService_EvilRequest_Call {
+func (_e *mockICBMService_Expecter) EvilRequest(ctx any, instance any, inFrame any, inBody any) *mockICBMService_EvilRequest_Call {
 	return &mockICBMService_EvilRequest_Call{Call: _e.mock.On("EvilRequest", ctx, instance, inFrame, inBody)}
 }
 
@@ -360,7 +369,7 @@ type mockICBMService_ParameterQuery_Call struct {
 // ParameterQuery is a helper method to define mock.On call
 //   - ctx context.Context
 //   - inFrame wire.SNACFrame
-func (_e *mockICBMService_Expecter) ParameterQuery(ctx interface{}, inFrame interface{}) *mockICBMService_ParameterQuery_Call {
+func (_e *mockICBMService_Expecter) ParameterQuery(ctx any, inFrame any) *mockICBMService_ParameterQuery_Call {
 	return &mockICBMService_ParameterQuery_Call{Call: _e.mock.On("ParameterQuery", ctx, inFrame)}
 }
 

@@ -17,10 +17,19 @@ func newMockODirService(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockODirService {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockODirService{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -73,7 +82,7 @@ type mockODirService_InfoQuery_Call struct {
 //   - ctx context.Context
 //   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x0F_0x02_InfoQuery
-func (_e *mockODirService_Expecter) InfoQuery(ctx interface{}, inFrame interface{}, inBody interface{}) *mockODirService_InfoQuery_Call {
+func (_e *mockODirService_Expecter) InfoQuery(ctx any, inFrame any, inBody any) *mockODirService_InfoQuery_Call {
 	return &mockODirService_InfoQuery_Call{Call: _e.mock.On("InfoQuery", ctx, inFrame, inBody)}
 }
 
@@ -144,7 +153,7 @@ type mockODirService_KeywordListQuery_Call struct {
 // KeywordListQuery is a helper method to define mock.On call
 //   - ctx context.Context
 //   - inFrame wire.SNACFrame
-func (_e *mockODirService_Expecter) KeywordListQuery(ctx interface{}, inFrame interface{}) *mockODirService_KeywordListQuery_Call {
+func (_e *mockODirService_Expecter) KeywordListQuery(ctx any, inFrame any) *mockODirService_KeywordListQuery_Call {
 	return &mockODirService_KeywordListQuery_Call{Call: _e.mock.On("KeywordListQuery", ctx, inFrame)}
 }
 

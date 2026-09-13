@@ -17,10 +17,19 @@ func newMockTOCConfigStore(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockTOCConfigStore {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockTOCConfigStore{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -64,7 +73,7 @@ type mockTOCConfigStore_SetTOCConfig_Call struct {
 //   - ctx context.Context
 //   - user state.IdentScreenName
 //   - config string
-func (_e *mockTOCConfigStore_Expecter) SetTOCConfig(ctx interface{}, user interface{}, config interface{}) *mockTOCConfigStore_SetTOCConfig_Call {
+func (_e *mockTOCConfigStore_Expecter) SetTOCConfig(ctx any, user any, config any) *mockTOCConfigStore_SetTOCConfig_Call {
 	return &mockTOCConfigStore_SetTOCConfig_Call{Call: _e.mock.On("SetTOCConfig", ctx, user, config)}
 }
 
@@ -137,7 +146,7 @@ type mockTOCConfigStore_User_Call struct {
 // User is a helper method to define mock.On call
 //   - ctx context.Context
 //   - screenName state.IdentScreenName
-func (_e *mockTOCConfigStore_Expecter) User(ctx interface{}, screenName interface{}) *mockTOCConfigStore_User_Call {
+func (_e *mockTOCConfigStore_Expecter) User(ctx any, screenName any) *mockTOCConfigStore_User_Call {
 	return &mockTOCConfigStore_User_Call{Call: _e.mock.On("User", ctx, screenName)}
 }
 

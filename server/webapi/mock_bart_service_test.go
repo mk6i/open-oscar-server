@@ -18,10 +18,19 @@ func newMockBARTService(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockBARTService {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockBARTService{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -74,7 +83,7 @@ type mockBARTService_RetrieveItem_Call struct {
 //   - ctx context.Context
 //   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x10_0x04_BARTDownloadQuery
-func (_e *mockBARTService_Expecter) RetrieveItem(ctx interface{}, inFrame interface{}, inBody interface{}) *mockBARTService_RetrieveItem_Call {
+func (_e *mockBARTService_Expecter) RetrieveItem(ctx any, inFrame any, inBody any) *mockBARTService_RetrieveItem_Call {
 	return &mockBARTService_RetrieveItem_Call{Call: _e.mock.On("RetrieveItem", ctx, inFrame, inBody)}
 }
 
@@ -147,7 +156,7 @@ type mockBARTService_UpsertItem_Call struct {
 //   - instance *state.SessionInstance
 //   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x10_0x02_BARTUploadQuery
-func (_e *mockBARTService_Expecter) UpsertItem(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}) *mockBARTService_UpsertItem_Call {
+func (_e *mockBARTService_Expecter) UpsertItem(ctx any, instance any, inFrame any, inBody any) *mockBARTService_UpsertItem_Call {
 	return &mockBARTService_UpsertItem_Call{Call: _e.mock.On("UpsertItem", ctx, instance, inFrame, inBody)}
 }
 

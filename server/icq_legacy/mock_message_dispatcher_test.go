@@ -14,10 +14,19 @@ func newMockMessageDispatcher(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockMessageDispatcher {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockMessageDispatcher{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -62,7 +71,7 @@ type mockMessageDispatcher_SendOnlineMessage_Call struct {
 //   - fromUIN uint32
 //   - msgType uint16
 //   - message string
-func (_e *mockMessageDispatcher_Expecter) SendOnlineMessage(toSession interface{}, fromUIN interface{}, msgType interface{}, message interface{}) *mockMessageDispatcher_SendOnlineMessage_Call {
+func (_e *mockMessageDispatcher_Expecter) SendOnlineMessage(toSession any, fromUIN any, msgType any, message any) *mockMessageDispatcher_SendOnlineMessage_Call {
 	return &mockMessageDispatcher_SendOnlineMessage_Call{Call: _e.mock.On("SendOnlineMessage", toSession, fromUIN, msgType, message)}
 }
 
@@ -130,7 +139,7 @@ type mockMessageDispatcher_SendStatusChange_Call struct {
 //   - toSession *LegacySession
 //   - changedUIN uint32
 //   - newStatus uint32
-func (_e *mockMessageDispatcher_Expecter) SendStatusChange(toSession interface{}, changedUIN interface{}, newStatus interface{}) *mockMessageDispatcher_SendStatusChange_Call {
+func (_e *mockMessageDispatcher_Expecter) SendStatusChange(toSession any, changedUIN any, newStatus any) *mockMessageDispatcher_SendStatusChange_Call {
 	return &mockMessageDispatcher_SendStatusChange_Call{Call: _e.mock.On("SendStatusChange", toSession, changedUIN, newStatus)}
 }
 
@@ -192,7 +201,7 @@ type mockMessageDispatcher_SendUserOffline_Call struct {
 // SendUserOffline is a helper method to define mock.On call
 //   - toSession *LegacySession
 //   - offlineUIN uint32
-func (_e *mockMessageDispatcher_Expecter) SendUserOffline(toSession interface{}, offlineUIN interface{}) *mockMessageDispatcher_SendUserOffline_Call {
+func (_e *mockMessageDispatcher_Expecter) SendUserOffline(toSession any, offlineUIN any) *mockMessageDispatcher_SendUserOffline_Call {
 	return &mockMessageDispatcher_SendUserOffline_Call{Call: _e.mock.On("SendUserOffline", toSession, offlineUIN)}
 }
 
@@ -250,7 +259,7 @@ type mockMessageDispatcher_SendUserOnline_Call struct {
 //   - toSession *LegacySession
 //   - onlineUIN uint32
 //   - status uint32
-func (_e *mockMessageDispatcher_Expecter) SendUserOnline(toSession interface{}, onlineUIN interface{}, status interface{}) *mockMessageDispatcher_SendUserOnline_Call {
+func (_e *mockMessageDispatcher_Expecter) SendUserOnline(toSession any, onlineUIN any, status any) *mockMessageDispatcher_SendUserOnline_Call {
 	return &mockMessageDispatcher_SendUserOnline_Call{Call: _e.mock.On("SendUserOnline", toSession, onlineUIN, status)}
 }
 

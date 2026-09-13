@@ -17,10 +17,19 @@ func newMockContactPreAuthorizer(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockContactPreAuthorizer {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockContactPreAuthorizer{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -64,7 +73,7 @@ type mockContactPreAuthorizer_RecordPreAuth_Call struct {
 //   - ctx context.Context
 //   - owner state.IdentScreenName
 //   - requester state.IdentScreenName
-func (_e *mockContactPreAuthorizer_Expecter) RecordPreAuth(ctx interface{}, owner interface{}, requester interface{}) *mockContactPreAuthorizer_RecordPreAuth_Call {
+func (_e *mockContactPreAuthorizer_Expecter) RecordPreAuth(ctx any, owner any, requester any) *mockContactPreAuthorizer_RecordPreAuth_Call {
 	return &mockContactPreAuthorizer_RecordPreAuth_Call{Call: _e.mock.On("RecordPreAuth", ctx, owner, requester)}
 }
 
@@ -136,7 +145,7 @@ type mockContactPreAuthorizer_RequiresAuthorization_Call struct {
 //   - ctx context.Context
 //   - owner state.IdentScreenName
 //   - requester state.IdentScreenName
-func (_e *mockContactPreAuthorizer_Expecter) RequiresAuthorization(ctx interface{}, owner interface{}, requester interface{}) *mockContactPreAuthorizer_RequiresAuthorization_Call {
+func (_e *mockContactPreAuthorizer_Expecter) RequiresAuthorization(ctx any, owner any, requester any) *mockContactPreAuthorizer_RequiresAuthorization_Call {
 	return &mockContactPreAuthorizer_RequiresAuthorization_Call{Call: _e.mock.On("RequiresAuthorization", ctx, owner, requester)}
 }
 

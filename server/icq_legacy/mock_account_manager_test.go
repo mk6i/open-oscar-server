@@ -17,10 +17,19 @@ func newMockAccountManager(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockAccountManager {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockAccountManager{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -64,7 +73,7 @@ type mockAccountManager_SetUserPassword_Call struct {
 //   - ctx context.Context
 //   - screenName state.IdentScreenName
 //   - newPassword string
-func (_e *mockAccountManager_Expecter) SetUserPassword(ctx interface{}, screenName interface{}, newPassword interface{}) *mockAccountManager_SetUserPassword_Call {
+func (_e *mockAccountManager_Expecter) SetUserPassword(ctx any, screenName any, newPassword any) *mockAccountManager_SetUserPassword_Call {
 	return &mockAccountManager_SetUserPassword_Call{Call: _e.mock.On("SetUserPassword", ctx, screenName, newPassword)}
 }
 

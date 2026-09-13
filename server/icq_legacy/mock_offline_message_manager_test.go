@@ -17,10 +17,19 @@ func newMockOfflineMessageManager(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockOfflineMessageManager {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockOfflineMessageManager{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -63,7 +72,7 @@ type mockOfflineMessageManager_DeleteMessages_Call struct {
 // DeleteMessages is a helper method to define mock.On call
 //   - ctx context.Context
 //   - recip state.IdentScreenName
-func (_e *mockOfflineMessageManager_Expecter) DeleteMessages(ctx interface{}, recip interface{}) *mockOfflineMessageManager_DeleteMessages_Call {
+func (_e *mockOfflineMessageManager_Expecter) DeleteMessages(ctx any, recip any) *mockOfflineMessageManager_DeleteMessages_Call {
 	return &mockOfflineMessageManager_DeleteMessages_Call{Call: _e.mock.On("DeleteMessages", ctx, recip)}
 }
 
@@ -131,7 +140,7 @@ type mockOfflineMessageManager_RetrieveMessages_Call struct {
 // RetrieveMessages is a helper method to define mock.On call
 //   - ctx context.Context
 //   - recip state.IdentScreenName
-func (_e *mockOfflineMessageManager_Expecter) RetrieveMessages(ctx interface{}, recip interface{}) *mockOfflineMessageManager_RetrieveMessages_Call {
+func (_e *mockOfflineMessageManager_Expecter) RetrieveMessages(ctx any, recip any) *mockOfflineMessageManager_RetrieveMessages_Call {
 	return &mockOfflineMessageManager_RetrieveMessages_Call{Call: _e.mock.On("RetrieveMessages", ctx, recip)}
 }
 
@@ -197,7 +206,7 @@ type mockOfflineMessageManager_SaveMessage_Call struct {
 // SaveMessage is a helper method to define mock.On call
 //   - ctx context.Context
 //   - offlineMessage state.OfflineMessage
-func (_e *mockOfflineMessageManager_Expecter) SaveMessage(ctx interface{}, offlineMessage interface{}) *mockOfflineMessageManager_SaveMessage_Call {
+func (_e *mockOfflineMessageManager_Expecter) SaveMessage(ctx any, offlineMessage any) *mockOfflineMessageManager_SaveMessage_Call {
 	return &mockOfflineMessageManager_SaveMessage_Call{Call: _e.mock.On("SaveMessage", ctx, offlineMessage)}
 }
 

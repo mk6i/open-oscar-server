@@ -18,10 +18,19 @@ func newMockAdminService(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockAdminService {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockAdminService{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -75,7 +84,7 @@ type mockAdminService_InfoChangeRequest_Call struct {
 //   - instance *state.SessionInstance
 //   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x07_0x04_AdminInfoChangeRequest
-func (_e *mockAdminService_Expecter) InfoChangeRequest(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}) *mockAdminService_InfoChangeRequest_Call {
+func (_e *mockAdminService_Expecter) InfoChangeRequest(ctx any, instance any, inFrame any, inBody any) *mockAdminService_InfoChangeRequest_Call {
 	return &mockAdminService_InfoChangeRequest_Call{Call: _e.mock.On("InfoChangeRequest", ctx, instance, inFrame, inBody)}
 }
 

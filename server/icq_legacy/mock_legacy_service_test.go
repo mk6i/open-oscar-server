@@ -17,10 +17,19 @@ func newMockLegacyService(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockLegacyService {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockLegacyService{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -63,7 +72,7 @@ type mockLegacyService_AckOfflineMessages_Call struct {
 // AckOfflineMessages is a helper method to define mock.On call
 //   - ctx context.Context
 //   - uin uint32
-func (_e *mockLegacyService_Expecter) AckOfflineMessages(ctx interface{}, uin interface{}) *mockLegacyService_AckOfflineMessages_Call {
+func (_e *mockLegacyService_Expecter) AckOfflineMessages(ctx any, uin any) *mockLegacyService_AckOfflineMessages_Call {
 	return &mockLegacyService_AckOfflineMessages_Call{Call: _e.mock.On("AckOfflineMessages", ctx, uin)}
 }
 
@@ -131,7 +140,7 @@ type mockLegacyService_AuthenticateUser_Call struct {
 // AuthenticateUser is a helper method to define mock.On call
 //   - ctx context.Context
 //   - req AuthRequest
-func (_e *mockLegacyService_Expecter) AuthenticateUser(ctx interface{}, req interface{}) *mockLegacyService_AuthenticateUser_Call {
+func (_e *mockLegacyService_Expecter) AuthenticateUser(ctx any, req any) *mockLegacyService_AuthenticateUser_Call {
 	return &mockLegacyService_AuthenticateUser_Call{Call: _e.mock.On("AuthenticateUser", ctx, req)}
 }
 
@@ -189,7 +198,7 @@ type mockLegacyService_ChangeStatus_Call struct {
 //   - ctx context.Context
 //   - uin uint32
 //   - status uint32
-func (_e *mockLegacyService_Expecter) ChangeStatus(ctx interface{}, uin interface{}, status interface{}) *mockLegacyService_ChangeStatus_Call {
+func (_e *mockLegacyService_Expecter) ChangeStatus(ctx any, uin any, status any) *mockLegacyService_ChangeStatus_Call {
 	return &mockLegacyService_ChangeStatus_Call{Call: _e.mock.On("ChangeStatus", ctx, uin, status)}
 }
 
@@ -252,7 +261,7 @@ type mockLegacyService_DeleteUser_Call struct {
 //   - ctx context.Context
 //   - uin uint32
 //   - password string
-func (_e *mockLegacyService_Expecter) DeleteUser(ctx interface{}, uin interface{}, password interface{}) *mockLegacyService_DeleteUser_Call {
+func (_e *mockLegacyService_Expecter) DeleteUser(ctx any, uin any, password any) *mockLegacyService_DeleteUser_Call {
 	return &mockLegacyService_DeleteUser_Call{Call: _e.mock.On("DeleteUser", ctx, uin, password)}
 }
 
@@ -325,7 +334,7 @@ type mockLegacyService_GetAffiliations_Call struct {
 // GetAffiliations is a helper method to define mock.On call
 //   - ctx context.Context
 //   - uin uint32
-func (_e *mockLegacyService_Expecter) GetAffiliations(ctx interface{}, uin interface{}) *mockLegacyService_GetAffiliations_Call {
+func (_e *mockLegacyService_Expecter) GetAffiliations(ctx any, uin any) *mockLegacyService_GetAffiliations_Call {
 	return &mockLegacyService_GetAffiliations_Call{Call: _e.mock.On("GetAffiliations", ctx, uin)}
 }
 
@@ -393,7 +402,7 @@ type mockLegacyService_GetFullUserInfo_Call struct {
 // GetFullUserInfo is a helper method to define mock.On call
 //   - ctx context.Context
 //   - uin uint32
-func (_e *mockLegacyService_Expecter) GetFullUserInfo(ctx interface{}, uin interface{}) *mockLegacyService_GetFullUserInfo_Call {
+func (_e *mockLegacyService_Expecter) GetFullUserInfo(ctx any, uin any) *mockLegacyService_GetFullUserInfo_Call {
 	return &mockLegacyService_GetFullUserInfo_Call{Call: _e.mock.On("GetFullUserInfo", ctx, uin)}
 }
 
@@ -461,7 +470,7 @@ type mockLegacyService_GetHomepageCategory_Call struct {
 // GetHomepageCategory is a helper method to define mock.On call
 //   - ctx context.Context
 //   - uin uint32
-func (_e *mockLegacyService_Expecter) GetHomepageCategory(ctx interface{}, uin interface{}) *mockLegacyService_GetHomepageCategory_Call {
+func (_e *mockLegacyService_Expecter) GetHomepageCategory(ctx any, uin any) *mockLegacyService_GetHomepageCategory_Call {
 	return &mockLegacyService_GetHomepageCategory_Call{Call: _e.mock.On("GetHomepageCategory", ctx, uin)}
 }
 
@@ -529,7 +538,7 @@ type mockLegacyService_GetInterests_Call struct {
 // GetInterests is a helper method to define mock.On call
 //   - ctx context.Context
 //   - uin uint32
-func (_e *mockLegacyService_Expecter) GetInterests(ctx interface{}, uin interface{}) *mockLegacyService_GetInterests_Call {
+func (_e *mockLegacyService_Expecter) GetInterests(ctx any, uin any) *mockLegacyService_GetInterests_Call {
 	return &mockLegacyService_GetInterests_Call{Call: _e.mock.On("GetInterests", ctx, uin)}
 }
 
@@ -595,7 +604,7 @@ type mockLegacyService_GetNotes_Call struct {
 // GetNotes is a helper method to define mock.On call
 //   - ctx context.Context
 //   - uin uint32
-func (_e *mockLegacyService_Expecter) GetNotes(ctx interface{}, uin interface{}) *mockLegacyService_GetNotes_Call {
+func (_e *mockLegacyService_Expecter) GetNotes(ctx any, uin any) *mockLegacyService_GetNotes_Call {
 	return &mockLegacyService_GetNotes_Call{Call: _e.mock.On("GetNotes", ctx, uin)}
 }
 
@@ -663,7 +672,7 @@ type mockLegacyService_GetOfflineMessages_Call struct {
 // GetOfflineMessages is a helper method to define mock.On call
 //   - ctx context.Context
 //   - uin uint32
-func (_e *mockLegacyService_Expecter) GetOfflineMessages(ctx interface{}, uin interface{}) *mockLegacyService_GetOfflineMessages_Call {
+func (_e *mockLegacyService_Expecter) GetOfflineMessages(ctx any, uin any) *mockLegacyService_GetOfflineMessages_Call {
 	return &mockLegacyService_GetOfflineMessages_Call{Call: _e.mock.On("GetOfflineMessages", ctx, uin)}
 }
 
@@ -731,7 +740,7 @@ type mockLegacyService_GetUserInfo_Call struct {
 // GetUserInfo is a helper method to define mock.On call
 //   - ctx context.Context
 //   - uin uint32
-func (_e *mockLegacyService_Expecter) GetUserInfo(ctx interface{}, uin interface{}) *mockLegacyService_GetUserInfo_Call {
+func (_e *mockLegacyService_Expecter) GetUserInfo(ctx any, uin any) *mockLegacyService_GetUserInfo_Call {
 	return &mockLegacyService_GetUserInfo_Call{Call: _e.mock.On("GetUserInfo", ctx, uin)}
 }
 
@@ -799,7 +808,7 @@ type mockLegacyService_GetUserInfoForProtocol_Call struct {
 // GetUserInfoForProtocol is a helper method to define mock.On call
 //   - ctx context.Context
 //   - targetUIN uint32
-func (_e *mockLegacyService_Expecter) GetUserInfoForProtocol(ctx interface{}, targetUIN interface{}) *mockLegacyService_GetUserInfoForProtocol_Call {
+func (_e *mockLegacyService_Expecter) GetUserInfoForProtocol(ctx any, targetUIN any) *mockLegacyService_GetUserInfoForProtocol_Call {
 	return &mockLegacyService_GetUserInfoForProtocol_Call{Call: _e.mock.On("GetUserInfoForProtocol", ctx, targetUIN)}
 }
 
@@ -857,7 +866,7 @@ type mockLegacyService_NotifyStatusChange_Call struct {
 //   - ctx context.Context
 //   - uin uint32
 //   - status uint32
-func (_e *mockLegacyService_Expecter) NotifyStatusChange(ctx interface{}, uin interface{}, status interface{}) *mockLegacyService_NotifyStatusChange_Call {
+func (_e *mockLegacyService_Expecter) NotifyStatusChange(ctx any, uin any, status any) *mockLegacyService_NotifyStatusChange_Call {
 	return &mockLegacyService_NotifyStatusChange_Call{Call: _e.mock.On("NotifyStatusChange", ctx, uin, status)}
 }
 
@@ -919,7 +928,7 @@ type mockLegacyService_NotifyUserOffline_Call struct {
 // NotifyUserOffline is a helper method to define mock.On call
 //   - ctx context.Context
 //   - uin uint32
-func (_e *mockLegacyService_Expecter) NotifyUserOffline(ctx interface{}, uin interface{}) *mockLegacyService_NotifyUserOffline_Call {
+func (_e *mockLegacyService_Expecter) NotifyUserOffline(ctx any, uin any) *mockLegacyService_NotifyUserOffline_Call {
 	return &mockLegacyService_NotifyUserOffline_Call{Call: _e.mock.On("NotifyUserOffline", ctx, uin)}
 }
 
@@ -977,7 +986,7 @@ type mockLegacyService_NotifyUserOnline_Call struct {
 //   - ctx context.Context
 //   - uin uint32
 //   - status uint32
-func (_e *mockLegacyService_Expecter) NotifyUserOnline(ctx interface{}, uin interface{}, status interface{}) *mockLegacyService_NotifyUserOnline_Call {
+func (_e *mockLegacyService_Expecter) NotifyUserOnline(ctx any, uin any, status any) *mockLegacyService_NotifyUserOnline_Call {
 	return &mockLegacyService_NotifyUserOnline_Call{Call: _e.mock.On("NotifyUserOnline", ctx, uin, status)}
 }
 
@@ -1051,7 +1060,7 @@ type mockLegacyService_ProcessContactList_Call struct {
 //   - ctx context.Context
 //   - instance *state.SessionInstance
 //   - req ContactListRequest
-func (_e *mockLegacyService_Expecter) ProcessContactList(ctx interface{}, instance interface{}, req interface{}) *mockLegacyService_ProcessContactList_Call {
+func (_e *mockLegacyService_Expecter) ProcessContactList(ctx any, instance any, req any) *mockLegacyService_ProcessContactList_Call {
 	return &mockLegacyService_ProcessContactList_Call{Call: _e.mock.On("ProcessContactList", ctx, instance, req)}
 }
 
@@ -1125,7 +1134,7 @@ type mockLegacyService_ProcessMessage_Call struct {
 //   - ctx context.Context
 //   - session *LegacySession
 //   - req MessageRequest
-func (_e *mockLegacyService_Expecter) ProcessMessage(ctx interface{}, session interface{}, req interface{}) *mockLegacyService_ProcessMessage_Call {
+func (_e *mockLegacyService_Expecter) ProcessMessage(ctx any, session any, req any) *mockLegacyService_ProcessMessage_Call {
 	return &mockLegacyService_ProcessMessage_Call{Call: _e.mock.On("ProcessMessage", ctx, session, req)}
 }
 
@@ -1198,7 +1207,7 @@ type mockLegacyService_ProcessStatusChange_Call struct {
 // ProcessStatusChange is a helper method to define mock.On call
 //   - ctx context.Context
 //   - req StatusChangeRequest
-func (_e *mockLegacyService_Expecter) ProcessStatusChange(ctx interface{}, req interface{}) *mockLegacyService_ProcessStatusChange_Call {
+func (_e *mockLegacyService_Expecter) ProcessStatusChange(ctx any, req any) *mockLegacyService_ProcessStatusChange_Call {
 	return &mockLegacyService_ProcessStatusChange_Call{Call: _e.mock.On("ProcessStatusChange", ctx, req)}
 }
 
@@ -1267,7 +1276,7 @@ type mockLegacyService_ProcessUserAdd_Call struct {
 //   - ctx context.Context
 //   - instance *state.SessionInstance
 //   - req UserAddRequest
-func (_e *mockLegacyService_Expecter) ProcessUserAdd(ctx interface{}, instance interface{}, req interface{}) *mockLegacyService_ProcessUserAdd_Call {
+func (_e *mockLegacyService_Expecter) ProcessUserAdd(ctx any, instance any, req any) *mockLegacyService_ProcessUserAdd_Call {
 	return &mockLegacyService_ProcessUserAdd_Call{Call: _e.mock.On("ProcessUserAdd", ctx, instance, req)}
 }
 
@@ -1342,7 +1351,7 @@ type mockLegacyService_RegisterNewUser_Call struct {
 //   - lastName string
 //   - email string
 //   - password string
-func (_e *mockLegacyService_Expecter) RegisterNewUser(ctx interface{}, nickname interface{}, firstName interface{}, lastName interface{}, email interface{}, password interface{}) *mockLegacyService_RegisterNewUser_Call {
+func (_e *mockLegacyService_Expecter) RegisterNewUser(ctx any, nickname any, firstName any, lastName any, email any, password any) *mockLegacyService_RegisterNewUser_Call {
 	return &mockLegacyService_RegisterNewUser_Call{Call: _e.mock.On("RegisterNewUser", ctx, nickname, firstName, lastName, email, password)}
 }
 
@@ -1433,7 +1442,7 @@ type mockLegacyService_SearchByName_Call struct {
 //   - first string
 //   - last string
 //   - email string
-func (_e *mockLegacyService_Expecter) SearchByName(ctx interface{}, nick interface{}, first interface{}, last interface{}, email interface{}) *mockLegacyService_SearchByName_Call {
+func (_e *mockLegacyService_Expecter) SearchByName(ctx any, nick any, first any, last any, email any) *mockLegacyService_SearchByName_Call {
 	return &mockLegacyService_SearchByName_Call{Call: _e.mock.On("SearchByName", ctx, nick, first, last, email)}
 }
 
@@ -1516,7 +1525,7 @@ type mockLegacyService_SearchByUIN_Call struct {
 // SearchByUIN is a helper method to define mock.On call
 //   - ctx context.Context
 //   - uin uint32
-func (_e *mockLegacyService_Expecter) SearchByUIN(ctx interface{}, uin interface{}) *mockLegacyService_SearchByUIN_Call {
+func (_e *mockLegacyService_Expecter) SearchByUIN(ctx any, uin any) *mockLegacyService_SearchByUIN_Call {
 	return &mockLegacyService_SearchByUIN_Call{Call: _e.mock.On("SearchByUIN", ctx, uin)}
 }
 
@@ -1574,7 +1583,7 @@ type mockLegacyService_SetAffiliations_Call struct {
 //   - ctx context.Context
 //   - uin uint32
 //   - affiliations state.ICQAffiliations
-func (_e *mockLegacyService_Expecter) SetAffiliations(ctx interface{}, uin interface{}, affiliations interface{}) *mockLegacyService_SetAffiliations_Call {
+func (_e *mockLegacyService_Expecter) SetAffiliations(ctx any, uin any, affiliations any) *mockLegacyService_SetAffiliations_Call {
 	return &mockLegacyService_SetAffiliations_Call{Call: _e.mock.On("SetAffiliations", ctx, uin, affiliations)}
 }
 
@@ -1637,7 +1646,7 @@ type mockLegacyService_SetAuthMode_Call struct {
 //   - ctx context.Context
 //   - uin uint32
 //   - authRequired bool
-func (_e *mockLegacyService_Expecter) SetAuthMode(ctx interface{}, uin interface{}, authRequired interface{}) *mockLegacyService_SetAuthMode_Call {
+func (_e *mockLegacyService_Expecter) SetAuthMode(ctx any, uin any, authRequired any) *mockLegacyService_SetAuthMode_Call {
 	return &mockLegacyService_SetAuthMode_Call{Call: _e.mock.On("SetAuthMode", ctx, uin, authRequired)}
 }
 
@@ -1700,7 +1709,7 @@ type mockLegacyService_SetHomepageCategory_Call struct {
 //   - ctx context.Context
 //   - uin uint32
 //   - hpcat state.ICQHomepageCategory
-func (_e *mockLegacyService_Expecter) SetHomepageCategory(ctx interface{}, uin interface{}, hpcat interface{}) *mockLegacyService_SetHomepageCategory_Call {
+func (_e *mockLegacyService_Expecter) SetHomepageCategory(ctx any, uin any, hpcat any) *mockLegacyService_SetHomepageCategory_Call {
 	return &mockLegacyService_SetHomepageCategory_Call{Call: _e.mock.On("SetHomepageCategory", ctx, uin, hpcat)}
 }
 
@@ -1763,7 +1772,7 @@ type mockLegacyService_SetInterests_Call struct {
 //   - ctx context.Context
 //   - uin uint32
 //   - interests state.ICQInterests
-func (_e *mockLegacyService_Expecter) SetInterests(ctx interface{}, uin interface{}, interests interface{}) *mockLegacyService_SetInterests_Call {
+func (_e *mockLegacyService_Expecter) SetInterests(ctx any, uin any, interests any) *mockLegacyService_SetInterests_Call {
 	return &mockLegacyService_SetInterests_Call{Call: _e.mock.On("SetInterests", ctx, uin, interests)}
 }
 
@@ -1826,7 +1835,7 @@ type mockLegacyService_SetNotes_Call struct {
 //   - ctx context.Context
 //   - uin uint32
 //   - notes string
-func (_e *mockLegacyService_Expecter) SetNotes(ctx interface{}, uin interface{}, notes interface{}) *mockLegacyService_SetNotes_Call {
+func (_e *mockLegacyService_Expecter) SetNotes(ctx any, uin any, notes any) *mockLegacyService_SetNotes_Call {
 	return &mockLegacyService_SetNotes_Call{Call: _e.mock.On("SetNotes", ctx, uin, notes)}
 }
 
@@ -1890,7 +1899,7 @@ type mockLegacyService_SetPassword_Call struct {
 //   - uin uint32
 //   - oldPassword string
 //   - newPassword string
-func (_e *mockLegacyService_Expecter) SetPassword(ctx interface{}, uin interface{}, oldPassword interface{}, newPassword interface{}) *mockLegacyService_SetPassword_Call {
+func (_e *mockLegacyService_Expecter) SetPassword(ctx any, uin any, oldPassword any, newPassword any) *mockLegacyService_SetPassword_Call {
 	return &mockLegacyService_SetPassword_Call{Call: _e.mock.On("SetPassword", ctx, uin, oldPassword, newPassword)}
 }
 
@@ -1958,7 +1967,7 @@ type mockLegacyService_UpdateBasicInfo_Call struct {
 //   - ctx context.Context
 //   - uin uint32
 //   - info state.ICQBasicInfo
-func (_e *mockLegacyService_Expecter) UpdateBasicInfo(ctx interface{}, uin interface{}, info interface{}) *mockLegacyService_UpdateBasicInfo_Call {
+func (_e *mockLegacyService_Expecter) UpdateBasicInfo(ctx any, uin any, info any) *mockLegacyService_UpdateBasicInfo_Call {
 	return &mockLegacyService_UpdateBasicInfo_Call{Call: _e.mock.On("UpdateBasicInfo", ctx, uin, info)}
 }
 
@@ -2021,7 +2030,7 @@ type mockLegacyService_UpdateMoreInfo_Call struct {
 //   - ctx context.Context
 //   - uin uint32
 //   - info state.ICQMoreInfo
-func (_e *mockLegacyService_Expecter) UpdateMoreInfo(ctx interface{}, uin interface{}, info interface{}) *mockLegacyService_UpdateMoreInfo_Call {
+func (_e *mockLegacyService_Expecter) UpdateMoreInfo(ctx any, uin any, info any) *mockLegacyService_UpdateMoreInfo_Call {
 	return &mockLegacyService_UpdateMoreInfo_Call{Call: _e.mock.On("UpdateMoreInfo", ctx, uin, info)}
 }
 
@@ -2084,7 +2093,7 @@ type mockLegacyService_UpdatePermissions_Call struct {
 //   - ctx context.Context
 //   - uin uint32
 //   - info state.ICQPermissions
-func (_e *mockLegacyService_Expecter) UpdatePermissions(ctx interface{}, uin interface{}, info interface{}) *mockLegacyService_UpdatePermissions_Call {
+func (_e *mockLegacyService_Expecter) UpdatePermissions(ctx any, uin any, info any) *mockLegacyService_UpdatePermissions_Call {
 	return &mockLegacyService_UpdatePermissions_Call{Call: _e.mock.On("UpdatePermissions", ctx, uin, info)}
 }
 
@@ -2147,7 +2156,7 @@ type mockLegacyService_UpdateWorkInfo_Call struct {
 //   - ctx context.Context
 //   - uin uint32
 //   - info state.ICQWorkInfo
-func (_e *mockLegacyService_Expecter) UpdateWorkInfo(ctx interface{}, uin interface{}, info interface{}) *mockLegacyService_UpdateWorkInfo_Call {
+func (_e *mockLegacyService_Expecter) UpdateWorkInfo(ctx any, uin any, info any) *mockLegacyService_UpdateWorkInfo_Call {
 	return &mockLegacyService_UpdateWorkInfo_Call{Call: _e.mock.On("UpdateWorkInfo", ctx, uin, info)}
 }
 
@@ -2219,7 +2228,7 @@ type mockLegacyService_ValidateCredentials_Call struct {
 //   - ctx context.Context
 //   - uin uint32
 //   - password string
-func (_e *mockLegacyService_Expecter) ValidateCredentials(ctx interface{}, uin interface{}, password interface{}) *mockLegacyService_ValidateCredentials_Call {
+func (_e *mockLegacyService_Expecter) ValidateCredentials(ctx any, uin any, password any) *mockLegacyService_ValidateCredentials_Call {
 	return &mockLegacyService_ValidateCredentials_Call{Call: _e.mock.On("ValidateCredentials", ctx, uin, password)}
 }
 
@@ -2292,7 +2301,7 @@ type mockLegacyService_WhitePagesSearch_Call struct {
 // WhitePagesSearch is a helper method to define mock.On call
 //   - ctx context.Context
 //   - criteria WhitePagesSearchCriteria
-func (_e *mockLegacyService_Expecter) WhitePagesSearch(ctx interface{}, criteria interface{}) *mockLegacyService_WhitePagesSearch_Call {
+func (_e *mockLegacyService_Expecter) WhitePagesSearch(ctx any, criteria any) *mockLegacyService_WhitePagesSearch_Call {
 	return &mockLegacyService_WhitePagesSearch_Call{Call: _e.mock.On("WhitePagesSearch", ctx, criteria)}
 }
 

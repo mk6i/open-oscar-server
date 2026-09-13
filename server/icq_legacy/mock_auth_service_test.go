@@ -20,10 +20,19 @@ func newMockAuthService(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockAuthService {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockAuthService{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -80,7 +89,7 @@ type mockAuthService_CrackCookie_Call struct {
 
 // CrackCookie is a helper method to define mock.On call
 //   - authCookie []byte
-func (_e *mockAuthService_Expecter) CrackCookie(authCookie interface{}) *mockAuthService_CrackCookie_Call {
+func (_e *mockAuthService_Expecter) CrackCookie(authCookie any) *mockAuthService_CrackCookie_Call {
 	return &mockAuthService_CrackCookie_Call{Call: _e.mock.On("CrackCookie", authCookie)}
 }
 
@@ -142,7 +151,7 @@ type mockAuthService_FLAPLogin_Call struct {
 //   - ctx context.Context
 //   - inFrame wire.FLAPSignonFrame
 //   - endpointCfg config.Endpoint
-func (_e *mockAuthService_Expecter) FLAPLogin(ctx interface{}, inFrame interface{}, endpointCfg interface{}) *mockAuthService_FLAPLogin_Call {
+func (_e *mockAuthService_Expecter) FLAPLogin(ctx any, inFrame any, endpointCfg any) *mockAuthService_FLAPLogin_Call {
 	return &mockAuthService_FLAPLogin_Call{Call: _e.mock.On("FLAPLogin", ctx, inFrame, endpointCfg)}
 }
 
@@ -216,7 +225,7 @@ type mockAuthService_RegisterBOSSession_Call struct {
 //   - ctx context.Context
 //   - authCookie state.ServerCookie
 //   - cfg func(*state.Session)
-func (_e *mockAuthService_Expecter) RegisterBOSSession(ctx interface{}, authCookie interface{}, cfg interface{}) *mockAuthService_RegisterBOSSession_Call {
+func (_e *mockAuthService_Expecter) RegisterBOSSession(ctx any, authCookie any, cfg any) *mockAuthService_RegisterBOSSession_Call {
 	return &mockAuthService_RegisterBOSSession_Call{Call: _e.mock.On("RegisterBOSSession", ctx, authCookie, cfg)}
 }
 

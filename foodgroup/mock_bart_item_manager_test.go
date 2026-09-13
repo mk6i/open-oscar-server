@@ -18,10 +18,19 @@ func newMockBARTItemManager(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockBARTItemManager {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockBARTItemManager{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -75,7 +84,7 @@ type mockBARTItemManager_BARTItem_Call struct {
 // BARTItem is a helper method to define mock.On call
 //   - ctx context.Context
 //   - hash []byte
-func (_e *mockBARTItemManager_Expecter) BARTItem(ctx interface{}, hash interface{}) *mockBARTItemManager_BARTItem_Call {
+func (_e *mockBARTItemManager_Expecter) BARTItem(ctx any, hash any) *mockBARTItemManager_BARTItem_Call {
 	return &mockBARTItemManager_BARTItem_Call{Call: _e.mock.On("BARTItem", ctx, hash)}
 }
 
@@ -143,7 +152,7 @@ type mockBARTItemManager_BuddyIconMetadata_Call struct {
 // BuddyIconMetadata is a helper method to define mock.On call
 //   - ctx context.Context
 //   - screenName state.IdentScreenName
-func (_e *mockBARTItemManager_Expecter) BuddyIconMetadata(ctx interface{}, screenName interface{}) *mockBARTItemManager_BuddyIconMetadata_Call {
+func (_e *mockBARTItemManager_Expecter) BuddyIconMetadata(ctx any, screenName any) *mockBARTItemManager_BuddyIconMetadata_Call {
 	return &mockBARTItemManager_BuddyIconMetadata_Call{Call: _e.mock.On("BuddyIconMetadata", ctx, screenName)}
 }
 
@@ -200,7 +209,7 @@ type mockBARTItemManager_DeleteBARTItem_Call struct {
 // DeleteBARTItem is a helper method to define mock.On call
 //   - ctx context.Context
 //   - hash []byte
-func (_e *mockBARTItemManager_Expecter) DeleteBARTItem(ctx interface{}, hash interface{}) *mockBARTItemManager_DeleteBARTItem_Call {
+func (_e *mockBARTItemManager_Expecter) DeleteBARTItem(ctx any, hash any) *mockBARTItemManager_DeleteBARTItem_Call {
 	return &mockBARTItemManager_DeleteBARTItem_Call{Call: _e.mock.On("DeleteBARTItem", ctx, hash)}
 }
 
@@ -259,7 +268,7 @@ type mockBARTItemManager_InsertBARTItem_Call struct {
 //   - hash []byte
 //   - blob []byte
 //   - itemType uint16
-func (_e *mockBARTItemManager_Expecter) InsertBARTItem(ctx interface{}, hash interface{}, blob interface{}, itemType interface{}) *mockBARTItemManager_InsertBARTItem_Call {
+func (_e *mockBARTItemManager_Expecter) InsertBARTItem(ctx any, hash any, blob any, itemType any) *mockBARTItemManager_InsertBARTItem_Call {
 	return &mockBARTItemManager_InsertBARTItem_Call{Call: _e.mock.On("InsertBARTItem", ctx, hash, blob, itemType)}
 }
 
@@ -337,7 +346,7 @@ type mockBARTItemManager_ListBARTItems_Call struct {
 // ListBARTItems is a helper method to define mock.On call
 //   - ctx context.Context
 //   - itemType uint16
-func (_e *mockBARTItemManager_Expecter) ListBARTItems(ctx interface{}, itemType interface{}) *mockBARTItemManager_ListBARTItems_Call {
+func (_e *mockBARTItemManager_Expecter) ListBARTItems(ctx any, itemType any) *mockBARTItemManager_ListBARTItems_Call {
 	return &mockBARTItemManager_ListBARTItems_Call{Call: _e.mock.On("ListBARTItems", ctx, itemType)}
 }
 

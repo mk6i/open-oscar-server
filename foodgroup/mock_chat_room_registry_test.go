@@ -17,10 +17,19 @@ func newMockChatRoomRegistry(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockChatRoomRegistry {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockChatRoomRegistry{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -72,7 +81,7 @@ type mockChatRoomRegistry_ChatRoomByCookie_Call struct {
 // ChatRoomByCookie is a helper method to define mock.On call
 //   - ctx context.Context
 //   - chatCookie string
-func (_e *mockChatRoomRegistry_Expecter) ChatRoomByCookie(ctx interface{}, chatCookie interface{}) *mockChatRoomRegistry_ChatRoomByCookie_Call {
+func (_e *mockChatRoomRegistry_Expecter) ChatRoomByCookie(ctx any, chatCookie any) *mockChatRoomRegistry_ChatRoomByCookie_Call {
 	return &mockChatRoomRegistry_ChatRoomByCookie_Call{Call: _e.mock.On("ChatRoomByCookie", ctx, chatCookie)}
 }
 
@@ -139,7 +148,7 @@ type mockChatRoomRegistry_ChatRoomByName_Call struct {
 //   - ctx context.Context
 //   - exchange uint16
 //   - name string
-func (_e *mockChatRoomRegistry_Expecter) ChatRoomByName(ctx interface{}, exchange interface{}, name interface{}) *mockChatRoomRegistry_ChatRoomByName_Call {
+func (_e *mockChatRoomRegistry_Expecter) ChatRoomByName(ctx any, exchange any, name any) *mockChatRoomRegistry_ChatRoomByName_Call {
 	return &mockChatRoomRegistry_ChatRoomByName_Call{Call: _e.mock.On("ChatRoomByName", ctx, exchange, name)}
 }
 
@@ -201,7 +210,7 @@ type mockChatRoomRegistry_CreateChatRoom_Call struct {
 // CreateChatRoom is a helper method to define mock.On call
 //   - ctx context.Context
 //   - chatRoom *state.ChatRoom
-func (_e *mockChatRoomRegistry_Expecter) CreateChatRoom(ctx interface{}, chatRoom interface{}) *mockChatRoomRegistry_CreateChatRoom_Call {
+func (_e *mockChatRoomRegistry_Expecter) CreateChatRoom(ctx any, chatRoom any) *mockChatRoomRegistry_CreateChatRoom_Call {
 	return &mockChatRoomRegistry_CreateChatRoom_Call{Call: _e.mock.On("CreateChatRoom", ctx, chatRoom)}
 }
 

@@ -17,10 +17,19 @@ func newMockDirSearchService(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockDirSearchService {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockDirSearchService{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -73,7 +82,7 @@ type mockDirSearchService_InfoQuery_Call struct {
 //   - ctx context.Context
 //   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x0F_0x02_InfoQuery
-func (_e *mockDirSearchService_Expecter) InfoQuery(ctx interface{}, inFrame interface{}, inBody interface{}) *mockDirSearchService_InfoQuery_Call {
+func (_e *mockDirSearchService_Expecter) InfoQuery(ctx any, inFrame any, inBody any) *mockDirSearchService_InfoQuery_Call {
 	return &mockDirSearchService_InfoQuery_Call{Call: _e.mock.On("InfoQuery", ctx, inFrame, inBody)}
 }
 

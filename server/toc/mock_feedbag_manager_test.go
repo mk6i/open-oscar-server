@@ -18,10 +18,19 @@ func newMockFeedbagManager(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockFeedbagManager {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockFeedbagManager{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -75,7 +84,7 @@ type mockFeedbagManager_Feedbag_Call struct {
 // Feedbag is a helper method to define mock.On call
 //   - ctx context.Context
 //   - screenName state.IdentScreenName
-func (_e *mockFeedbagManager_Expecter) Feedbag(ctx interface{}, screenName interface{}) *mockFeedbagManager_Feedbag_Call {
+func (_e *mockFeedbagManager_Expecter) Feedbag(ctx any, screenName any) *mockFeedbagManager_Feedbag_Call {
 	return &mockFeedbagManager_Feedbag_Call{Call: _e.mock.On("Feedbag", ctx, screenName)}
 }
 
@@ -132,7 +141,7 @@ type mockFeedbagManager_UseFeedbag_Call struct {
 // UseFeedbag is a helper method to define mock.On call
 //   - ctx context.Context
 //   - screenName state.IdentScreenName
-func (_e *mockFeedbagManager_Expecter) UseFeedbag(ctx interface{}, screenName interface{}) *mockFeedbagManager_UseFeedbag_Call {
+func (_e *mockFeedbagManager_Expecter) UseFeedbag(ctx any, screenName any) *mockFeedbagManager_UseFeedbag_Call {
 	return &mockFeedbagManager_UseFeedbag_Call{Call: _e.mock.On("UseFeedbag", ctx, screenName)}
 }
 

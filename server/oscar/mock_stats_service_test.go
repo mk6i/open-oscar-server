@@ -17,10 +17,19 @@ func newMockStatsService(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockStatsService {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockStatsService{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -64,7 +73,7 @@ type mockStatsService_ReportEvents_Call struct {
 //   - ctx context.Context
 //   - inFrame wire.SNACFrame
 //   - inBody wire.SNAC_0x0B_0x03_StatsReportEvents
-func (_e *mockStatsService_Expecter) ReportEvents(ctx interface{}, inFrame interface{}, inBody interface{}) *mockStatsService_ReportEvents_Call {
+func (_e *mockStatsService_Expecter) ReportEvents(ctx any, inFrame any, inBody any) *mockStatsService_ReportEvents_Call {
 	return &mockStatsService_ReportEvents_Call{Call: _e.mock.On("ReportEvents", ctx, inFrame, inBody)}
 }
 

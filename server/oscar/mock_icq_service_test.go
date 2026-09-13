@@ -18,10 +18,19 @@ func newMockICQService(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockICQService {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockICQService{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -65,7 +74,7 @@ type mockICQService_DeleteMsgReq_Call struct {
 //   - ctx context.Context
 //   - instance *state.SessionInstance
 //   - seq uint16
-func (_e *mockICQService_Expecter) DeleteMsgReq(ctx interface{}, instance interface{}, seq interface{}) *mockICQService_DeleteMsgReq_Call {
+func (_e *mockICQService_Expecter) DeleteMsgReq(ctx any, instance any, seq any) *mockICQService_DeleteMsgReq_Call {
 	return &mockICQService_DeleteMsgReq_Call{Call: _e.mock.On("DeleteMsgReq", ctx, instance, seq)}
 }
 
@@ -130,7 +139,7 @@ type mockICQService_FindByEmail3_Call struct {
 //   - inFrame wire.SNACFrame
 //   - inBody wire.ICQ_0x07D0_0x0573_DBQueryMetaReqSearchByEmail3
 //   - seq uint16
-func (_e *mockICQService_Expecter) FindByEmail3(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}, seq interface{}) *mockICQService_FindByEmail3_Call {
+func (_e *mockICQService_Expecter) FindByEmail3(ctx any, instance any, inFrame any, inBody any, seq any) *mockICQService_FindByEmail3_Call {
 	return &mockICQService_FindByEmail3_Call{Call: _e.mock.On("FindByEmail3", ctx, instance, inFrame, inBody, seq)}
 }
 
@@ -205,7 +214,7 @@ type mockICQService_FindByICQEmail_Call struct {
 //   - inFrame wire.SNACFrame
 //   - inBody wire.ICQ_0x07D0_0x0529_DBQueryMetaReqSearchByEmail
 //   - seq uint16
-func (_e *mockICQService_Expecter) FindByICQEmail(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}, seq interface{}) *mockICQService_FindByICQEmail_Call {
+func (_e *mockICQService_Expecter) FindByICQEmail(ctx any, instance any, inFrame any, inBody any, seq any) *mockICQService_FindByICQEmail_Call {
 	return &mockICQService_FindByICQEmail_Call{Call: _e.mock.On("FindByICQEmail", ctx, instance, inFrame, inBody, seq)}
 }
 
@@ -280,7 +289,7 @@ type mockICQService_FindByICQInterests_Call struct {
 //   - inFrame wire.SNACFrame
 //   - inBody wire.ICQ_0x07D0_0x0533_DBQueryMetaReqSearchWhitePages
 //   - seq uint16
-func (_e *mockICQService_Expecter) FindByICQInterests(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}, seq interface{}) *mockICQService_FindByICQInterests_Call {
+func (_e *mockICQService_Expecter) FindByICQInterests(ctx any, instance any, inFrame any, inBody any, seq any) *mockICQService_FindByICQInterests_Call {
 	return &mockICQService_FindByICQInterests_Call{Call: _e.mock.On("FindByICQInterests", ctx, instance, inFrame, inBody, seq)}
 }
 
@@ -355,7 +364,7 @@ type mockICQService_FindByICQName_Call struct {
 //   - inFrame wire.SNACFrame
 //   - inBody wire.ICQ_0x07D0_0x0515_DBQueryMetaReqSearchByDetails
 //   - seq uint16
-func (_e *mockICQService_Expecter) FindByICQName(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}, seq interface{}) *mockICQService_FindByICQName_Call {
+func (_e *mockICQService_Expecter) FindByICQName(ctx any, instance any, inFrame any, inBody any, seq any) *mockICQService_FindByICQName_Call {
 	return &mockICQService_FindByICQName_Call{Call: _e.mock.On("FindByICQName", ctx, instance, inFrame, inBody, seq)}
 }
 
@@ -430,7 +439,7 @@ type mockICQService_FindByUIN_Call struct {
 //   - inFrame wire.SNACFrame
 //   - inBody wire.ICQ_0x07D0_0x051F_DBQueryMetaReqSearchByUIN
 //   - seq uint16
-func (_e *mockICQService_Expecter) FindByUIN(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}, seq interface{}) *mockICQService_FindByUIN_Call {
+func (_e *mockICQService_Expecter) FindByUIN(ctx any, instance any, inFrame any, inBody any, seq any) *mockICQService_FindByUIN_Call {
 	return &mockICQService_FindByUIN_Call{Call: _e.mock.On("FindByUIN", ctx, instance, inFrame, inBody, seq)}
 }
 
@@ -505,7 +514,7 @@ type mockICQService_FindByUIN2_Call struct {
 //   - inFrame wire.SNACFrame
 //   - inBody wire.ICQ_0x07D0_0x0569_DBQueryMetaReqSearchByUIN2
 //   - seq uint16
-func (_e *mockICQService_Expecter) FindByUIN2(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}, seq interface{}) *mockICQService_FindByUIN2_Call {
+func (_e *mockICQService_Expecter) FindByUIN2(ctx any, instance any, inFrame any, inBody any, seq any) *mockICQService_FindByUIN2_Call {
 	return &mockICQService_FindByUIN2_Call{Call: _e.mock.On("FindByUIN2", ctx, instance, inFrame, inBody, seq)}
 }
 
@@ -580,7 +589,7 @@ type mockICQService_FindByWhitePages2_Call struct {
 //   - inFrame wire.SNACFrame
 //   - inBody wire.ICQ_0x07D0_0x055F_DBQueryMetaReqSearchWhitePages2
 //   - seq uint16
-func (_e *mockICQService_Expecter) FindByWhitePages2(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}, seq interface{}) *mockICQService_FindByWhitePages2_Call {
+func (_e *mockICQService_Expecter) FindByWhitePages2(ctx any, instance any, inFrame any, inBody any, seq any) *mockICQService_FindByWhitePages2_Call {
 	return &mockICQService_FindByWhitePages2_Call{Call: _e.mock.On("FindByWhitePages2", ctx, instance, inFrame, inBody, seq)}
 }
 
@@ -655,7 +664,7 @@ type mockICQService_FullUserInfo_Call struct {
 //   - inFrame wire.SNACFrame
 //   - inBody wire.ICQ_0x07D0_0x051F_DBQueryMetaReqSearchByUIN
 //   - seq uint16
-func (_e *mockICQService_Expecter) FullUserInfo(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}, seq interface{}) *mockICQService_FullUserInfo_Call {
+func (_e *mockICQService_Expecter) FullUserInfo(ctx any, instance any, inFrame any, inBody any, seq any) *mockICQService_FullUserInfo_Call {
 	return &mockICQService_FullUserInfo_Call{Call: _e.mock.On("FullUserInfo", ctx, instance, inFrame, inBody, seq)}
 }
 
@@ -729,7 +738,7 @@ type mockICQService_OfflineMsgReq_Call struct {
 //   - inFrame wire.SNACFrame
 //   - instance *state.SessionInstance
 //   - seq uint16
-func (_e *mockICQService_Expecter) OfflineMsgReq(ctx interface{}, inFrame interface{}, instance interface{}, seq interface{}) *mockICQService_OfflineMsgReq_Call {
+func (_e *mockICQService_Expecter) OfflineMsgReq(ctx any, inFrame any, instance any, seq any) *mockICQService_OfflineMsgReq_Call {
 	return &mockICQService_OfflineMsgReq_Call{Call: _e.mock.On("OfflineMsgReq", ctx, inFrame, instance, seq)}
 }
 
@@ -799,7 +808,7 @@ type mockICQService_SetAffiliations_Call struct {
 //   - inFrame wire.SNACFrame
 //   - inBody wire.ICQ_0x07D0_0x041A_DBQueryMetaReqSetAffiliations
 //   - seq uint16
-func (_e *mockICQService_Expecter) SetAffiliations(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}, seq interface{}) *mockICQService_SetAffiliations_Call {
+func (_e *mockICQService_Expecter) SetAffiliations(ctx any, instance any, inFrame any, inBody any, seq any) *mockICQService_SetAffiliations_Call {
 	return &mockICQService_SetAffiliations_Call{Call: _e.mock.On("SetAffiliations", ctx, instance, inFrame, inBody, seq)}
 }
 
@@ -874,7 +883,7 @@ type mockICQService_SetBasicInfo_Call struct {
 //   - inFrame wire.SNACFrame
 //   - inBody wire.ICQ_0x07D0_0x03EA_DBQueryMetaReqSetBasicInfo
 //   - seq uint16
-func (_e *mockICQService_Expecter) SetBasicInfo(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}, seq interface{}) *mockICQService_SetBasicInfo_Call {
+func (_e *mockICQService_Expecter) SetBasicInfo(ctx any, instance any, inFrame any, inBody any, seq any) *mockICQService_SetBasicInfo_Call {
 	return &mockICQService_SetBasicInfo_Call{Call: _e.mock.On("SetBasicInfo", ctx, instance, inFrame, inBody, seq)}
 }
 
@@ -949,7 +958,7 @@ type mockICQService_SetEmails_Call struct {
 //   - inFrame wire.SNACFrame
 //   - inBody wire.ICQ_0x07D0_0x040B_DBQueryMetaReqSetEmails
 //   - seq uint16
-func (_e *mockICQService_Expecter) SetEmails(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}, seq interface{}) *mockICQService_SetEmails_Call {
+func (_e *mockICQService_Expecter) SetEmails(ctx any, instance any, inFrame any, inBody any, seq any) *mockICQService_SetEmails_Call {
 	return &mockICQService_SetEmails_Call{Call: _e.mock.On("SetEmails", ctx, instance, inFrame, inBody, seq)}
 }
 
@@ -1024,7 +1033,7 @@ type mockICQService_SetICQInfo_Call struct {
 //   - inFrame wire.SNACFrame
 //   - inBody wire.ICQ_0x07D0_0x0C3A_DBQueryMetaReqSetFullInfo
 //   - seq uint16
-func (_e *mockICQService_Expecter) SetICQInfo(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}, seq interface{}) *mockICQService_SetICQInfo_Call {
+func (_e *mockICQService_Expecter) SetICQInfo(ctx any, instance any, inFrame any, inBody any, seq any) *mockICQService_SetICQInfo_Call {
 	return &mockICQService_SetICQInfo_Call{Call: _e.mock.On("SetICQInfo", ctx, instance, inFrame, inBody, seq)}
 }
 
@@ -1099,7 +1108,7 @@ type mockICQService_SetICQPhone_Call struct {
 //   - inFrame wire.SNACFrame
 //   - inBody wire.ICQ_0x07D0_0x0654_DBQueryMetaReqSetICQPhone
 //   - seq uint16
-func (_e *mockICQService_Expecter) SetICQPhone(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}, seq interface{}) *mockICQService_SetICQPhone_Call {
+func (_e *mockICQService_Expecter) SetICQPhone(ctx any, instance any, inFrame any, inBody any, seq any) *mockICQService_SetICQPhone_Call {
 	return &mockICQService_SetICQPhone_Call{Call: _e.mock.On("SetICQPhone", ctx, instance, inFrame, inBody, seq)}
 }
 
@@ -1174,7 +1183,7 @@ type mockICQService_SetInterests_Call struct {
 //   - inFrame wire.SNACFrame
 //   - inBody wire.ICQ_0x07D0_0x0410_DBQueryMetaReqSetInterests
 //   - seq uint16
-func (_e *mockICQService_Expecter) SetInterests(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}, seq interface{}) *mockICQService_SetInterests_Call {
+func (_e *mockICQService_Expecter) SetInterests(ctx any, instance any, inFrame any, inBody any, seq any) *mockICQService_SetInterests_Call {
 	return &mockICQService_SetInterests_Call{Call: _e.mock.On("SetInterests", ctx, instance, inFrame, inBody, seq)}
 }
 
@@ -1249,7 +1258,7 @@ type mockICQService_SetMoreInfo_Call struct {
 //   - inFrame wire.SNACFrame
 //   - inBody wire.ICQ_0x07D0_0x03FD_DBQueryMetaReqSetMoreInfo
 //   - seq uint16
-func (_e *mockICQService_Expecter) SetMoreInfo(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}, seq interface{}) *mockICQService_SetMoreInfo_Call {
+func (_e *mockICQService_Expecter) SetMoreInfo(ctx any, instance any, inFrame any, inBody any, seq any) *mockICQService_SetMoreInfo_Call {
 	return &mockICQService_SetMoreInfo_Call{Call: _e.mock.On("SetMoreInfo", ctx, instance, inFrame, inBody, seq)}
 }
 
@@ -1324,7 +1333,7 @@ type mockICQService_SetPermissions_Call struct {
 //   - inFrame wire.SNACFrame
 //   - inBody wire.ICQ_0x07D0_0x0424_DBQueryMetaReqSetPermissions
 //   - seq uint16
-func (_e *mockICQService_Expecter) SetPermissions(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}, seq interface{}) *mockICQService_SetPermissions_Call {
+func (_e *mockICQService_Expecter) SetPermissions(ctx any, instance any, inFrame any, inBody any, seq any) *mockICQService_SetPermissions_Call {
 	return &mockICQService_SetPermissions_Call{Call: _e.mock.On("SetPermissions", ctx, instance, inFrame, inBody, seq)}
 }
 
@@ -1399,7 +1408,7 @@ type mockICQService_SetUserNotes_Call struct {
 //   - inFrame wire.SNACFrame
 //   - inBody wire.ICQ_0x07D0_0x0406_DBQueryMetaReqSetNotes
 //   - seq uint16
-func (_e *mockICQService_Expecter) SetUserNotes(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}, seq interface{}) *mockICQService_SetUserNotes_Call {
+func (_e *mockICQService_Expecter) SetUserNotes(ctx any, instance any, inFrame any, inBody any, seq any) *mockICQService_SetUserNotes_Call {
 	return &mockICQService_SetUserNotes_Call{Call: _e.mock.On("SetUserNotes", ctx, instance, inFrame, inBody, seq)}
 }
 
@@ -1474,7 +1483,7 @@ type mockICQService_SetWorkInfo_Call struct {
 //   - inFrame wire.SNACFrame
 //   - inBody wire.ICQ_0x07D0_0x03F3_DBQueryMetaReqSetWorkInfo
 //   - seq uint16
-func (_e *mockICQService_Expecter) SetWorkInfo(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}, seq interface{}) *mockICQService_SetWorkInfo_Call {
+func (_e *mockICQService_Expecter) SetWorkInfo(ctx any, instance any, inFrame any, inBody any, seq any) *mockICQService_SetWorkInfo_Call {
 	return &mockICQService_SetWorkInfo_Call{Call: _e.mock.On("SetWorkInfo", ctx, instance, inFrame, inBody, seq)}
 }
 
@@ -1549,7 +1558,7 @@ type mockICQService_ShortUserInfo_Call struct {
 //   - inFrame wire.SNACFrame
 //   - inBody wire.ICQ_0x07D0_0x04BA_DBQueryMetaReqShortInfo
 //   - seq uint16
-func (_e *mockICQService_Expecter) ShortUserInfo(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}, seq interface{}) *mockICQService_ShortUserInfo_Call {
+func (_e *mockICQService_Expecter) ShortUserInfo(ctx any, instance any, inFrame any, inBody any, seq any) *mockICQService_ShortUserInfo_Call {
 	return &mockICQService_ShortUserInfo_Call{Call: _e.mock.On("ShortUserInfo", ctx, instance, inFrame, inBody, seq)}
 }
 
@@ -1624,7 +1633,7 @@ type mockICQService_XMLReqData_Call struct {
 //   - inFrame wire.SNACFrame
 //   - inBody wire.ICQ_0x07D0_0x0898_DBQueryMetaReqXMLReq
 //   - seq uint16
-func (_e *mockICQService_Expecter) XMLReqData(ctx interface{}, instance interface{}, inFrame interface{}, inBody interface{}, seq interface{}) *mockICQService_XMLReqData_Call {
+func (_e *mockICQService_Expecter) XMLReqData(ctx any, instance any, inFrame any, inBody any, seq any) *mockICQService_XMLReqData_Call {
 	return &mockICQService_XMLReqData_Call{Call: _e.mock.On("XMLReqData", ctx, instance, inFrame, inBody, seq)}
 }
 
