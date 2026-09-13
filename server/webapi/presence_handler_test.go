@@ -388,19 +388,39 @@ func TestPresenceHandler_SetState_InvalidState(t *testing.T) {
 }
 
 func TestPresenceHandler_SetState_AppliesAwayState(t *testing.T) {
-	// setState only mutates the OSCAR session and broadcasts; the identity badge
-	// re-renders from the myInfo the SNAC pump raises, so the handler queues
-	// no event of its own.
+	// setState sets the away message and the status bits through the OSCAR
+	// services; the identity badge re-renders from the myInfo the user info
+	// update raises, so the handler queues no event of its own.
 	oscarInstance := state.NewSession().AddInstance()
 	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
 
-	broadcaster := newMockBuddyBroadcaster(t)
-	broadcaster.EXPECT().BroadcastBuddyArrived(mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	locateService := newMockLocateService(t)
+	locateService.EXPECT().
+		SetInfo(mock.Anything, oscarInstance, wire.SNAC_0x02_0x04_LocateSetInfo{
+			TLVRestBlock: wire.TLVRestBlock{
+				TLVList: wire.TLVList{
+					wire.NewTLVBE(wire.LocateTLVTagsInfoUnavailableData, "brb"),
+				},
+			},
+		}).
+		Return(nil)
+
+	oserviceService := newMockOServiceService(t)
+	oserviceService.EXPECT().
+		SetUserInfoFields(mock.Anything, oscarInstance, wire.SNACFrame{}, wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields{
+			TLVRestBlock: wire.TLVRestBlock{
+				TLVList: wire.TLVList{
+					wire.NewTLVBE(wire.OServiceUserInfoStatus, wire.OServiceUserStatusAway),
+				},
+			},
+		}).
+		Return(nil)
 
 	handler := &PresenceHandler{
-		SessionManager:   sessionMgr,
-		BuddyBroadcaster: broadcaster,
-		Logger:           slog.Default(),
+		SessionManager:  sessionMgr,
+		LocateService:   locateService,
+		OServiceService: oserviceService,
+		Logger:          slog.Default(),
 	}
 
 	req, err := http.NewRequest("GET", "/presence/setState?aimsid="+aimsid+"&state=away&awayMsg=brb", nil)
@@ -409,10 +429,6 @@ func TestPresenceHandler_SetState_AppliesAwayState(t *testing.T) {
 	rr := httptest.NewRecorder()
 	requireSession(handler.SessionManager, handler.SetState).ServeHTTP(rr, req)
 	assert.Equal(t, http.StatusOK, rr.Code)
-
-	assert.True(t, oscarInstance.Session().Away())
-	assert.Equal(t, "brb", oscarInstance.Session().AwayMessage())
-	assert.Equal(t, wire.OServiceUserStatusAway, oscarInstance.UserStatusBitmask())
 
 	var resp struct {
 		Response struct {
@@ -429,19 +445,96 @@ func TestPresenceHandler_SetState_AppliesAwayState(t *testing.T) {
 	assert.Empty(t, session.EventQueue.GetAllEvents())
 }
 
+func TestPresenceHandler_SetState_OnlineClearsAwayMessage(t *testing.T) {
+	// Coming back online drops the away message, which LocateSetInfo owns, along
+	// with the status bits.
+	oscarInstance := state.NewSession().AddInstance()
+	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
+
+	locateService := newMockLocateService(t)
+	locateService.EXPECT().
+		SetInfo(mock.Anything, oscarInstance, wire.SNAC_0x02_0x04_LocateSetInfo{
+			TLVRestBlock: wire.TLVRestBlock{
+				TLVList: wire.TLVList{
+					wire.NewTLVBE(wire.LocateTLVTagsInfoUnavailableData, ""),
+				},
+			},
+		}).
+		Return(nil)
+
+	oserviceService := newMockOServiceService(t)
+	oserviceService.EXPECT().
+		SetUserInfoFields(mock.Anything, oscarInstance, wire.SNACFrame{}, wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields{
+			TLVRestBlock: wire.TLVRestBlock{
+				TLVList: wire.TLVList{
+					wire.NewTLVBE(wire.OServiceUserInfoStatus, uint32(0)),
+				},
+			},
+		}).
+		Return(nil)
+
+	handler := &PresenceHandler{
+		SessionManager:  sessionMgr,
+		LocateService:   locateService,
+		OServiceService: oserviceService,
+		Logger:          slog.Default(),
+	}
+
+	req, err := http.NewRequest("GET", "/presence/setState?aimsid="+aimsid+"&state=online&awayMsg=brb", nil)
+	assert.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+	requireSession(handler.SessionManager, handler.SetState).ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.Contains(t, rr.Body.String(), `"awayMsg":""`)
+}
+
+func TestPresenceHandler_SetState_ServiceError(t *testing.T) {
+	oscarInstance := state.NewSession().AddInstance()
+	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
+
+	oserviceService := newMockOServiceService(t)
+	oserviceService.EXPECT().
+		SetUserInfoFields(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(assert.AnError)
+
+	handler := &PresenceHandler{
+		SessionManager:  sessionMgr,
+		OServiceService: oserviceService,
+		Logger:          slog.Default(),
+	}
+
+	req, err := http.NewRequest("GET", "/presence/setState?aimsid="+aimsid+"&state=dnd", nil)
+	assert.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+	requireSession(handler.SessionManager, handler.SetState).ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusInternalServerError, rr.Code)
+}
+
 func TestPresenceHandler_SetState_NormalizesAimID(t *testing.T) {
 	// The client keys users by the normalized aimId, so the response must carry
 	// that while displayId keeps the user's own casing and spacing.
 	oscarInstance := state.NewSession().AddInstance()
 	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("Mike Kelly", oscarInstance)
 
-	broadcaster := newMockBuddyBroadcaster(t)
-	broadcaster.EXPECT().BroadcastBuddyArrived(mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	// An away state with no message leaves the stored away message alone, so the
+	// handler sends the status change only.
+	oserviceService := newMockOServiceService(t)
+	oserviceService.EXPECT().
+		SetUserInfoFields(mock.Anything, oscarInstance, wire.SNACFrame{}, wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields{
+			TLVRestBlock: wire.TLVRestBlock{
+				TLVList: wire.TLVList{
+					wire.NewTLVBE(wire.OServiceUserInfoStatus, wire.OServiceUserStatusAway),
+				},
+			},
+		}).
+		Return(nil)
 
 	handler := &PresenceHandler{
-		SessionManager:   sessionMgr,
-		BuddyBroadcaster: broadcaster,
-		Logger:           slog.Default(),
+		SessionManager:  sessionMgr,
+		OServiceService: oserviceService,
+		Logger:          slog.Default(),
 	}
 
 	req, err := http.NewRequest("GET", "/presence/setState?aimsid="+aimsid+"&state=away", nil)
@@ -635,13 +728,26 @@ func TestPresenceHandler_SetState_Occupied(t *testing.T) {
 			oscarInstance := oscarSession.AddInstance()
 			sessionMgr, aimsid := createTestSessionManagerWithOSCAR(tt.screenName, oscarInstance)
 
-			broadcaster := newMockBuddyBroadcaster(t)
-			broadcaster.EXPECT().BroadcastBuddyArrived(mock.Anything, mock.Anything, mock.Anything).Return(nil)
+			oserviceService := newMockOServiceService(t)
+			oserviceService.EXPECT().
+				SetUserInfoFields(mock.Anything, oscarInstance, wire.SNACFrame{}, wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields{
+					TLVRestBlock: wire.TLVRestBlock{
+						TLVList: wire.TLVList{
+							wire.NewTLVBE(wire.OServiceUserInfoStatus, wire.OServiceUserStatusBusy),
+						},
+					},
+				}).
+				// stand in for the service, which applies the status to the session
+				Run(func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields) {
+					status, _ := inBody.Uint32BE(wire.OServiceUserInfoStatus)
+					instance.SetUserStatusBitmask(status)
+				}).
+				Return(nil)
 
 			handler := &PresenceHandler{
-				SessionManager:   sessionMgr,
-				BuddyBroadcaster: broadcaster,
-				Logger:           slog.Default(),
+				SessionManager:  sessionMgr,
+				OServiceService: oserviceService,
+				Logger:          slog.Default(),
 			}
 
 			req, err := http.NewRequest("GET", "/presence/setState?aimsid="+aimsid+"&view=occupied&away=", nil)
@@ -652,7 +758,6 @@ func TestPresenceHandler_SetState_Occupied(t *testing.T) {
 			assert.Equal(t, http.StatusOK, rr.Code)
 
 			// The Busy bit reaches OSCAR either way; only the reported state differs.
-			assert.Equal(t, wire.OServiceUserStatusBusy, oscarInstance.UserStatusBitmask())
 			assert.Contains(t, rr.Body.String(), `"state":"`+tt.wantState+`"`)
 
 			// The state must survive the round trip: the myInfo raised by the

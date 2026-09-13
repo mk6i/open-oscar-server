@@ -4579,7 +4579,6 @@ func TestHandler_OServiceServiceSetUserInfoFields(t *testing.T) {
 		name          string
 		inputBody     wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields
 		serviceError  error
-		responseError error
 		expectedError error
 	}{
 		{
@@ -4604,18 +4603,6 @@ func TestHandler_OServiceServiceSetUserInfoFields(t *testing.T) {
 			serviceError:  assert.AnError,
 			expectedError: assert.AnError,
 		},
-		{
-			name: "response writer error",
-			inputBody: wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields{
-				TLVRestBlock: wire.TLVRestBlock{
-					TLVList: wire.TLVList{
-						wire.NewTLVBE(0x01, []byte{1, 2, 3, 4}),
-					},
-				},
-			},
-			responseError: assert.AnError,
-			expectedError: assert.AnError,
-		},
 	}
 
 	for _, tt := range tests {
@@ -4627,23 +4614,11 @@ func TestHandler_OServiceServiceSetUserInfoFields(t *testing.T) {
 				},
 				Body: tt.inputBody,
 			}
-			output := wire.SNACMessage{
-				Frame: wire.SNACFrame{
-					FoodGroup: wire.OService,
-					SubGroup:  wire.OServiceUserInfoUpdate,
-				},
-				Body: wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate{
-					UserInfo: []wire.TLVUserInfo{
-						{ScreenName: "screen-name"},
-						{ScreenName: "screen-name"},
-					},
-				},
-			}
 
 			svc := newMockOServiceService(t)
 			svc.EXPECT().
 				SetUserInfoFields(mock.Anything, mock.Anything, input.Frame, input.Body).
-				Return(output, tt.serviceError)
+				Return(tt.serviceError)
 
 			h := Handler{
 				OServiceService: svc,
@@ -4652,17 +4627,10 @@ func TestHandler_OServiceServiceSetUserInfoFields(t *testing.T) {
 				},
 			}
 
-			responseWriter := newMockResponseWriter(t)
-			if tt.serviceError == nil {
-				responseWriter.EXPECT().
-					SendSNAC(output.Frame, output.Body).
-					Return(tt.responseError)
-			}
-
 			buf := &bytes.Buffer{}
 			assert.NoError(t, wire.MarshalBE(input.Body, buf))
 
-			err := h.Handle(context.TODO(), wire.BOS, nil, input.Frame, buf, responseWriter, config.Endpoint{})
+			err := h.Handle(context.TODO(), wire.BOS, nil, input.Frame, buf, newMockResponseWriter(t), config.Endpoint{})
 			if tt.expectedError != nil {
 				assert.ErrorIs(t, err, tt.expectedError)
 			} else {

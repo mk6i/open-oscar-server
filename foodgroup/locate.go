@@ -150,6 +150,13 @@ func (s LocateService) SetInfo(ctx context.Context, instance *state.SessionInsta
 			if err := s.buddyBroadcaster.BroadcastBuddyArrived(ctx, instance.IdentScreenName(), instance.Session().TLVUserInfo()); err != nil {
 				return err
 			}
+			s.messageRelayer.RelayToSelf(ctx, instance, wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.OService,
+					SubGroup:  wire.OServiceUserInfoUpdate,
+				},
+				Body: newOServiceUserInfoUpdate(instance),
+			})
 		}
 	}
 

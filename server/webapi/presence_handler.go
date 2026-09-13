@@ -15,12 +15,12 @@ import (
 
 // PresenceHandler handles Web AIM API presence-related endpoints.
 type PresenceHandler struct {
-	SessionManager   *SessionManager
-	FeedbagService   FeedbagService
-	BuddyBroadcaster BuddyBroadcaster
-	LocateService    LocateService
-	IconSource       BuddyIconSource
-	Logger           *slog.Logger
+	SessionManager  *SessionManager
+	FeedbagService  FeedbagService
+	LocateService   LocateService
+	OServiceService OServiceService
+	IconSource      BuddyIconSource
+	Logger          *slog.Logger
 }
 
 const maxPresenceTargets = 32
@@ -368,19 +368,19 @@ func (h *PresenceHandler) SetState(w http.ResponseWriter, r *http.Request, sessi
 
 	oscarSession := session.OSCARSession
 
-	// Map web state to OSCAR status bits
+	// Map web state to OSCAR status bits. setAwayMsg reports whether the away
+	// message needs rewriting: only going online clears it, and only an away
+	// state with text replaces it, so the other states keep what is there.
 	var statusBitmask uint32
+	var setAwayMsg bool
 	switch stateParam {
 	case "online":
 		statusBitmask = 0x0000 // Clear all status bits
-		oscarSession.SetAwayMessage("")
-		oscarSession.ClearUserInfoFlag(wire.OServiceUserFlagUnavailable)
+		awayMsg = ""
+		setAwayMsg = true
 	case "away":
 		statusBitmask = wire.OServiceUserStatusAway
-		oscarSession.SetUserInfoFlag(wire.OServiceUserFlagUnavailable)
-		if awayMsg != "" {
-			oscarSession.SetAwayMessage(awayMsg)
-		}
+		setAwayMsg = awayMsg != ""
 	case "invisible":
 		statusBitmask = wire.OServiceUserStatusInvisible
 	case "dnd":
@@ -388,31 +388,44 @@ func (h *PresenceHandler) SetState(w http.ResponseWriter, r *http.Request, sessi
 	case "occupied":
 		// ICQ's Busy, a distinct status bit from DND.
 		statusBitmask = wire.OServiceUserStatusBusy
-		oscarSession.SetUserInfoFlag(wire.OServiceUserFlagUnavailable)
 	default:
 		SendError(w, r, http.StatusBadRequest, "invalid state parameter")
 		return
 	}
 
-	// Update OSCAR session status
-	oscarSession.SetUserStatusBitmask(statusBitmask)
+	// Set the away message first, so that the user info update the status change
+	// relays back carries the new message.
+	if setAwayMsg {
+		setInfo := wire.SNAC_0x02_0x04_LocateSetInfo{
+			TLVRestBlock: wire.TLVRestBlock{
+				TLVList: wire.TLVList{
+					wire.NewTLVBE(wire.LocateTLVTagsInfoUnavailableData, awayMsg),
+				},
+			},
+		}
+		if err := h.LocateService.SetInfo(ctx, oscarSession, setInfo); err != nil {
+			h.Logger.ErrorContext(ctx, "failed to set away message", "err", err.Error())
+			SendError(w, r, http.StatusInternalServerError, "failed to set state")
+			return
+		}
+	}
+
+	setFields := wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields{
+		TLVRestBlock: wire.TLVRestBlock{
+			TLVList: wire.TLVList{
+				wire.NewTLVBE(wire.OServiceUserInfoStatus, statusBitmask),
+			},
+		},
+	}
+	if err := h.OServiceService.SetUserInfoFields(ctx, oscarSession, wire.SNACFrame{}, setFields); err != nil {
+		h.Logger.ErrorContext(ctx, "failed to set user info fields", "err", err.Error())
+		SendError(w, r, http.StatusInternalServerError, "failed to set state")
+		return
+	}
 
 	reportedState := stateParam
 	if st := statusMaskState(statusBitmask, oscarSession.IdentScreenName().UIN() == 0); st != "" {
 		reportedState = st
-	}
-
-	// Broadcast presence update
-	if statusBitmask&wire.OServiceUserStatusInvisible != 0 {
-		// User going invisible - broadcast departure
-		if err := h.BuddyBroadcaster.BroadcastBuddyDeparted(ctx, oscarSession.IdentScreenName()); err != nil {
-			h.Logger.ErrorContext(ctx, "failed to broadcast buddy departed", "err", err.Error())
-		}
-	} else {
-		// User visible - broadcast arrival/update
-		if err := h.BuddyBroadcaster.BroadcastBuddyArrived(ctx, oscarSession.IdentScreenName(), oscarSession.Session().TLVUserInfo()); err != nil {
-			h.Logger.ErrorContext(ctx, "failed to broadcast buddy arrived", "err", err.Error())
-		}
 	}
 
 	h.Logger.InfoContext(ctx, "presence state updated",

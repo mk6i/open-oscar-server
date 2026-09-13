@@ -248,18 +248,29 @@ func (s OServiceService) UserInfoQuery(ctx context.Context, instance *state.Sess
 }
 
 // SetUserInfoFields updates user info fields (e.g., invisible, away) and broadcasts
-// presence changes to buddies. Returns an updated user info message.
-func (s OServiceService) SetUserInfoFields(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields) (wire.SNACMessage, error) {
+// presence changes to buddies. It relays an updated user info message back to the
+// instance that made the change.
+func (s OServiceService) SetUserInfoFields(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields) error {
 	if status, hasStatus := inBody.Uint32BE(wire.OServiceUserInfoStatus); hasStatus {
 		instance.SetUserStatusBitmask(status)
 
+		// busy and DND have no AIM equivalent, so the unavailable flag is how AIM
+		// clients see a user in one of those states. an away message set through
+		// LocateSetInfo owns the flag, so only a user without one loses it here.
+		unavailable := wire.OServiceUserStatusAway | wire.OServiceUserStatusBusy | wire.OServiceUserStatusDND
+		if status&unavailable != 0 {
+			instance.SetUserInfoFlag(wire.OServiceUserFlagUnavailable)
+		} else if msg, _ := instance.AwayMessage(); msg == "" {
+			instance.ClearUserInfoFlag(wire.OServiceUserFlagUnavailable)
+		}
+
 		if instance.Session().Invisible() {
 			if err := s.buddyBroadcaster.BroadcastBuddyDeparted(ctx, instance.IdentScreenName()); err != nil {
-				return wire.SNACMessage{}, err
+				return err
 			}
 		} else {
 			if err := s.buddyBroadcaster.BroadcastBuddyArrived(ctx, instance.IdentScreenName(), instance.Session().TLVUserInfo()); err != nil {
-				return wire.SNACMessage{}, err
+				return err
 			}
 		}
 	}
@@ -267,7 +278,7 @@ func (s OServiceService) SetUserInfoFields(ctx context.Context, instance *state.
 	if dcBytes, hasDC := inBody.Bytes(wire.OServiceUserInfoICQDC); hasDC {
 		var dc wire.ICQDCInfo
 		if err := wire.UnmarshalBE(&dc, bytes.NewReader(dcBytes)); err != nil {
-			return wire.SNACMessage{}, err
+			return err
 		}
 		instance.SetICQDCInfo(dc)
 	}
@@ -278,7 +289,7 @@ func (s OServiceService) SetUserInfoFields(ctx context.Context, instance *state.
 	info := instance.Session().TLVUserInfo()
 	info.Set(wire.NewTLVBE(wire.OServiceUserInfoStatus, instance.UserStatusBitmask()))
 
-	return wire.SNACMessage{
+	s.messageRelayer.RelayToSelf(ctx, instance, wire.SNACMessage{
 		Frame: wire.SNACFrame{
 			FoodGroup: wire.OService,
 			SubGroup:  wire.OServiceUserInfoUpdate,
@@ -287,7 +298,9 @@ func (s OServiceService) SetUserInfoFields(ctx context.Context, instance *state.
 		Body: wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate{
 			UserInfo: []wire.TLVUserInfo{info},
 		},
-	}, nil
+	})
+
+	return nil
 }
 
 // IdleNotification sets the user idle time.

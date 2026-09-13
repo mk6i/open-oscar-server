@@ -864,17 +864,13 @@ func (rt Handler) OServiceClientVersions(ctx context.Context, instance *state.Se
 	return nil
 }
 
-func (rt Handler) OServiceSetUserInfoFields(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, rw ResponseWriter) error {
+func (rt Handler) OServiceSetUserInfoFields(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, r io.Reader, _ ResponseWriter) error {
 	inBody := wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields{}
 	if err := wire.UnmarshalBE(&inBody, r); err != nil {
 		return err
 	}
-	outSNAC, err := rt.SetUserInfoFields(ctx, instance, inFrame, inBody)
-	if err != nil {
-		return err
-	}
-	rt.LogRequestAndResponse(ctx, inFrame, inBody, outSNAC.Frame, outSNAC.Body)
-	return rw.SendSNAC(outSNAC.Frame, outSNAC.Body)
+	rt.LogRequest(ctx, inFrame, inBody)
+	return rt.SetUserInfoFields(ctx, instance, inFrame, inBody)
 }
 
 func (rt Handler) OServiceNoop(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, _ io.Reader, rw ResponseWriter) error {

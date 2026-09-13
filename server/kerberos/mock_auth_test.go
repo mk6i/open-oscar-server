@@ -18,10 +18,19 @@ func newMockAuthService(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *mockAuthService {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &mockAuthService{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -74,7 +83,7 @@ type mockAuthService_KerberosLogin_Call struct {
 //   - ctx context.Context
 //   - inBody wire.SNAC_0x050C_0x0002_KerberosLoginRequest
 //   - endpointCfg config.Endpoint
-func (_e *mockAuthService_Expecter) KerberosLogin(ctx interface{}, inBody interface{}, endpointCfg interface{}) *mockAuthService_KerberosLogin_Call {
+func (_e *mockAuthService_Expecter) KerberosLogin(ctx any, inBody any, endpointCfg any) *mockAuthService_KerberosLogin_Call {
 	return &mockAuthService_KerberosLogin_Call{Call: _e.mock.On("KerberosLogin", ctx, inBody, endpointCfg)}
 }
 

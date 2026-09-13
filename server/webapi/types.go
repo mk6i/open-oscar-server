@@ -71,11 +71,13 @@ type LocateService interface {
 	DirInfo(ctx context.Context, inFrame wire.SNACFrame, inBody wire.SNAC_0x02_0x0B_LocateGetDirInfo) (wire.SNACMessage, error)
 }
 
-// OServiceService completes sign-on and manages rate limit subscriptions.
+// OServiceService completes sign-on, updates presence state and manages rate
+// limit subscriptions.
 type OServiceService interface {
 	ClientOnline(ctx context.Context, service uint16, inBody wire.SNAC_0x01_0x02_OServiceClientOnline, instance *state.SessionInstance) error
 	MonitorRateLimits(ctx context.Context, session *state.Session)
 	RateParamsSubAdd(ctx context.Context, instance *state.SessionInstance, inBody wire.SNAC_0x01_0x08_OServiceRateParamsSubAdd)
+	SetUserInfoFields(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields) error
 }
 
 // BuddyIconRetriever resolves a user's icon reference from their feedbag, which

@@ -53,12 +53,12 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, session
 	}
 
 	presenceHandler := &PresenceHandler{
-		SessionManager:   sessionManager,
-		FeedbagService:   handler.FeedbagService,
-		BuddyBroadcaster: handler.BuddyBroadcaster,
-		LocateService:    handler.LocateService,
-		IconSource:       handler.IconSource,
-		Logger:           logger,
+		SessionManager:  sessionManager,
+		FeedbagService:  handler.FeedbagService,
+		LocateService:   handler.LocateService,
+		OServiceService: handler.OServiceService,
+		IconSource:      handler.IconSource,
+		Logger:          logger,
 	}
 
 	buddyListHandler := &BuddyListHandler{

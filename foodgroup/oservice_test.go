@@ -1072,8 +1072,8 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 		instance *state.SessionInstance
 		// inputSNAC is the SNAC sent from the client to the server
 		inputSNAC wire.SNACMessage
-		// expectOutput is the SNAC reply sent from the server back to the
-		// client
+		// expectOutput is the SNAC the server relays back to the instance that
+		// made the change
 		expectOutput wire.SNACMessage
 		// broadcastMessage is the arrival/departure message sent to buddies
 		broadcastMessage []struct {
@@ -1276,6 +1276,133 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 			},
 		},
 		{
+			name:     "set busy status raises the unavailable flag",
+			instance: newTestInstance("me"),
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields{
+					TLVRestBlock: wire.TLVRestBlock{
+						TLVList: wire.TLVList{
+							wire.NewTLVBE(wire.OServiceUserInfoStatus, wire.OServiceUserStatusBusy),
+						},
+					},
+				},
+			},
+			expectOutput: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.OService,
+					SubGroup:  wire.OServiceUserInfoUpdate,
+					RequestID: 1234,
+				},
+				Body: func(val any) bool {
+					snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
+					if !ok || len(snac.UserInfo) == 0 {
+						return false
+					}
+					status, hasStatus := snac.UserInfo[0].Uint32BE(wire.OServiceUserInfoStatus)
+					return hasStatus && status == wire.OServiceUserStatusBusy && snac.UserInfo[0].IsAway()
+				},
+			},
+			mockParams: mockParams{
+				buddyBroadcasterParams: buddyBroadcasterParams{
+					broadcastBuddyArrivedParams: broadcastBuddyArrivedParams{
+						{
+							screenName: state.DisplayScreenName("me"),
+						},
+					},
+				},
+			},
+			checkSession: func(t *testing.T, session *state.Session) {
+				assert.NotZero(t, session.Instances()[0].UserInfoBitmask()&wire.OServiceUserFlagUnavailable)
+			},
+		},
+		{
+			name:     "clear status lowers the unavailable flag",
+			instance: newTestInstance("me", sessOptUserInfoFlag(wire.OServiceUserFlagUnavailable)),
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields{
+					TLVRestBlock: wire.TLVRestBlock{
+						TLVList: wire.TLVList{
+							wire.NewTLVBE(wire.OServiceUserInfoStatus, uint32(0x0000)),
+						},
+					},
+				},
+			},
+			expectOutput: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.OService,
+					SubGroup:  wire.OServiceUserInfoUpdate,
+					RequestID: 1234,
+				},
+				Body: func(val any) bool {
+					snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
+					if !ok || len(snac.UserInfo) == 0 {
+						return false
+					}
+					return !snac.UserInfo[0].IsAway()
+				},
+			},
+			mockParams: mockParams{
+				buddyBroadcasterParams: buddyBroadcasterParams{
+					broadcastBuddyArrivedParams: broadcastBuddyArrivedParams{
+						{
+							screenName: state.DisplayScreenName("me"),
+						},
+					},
+				},
+			},
+			checkSession: func(t *testing.T, session *state.Session) {
+				assert.Zero(t, session.Instances()[0].UserInfoBitmask()&wire.OServiceUserFlagUnavailable)
+			},
+		},
+		{
+			name:     "clear status keeps the unavailable flag of a user with an away message",
+			instance: newTestInstance("me", sessOptCannedAwayMessage, sessOptUserInfoFlag(wire.OServiceUserFlagUnavailable)),
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields{
+					TLVRestBlock: wire.TLVRestBlock{
+						TLVList: wire.TLVList{
+							wire.NewTLVBE(wire.OServiceUserInfoStatus, uint32(0x0000)),
+						},
+					},
+				},
+			},
+			expectOutput: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.OService,
+					SubGroup:  wire.OServiceUserInfoUpdate,
+					RequestID: 1234,
+				},
+				Body: func(val any) bool {
+					snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
+					if !ok || len(snac.UserInfo) == 0 {
+						return false
+					}
+					return snac.UserInfo[0].IsAway()
+				},
+			},
+			mockParams: mockParams{
+				buddyBroadcasterParams: buddyBroadcasterParams{
+					broadcastBuddyArrivedParams: broadcastBuddyArrivedParams{
+						{
+							screenName: state.DisplayScreenName("me"),
+						},
+					},
+				},
+			},
+			checkSession: func(t *testing.T, session *state.Session) {
+				assert.NotZero(t, session.Instances()[0].UserInfoBitmask()&wire.OServiceUserFlagUnavailable)
+			},
+		},
+		{
 			name:     "set ICQ direct connect info",
 			instance: newTestInstance("1000003", sessOptUserInfoFlag(wire.OServiceUserFlagICQ)),
 			inputSNAC: wire.SNACMessage{
@@ -1338,22 +1465,32 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 					BroadcastBuddyDeparted(mock.Anything, params.screenName).
 					Return(params.err)
 			}
+			messageRelayer := newMockMessageRelayer(t)
+			var relayedSNAC wire.SNACMessage
+			if tc.expectErr == nil {
+				messageRelayer.EXPECT().
+					RelayToSelf(mock.Anything, tc.instance, mock.Anything).
+					Run(func(ctx context.Context, instance *state.SessionInstance, msg wire.SNACMessage) {
+						relayedSNAC = msg
+					})
+			}
 			svc := OServiceService{
 				cfg:              config.Config{},
 				logger:           slog.Default(),
 				buddyBroadcaster: buddyUpdateBroadcaster,
+				messageRelayer:   messageRelayer,
 			}
-			outputSNAC, err := svc.SetUserInfoFields(context.TODO(), tc.instance, tc.inputSNAC.Frame,
+			err := svc.SetUserInfoFields(context.TODO(), tc.instance, tc.inputSNAC.Frame,
 				tc.inputSNAC.Body.(wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields))
 			assert.ErrorIs(t, err, tc.expectErr)
 			if tc.expectErr != nil {
 				return
 			}
-			assert.Equal(t, tc.expectOutput.Frame, outputSNAC.Frame)
+			assert.Equal(t, tc.expectOutput.Frame, relayedSNAC.Frame)
 			if matcherFn, ok := tc.expectOutput.Body.(func(val any) bool); ok {
-				assert.True(t, matcherFn(outputSNAC.Body), "Body matcher function failed")
+				assert.True(t, matcherFn(relayedSNAC.Body), "Body matcher function failed")
 			} else {
-				assert.Equal(t, tc.expectOutput.Body, outputSNAC.Body)
+				assert.Equal(t, tc.expectOutput.Body, relayedSNAC.Body)
 			}
 			tc.checkSession(t, tc.instance.Session())
 		})

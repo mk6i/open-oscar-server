@@ -306,6 +306,9 @@ packages:
       LocateService:
         config:
           filename: "mock_locate_service_test.go"
+      OServiceService:
+        config:
+          filename: "mock_oservice_service_test.go"
       SessionResolver:
         config:
           filename: "mock_webapi_session_resolver_test.go"
