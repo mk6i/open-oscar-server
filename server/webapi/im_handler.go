@@ -26,7 +26,6 @@ type MessagingHandler struct {
 func (h *MessagingHandler) SendIM(w http.ResponseWriter, r *http.Request, sess *Session) {
 	ctx := r.Context()
 
-	// Parse parameters
 	recipient := param(r, "t")
 	if recipient == "" {
 		SendError(w, r, http.StatusBadRequest, "missing required parameter: t (recipient)")
@@ -39,7 +38,6 @@ func (h *MessagingHandler) SendIM(w http.ResponseWriter, r *http.Request, sess *
 		return
 	}
 
-	// Parse optional parameters
 	autoResponse := param(r, "autoResponse") == "1"
 	// The client sets offlineIM once it believes the recipient is offline and
 	// storable; it sends the literal "true" rather than "1".
@@ -155,7 +153,6 @@ func (h *MessagingHandler) SendIM(w http.ResponseWriter, r *http.Request, sess *
 		"eventType", EventTypeSentIM,
 	)
 
-	// Send success response
 	responseData := &SendIMData{MsgID: messageID, State: "delivered"}
 	SendOK(w, r, responseData, h.Logger)
 }
@@ -231,7 +228,6 @@ func (h *MessagingHandler) pushSenderWebAPIEvents(sess *Session, recipient state
 func (h *MessagingHandler) SetTyping(w http.ResponseWriter, r *http.Request, sess *Session) {
 	ctx := r.Context()
 
-	// Parse parameters
 	recipient := r.URL.Query().Get("t")
 	if recipient == "" {
 		SendError(w, r, http.StatusBadRequest, "missing required parameter: t (recipient)")

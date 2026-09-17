@@ -4,9 +4,11 @@ import (
 	"context"
 	"net/mail"
 	"net/netip"
+	"testing"
 	"time"
 
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 
 	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
@@ -977,6 +979,30 @@ func sessOptBuddyIcon(icon wire.BARTID) func(instance *state.SessionInstance) {
 	return func(instance *state.SessionInstance) {
 		instance.Session().SetBuddyIcon(icon)
 	}
+}
+
+// sessOptStatus sets the status message BART item on the session object.
+func sessOptStatus(status wire.BARTID) func(instance *state.SessionInstance) {
+	return func(instance *state.SessionInstance) {
+		instance.Session().SetStatus(status)
+	}
+}
+
+// newTestStatusBARTID builds the status message BART item a client sends, which
+// carries the text itself rather than a hash of it.
+func newTestStatusBARTID(t *testing.T, statusMsg string) wire.BARTID {
+	t.Helper()
+	var id wire.BARTID
+	require.NoError(t, id.SetStatusText(statusMsg))
+	return id
+}
+
+// statusMsgOf unpacks the text from a status message BART item.
+func statusMsgOf(t *testing.T, id wire.BARTID) string {
+	t.Helper()
+	msg, err := id.StatusText()
+	require.NoError(t, err)
+	return msg
 }
 
 // sessOptOfflineMsgCount sets the offline message count on the session object.

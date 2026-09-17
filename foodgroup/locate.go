@@ -136,6 +136,11 @@ func (s LocateService) SetInfo(ctx context.Context, instance *state.SessionInsta
 		if len(b)%16 != 0 {
 			return errors.New("capability list must be array of 16-byte values")
 		}
+
+		// The mood is one of the capabilities, so it changed only if the list the
+		// client just sent names a different one than the list it replaces.
+		oldMood := instance.Mood()
+
 		var caps [][16]byte
 		for i := 0; i < len(b); i += 16 {
 			var c [16]byte
@@ -145,18 +150,25 @@ func (s LocateService) SetInfo(ctx context.Context, instance *state.SessionInsta
 			}
 			caps = append(caps, c)
 		}
+
 		instance.SetCaps(caps)
+
+		newMood := instance.Mood()
+		statusChanged := oldMood != newMood
+
 		if instance.SignonComplete() {
 			if err := s.buddyBroadcaster.BroadcastBuddyArrived(ctx, instance.IdentScreenName(), instance.Session().TLVUserInfo()); err != nil {
 				return err
 			}
-			s.messageRelayer.RelayToSelf(ctx, instance, wire.SNACMessage{
-				Frame: wire.SNACFrame{
-					FoodGroup: wire.OService,
-					SubGroup:  wire.OServiceUserInfoUpdate,
-				},
-				Body: newOServiceUserInfoUpdate(instance),
-			})
+			if statusChanged {
+				s.messageRelayer.RelayToSelf(ctx, instance, wire.SNACMessage{
+					Frame: wire.SNACFrame{
+						FoodGroup: wire.OService,
+						SubGroup:  wire.OServiceUserInfoUpdate,
+					},
+					Body: newOServiceUserInfoUpdate(instance),
+				})
+			}
 		}
 	}
 

@@ -445,6 +445,60 @@ func TestBuddyListManager_GetBuddyListForUser_PublishesBuddyIcons(t *testing.T) 
 		got[0].Buddies[2].BuddyIcon)
 }
 
+// The roster is where a client first reads a buddy's status message.
+func TestBuddyListManager_GetBuddyListForUser_PublishesStatusMessages(t *testing.T) {
+	ctx := context.Background()
+
+	fb := []wire.FeedbagItem{
+		{Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+			TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{100})}}},
+		{Name: "Buddies", GroupID: 100, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+			TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1, 2})}}},
+		{ItemID: 1, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "hasstatus"},
+		{ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "nostatus"},
+	}
+
+	fs := newMockFeedbagService(t)
+	fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).Return(
+		wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: fb}}, nil,
+	).Once()
+
+	withStatus := wire.TLVUserInfo{ScreenName: "hasstatus"}
+	withStatus.Append(wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, []wire.BARTID{testStatusBART}))
+
+	locateFor := func(name string) any {
+		return mock.MatchedBy(func(q wire.SNAC_0x02_0x05_LocateUserInfoQuery) bool { return q.ScreenName == name })
+	}
+	ls := newMockLocateService(t)
+	ls.EXPECT().UserInfoQuery(mock.Anything, mock.Anything, mock.Anything, locateFor("hasstatus")).
+		Return(wire.SNACMessage{Body: wire.SNAC_0x02_0x06_LocateUserInfoReply{TLVUserInfo: withStatus}}, nil).Once()
+	ls.EXPECT().UserInfoQuery(mock.Anything, mock.Anything, mock.Anything, locateFor("nostatus")).
+		Return(wire.SNACMessage{Body: wire.SNAC_0x02_0x06_LocateUserInfoReply{
+			TLVUserInfo: wire.TLVUserInfo{ScreenName: "nostatus"},
+		}}, nil).Once()
+
+	iconRetriever := newMockBuddyIconRetriever(t)
+	iconRetriever.EXPECT().BuddyIconMetadata(mock.Anything, mock.Anything).Return(nil, nil).Twice()
+
+	m := NewBuddyListManager(fs, ls, BuddyIconSource{
+		IconRetriever: iconRetriever,
+		Logger:        slog.Default(),
+	}, slog.Default())
+
+	sess := &Session{
+		ScreenName:   state.DisplayScreenName("listowner"),
+		OSCARSession: state.NewSession().AddInstance(),
+		BaseURL:      "http://api.example.com",
+	}
+	got, err := m.GetBuddyListForUser(ctx, sess)
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	require.Len(t, got[0].Buddies, 2)
+
+	assert.Equal(t, "brb", got[0].Buddies[0].StatusMsg)
+	assert.Empty(t, got[0].Buddies[1].StatusMsg)
+}
+
 // The feedbag service relays a session's own writes only to the owner's other
 // instances, so renaming a buddy from the web client produces no SNAC for that
 // session. Without an explicit invalidation, its cached aliases would keep serving

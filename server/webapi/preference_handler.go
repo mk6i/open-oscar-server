@@ -261,7 +261,6 @@ func (h *PreferenceHandler) SetPreferences(w http.ResponseWriter, r *http.Reques
 		"prefCount", applied.Len(),
 	)
 
-	// Send success response
 	SendOK(w, r, applied, h.Logger)
 }
 
@@ -322,7 +321,6 @@ func (h *PreferenceHandler) GetPreferences(w http.ResponseWriter, r *http.Reques
 		)
 	}
 
-	// Send response in requested format
 	SendOK(w, r, payload, h.Logger)
 }
 
@@ -471,7 +469,6 @@ func (h *PreferenceHandler) SetPermitDeny(w http.ResponseWriter, r *http.Request
 
 	fl := state.NewFeedbagList(reply.Items, rand.Intn)
 
-	// Get pdMode parameter
 	pdModeStr := r.URL.Query().Get("pdMode")
 	if pdModeStr != "" {
 		switch pdModeStr { // todo: are the string ints possible inputs?

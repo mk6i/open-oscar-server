@@ -1090,6 +1090,9 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 		mockParams mockParams
 		// checkSession validates the state of the session
 		checkSession func(*testing.T, *state.Session)
+		// notifiesOtherInstances reports whether the session's other instances get
+		// the update, which only a status message change triggers
+		notifiesOtherInstances bool
 	}{
 		{
 			name:     "set user status to visible aim < 6",
@@ -1403,6 +1406,279 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 			},
 		},
 		{
+			name:                   "set status message",
+			notifiesOtherInstances: true,
+			instance:               newTestInstance("me"),
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields{
+					TLVRestBlock: wire.TLVRestBlock{
+						TLVList: wire.TLVList{
+							wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, newTestStatusBARTID(t, "out to lunch")),
+						},
+					},
+				},
+			},
+			expectOutput: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.OService,
+					SubGroup:  wire.OServiceUserInfoUpdate,
+					RequestID: 1234,
+				},
+				Body: func(val any) bool {
+					snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
+					if !ok || len(snac.UserInfo) == 0 {
+						return false
+					}
+					b, hasBART := snac.UserInfo[0].Bytes(wire.OServiceUserInfoBARTInfo)
+					if !hasBART {
+						return false
+					}
+					var got wire.BARTID
+					if err := wire.UnmarshalBE(&got, bytes.NewReader(b)); err != nil {
+						return false
+					}
+					return got.Type == wire.BARTTypesStatusStr
+				},
+			},
+			mockParams: mockParams{
+				buddyBroadcasterParams: buddyBroadcasterParams{
+					broadcastBuddyArrivedParams: broadcastBuddyArrivedParams{
+						{
+							screenName: state.DisplayScreenName("me"),
+						},
+					},
+				},
+			},
+			checkSession: func(t *testing.T, session *state.Session) {
+				status, hasStatus := session.Status()
+				assert.True(t, hasStatus)
+				assert.Equal(t, "out to lunch", statusMsgOf(t, status))
+			},
+		},
+		{
+			// An empty status message is how a status is cleared. It has to keep
+			// riding in the BART TLV: a client drops the status it shows for a buddy
+			// only when it is sent an empty one.
+			name:                   "clear status message",
+			notifiesOtherInstances: true,
+			instance:               newTestInstance("me", sessOptStatus(newTestStatusBARTID(t, "old"))),
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields{
+					TLVRestBlock: wire.TLVRestBlock{
+						TLVList: wire.TLVList{
+							wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, newTestStatusBARTID(t, "")),
+						},
+					},
+				},
+			},
+			expectOutput: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.OService,
+					SubGroup:  wire.OServiceUserInfoUpdate,
+					RequestID: 1234,
+				},
+				Body: func(val any) bool {
+					snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
+					if !ok || len(snac.UserInfo) == 0 {
+						return false
+					}
+					b, hasBART := snac.UserInfo[0].Bytes(wire.OServiceUserInfoBARTInfo)
+					if !hasBART {
+						return false
+					}
+					var got wire.BARTID
+					if err := wire.UnmarshalBE(&got, bytes.NewReader(b)); err != nil {
+						return false
+					}
+					text, err := got.StatusText()
+					return err == nil && got.Type == wire.BARTTypesStatusStr && text == ""
+				},
+			},
+			mockParams: mockParams{
+				buddyBroadcasterParams: buddyBroadcasterParams{
+					broadcastBuddyArrivedParams: broadcastBuddyArrivedParams{
+						{
+							screenName: state.DisplayScreenName("me"),
+						},
+					},
+				},
+			},
+			checkSession: func(t *testing.T, session *state.Session) {
+				status, hasStatus := session.Status()
+				assert.True(t, hasStatus)
+				assert.Empty(t, statusMsgOf(t, status))
+			},
+		},
+		{
+			// Two changed fields, one arrival: the client would otherwise see the
+			// buddy blink twice.
+			name:                   "status bitmask and status message in one request",
+			notifiesOtherInstances: true,
+			instance:               newTestInstance("me"),
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields{
+					TLVRestBlock: wire.TLVRestBlock{
+						TLVList: wire.TLVList{
+							wire.NewTLVBE(wire.OServiceUserInfoStatus, wire.OServiceUserStatusBusy),
+							wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, newTestStatusBARTID(t, "on a call")),
+						},
+					},
+				},
+			},
+			expectOutput: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.OService,
+					SubGroup:  wire.OServiceUserInfoUpdate,
+					RequestID: 1234,
+				},
+				Body: func(val any) bool {
+					snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
+					if !ok || len(snac.UserInfo) == 0 {
+						return false
+					}
+					status, hasStatus := snac.UserInfo[0].Uint32BE(wire.OServiceUserInfoStatus)
+					return hasStatus && status == wire.OServiceUserStatusBusy &&
+						snac.UserInfo[0].HasTag(wire.OServiceUserInfoBARTInfo)
+				},
+			},
+			mockParams: mockParams{
+				buddyBroadcasterParams: buddyBroadcasterParams{
+					broadcastBuddyArrivedParams: broadcastBuddyArrivedParams{
+						{
+							screenName: state.DisplayScreenName("me"),
+						},
+					},
+				},
+			},
+			checkSession: func(t *testing.T, session *state.Session) {
+				status, hasStatus := session.Status()
+				assert.True(t, hasStatus)
+				assert.Equal(t, "on a call", statusMsgOf(t, status))
+			},
+		},
+		{
+			// A client can set both in one request, and the status must survive the
+			// icon that precedes it in the list.
+			name:                   "set status message alongside a buddy icon",
+			notifiesOtherInstances: true,
+			instance:               newTestInstance("me"),
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields{
+					TLVRestBlock: wire.TLVRestBlock{
+						TLVList: wire.TLVList{
+							wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, []wire.BARTID{
+								{
+									Type: wire.BARTTypesBuddyIcon,
+									BARTInfo: wire.BARTInfo{
+										Flags: wire.BARTFlagsData,
+										Hash:  []byte{0x01, 0x02, 0x03},
+									},
+								},
+								newTestStatusBARTID(t, "on a call"),
+							}),
+						},
+					},
+				},
+			},
+			expectOutput: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.OService,
+					SubGroup:  wire.OServiceUserInfoUpdate,
+					RequestID: 1234,
+				},
+				Body: func(val any) bool {
+					snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
+					return ok && len(snac.UserInfo) > 0
+				},
+			},
+			mockParams: mockParams{
+				buddyBroadcasterParams: buddyBroadcasterParams{
+					broadcastBuddyArrivedParams: broadcastBuddyArrivedParams{
+						{
+							screenName: state.DisplayScreenName("me"),
+						},
+					},
+				},
+			},
+			checkSession: func(t *testing.T, session *state.Session) {
+				status, hasStatus := session.Status()
+				assert.True(t, hasStatus)
+				assert.Equal(t, "on a call", statusMsgOf(t, status))
+			},
+		},
+		{
+			// A buddy icon reference travels in the same TLV, and only the BART
+			// service stores those. Nothing changed here, so buddies hear nothing.
+			name:     "ignore a BART item that is not a status message",
+			instance: newTestInstance("me"),
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields{
+					TLVRestBlock: wire.TLVRestBlock{
+						TLVList: wire.TLVList{
+							wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, wire.BARTID{
+								Type: wire.BARTTypesBuddyIcon,
+								BARTInfo: wire.BARTInfo{
+									Flags: wire.BARTFlagsData,
+									Hash:  []byte{0x01, 0x02, 0x03},
+								},
+							}),
+						},
+					},
+				},
+			},
+			expectOutput: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.OService,
+					SubGroup:  wire.OServiceUserInfoUpdate,
+					RequestID: 1234,
+				},
+				Body: func(val any) bool {
+					snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
+					return ok && len(snac.UserInfo) > 0
+				},
+			},
+			checkSession: func(t *testing.T, session *state.Session) {
+				_, hasStatus := session.Status()
+				assert.False(t, hasStatus)
+			},
+		},
+		{
+			name:     "malformed BART item",
+			instance: newTestInstance("me"),
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields{
+					TLVRestBlock: wire.TLVRestBlock{
+						TLVList: wire.TLVList{
+							wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, []byte{0x00}),
+						},
+					},
+				},
+			},
+			expectErr: io.ErrUnexpectedEOF,
+			checkSession: func(t *testing.T, session *state.Session) {
+				_, hasStatus := session.Status()
+				assert.False(t, hasStatus)
+			},
+		},
+		{
 			name:     "set ICQ direct connect info",
 			instance: newTestInstance("1000003", sessOptUserInfoFlag(wire.OServiceUserFlagICQ)),
 			inputSNAC: wire.SNACMessage{
@@ -1454,11 +1730,13 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			buddyUpdateBroadcaster := newMockbuddyBroadcaster(t)
 			for _, params := range tc.mockParams.broadcastBuddyArrivedParams {
+				// One entry is one broadcast, so a duplicate fails the test.
 				buddyUpdateBroadcaster.EXPECT().
 					BroadcastBuddyArrived(mock.Anything, state.NewIdentScreenName(params.screenName.String()), mock.MatchedBy(func(userInfo wire.TLVUserInfo) bool {
 						return userInfo.ScreenName == params.screenName.String()
 					})).
-					Return(params.err)
+					Return(params.err).
+					Once()
 			}
 			for _, params := range tc.mockParams.broadcastBuddyDepartedParams {
 				buddyUpdateBroadcaster.EXPECT().
@@ -1467,12 +1745,23 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 			}
 			messageRelayer := newMockMessageRelayer(t)
 			var relayedSNAC wire.SNACMessage
+			var otherInstanceSNAC *wire.SNACMessage
 			if tc.expectErr == nil {
 				messageRelayer.EXPECT().
 					RelayToSelf(mock.Anything, tc.instance, mock.Anything).
 					Run(func(ctx context.Context, instance *state.SessionInstance, msg wire.SNACMessage) {
 						relayedSNAC = msg
 					})
+				// No expectation otherwise: a relay the case does not call for is an
+				// unexpected call, which fails the test.
+				if tc.notifiesOtherInstances {
+					messageRelayer.EXPECT().
+						RelayToOtherInstances(mock.Anything, tc.instance, mock.Anything).
+						Run(func(ctx context.Context, instance *state.SessionInstance, msg wire.SNACMessage) {
+							otherInstanceSNAC = &msg
+						}).
+						Once()
+				}
 			}
 			svc := OServiceService{
 				cfg:              config.Config{},
@@ -1492,6 +1781,22 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 			} else {
 				assert.Equal(t, tc.expectOutput.Body, relayedSNAC.Body)
 			}
+
+			// A status message is session-wide, so the session's other instances get
+			// the update too, unsolicited, carrying the server request ID.
+			if tc.notifiesOtherInstances {
+				require.NotNil(t, otherInstanceSNAC, "the update must reach the session's other instances")
+				assert.Equal(t, wire.SNACFrame{
+					FoodGroup: wire.OService,
+					SubGroup:  wire.OServiceUserInfoUpdate,
+					RequestID: wire.ReqIDFromServer,
+				}, otherInstanceSNAC.Frame)
+				update, ok := otherInstanceSNAC.Body.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
+				require.True(t, ok)
+				require.Len(t, update.UserInfo, 1)
+				assert.Equal(t, tc.instance.DisplayScreenName().String(), update.UserInfo[0].ScreenName)
+			}
+
 			tc.checkSession(t, tc.instance.Session())
 		})
 	}
@@ -2438,6 +2743,53 @@ func TestNewOServiceUserInfoUpdate(t *testing.T) {
 		require.True(t, got.UserInfo[1].HasTag(wire.OServiceUserInfoSigTime))
 		require.False(t, got.UserInfo[2].HasTag(wire.OServiceUserInfoBARTInfo))
 		require.False(t, got.UserInfo[2].HasTag(wire.OServiceUserInfoSigTime))
+	})
+
+	t.Run("sends the buddy icon and the status message in one BART list", func(t *testing.T) {
+		icon := wire.BARTID{
+			Type: wire.BARTTypesBuddyIcon,
+			BARTInfo: wire.BARTInfo{
+				Flags: 1,
+				Hash:  []byte{0xAA, 0xBB, 0xCC},
+			},
+		}
+		status := newTestStatusBARTID(t, "at lunch")
+		session := newTestInstance("me",
+			sessOptSetFoodGroupVersion(wire.OService, 4),
+			sessOptBuddyIcon(icon),
+			sessOptStatus(status))
+
+		got := newOServiceUserInfoUpdate(session)
+
+		require.Len(t, got.UserInfo, 2)
+		b, hasBART := got.UserInfo[1].Bytes(wire.OServiceUserInfoBARTInfo)
+		require.True(t, hasBART)
+
+		var gotIDs []wire.BARTID
+		r := bytes.NewReader(b)
+		for r.Len() > 0 {
+			var id wire.BARTID
+			require.NoError(t, wire.UnmarshalBE(&id, r))
+			gotIDs = append(gotIDs, id)
+		}
+		require.Equal(t, []wire.BARTID{icon, status}, gotIDs)
+	})
+
+	t.Run("sends the status message without a buddy icon", func(t *testing.T) {
+		status := newTestStatusBARTID(t, "at lunch")
+		session := newTestInstance("me",
+			sessOptSetFoodGroupVersion(wire.OService, 4),
+			sessOptStatus(status))
+
+		got := newOServiceUserInfoUpdate(session)
+
+		require.Len(t, got.UserInfo, 2)
+		b, hasBART := got.UserInfo[1].Bytes(wire.OServiceUserInfoBARTInfo)
+		require.True(t, hasBART)
+
+		var gotID wire.BARTID
+		require.NoError(t, wire.UnmarshalBE(&gotID, bytes.NewReader(b)))
+		require.Equal(t, status, gotID)
 	})
 
 	t.Run("does not add buddy icon when icon type is zero", func(t *testing.T) {

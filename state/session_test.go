@@ -194,6 +194,47 @@ func TestSession_SetAndGetRemoteAddr(t *testing.T) {
 	assert.Equal(t, &remoteAddr, s.RemoteAddr())
 }
 
+var testBuddyIcon = wire.BARTID{
+	Type: wire.BARTTypesBuddyIcon,
+	BARTInfo: wire.BARTInfo{
+		Flags: wire.BARTFlagsData,
+		Hash:  []byte{0xAA, 0xBB, 0xCC},
+	},
+}
+
+var testStatusBART = statusBARTID("brb")
+
+// testClearedStatusBART carries an empty status message, which is how a cleared
+// status reaches buddy lists.
+var testClearedStatusBART = statusBARTID("")
+
+// statusBARTID builds the BART item that advertises statusMsg as a user's status
+// message. It panics only on a message too long to fit the item.
+func statusBARTID(statusMsg string) wire.BARTID {
+	var id wire.BARTID
+	if err := id.SetStatusText(statusMsg); err != nil {
+		panic(err)
+	}
+	return id
+}
+
+func TestSession_Status(t *testing.T) {
+	s := NewSession()
+
+	_, hasStatus := s.Status()
+	assert.False(t, hasStatus)
+
+	s.SetStatus(testStatusBART)
+	status, hasStatus := s.Status()
+	assert.True(t, hasStatus)
+	assert.Equal(t, testStatusBART, status)
+
+	// Only the status message BART type reports as a status message.
+	s.SetStatus(testBuddyIcon)
+	_, hasStatus = s.Status()
+	assert.False(t, hasStatus)
+}
+
 func TestSession_TLVUserInfo(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -463,6 +504,7 @@ func TestSession_TLVUserInfo(t *testing.T) {
 			givenSessionFn: func() *SessionInstance {
 				s := NewSession().AddInstance()
 				s.Session().SetSignonTime(time.Unix(1, 0))
+				s.Session().SetBuddyIcon(testBuddyIcon)
 				return s
 			},
 			want: wire.TLVUserInfo{
@@ -472,6 +514,74 @@ func TestSession_TLVUserInfo(t *testing.T) {
 						wire.NewTLVBE(wire.OServiceUserInfoSignonTOD, uint32(1)),
 						wire.NewTLVBE(wire.OServiceUserInfoUserFlags, uint16(0x0010)),
 						wire.NewTLVBE(wire.OServiceUserInfoStatus, uint32(0x0000)),
+						wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, []wire.BARTID{testBuddyIcon}),
+						wire.NewTLVBE(wire.OServiceUserInfoMySubscriptions, uint32(0)),
+					},
+				},
+			},
+		},
+		{
+			name: "user has status message",
+			givenSessionFn: func() *SessionInstance {
+				s := NewSession().AddInstance()
+				s.Session().SetSignonTime(time.Unix(1, 0))
+				s.Session().SetStatus(testStatusBART)
+				return s
+			},
+			want: wire.TLVUserInfo{
+				WarningLevel: 0,
+				TLVBlock: wire.TLVBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.OServiceUserInfoSignonTOD, uint32(1)),
+						wire.NewTLVBE(wire.OServiceUserInfoUserFlags, uint16(0x0010)),
+						wire.NewTLVBE(wire.OServiceUserInfoStatus, uint32(0x0000)),
+						wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, []wire.BARTID{testStatusBART}),
+						wire.NewTLVBE(wire.OServiceUserInfoMySubscriptions, uint32(0)),
+					},
+				},
+			},
+		},
+		{
+			// A cleared status is an empty status message, not a missing one: a
+			// client drops the status it shows only when it is sent an empty one.
+			name: "user cleared their status message",
+			givenSessionFn: func() *SessionInstance {
+				s := NewSession().AddInstance()
+				s.Session().SetSignonTime(time.Unix(1, 0))
+				s.Session().SetStatus(testClearedStatusBART)
+				return s
+			},
+			want: wire.TLVUserInfo{
+				WarningLevel: 0,
+				TLVBlock: wire.TLVBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.OServiceUserInfoSignonTOD, uint32(1)),
+						wire.NewTLVBE(wire.OServiceUserInfoUserFlags, uint16(0x0010)),
+						wire.NewTLVBE(wire.OServiceUserInfoStatus, uint32(0x0000)),
+						wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, []wire.BARTID{testClearedStatusBART}),
+						wire.NewTLVBE(wire.OServiceUserInfoMySubscriptions, uint32(0)),
+					},
+				},
+			},
+		},
+		{
+			// Both ride in one TLV, so a client reading the icon reads the status.
+			name: "user has buddy icon and status message",
+			givenSessionFn: func() *SessionInstance {
+				s := NewSession().AddInstance()
+				s.Session().SetSignonTime(time.Unix(1, 0))
+				s.Session().SetBuddyIcon(testBuddyIcon)
+				s.Session().SetStatus(testStatusBART)
+				return s
+			},
+			want: wire.TLVUserInfo{
+				WarningLevel: 0,
+				TLVBlock: wire.TLVBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.OServiceUserInfoSignonTOD, uint32(1)),
+						wire.NewTLVBE(wire.OServiceUserInfoUserFlags, uint16(0x0010)),
+						wire.NewTLVBE(wire.OServiceUserInfoStatus, uint32(0x0000)),
+						wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, []wire.BARTID{testBuddyIcon, testStatusBART}),
 						wire.NewTLVBE(wire.OServiceUserInfoMySubscriptions, uint32(0)),
 					},
 				},

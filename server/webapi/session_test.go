@@ -702,6 +702,23 @@ func TestSession_HandleBuddyArrivedDeparted_NormalizesAimID(t *testing.T) {
 // rides along on the presence broadcast and must reach the presence event. The
 // stub BuddyIconURL stands in for the handlers-side URL formatter, which state
 // cannot import.
+var testIconBART = wire.BARTID{
+	Type:     wire.BARTTypesBuddyIcon,
+	BARTInfo: wire.BARTInfo{Hash: []byte{0xde, 0xad, 0xbe, 0xef}},
+}
+
+var testStatusBART = statusBARTID("brb")
+
+// statusBARTID builds the BART item that advertises statusMsg as a user's status
+// message. It panics only on a message too long to fit the item.
+func statusBARTID(statusMsg string) wire.BARTID {
+	var id wire.BARTID
+	if err := id.SetStatusText(statusMsg); err != nil {
+		panic(err)
+	}
+	return id
+}
+
 func TestSession_PublishesBuddyIconOnPresence(t *testing.T) {
 	newSession := func() *Session {
 		return &Session{
@@ -744,6 +761,37 @@ func TestSession_PublishesBuddyIconOnPresence(t *testing.T) {
 	t.Run("no icon TLV yields the placeholder URL", func(t *testing.T) {
 		sess := newSession()
 		arrived(sess, "Mike Kelly", nil)
+		assert.Equal(t, "placeholder:mikekelly", lastPresence(sess).BuddyIcon)
+	})
+
+	// The BART TLV is a list, so a status message rides in it next to the icon.
+	arrivedBART := func(sess *Session, screenName string, ids []wire.BARTID) {
+		info := wire.TLVUserInfo{ScreenName: screenName}
+		info.Append(wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, ids))
+		sess.handleBuddyArrived(wire.SNACMessage{Body: wire.SNAC_0x03_0x0B_BuddyArrived{TLVUserInfo: info}})
+	}
+
+	t.Run("a buddy's status message reaches the presence event", func(t *testing.T) {
+		sess := newSession()
+		arrivedBART(sess, "Mike Kelly", []wire.BARTID{testIconBART, testStatusBART})
+		assert.Equal(t, "brb", lastPresence(sess).StatusMsg)
+	})
+
+	t.Run("no status message leaves the field empty", func(t *testing.T) {
+		sess := newSession()
+		arrivedBART(sess, "Mike Kelly", []wire.BARTID{testIconBART})
+		assert.Empty(t, lastPresence(sess).StatusMsg)
+	})
+
+	t.Run("a status message next to the icon does not displace it", func(t *testing.T) {
+		sess := newSession()
+		arrivedBART(sess, "Mike Kelly", []wire.BARTID{testIconBART, testStatusBART})
+		assert.Equal(t, "icon:deadbeef", lastPresence(sess).BuddyIcon)
+	})
+
+	t.Run("a status message without an icon yields the placeholder URL", func(t *testing.T) {
+		sess := newSession()
+		arrivedBART(sess, "Mike Kelly", []wire.BARTID{testStatusBART})
 		assert.Equal(t, "placeholder:mikekelly", lastPresence(sess).BuddyIcon)
 	})
 
@@ -890,6 +938,34 @@ func TestSession_PushesMyInfoOnUserInfoUpdate(t *testing.T) {
 		sess.handleSNACMessage(update(info))
 
 		assert.Equal(t, "icon:deadbeef", lastMyInfo(t, sess).BuddyIcon)
+	})
+
+	t.Run("a status message without an icon yields the placeholder URL", func(t *testing.T) {
+		sess := newSession("myInfo")
+
+		info := wire.TLVUserInfo{ScreenName: "me"}
+		info.Append(wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, []wire.BARTID{testStatusBART}))
+		sess.handleSNACMessage(update(info))
+
+		assert.Equal(t, "placeholder:me", lastMyInfo(t, sess).BuddyIcon)
+	})
+
+	// The user info update is the only myInfo raised after a status message is set,
+	// so dropping the text here erases it from the user's own badge.
+	t.Run("the user's own status message survives the update", func(t *testing.T) {
+		sess := newSession("myInfo")
+
+		info := wire.TLVUserInfo{ScreenName: "me"}
+		info.Append(wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, []wire.BARTID{testStatusBART}))
+		sess.handleSNACMessage(update(info))
+
+		assert.Equal(t, "brb", lastMyInfo(t, sess).StatusMsg)
+	})
+
+	t.Run("no status message leaves the field empty", func(t *testing.T) {
+		sess := newSession("myInfo")
+		sess.handleSNACMessage(update(wire.TLVUserInfo{ScreenName: "me"}))
+		assert.Empty(t, lastMyInfo(t, sess).StatusMsg)
 	})
 
 	t.Run("no icon TLV yields the placeholder URL, which clears a removed icon", func(t *testing.T) {

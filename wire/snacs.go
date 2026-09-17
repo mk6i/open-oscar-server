@@ -1589,15 +1589,53 @@ func (h BARTInfo) HasClearIconHash() bool {
 	return bytes.Equal(h.Hash, GetClearIconHash())
 }
 
+// maxStatusMsgLen is the longest status message that fits in a BART item, whose
+// hash field is length-prefixed with one byte and adds 4 bytes of framing. A
+// longer message wraps the prefix and corrupts the whole user info block.
+const maxStatusMsgLen = 251
+
+var ErrStatusTextSizeExceeded = fmt.Errorf("status message too large (max %d bytes)", maxStatusMsgLen)
+
 type BARTID struct {
 	Type uint16
 	BARTInfo
 }
 
-type BartIDsWName struct {
-	ScreenName string   `oscar:"len_prefix=uint8"`
-	IDs        []BARTID `oscar:"len_prefix=uint8"`
+type bartStatus struct {
+	Status string   `oscar:"len_prefix=uint16"`
+	IDs    []BARTID `oscar:"len_prefix=uint16"`
 }
+
+// SetStatusText sets a BART status string on the BART ID.
+func (b *BARTID) SetStatusText(statusMsg string) error {
+	if len(statusMsg) > maxStatusMsgLen {
+		return ErrStatusTextSizeExceeded
+	}
+
+	bs := bartStatus{Status: statusMsg}
+	buf := &bytes.Buffer{}
+	if err := MarshalBE(bs, buf); err != nil {
+		return fmt.Errorf("BARTID.SetStatusText: failed to marshal BART status: %w", err)
+	}
+	b.Type = BARTTypesStatusStr
+	b.Flags = BARTFlagsData
+	b.Hash = buf.Bytes()
+
+	return nil
+}
+
+// StatusText returns the status message text a status string BART item carries.
+func (b *BARTID) StatusText() (string, error) {
+	if b.Type != BARTTypesStatusStr || b.Flags&BARTFlagsData == 0 {
+		return "", nil
+	}
+	var status bartStatus
+	if err := UnmarshalBE(&status, bytes.NewReader(b.Hash)); err != nil {
+		return "", fmt.Errorf("BARTID.StatusText: failed to unmarshal BART status: %w", err)
+	}
+	return status.Status, nil
+}
+
 type BartQueryReplyID struct {
 	QueryID BARTID
 	Code    uint8

@@ -251,6 +251,8 @@ func (s OServiceService) UserInfoQuery(ctx context.Context, instance *state.Sess
 // presence changes to buddies. It relays an updated user info message back to the
 // instance that made the change.
 func (s OServiceService) SetUserInfoFields(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields) error {
+	var statusChanged bool
+
 	if status, hasStatus := inBody.Uint32BE(wire.OServiceUserInfoStatus); hasStatus {
 		instance.SetUserStatusBitmask(status)
 
@@ -264,6 +266,33 @@ func (s OServiceService) SetUserInfoFields(ctx context.Context, instance *state.
 			instance.ClearUserInfoFlag(wire.OServiceUserFlagUnavailable)
 		}
 
+		statusChanged = true
+	}
+
+	var statusMsgChanged bool
+	if b, hasBART := inBody.Bytes(wire.OServiceUserInfoBARTInfo); hasBART {
+		var ids []wire.BARTID
+		if err := wire.UnmarshalBE(&ids, bytes.NewReader(b)); err != nil {
+			return err
+		}
+		for _, id := range ids {
+			if id.Type == wire.BARTTypesStatusStr {
+				instance.Session().SetStatus(id)
+				statusMsgChanged = true
+				break
+			}
+		}
+	}
+
+	if dcBytes, hasDC := inBody.Bytes(wire.OServiceUserInfoICQDC); hasDC {
+		var dc wire.ICQDCInfo
+		if err := wire.UnmarshalBE(&dc, bytes.NewReader(dcBytes)); err != nil {
+			return err
+		}
+		instance.SetICQDCInfo(dc)
+	}
+
+	if statusChanged || statusMsgChanged {
 		if instance.Session().Invisible() {
 			if err := s.buddyBroadcaster.BroadcastBuddyDeparted(ctx, instance.IdentScreenName()); err != nil {
 				return err
@@ -275,12 +304,20 @@ func (s OServiceService) SetUserInfoFields(ctx context.Context, instance *state.
 		}
 	}
 
-	if dcBytes, hasDC := inBody.Bytes(wire.OServiceUserInfoICQDC); hasDC {
-		var dc wire.ICQDCInfo
-		if err := wire.UnmarshalBE(&dc, bytes.NewReader(dcBytes)); err != nil {
-			return err
-		}
-		instance.SetICQDCInfo(dc)
+	if statusMsgChanged {
+		// right now status messages are set session-wide and status flag is
+		// set per-instance. when the status message changes, inform concurrent
+		// logins. don't do this when only the status message changes.
+		s.messageRelayer.RelayToOtherInstances(ctx, instance, wire.SNACMessage{
+			Frame: wire.SNACFrame{
+				FoodGroup: wire.OService,
+				SubGroup:  wire.OServiceUserInfoUpdate,
+				RequestID: wire.ReqIDFromServer,
+			},
+			Body: wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate{
+				UserInfo: []wire.TLVUserInfo{instance.Session().TLVUserInfo()},
+			},
+		})
 	}
 
 	// reflect the status of this instance back to the caller, even though
@@ -936,11 +973,15 @@ func newOServiceUserInfoUpdate(instance *state.SessionInstance) wire.SNAC_0x01_0
 			instanceInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoStatus, statusBitmask))
 
 			if cur == instance {
+				var bartSet []wire.BARTID
 				if icon, hasIcon := cur.Session().BuddyIcon(); hasIcon {
-					// set buddy icon metadata, if user has buddy icon
-					if icon.Type != 0 {
-						instanceInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, icon))
-					}
+					bartSet = append(bartSet, icon)
+				}
+				if status, hasStatus := cur.Session().Status(); hasStatus {
+					bartSet = append(bartSet, status)
+				}
+				if len(bartSet) > 0 {
+					instanceInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, bartSet))
 				}
 			}
 

@@ -34,6 +34,72 @@ func TestBARTInfo_HasClearIconHash(t *testing.T) {
 	}
 }
 
+func TestBARTID_StatusText(t *testing.T) {
+	marshaled := func(t *testing.T, status string) []byte {
+		t.Helper()
+		b := &bytes.Buffer{}
+		assert.NoError(t, MarshalBE(bartStatus{Status: status}, b))
+		return b.Bytes()
+	}
+
+	tests := []struct {
+		name string
+		id   BARTID
+		want string
+		// wantErr reports whether the item's payload fails to decode.
+		wantErr bool
+	}{
+		{
+			name: "a data-bearing status item carries its text",
+			id: BARTID{
+				Type:     BARTTypesStatusStr,
+				BARTInfo: BARTInfo{Flags: BARTFlagsData, Hash: marshaled(t, "out to lunch")},
+			},
+			want: "out to lunch",
+		},
+		{
+			name: "empty text reads as no status message",
+			id: BARTID{
+				Type:     BARTTypesStatusStr,
+				BARTInfo: BARTInfo{Flags: BARTFlagsData, Hash: marshaled(t, "")},
+			},
+		},
+		{
+			name: "a status item without the data flag reads as no status message",
+			id: BARTID{
+				Type:     BARTTypesStatusStr,
+				BARTInfo: BARTInfo{Flags: BARTFlagsKnown, Hash: marshaled(t, "out to lunch")},
+			},
+		},
+		{
+			name: "another BART type is not a status message",
+			id: BARTID{
+				Type:     BARTTypesBuddyIcon,
+				BARTInfo: BARTInfo{Flags: BARTFlagsData, Hash: marshaled(t, "out to lunch")},
+			},
+		},
+		{
+			name: "a malformed item is an error",
+			id: BARTID{
+				Type:     BARTTypesStatusStr,
+				BARTInfo: BARTInfo{Flags: BARTFlagsData, Hash: []byte{0x00}},
+			},
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.id.StatusText()
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
 func TestSNAC_0x01_0x14_OServiceSetPrivacyFlags_IdleFlag(t *testing.T) {
 	type fields struct {
 		PrivacyFlags uint32

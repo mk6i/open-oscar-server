@@ -2,6 +2,7 @@ package webapi
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -104,7 +105,6 @@ func (h *PresenceHandler) GetPresence(w http.ResponseWriter, r *http.Request, se
 	ctx := r.Context()
 	aimsid := session.AimSID
 
-	// Check if buddy list is requested
 	getBuddyList := r.URL.Query().Get("bl") == "1"
 	wantProfileMsg := r.URL.Query().Get("profileMsg") == "1"
 	// mdir asks for member-directory fields alongside presence.
@@ -156,7 +156,6 @@ func (h *PresenceHandler) GetPresence(w http.ResponseWriter, r *http.Request, se
 		presenceData.Users = []BuddyPresenceInfo{}
 	}
 
-	// Send response in requested format
 	SendOK(w, r, presenceData, h.Logger)
 
 	h.Logger.DebugContext(ctx, "presence retrieved",
@@ -199,7 +198,6 @@ func (h *PresenceHandler) directoryProfile(ctx context.Context, screenName strin
 
 // getBuddyListGroups retrieves the buddy list organized by groups.
 func (h *PresenceHandler) getBuddyListGroups(ctx context.Context, session *Session, wantProfileMsg bool) ([]BuddyGroupInfo, error) {
-	// Get feedbag items via the feedbag service
 	frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
 	reply, err := h.FeedbagService.Query(ctx, session.OSCARSession, frame)
 	if err != nil {
@@ -349,6 +347,7 @@ func (h *PresenceHandler) getUserPresence(ctx context.Context, instance *state.S
 	}
 
 	presence.MoodIcon = moodIconURL(baseURL, presence.State, userInfoCaps(info.TLVUserInfo))
+	presence.StatusMsg = userStatusMsg(info.TLVUserInfo)
 
 	return presence
 }
@@ -434,13 +433,12 @@ func (h *PresenceHandler) SetState(w http.ResponseWriter, r *http.Request, sessi
 		"hasAwayMsg", awayMsg != "",
 	)
 
-	// Send success response
 	SendOK(w, r, &SetStateData{
 		AimID:      session.ScreenName.IdentScreenName().String(),
 		DisplayID:  session.ScreenName.String(),
 		State:      reportedState,
 		AwayMsg:    awayMsg,
-		StatusMsg:  "",
+		StatusMsg:  sessionStatusMsg(oscarSession),
 		UserType:   userTypeFor(session.ScreenName.IdentScreenName()),
 		OnlineTime: time.Now().Unix(),
 	}, h.Logger)
@@ -450,9 +448,35 @@ func (h *PresenceHandler) SetState(w http.ResponseWriter, r *http.Request, sessi
 func (h *PresenceHandler) SetStatus(w http.ResponseWriter, r *http.Request, session *Session) {
 	ctx := r.Context()
 
-	// Get the status message
 	statusMsg := r.URL.Query().Get("statusMsg")
 	statusCode := r.URL.Query().Get("statusCode")
+
+	if r.URL.Query().Has("statusMsg") {
+
+		var bid wire.BARTID
+		if err := bid.SetStatusText(statusMsg); err != nil {
+			if errors.Is(err, wire.ErrStatusTextSizeExceeded) {
+				SendError(w, r, http.StatusBadRequest, err.Error())
+			} else {
+				h.Logger.ErrorContext(ctx, "failed to marshal status message", "err", err.Error())
+				SendError(w, r, http.StatusInternalServerError, "failed to set status")
+			}
+			return
+		}
+
+		setFields := wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields{
+			TLVRestBlock: wire.TLVRestBlock{
+				TLVList: wire.TLVList{
+					wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, bid),
+				},
+			},
+		}
+		if err := h.OServiceService.SetUserInfoFields(ctx, session.OSCARSession, wire.SNACFrame{}, setFields); err != nil {
+			h.Logger.ErrorContext(ctx, "failed to set user info fields", "err", err.Error())
+			SendError(w, r, http.StatusInternalServerError, "failed to set status")
+			return
+		}
+	}
 
 	if r.URL.Query().Has("mood") {
 		moodID := r.URL.Query().Get("mood")
@@ -495,10 +519,8 @@ func (h *PresenceHandler) SetStatus(w http.ResponseWriter, r *http.Request, sess
 func (h *PresenceHandler) SetProfile(w http.ResponseWriter, r *http.Request, session *Session) {
 	ctx := r.Context()
 
-	// Get the profile content
 	profileText := r.URL.Query().Get("profile")
 
-	// Limit profile size (4KB max)
 	if len(profileText) > 4096 {
 		SendError(w, r, http.StatusBadRequest, "profile too large (max 4KB)")
 		return
@@ -525,7 +547,6 @@ func (h *PresenceHandler) SetProfile(w http.ResponseWriter, r *http.Request, ses
 		"profileSize", len(profileText),
 	)
 
-	// Send success response
 	SendOK(w, r, nil, h.Logger)
 }
 
@@ -533,13 +554,11 @@ func (h *PresenceHandler) SetProfile(w http.ResponseWriter, r *http.Request, ses
 func (h *PresenceHandler) GetProfile(w http.ResponseWriter, r *http.Request, session *Session) {
 	ctx := r.Context()
 
-	// Get target screen name (optional - defaults to self)
 	targetSN := r.URL.Query().Get("sn")
 	if targetSN == "" {
 		targetSN = session.ScreenName.String()
 	}
 
-	// Retrieve profile via OSCAR LocateService.
 	var profileText string
 	instance := session.OSCARSession
 	reply, err := h.LocateService.UserInfoQuery(ctx, instance, wire.SNACFrame{},
@@ -552,7 +571,6 @@ func (h *PresenceHandler) GetProfile(w http.ResponseWriter, r *http.Request, ses
 		}
 	}
 
-	// Send response
 	responseData := &ProfileData{ScreenName: targetSN, Profile: profileText}
 
 	SendOK(w, r, responseData, h.Logger)
@@ -560,7 +578,6 @@ func (h *PresenceHandler) GetProfile(w http.ResponseWriter, r *http.Request, ses
 
 // Icon handles GET /presence/icon requests for presence icons.
 func (h *PresenceHandler) Icon(w http.ResponseWriter, r *http.Request) {
-	// Get parameters
 	name := r.URL.Query().Get("name")
 	size := r.URL.Query().Get("size")
 	iconType := r.URL.Query().Get("type")

@@ -107,6 +107,7 @@ type Session struct {
 	closeCh chan struct{}
 	closed  bool
 	nowFn   func() time.Time
+	status  wire.BARTID
 }
 
 // NewSession creates a new Session for a user.
@@ -366,6 +367,14 @@ func (s *Session) AwayMessage() string {
 	}
 	awayMsg, _ := latest.AwayMessage()
 	return awayMsg
+}
+
+// Status returns the session's status message and reports whether one is set.
+func (s *Session) Status() (wire.BARTID, bool) {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	status := s.status
+	return status, status.Type == wire.BARTTypesStatusStr
 }
 
 // Idle returns true if all instances are idle.
@@ -816,6 +825,13 @@ func (s *Session) SetBuddyIcon(icon wire.BARTID) {
 	s.buddyIcon = icon
 }
 
+// SetStatus stores the session's status message.
+func (s *Session) SetStatus(status wire.BARTID) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.status = status
+}
+
 // SetChatRoomCookie sets the chat room cookie.
 func (s *Session) SetChatRoomCookie(cookie string) {
 	s.mutex.Lock()
@@ -931,9 +947,17 @@ func (s *Session) userInfo() wire.TLVList {
 		tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoIdleTime, uint16(s.nowFn().Sub(mostRecentIdleTime).Minutes())))
 	}
 
-	// set buddy icon metadata, if user has buddy icon
+	var bartIDs []wire.BARTID
+
 	if icon, hasIcon := s.BuddyIcon(); hasIcon {
-		tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, icon))
+		bartIDs = append(bartIDs, icon)
+	}
+	if status, hasStatus := s.Status(); hasStatus {
+		bartIDs = append(bartIDs, status)
+	}
+
+	if len(bartIDs) > 0 {
+		tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, bartIDs))
 	}
 
 	// ICQ direct-connect info. The TLV is required for buddy arrival events to
@@ -1391,6 +1415,21 @@ func (s *SessionInstance) KerberosAuth() bool {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 	return s.kerberosAuth
+}
+
+// Mood returns the mood capability this instance advertises, or the zero UUID
+// when it advertises none.
+func (s *SessionInstance) Mood() uuid.UUID {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	for _, c := range s.capabilities {
+		if wire.IsMoodCap(c) {
+			return c
+		}
+	}
+
+	return uuid.UUID{}
 }
 
 // MultiConnFlag retrieves the multi-connection flag for this instance.

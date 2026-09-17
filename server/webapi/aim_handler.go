@@ -388,6 +388,7 @@ func (h *AimHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 
 	myMoodURL := moodIconURL(baseURL, "online", session.OSCARSession.Session().Caps())
 	myInfoPayload := buildMyInfo(screenName, "online", myIconURL, myMoodURL)
+	myInfoPayload.StatusMsg = sessionStatusMsg(session.OSCARSession)
 	myInfoPayload.OnlineTime = time.Now().Unix()
 	myInfoPayload.MemberSince = time.Now().Unix() - 86400*30 // 30 days ago
 	myInfoPayload.Self = &MyInfoSelf{
@@ -418,6 +419,7 @@ func (h *AimHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 	// client subscribes to both, which a per-subscription loop would queue twice.
 	if slices.Contains(events, "myInfo") || slices.Contains(events, "presence") {
 		myInfoData := buildMyInfo(screenName, "online", myIconURL, myMoodURL)
+		myInfoData.StatusMsg = sessionStatusMsg(session.OSCARSession)
 		myInfoData.OnlineTime = time.Now().Unix()
 		myInfoData.MemberSince = time.Now().Unix() - 86400*30 // 30 days ago
 		session.EventQueue.Push(EventTypeMyInfo, myInfoData)

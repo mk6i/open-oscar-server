@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -835,6 +836,110 @@ func TestLocateService_SetInfo_SetCaps(t *testing.T) {
 		{9, 70, 19, 70, 76, 127, 17, 209, 130, 34, 68, 69, 83, 84, 0, 0},
 	}
 	assert.ElementsMatch(t, expect, instance.Session().Caps())
+}
+
+// A mood is one of the capabilities, and the client re-renders its own status from
+// the user info update the server relays back. Sending that update when the mood
+// did not change makes the client re-render on every capability write.
+func TestLocateService_SetInfo_MoodChange(t *testing.T) {
+	// chat: 748F2420-6287-11D1-8222-444553540000
+	chatCap := uuid.MustParse("748F2420-6287-11D1-8222-444553540000")
+
+	setCaps := func(caps ...uuid.UUID) wire.SNAC_0x02_0x04_LocateSetInfo {
+		var b []byte
+		for _, c := range caps {
+			b = append(b, c[:]...)
+		}
+		return wire.SNAC_0x02_0x04_LocateSetInfo{
+			TLVRestBlock: wire.TLVRestBlock{
+				TLVList: wire.TLVList{wire.NewTLVBE(wire.LocateTLVTagsInfoCapabilities, b)},
+			},
+		}
+	}
+
+	tests := []struct {
+		name string
+		// mood is the mood the instance already advertises, if any.
+		mood uuid.UUID
+		// signedOn reports whether sign-on completed, which gates both messages.
+		signedOn bool
+		inBody   wire.SNAC_0x02_0x04_LocateSetInfo
+		// wantRelay reports whether the user info update must reach the client.
+		wantRelay bool
+	}{
+		{
+			name:      "a new mood relays a user info update",
+			signedOn:  true,
+			inBody:    setCaps(chatCap, wire.CapXStatusPlate),
+			wantRelay: true,
+		},
+		{
+			name:      "a different mood relays a user info update",
+			mood:      wire.CapXStatusPlate,
+			signedOn:  true,
+			inBody:    setCaps(wire.CapXStatusBeer),
+			wantRelay: true,
+		},
+		{
+			name:      "clearing the mood relays a user info update",
+			mood:      wire.CapXStatusPlate,
+			signedOn:  true,
+			inBody:    setCaps(chatCap),
+			wantRelay: true,
+		},
+		{
+			name:     "the same mood relays nothing",
+			mood:     wire.CapXStatusPlate,
+			signedOn: true,
+			inBody:   setCaps(chatCap, wire.CapXStatusPlate),
+		},
+		{
+			name:     "a capability change with no mood relays nothing",
+			signedOn: true,
+			inBody:   setCaps(chatCap),
+		},
+		{
+			// Sign-on sends the user info itself, so nothing goes out before it.
+			name:   "a mood set before sign-on completes relays nothing",
+			inBody: setCaps(wire.CapXStatusPlate),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := []func(*state.SessionInstance){}
+			if tt.signedOn {
+				opts = append(opts, sessOptSignonComplete)
+			}
+			instance := newTestInstance("screen-name", opts...)
+			if tt.mood != (uuid.UUID{}) {
+				instance.SetMood(tt.mood)
+			}
+
+			messageRelayer := newMockMessageRelayer(t)
+			if tt.wantRelay {
+				messageRelayer.EXPECT().
+					RelayToSelf(mock.Anything, instance, mock.MatchedBy(func(msg wire.SNACMessage) bool {
+						return msg.Frame.FoodGroup == wire.OService &&
+							msg.Frame.SubGroup == wire.OServiceUserInfoUpdate
+					})).
+					Once()
+			}
+
+			buddyBroadcaster := newMockbuddyBroadcaster(t)
+			if tt.signedOn {
+				buddyBroadcaster.EXPECT().
+					BroadcastBuddyArrived(mock.Anything, mock.Anything, mock.Anything).
+					Return(nil).
+					Once()
+			}
+
+			svc := NewLocateService(nil, messageRelayer, nil, nil, nil, nil)
+			svc.buddyBroadcaster = buddyBroadcaster
+
+			assert.NoError(t, svc.SetInfo(context.Background(), instance, tt.inBody))
+		})
+	}
 }
 
 func TestLocateService_RightsQuery(t *testing.T) {
