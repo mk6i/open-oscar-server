@@ -471,13 +471,7 @@ func (s *FeedbagService) setBARTItem(ctx context.Context, instance *state.Sessio
 	})
 
 	if bartID.Type == wire.BARTTypesBuddyIconSmall || bartID.Type == wire.BARTTypesBuddyIcon {
-		s.messageRelayer.RelayToScreenName(ctx, instance.IdentScreenName(), wire.SNACMessage{
-			Frame: wire.SNACFrame{
-				FoodGroup: wire.OService,
-				SubGroup:  wire.OServiceUserInfoUpdate,
-			},
-			Body: newOServiceUserInfoUpdate(instance),
-		})
+		sendUserInfoUpdateToAll(ctx, s.messageRelayer, instance)
 	}
 
 	return nil

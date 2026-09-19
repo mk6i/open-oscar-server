@@ -680,23 +680,26 @@ func TestLocateService_SetInfo(t *testing.T) {
 					},
 				},
 				messageRelayerParams: messageRelayerParams{
-					relayToOtherInstancesParams: relayToOtherInstancesParams{
+					// The profile is account-level, so every connection is told about
+					// it: one update each, carrying that connection's own block.
+					relayToSelfParams: relayToSelfParams{
 						{
 							screenName: state.NewIdentScreenName("test-user"),
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.OService,
 									SubGroup:  wire.OServiceUserInfoUpdate,
+									RequestID: wire.ReqIDFromServer,
 								},
 								Body: func(val any) bool {
 									snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
 									if !ok {
 										return false
 									}
-									require.Len(t, snac.UserInfo, 4)
-									_, hasSigTime1 := snac.UserInfo[1].Uint32BE(wire.OServiceUserInfoSigTime)
+									require.Len(t, snac.UserInfo, 1)
+									_, hasSigTime := snac.UserInfo[0].Uint32BE(wire.OServiceUserInfoSigTime)
 
-									return assert.True(t, hasSigTime1, "has signature update time")
+									return assert.True(t, hasSigTime, "has signature update time")
 								},
 							},
 						},
@@ -792,6 +795,15 @@ func TestLocateService_SetInfo(t *testing.T) {
 				} else {
 					t.Fail()
 				}
+			}
+			for _, params := range tt.mockParams.relayToSelfParams {
+				matcherFn, ok := params.message.Body.(func(val any) bool)
+				require.True(t, ok, "relayToSelfParams needs a body matcher")
+				messageRelayer.EXPECT().
+					RelayToSelf(matchContext(), matchSession(params.screenName), mock.MatchedBy(func(message wire.SNACMessage) bool {
+						return params.message.Frame == message.Frame &&
+							matcherFn(message.Body)
+					}))
 			}
 			svc := NewLocateService(nil, messageRelayer, profileManager, nil, nil, nil)
 			svc.buddyBroadcaster = buddyUpdateBroadcaster
@@ -940,6 +952,40 @@ func TestLocateService_SetInfo_MoodChange(t *testing.T) {
 			assert.NoError(t, svc.SetInfo(context.Background(), instance, tt.inBody))
 		})
 	}
+}
+
+// A mood is account-level, so a change made on one connection reaches the rest.
+func TestLocateService_SetInfo_MoodChangeReachesEveryInstance(t *testing.T) {
+	instance := newTestInstance("screen-name", sessOptSignonComplete)
+	other := instance.Session().AddInstance()
+
+	messageRelayer := newMockMessageRelayer(t)
+	for _, target := range []*state.SessionInstance{instance, other} {
+		messageRelayer.EXPECT().
+			RelayToSelf(mock.Anything, target, mock.MatchedBy(func(msg wire.SNACMessage) bool {
+				return msg.Frame.FoodGroup == wire.OService &&
+					msg.Frame.SubGroup == wire.OServiceUserInfoUpdate
+			})).
+			Once()
+	}
+
+	buddyBroadcaster := newMockbuddyBroadcaster(t)
+	buddyBroadcaster.EXPECT().
+		BroadcastBuddyArrived(mock.Anything, mock.Anything, mock.Anything).
+		Return(nil).
+		Once()
+
+	svc := NewLocateService(nil, messageRelayer, nil, nil, nil, nil)
+	svc.buddyBroadcaster = buddyBroadcaster
+
+	inBody := wire.SNAC_0x02_0x04_LocateSetInfo{
+		TLVRestBlock: wire.TLVRestBlock{
+			TLVList: wire.TLVList{
+				wire.NewTLVBE(wire.LocateTLVTagsInfoCapabilities, wire.CapXStatusPlate[:]),
+			},
+		},
+	}
+	assert.NoError(t, svc.SetInfo(context.Background(), instance, inBody))
 }
 
 func TestLocateService_RightsQuery(t *testing.T) {

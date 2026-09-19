@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"net/netip"
 	"sync"
 	"testing"
 	"time"
@@ -1090,9 +1091,6 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 		mockParams mockParams
 		// checkSession validates the state of the session
 		checkSession func(*testing.T, *state.Session)
-		// notifiesOtherInstances reports whether the session's other instances get
-		// the update, which only a status message change triggers
-		notifiesOtherInstances bool
 	}{
 		{
 			name:     "set user status to visible aim < 6",
@@ -1113,7 +1111,8 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.OService,
 					SubGroup:  wire.OServiceUserInfoUpdate,
-					RequestID: 1234,
+					// Pushes are unsolicited, so they carry the server request ID.
+					RequestID: wire.ReqIDFromServer,
 				},
 				Body: func(val any) bool {
 					snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
@@ -1159,7 +1158,8 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.OService,
 					SubGroup:  wire.OServiceUserInfoUpdate,
-					RequestID: 1234,
+					// Pushes are unsolicited, so they carry the server request ID.
+					RequestID: wire.ReqIDFromServer,
 				},
 				Body: func(val any) bool {
 					snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
@@ -1205,7 +1205,8 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.OService,
 					SubGroup:  wire.OServiceUserInfoUpdate,
-					RequestID: 1234,
+					// Pushes are unsolicited, so they carry the server request ID.
+					RequestID: wire.ReqIDFromServer,
 				},
 				Body: func(val any) bool {
 					snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
@@ -1251,7 +1252,8 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.OService,
 					SubGroup:  wire.OServiceUserInfoUpdate,
-					RequestID: 1234,
+					// Pushes are unsolicited, so they carry the server request ID.
+					RequestID: wire.ReqIDFromServer,
 				},
 				Body: func(val any) bool {
 					snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
@@ -1297,7 +1299,8 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.OService,
 					SubGroup:  wire.OServiceUserInfoUpdate,
-					RequestID: 1234,
+					// Pushes are unsolicited, so they carry the server request ID.
+					RequestID: wire.ReqIDFromServer,
 				},
 				Body: func(val any) bool {
 					snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
@@ -1340,7 +1343,8 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.OService,
 					SubGroup:  wire.OServiceUserInfoUpdate,
-					RequestID: 1234,
+					// Pushes are unsolicited, so they carry the server request ID.
+					RequestID: wire.ReqIDFromServer,
 				},
 				Body: func(val any) bool {
 					snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
@@ -1382,7 +1386,8 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.OService,
 					SubGroup:  wire.OServiceUserInfoUpdate,
-					RequestID: 1234,
+					// Pushes are unsolicited, so they carry the server request ID.
+					RequestID: wire.ReqIDFromServer,
 				},
 				Body: func(val any) bool {
 					snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
@@ -1406,9 +1411,8 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 			},
 		},
 		{
-			name:                   "set status message",
-			notifiesOtherInstances: true,
-			instance:               newTestInstance("me"),
+			name:     "set status message",
+			instance: newTestInstance("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -1425,7 +1429,8 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.OService,
 					SubGroup:  wire.OServiceUserInfoUpdate,
-					RequestID: 1234,
+					// Pushes are unsolicited, so they carry the server request ID.
+					RequestID: wire.ReqIDFromServer,
 				},
 				Body: func(val any) bool {
 					snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
@@ -1462,9 +1467,8 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 			// An empty status message is how a status is cleared. It has to keep
 			// riding in the BART TLV: a client drops the status it shows for a buddy
 			// only when it is sent an empty one.
-			name:                   "clear status message",
-			notifiesOtherInstances: true,
-			instance:               newTestInstance("me", sessOptStatus(newTestStatusBARTID(t, "old"))),
+			name:     "clear status message",
+			instance: newTestInstance("me", sessOptStatus(newTestStatusBARTID(t, "old"))),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -1481,7 +1485,8 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.OService,
 					SubGroup:  wire.OServiceUserInfoUpdate,
-					RequestID: 1234,
+					// Pushes are unsolicited, so they carry the server request ID.
+					RequestID: wire.ReqIDFromServer,
 				},
 				Body: func(val any) bool {
 					snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
@@ -1518,9 +1523,8 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 		{
 			// Two changed fields, one arrival: the client would otherwise see the
 			// buddy blink twice.
-			name:                   "status bitmask and status message in one request",
-			notifiesOtherInstances: true,
-			instance:               newTestInstance("me"),
+			name:     "status bitmask and status message in one request",
+			instance: newTestInstance("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -1538,7 +1542,8 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.OService,
 					SubGroup:  wire.OServiceUserInfoUpdate,
-					RequestID: 1234,
+					// Pushes are unsolicited, so they carry the server request ID.
+					RequestID: wire.ReqIDFromServer,
 				},
 				Body: func(val any) bool {
 					snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
@@ -1568,9 +1573,8 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 		{
 			// A client can set both in one request, and the status must survive the
 			// icon that precedes it in the list.
-			name:                   "set status message alongside a buddy icon",
-			notifiesOtherInstances: true,
-			instance:               newTestInstance("me"),
+			name:     "set status message alongside a buddy icon",
+			instance: newTestInstance("me"),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -1596,7 +1600,8 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.OService,
 					SubGroup:  wire.OServiceUserInfoUpdate,
-					RequestID: 1234,
+					// Pushes are unsolicited, so they carry the server request ID.
+					RequestID: wire.ReqIDFromServer,
 				},
 				Body: func(val any) bool {
 					snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
@@ -1645,7 +1650,8 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.OService,
 					SubGroup:  wire.OServiceUserInfoUpdate,
-					RequestID: 1234,
+					// Pushes are unsolicited, so they carry the server request ID.
+					RequestID: wire.ReqIDFromServer,
 				},
 				Body: func(val any) bool {
 					snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
@@ -1700,7 +1706,8 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 				Frame: wire.SNACFrame{
 					FoodGroup: wire.OService,
 					SubGroup:  wire.OServiceUserInfoUpdate,
-					RequestID: 1234,
+					// Pushes are unsolicited, so they carry the server request ID.
+					RequestID: wire.ReqIDFromServer,
 				},
 				Body: func(val any) bool {
 					snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
@@ -1745,23 +1752,15 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 			}
 			messageRelayer := newMockMessageRelayer(t)
 			var relayedSNAC wire.SNACMessage
-			var otherInstanceSNAC *wire.SNACMessage
 			if tc.expectErr == nil {
+				// These sessions hold one instance, so the caller is the only
+				// recipient either way. The fan-out has its own test.
 				messageRelayer.EXPECT().
 					RelayToSelf(mock.Anything, tc.instance, mock.Anything).
 					Run(func(ctx context.Context, instance *state.SessionInstance, msg wire.SNACMessage) {
 						relayedSNAC = msg
-					})
-				// No expectation otherwise: a relay the case does not call for is an
-				// unexpected call, which fails the test.
-				if tc.notifiesOtherInstances {
-					messageRelayer.EXPECT().
-						RelayToOtherInstances(mock.Anything, tc.instance, mock.Anything).
-						Run(func(ctx context.Context, instance *state.SessionInstance, msg wire.SNACMessage) {
-							otherInstanceSNAC = &msg
-						}).
-						Once()
-				}
+					}).
+					Once()
 			}
 			svc := OServiceService{
 				cfg:              config.Config{},
@@ -1780,21 +1779,6 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 				assert.True(t, matcherFn(relayedSNAC.Body), "Body matcher function failed")
 			} else {
 				assert.Equal(t, tc.expectOutput.Body, relayedSNAC.Body)
-			}
-
-			// A status message is session-wide, so the session's other instances get
-			// the update too, unsolicited, carrying the server request ID.
-			if tc.notifiesOtherInstances {
-				require.NotNil(t, otherInstanceSNAC, "the update must reach the session's other instances")
-				assert.Equal(t, wire.SNACFrame{
-					FoodGroup: wire.OService,
-					SubGroup:  wire.OServiceUserInfoUpdate,
-					RequestID: wire.ReqIDFromServer,
-				}, otherInstanceSNAC.Frame)
-				update, ok := otherInstanceSNAC.Body.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
-				require.True(t, ok)
-				require.Len(t, update.UserInfo, 1)
-				assert.Equal(t, tc.instance.DisplayScreenName().String(), update.UserInfo[0].ScreenName)
 			}
 
 			tc.checkSession(t, tc.instance.Session())
@@ -2536,7 +2520,13 @@ func TestOServiceService_ClientVersions(t *testing.T) {
 	assert.Equal(t, want, have)
 }
 
-func TestNewOServiceUserInfoUpdate(t *testing.T) {
+// userInfoBlocks returns the user info blocks UserInfoQuery reports for instance.
+func userInfoBlocks(instance *state.SessionInstance) wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate {
+	msg := OServiceService{}.UserInfoQuery(context.Background(), instance, wire.SNACFrame{})
+	return msg.Body.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
+}
+
+func TestOServiceService_UserInfoQuery_UserInfoBlocks(t *testing.T) {
 	memberSince := time.Unix(1_700_000_000, 0)
 	profileUpdated := time.Unix(1_700_100_000, 0)
 	signonTime := time.Now().Add(-3 * time.Second)
@@ -2548,7 +2538,7 @@ func TestNewOServiceUserInfoUpdate(t *testing.T) {
 		signon := session.SignonTime()
 		onlineLowerBound := uint32(time.Since(signon).Seconds())
 
-		got := newOServiceUserInfoUpdate(session)
+		got := userInfoBlocks(session)
 
 		require.Len(t, got.UserInfo, 1)
 
@@ -2565,10 +2555,17 @@ func TestNewOServiceUserInfoUpdate(t *testing.T) {
 		require.GreaterOrEqual(t, onlineVal, onlineLowerBound)
 		require.LessOrEqual(t, onlineVal-onlineLowerBound, uint32(2))
 
-		hasSigTime := got.UserInfo[0].HasTag(wire.OServiceUserInfoSigTime)
-		require.False(t, hasSigTime)
+		// The account block always carries a sig time, zero when no profile is set.
+		sigVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoSigTime)
+		require.True(t, ok)
+		require.Equal(t, uint32(time.Time{}.Unix()), sigVal)
 
+		// A client that does not speak the multi-instance fields is told nothing
+		// about the session's other connections.
 		require.False(t, got.UserInfo[0].HasTag(wire.OServiceUserInfoPrimaryInstance))
+		require.False(t, got.UserInfo[0].HasTag(wire.OServiceUserInfoMySubscriptions))
+		require.False(t, got.UserInfo[0].HasTag(wire.OServiceUserInfoExternalIP))
+		require.False(t, got.UserInfo[0].HasTag(wire.OServiceUserInfoExternalIPStr))
 	})
 
 	t.Run("includes profile update time when set", func(t *testing.T) {
@@ -2580,7 +2577,7 @@ func TestNewOServiceUserInfoUpdate(t *testing.T) {
 		signon := session.SignonTime()
 		onlineLowerBound := uint32(time.Since(signon).Seconds())
 
-		got := newOServiceUserInfoUpdate(session)
+		got := userInfoBlocks(session)
 
 		require.Len(t, got.UserInfo, 2)
 
@@ -2597,17 +2594,14 @@ func TestNewOServiceUserInfoUpdate(t *testing.T) {
 		require.GreaterOrEqual(t, onlineVal, onlineLowerBound)
 		require.LessOrEqual(t, onlineVal-onlineLowerBound, uint32(2))
 
-		hasSigTime := got.UserInfo[0].HasTag(wire.OServiceUserInfoSigTime)
-		require.False(t, hasSigTime)
-
-		// Signature time is in the instance block, not UserInfo[0]
-		hasSigTimeInstance := got.UserInfo[1].HasTag(wire.OServiceUserInfoSigTime)
-		require.True(t, hasSigTimeInstance)
-		sigVal, ok := got.UserInfo[1].Uint32BE(wire.OServiceUserInfoSigTime)
+		// Signature time is in the account block, not the instance block
+		sigVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoSigTime)
 		require.True(t, ok)
 		require.Equal(t, uint32(profileUpdated.Unix()), sigVal)
 
-		require.False(t, got.UserInfo[0].HasTag(wire.OServiceUserInfoPrimaryInstance))
+		require.False(t, got.UserInfo[1].HasTag(wire.OServiceUserInfoSigTime))
+
+		require.True(t, got.UserInfo[0].HasTag(wire.OServiceUserInfoPrimaryInstance))
 	})
 
 	t.Run("appends additional instance info when food group version >= 4", func(t *testing.T) {
@@ -2618,7 +2612,7 @@ func TestNewOServiceUserInfoUpdate(t *testing.T) {
 		signon := session.SignonTime()
 		onlineLowerBound := uint32(time.Since(signon).Seconds())
 
-		got := newOServiceUserInfoUpdate(session)
+		got := userInfoBlocks(session)
 
 		require.Len(t, got.UserInfo, 2)
 
@@ -2635,16 +2629,18 @@ func TestNewOServiceUserInfoUpdate(t *testing.T) {
 		require.GreaterOrEqual(t, onlineVal, onlineLowerBound)
 		require.LessOrEqual(t, onlineVal-onlineLowerBound, uint32(2))
 
-		hasSigTime := got.UserInfo[0].HasTag(wire.OServiceUserInfoSigTime)
-		require.False(t, hasSigTime)
-
-		instanceBytes, ok := got.UserInfo[0].Bytes(wire.OServiceUserInfoMyInstanceNum)
+		// The account block always carries a sig time, zero without a profile.
+		sigVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoSigTime)
 		require.True(t, ok)
-		require.Equal(t, []byte{0x01}, instanceBytes)
+		require.Equal(t, uint32(time.Time{}.Unix()), sigVal)
 
-		primaryBytes, ok := got.UserInfo[1].Bytes(wire.OServiceUserInfoPrimaryInstance)
+		primaryBytes, ok := got.UserInfo[0].Bytes(wire.OServiceUserInfoPrimaryInstance)
 		require.True(t, ok)
 		require.Equal(t, []byte{0x01}, primaryBytes)
+
+		instanceBytes, ok := got.UserInfo[1].Bytes(wire.OServiceUserInfoMyInstanceNum)
+		require.True(t, ok)
+		require.Equal(t, []byte{0x01}, instanceBytes)
 
 		require.Equal(t, got.UserInfo[0].ScreenName, got.UserInfo[1].ScreenName)
 	})
@@ -2659,7 +2655,7 @@ func TestNewOServiceUserInfoUpdate(t *testing.T) {
 		signon := session.SignonTime()
 		onlineLowerBound := uint32(time.Since(signon).Seconds())
 
-		got := newOServiceUserInfoUpdate(session)
+		got := userInfoBlocks(session)
 
 		require.Len(t, got.UserInfo, 3)
 
@@ -2676,23 +2672,26 @@ func TestNewOServiceUserInfoUpdate(t *testing.T) {
 		require.GreaterOrEqual(t, onlineVal, onlineLowerBound)
 		require.LessOrEqual(t, onlineVal-onlineLowerBound, uint32(2))
 
-		hasSigTime := got.UserInfo[0].HasTag(wire.OServiceUserInfoSigTime)
-		require.False(t, hasSigTime)
-
-		instanceBytes, ok := got.UserInfo[0].Bytes(wire.OServiceUserInfoMyInstanceNum)
+		// The account block always carries a sig time, zero without a profile.
+		sigVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoSigTime)
 		require.True(t, ok)
-		require.Equal(t, []byte{0x01}, instanceBytes)
+		require.Equal(t, uint32(time.Time{}.Unix()), sigVal)
+
+		// The oldest instance is the primary one
+		primaryBytes, ok := got.UserInfo[0].Bytes(wire.OServiceUserInfoPrimaryInstance)
+		require.True(t, ok)
+		require.Equal(t, []byte{0x01}, primaryBytes)
 
 		// First instance block
-		primary1Bytes, ok := got.UserInfo[1].Bytes(wire.OServiceUserInfoPrimaryInstance)
+		instance1Bytes, ok := got.UserInfo[1].Bytes(wire.OServiceUserInfoMyInstanceNum)
 		require.True(t, ok)
-		require.Equal(t, []byte{0x01}, primary1Bytes)
+		require.Equal(t, []byte{0x01}, instance1Bytes)
 		require.Equal(t, got.UserInfo[0].ScreenName, got.UserInfo[1].ScreenName)
 
 		// Second instance block
-		primary2Bytes, ok := got.UserInfo[2].Bytes(wire.OServiceUserInfoPrimaryInstance)
+		instance2Bytes, ok := got.UserInfo[2].Bytes(wire.OServiceUserInfoMyInstanceNum)
 		require.True(t, ok)
-		require.Equal(t, []byte{0x02}, primary2Bytes)
+		require.Equal(t, []byte{0x02}, instance2Bytes)
 		require.Equal(t, got.UserInfo[0].ScreenName, got.UserInfo[2].ScreenName)
 	})
 
@@ -2701,7 +2700,7 @@ func TestNewOServiceUserInfoUpdate(t *testing.T) {
 			sessOptUserInfoFlag(wire.OServiceUserFlagUnavailable),
 			sessOptSetFoodGroupVersion(wire.OService, 4))
 
-		got := newOServiceUserInfoUpdate(session)
+		got := userInfoBlocks(session)
 
 		require.Len(t, got.UserInfo, 2)
 		flags, ok := got.UserInfo[1].Uint16BE(wire.OServiceUserInfoUserFlags)
@@ -2714,7 +2713,7 @@ func TestNewOServiceUserInfoUpdate(t *testing.T) {
 			sessOptInvisible,
 			sessOptSetFoodGroupVersion(wire.OService, 4))
 
-		got := newOServiceUserInfoUpdate(session)
+		got := userInfoBlocks(session)
 
 		require.Len(t, got.UserInfo, 2)
 		status, ok := got.UserInfo[1].Uint32BE(wire.OServiceUserInfoStatus)
@@ -2722,7 +2721,7 @@ func TestNewOServiceUserInfoUpdate(t *testing.T) {
 		require.Equal(t, wire.OServiceUserStatusInvisible, status)
 	})
 
-	t.Run("adds buddy icon and profile sig time only for current instance", func(t *testing.T) {
+	t.Run("shares buddy icon across blocks and reports sig time at account level", func(t *testing.T) {
 		icon := wire.BARTID{
 			Type: 1,
 			BARTInfo: wire.BARTInfo{
@@ -2736,12 +2735,15 @@ func TestNewOServiceUserInfoUpdate(t *testing.T) {
 			sessOptProfile(state.UserProfile{UpdateTime: profileUpdated}))
 		session.Session().AddInstance()
 
-		got := newOServiceUserInfoUpdate(session)
+		got := userInfoBlocks(session)
 
 		require.Len(t, got.UserInfo, 3)
+		require.True(t, got.UserInfo[0].HasTag(wire.OServiceUserInfoBARTInfo))
 		require.True(t, got.UserInfo[1].HasTag(wire.OServiceUserInfoBARTInfo))
-		require.True(t, got.UserInfo[1].HasTag(wire.OServiceUserInfoSigTime))
-		require.False(t, got.UserInfo[2].HasTag(wire.OServiceUserInfoBARTInfo))
+		require.True(t, got.UserInfo[2].HasTag(wire.OServiceUserInfoBARTInfo))
+
+		require.True(t, got.UserInfo[0].HasTag(wire.OServiceUserInfoSigTime))
+		require.False(t, got.UserInfo[1].HasTag(wire.OServiceUserInfoSigTime))
 		require.False(t, got.UserInfo[2].HasTag(wire.OServiceUserInfoSigTime))
 	})
 
@@ -2759,7 +2761,7 @@ func TestNewOServiceUserInfoUpdate(t *testing.T) {
 			sessOptBuddyIcon(icon),
 			sessOptStatus(status))
 
-		got := newOServiceUserInfoUpdate(session)
+		got := userInfoBlocks(session)
 
 		require.Len(t, got.UserInfo, 2)
 		b, hasBART := got.UserInfo[1].Bytes(wire.OServiceUserInfoBARTInfo)
@@ -2781,7 +2783,7 @@ func TestNewOServiceUserInfoUpdate(t *testing.T) {
 			sessOptSetFoodGroupVersion(wire.OService, 4),
 			sessOptStatus(status))
 
-		got := newOServiceUserInfoUpdate(session)
+		got := userInfoBlocks(session)
 
 		require.Len(t, got.UserInfo, 2)
 		b, hasBART := got.UserInfo[1].Bytes(wire.OServiceUserInfoBARTInfo)
@@ -2803,7 +2805,7 @@ func TestNewOServiceUserInfoUpdate(t *testing.T) {
 				},
 			}))
 
-		got := newOServiceUserInfoUpdate(session)
+		got := userInfoBlocks(session)
 
 		require.Len(t, got.UserInfo, 2)
 		require.False(t, got.UserInfo[1].HasTag(wire.OServiceUserInfoBARTInfo))
@@ -2814,39 +2816,19 @@ func TestOServiceService_UserInfoQuery(t *testing.T) {
 	tests := []struct {
 		name     string
 		instance *state.SessionInstance
-		given    wire.SNACMessage
-		want     wire.SNACMessage
-		wantErr  error
+		// wantBlocks is the number of user info blocks the reply carries: the
+		// account block, plus one per instance for a client that asked for them.
+		wantBlocks int
 	}{
 		{
-			name:     "happy path windows aim < 6",
-			instance: newTestInstance("me"),
-			given: wire.SNACMessage{
-				Frame: wire.SNACFrame{RequestID: 1234},
-			},
-			want: wire.SNACMessage{
-				Frame: wire.SNACFrame{
-					FoodGroup: wire.OService,
-					SubGroup:  wire.OServiceUserInfoUpdate,
-					RequestID: 1234,
-				},
-				Body: newOServiceUserInfoUpdate(newTestInstance("me")),
-			},
+			name:       "happy path windows aim < 6",
+			instance:   newTestInstance("me"),
+			wantBlocks: 1,
 		},
 		{
-			name:     "happy path windows aim >= 6",
-			instance: newTestInstance("me", sessOptSetFoodGroupVersion(wire.OService, 4)),
-			given: wire.SNACMessage{
-				Frame: wire.SNACFrame{RequestID: 1234},
-			},
-			want: wire.SNACMessage{
-				Frame: wire.SNACFrame{
-					FoodGroup: wire.OService,
-					SubGroup:  wire.OServiceUserInfoUpdate,
-					RequestID: 1234,
-				},
-				Body: newOServiceUserInfoUpdate(newTestInstance("me", sessOptSetFoodGroupVersion(wire.OService, 4))),
-			},
+			name:       "happy path windows aim >= 6",
+			instance:   newTestInstance("me", sessOptSetFoodGroupVersion(wire.OService, 4)),
+			wantBlocks: 2,
 		},
 	}
 
@@ -2856,8 +2838,20 @@ func TestOServiceService_UserInfoQuery(t *testing.T) {
 				cfg:    config.Config{},
 				logger: slog.Default(),
 			}
-			have := svc.UserInfoQuery(context.Background(), tt.instance, tt.given.Frame)
-			assert.Equal(t, tt.want, have)
+			have := svc.UserInfoQuery(context.Background(), tt.instance, wire.SNACFrame{RequestID: 1234})
+
+			assert.Equal(t, wire.SNACFrame{
+				FoodGroup: wire.OService,
+				SubGroup:  wire.OServiceUserInfoUpdate,
+				RequestID: 1234,
+			}, have.Frame)
+
+			body, ok := have.Body.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
+			require.True(t, ok)
+			require.Len(t, body.UserInfo, tt.wantBlocks)
+			for _, info := range body.UserInfo {
+				assert.Equal(t, "me", info.ScreenName)
+			}
 		})
 	}
 }
@@ -3102,13 +3096,8 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 									FoodGroup: wire.OService,
 									SubGroup:  wire.OServiceUserInfoUpdate,
 								},
-								Body: newOServiceUserInfoUpdate(newTestInstance("me", sessOptCannedSignonTime, sessOptProfile(
-									state.UserProfile{
-										ProfileText: "profile-result",
-										MIMEType:    `text/aolrtf; charset="us-ascii"`,
-										UpdateTime:  time.Unix(100000, 0),
-									},
-								))),
+								// The runner matches on the frame; the block itself is
+								// covered by the UserInfoQuery tests.
 							},
 						},
 					},
@@ -3928,4 +3917,359 @@ func TestOServiceService_RateParamsSubAdd(t *testing.T) {
 		deltas, _ = instance.Session().ObserveRateChanges(time.Now())
 		assert.Empty(t, deltas)
 	})
+}
+
+func TestSessionUserInfo(t *testing.T) {
+	addr := netip.AddrPortFrom(netip.MustParseAddr("192.168.1.2"), 5190)
+
+	t.Run("a client that does not speak multi-instance is told about one session", func(t *testing.T) {
+		instance := newTestInstance("me", sessRemoteAddr(addr))
+
+		got := sessionUserInfo(instance, false)
+
+		assert.False(t, got.HasTag(wire.OServiceUserInfoMySubscriptions))
+		assert.False(t, got.HasTag(wire.OServiceUserInfoExternalIP))
+		assert.False(t, got.HasTag(wire.OServiceUserInfoExternalIPStr))
+		assert.False(t, got.HasTag(wire.OServiceUserInfoPrimaryInstance))
+	})
+
+	t.Run("a multi-instance client is told which connection is primary", func(t *testing.T) {
+		instance := newTestInstance("me", sessRemoteAddr(addr))
+		second := instance.Session().AddInstance()
+
+		// The oldest connection is the primary one, whichever instance asks.
+		for _, cur := range []*state.SessionInstance{instance, second} {
+			got := sessionUserInfo(cur, true)
+
+			assert.True(t, got.HasTag(wire.OServiceUserInfoMySubscriptions))
+			primary, ok := got.Bytes(wire.OServiceUserInfoPrimaryInstance)
+			require.True(t, ok)
+			assert.Equal(t, []byte{instance.Num()}, primary)
+		}
+	})
+
+	t.Run("capabilities are the union across instances", func(t *testing.T) {
+		instance := newTestInstance("me")
+		instance.SetCaps([][16]byte{wire.CapChat})
+		second := instance.Session().AddInstance()
+		second.SetCaps([][16]byte{wire.CapFileTransfer})
+
+		got := sessionUserInfo(instance, false)
+
+		b, ok := got.Bytes(wire.OServiceUserInfoOscarCaps)
+		require.True(t, ok)
+		assert.Len(t, b, 32)
+		assert.Contains(t, string(b), string(wire.CapChat[:]))
+		assert.Contains(t, string(b), string(wire.CapFileTransfer[:]))
+	})
+
+	t.Run("the away flag is raised only when every connection is away", func(t *testing.T) {
+		instance := newTestInstance("me", sessOptUserInfoFlag(wire.OServiceUserFlagUnavailable))
+		second := instance.Session().AddInstance()
+
+		// One connection is still available, so the account is not away — the flag
+		// the away instance carries has to be stripped from the account block.
+		got := sessionUserInfo(instance, false)
+		assert.False(t, got.IsAway())
+
+		second.SetUserInfoFlag(wire.OServiceUserFlagUnavailable)
+		got = sessionUserInfo(instance, false)
+		assert.True(t, got.IsAway())
+	})
+
+	t.Run("the idle time is reported only when every connection is idle", func(t *testing.T) {
+		instance := newTestInstance("me", sessOptIdle(10*time.Minute))
+		second := instance.Session().AddInstance()
+
+		got := sessionUserInfo(instance, false)
+		assert.False(t, got.HasTag(wire.OServiceUserInfoIdleTime))
+
+		second.SetIdle(1 * time.Minute)
+		got = sessionUserInfo(instance, false)
+		idle, ok := got.Uint16BE(wire.OServiceUserInfoIdleTime)
+		require.True(t, ok)
+		// The most recent instance to go idle sets the clock.
+		assert.LessOrEqual(t, idle, uint16(1))
+	})
+
+	t.Run("direct connect info is reported for ICQ accounts only", func(t *testing.T) {
+		aimInfo := sessionUserInfo(newTestInstance("me"), false)
+		assert.False(t, aimInfo.HasTag(wire.OServiceUserInfoICQDC))
+
+		icqInfo := sessionUserInfo(newTestInstance("100003", sessOptUserInfoFlag(wire.OServiceUserFlagICQ)), false)
+		assert.True(t, icqInfo.HasTag(wire.OServiceUserInfoICQDC))
+	})
+}
+
+func TestInstanceUserInfo(t *testing.T) {
+	t.Run("describes the connection rather than the account", func(t *testing.T) {
+		instance := newTestInstance("me",
+			sessOptUserInfoFlag(wire.OServiceUserFlagUnavailable),
+			sessOptIdle(5*time.Minute))
+		instance.SetCaps([][16]byte{wire.CapChat})
+		second := instance.Session().AddInstance()
+		second.SetCaps([][16]byte{wire.CapFileTransfer})
+
+		// The account is neither away nor idle, since the second connection is
+		// available, but this connection reports its own state.
+		got := instanceUserInfo(instance)
+
+		assert.True(t, got.IsAway())
+		idle, ok := got.Uint16BE(wire.OServiceUserInfoIdleTime)
+		require.True(t, ok)
+		assert.GreaterOrEqual(t, idle, uint16(5))
+
+		num, ok := got.Bytes(wire.OServiceUserInfoMyInstanceNum)
+		require.True(t, ok)
+		assert.Equal(t, []byte{instance.Num()}, num)
+
+		// Capabilities are this connection's, not the union.
+		b, ok := got.Bytes(wire.OServiceUserInfoOscarCaps)
+		require.True(t, ok)
+		assert.Len(t, b, 16)
+
+		gotSecond := instanceUserInfo(second)
+		assert.False(t, gotSecond.IsAway())
+		assert.False(t, gotSecond.HasTag(wire.OServiceUserInfoIdleTime))
+		num, ok = gotSecond.Bytes(wire.OServiceUserInfoMyInstanceNum)
+		require.True(t, ok)
+		assert.Equal(t, []byte{second.Num()}, num)
+	})
+
+	t.Run("the buddy icon and status message are shared by every connection", func(t *testing.T) {
+		icon := wire.BARTID{Type: wire.BARTTypesBuddyIcon, BARTInfo: wire.BARTInfo{Hash: []byte{0xAA}}}
+		instance := newTestInstance("me", sessOptBuddyIcon(icon))
+		second := instance.Session().AddInstance()
+
+		first := instanceUserInfo(instance)
+		assert.True(t, first.HasTag(wire.OServiceUserInfoBARTInfo))
+		other := instanceUserInfo(second)
+		assert.True(t, other.HasTag(wire.OServiceUserInfoBARTInfo))
+	})
+}
+
+func TestSessionBARTIDs(t *testing.T) {
+	icon := wire.BARTID{Type: wire.BARTTypesBuddyIcon, BARTInfo: wire.BARTInfo{Hash: []byte{0xAA}}}
+	status := newTestStatusBARTID(t, "out to lunch")
+
+	tests := []struct {
+		name    string
+		options []func(*state.SessionInstance)
+		want    []wire.BARTID
+	}{
+		{
+			name: "neither",
+		},
+		{
+			name:    "icon only",
+			options: []func(*state.SessionInstance){sessOptBuddyIcon(icon)},
+			want:    []wire.BARTID{icon},
+		},
+		{
+			name:    "status message only",
+			options: []func(*state.SessionInstance){sessOptStatus(status)},
+			want:    []wire.BARTID{status},
+		},
+		{
+			// The icon comes first: a client that reads only the head of the list
+			// still finds it.
+			name:    "both",
+			options: []func(*state.SessionInstance){sessOptBuddyIcon(icon), sessOptStatus(status)},
+			want:    []wire.BARTID{icon, status},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			instance := newTestInstance("me", tt.options...)
+			assert.Equal(t, tt.want, sessionBARTIDs(instance.Session()))
+		})
+	}
+}
+
+func TestAppendExternalIP(t *testing.T) {
+	tests := []struct {
+		name string
+		// addr is the connection's remote address, unset for no connection.
+		addr    string
+		wantIP  []byte
+		wantStr string
+	}{
+		{
+			name: "a connection with no address reports none",
+		},
+		{
+			// The TLVs carry a 4-byte address, so there is nothing to report.
+			name: "an IPv6 connection reports none",
+			addr: "[2001:db8::1]:5190",
+		},
+		{
+			name:    "an IPv4 connection reports both forms",
+			addr:    "192.168.1.2:5190",
+			wantIP:  []byte{192, 168, 1, 2},
+			wantStr: "192.168.1.2",
+		},
+		{
+			// An IPv4 address arriving on a dual-stack listener is unmapped first.
+			name:    "an IPv4-mapped connection reports the IPv4 form",
+			addr:    "[::ffff:192.168.1.2]:5190",
+			wantIP:  []byte{192, 168, 1, 2},
+			wantStr: "192.168.1.2",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			instance := newTestInstance("me")
+			if tt.addr != "" {
+				addrPort := netip.MustParseAddrPort(tt.addr)
+				instance.SetRemoteAddr(&addrPort)
+			}
+
+			var tlvs wire.TLVList
+			appendExternalIP(&tlvs, instance)
+
+			block := wire.TLVUserInfo{TLVBlock: wire.TLVBlock{TLVList: tlvs}}
+			if tt.wantIP == nil {
+				assert.False(t, block.HasTag(wire.OServiceUserInfoExternalIP))
+				assert.False(t, block.HasTag(wire.OServiceUserInfoExternalIPStr))
+				return
+			}
+
+			ip, ok := block.Bytes(wire.OServiceUserInfoExternalIP)
+			require.True(t, ok)
+			assert.Equal(t, tt.wantIP, ip)
+
+			str, ok := block.String(wire.OServiceUserInfoExternalIPStr)
+			require.True(t, ok)
+			assert.Equal(t, tt.wantStr, str)
+		})
+	}
+}
+
+func TestSendUserInfoUpdate(t *testing.T) {
+	t.Run("the update reaches the given connection only", func(t *testing.T) {
+		instance := newTestInstance("me")
+		instance.Session().AddInstance()
+
+		var got wire.SNACMessage
+		relayer := newMockMessageRelayer(t)
+		relayer.EXPECT().
+			RelayToSelf(mock.Anything, instance, mock.Anything).
+			Run(func(_ context.Context, _ *state.SessionInstance, msg wire.SNACMessage) {
+				got = msg
+			}).
+			Once()
+
+		sendUserInfoUpdate(context.Background(), relayer, instance)
+
+		assert.Equal(t, wire.SNACFrame{
+			FoodGroup: wire.OService,
+			SubGroup:  wire.OServiceUserInfoUpdate,
+			RequestID: wire.ReqIDFromServer,
+		}, got.Frame)
+
+		// The web API bridge reads this body by type, so the block travels wrapped.
+		body, ok := got.Body.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
+		require.True(t, ok)
+		require.Len(t, body.UserInfo, 1)
+		assert.Equal(t, "me", body.UserInfo[0].ScreenName)
+		// A push never carries the multi-instance fields, whatever the client asked
+		// for on a query.
+		assert.False(t, body.UserInfo[0].HasTag(wire.OServiceUserInfoPrimaryInstance))
+	})
+
+	t.Run("the update reaches every connection of the account", func(t *testing.T) {
+		instance := newTestInstance("me", sessOptUserInfoFlag(wire.OServiceUserFlagUnavailable))
+		second := instance.Session().AddInstance()
+
+		got := map[*state.SessionInstance]wire.SNACMessage{}
+		relayer := newMockMessageRelayer(t)
+		for _, cur := range []*state.SessionInstance{instance, second} {
+			target := cur
+			relayer.EXPECT().
+				RelayToSelf(mock.Anything, target, mock.Anything).
+				Run(func(_ context.Context, _ *state.SessionInstance, msg wire.SNACMessage) {
+					got[target] = msg
+				}).
+				Once()
+		}
+
+		sendUserInfoUpdateToAll(context.Background(), relayer, instance)
+
+		require.Len(t, got, 2)
+		// Each connection is told its own status bits, not the account's: the
+		// account-wide block would report the away connection as available.
+		for target, msg := range got {
+			body, ok := msg.Body.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
+			require.True(t, ok)
+			require.Len(t, body.UserInfo, 1)
+			status, ok := body.UserInfo[0].Uint32BE(wire.OServiceUserInfoStatus)
+			require.True(t, ok)
+			assert.Equal(t, target.UserStatusBitmask(), status)
+		}
+	})
+}
+
+// A status message belongs to the account, so every connection hears about it. A
+// status bitmask belongs to one connection, so only that connection does.
+func TestOServiceService_SetUserInfoFields_MultiInstance(t *testing.T) {
+	tests := []struct {
+		name   string
+		inBody wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields
+		// wantOtherNotified reports whether the second connection is told.
+		wantOtherNotified bool
+	}{
+		{
+			name: "a status message reaches every connection",
+			inBody: wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields{
+				TLVRestBlock: wire.TLVRestBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, newTestStatusBARTID(t, "on a call")),
+					},
+				},
+			},
+			wantOtherNotified: true,
+		},
+		{
+			name: "a status bitmask reaches the calling connection only",
+			inBody: wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields{
+				TLVRestBlock: wire.TLVRestBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.OServiceUserInfoStatus, wire.OServiceUserStatusBusy),
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sender := newTestInstance("me")
+			other := sender.Session().AddInstance()
+
+			messageRelayer := newMockMessageRelayer(t)
+			// No expectation for the second connection unless the case calls for
+			// one: an unexpected relay fails the test.
+			messageRelayer.EXPECT().RelayToSelf(mock.Anything, sender, mock.Anything).Once()
+			if tt.wantOtherNotified {
+				messageRelayer.EXPECT().RelayToSelf(mock.Anything, other, mock.Anything).Once()
+			}
+
+			buddyBroadcaster := newMockbuddyBroadcaster(t)
+			buddyBroadcaster.EXPECT().
+				BroadcastBuddyArrived(mock.Anything, mock.Anything, mock.Anything).
+				Return(nil).
+				Once()
+
+			svc := OServiceService{
+				cfg:              config.Config{},
+				logger:           slog.Default(),
+				buddyBroadcaster: buddyBroadcaster,
+				messageRelayer:   messageRelayer,
+			}
+
+			assert.NoError(t, svc.SetUserInfoFields(context.TODO(), sender, wire.SNACFrame{RequestID: 1234}, tt.inBody))
+		})
+	}
 }

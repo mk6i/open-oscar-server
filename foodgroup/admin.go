@@ -213,13 +213,7 @@ func (s AdminService) InfoChangeRequest(ctx context.Context, instance *state.Ses
 		if err := s.buddyBroadcaster.BroadcastBuddyArrived(ctx, instance.IdentScreenName(), instance.Session().TLVUserInfo()); err != nil {
 			return wire.SNACMessage{}, err
 		}
-		s.messageRelayer.RelayToScreenName(ctx, instance.IdentScreenName(), wire.SNACMessage{
-			Frame: wire.SNACFrame{
-				FoodGroup: wire.OService,
-				SubGroup:  wire.OServiceUserInfoUpdate,
-			},
-			Body: newOServiceUserInfoUpdate(instance),
-		})
+		sendUserInfoUpdate(ctx, s.messageRelayer, instance)
 		tlvList.Append(wire.NewTLVBE(wire.AdminTLVScreenNameFormatted, proposedName.String()))
 		return getAdminChangeReply(tlvList), nil
 	}

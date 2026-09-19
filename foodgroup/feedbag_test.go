@@ -1396,27 +1396,6 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					},
 				},
 				messageRelayerParams: messageRelayerParams{
-					relayToScreenNameParams: relayToScreenNameParams{
-						{
-							screenName: state.NewIdentScreenName("me"),
-							message: wire.SNACMessage{
-								Frame: wire.SNACFrame{
-									FoodGroup: wire.OService,
-									SubGroup:  wire.OServiceUserInfoUpdate,
-								},
-								Body: func(val any) bool {
-									snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
-									if !ok {
-										return false
-									}
-									bartID, exists := snac.UserInfo[0].Bytes(wire.OServiceUserInfoBARTInfo)
-									return assert.True(t, exists) &&
-										assert.Equal(t, "me", snac.UserInfo[0].ScreenName) &&
-										assert.True(t, bytes.Contains(bartID, []byte{'t', 'h', 'e', 'h', 'a', 's', 'h'}), "user info BART hash doesn't match")
-								},
-							},
-						},
-					},
 					relayToOtherInstancesParams: relayToOtherInstancesParams{
 						{
 							screenName: state.NewIdentScreenName("me"),
@@ -1446,6 +1425,26 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 						},
 					},
 					relayToSelfParams: relayToSelfParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.OService,
+									SubGroup:  wire.OServiceUserInfoUpdate,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: func(val any) bool {
+									snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
+									if !ok {
+										return false
+									}
+									bartID, exists := snac.UserInfo[0].Bytes(wire.OServiceUserInfoBARTInfo)
+									return assert.True(t, exists) &&
+										assert.Equal(t, "me", snac.UserInfo[0].ScreenName) &&
+										assert.True(t, bytes.Contains(bartID, []byte{'t', 'h', 'e', 'h', 'a', 's', 'h'}), "user info BART hash doesn't match")
+								},
+							},
+						},
 						{
 							screenName: state.NewIdentScreenName("me"),
 							message: wire.SNACMessage{
@@ -1554,27 +1553,6 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					feedbagParams:       feedbagParams{},
 				},
 				messageRelayerParams: messageRelayerParams{
-					relayToScreenNameParams: relayToScreenNameParams{
-						{
-							screenName: state.NewIdentScreenName("me"),
-							message: wire.SNACMessage{
-								Frame: wire.SNACFrame{
-									FoodGroup: wire.OService,
-									SubGroup:  wire.OServiceUserInfoUpdate,
-								},
-								Body: func(val any) bool {
-									snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
-									if !ok {
-										return false
-									}
-									bartID, exists := snac.UserInfo[0].Bytes(wire.OServiceUserInfoBARTInfo)
-									return assert.True(t, exists) &&
-										assert.Equal(t, "me", snac.UserInfo[0].ScreenName) &&
-										assert.True(t, bytes.Contains(bartID, []byte{'t', 'h', 'e', 'h', 'a', 's', 'h'}), "user info BART hash doesn't match")
-								},
-							},
-						},
-					},
 					relayToOtherInstancesParams: relayToOtherInstancesParams{
 						{
 							screenName: state.NewIdentScreenName("me"),
@@ -1604,6 +1582,26 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 						},
 					},
 					relayToSelfParams: relayToSelfParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.OService,
+									SubGroup:  wire.OServiceUserInfoUpdate,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: func(val any) bool {
+									snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
+									if !ok {
+										return false
+									}
+									bartID, exists := snac.UserInfo[0].Bytes(wire.OServiceUserInfoBARTInfo)
+									return assert.True(t, exists) &&
+										assert.Equal(t, "me", snac.UserInfo[0].ScreenName) &&
+										assert.True(t, bytes.Contains(bartID, []byte{'t', 'h', 'e', 'h', 'a', 's', 'h'}), "user info BART hash doesn't match")
+								},
+							},
+						},
 						{
 							screenName: state.NewIdentScreenName("me"),
 							message: wire.SNACMessage{
@@ -1748,6 +1746,26 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.OService,
+									SubGroup:  wire.OServiceUserInfoUpdate,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: func(val any) bool {
+									snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
+									if !ok {
+										return false
+									}
+									bartID, exists := snac.UserInfo[0].Bytes(wire.OServiceUserInfoBARTInfo)
+									return assert.True(t, exists) &&
+										assert.Equal(t, "me", snac.UserInfo[0].ScreenName) &&
+										assert.True(t, bytes.Contains(bartID, wire.GetClearIconHash()), "user info BART hash doesn't match")
+								},
+							},
+						},
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.OService,
 									SubGroup:  wire.OServiceBartReply,
 								},
 								Body: wire.SNAC_0x01_0x21_OServiceBARTReply{
@@ -1771,27 +1789,6 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 								},
 								Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
 									Results: []uint16{0x0000},
-								},
-							},
-						},
-					},
-					relayToScreenNameParams: relayToScreenNameParams{
-						{
-							screenName: state.NewIdentScreenName("me"),
-							message: wire.SNACMessage{
-								Frame: wire.SNACFrame{
-									FoodGroup: wire.OService,
-									SubGroup:  wire.OServiceUserInfoUpdate,
-								},
-								Body: func(val any) bool {
-									snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
-									if !ok {
-										return false
-									}
-									bartID, exists := snac.UserInfo[0].Bytes(wire.OServiceUserInfoBARTInfo)
-									return assert.True(t, exists) &&
-										assert.Equal(t, "me", snac.UserInfo[0].ScreenName) &&
-										assert.True(t, bytes.Contains(bartID, wire.GetClearIconHash()), "user info BART hash doesn't match")
 								},
 							},
 						},
@@ -2646,8 +2643,16 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					RelayToOtherInstances(mock.Anything, mock.Anything, params.message)
 			}
 			for _, params := range tc.mockParams.relayToSelfParams {
-				messageRelayer.EXPECT().
-					RelayToSelf(mock.Anything, mock.Anything, params.message)
+				if matcherFn, ok := params.message.Body.(func(val any) bool); ok {
+					messageRelayer.EXPECT().
+						RelayToSelf(mock.Anything, mock.Anything, mock.MatchedBy(func(message wire.SNACMessage) bool {
+							return params.message.Frame == message.Frame &&
+								matcherFn(message.Body)
+						}))
+				} else {
+					messageRelayer.EXPECT().
+						RelayToSelf(mock.Anything, mock.Anything, params.message)
+				}
 			}
 			bartItemManager := newMockBARTItemManager(t)
 			for _, params := range tc.mockParams.bartItemManagerRetrieveParams {

@@ -103,13 +103,7 @@ func (s LocateService) SetInfo(ctx context.Context, instance *state.SessionInsta
 				}
 			}
 
-			s.messageRelayer.RelayToOtherInstances(ctx, instance, wire.SNACMessage{
-				Frame: wire.SNACFrame{
-					FoodGroup: wire.OService,
-					SubGroup:  wire.OServiceUserInfoUpdate,
-				},
-				Body: newOServiceUserInfoUpdate(instance),
-			})
+			sendUserInfoUpdateToAll(ctx, s.messageRelayer, instance)
 		} else {
 			// set the client-side profile
 			instance.SetProfile(profile)
@@ -161,13 +155,7 @@ func (s LocateService) SetInfo(ctx context.Context, instance *state.SessionInsta
 				return err
 			}
 			if statusChanged {
-				s.messageRelayer.RelayToSelf(ctx, instance, wire.SNACMessage{
-					Frame: wire.SNACFrame{
-						FoodGroup: wire.OService,
-						SubGroup:  wire.OServiceUserInfoUpdate,
-					},
-					Body: newOServiceUserInfoUpdate(instance),
-				})
+				sendUserInfoUpdateToAll(ctx, s.messageRelayer, instance)
 			}
 		}
 	}
