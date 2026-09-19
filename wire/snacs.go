@@ -294,15 +294,16 @@ const (
 	OServiceUserInfoIdleTime        uint16 = 0x04
 	OServiceUserInfoMemberSince     uint16 = 0x05
 	OServiceUserInfoStatus          uint16 = 0x06
+	OServiceUserInfoExternalIP      uint16 = 0x0A
 	OServiceUserInfoICQDC           uint16 = 0x0C
 	OServiceUserInfoOscarCaps       uint16 = 0x0D
 	OServiceUserInfoOnlineTime      uint16 = 0x0F
+	OServiceUserInfoMyInstanceNum   uint16 = 0x14
 	OServiceUserInfoBARTInfo        uint16 = 0x1D
 	OServiceUserInfoMySubscriptions uint16 = 0x1E
-	OServiceUserInfoUserFlags2      uint16 = 0x1F
-	OServiceUserInfoMyInstanceNum   uint16 = 0x14
 	OServiceUserInfoSigTime         uint16 = 0x26
 	OServiceUserInfoPrimaryInstance uint16 = 0x28
+	OServiceUserInfoExternalIPStr   uint16 = 0x100A
 
 	OServiceUserStatusAvailable         uint32 = 0x00000000 // user is available
 	OServiceUserStatusAway              uint32 = 0x00000001 // user is away

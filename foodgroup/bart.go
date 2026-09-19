@@ -63,13 +63,7 @@ func (s BARTService) UpsertItem(ctx context.Context, instance *state.SessionInst
 		bartID.Flags &^= wire.BARTFlagsUnknown
 		instance.Session().SetBuddyIcon(bartID)
 
-		s.messageRelayer.RelayToScreenName(ctx, instance.IdentScreenName(), wire.SNACMessage{
-			Frame: wire.SNACFrame{
-				FoodGroup: wire.OService,
-				SubGroup:  wire.OServiceUserInfoUpdate,
-			},
-			Body: newOServiceUserInfoUpdate(instance),
-		})
+		sendUserInfoUpdateToAll(ctx, s.messageRelayer, instance)
 
 		if err := s.buddyUpdateBroadcaster.BroadcastBuddyArrived(ctx, instance.IdentScreenName(), instance.Session().TLVUserInfo()); err != nil {
 			return wire.SNACMessage{}, err

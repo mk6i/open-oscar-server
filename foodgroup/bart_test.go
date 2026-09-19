@@ -77,13 +77,14 @@ func TestBARTService_UpsertItem(t *testing.T) {
 					},
 				},
 				messageRelayerParams: messageRelayerParams{
-					relayToScreenNameParams: relayToScreenNameParams{
+					relayToSelfParams: relayToSelfParams{
 						{
 							screenName: state.NewIdentScreenName("user_screen_name"),
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.OService,
 									SubGroup:  wire.OServiceUserInfoUpdate,
+									RequestID: wire.ReqIDFromServer,
 								},
 								Body: func(val any) bool {
 									snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
@@ -173,13 +174,14 @@ func TestBARTService_UpsertItem(t *testing.T) {
 					},
 				},
 				messageRelayerParams: messageRelayerParams{
-					relayToScreenNameParams: relayToScreenNameParams{
+					relayToSelfParams: relayToSelfParams{
 						{
 							screenName: state.NewIdentScreenName("user_screen_name"),
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.OService,
 									SubGroup:  wire.OServiceUserInfoUpdate,
+									RequestID: wire.ReqIDFromServer,
 								},
 								Body: func(val any) bool {
 									snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
@@ -276,13 +278,14 @@ func TestBARTService_UpsertItem(t *testing.T) {
 					},
 				},
 				messageRelayerParams: messageRelayerParams{
-					relayToScreenNameParams: relayToScreenNameParams{
+					relayToSelfParams: relayToSelfParams{
 						{
 							screenName: state.NewIdentScreenName("user_screen_name"),
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.OService,
 									SubGroup:  wire.OServiceUserInfoUpdate,
+									RequestID: wire.ReqIDFromServer,
 								},
 								Body: func(val any) bool {
 									snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
@@ -436,9 +439,9 @@ func TestBARTService_UpsertItem(t *testing.T) {
 					Return(params.err)
 			}
 			messageRelayer := newMockMessageRelayer(t)
-			for _, params := range tc.mockParams.relayToScreenNameParams {
+			for _, params := range tc.mockParams.relayToSelfParams {
 				messageRelayer.EXPECT().
-					RelayToScreenName(matchContext(), params.screenName, mock.MatchedBy(func(message wire.SNACMessage) bool {
+					RelayToSelf(matchContext(), matchSession(params.screenName), mock.MatchedBy(func(message wire.SNACMessage) bool {
 						return params.message.Frame == message.Frame &&
 							params.message.Body.(func(any) bool)(message.Body)
 					}))

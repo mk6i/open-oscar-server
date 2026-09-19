@@ -264,8 +264,6 @@ func (s *Session) handleUserInfoUpdate(msg wire.SNACMessage) {
 	if !ok || len(body.UserInfo) == 0 {
 		return
 	}
-	// Block 0 is the session's aggregated user info; any blocks after it
-	// describe individual instances.
 	info := body.UserInfo[0]
 
 	screenName := state.DisplayScreenName(info.ScreenName)

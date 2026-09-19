@@ -237,13 +237,25 @@ func (s OServiceService) RateParamsQuery(ctx context.Context, instance *state.Se
 // UserInfoQuery returns SNAC wire.OServiceUserInfoUpdate containing
 // the user's info.
 func (s OServiceService) UserInfoQuery(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame) wire.SNACMessage {
+	multiInstance := instance.FoodGroupVersions()[wire.OService] >= 4
+
+	userInfo := []wire.TLVUserInfo{sessionUserInfo(instance, multiInstance)}
+
+	if multiInstance {
+		for _, cur := range instance.Session().Instances() {
+			userInfo = append(userInfo, instanceUserInfo(cur))
+		}
+	}
+
 	return wire.SNACMessage{
 		Frame: wire.SNACFrame{
 			FoodGroup: wire.OService,
 			SubGroup:  wire.OServiceUserInfoUpdate,
 			RequestID: inFrame.RequestID,
 		},
-		Body: newOServiceUserInfoUpdate(instance),
+		Body: wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate{
+			UserInfo: userInfo,
+		},
 	}
 }
 
@@ -305,37 +317,10 @@ func (s OServiceService) SetUserInfoFields(ctx context.Context, instance *state.
 	}
 
 	if statusMsgChanged {
-		// right now status messages are set session-wide and status flag is
-		// set per-instance. when the status message changes, inform concurrent
-		// logins. don't do this when only the status message changes.
-		s.messageRelayer.RelayToOtherInstances(ctx, instance, wire.SNACMessage{
-			Frame: wire.SNACFrame{
-				FoodGroup: wire.OService,
-				SubGroup:  wire.OServiceUserInfoUpdate,
-				RequestID: wire.ReqIDFromServer,
-			},
-			Body: wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate{
-				UserInfo: []wire.TLVUserInfo{instance.Session().TLVUserInfo()},
-			},
-		})
+		sendUserInfoUpdateToAll(ctx, s.messageRelayer, instance)
+	} else {
+		sendUserInfoUpdate(ctx, s.messageRelayer, instance)
 	}
-
-	// reflect the status of this instance back to the caller, even though
-	// it does not reflect aggregated state of the session. this is necessary
-	// for the "invisible" button to properly toggle on the client.
-	info := instance.Session().TLVUserInfo()
-	info.Set(wire.NewTLVBE(wire.OServiceUserInfoStatus, instance.UserStatusBitmask()))
-
-	s.messageRelayer.RelayToSelf(ctx, instance, wire.SNACMessage{
-		Frame: wire.SNACFrame{
-			FoodGroup: wire.OService,
-			SubGroup:  wire.OServiceUserInfoUpdate,
-			RequestID: inFrame.RequestID,
-		},
-		Body: wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate{
-			UserInfo: []wire.TLVUserInfo{info},
-		},
-	})
 
 	return nil
 }
@@ -819,15 +804,8 @@ func (s OServiceService) ClientOnline(ctx context.Context, service uint16, inBod
 
 			if !profile.IsZero() {
 				instance.SetProfile(profile)
-
 				// notify client that the server-side profile is ready for retrieval
-				s.messageRelayer.RelayToSelf(ctx, instance, wire.SNACMessage{
-					Frame: wire.SNACFrame{
-						FoodGroup: wire.OService,
-						SubGroup:  wire.OServiceUserInfoUpdate,
-					},
-					Body: newOServiceUserInfoUpdate(instance),
-				})
+				sendUserInfoUpdate(ctx, s.messageRelayer, instance)
 			}
 		}
 
@@ -929,80 +907,157 @@ func systemMessage(msg string) (wire.SNACMessage, error) {
 	}, nil
 }
 
-// newOServiceUserInfoUpdate constructs SNAC(0x01,0x0F) for user info updates.
-// For OService version 4 and above, it appends a duplicate TLVUserInfo block.
-// AIM 6+ expects at least two user info blocks to support multi-session:
-// the first represents overall state; subsequent ones represent client instances.
-func newOServiceUserInfoUpdate(instance *state.SessionInstance) wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate {
-	info := instance.Session().TLVUserInfo()
-	userInfo := []wire.TLVUserInfo{info}
+// sessionUserInfo builds the account-level user info block sent to instance.
+// multiInstance reports whether the client understands the AIM 6+ fields that
+// describe a multi-instance session.
+func sessionUserInfo(instance *state.SessionInstance, multiInstance bool) wire.TLVUserInfo {
+	sess := instance.Session()
+	instances := sess.Instances()
 
-	// set registration date
-	userInfo[0].Append(wire.NewTLVBE(wire.OServiceUserInfoMemberSince, uint32(instance.Session().MemberSince().Unix())))
-	// set sign-on time
-	userInfo[0].Append(wire.NewTLVBE(wire.OServiceUserInfoSignonTOD, uint32(instance.SignonTime().Unix())))
-	// set current session length (seconds)
-	userInfo[0].Append(wire.NewTLVBE(wire.OServiceUserInfoOnlineTime, uint32(time.Since(instance.SignonTime()).Seconds())))
+	info := wire.TLVUserInfo{
+		ScreenName:   sess.DisplayScreenName().String(),
+		WarningLevel: sess.Warning(),
+	}
 
-	if instance.FoodGroupVersions()[wire.OService] >= 4 {
-
-		userInfo[0].Append(wire.NewTLVBE(wire.OServiceUserInfoMyInstanceNum, []byte{instance.Num()}))
-
-		for _, cur := range instance.Session().Instances() {
-			instanceInfo := wire.TLVUserInfo{
-				ScreenName:   cur.DisplayScreenName().String(),
-				WarningLevel: cur.Warning(),
-			}
-
-			// sign-in timestamp
-			instanceInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoSignonTOD, uint32(cur.SignonTime().Unix())))
-
-			// use the first instance as a template
-			uFlags := cur.UserInfoBitmask()
-
-			if cur.Session().Away() {
-				uFlags |= wire.OServiceUserFlagUnavailable
-			}
-			instanceInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoUserFlags, uFlags))
-
-			// user status flags - user-level (shared)
-			var statusBitmask uint32
-			if cur.Invisible() {
-				statusBitmask |= wire.OServiceUserStatusInvisible
-			}
-			instanceInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoStatus, statusBitmask))
-
-			if cur == instance {
-				var bartSet []wire.BARTID
-				if icon, hasIcon := cur.Session().BuddyIcon(); hasIcon {
-					bartSet = append(bartSet, icon)
-				}
-				if status, hasStatus := cur.Session().Status(); hasStatus {
-					bartSet = append(bartSet, status)
-				}
-				if len(bartSet) > 0 {
-					instanceInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, bartSet))
-				}
-			}
-
-			instanceInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoOscarCaps, cur.Session().Caps()))
-			instanceInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoMySubscriptions, uint32(0)))
-
-			if cur == instance {
-				profile := cur.Profile()
-				if !profile.UpdateTime.IsZero() {
-					// set profile update time if the profile was set
-					instanceInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoSigTime, uint32(profile.UpdateTime.Unix())))
-				}
-			}
-
-			instanceInfo.Append(wire.NewTLVBE(wire.OServiceUserInfoPrimaryInstance, []byte{cur.Num()}))
-
-			userInfo = append(userInfo, instanceInfo)
+	if multiInstance {
+		info.Append(wire.NewTLVBE(wire.OServiceUserInfoMySubscriptions, uint32(0)))
+		appendExternalIP(&info.TLVList, instance)
+		if len(instances) > 0 {
+			// the oldest instance is the primary one
+			info.Append(wire.NewTLVBE(wire.OServiceUserInfoPrimaryInstance, []byte{instances[0].Num()}))
 		}
 	}
 
-	return wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate{
-		UserInfo: userInfo,
+	// capabilities are the union of the capabilities of every instance
+	if caps := sess.Caps(); len(caps) > 0 {
+		info.Append(wire.NewTLVBE(wire.OServiceUserInfoOscarCaps, caps))
 	}
+
+	if bartIDs := sessionBARTIDs(sess); len(bartIDs) > 0 {
+		info.Append(wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, bartIDs))
+	}
+
+	// the profile is account-level, so report the most recent update made by
+	// any instance
+	info.Append(wire.NewTLVBE(wire.OServiceUserInfoSigTime, uint32(instance.Profile().UpdateTime.Unix())))
+
+	// user flags are the same for every instance, except for the away flag,
+	// which is only set when every instance is away
+	userFlags := instance.UserInfoBitmask()
+	if sess.Away() {
+		userFlags |= wire.OServiceUserFlagUnavailable
+	} else {
+		userFlags &^= wire.OServiceUserFlagUnavailable
+	}
+	info.Append(wire.NewTLVBE(wire.OServiceUserInfoUserFlags, userFlags))
+
+	info.Append(wire.NewTLVBE(wire.OServiceUserInfoStatus, instance.UserStatusBitmask()))
+
+	// idle time of the instance that went idle most recently, set only when
+	// every instance is idle
+	if sess.Idle() {
+		info.Append(wire.NewTLVBE(wire.OServiceUserInfoIdleTime, uint16(time.Since(sess.IdleTime()).Minutes())))
+	}
+
+	// ICQ direct-connect info. The TLV is required for buddy arrival events to
+	// work in ICQ, even if the values are set to default.
+	if userFlags&wire.OServiceUserFlagICQ == wire.OServiceUserFlagICQ {
+		info.Append(wire.NewTLVBE(wire.OServiceUserInfoICQDC, instance.ICQDCInfo()))
+	}
+
+	info.Append(wire.NewTLVBE(wire.OServiceUserInfoSignonTOD, uint32(sess.SignonTime().Unix())))
+	info.Append(wire.NewTLVBE(wire.OServiceUserInfoOnlineTime, uint32(time.Since(sess.SignonTime()).Seconds())))
+	info.Append(wire.NewTLVBE(wire.OServiceUserInfoMemberSince, uint32(sess.MemberSince().Unix())))
+
+	return info
+}
+
+// instanceUserInfo builds the user info block that describes a single
+// connection within the session.
+func instanceUserInfo(instance *state.SessionInstance) wire.TLVUserInfo {
+	sess := instance.Session()
+
+	info := wire.TLVUserInfo{
+		ScreenName:   instance.DisplayScreenName().String(),
+		WarningLevel: instance.Warning(),
+	}
+
+	info.Append(wire.NewTLVBE(wire.OServiceUserInfoMySubscriptions, uint32(0)))
+	appendExternalIP(&info.TLVList, instance)
+	info.Append(wire.NewTLVBE(wire.OServiceUserInfoMyInstanceNum, []byte{instance.Num()}))
+
+	if caps := instance.Caps(); len(caps) > 0 {
+		info.Append(wire.NewTLVBE(wire.OServiceUserInfoOscarCaps, caps))
+	}
+
+	// the buddy icon and status message are shared by every instance
+	if bartIDs := sessionBARTIDs(sess); len(bartIDs) > 0 {
+		info.Append(wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, bartIDs))
+	}
+
+	userFlags := instance.UserInfoBitmask()
+	if instance.Away() {
+		userFlags |= wire.OServiceUserFlagUnavailable
+	}
+	info.Append(wire.NewTLVBE(wire.OServiceUserInfoUserFlags, userFlags))
+	info.Append(wire.NewTLVBE(wire.OServiceUserInfoStatus, instance.UserStatusBitmask()))
+
+	if instance.Idle() {
+		info.Append(wire.NewTLVBE(wire.OServiceUserInfoIdleTime, uint16(time.Since(instance.IdleTime()).Minutes())))
+	}
+
+	info.Append(wire.NewTLVBE(wire.OServiceUserInfoSignonTOD, uint32(instance.SignonTime().Unix())))
+	info.Append(wire.NewTLVBE(wire.OServiceUserInfoOnlineTime, uint32(time.Since(instance.SignonTime()).Seconds())))
+	info.Append(wire.NewTLVBE(wire.OServiceUserInfoMemberSince, uint32(sess.MemberSince().Unix())))
+
+	return info
+}
+
+// sessionBARTIDs returns the account's buddy icon and status message BART IDs.
+func sessionBARTIDs(sess *state.Session) []wire.BARTID {
+	var bartIDs []wire.BARTID
+
+	if icon, hasIcon := sess.BuddyIcon(); hasIcon {
+		bartIDs = append(bartIDs, icon)
+	}
+	if status, hasStatus := sess.Status(); hasStatus {
+		bartIDs = append(bartIDs, status)
+	}
+
+	return bartIDs
+}
+
+// appendExternalIP appends the instance's IP address in both binary and string
+// form. Nothing is appended for a connection with no IPv4 address.
+func appendExternalIP(tlvs *wire.TLVList, instance *state.SessionInstance) {
+	addrPort := instance.RemoteAddr()
+	if addrPort == nil {
+		return
+	}
+	addr := addrPort.Addr().Unmap()
+	if !addr.Is4() {
+		return
+	}
+	ip := addr.As4()
+	tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoExternalIP, ip[:]))
+	tlvs.Append(wire.NewTLVBE(wire.OServiceUserInfoExternalIPStr, addr.String()))
+}
+
+func sendUserInfoUpdateToAll(ctx context.Context, relayer MessageRelayer, instance *state.SessionInstance) {
+	for _, inst := range instance.Session().Instances() {
+		sendUserInfoUpdate(ctx, relayer, inst)
+	}
+}
+
+func sendUserInfoUpdate(ctx context.Context, relayer MessageRelayer, instance *state.SessionInstance) {
+	relayer.RelayToSelf(ctx, instance, wire.SNACMessage{
+		Frame: wire.SNACFrame{
+			FoodGroup: wire.OService,
+			SubGroup:  wire.OServiceUserInfoUpdate,
+			RequestID: wire.ReqIDFromServer,
+		},
+		Body: wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate{
+			UserInfo: []wire.TLVUserInfo{sessionUserInfo(instance, false)},
+		},
+	})
 }

@@ -490,15 +490,15 @@ func TestAdminService_InfoChangeRequest_ScreenName(t *testing.T) {
 					},
 				},
 				messageRelayerParams: messageRelayerParams{
-					relayToScreenNameParams: relayToScreenNameParams{
+					relayToSelfParams: relayToSelfParams{
 						{
 							screenName: state.NewIdentScreenName("Chatting Chuck"),
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.OService,
 									SubGroup:  wire.OServiceUserInfoUpdate,
+									RequestID: wire.ReqIDFromServer,
 								},
-								Body: newOServiceUserInfoUpdate(newTestInstance("Chatting Chuck")),
 							},
 						},
 					},
@@ -553,15 +553,15 @@ func TestAdminService_InfoChangeRequest_ScreenName(t *testing.T) {
 					},
 				},
 				messageRelayerParams: messageRelayerParams{
-					relayToScreenNameParams: relayToScreenNameParams{
+					relayToSelfParams: relayToSelfParams{
 						{
 							screenName: state.NewIdentScreenName("Chatting Chuck"),
 							message: wire.SNACMessage{
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.OService,
 									SubGroup:  wire.OServiceUserInfoUpdate,
+									RequestID: wire.ReqIDFromServer,
 								},
-								Body: newOServiceUserInfoUpdate(newTestInstance("Chatting Chuck", sessOptSetFoodGroupVersion(wire.OService, 4))),
 							},
 						},
 					},
@@ -722,6 +722,20 @@ func TestAdminService_InfoChangeRequest_ScreenName(t *testing.T) {
 				p := params
 				messageRelayer.EXPECT().
 					RelayToScreenName(mock.Anything, p.screenName, p.message)
+			}
+
+			for _, params := range tc.mockParams.relayToSelfParams {
+				p := params
+				messageRelayer.EXPECT().
+					RelayToSelf(mock.Anything, mock.Anything, mock.MatchedBy(func(msg wire.SNACMessage) bool {
+						if msg.Frame != p.message.Frame {
+							return false
+						}
+						body, ok := msg.Body.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
+						return ok && len(body.UserInfo) == 1 &&
+							state.NewIdentScreenName(body.UserInfo[0].ScreenName) == p.screenName
+					})).
+					Once()
 			}
 
 			svc := AdminService{
