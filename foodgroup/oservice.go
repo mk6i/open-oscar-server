@@ -266,18 +266,24 @@ func (s OServiceService) SetUserInfoFields(ctx context.Context, instance *state.
 	var statusChanged bool
 
 	if status, hasStatus := inBody.Uint32BE(wire.OServiceUserInfoStatus); hasStatus {
-		instance.SetUserStatusBitmask(status)
+		// if a user status is set to one of the unavailable flags, mark the user
+		// unavailable in user info accordingly. some clients set the away message in
+		// LocateService.SetInfo and the away status via this method—probably for
+		// AIM/ICQ interop—without calling LocateService.SetInfo to clear the away
+		// message.
+		unavailable := wire.OServiceUserStatusAway |
+			wire.OServiceUserStatusBusy |
+			wire.OServiceUserStatusDND |
+			wire.OServiceUserStatusOut
 
-		// busy and DND have no AIM equivalent, so the unavailable flag is how AIM
-		// clients see a user in one of those states. an away message set through
-		// LocateSetInfo owns the flag, so only a user without one loses it here.
-		unavailable := wire.OServiceUserStatusAway | wire.OServiceUserStatusBusy | wire.OServiceUserStatusDND
 		if status&unavailable != 0 {
 			instance.SetUserInfoFlag(wire.OServiceUserFlagUnavailable)
-		} else if msg, _ := instance.AwayMessage(); msg == "" {
+		} else if instance.UserStatusBitmask()&unavailable != 0 {
 			instance.ClearUserInfoFlag(wire.OServiceUserFlagUnavailable)
+			instance.SetAwayMessage("")
 		}
 
+		instance.SetUserStatusBitmask(status)
 		statusChanged = true
 	}
 

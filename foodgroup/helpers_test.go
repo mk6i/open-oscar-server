@@ -849,6 +849,13 @@ func sessOptInvisible(instance *state.SessionInstance) {
 	instance.SetUserStatusBitmask(wire.OServiceUserStatusInvisible)
 }
 
+// sessOptUserStatusBitmask sets the user status bitmask on the session object
+func sessOptUserStatusBitmask(bitmask uint32) func(instance *state.SessionInstance) {
+	return func(instance *state.SessionInstance) {
+		instance.SetUserStatusBitmask(bitmask)
+	}
+}
+
 // sessOptIdle sets the idle flag to dur on the session object
 func sessOptIdle(dur time.Duration) func(instance *state.SessionInstance) {
 	return func(instance *state.SessionInstance) {

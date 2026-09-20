@@ -1325,8 +1325,200 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 			},
 		},
 		{
-			name:     "clear status lowers the unavailable flag",
-			instance: newTestInstance("me", sessOptUserInfoFlag(wire.OServiceUserFlagUnavailable)),
+			name:     "set away status raises the unavailable flag",
+			instance: newTestInstance("me"),
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields{
+					TLVRestBlock: wire.TLVRestBlock{
+						TLVList: wire.TLVList{
+							wire.NewTLVBE(wire.OServiceUserInfoStatus, wire.OServiceUserStatusAway),
+						},
+					},
+				},
+			},
+			expectOutput: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.OService,
+					SubGroup:  wire.OServiceUserInfoUpdate,
+					// Pushes are unsolicited, so they carry the server request ID.
+					RequestID: wire.ReqIDFromServer,
+				},
+				Body: func(val any) bool {
+					snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
+					if !ok || len(snac.UserInfo) == 0 {
+						return false
+					}
+					// The relayed flag follows the away status bit whether or not the
+					// flag was raised, so checkSession is what pins the flag here.
+					status, hasStatus := snac.UserInfo[0].Uint32BE(wire.OServiceUserInfoStatus)
+					return hasStatus && status == wire.OServiceUserStatusAway
+				},
+			},
+			mockParams: mockParams{
+				buddyBroadcasterParams: buddyBroadcasterParams{
+					broadcastBuddyArrivedParams: broadcastBuddyArrivedParams{
+						{
+							screenName: state.DisplayScreenName("me"),
+						},
+					},
+				},
+			},
+			checkSession: func(t *testing.T, session *state.Session) {
+				instance := session.Instances()[0]
+				assert.NotZero(t, instance.UserInfoBitmask()&wire.OServiceUserFlagUnavailable)
+				assert.Equal(t, wire.OServiceUserStatusAway, instance.UserStatusBitmask())
+			},
+		},
+		{
+			name:     "set DND status raises the unavailable flag",
+			instance: newTestInstance("me"),
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields{
+					TLVRestBlock: wire.TLVRestBlock{
+						TLVList: wire.TLVList{
+							wire.NewTLVBE(wire.OServiceUserInfoStatus, wire.OServiceUserStatusDND),
+						},
+					},
+				},
+			},
+			expectOutput: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.OService,
+					SubGroup:  wire.OServiceUserInfoUpdate,
+					// Pushes are unsolicited, so they carry the server request ID.
+					RequestID: wire.ReqIDFromServer,
+				},
+				Body: func(val any) bool {
+					snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
+					if !ok || len(snac.UserInfo) == 0 {
+						return false
+					}
+					status, hasStatus := snac.UserInfo[0].Uint32BE(wire.OServiceUserInfoStatus)
+					return hasStatus && status == wire.OServiceUserStatusDND && snac.UserInfo[0].IsAway()
+				},
+			},
+			mockParams: mockParams{
+				buddyBroadcasterParams: buddyBroadcasterParams{
+					broadcastBuddyArrivedParams: broadcastBuddyArrivedParams{
+						{
+							screenName: state.DisplayScreenName("me"),
+						},
+					},
+				},
+			},
+			checkSession: func(t *testing.T, session *state.Session) {
+				instance := session.Instances()[0]
+				assert.NotZero(t, instance.UserInfoBitmask()&wire.OServiceUserFlagUnavailable)
+				assert.Equal(t, wire.OServiceUserStatusDND, instance.UserStatusBitmask())
+			},
+		},
+		{
+			name:     "set out status raises the unavailable flag",
+			instance: newTestInstance("me"),
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields{
+					TLVRestBlock: wire.TLVRestBlock{
+						TLVList: wire.TLVList{
+							wire.NewTLVBE(wire.OServiceUserInfoStatus, wire.OServiceUserStatusOut),
+						},
+					},
+				},
+			},
+			expectOutput: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.OService,
+					SubGroup:  wire.OServiceUserInfoUpdate,
+					// Pushes are unsolicited, so they carry the server request ID.
+					RequestID: wire.ReqIDFromServer,
+				},
+				Body: func(val any) bool {
+					snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
+					if !ok || len(snac.UserInfo) == 0 {
+						return false
+					}
+					status, hasStatus := snac.UserInfo[0].Uint32BE(wire.OServiceUserInfoStatus)
+					return hasStatus && status == wire.OServiceUserStatusOut && snac.UserInfo[0].IsAway()
+				},
+			},
+			mockParams: mockParams{
+				buddyBroadcasterParams: buddyBroadcasterParams{
+					broadcastBuddyArrivedParams: broadcastBuddyArrivedParams{
+						{
+							screenName: state.DisplayScreenName("me"),
+						},
+					},
+				},
+			},
+			checkSession: func(t *testing.T, session *state.Session) {
+				instance := session.Instances()[0]
+				assert.NotZero(t, instance.UserInfoBitmask()&wire.OServiceUserFlagUnavailable)
+				assert.Equal(t, wire.OServiceUserStatusOut, instance.UserStatusBitmask())
+			},
+		},
+		{
+			// Clients send combined masks, so an unavailable bit alongside invisible
+			// raises the flag and still hides the user.
+			name:     "set away and invisible status in one bitmask",
+			instance: newTestInstance("me"),
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields{
+					TLVRestBlock: wire.TLVRestBlock{
+						TLVList: wire.TLVList{
+							wire.NewTLVBE(wire.OServiceUserInfoStatus, wire.OServiceUserStatusAway|wire.OServiceUserStatusInvisible),
+						},
+					},
+				},
+			},
+			expectOutput: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.OService,
+					SubGroup:  wire.OServiceUserInfoUpdate,
+					// Pushes are unsolicited, so they carry the server request ID.
+					RequestID: wire.ReqIDFromServer,
+				},
+				Body: func(val any) bool {
+					snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
+					if !ok || len(snac.UserInfo) == 0 {
+						return false
+					}
+					return snac.UserInfo[0].IsInvisible() && snac.UserInfo[0].IsAway()
+				},
+			},
+			mockParams: mockParams{
+				buddyBroadcasterParams: buddyBroadcasterParams{
+					broadcastBuddyDepartedParams: broadcastBuddyDepartedParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+						},
+					},
+				},
+			},
+			checkSession: func(t *testing.T, session *state.Session) {
+				instance := session.Instances()[0]
+				assert.NotZero(t, instance.UserInfoBitmask()&wire.OServiceUserFlagUnavailable)
+				assert.Equal(t, wire.OServiceUserStatusAway|wire.OServiceUserStatusInvisible, instance.UserStatusBitmask())
+			},
+		},
+		{
+			// The away message rides along with the status bitmask that set it, so
+			// clearing the status clears the message too.
+			name: "clear status lowers the unavailable flag and drops the away message",
+			instance: newTestInstance("me",
+				sessOptUserStatusBitmask(wire.OServiceUserStatusAway),
+				sessOptCannedAwayMessage,
+				sessOptUserInfoFlag(wire.OServiceUserFlagUnavailable)),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -1364,12 +1556,20 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 				},
 			},
 			checkSession: func(t *testing.T, session *state.Session) {
-				assert.Zero(t, session.Instances()[0].UserInfoBitmask()&wire.OServiceUserFlagUnavailable)
+				instance := session.Instances()[0]
+				assert.Zero(t, instance.UserInfoBitmask()&wire.OServiceUserFlagUnavailable)
+				assert.Zero(t, instance.UserStatusBitmask())
+				msg, _ := instance.AwayMessage()
+				assert.Empty(t, msg)
 			},
 		},
 		{
-			name:     "clear status keeps the unavailable flag of a user with an away message",
-			instance: newTestInstance("me", sessOptCannedAwayMessage, sessOptUserInfoFlag(wire.OServiceUserFlagUnavailable)),
+			// An away message set through LocateService.SetInfo owns the flag,
+			// because no unavailable status bit put it there.
+			name: "clear status keeps the unavailable flag of a user with an away message",
+			instance: newTestInstance("me",
+				sessOptCannedAwayMessage,
+				sessOptUserInfoFlag(wire.OServiceUserFlagUnavailable)),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -1407,12 +1607,124 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 				},
 			},
 			checkSession: func(t *testing.T, session *state.Session) {
-				assert.NotZero(t, session.Instances()[0].UserInfoBitmask()&wire.OServiceUserFlagUnavailable)
+				instance := session.Instances()[0]
+				assert.NotZero(t, instance.UserInfoBitmask()&wire.OServiceUserFlagUnavailable)
+				msg, _ := instance.AwayMessage()
+				assert.Equal(t, "this is my away message!", msg)
 			},
 		},
 		{
-			name:     "set status message",
-			instance: newTestInstance("me"),
+			// The user stays unavailable across the switch, so the away message set
+			// with the old status survives.
+			name: "switch from one unavailable status to another keeps the away message",
+			instance: newTestInstance("me",
+				sessOptUserStatusBitmask(wire.OServiceUserStatusBusy),
+				sessOptCannedAwayMessage,
+				sessOptUserInfoFlag(wire.OServiceUserFlagUnavailable)),
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields{
+					TLVRestBlock: wire.TLVRestBlock{
+						TLVList: wire.TLVList{
+							wire.NewTLVBE(wire.OServiceUserInfoStatus, wire.OServiceUserStatusAway),
+						},
+					},
+				},
+			},
+			expectOutput: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.OService,
+					SubGroup:  wire.OServiceUserInfoUpdate,
+					// Pushes are unsolicited, so they carry the server request ID.
+					RequestID: wire.ReqIDFromServer,
+				},
+				Body: func(val any) bool {
+					snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
+					if !ok || len(snac.UserInfo) == 0 {
+						return false
+					}
+					status, hasStatus := snac.UserInfo[0].Uint32BE(wire.OServiceUserInfoStatus)
+					return hasStatus && status == wire.OServiceUserStatusAway && snac.UserInfo[0].IsAway()
+				},
+			},
+			mockParams: mockParams{
+				buddyBroadcasterParams: buddyBroadcasterParams{
+					broadcastBuddyArrivedParams: broadcastBuddyArrivedParams{
+						{
+							screenName: state.DisplayScreenName("me"),
+						},
+					},
+				},
+			},
+			checkSession: func(t *testing.T, session *state.Session) {
+				instance := session.Instances()[0]
+				assert.NotZero(t, instance.UserInfoBitmask()&wire.OServiceUserFlagUnavailable)
+				assert.Equal(t, wire.OServiceUserStatusAway, instance.UserStatusBitmask())
+				msg, _ := instance.AwayMessage()
+				assert.Equal(t, "this is my away message!", msg)
+			},
+		},
+		{
+			// Invisible is not an unavailable status, so going invisible from away
+			// lowers the flag and drops the message.
+			name: "swap an unavailable status for invisible drops the away message",
+			instance: newTestInstance("me",
+				sessOptUserStatusBitmask(wire.OServiceUserStatusAway),
+				sessOptCannedAwayMessage,
+				sessOptUserInfoFlag(wire.OServiceUserFlagUnavailable)),
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields{
+					TLVRestBlock: wire.TLVRestBlock{
+						TLVList: wire.TLVList{
+							wire.NewTLVBE(wire.OServiceUserInfoStatus, wire.OServiceUserStatusInvisible),
+						},
+					},
+				},
+			},
+			expectOutput: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.OService,
+					SubGroup:  wire.OServiceUserInfoUpdate,
+					// Pushes are unsolicited, so they carry the server request ID.
+					RequestID: wire.ReqIDFromServer,
+				},
+				Body: func(val any) bool {
+					snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
+					if !ok || len(snac.UserInfo) == 0 {
+						return false
+					}
+					return snac.UserInfo[0].IsInvisible() && !snac.UserInfo[0].IsAway()
+				},
+			},
+			mockParams: mockParams{
+				buddyBroadcasterParams: buddyBroadcasterParams{
+					broadcastBuddyDepartedParams: broadcastBuddyDepartedParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+						},
+					},
+				},
+			},
+			checkSession: func(t *testing.T, session *state.Session) {
+				instance := session.Instances()[0]
+				assert.Zero(t, instance.UserInfoBitmask()&wire.OServiceUserFlagUnavailable)
+				assert.Equal(t, wire.OServiceUserStatusInvisible, instance.UserStatusBitmask())
+				msg, _ := instance.AwayMessage()
+				assert.Empty(t, msg)
+			},
+		},
+		{
+			// Away state belongs to the status TLV, so a request without one leaves
+			// the flag and the away message alone.
+			name: "set status message",
+			instance: newTestInstance("me",
+				sessOptCannedAwayMessage,
+				sessOptUserInfoFlag(wire.OServiceUserFlagUnavailable)),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -1461,6 +1773,10 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 				status, hasStatus := session.Status()
 				assert.True(t, hasStatus)
 				assert.Equal(t, "out to lunch", statusMsgOf(t, status))
+				instance := session.Instances()[0]
+				assert.NotZero(t, instance.UserInfoBitmask()&wire.OServiceUserFlagUnavailable)
+				msg, _ := instance.AwayMessage()
+				assert.Equal(t, "this is my away message!", msg)
 			},
 		},
 		{
@@ -1782,6 +2098,61 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 			}
 
 			tc.checkSession(t, tc.instance.Session())
+		})
+	}
+}
+
+// TestOServiceService_SetUserInfoFields_ClearUnavailableStatus verifies that
+// clearing the status bitmask lowers the unavailable flag and drops the away
+// message, whichever unavailable status bit the user was carrying.
+func TestOServiceService_SetUserInfoFields_ClearUnavailableStatus(t *testing.T) {
+	tests := []struct {
+		name string
+		// status is the status bitmask the user starts out with
+		status uint32
+	}{
+		{name: "away", status: wire.OServiceUserStatusAway},
+		{name: "busy", status: wire.OServiceUserStatusBusy},
+		{name: "DND", status: wire.OServiceUserStatusDND},
+		{name: "out", status: wire.OServiceUserStatusOut},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			instance := newTestInstance("me",
+				sessOptUserStatusBitmask(tt.status),
+				sessOptCannedAwayMessage,
+				sessOptUserInfoFlag(wire.OServiceUserFlagUnavailable))
+
+			messageRelayer := newMockMessageRelayer(t)
+			messageRelayer.EXPECT().RelayToSelf(mock.Anything, instance, mock.Anything).Once()
+
+			buddyBroadcaster := newMockbuddyBroadcaster(t)
+			buddyBroadcaster.EXPECT().
+				BroadcastBuddyArrived(mock.Anything, state.NewIdentScreenName("me"), mock.Anything).
+				Return(nil).
+				Once()
+
+			svc := OServiceService{
+				cfg:              config.Config{},
+				logger:           slog.Default(),
+				buddyBroadcaster: buddyBroadcaster,
+				messageRelayer:   messageRelayer,
+			}
+
+			inBody := wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields{
+				TLVRestBlock: wire.TLVRestBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.OServiceUserInfoStatus, wire.OServiceUserStatusAvailable),
+					},
+				},
+			}
+			assert.NoError(t, svc.SetUserInfoFields(context.TODO(), instance, wire.SNACFrame{RequestID: 1234}, inBody))
+
+			assert.Zero(t, instance.UserInfoBitmask()&wire.OServiceUserFlagUnavailable)
+			assert.Zero(t, instance.UserStatusBitmask())
+			msg, _ := instance.AwayMessage()
+			assert.Empty(t, msg)
 		})
 	}
 }
