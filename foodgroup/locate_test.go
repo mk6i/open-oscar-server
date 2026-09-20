@@ -925,7 +925,7 @@ func TestLocateService_SetInfo_MoodChange(t *testing.T) {
 			}
 			instance := newTestInstance("screen-name", opts...)
 			if tt.mood != (uuid.UUID{}) {
-				instance.SetMood(tt.mood)
+				instance.SetCaps([][16]byte{tt.mood})
 			}
 
 			messageRelayer := newMockMessageRelayer(t)

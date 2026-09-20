@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
 )
@@ -55,6 +56,11 @@ const (
 	// webAPISessionTTL + webAPISessionReapInterval before removal.
 	webAPISessionReapInterval = 30 * time.Second
 )
+
+// webAPICaps are the capabilities the Web API advertises on behalf of its
+// clients. It seeds every session's capability list and is sent as-is at
+// sign-on, so the two never drift.
+var webAPICaps = [][16]byte{wire.CapICQCh2Extended}
 
 // Session represents an active Web AIM API session.
 type Session struct {
@@ -97,6 +103,9 @@ type Session struct {
 
 	closeMu sync.Mutex
 	closed  bool
+
+	capabilities [][16]byte
+	capsMu       sync.RWMutex
 }
 
 // IsExpired checks if the session has expired.
@@ -774,6 +783,7 @@ func (m *SessionManager) CreateSession(screenName state.DisplayScreenName, event
 		FetchTimeout:    60000, // 60 seconds default for better stability
 		TimeToNextFetch: 500,   // 500ms suggested delay
 		logger:          logger,
+		capabilities:    slices.Clone(webAPICaps),
 	}
 
 	m.sessions[aimsid] = session
@@ -1101,6 +1111,46 @@ func (s *Session) GetStoredIMs(q StoredIMQuery) []StoredIM {
 		out[i] = StoredIM(msg)
 	}
 	return out
+}
+
+func (s *Session) Caps() [][16]byte {
+	s.capsMu.RLock()
+	defer s.capsMu.RUnlock()
+	return slices.Clone(s.capabilities)
+}
+
+// ClearMood removes the mood capability the session advertises, if any. The
+// user then presents whatever presence state they are in.
+func (s *Session) ClearMood() {
+	s.capsMu.Lock()
+	defer s.capsMu.Unlock()
+	s.clearMood()
+}
+
+// clearMood drops every mood capability the session advertises. The caller must
+// hold s.capsMu.
+func (s *Session) clearMood() {
+	s.capabilities = slices.DeleteFunc(s.capabilities, func(cap [16]byte) bool {
+		return wire.IsMoodCap(cap)
+	})
+}
+
+// SetMood replaces the mood capability the session advertises. A client shows
+// one mood at a time, so whichever mood was set before is dropped.
+//
+// It panics when mood is not a mood capability: the caller resolves it from the
+// mood table, so anything else is a programming error rather than bad input.
+func (s *Session) SetMood(mood uuid.UUID) {
+	s.capsMu.Lock()
+	defer s.capsMu.Unlock()
+
+	if !wire.IsMoodCap(mood) {
+		panic("uuid is not a mood capability")
+	}
+
+	s.clearMood()
+
+	s.capabilities = append(s.capabilities, mood)
 }
 
 // normalizeWebAPIAimID keys the IM log by the same normalization the web client

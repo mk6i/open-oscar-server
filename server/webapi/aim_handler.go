@@ -14,8 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/mk6i/open-oscar-server/config"
 	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
@@ -242,9 +240,7 @@ func (h *AimHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 	setInfo := wire.SNAC_0x02_0x04_LocateSetInfo{
 		TLVRestBlock: wire.TLVRestBlock{
 			TLVList: wire.TLVList{
-				wire.NewTLVBE(wire.LocateTLVTagsInfoCapabilities, []uuid.UUID{
-					wire.CapICQCh2Extended,
-				}),
+				wire.NewTLVBE(wire.LocateTLVTagsInfoCapabilities, webAPICaps),
 			},
 		},
 	}

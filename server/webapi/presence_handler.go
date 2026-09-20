@@ -481,7 +481,7 @@ func (h *PresenceHandler) SetStatus(w http.ResponseWriter, r *http.Request, sess
 	if r.URL.Query().Has("mood") {
 		moodID := r.URL.Query().Get("mood")
 		if moodID == "" {
-			session.OSCARSession.ClearMood()
+			session.ClearMood()
 		} else {
 			m, hasMood := wire.MoodByID(moodID)
 			if !hasMood {
@@ -489,12 +489,12 @@ func (h *PresenceHandler) SetStatus(w http.ResponseWriter, r *http.Request, sess
 				return
 			}
 
-			session.OSCARSession.SetMood(m.Cap)
+			session.SetMood(m.Cap)
 		}
 		setInfo := wire.SNAC_0x02_0x04_LocateSetInfo{
 			TLVRestBlock: wire.TLVRestBlock{
 				TLVList: wire.TLVList{
-					wire.NewTLVBE(wire.LocateTLVTagsInfoCapabilities, session.OSCARSession.Caps()),
+					wire.NewTLVBE(wire.LocateTLVTagsInfoCapabilities, session.Caps()),
 				},
 			},
 		}

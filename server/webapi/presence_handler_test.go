@@ -1029,12 +1029,22 @@ func searchPageTargets(n int) []string {
 	return names
 }
 
-// setStatusCaps drives setStatus and returns the capability list that reached
-// LocateService.SetInfo, or nil when SetInfo was never called.
-func setStatusCaps(t *testing.T, instance *state.SessionInstance, query string) ([][16]byte, int) {
+// newSetStatusDriver returns a function that drives setStatus and reports the
+// capability list that reached LocateService.SetInfo, or nil when SetInfo was
+// never called. The web session is built once, so consecutive calls see the
+// capabilities the earlier ones left on it. It starts out with the sign-on
+// capabilities, unless caps replaces them.
+func newSetStatusDriver(t *testing.T, caps ...[16]byte) func(query string) ([][16]byte, int) {
 	t.Helper()
 
+	instance := state.NewSession().AddInstance()
 	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", instance)
+
+	session, err := sessionMgr.GetSession(context.Background(), aimsid)
+	require.NoError(t, err)
+	if len(caps) > 0 {
+		session.capabilities = caps
+	}
 
 	var gotCaps [][16]byte
 	var called bool
@@ -1050,8 +1060,6 @@ func setStatusCaps(t *testing.T, instance *state.SessionInstance, query string) 
 					TLVList: wire.TLVList{wire.NewTLVBE(wire.OServiceUserInfoOscarCaps, b)},
 				},
 			})
-			// Apply it, as the real service would, so a follow-up call sees it.
-			instance.SetCaps(gotCaps)
 		}).Return(nil).Maybe()
 
 	oservice := newMockOServiceService(t)
@@ -1067,16 +1075,20 @@ func setStatusCaps(t *testing.T, instance *state.SessionInstance, query string) 
 		Logger:          slog.Default(),
 	}
 
-	req, err := http.NewRequest("GET", "/presence/setStatus?aimsid="+aimsid+query, nil)
-	require.NoError(t, err)
+	return func(query string) ([][16]byte, int) {
+		gotCaps, called = nil, false
 
-	rr := httptest.NewRecorder()
-	requireSession(handler.SessionManager, handler.SetStatus).ServeHTTP(rr, req)
+		req, err := http.NewRequest("GET", "/presence/setStatus?aimsid="+aimsid+query, nil)
+		require.NoError(t, err)
 
-	if !called {
-		return nil, rr.Code
+		rr := httptest.NewRecorder()
+		requireSession(handler.SessionManager, handler.SetStatus).ServeHTTP(rr, req)
+
+		if !called {
+			return nil, rr.Code
+		}
+		return gotCaps, rr.Code
 	}
-	return gotCaps, rr.Code
 }
 
 // A state change must not blank the status message: the client renders both from
@@ -1252,19 +1264,20 @@ func TestPresenceHandler_SetStatus_Mood(t *testing.T) {
 		{
 			name:     "a known mood is advertised as its capability",
 			query:    "&mood=0icqmood6",
-			wantCaps: [][16]byte{wire.CapXStatusPlate},
+			wantCaps: [][16]byte{wire.CapICQCh2Extended, wire.CapXStatusPlate},
 		},
 		{
 			name:     "a mood with only a placeholder capability still resolves",
 			query:    "&mood=0icqmood13",
-			wantCaps: [][16]byte{wire.CapMoodHavingFun},
+			wantCaps: [][16]byte{wire.CapICQCh2Extended, wire.CapMoodHavingFun},
 		},
 		{
 			// The client sends mood= alongside every plain state change, so this
-			// is the path back to a moodless online/away/invisible.
+			// is the path back to a moodless online/away/invisible. Only the
+			// mood is dropped.
 			name:     "an empty mood clears the capability",
 			query:    "&mood=",
-			wantCaps: [][16]byte{},
+			wantCaps: [][16]byte{wire.CapICQCh2Extended},
 		},
 		{
 			// A token the server cannot map is a client bug, not a reset: the
@@ -1282,9 +1295,7 @@ func TestPresenceHandler_SetStatus_Mood(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			instance := state.NewSession().AddInstance()
-
-			gotCaps, code := setStatusCaps(t, instance, tt.query)
+			gotCaps, code := newSetStatusDriver(t)(tt.query)
 
 			if tt.wantCode != 0 {
 				assert.Equal(t, tt.wantCode, code)
@@ -1299,27 +1310,27 @@ func TestPresenceHandler_SetStatus_Mood(t *testing.T) {
 }
 
 func TestPresenceHandler_SetStatus_MoodReplacesRatherThanAccumulates(t *testing.T) {
-	instance := state.NewSession().AddInstance()
+	setStatus := newSetStatusDriver(t)
 
-	_, code := setStatusCaps(t, instance, "&mood=0icqmood6")
+	_, code := setStatus("&mood=0icqmood6")
 	assert.Equal(t, http.StatusOK, code)
 
-	gotCaps, code := setStatusCaps(t, instance, "&mood=0icqmood4")
+	gotCaps, code := setStatus("&mood=0icqmood4")
 	assert.Equal(t, http.StatusOK, code)
-	assert.Equal(t, [][16]byte{wire.CapXStatusBeer}, gotCaps, "the previous mood must be dropped")
+	assert.Equal(t, [][16]byte{wire.CapICQCh2Extended, wire.CapXStatusBeer}, gotCaps,
+		"the previous mood must be dropped")
 }
 
 func TestPresenceHandler_SetStatus_PreservesNonMoodCaps(t *testing.T) {
-	// The capability list is rewritten wholesale, so anything the instance
+	// The capability list is rewritten wholesale, so anything the session
 	// advertises that is not a mood has to be carried over.
-	instance := state.NewSession().AddInstance()
-	instance.SetCaps([][16]byte{wire.CapChat, wire.CapXStatusBeer})
+	setStatus := newSetStatusDriver(t, wire.CapChat, wire.CapXStatusBeer)
 
-	gotCaps, code := setStatusCaps(t, instance, "&mood=0icqmood6")
+	gotCaps, code := setStatus("&mood=0icqmood6")
 	assert.Equal(t, http.StatusOK, code)
 	assert.Equal(t, [][16]byte{wire.CapChat, wire.CapXStatusPlate}, gotCaps)
 
-	gotCaps, code = setStatusCaps(t, instance, "&mood=")
+	gotCaps, code = setStatus("&mood=")
 	assert.Equal(t, http.StatusOK, code)
 	assert.Equal(t, [][16]byte{wire.CapChat}, gotCaps, "clearing a mood must keep the other caps")
 }

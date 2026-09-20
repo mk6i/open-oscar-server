@@ -1523,3 +1523,81 @@ func TestSession_PublishesMoodOnPresence(t *testing.T) {
 		assert.Empty(t, got.MoodIcon)
 	})
 }
+
+func TestSession_SetMood(t *testing.T) {
+	t.Run("advertises the mood alongside the existing capabilities", func(t *testing.T) {
+		sess := &Session{capabilities: [][16]byte{wire.CapChat}}
+
+		sess.SetMood(wire.CapXStatusBeer)
+
+		assert.Equal(t, [][16]byte{wire.CapChat, wire.CapXStatusBeer}, sess.Caps())
+	})
+
+	t.Run("a second mood replaces the first", func(t *testing.T) {
+		// A client shows one mood at a time, so the moods must not accumulate.
+		sess := &Session{capabilities: [][16]byte{wire.CapChat}}
+
+		sess.SetMood(wire.CapXStatusBeer)
+		sess.SetMood(wire.CapXStatusMusic)
+
+		assert.Equal(t, [][16]byte{wire.CapChat, wire.CapXStatusMusic}, sess.Caps())
+	})
+
+	t.Run("panics on a capability that is not a mood", func(t *testing.T) {
+		sess := &Session{}
+		assert.Panics(t, func() {
+			sess.SetMood(wire.CapChat)
+		})
+	})
+}
+
+func TestSession_ClearMood(t *testing.T) {
+	t.Run("removes the mood and keeps every other capability", func(t *testing.T) {
+		sess := &Session{capabilities: [][16]byte{wire.CapChat, wire.CapFileTransfer}}
+		sess.SetMood(wire.CapXStatusBeer)
+
+		sess.ClearMood()
+
+		assert.Equal(t, [][16]byte{wire.CapChat, wire.CapFileTransfer}, sess.Caps())
+	})
+
+	t.Run("is a no-op when no mood is set", func(t *testing.T) {
+		sess := &Session{capabilities: [][16]byte{wire.CapChat}}
+
+		sess.ClearMood()
+
+		assert.Equal(t, [][16]byte{wire.CapChat}, sess.Caps())
+	})
+}
+
+func TestSession_Caps(t *testing.T) {
+	t.Run("returns a copy the caller cannot write through", func(t *testing.T) {
+		sess := &Session{capabilities: [][16]byte{wire.CapChat}}
+
+		caps := sess.Caps()
+		caps[0] = wire.CapFileTransfer
+
+		assert.Equal(t, [][16]byte{wire.CapChat}, sess.Caps())
+	})
+
+	t.Run("a session advertising no capabilities returns an empty list", func(t *testing.T) {
+		assert.Empty(t, (&Session{}).Caps())
+	})
+}
+
+func TestSessionManager_CreateSession_SeedsCapabilities(t *testing.T) {
+	// setStatus rewrites the capability list wholesale from the session's own
+	// list, so the sign-on capabilities have to start out in it.
+	mgr := NewSessionManager()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	sess, err := mgr.CreateSession("testuser", nil, state.NewSession().AddInstance(), "", logger)
+	require.NoError(t, err)
+	assert.Equal(t, webAPICaps, sess.Caps())
+
+	sess.SetMood(wire.CapXStatusBeer)
+
+	other, err := mgr.CreateSession("otheruser", nil, state.NewSession().AddInstance(), "", logger)
+	require.NoError(t, err)
+	assert.Equal(t, webAPICaps, other.Caps(), "one session's mood must not reach the next session's seed")
+}
