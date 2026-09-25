@@ -562,3 +562,82 @@ func TestMessagingHandler_SendIM_ClientErrorDuringSendNamesTheMessage(t *testing
 	assert.Equal(t, sentMsgID, clientErr.Cookie)
 	assert.Equal(t, "recipient", clientErr.Source.AimID)
 }
+
+// The sentIM echo is merged onto both parties' user objects, and sending a
+// message changes nobody's presence.
+func TestMessagingHandler_SendIM_EchoesRealStates(t *testing.T) {
+	// sendIM drives SendIM from a sender whose own OSCAR session is configured by
+	// configSender, with recipientPresence seeded into the session's view.
+	sendIM := func(t *testing.T, configSender func(*state.SessionInstance), recipientPresence *wire.TLVUserInfo) SentIMEvent {
+		t.Helper()
+
+		oscarInstance := state.NewSession().AddInstance()
+		configSender(oscarInstance)
+
+		icbmService := newMockICBMService(t)
+		icbmService.EXPECT().ChannelMsgToHost(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(nil, nil)
+
+		mgr := NewSessionManager()
+		session, err := mgr.CreateSession(state.DisplayScreenName("Ann Dupree"),
+			[]string{"im", "sentIM"}, oscarInstance, "", slog.Default())
+		require.NoError(t, err)
+
+		if recipientPresence != nil {
+			buddyArrives(session, *recipientPresence)
+		}
+
+		handler := &MessagingHandler{
+			ICBMService:    icbmService,
+			LocateService:  stubLocateService(t, "Mike Kelly"),
+			FeedbagService: stubFeedbagService(t, "mikekelly", ""),
+			Logger:         slog.Default(),
+		}
+		session.BuddyAliasLoader = func(ctx context.Context) (map[string]string, error) {
+			return LookupBuddyAliases(ctx, handler.FeedbagService, session.OSCARSession)
+		}
+
+		req, err := http.NewRequest("GET", "/im/sendIM?aimsid="+session.AimSID+"&t=mikekelly&message=hi", nil)
+		require.NoError(t, err)
+		rr := httptest.NewRecorder()
+		requireSession(mgr, handler.SendIM).ServeHTTP(rr, req)
+		require.Equal(t, http.StatusOK, rr.Code)
+
+		for _, event := range session.EventQueue.GetAllEvents() {
+			if sent, ok := event.Data.(SentIMEvent); ok {
+				return sent
+			}
+		}
+		t.Fatal("no sentIM event was pushed")
+		return SentIMEvent{}
+	}
+
+	online := func(*state.SessionInstance) {}
+	awayRecipient := func() *wire.TLVUserInfo {
+		info := wire.TLVUserInfo{ScreenName: "Mike Kelly"}
+		info.Append(wire.NewTLVBE(wire.OServiceUserInfoUserFlags, wire.OServiceUserFlagUnavailable))
+		return &info
+	}
+
+	t.Run("the recipient's state comes from the presence view", func(t *testing.T) {
+		got := sendIM(t, online, awayRecipient())
+		assert.Equal(t, "away", got.Dest.State)
+	})
+
+	t.Run("a recipient with no presence carries no state", func(t *testing.T) {
+		got := sendIM(t, online, nil)
+		assert.Empty(t, got.Dest.State)
+	})
+
+	t.Run("the sender's own away state survives sending", func(t *testing.T) {
+		got := sendIM(t, func(instance *state.SessionInstance) {
+			instance.SetUserInfoFlag(wire.OServiceUserFlagUnavailable)
+		}, nil)
+		assert.Equal(t, "away", got.Sender.State)
+	})
+
+	t.Run("an online sender reports online", func(t *testing.T) {
+		got := sendIM(t, online, nil)
+		assert.Equal(t, "online", got.Sender.State)
+	})
+}

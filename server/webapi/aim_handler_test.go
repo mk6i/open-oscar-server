@@ -513,3 +513,66 @@ func TestSeedRateLimitAlert(t *testing.T) {
 		assert.Empty(t, rateLimitEventStatuses(t, session))
 	})
 }
+
+// A temp buddy stops being watched the moment it is removed, so no departure for
+// it ever arrives and its cached presence would otherwise be served forever. This
+// is the most reachable form of that bug: add a temp buddy, remove it, and the
+// target's state is frozen at whatever it was when they were last observed.
+func TestAimHandler_RemoveTempBuddy_ForgetsPresence(t *testing.T) {
+	session := newTestWebAPISession(t, tightRateLimitClasses())
+	session.Events = []string{"presence"}
+	session.logger = slog.Default()
+
+	buddyArrives(session, onlineBuddy("Mike Kelly"))
+	buddyArrives(session, onlineBuddy("keeper"))
+
+	buddyService := newMockBuddyService(t)
+	buddyService.EXPECT().
+		DelTempBuddies(mock.Anything, session.OSCARSession, mock.Anything).
+		Return(nil).Once()
+
+	handler := &AimHandler{
+		BuddyService: buddyService,
+		Logger:       slog.Default(),
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/aim/removeTempBuddy?aimsid="+session.AimSID+"&t=mikekelly", nil)
+	rr := httptest.NewRecorder()
+	handler.RemoveTempBuddy(rr, req, session)
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	_, ok := session.BuddyPresence(state.NewIdentScreenName("mikekelly"))
+	assert.False(t, ok, "removed temp buddy should be forgotten")
+
+	// Only the named buddies are forgotten.
+	_, ok = session.BuddyPresence(state.NewIdentScreenName("keeper"))
+	assert.True(t, ok)
+}
+
+// A failed removal leaves the buddy watched, so their presence must survive.
+func TestAimHandler_RemoveTempBuddy_KeepsPresenceOnFailure(t *testing.T) {
+	session := newTestWebAPISession(t, tightRateLimitClasses())
+	session.Events = []string{"presence"}
+	session.logger = slog.Default()
+
+	buddyArrives(session, onlineBuddy("Mike Kelly"))
+
+	buddyService := newMockBuddyService(t)
+	buddyService.EXPECT().
+		DelTempBuddies(mock.Anything, session.OSCARSession, mock.Anything).
+		Return(io.ErrUnexpectedEOF).Once()
+
+	handler := &AimHandler{
+		BuddyService: buddyService,
+		Logger:       slog.Default(),
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/aim/removeTempBuddy?aimsid="+session.AimSID+"&t=mikekelly", nil)
+	rr := httptest.NewRecorder()
+	handler.RemoveTempBuddy(rr, req, session)
+	require.Equal(t, http.StatusInternalServerError, rr.Code)
+
+	got, ok := session.BuddyPresence(state.NewIdentScreenName("mikekelly"))
+	require.True(t, ok)
+	assert.Equal(t, "online", got.State)
+}

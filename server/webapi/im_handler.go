@@ -197,20 +197,25 @@ func (h *MessagingHandler) pushSenderWebAPIEvents(sess *Session, recipient state
 	senderAimID := sess.ScreenName.IdentScreenName().String()
 	recipientAimID := recipient.String()
 
+	dest := UserInfo{
+		AimID:     recipientAimID,
+		DisplayID: recipientDisplay,
+		Friendly:  recipientAlias,
+		UserType:  userTypeFor(recipient),
+	}
+	if presence, ok := sess.BuddyPresence(recipient); ok {
+		dest.State = presence.State
+		dest.OnlineTime = presence.OnlineTime
+	}
+
 	senderEventData := SentIMEvent{
 		Sender: UserInfo{
 			AimID:     senderAimID,
 			DisplayID: sess.ScreenName.String(),
 			UserType:  userTypeFor(sess.ScreenName.IdentScreenName()),
-			State:     "online",
+			State:     selfWebState(sess.OSCARSession.Session().TLVUserInfo(), sess.isAIMViewer()),
 		},
-		Dest: UserInfo{
-			AimID:     recipientAimID,
-			DisplayID: recipientDisplay,
-			Friendly:  recipientAlias,
-			UserType:  userTypeFor(recipient),
-			State:     "online",
-		},
+		Dest:      dest,
 		Message:   message,
 		MsgID:     messageID,
 		Timestamp: now,

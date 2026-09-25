@@ -142,7 +142,7 @@ func (h *PresenceHandler) GetPresence(w http.ResponseWriter, r *http.Request, se
 		aliases := session.Aliases(ctx)
 
 		for _, user := range targetUsers {
-			info := h.getUserPresence(ctx, session.OSCARSession, session.BaseURL, state.DisplayScreenName(user), wantProfileMsg)
+			info := h.targetPresence(ctx, session, state.DisplayScreenName(user), wantProfileMsg)
 			info.Friendly = aliases[info.AimID]
 			if wantDirInfo {
 				info.Profile = h.directoryProfile(ctx, user)
@@ -244,9 +244,15 @@ func (h *PresenceHandler) getBuddyListGroups(ctx context.Context, session *Sessi
 			groupMap[item.GroupID] = group
 		}
 
-		// UserInfoQuery performs the blocking check and online lookup; blocked or
-		// offline buddies come back as "offline", preserving the list structure.
-		presence := h.getUserPresence(ctx, session.OSCARSession, session.BaseURL, state.DisplayScreenName(item.Name), wantProfileMsg)
+		// Served from the presence view, where blocked and offline buddies alike
+		// come back as "offline". profileMsg is the exception: profile text is only
+		// reachable through a locate reply.
+		var presence BuddyPresenceInfo
+		if wantProfileMsg {
+			presence = h.getUserPresence(ctx, session.OSCARSession, session.BaseURL, state.DisplayScreenName(item.Name), true)
+		} else {
+			presence = h.cachedPresence(ctx, session, item.Name)
+		}
 		group.Buddies = append(group.Buddies, presence)
 	}
 
@@ -265,6 +271,81 @@ func (h *PresenceHandler) getBuddyListGroups(ctx context.Context, session *Sessi
 	}
 
 	return groups, nil
+}
+
+// offlinePresenceInfo is the presence a user renders as when the session has no
+// maintained record of them.
+func offlinePresenceInfo(ident state.IdentScreenName, target string) BuddyPresenceInfo {
+	return BuddyPresenceInfo{
+		AimID:     ident.String(),
+		DisplayID: target,
+		State:     "offline",
+		UserType:  userTypeFor(ident),
+		Service:   serviceFor(ident),
+	}
+}
+
+// cachedPresence renders a user's presence from the session's presence view. A
+// user the view has never seen renders offline, as does one who blocks the
+// caller: the broadcaster sends them a departure rather than an arrival.
+//
+// ProfileMsg is absent; callers that want it take the locate path. AwayMsg costs
+// a locate query per unavailable buddy.
+func (h *PresenceHandler) cachedPresence(ctx context.Context, session *Session, target string) BuddyPresenceInfo {
+	ident := state.NewIdentScreenName(target)
+
+	presence, ok := session.BuddyPresence(ident)
+	if !ok {
+		return offlinePresenceInfo(ident, target)
+	}
+	return h.presenceInfo(ctx, session, target, presence)
+}
+
+// presenceInfo renders a presence record the caller has already read out of the
+// view. Callers that branched on a cache hit pass the record in, so an eviction
+// racing them cannot turn the hit into an offline reading.
+func (h *PresenceHandler) presenceInfo(ctx context.Context, session *Session, target string, presence BuddyPresence) BuddyPresenceInfo {
+	ident := state.NewIdentScreenName(target)
+	info := offlinePresenceInfo(ident, target)
+
+	// A departure keeps the last display name seen, which beats the normalized
+	// spelling the caller passed in.
+	if presence.DisplayID != "" {
+		info.DisplayID = presence.DisplayID
+	}
+
+	info.State = presence.State
+	info.StatusMsg = presence.StatusMsg
+	info.OnlineTime = presence.OnlineTime
+	info.IdleTime = presence.IdleTime
+
+	if !presence.Online() {
+		// Offline and blocking users publish no icon, so neither their icon nor
+		// its activity-revealing hash leaks to a caller they are invisible to.
+		return info
+	}
+
+	if hasAwayMsg(presence.State) {
+		info.AwayMsg = awayMessage(ctx, h.LocateService, session.OSCARSession, ident, h.Logger)
+	}
+
+	// The presence SNAC carried the icon hash, so no metadata lookup is needed.
+	info.BuddyIcon = h.IconSource.URLForHash(session.BaseURL, ident, presence.IconHash)
+	info.MoodIcon = moodIconURL(session.BaseURL, presence.State, presence.Caps)
+
+	return info
+}
+
+// targetPresence resolves one of the users named by presence/get?t=. Unlike the
+// roster, a target need not be a buddy, so a user missing from the view gets a
+// locate query rather than reading as offline. profileMsg takes that path too.
+func (h *PresenceHandler) targetPresence(ctx context.Context, session *Session, target state.DisplayScreenName, wantProfileMsg bool) BuddyPresenceInfo {
+	if !wantProfileMsg {
+		if presence, ok := session.BuddyPresence(target.IdentScreenName()); ok {
+			return h.presenceInfo(ctx, session, target.String(), presence)
+		}
+	}
+	return h.getUserPresence(ctx, session.OSCARSession, session.BaseURL, target, wantProfileMsg)
 }
 
 // getUserPresence resolves a user's presence by issuing a locate UserInfoQuery
@@ -307,7 +388,7 @@ func (h *PresenceHandler) getUserPresence(ctx context.Context, instance *state.S
 		return presence
 	}
 
-	presence.State = "online"
+	presence.State, presence.IdleTime = buddyWebState(info.TLVUserInfo, instance.IdentScreenName().UIN() == 0)
 
 	// Publish the icon only now that locate has confirmed the user is online and
 	// has not blocked the caller. Offline and blocking users return above without
@@ -323,17 +404,6 @@ func (h *PresenceHandler) getUserPresence(ctx context.Context, instance *state.S
 
 	if tod, ok := info.Uint32BE(wire.OServiceUserInfoSignonTOD); ok {
 		presence.OnlineTime = int64(tod)
-	}
-
-	if st := statusBitState(info.TLVUserInfo, instance.IdentScreenName().UIN() == 0); st != "" {
-		presence.State = st
-	} else if info.IsAway() {
-		presence.State = "away"
-	}
-
-	if idle, ok := info.Uint16BE(wire.OServiceUserInfoIdleTime); ok && idle > 0 {
-		presence.State = "idle"
-		presence.IdleTime = int(idle)
 	}
 
 	if msg, ok := info.LocateInfo.String(wire.LocateTLVTagsInfoUnavailableData); ok {

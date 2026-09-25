@@ -163,7 +163,7 @@ func (m *BuddyListManager) GetBuddyListForUser(ctx context.Context, sess *Sessio
 			if !ok {
 				continue
 			}
-			info := m.getBuddyInfo(ctx, sess.OSCARSession, sess.BaseURL, b.name)
+			info := m.getBuddyInfo(ctx, sess, b.name)
 			// The alias belongs in friendly, not displayId: the client renders
 			// friendly in preference to displayId but still shows displayId as
 			// the buddy's actual screen name.
@@ -176,15 +176,19 @@ func (m *BuddyListManager) GetBuddyListForUser(ctx context.Context, sess *Sessio
 	return out, nil
 }
 
-// getBuddyInfo retrieves a buddy's current presence by issuing a locate
-// UserInfoQuery on behalf of the requesting session's OSCAR instance.
-func (m *BuddyListManager) getBuddyInfo(ctx context.Context, instance *state.SessionInstance, baseURL string, buddyName string) BuddyInfo {
+// getBuddyInfo renders a buddy's presence from the session's presence view. A
+// buddy the view has never seen renders offline, which at sign-on includes one
+// whose arrival has not been drained yet; the presence events correct that.
+//
+// AwayMsg costs a locate query per unavailable buddy, since an away message is
+// absent from presence broadcasts.
+func (m *BuddyListManager) getBuddyInfo(ctx context.Context, sess *Session, buddyName string) BuddyInfo {
 	// Default to offline. The web client keys users by the normalized aimId and
 	// shallow-merges each buddy map onto the shared user object, so a display-form
 	// aimId here overwrites the id every other event is keyed by.
 	//
 	// Feedbag buddy names are stored normalized, so they are not a source of
-	// display names. DisplayID is filled in from the locate reply below when the
+	// display names. DisplayID is filled in from the presence view below when the
 	// buddy is online, or overridden by the caller's alias when one is set.
 	ident := state.NewIdentScreenName(buddyName)
 	info := BuddyInfo{
@@ -196,58 +200,34 @@ func (m *BuddyListManager) getBuddyInfo(ctx context.Context, instance *state.Ses
 		Bot:       false,
 	}
 
-	reply, err := m.locateService.UserInfoQuery(ctx, instance, wire.SNACFrame{},
-		wire.SNAC_0x02_0x05_LocateUserInfoQuery{
-			Type:       uint16(wire.LocateTypeUnavailable), // away message
-			ScreenName: ident.String(),
-		})
-	if err != nil {
-		m.logger.WarnContext(ctx, "failed to query buddy info", "screenName", buddyName, "error", err)
-		return info
-	}
-
-	userInfo, ok := reply.Body.(wire.SNAC_0x02_0x06_LocateUserInfoReply)
+	presence, ok := sess.BuddyPresence(ident)
 	if !ok {
-		// Locate error => buddy is blocked or offline.
 		return info
 	}
 
-	info.State = "online"
+	// A departure keeps the last display name seen, which beats the normalized
+	// feedbag spelling.
+	if presence.DisplayID != "" {
+		info.DisplayID = presence.DisplayID
+	}
+
+	info.State = presence.State
+	info.StatusMsg = presence.StatusMsg
+	info.OnlineTime = presence.OnlineTime
+	info.IdleTime = presence.IdleTime
+
+	if !presence.Online() {
+		return info
+	}
+
+	if hasAwayMsg(presence.State) {
+		info.AwayMsg = awayMessage(ctx, m.locateService, sess.OSCARSession, ident, m.logger)
+	}
+
 	info.Capabilities = []string{}
 
-	// Publish the icon only now that locate has confirmed the buddy is online and
-	// has not blocked the caller. Offline and blocking buddies return above without
-	// an icon, so neither their icon nor its activity-revealing hash leaks.
-	info.BuddyIcon = m.iconSource.PublishedURL(ctx, baseURL, ident)
-
-	// The locate reply carries the screen name as the buddy formatted it.
-	if userInfo.ScreenName != "" {
-		info.DisplayID = userInfo.ScreenName
-	}
-
-	if tod, ok := userInfo.Uint32BE(wire.OServiceUserInfoSignonTOD); ok {
-		info.OnlineTime = int64(tod)
-	}
-
-	info.StatusMsg = userStatusMsg(userInfo.TLVUserInfo)
-
-	if st := statusBitState(userInfo.TLVUserInfo, instance.IdentScreenName().UIN() == 0); st != "" {
-		info.State = st
-	} else if userInfo.IsAway() {
-		info.State = "away"
-		if msg, ok := userInfo.LocateInfo.String(wire.LocateTLVTagsInfoUnavailableData); ok {
-			info.AwayMsg = msg
-		}
-	}
-
-	if idle, ok := userInfo.Uint16BE(wire.OServiceUserInfoIdleTime); ok && idle > 0 {
-		info.IdleTime = int(idle)
-		if info.State == "online" {
-			info.State = "idle"
-		}
-	}
-
-	info.MoodIcon = moodIconURL(baseURL, info.State, userInfoCaps(userInfo.TLVUserInfo))
+	info.BuddyIcon = m.iconSource.URLForHash(sess.BaseURL, ident, presence.IconHash)
+	info.MoodIcon = moodIconURL(sess.BaseURL, presence.State, presence.Caps)
 
 	return info
 }
@@ -295,6 +275,9 @@ func (m *BuddyListManager) RemoveBuddyFromFeedbag(ctx context.Context, sess *Ses
 		if _, err := m.feedbagService.DeleteItem(ctx, sess.OSCARSession, delFrame, delBody); err != nil {
 			m.logger.ErrorContext(ctx, "remove buddy: Feedbag DeleteItem failed", "err", err.Error())
 			return "error", err
+		}
+		if !stillListsBuddy(fl.Items(), buddyName) {
+			sess.forgetBuddyPresence(state.NewIdentScreenName(buddyName))
 		}
 	} else {
 		return "notFound", nil
@@ -344,6 +327,16 @@ func (m *BuddyListManager) RemoveGroupFromFeedbag(ctx context.Context, sess *Ses
 		if _, err := m.feedbagService.DeleteItem(ctx, sess.OSCARSession, delFrame, delBody); err != nil {
 			m.logger.ErrorContext(ctx, "remove group: Feedbag DeleteItem failed", "err", err.Error())
 			return "error", err
+		}
+
+		remaining := fl.Items()
+		for _, item := range pending {
+			if item.ClassID != wire.FeedbagClassIdBuddy || item.Name == "" {
+				continue
+			}
+			if !stillListsBuddy(remaining, item.Name) {
+				sess.forgetBuddyPresence(state.NewIdentScreenName(item.Name))
+			}
 		}
 	} else {
 		return "notFound", nil
@@ -577,6 +570,23 @@ func (m *BuddyListManager) SetGroupAttributeInFeedbag(ctx context.Context, sess 
 	}
 
 	return "success", nil
+}
+
+// stillListsBuddy reports whether buddyName appears among items. Callers deleting
+// a buddy from one group use it to tell a partial removal from a full one: a buddy
+// listed in several groups is still watched after leaving one of them, so their
+// cached presence is still maintained.
+func stillListsBuddy(items []wire.FeedbagItem, buddyName string) bool {
+	want := state.NewIdentScreenName(buddyName)
+	for _, item := range items {
+		if item.ClassID != wire.FeedbagClassIdBuddy {
+			continue
+		}
+		if state.NewIdentScreenName(item.Name) == want {
+			return true
+		}
+	}
+	return false
 }
 
 // feedbagGroupMatchesRequested returns true if a feedbag group row matches the

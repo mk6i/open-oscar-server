@@ -294,11 +294,8 @@ func TestBuddyListManager_GetBuddyListForUser(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			fs := newMockFeedbagService(t)
-			// The locate query returns an error, so every buddy resolves to
-			// offline. This keeps the focus on feedbag -> group conversion.
-			ls := newMockLocateService(t)
-			ls.EXPECT().UserInfoQuery(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-				Return(wire.SNACMessage{}, errors.New("offline")).Maybe()
+			// No buddy arrives, so every buddy resolves to offline, keeping the
+			// focus on feedbag -> group conversion.
 			if tt.fbErr != nil {
 				fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).Return(wire.SNACMessage{}, tt.fbErr).Once()
 			} else {
@@ -307,7 +304,7 @@ func TestBuddyListManager_GetBuddyListForUser(t *testing.T) {
 				).Once()
 			}
 
-			m := NewBuddyListManager(fs, ls, newTestIconSource(t), slog.Default())
+			m := NewBuddyListManager(fs, newMockLocateService(t), newTestIconSource(t), slog.Default())
 			sess := &Session{
 				ScreenName:   state.DisplayScreenName(owner.String()),
 				OSCARSession: state.NewSession().AddInstance(),
@@ -325,9 +322,9 @@ func TestBuddyListManager_GetBuddyListForUser(t *testing.T) {
 	}
 }
 
-func TestBuddyListManager_GetBuddyListForUser_DisplayIDFromLocateReply(t *testing.T) {
+func TestBuddyListManager_GetBuddyListForUser_DisplayIDFromPresenceView(t *testing.T) {
 	// Feedbag buddy names are stored normalized, so an online buddy's display
-	// name can only come from the locate reply's user info.
+	// name can only come from the user info their arrival carried.
 	ctx := context.Background()
 
 	fb := []wire.FeedbagItem{
@@ -345,18 +342,14 @@ func TestBuddyListManager_GetBuddyListForUser_DisplayIDFromLocateReply(t *testin
 		wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: fb}}, nil,
 	).Once()
 
-	ls := newMockLocateService(t)
-	ls.EXPECT().UserInfoQuery(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
-		wire.SNACMessage{Body: wire.SNAC_0x02_0x06_LocateUserInfoReply{
-			TLVUserInfo: wire.TLVUserInfo{ScreenName: "Mike Kelly"},
-		}}, nil,
-	).Once()
-
-	m := NewBuddyListManager(fs, ls, newTestIconSource(t), slog.Default())
+	m := NewBuddyListManager(fs, newMockLocateService(t), newTestIconSource(t), slog.Default())
 	sess := &Session{
 		ScreenName:   state.DisplayScreenName("listowner"),
 		OSCARSession: state.NewSession().AddInstance(),
+		logger:       slog.Default(),
 	}
+	buddyArrives(sess, onlineBuddy("Mike Kelly"))
+
 	got, err := m.GetBuddyListForUser(ctx, sess)
 	require.NoError(t, err)
 	require.Len(t, got, 1)
@@ -367,10 +360,50 @@ func TestBuddyListManager_GetBuddyListForUser_DisplayIDFromLocateReply(t *testin
 	assert.Equal(t, "online", got[0].Buddies[0].State)
 }
 
-// Icons are published only for online, non-blocking buddies: an online buddy with
-// an icon gets a content-addressed URL, an online buddy without one gets the
-// hash-less placeholder URL, and an offline (or blocking) buddy gets no icon and
-// is never even looked up, so neither their icon nor its hash leaks.
+// A departure keeps the display name the buddy last arrived with, rather than
+// falling back to the normalized feedbag name.
+func TestBuddyListManager_GetBuddyListForUser_DepartureKeepsDisplayID(t *testing.T) {
+	ctx := context.Background()
+
+	fb := []wire.FeedbagItem{
+		{Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+			TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{100})}}},
+		{Name: "Buddies", GroupID: 100, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+			TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1})}}},
+		{ItemID: 1, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "mikekelly"},
+	}
+
+	fs := newMockFeedbagService(t)
+	fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).Return(
+		wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: fb}}, nil,
+	).Once()
+
+	m := NewBuddyListManager(fs, newMockLocateService(t), newTestIconSource(t), slog.Default())
+	sess := &Session{
+		ScreenName:   state.DisplayScreenName("listowner"),
+		OSCARSession: state.NewSession().AddInstance(),
+		BaseURL:      "http://api.example.com",
+		logger:       slog.Default(),
+	}
+	buddyArrives(sess, bartBuddy("Mike Kelly", testIconBART, testStatusBART))
+	buddyDeparts(sess, "Mike Kelly")
+
+	got, err := m.GetBuddyListForUser(ctx, sess)
+	require.NoError(t, err)
+	require.Len(t, got[0].Buddies, 1)
+
+	buddy := got[0].Buddies[0]
+	assert.Equal(t, "offline", buddy.State)
+	assert.Equal(t, "Mike Kelly", buddy.DisplayID)
+	// An offline buddy publishes neither their icon nor their status message.
+	assert.Empty(t, buddy.BuddyIcon)
+	assert.Empty(t, buddy.StatusMsg)
+}
+
+// Icons are published only for online buddies: one with an icon gets a
+// content-addressed URL, one without gets the placeholder URL, and an offline
+// buddy gets none, so neither their icon nor its hash leaks. The hash rides in on
+// the arrival, so no metadata lookup happens.
 func TestBuddyListManager_GetBuddyListForUser_PublishesBuddyIcons(t *testing.T) {
 	ctx := context.Background()
 
@@ -389,30 +422,9 @@ func TestBuddyListManager_GetBuddyListForUser_PublishesBuddyIcons(t *testing.T) 
 		wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: fb}}, nil,
 	).Once()
 
-	online := func(name string) wire.SNACMessage {
-		return wire.SNACMessage{Body: wire.SNAC_0x02_0x06_LocateUserInfoReply{
-			TLVUserInfo: wire.TLVUserInfo{ScreenName: name},
-		}}
-	}
-	locateFor := func(name string) any {
-		return mock.MatchedBy(func(q wire.SNAC_0x02_0x05_LocateUserInfoQuery) bool { return q.ScreenName == name })
-	}
-
-	ls := newMockLocateService(t)
-	ls.EXPECT().UserInfoQuery(mock.Anything, mock.Anything, mock.Anything, locateFor("onlineicon")).
-		Return(online("onlineicon"), nil).Once()
-	ls.EXPECT().UserInfoQuery(mock.Anything, mock.Anything, mock.Anything, locateFor("onlinenoicon")).
-		Return(online("onlinenoicon"), nil).Once()
-	ls.EXPECT().UserInfoQuery(mock.Anything, mock.Anything, mock.Anything, locateFor("offlinebud")).
-		Return(wire.SNACMessage{}, errors.New("offline")).Once()
-
 	iconRetriever := newMockBuddyIconRetriever(t)
-	iconRetriever.EXPECT().BuddyIconMetadata(mock.Anything, state.NewIdentScreenName("onlineicon")).
-		Return(bartID([]byte{0xab, 0xcd}), nil).Once()
-	iconRetriever.EXPECT().BuddyIconMetadata(mock.Anything, state.NewIdentScreenName("onlinenoicon")).
-		Return(nil, nil).Once()
 
-	m := NewBuddyListManager(fs, ls, BuddyIconSource{
+	m := NewBuddyListManager(fs, newMockLocateService(t), BuddyIconSource{
 		IconRetriever: iconRetriever,
 		Logger:        slog.Default(),
 	}, slog.Default())
@@ -421,7 +433,14 @@ func TestBuddyListManager_GetBuddyListForUser_PublishesBuddyIcons(t *testing.T) 
 		ScreenName:   state.DisplayScreenName("listowner"),
 		OSCARSession: state.NewSession().AddInstance(),
 		BaseURL:      "http://api.example.com",
+		logger:       slog.Default(),
 	}
+	buddyArrives(sess, bartBuddy("onlineicon", wire.BARTID{
+		Type:     wire.BARTTypesBuddyIcon,
+		BARTInfo: wire.BARTInfo{Hash: []byte{0xab, 0xcd}},
+	}))
+	buddyArrives(sess, onlineBuddy("onlinenoicon"))
+
 	got, err := m.GetBuddyListForUser(ctx, sess)
 	require.NoError(t, err)
 	require.Len(t, got, 1)
@@ -433,16 +452,18 @@ func TestBuddyListManager_GetBuddyListForUser_PublishesBuddyIcons(t *testing.T) 
 		"http://api.example.com/expressions/get?t=onlineicon&type=buddyIcon&bartId=abcd",
 		got[0].Buddies[0].BuddyIcon)
 
-	// offlinebud: no icon, and its metadata is never queried.
+	// offlinebud: never arrived, so no icon.
 	assert.Equal(t, "offline", got[0].Buddies[1].State)
 	assert.Empty(t, got[0].Buddies[1].BuddyIcon)
-	iconRetriever.AssertNotCalled(t, "BuddyIconMetadata", mock.Anything, state.NewIdentScreenName("offlinebud"))
 
 	// onlinenoicon: hash-less placeholder URL so a cleared icon still propagates.
 	assert.Equal(t, "online", got[0].Buddies[2].State)
 	assert.Equal(t,
 		"http://api.example.com/expressions/get?t=onlinenoicon&type=buddyIcon",
 		got[0].Buddies[2].BuddyIcon)
+
+	// The arrivals carried every hash, so the roster costs no metadata lookups.
+	iconRetriever.AssertNotCalled(t, "BuddyIconMetadata", mock.Anything, mock.Anything)
 }
 
 // The roster is where a client first reads a buddy's status message.
@@ -463,33 +484,16 @@ func TestBuddyListManager_GetBuddyListForUser_PublishesStatusMessages(t *testing
 		wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: fb}}, nil,
 	).Once()
 
-	withStatus := wire.TLVUserInfo{ScreenName: "hasstatus"}
-	withStatus.Append(wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, []wire.BARTID{testStatusBART}))
-
-	locateFor := func(name string) any {
-		return mock.MatchedBy(func(q wire.SNAC_0x02_0x05_LocateUserInfoQuery) bool { return q.ScreenName == name })
-	}
-	ls := newMockLocateService(t)
-	ls.EXPECT().UserInfoQuery(mock.Anything, mock.Anything, mock.Anything, locateFor("hasstatus")).
-		Return(wire.SNACMessage{Body: wire.SNAC_0x02_0x06_LocateUserInfoReply{TLVUserInfo: withStatus}}, nil).Once()
-	ls.EXPECT().UserInfoQuery(mock.Anything, mock.Anything, mock.Anything, locateFor("nostatus")).
-		Return(wire.SNACMessage{Body: wire.SNAC_0x02_0x06_LocateUserInfoReply{
-			TLVUserInfo: wire.TLVUserInfo{ScreenName: "nostatus"},
-		}}, nil).Once()
-
-	iconRetriever := newMockBuddyIconRetriever(t)
-	iconRetriever.EXPECT().BuddyIconMetadata(mock.Anything, mock.Anything).Return(nil, nil).Twice()
-
-	m := NewBuddyListManager(fs, ls, BuddyIconSource{
-		IconRetriever: iconRetriever,
-		Logger:        slog.Default(),
-	}, slog.Default())
-
+	m := NewBuddyListManager(fs, newMockLocateService(t), newTestIconSource(t), slog.Default())
 	sess := &Session{
 		ScreenName:   state.DisplayScreenName("listowner"),
 		OSCARSession: state.NewSession().AddInstance(),
 		BaseURL:      "http://api.example.com",
+		logger:       slog.Default(),
 	}
+	buddyArrives(sess, bartBuddy("hasstatus", testStatusBART))
+	buddyArrives(sess, onlineBuddy("nostatus"))
+
 	got, err := m.GetBuddyListForUser(ctx, sess)
 	require.NoError(t, err)
 	require.Len(t, got, 1)
@@ -497,6 +501,65 @@ func TestBuddyListManager_GetBuddyListForUser_PublishesStatusMessages(t *testing
 
 	assert.Equal(t, "brb", got[0].Buddies[0].StatusMsg)
 	assert.Empty(t, got[0].Buddies[1].StatusMsg)
+}
+
+// The roster is rebuilt on every feedbag change, so only an unavailable buddy may
+// cost a locate query. Mockery fails the test on any other call.
+func TestBuddyListManager_GetBuddyListForUser_QueriesOnlyAwayBuddies(t *testing.T) {
+	ctx := context.Background()
+
+	fb := []wire.FeedbagItem{
+		{Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+			TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{100})}}},
+		{Name: "Buddies", GroupID: 100, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+			TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1, 2, 3})}}},
+		{ItemID: 1, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "onlinebud"},
+		{ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "awaybud"},
+		{ItemID: 3, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "neverseen"},
+	}
+
+	fs := newMockFeedbagService(t)
+	fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).Return(
+		wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: fb}}, nil,
+	).Once()
+
+	ls := newMockLocateService(t)
+	// Only the away buddy earns a query.
+	ls.EXPECT().UserInfoQuery(mock.Anything, mock.Anything, mock.Anything,
+		mock.MatchedBy(func(q wire.SNAC_0x02_0x05_LocateUserInfoQuery) bool {
+			return q.ScreenName == "awaybud"
+		})).
+		Return(wire.SNACMessage{Body: wire.SNAC_0x02_0x06_LocateUserInfoReply{
+			TLVUserInfo: wire.TLVUserInfo{ScreenName: "awaybud"},
+			LocateInfo: wire.TLVRestBlock{TLVList: wire.TLVList{
+				wire.NewTLVBE(wire.LocateTLVTagsInfoUnavailableData, "out to lunch"),
+			}},
+		}}, nil).Once()
+
+	m := NewBuddyListManager(fs, ls, newTestIconSource(t), slog.Default())
+	sess := &Session{
+		ScreenName:   state.DisplayScreenName("listowner"),
+		OSCARSession: state.NewSession().AddInstance(),
+		logger:       slog.Default(),
+	}
+
+	away := wire.TLVUserInfo{ScreenName: "awaybud"}
+	away.Append(wire.NewTLVBE(wire.OServiceUserInfoUserFlags, wire.OServiceUserFlagUnavailable))
+
+	buddyArrives(sess, onlineBuddy("onlinebud"))
+	buddyArrives(sess, away)
+
+	got, err := m.GetBuddyListForUser(ctx, sess)
+	require.NoError(t, err)
+	require.Len(t, got[0].Buddies, 3)
+
+	assert.Equal(t, "online", got[0].Buddies[0].State)
+	assert.Equal(t, "away", got[0].Buddies[1].State)
+	// The away message is the one field a presence broadcast cannot carry.
+	assert.Equal(t, "out to lunch", got[0].Buddies[1].AwayMsg)
+	// A buddy no arrival has been relayed for renders offline rather than
+	// triggering a lookup.
+	assert.Equal(t, "offline", got[0].Buddies[2].State)
 }
 
 // The feedbag service relays a session's own writes only to the owner's other
@@ -570,4 +633,123 @@ func TestStoredGroupNameForRequest(t *testing.T) {
 	st2, ok2 := storedGroupNameForRequest(items2, "Friends")
 	assert.True(t, ok2)
 	assert.Equal(t, "Friends", st2)
+}
+
+// Removing a buddy stops any further presence SNAC for them, so their cached
+// presence is dropped. A buddy listed in more than one group is still watched
+// after leaving one of them, and keeps their entry.
+func TestBuddyListManager_RemoveBuddyFromFeedbag_ForgetsPresence(t *testing.T) {
+	ctx := context.Background()
+
+	// feedbag places mikekelly in every group named.
+	feedbag := func(groups ...string) []wire.FeedbagItem {
+		items := []wire.FeedbagItem{
+			{Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+				TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{100, 200})}}},
+		}
+		for i, group := range groups {
+			gid := uint16(100 * (i + 1))
+			itemID := uint16(i + 1)
+			items = append(items,
+				wire.FeedbagItem{Name: group, GroupID: gid, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+					TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{itemID})}}},
+				wire.FeedbagItem{ItemID: itemID, ClassID: wire.FeedbagClassIdBuddy, GroupID: gid, Name: "mikekelly"},
+			)
+		}
+		return items
+	}
+
+	tests := []struct {
+		name        string
+		fb          []wire.FeedbagItem
+		group       string
+		allGroups   bool
+		wantForgot  bool
+		description string
+	}{
+		{
+			name:       "sole listing forgets the buddy",
+			fb:         feedbag("Buddies"),
+			group:      "Buddies",
+			wantForgot: true,
+		},
+		{
+			name:       "removing from all groups forgets the buddy",
+			fb:         feedbag("Buddies", "Work"),
+			allGroups:  true,
+			wantForgot: true,
+		},
+		{
+			// Still on the list via the other group, so still watched.
+			name:       "removal from one of two groups keeps the buddy",
+			fb:         feedbag("Buddies", "Work"),
+			group:      "Buddies",
+			wantForgot: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fs := newMockFeedbagService(t)
+			fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).Return(
+				wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: tt.fb}}, nil,
+			).Maybe()
+			fs.EXPECT().DeleteItem(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+				Return(&wire.SNACMessage{}, nil).Once()
+			fs.EXPECT().UpsertItem(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+				Return(&wire.SNACMessage{}, nil).Maybe()
+
+			m := NewBuddyListManager(fs, newMockLocateService(t), newTestIconSource(t), slog.Default())
+			sess := &Session{
+				ScreenName:   state.DisplayScreenName("listowner"),
+				OSCARSession: state.NewSession().AddInstance(),
+				logger:       slog.Default(),
+			}
+			buddyArrives(sess, onlineBuddy("Mike Kelly"))
+
+			resultCode, err := m.RemoveBuddyFromFeedbag(ctx, sess, "mikekelly", tt.group, tt.allGroups)
+			require.NoError(t, err)
+			require.Equal(t, "success", resultCode)
+
+			_, ok := sess.BuddyPresence(state.NewIdentScreenName("mikekelly"))
+			assert.Equal(t, !tt.wantForgot, ok)
+		})
+	}
+}
+
+// Deleting a group deletes the buddies in it.
+func TestBuddyListManager_RemoveGroupFromFeedbag_ForgetsPresence(t *testing.T) {
+	ctx := context.Background()
+
+	fb := []wire.FeedbagItem{
+		{Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+			TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{100})}}},
+		{Name: "Buddies", GroupID: 100, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+			TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1})}}},
+		{ItemID: 1, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "mikekelly"},
+	}
+
+	fs := newMockFeedbagService(t)
+	fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).Return(
+		wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: fb}}, nil,
+	).Maybe()
+	fs.EXPECT().DeleteItem(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(&wire.SNACMessage{}, nil).Once()
+	fs.EXPECT().UpsertItem(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(&wire.SNACMessage{}, nil).Maybe()
+
+	m := NewBuddyListManager(fs, newMockLocateService(t), newTestIconSource(t), slog.Default())
+	sess := &Session{
+		ScreenName:   state.DisplayScreenName("listowner"),
+		OSCARSession: state.NewSession().AddInstance(),
+		logger:       slog.Default(),
+	}
+	buddyArrives(sess, onlineBuddy("Mike Kelly"))
+
+	resultCode, err := m.RemoveGroupFromFeedbag(ctx, sess, "Buddies")
+	require.NoError(t, err)
+	require.Equal(t, "success", resultCode)
+
+	_, ok := sess.BuddyPresence(state.NewIdentScreenName("mikekelly"))
+	assert.False(t, ok)
 }

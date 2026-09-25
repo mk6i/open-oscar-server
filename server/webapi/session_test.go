@@ -1601,3 +1601,429 @@ func TestSessionManager_CreateSession_SeedsCapabilities(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, webAPICaps, other.Caps(), "one session's mood must not reach the next session's seed")
 }
+
+// An IM does not change its sender's presence, and the client shallow-merges the
+// source user map onto the user object the buddy list rendered.
+func TestSession_IncomingIMReportsSenderPresenceFromTheView(t *testing.T) {
+	newSession := func() *Session {
+		return &Session{
+			ScreenName: state.DisplayScreenName("me"),
+			Events:     []string{"im", "presence"},
+			EventQueue: NewEventQueue(10),
+			logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+		}
+	}
+
+	incomingIM := func(t *testing.T, sess *Session, from string) IMEvent {
+		t.Helper()
+		frags, err := wire.ICBMFragmentList("hello")
+		require.NoError(t, err)
+		body := wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
+			ChannelID:   wire.ICBMChannelIM,
+			TLVUserInfo: wire.TLVUserInfo{ScreenName: from},
+		}
+		body.Append(wire.NewTLVBE(wire.ICBMTLVAOLIMData, frags))
+		sess.handleIncomingIM(wire.SNACMessage{Body: body})
+
+		for _, event := range sess.EventQueue.GetAllEvents() {
+			if im, ok := event.Data.(IMEvent); ok {
+				return im
+			}
+		}
+		t.Fatal("no im event was pushed")
+		return IMEvent{}
+	}
+
+	t.Run("an away sender stays away", func(t *testing.T) {
+		sess := newSession()
+		away := wire.TLVUserInfo{ScreenName: "Mike Kelly"}
+		away.Append(wire.NewTLVBE(wire.OServiceUserInfoUserFlags, wire.OServiceUserFlagUnavailable))
+		buddyArrives(sess, away)
+
+		assert.Equal(t, "away", incomingIM(t, sess, "Mike Kelly").Source.State)
+	})
+
+	t.Run("a busy ICQ sender stays occupied", func(t *testing.T) {
+		sess := newSession()
+		sess.ScreenName = state.DisplayScreenName("100001")
+		busy := wire.TLVUserInfo{ScreenName: "100003"}
+		busy.Append(wire.NewTLVBE(wire.OServiceUserInfoStatus, wire.OServiceUserStatusBusy))
+		buddyArrives(sess, busy)
+
+		assert.Equal(t, "occupied", incomingIM(t, sess, "100003").Source.State)
+	})
+
+	t.Run("an online sender is online", func(t *testing.T) {
+		sess := newSession()
+		buddyArrives(sess, onlineBuddy("Mike Kelly"))
+
+		assert.Equal(t, "online", incomingIM(t, sess, "Mike Kelly").Source.State)
+	})
+
+	// A non-buddy raises no arrival, so there is no state to report.
+	t.Run("a sender with no presence carries no state", func(t *testing.T) {
+		sess := newSession()
+		assert.Empty(t, incomingIM(t, sess, "stranger").Source.State)
+	})
+}
+
+// userInfoWith builds the user info a buddy arrives with.
+func userInfoWith(screenName string, tlvs ...wire.TLV) wire.TLVUserInfo {
+	info := wire.TLVUserInfo{ScreenName: screenName}
+	for _, tlv := range tlvs {
+		info.Append(tlv)
+	}
+	return info
+}
+
+func awayFlagTLV() wire.TLV {
+	return wire.NewTLVBE(wire.OServiceUserInfoUserFlags, wire.OServiceUserFlagUnavailable)
+}
+
+func statusTLV(mask uint32) wire.TLV {
+	return wire.NewTLVBE(wire.OServiceUserInfoStatus, mask)
+}
+
+func idleTLV(minutes uint16) wire.TLV {
+	return wire.NewTLVBE(wire.OServiceUserInfoIdleTime, minutes)
+}
+
+func TestBuddyWebState(t *testing.T) {
+	tests := []struct {
+		name        string
+		info        wire.TLVUserInfo
+		isAIMViewer bool
+		wantState   string
+		wantIdle    int
+	}{
+		{
+			name:        "a plain arrival is online",
+			info:        userInfoWith("buddy"),
+			isAIMViewer: true,
+			wantState:   "online",
+		},
+		{
+			// A buddy cannot tell an invisible user from a signed-off one.
+			name:        "invisible reads as offline",
+			info:        userInfoWith("buddy", statusTLV(wire.OServiceUserStatusInvisible)),
+			isAIMViewer: true,
+			wantState:   "offline",
+		},
+		{
+			name:        "the unavailable flag is away",
+			info:        userInfoWith("buddy", awayFlagTLV()),
+			isAIMViewer: true,
+			wantState:   "away",
+		},
+		{
+			name:        "the away status bit is away",
+			info:        userInfoWith("buddy", statusTLV(wire.OServiceUserStatusAway)),
+			isAIMViewer: true,
+			wantState:   "away",
+		},
+		{
+			// Busy and DND also raise the unavailable flag, so the status bits
+			// have to be read first or every busy user reports as away.
+			name:        "busy reaches an ICQ viewer as occupied",
+			info:        userInfoWith("buddy", statusTLV(wire.OServiceUserStatusBusy), awayFlagTLV()),
+			isAIMViewer: false,
+			wantState:   "occupied",
+		},
+		{
+			name:        "dnd reaches an ICQ viewer as dnd",
+			info:        userInfoWith("buddy", statusTLV(wire.OServiceUserStatusDND), awayFlagTLV()),
+			isAIMViewer: false,
+			wantState:   "dnd",
+		},
+		{
+			// AIM accounts have no vocabulary for busy or dnd.
+			name:        "busy collapses to away for an AIM viewer",
+			info:        userInfoWith("buddy", statusTLV(wire.OServiceUserStatusBusy), awayFlagTLV()),
+			isAIMViewer: true,
+			wantState:   "away",
+		},
+		{
+			name:        "dnd collapses to away for an AIM viewer",
+			info:        userInfoWith("buddy", statusTLV(wire.OServiceUserStatusDND), awayFlagTLV()),
+			isAIMViewer: true,
+			wantState:   "away",
+		},
+		{
+			name:        "idle alone is idle",
+			info:        userInfoWith("buddy", idleTLV(7)),
+			isAIMViewer: true,
+			wantState:   "idle",
+			wantIdle:    7,
+		},
+		{
+			// Idle rides along in idleTime without taking over the state.
+			name:        "idle does not displace away",
+			info:        userInfoWith("buddy", awayFlagTLV(), idleTLV(12)),
+			isAIMViewer: true,
+			wantState:   "away",
+			wantIdle:    12,
+		},
+		{
+			name:        "idle does not displace occupied",
+			info:        userInfoWith("buddy", statusTLV(wire.OServiceUserStatusBusy), awayFlagTLV(), idleTLV(3)),
+			isAIMViewer: false,
+			wantState:   "occupied",
+			wantIdle:    3,
+		},
+		{
+			name:        "zero idle minutes leave the buddy online",
+			info:        userInfoWith("buddy", idleTLV(0)),
+			isAIMViewer: true,
+			wantState:   "online",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotState, gotIdle := buddyWebState(tt.info, tt.isAIMViewer)
+			assert.Equal(t, tt.wantState, gotState)
+			assert.Equal(t, tt.wantIdle, gotIdle)
+		})
+	}
+}
+
+// No locate query follows a presence record, so everything a roster payload
+// needs has to survive the trip from the SNAC.
+func TestBuddyPresenceFrom(t *testing.T) {
+	info := userInfoWith("Mike Kelly", idleTLV(4),
+		wire.NewTLVBE(wire.OServiceUserInfoSignonTOD, uint32(1700000000)),
+		wire.NewTLVBE(wire.OServiceUserInfoOscarCaps, wire.CapICQCh2Extended[:]),
+		wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, []wire.BARTID{testIconBART, testStatusBART}),
+	)
+
+	got := buddyPresenceFrom(info, true)
+
+	assert.Equal(t, "Mike Kelly", got.DisplayID)
+	assert.Equal(t, "idle", got.State)
+	assert.Equal(t, 4, got.IdleTime)
+	assert.Equal(t, int64(1700000000), got.OnlineTime)
+	assert.Equal(t, "brb", got.StatusMsg)
+	assert.Equal(t, [][16]byte{wire.CapICQCh2Extended}, got.Caps)
+	assert.Equal(t, []byte{0xde, 0xad, 0xbe, 0xef}, got.IconHash)
+	assert.True(t, got.Online())
+}
+
+func TestSession_PresenceView(t *testing.T) {
+	newSession := func(events ...string) *Session {
+		return &Session{
+			ScreenName: state.DisplayScreenName("me"),
+			Events:     events,
+			EventQueue: NewEventQueue(10),
+			logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+		}
+	}
+
+	t.Run("an arrival records the buddy under their normalized aimId", func(t *testing.T) {
+		sess := newSession("presence")
+		buddyArrives(sess, onlineBuddy("Mike Kelly"))
+
+		got, ok := sess.BuddyPresence(state.NewIdentScreenName("MIKE KELLY"))
+		require.True(t, ok)
+		assert.Equal(t, "online", got.State)
+		assert.Equal(t, "Mike Kelly", got.DisplayID)
+	})
+
+	t.Run("a buddy never seen has no entry", func(t *testing.T) {
+		sess := newSession("presence")
+		_, ok := sess.BuddyPresence(state.NewIdentScreenName("stranger"))
+		assert.False(t, ok)
+	})
+
+	// A departure carries no TLV block, so everything but the display name goes.
+	t.Run("a departure marks the buddy offline and keeps their display name", func(t *testing.T) {
+		sess := newSession("presence")
+		buddyArrives(sess, bartBuddy("Mike Kelly", testIconBART, testStatusBART))
+		buddyDeparts(sess, "mikekelly")
+
+		got, ok := sess.BuddyPresence(state.NewIdentScreenName("mikekelly"))
+		require.True(t, ok)
+		assert.Equal(t, "offline", got.State)
+		assert.Equal(t, "Mike Kelly", got.DisplayID)
+		assert.Empty(t, got.StatusMsg)
+		assert.Empty(t, got.IconHash)
+		assert.False(t, got.Online())
+	})
+
+	t.Run("a later arrival replaces the earlier state", func(t *testing.T) {
+		sess := newSession("presence")
+		buddyArrives(sess, onlineBuddy("mikekelly"))
+		buddyArrives(sess, userInfoWith("mikekelly", awayFlagTLV()))
+
+		got, _ := sess.BuddyPresence(state.NewIdentScreenName("mikekelly"))
+		assert.Equal(t, "away", got.State)
+	})
+
+	// The roster reads this view, so a buddylist-only client still needs it.
+	t.Run("the view is recorded without a presence subscription", func(t *testing.T) {
+		sess := newSession("buddylist")
+		buddyArrives(sess, onlineBuddy("mikekelly"))
+
+		got, ok := sess.BuddyPresence(state.NewIdentScreenName("mikekelly"))
+		require.True(t, ok)
+		assert.Equal(t, "online", got.State)
+		assert.Empty(t, sess.EventQueue.GetAllEvents())
+
+		buddyDeparts(sess, "mikekelly")
+		got, _ = sess.BuddyPresence(state.NewIdentScreenName("mikekelly"))
+		assert.Equal(t, "offline", got.State)
+		assert.Empty(t, sess.EventQueue.GetAllEvents())
+	})
+
+	// A UIN viewer keeps ICQ's own vocabulary; an AIM viewer does not.
+	t.Run("the viewer's account type decides how busy is reported", func(t *testing.T) {
+		busy := userInfoWith("100003", statusTLV(wire.OServiceUserStatusBusy), awayFlagTLV())
+
+		aimViewer := newSession("presence")
+		buddyArrives(aimViewer, busy)
+		got, _ := aimViewer.BuddyPresence(state.NewIdentScreenName("100003"))
+		assert.Equal(t, "away", got.State)
+
+		icqViewer := newSession("presence")
+		icqViewer.ScreenName = state.DisplayScreenName("100001")
+		buddyArrives(icqViewer, busy)
+		got, _ = icqViewer.BuddyPresence(state.NewIdentScreenName("100003"))
+		assert.Equal(t, "occupied", got.State)
+	})
+}
+
+// Idle time and signon time have fields on the presence event and come from the
+// same record the roster reads.
+func TestSession_PresenceEventCarriesIdleAndOnlineTime(t *testing.T) {
+	sess := &Session{
+		ScreenName: state.DisplayScreenName("me"),
+		Events:     []string{"presence"},
+		EventQueue: NewEventQueue(10),
+		logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	buddyArrives(sess, userInfoWith("mikekelly", idleTLV(9),
+		wire.NewTLVBE(wire.OServiceUserInfoSignonTOD, uint32(1700000000))))
+
+	events := sess.EventQueue.GetAllEvents()
+	require.Len(t, events, 1)
+	got := events[0].Data.(PresenceEvent)
+	assert.Equal(t, "idle", got.State)
+	assert.Equal(t, 9, got.IdleTime)
+	assert.Equal(t, int64(1700000000), got.OnlineTime)
+}
+
+// After un-watching a buddy, no arrival or departure for them reaches this
+// session again, so a retained entry would serve its last-seen state forever.
+func TestSession_ForgetBuddyPresence(t *testing.T) {
+	newSession := func() *Session {
+		return &Session{
+			ScreenName: state.DisplayScreenName("me"),
+			Events:     []string{"presence", "im"},
+			EventQueue: NewEventQueue(10),
+			logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+		}
+	}
+
+	t.Run("forgetting drops the entry rather than marking it offline", func(t *testing.T) {
+		sess := newSession()
+		buddyArrives(sess, onlineBuddy("Mike Kelly"))
+		sess.forgetBuddyPresence(state.NewIdentScreenName("mikekelly"))
+
+		// A miss, not an offline record: callers that can fall back to a live
+		// lookup have to tell the two apart.
+		_, ok := sess.BuddyPresence(state.NewIdentScreenName("mikekelly"))
+		assert.False(t, ok)
+	})
+
+	t.Run("forgetting an unknown buddy is a no-op", func(t *testing.T) {
+		sess := newSession()
+		sess.forgetBuddyPresence(state.NewIdentScreenName("stranger"))
+		_, ok := sess.BuddyPresence(state.NewIdentScreenName("stranger"))
+		assert.False(t, ok)
+	})
+
+	t.Run("a later arrival re-establishes the entry", func(t *testing.T) {
+		sess := newSession()
+		buddyArrives(sess, onlineBuddy("mikekelly"))
+		sess.forgetBuddyPresence(state.NewIdentScreenName("mikekelly"))
+		buddyArrives(sess, onlineBuddy("mikekelly"))
+
+		got, ok := sess.BuddyPresence(state.NewIdentScreenName("mikekelly"))
+		require.True(t, ok)
+		assert.Equal(t, "online", got.State)
+	})
+
+	// While watched a departure would have arrived; after un-watching none does.
+	t.Run("an IM from a forgotten buddy carries no state", func(t *testing.T) {
+		sess := newSession()
+		buddyArrives(sess, onlineBuddy("Mike Kelly"))
+		sess.forgetBuddyPresence(state.NewIdentScreenName("mikekelly"))
+
+		frags, err := wire.ICBMFragmentList("hello")
+		require.NoError(t, err)
+		body := wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
+			ChannelID:   wire.ICBMChannelIM,
+			TLVUserInfo: wire.TLVUserInfo{ScreenName: "Mike Kelly"},
+		}
+		body.Append(wire.NewTLVBE(wire.ICBMTLVAOLIMData, frags))
+		sess.handleIncomingIM(wire.SNACMessage{Body: body})
+
+		for _, event := range sess.EventQueue.GetAllEvents() {
+			if im, ok := event.Data.(IMEvent); ok {
+				assert.Empty(t, im.Source.State)
+				return
+			}
+		}
+		t.Fatal("no im event was pushed")
+	})
+}
+
+// A feedbag delete relayed from another instance names the buddies that left the
+// roster, so the session forgets them without a query of its own.
+func TestSession_RelayedFeedbagDeleteForgetsPresence(t *testing.T) {
+	sess := &Session{
+		ScreenName: state.DisplayScreenName("me"),
+		Events:     []string{"presence", "buddylist"},
+		EventQueue: NewEventQueue(10),
+		logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	buddyArrives(sess, onlineBuddy("Mike Kelly"))
+	buddyArrives(sess, onlineBuddy("keeper"))
+
+	sess.handleFeedbagMessage(wire.SNACMessage{
+		Frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagDeleteItem},
+		Body: wire.SNAC_0x13_0x0A_FeedbagDeleteItem{Items: []wire.FeedbagItem{
+			{ClassID: wire.FeedbagClassIdBuddy, Name: "mikekelly"},
+			// A group row names a group, not a buddy, and must not evict anything.
+			{ClassID: wire.FeedbagClassIdGroup, Name: "keeper"},
+		}},
+	})
+
+	_, ok := sess.BuddyPresence(state.NewIdentScreenName("mikekelly"))
+	assert.False(t, ok, "deleted buddy should be forgotten")
+
+	_, ok = sess.BuddyPresence(state.NewIdentScreenName("keeper"))
+	assert.True(t, ok, "a group row must not evict a like-named buddy")
+}
+
+// An insert or update leaves the roster membership intact, so it must not evict.
+func TestSession_RelayedFeedbagUpdateKeepsPresence(t *testing.T) {
+	sess := &Session{
+		ScreenName: state.DisplayScreenName("me"),
+		Events:     []string{"presence", "buddylist"},
+		EventQueue: NewEventQueue(10),
+		logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	buddyArrives(sess, onlineBuddy("Mike Kelly"))
+
+	sess.handleFeedbagMessage(wire.SNACMessage{
+		Frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagUpdateItem},
+		Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{Items: []wire.FeedbagItem{
+			{ClassID: wire.FeedbagClassIdBuddy, Name: "mikekelly"},
+		}},
+	})
+
+	got, ok := sess.BuddyPresence(state.NewIdentScreenName("mikekelly"))
+	require.True(t, ok)
+	assert.Equal(t, "online", got.State)
+}

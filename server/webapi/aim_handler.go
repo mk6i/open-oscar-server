@@ -692,6 +692,10 @@ func (h *AimHandler) RemoveTempBuddy(w http.ResponseWriter, r *http.Request, ses
 		return
 	}
 
+	for _, buddyName := range buddyNames {
+		session.forgetBuddyPresence(state.NewIdentScreenName(buddyName))
+	}
+
 	SendOK(w, r, nil, h.Logger)
 
 	h.Logger.InfoContext(ctx, "temporary buddies removed",

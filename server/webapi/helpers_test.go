@@ -102,3 +102,29 @@ func rateLimitEventStatuses(t *testing.T, session *Session) []string {
 	}
 	return statuses
 }
+
+// buddyArrives feeds a BuddyArrived through the session's SNAC handler, which is
+// how its presence view learns that a buddy is online.
+func buddyArrives(sess *Session, info wire.TLVUserInfo) {
+	sess.handleBuddyArrived(wire.SNACMessage{Body: wire.SNAC_0x03_0x0B_BuddyArrived{TLVUserInfo: info}})
+}
+
+// buddyDeparts feeds a BuddyDeparted through the session's SNAC handler.
+func buddyDeparts(sess *Session, screenName string) {
+	sess.handleBuddyDeparted(wire.SNACMessage{Body: wire.SNAC_0x03_0x0C_BuddyDeparted{
+		TLVUserInfo: wire.TLVUserInfo{ScreenName: screenName},
+	}})
+}
+
+// onlineBuddy is the user info an ordinary online buddy arrives with.
+func onlineBuddy(screenName string) wire.TLVUserInfo {
+	return wire.TLVUserInfo{ScreenName: screenName}
+}
+
+// bartBuddy is the user info a buddy arrives with when they advertise BART
+// items, which carry the icon hash and the status message.
+func bartBuddy(screenName string, ids ...wire.BARTID) wire.TLVUserInfo {
+	info := wire.TLVUserInfo{ScreenName: screenName}
+	info.Append(wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, ids))
+	return info
+}

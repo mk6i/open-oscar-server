@@ -86,11 +86,16 @@ type Session struct {
 	BuddyIconURL func(screenName state.IdentScreenName, hash []byte) string
 	aliases      map[string]string // cached BuddyAliasLoader result, nil when unloaded or invalidated
 	aliasMu      sync.Mutex
-	imLog        map[string][]WebAPIStoredIM
-	imLogMu      sync.Mutex
-	sentIMs      map[uint64]string // OSCAR message cookie -> the msgId given to the client
-	sentIMOrder  []uint64          // insertion order of sentIMs, oldest first
-	sentIMMu     sync.Mutex
+	// presence is the session's view of its buddies' last-known presence, keyed by
+	// normalized aimId and fed by the BuddyArrived/BuddyDeparted SNACs the listener
+	// receives.
+	presence    map[string]BuddyPresence
+	presenceMu  sync.RWMutex
+	imLog       map[string][]WebAPIStoredIM
+	imLogMu     sync.Mutex
+	sentIMs     map[uint64]string // OSCAR message cookie -> the msgId given to the client
+	sentIMOrder []uint64          // insertion order of sentIMs, oldest first
+	sentIMMu    sync.Mutex
 	// IMRateClassID is the rate class that sending an IM spends. The web client
 	// renders any rate limit event as the IM banner, so only this class's updates
 	// may reach it. Zero disables the alert.
@@ -162,6 +167,73 @@ func (s *Session) InvalidateAliases() {
 func (s *Session) aliasFor(buddy state.IdentScreenName) string {
 	// Runs on the SNAC listener goroutine, which has no request context.
 	return s.Aliases(s.ctx)[buddy.String()]
+}
+
+// BuddyPresence is a buddy's last-known presence, assembled from the
+// BuddyArrived and BuddyDeparted SNACs a session receives. It carries only what
+// those SNACs carry: an away message lives in the locate reply's LocateInfo and
+// is not part of a presence broadcast.
+type BuddyPresence struct {
+	DisplayID  string // screen name as the buddy formats it
+	State      string // "online", "away", "idle", "occupied", "dnd", "offline"
+	StatusMsg  string
+	OnlineTime int64
+	IdleTime   int // minutes
+	Caps       [][16]byte
+	IconHash   []byte
+}
+
+// Online reports whether the buddy is visible to the viewer.
+func (p BuddyPresence) Online() bool {
+	return p.State != "offline"
+}
+
+// BuddyPresence returns a buddy's last-known presence and whether the session
+// has one. Callers rendering the roster treat a miss as offline.
+func (s *Session) BuddyPresence(buddy state.IdentScreenName) (BuddyPresence, bool) {
+	s.presenceMu.RLock()
+	defer s.presenceMu.RUnlock()
+	p, ok := s.presence[buddy.String()]
+	return p, ok
+}
+
+// setBuddyPresence records a buddy's presence, replacing whatever was there.
+func (s *Session) setBuddyPresence(buddy state.IdentScreenName, p BuddyPresence) {
+	s.presenceMu.Lock()
+	defer s.presenceMu.Unlock()
+	if s.presence == nil {
+		s.presence = make(map[string]BuddyPresence)
+	}
+	s.presence[buddy.String()] = p
+}
+
+// setBuddyOffline marks a buddy offline, keeping the display name last seen for
+// them. A BuddyDeparted carries no TLV block, so nothing else survives: an
+// offline buddy publishes no icon, status message or mood.
+func (s *Session) setBuddyOffline(buddy state.IdentScreenName) {
+	s.presenceMu.Lock()
+	defer s.presenceMu.Unlock()
+	if s.presence == nil {
+		s.presence = make(map[string]BuddyPresence)
+	}
+	s.presence[buddy.String()] = BuddyPresence{
+		DisplayID: s.presence[buddy.String()].DisplayID,
+		State:     "offline",
+	}
+}
+
+// forgetBuddyPresence drops a buddy's cached presence. Callers do this when the
+// viewer stops watching them: OSCAR notifies only users who currently watch each
+// other, so no arrival or departure for that buddy is relayed here again.
+func (s *Session) forgetBuddyPresence(buddy state.IdentScreenName) {
+	s.presenceMu.Lock()
+	defer s.presenceMu.Unlock()
+	delete(s.presence, buddy.String())
+}
+
+// isAIMViewer reports whether the session owner is an AIM account.
+func (s *Session) isAIMViewer() bool {
+	return s.ScreenName.IdentScreenName().UIN() == 0
 }
 
 // Touch updates the last accessed time and extends expiration if needed.
@@ -418,14 +490,19 @@ func (s *Session) handleIncomingIM(msg wire.SNACMessage) {
 			"to", s.ScreenName,
 			"sent", timestamp)
 	} else {
+		source := UserInfo{
+			AimID:     partnerAimID,
+			DisplayID: partnerDisplay,
+			Friendly:  s.aliasFor(partner),
+			UserType:  userTypeFor(partner),
+		}
+		if presence, ok := s.BuddyPresence(partner); ok {
+			source.State = presence.State
+			source.OnlineTime = presence.OnlineTime
+		}
+
 		s.EventQueue.Push(EventTypeIM, IMEvent{
-			Source: UserInfo{
-				AimID:     partnerAimID,
-				DisplayID: partnerDisplay,
-				Friendly:  s.aliasFor(partner),
-				UserType:  userTypeFor(partner),
-				State:     "online",
-			},
+			Source:    source,
 			Message:   messageText,
 			MsgID:     msgID,
 			Timestamp: timestamp,
@@ -533,40 +610,35 @@ func (s *Session) handleBuddyMessage(msg wire.SNACMessage) {
 }
 
 // handleBuddyArrived handles when a buddy comes online.
+//
+// For BuddyArrived updates, presence state is inferred from the TLVUserInfo.
+// Away and invisible transitions are typically broadcast using BuddyArrived
+// with updated user flags/status bits, not BuddyDeparted.
 func (s *Session) handleBuddyArrived(msg wire.SNACMessage) {
-	if !s.IsSubscribedTo("presence") {
-		return
-	}
-
 	body, ok := msg.Body.(wire.SNAC_0x03_0x0B_BuddyArrived)
 	if !ok {
 		return
 	}
 
-	stateStr := "online"
-	// For BuddyArrived updates, infer presence state from the TLVUserInfo.
-	// Away and invisible transitions are typically broadcast using BuddyArrived
-	// with updated user flags/status bits, not BuddyDeparted.
-	if body.IsInvisible() {
-		stateStr = "offline"
-	} else if st := statusBitState(body.TLVUserInfo, s.ScreenName.IdentScreenName().UIN() == 0); st != "" {
-		stateStr = st
-	} else if body.IsAway() {
-		stateStr = "away"
-	} else if mask, ok := body.Uint32BE(wire.OServiceUserInfoStatus); ok && mask&wire.OServiceUserStatusAway != 0 {
-		stateStr = "away"
-	}
-
 	buddy := state.NewIdentScreenName(body.ScreenName)
-	presenceEvent := PresenceEvent{
-		AimID:    buddy.String(),
-		Friendly: s.aliasFor(buddy),
-		State:    stateStr,
-		UserType: userTypeFor(buddy),
+	presence := buddyPresenceFrom(body.TLVUserInfo, s.isAIMViewer())
+
+	s.setBuddyPresence(buddy, presence)
+
+	if !s.IsSubscribedTo("presence") {
+		return
 	}
 
-	presenceEvent.MoodIcon = moodIconURL(s.BaseURL, stateStr, userInfoCaps(body.TLVUserInfo))
-	presenceEvent.StatusMsg = userStatusMsg(body.TLVUserInfo)
+	presenceEvent := PresenceEvent{
+		AimID:      buddy.String(),
+		Friendly:   s.aliasFor(buddy),
+		State:      presence.State,
+		UserType:   userTypeFor(buddy),
+		StatusMsg:  presence.StatusMsg,
+		IdleTime:   presence.IdleTime,
+		OnlineTime: presence.OnlineTime,
+		MoodIcon:   moodIconURL(s.BaseURL, presence.State, presence.Caps),
+	}
 
 	// A BuddyArrived carries the buddy's current icon in TLV 0x1D whenever they
 	// have one, so an icon change (or clear, which arrives as the sentinel hash)
@@ -576,7 +648,7 @@ func (s *Session) handleBuddyArrived(msg wire.SNACMessage) {
 	// client's shallow merge. An empty result (no origin known) is omitted, which
 	// preserves whatever icon the client already holds.
 	if s.BuddyIconURL != nil {
-		presenceEvent.BuddyIcon = s.BuddyIconURL(buddy, buddyIconHash(body.TLVUserInfo))
+		presenceEvent.BuddyIcon = s.BuddyIconURL(buddy, presence.IconHash)
 	}
 
 	s.EventQueue.Push(EventTypePresence, presenceEvent)
@@ -632,18 +704,115 @@ func sessionStatusMsg(instance *state.SessionInstance) string {
 	return msg
 }
 
-// handleBuddyDeparted handles when a buddy goes offline.
-func (s *Session) handleBuddyDeparted(msg wire.SNACMessage) {
-	if !s.IsSubscribedTo("presence") {
-		return
+// buddyWebState reports the web state a buddy's user info describes, along with
+// the minutes they have been idle. Invisibility reads as offline. Idle is always
+// reported, but only upgrades an otherwise online user to "idle".
+func buddyWebState(info wire.TLVUserInfo, isAIMViewer bool) (string, int) {
+	idle := 0
+	if mins, ok := info.Uint16BE(wire.OServiceUserInfoIdleTime); ok {
+		idle = int(mins)
 	}
 
+	if info.IsInvisible() {
+		return "offline", idle
+	}
+
+	// statusBitState must be consulted before IsAway: Busy and DND also raise
+	// the unavailable flag, so an away-first test reports every busy user as
+	// away.
+	if st := statusBitState(info, isAIMViewer); st != "" {
+		return st, idle
+	}
+	if info.IsAway() {
+		return "away", idle
+	}
+	if mask, ok := info.Uint32BE(wire.OServiceUserInfoStatus); ok && mask&wire.OServiceUserStatusAway != 0 {
+		return "away", idle
+	}
+	if idle > 0 {
+		return "idle", idle
+	}
+	return "online", idle
+}
+
+// buddyPresenceFrom builds a presence record from the user info block a
+// BuddyArrived carries. isAIMViewer decides whether Busy and DND collapse to
+// "away".
+func buddyPresenceFrom(info wire.TLVUserInfo, isAIMViewer bool) BuddyPresence {
+	st, idle := buddyWebState(info, isAIMViewer)
+
+	p := BuddyPresence{
+		DisplayID: info.ScreenName,
+		State:     st,
+		IdleTime:  idle,
+		StatusMsg: userStatusMsg(info),
+		Caps:      userInfoCaps(info),
+		IconHash:  buddyIconHash(info),
+	}
+	if tod, ok := info.Uint32BE(wire.OServiceUserInfoSignonTOD); ok {
+		p.OnlineTime = int64(tod)
+	}
+	return p
+}
+
+// hasAwayMsg reports whether a state is one whose user may be advertising an
+// away message.
+func hasAwayMsg(webState string) bool {
+	switch webState {
+	case "away", "occupied", "dnd":
+		return true
+	}
+	return false
+}
+
+// awayMessage reads a buddy's away message, which lives in the locate reply's
+// LocateInfo and so is absent from presence broadcasts. Callers ask only for a
+// buddy the view already reports as unavailable.
+func awayMessage(
+	ctx context.Context,
+	locateService LocateService,
+	instance *state.SessionInstance,
+	buddy state.IdentScreenName,
+	logger *slog.Logger,
+) string {
+	reply, err := locateService.UserInfoQuery(ctx, instance, wire.SNACFrame{},
+		wire.SNAC_0x02_0x05_LocateUserInfoQuery{
+			Type:       uint16(wire.LocateTypeUnavailable),
+			ScreenName: buddy.String(),
+		})
+	if err != nil {
+		logger.WarnContext(ctx, "failed to query away message",
+			"screenName", buddy.String(), "error", err)
+		return ""
+	}
+
+	info, ok := reply.Body.(wire.SNAC_0x02_0x06_LocateUserInfoReply)
+	if !ok {
+		// Locate error => the buddy went offline or blocked the caller between
+		// their arrival and this query.
+		return ""
+	}
+
+	msg, _ := info.LocateInfo.String(wire.LocateTLVTagsInfoUnavailableData)
+	return msg
+}
+
+// handleBuddyDeparted handles when a buddy goes offline.
+func (s *Session) handleBuddyDeparted(msg wire.SNACMessage) {
 	body, ok := msg.Body.(wire.SNAC_0x03_0x0C_BuddyDeparted)
 	if !ok {
 		return
 	}
 
 	buddy := state.NewIdentScreenName(body.ScreenName)
+
+	// Recorded before the subscription check, for the same reason as arrivals.
+	s.setBuddyOffline(buddy)
+
+	if !s.IsSubscribedTo("presence") {
+		return
+	}
+
 	// BuddyIcon is deliberately omitted: an offline buddy keeps their icon, and
 	// omitting it lets the client's merge preserve the icon it already holds.
 	presenceEvent := PresenceEvent{
@@ -695,18 +864,29 @@ func (s *Session) handleFeedbagMessage(msg wire.SNACMessage) {
 		s.refreshBuddyList()
 
 	case wire.FeedbagInsertItem, wire.FeedbagUpdateItem, wire.FeedbagDeleteItem:
+		// An insert and an update both relay an UpdateItem body; only a delete
+		// carries a DeleteItem body.
+		var items []wire.FeedbagItem
+		isDelete := false
+		switch body := msg.Body.(type) {
+		case wire.SNAC_0x13_0x09_FeedbagUpdateItem:
+			items = body.Items
+		case wire.SNAC_0x13_0x0A_FeedbagDeleteItem:
+			items = body.Items
+			isDelete = true
+		}
+
+		if isDelete {
+			for _, item := range items {
+				if item.ClassID == wire.FeedbagClassIdBuddy && item.Name != "" {
+					s.forgetBuddyPresence(state.NewIdentScreenName(item.Name))
+				}
+			}
+		}
+
 		s.refreshBuddyList()
 
 		if s.PermitDenyRefresher != nil {
-			// An insert and an update both relay an UpdateItem body; only a
-			// delete carries a DeleteItem body.
-			var items []wire.FeedbagItem
-			switch body := msg.Body.(type) {
-			case wire.SNAC_0x13_0x09_FeedbagUpdateItem:
-				items = body.Items
-			case wire.SNAC_0x13_0x0A_FeedbagDeleteItem:
-				items = body.Items
-			}
 			for _, item := range items {
 				if item.ClassID == wire.FeedbagClassIDPermit ||
 					item.ClassID == wire.FeedbagClassIDDeny ||
