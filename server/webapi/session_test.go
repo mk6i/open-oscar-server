@@ -86,6 +86,7 @@ func TestSession_handleRateLimitUpdate(t *testing.T) {
 			IMRateClassID: imClass,
 			EventQueue:    NewEventQueue(10),
 			logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+			FeedbagLoader: emptyFeedbagLoader,
 		}
 	}
 
@@ -151,6 +152,7 @@ func TestSessionManager_GetSession_rejectsAfterRateLimitDisconnect(t *testing.T)
 
 	sess, err := mgr.CreateSession(state.DisplayScreenName("advbot"), []string{"presence"}, inst, "", slog.Default())
 	require.NoError(t, err)
+	sess.FeedbagLoader = emptyFeedbagLoader
 
 	// Healthy session resolves.
 	got, err := mgr.GetSession(context.Background(), sess.AimSID)
@@ -191,8 +193,10 @@ func TestSessionManager_ShutdownDrainsAndClosesSessions(t *testing.T) {
 
 	s1, err := mgr.CreateSession(state.DisplayScreenName("alice"), []string{"presence"}, inst1, "", slog.Default())
 	assert.NoError(t, err)
+	s1.FeedbagLoader = emptyFeedbagLoader
 	s2, err := mgr.CreateSession(state.DisplayScreenName("bob"), []string{"presence"}, inst2, "", slog.Default())
 	assert.NoError(t, err)
+	s2.FeedbagLoader = emptyFeedbagLoader
 
 	assert.NoError(t, mgr.Shutdown(context.Background()))
 
@@ -224,8 +228,10 @@ func TestSessionManager_ReapExpired(t *testing.T) {
 
 	expired, err := mgr.CreateSession("alice", []string{"presence"}, expiredInst, "", slog.Default())
 	assert.NoError(t, err)
+	expired.FeedbagLoader = emptyFeedbagLoader
 	live, err := mgr.CreateSession("bob", []string{"presence"}, liveInst, "", slog.Default())
 	assert.NoError(t, err)
+	live.FeedbagLoader = emptyFeedbagLoader
 
 	// Force alice's session into the past; bob keeps its default future expiry.
 	expired.ExpiresAt = time.Now().Add(-time.Minute)
@@ -345,10 +351,11 @@ func TestSessionManager_RunAfterShutdown(t *testing.T) {
 // carry a user map, and both would otherwise rename an aliased buddy.
 func TestSession_UINBuddyReportsICQOnArrivalAndDeparture(t *testing.T) {
 	sess := &Session{
-		ScreenName: state.DisplayScreenName("me"),
-		Events:     []string{"presence"},
-		EventQueue: NewEventQueue(10),
-		logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+		ScreenName:    state.DisplayScreenName("me"),
+		Events:        []string{"presence"},
+		EventQueue:    NewEventQueue(10),
+		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		FeedbagLoader: emptyFeedbagLoader,
 	}
 
 	sess.handleBuddyArrived(wire.SNACMessage{Body: wire.SNAC_0x03_0x0B_BuddyArrived{
@@ -367,13 +374,11 @@ func TestSession_UINBuddyReportsICQOnArrivalAndDeparture(t *testing.T) {
 func TestSession_RepeatsBuddyAliasOnOSCAREvents(t *testing.T) {
 	newSession := func() *Session {
 		return &Session{
-			ScreenName: state.DisplayScreenName("me"),
-			Events:     []string{"im", "conversation", "presence"},
-			EventQueue: NewEventQueue(10),
-			logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
-			BuddyAliasLoader: func(_ context.Context) (map[string]string, error) {
-				return map[string]string{"mikekelly": "MICHAELKELLY"}, nil
-			},
+			ScreenName:    state.DisplayScreenName("me"),
+			Events:        []string{"im", "conversation", "presence"},
+			EventQueue:    NewEventQueue(10),
+			logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+			FeedbagLoader: aliasFeedbagLoader(map[string]string{"mikekelly": "MICHAELKELLY"}),
 		}
 	}
 
@@ -444,9 +449,9 @@ func TestSession_CachesBuddyAliases(t *testing.T) {
 		Events:     []string{"presence"},
 		EventQueue: NewEventQueue(10),
 		logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
-		BuddyAliasLoader: func(_ context.Context) (map[string]string, error) {
+		FeedbagLoader: func(context.Context) ([]wire.FeedbagItem, error) {
 			loads++
-			return map[string]string{"mikekelly": "MICHAELKELLY"}, nil
+			return aliasFeedbagItems(map[string]string{"mikekelly": "MICHAELKELLY"}), nil
 		},
 	}
 
@@ -473,8 +478,8 @@ func TestSession_FeedbagSNACInvalidatesAliasCache(t *testing.T) {
 		Events:     []string{"presence"},
 		EventQueue: NewEventQueue(10),
 		logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
-		BuddyAliasLoader: func(_ context.Context) (map[string]string, error) {
-			return map[string]string{"mikekelly": alias}, nil
+		FeedbagLoader: func(context.Context) ([]wire.FeedbagItem, error) {
+			return aliasFeedbagItems(map[string]string{"mikekelly": alias}), nil
 		},
 	}
 
@@ -547,6 +552,7 @@ func TestSession_FeedbagSNACRefreshesPermitDeny(t *testing.T) {
 				PermitDenyRefresher: func(_ context.Context) (any, error) {
 					return map[string]any{"pdMode": "denySome"}, nil
 				},
+				FeedbagLoader: emptyFeedbagLoader,
 			}
 
 			sess.handleFeedbagMessage(wire.SNACMessage{
@@ -571,12 +577,12 @@ func TestSession_FeedbagSNACRefreshesPermitDeny(t *testing.T) {
 
 // A session sees no SNAC for feedbag writes it makes itself, so the handlers that
 // perform those writes invalidate the cache directly.
-func TestSession_InvalidateAliases(t *testing.T) {
+func TestSession_InvalidateFeedbag(t *testing.T) {
 	alias := "MICHAELKELLY"
 	sess := &Session{
 		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
-		BuddyAliasLoader: func(_ context.Context) (map[string]string, error) {
-			return map[string]string{"mikekelly": alias}, nil
+		FeedbagLoader: func(context.Context) ([]wire.FeedbagItem, error) {
+			return aliasFeedbagItems(map[string]string{"mikekelly": alias}), nil
 		},
 	}
 
@@ -585,22 +591,22 @@ func TestSession_InvalidateAliases(t *testing.T) {
 	alias = "MIKE"
 	assert.Equal(t, "MICHAELKELLY", sess.Aliases(context.Background())["mikekelly"], "cached until invalidated")
 
-	sess.InvalidateAliases()
+	sess.InvalidateFeedbag()
 	assert.Equal(t, "MIKE", sess.Aliases(context.Background())["mikekelly"])
 }
 
 // A failed load must not be cached as an empty map: aliases would stay missing for
 // the life of the session.
-func TestSession_AliasLoadErrorIsNotCached(t *testing.T) {
+func TestSession_FeedbagLoadErrorIsNotCached(t *testing.T) {
 	var loads int
 	sess := &Session{
 		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
-		BuddyAliasLoader: func(_ context.Context) (map[string]string, error) {
+		FeedbagLoader: func(context.Context) ([]wire.FeedbagItem, error) {
 			loads++
 			if loads == 1 {
 				return nil, io.EOF
 			}
-			return map[string]string{"mikekelly": "MICHAELKELLY"}, nil
+			return aliasFeedbagItems(map[string]string{"mikekelly": "MICHAELKELLY"}), nil
 		},
 	}
 
@@ -610,10 +616,11 @@ func TestSession_AliasLoadErrorIsNotCached(t *testing.T) {
 
 func TestSession_HandleIncomingIM_NormalizesAimID(t *testing.T) {
 	sess := &Session{
-		ScreenName: state.DisplayScreenName("me"),
-		Events:     []string{"im", "conversation"},
-		EventQueue: NewEventQueue(10),
-		logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+		ScreenName:    state.DisplayScreenName("me"),
+		Events:        []string{"im", "conversation"},
+		EventQueue:    NewEventQueue(10),
+		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		FeedbagLoader: emptyFeedbagLoader,
 	}
 
 	frags, err := wire.ICBMFragmentList("hello")
@@ -651,8 +658,9 @@ func TestSession_HandleIncomingIM_NormalizesAimID(t *testing.T) {
 
 func TestSession_HandleTypingNotification_NormalizesAimID(t *testing.T) {
 	sess := &Session{
-		Events:     []string{"typing"},
-		EventQueue: NewEventQueue(10),
+		Events:        []string{"typing"},
+		EventQueue:    NewEventQueue(10),
+		FeedbagLoader: emptyFeedbagLoader,
 	}
 
 	sess.handleTypingNotification(wire.SNACMessage{
@@ -671,8 +679,9 @@ func TestSession_HandleTypingNotification_NormalizesAimID(t *testing.T) {
 
 func TestSession_HandleBuddyArrivedDeparted_NormalizesAimID(t *testing.T) {
 	sess := &Session{
-		Events:     []string{"presence"},
-		EventQueue: NewEventQueue(10),
+		Events:        []string{"presence"},
+		EventQueue:    NewEventQueue(10),
+		FeedbagLoader: emptyFeedbagLoader,
 	}
 
 	sess.handleBuddyArrived(wire.SNACMessage{
@@ -732,6 +741,7 @@ func TestSession_PublishesBuddyIconOnPresence(t *testing.T) {
 				}
 				return "icon:" + hex.EncodeToString(hash)
 			},
+			FeedbagLoader: emptyFeedbagLoader,
 		}
 	}
 
@@ -835,6 +845,7 @@ func TestSession_PushesMyInfoOnUserInfoUpdate(t *testing.T) {
 				}
 				return "icon:" + hex.EncodeToString(hash)
 			},
+			FeedbagLoader: emptyFeedbagLoader,
 		}
 	}
 
@@ -1022,6 +1033,7 @@ func TestSessionManager_ShutdownBoundedByContext(t *testing.T) {
 	inst := state.NewSession().AddInstance()
 	sess, err := mgr.CreateSession("alice", []string{"presence"}, inst, "", slog.Default())
 	assert.NoError(t, err)
+	sess.FeedbagLoader = emptyFeedbagLoader
 
 	// Stand in for a listener wedged somewhere that never observes cancellation.
 	release := make(chan struct{})
@@ -1050,6 +1062,7 @@ func TestSession_CloseCancelsSessionContext(t *testing.T) {
 	inst := state.NewSession().AddInstance()
 	sess, err := mgr.CreateSession("alice", []string{"presence"}, inst, "", slog.Default())
 	assert.NoError(t, err)
+	sess.FeedbagLoader = emptyFeedbagLoader
 
 	assert.NoError(t, sess.ctx.Err(), "session context should be live before Close")
 
@@ -1067,10 +1080,11 @@ func TestSession_OfflineIM(t *testing.T) {
 
 	newSession := func(events ...string) *Session {
 		return &Session{
-			ScreenName: state.DisplayScreenName("me"),
-			Events:     events,
-			EventQueue: NewEventQueue(10),
-			logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+			ScreenName:    state.DisplayScreenName("me"),
+			Events:        events,
+			EventQueue:    NewEventQueue(10),
+			logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+			FeedbagLoader: emptyFeedbagLoader,
 		}
 	}
 
@@ -1155,6 +1169,7 @@ func TestSession_BootReleasesParkedFetcherWithSessionEnded(t *testing.T) {
 
 	sess, err := mgr.CreateSession(state.DisplayScreenName("mike"), []string{"presence"}, inst, "", slog.Default())
 	require.NoError(t, err)
+	sess.FeedbagLoader = emptyFeedbagLoader
 	sess.StartListeningToOSCARSession()
 
 	// Park a fetcher the way fetchEvents does, with nothing pending.
@@ -1192,6 +1207,7 @@ func TestSession_SelfCloseEmitsNoSessionEndedEvent(t *testing.T) {
 
 	sess, err := mgr.CreateSession(state.DisplayScreenName("mike"), []string{"presence"}, inst, "", slog.Default())
 	require.NoError(t, err)
+	sess.FeedbagLoader = emptyFeedbagLoader
 	sess.StartListeningToOSCARSession()
 
 	require.NoError(t, mgr.RemoveSession(context.Background(), sess.AimSID))
@@ -1292,6 +1308,7 @@ func TestSession_FeedbagStatusRefreshesBuddyList(t *testing.T) {
 					refreshed++
 					return &BuddyListData{Groups: []BuddyGroup{}}, nil
 				},
+				FeedbagLoader: emptyFeedbagLoader,
 			}
 
 			body := tt.body
@@ -1378,8 +1395,9 @@ func TestSession_HandleClientError(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			sess := &Session{
-				Events:     tt.events,
-				EventQueue: NewEventQueue(10),
+				Events:        tt.events,
+				EventQueue:    NewEventQueue(10),
+				FeedbagLoader: emptyFeedbagLoader,
 			}
 			if tt.record {
 				sess.RecordSentIM(cookie, msgID)
@@ -1442,11 +1460,12 @@ func TestSession_RecordSentIMEvictsOldestCookie(t *testing.T) {
 func TestSession_PublishesMoodOnPresence(t *testing.T) {
 	newSession := func() *Session {
 		return &Session{
-			ScreenName: state.DisplayScreenName("me"),
-			BaseURL:    "http://host",
-			Events:     []string{"presence"},
-			EventQueue: NewEventQueue(10),
-			logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+			ScreenName:    state.DisplayScreenName("me"),
+			BaseURL:       "http://host",
+			Events:        []string{"presence"},
+			EventQueue:    NewEventQueue(10),
+			logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+			FeedbagLoader: emptyFeedbagLoader,
 		}
 	}
 
@@ -1593,12 +1612,14 @@ func TestSessionManager_CreateSession_SeedsCapabilities(t *testing.T) {
 
 	sess, err := mgr.CreateSession("testuser", nil, state.NewSession().AddInstance(), "", logger)
 	require.NoError(t, err)
+	sess.FeedbagLoader = emptyFeedbagLoader
 	assert.Equal(t, webAPICaps, sess.Caps())
 
 	sess.SetMood(wire.CapXStatusBeer)
 
 	other, err := mgr.CreateSession("otheruser", nil, state.NewSession().AddInstance(), "", logger)
 	require.NoError(t, err)
+	other.FeedbagLoader = emptyFeedbagLoader
 	assert.Equal(t, webAPICaps, other.Caps(), "one session's mood must not reach the next session's seed")
 }
 
@@ -1607,10 +1628,11 @@ func TestSessionManager_CreateSession_SeedsCapabilities(t *testing.T) {
 func TestSession_IncomingIMReportsSenderPresenceFromTheView(t *testing.T) {
 	newSession := func() *Session {
 		return &Session{
-			ScreenName: state.DisplayScreenName("me"),
-			Events:     []string{"im", "presence"},
-			EventQueue: NewEventQueue(10),
-			logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+			ScreenName:    state.DisplayScreenName("me"),
+			Events:        []string{"im", "presence"},
+			EventQueue:    NewEventQueue(10),
+			logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+			FeedbagLoader: emptyFeedbagLoader,
 		}
 	}
 
@@ -1811,10 +1833,11 @@ func TestBuddyPresenceFrom(t *testing.T) {
 func TestSession_PresenceView(t *testing.T) {
 	newSession := func(events ...string) *Session {
 		return &Session{
-			ScreenName: state.DisplayScreenName("me"),
-			Events:     events,
-			EventQueue: NewEventQueue(10),
-			logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+			ScreenName:    state.DisplayScreenName("me"),
+			Events:        events,
+			EventQueue:    NewEventQueue(10),
+			logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+			FeedbagLoader: emptyFeedbagLoader,
 		}
 	}
 
@@ -1895,10 +1918,11 @@ func TestSession_PresenceView(t *testing.T) {
 // same record the roster reads.
 func TestSession_PresenceEventCarriesIdleAndOnlineTime(t *testing.T) {
 	sess := &Session{
-		ScreenName: state.DisplayScreenName("me"),
-		Events:     []string{"presence"},
-		EventQueue: NewEventQueue(10),
-		logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+		ScreenName:    state.DisplayScreenName("me"),
+		Events:        []string{"presence"},
+		EventQueue:    NewEventQueue(10),
+		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		FeedbagLoader: emptyFeedbagLoader,
 	}
 
 	buddyArrives(sess, userInfoWith("mikekelly", idleTLV(9),
@@ -1917,10 +1941,11 @@ func TestSession_PresenceEventCarriesIdleAndOnlineTime(t *testing.T) {
 func TestSession_ForgetBuddyPresence(t *testing.T) {
 	newSession := func() *Session {
 		return &Session{
-			ScreenName: state.DisplayScreenName("me"),
-			Events:     []string{"presence", "im"},
-			EventQueue: NewEventQueue(10),
-			logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+			ScreenName:    state.DisplayScreenName("me"),
+			Events:        []string{"presence", "im"},
+			EventQueue:    NewEventQueue(10),
+			logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+			FeedbagLoader: emptyFeedbagLoader,
 		}
 	}
 
@@ -1978,41 +2003,94 @@ func TestSession_ForgetBuddyPresence(t *testing.T) {
 	})
 }
 
-// A feedbag delete relayed from another instance names the buddies that left the
-// roster, so the session forgets them without a query of its own.
-func TestSession_RelayedFeedbagDeleteForgetsPresence(t *testing.T) {
-	sess := &Session{
-		ScreenName: state.DisplayScreenName("me"),
-		Events:     []string{"presence", "buddylist"},
-		EventQueue: NewEventQueue(10),
-		logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+// A relayed delete names the items that went away, not whether the buddy left the
+// roster, so only a buddy absent from the refreshed roster is forgotten.
+func TestSession_RelayedFeedbagDeleteForgetsUnlistedBuddies(t *testing.T) {
+	newSession := func(roster ...string) *Session {
+		sess := &Session{
+			ScreenName:    state.DisplayScreenName("me"),
+			Events:        []string{"presence", "buddylist"},
+			EventQueue:    NewEventQueue(10),
+			logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+			FeedbagLoader: emptyFeedbagLoader,
+		}
+		sess.ctx = context.Background()
+		sess.FeedbagLoader = func(context.Context) ([]wire.FeedbagItem, error) {
+			items := make([]wire.FeedbagItem, 0, len(roster))
+			for i, name := range roster {
+				items = append(items, wire.FeedbagItem{
+					ItemID: uint16(i + 1), ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: name,
+				})
+			}
+			return items, nil
+		}
+		return sess
 	}
-	buddyArrives(sess, onlineBuddy("Mike Kelly"))
-	buddyArrives(sess, onlineBuddy("keeper"))
 
-	sess.handleFeedbagMessage(wire.SNACMessage{
-		Frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagDeleteItem},
-		Body: wire.SNAC_0x13_0x0A_FeedbagDeleteItem{Items: []wire.FeedbagItem{
-			{ClassID: wire.FeedbagClassIdBuddy, Name: "mikekelly"},
-			// A group row names a group, not a buddy, and must not evict anything.
-			{ClassID: wire.FeedbagClassIdGroup, Name: "keeper"},
-		}},
+	relayDelete := func(sess *Session, items ...wire.FeedbagItem) {
+		sess.handleFeedbagMessage(wire.SNACMessage{
+			Frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagDeleteItem},
+			Body:  wire.SNAC_0x13_0x0A_FeedbagDeleteItem{Items: items},
+		})
+	}
+
+	buddyItem := wire.FeedbagItem{ClassID: wire.FeedbagClassIdBuddy, Name: "mikekelly"}
+
+	t.Run("a buddy gone from the roster is forgotten", func(t *testing.T) {
+		sess := newSession()
+		buddyArrives(sess, onlineBuddy("Mike Kelly"))
+
+		relayDelete(sess, buddyItem)
+
+		_, ok := sess.BuddyPresence(state.NewIdentScreenName("mikekelly"))
+		assert.False(t, ok)
 	})
 
-	_, ok := sess.BuddyPresence(state.NewIdentScreenName("mikekelly"))
-	assert.False(t, ok, "deleted buddy should be forgotten")
+	// The move case: a delete for the old group's item, then an insert.
+	t.Run("a buddy still on the roster keeps their entry", func(t *testing.T) {
+		sess := newSession("mikekelly")
+		buddyArrives(sess, onlineBuddy("Mike Kelly"))
 
-	_, ok = sess.BuddyPresence(state.NewIdentScreenName("keeper"))
-	assert.True(t, ok, "a group row must not evict a like-named buddy")
+		relayDelete(sess, buddyItem)
+
+		got, ok := sess.BuddyPresence(state.NewIdentScreenName("mikekelly"))
+		require.True(t, ok)
+		assert.Equal(t, "online", got.State)
+	})
+
+	t.Run("a group row does not evict a like-named buddy", func(t *testing.T) {
+		sess := newSession()
+		buddyArrives(sess, onlineBuddy("keeper"))
+
+		relayDelete(sess, wire.FeedbagItem{ClassID: wire.FeedbagClassIdGroup, Name: "keeper"})
+
+		_, ok := sess.BuddyPresence(state.NewIdentScreenName("keeper"))
+		assert.True(t, ok)
+	})
+
+	// Without a roster the two cases are indistinguishable, so nothing is dropped.
+	t.Run("a roster lookup failure keeps the entry", func(t *testing.T) {
+		sess := newSession()
+		sess.FeedbagLoader = func(context.Context) ([]wire.FeedbagItem, error) {
+			return nil, io.ErrUnexpectedEOF
+		}
+		buddyArrives(sess, onlineBuddy("Mike Kelly"))
+
+		relayDelete(sess, buddyItem)
+
+		_, ok := sess.BuddyPresence(state.NewIdentScreenName("mikekelly"))
+		assert.True(t, ok)
+	})
 }
 
 // An insert or update leaves the roster membership intact, so it must not evict.
 func TestSession_RelayedFeedbagUpdateKeepsPresence(t *testing.T) {
 	sess := &Session{
-		ScreenName: state.DisplayScreenName("me"),
-		Events:     []string{"presence", "buddylist"},
-		EventQueue: NewEventQueue(10),
-		logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+		ScreenName:    state.DisplayScreenName("me"),
+		Events:        []string{"presence", "buddylist"},
+		EventQueue:    NewEventQueue(10),
+		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		FeedbagLoader: emptyFeedbagLoader,
 	}
 	buddyArrives(sess, onlineBuddy("Mike Kelly"))
 
@@ -2026,4 +2104,45 @@ func TestSession_RelayedFeedbagUpdateKeepsPresence(t *testing.T) {
 	got, ok := sess.BuddyPresence(state.NewIdentScreenName("mikekelly"))
 	require.True(t, ok)
 	assert.Equal(t, "online", got.State)
+}
+
+// The roster, its aliases and the membership check a relayed delete makes are three
+// views of the same rows, so one feedbag change must cost one read.
+func TestSession_FeedbagCacheServesEveryReadFromOneLoad(t *testing.T) {
+	var loads int
+	sess := &Session{
+		ScreenName:    state.DisplayScreenName("me"),
+		Events:        []string{"presence", "buddylist"},
+		EventQueue:    NewEventQueue(10),
+		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		FeedbagLoader: emptyFeedbagLoader,
+	}
+	sess.ctx = context.Background()
+	sess.FeedbagLoader = func(context.Context) ([]wire.FeedbagItem, error) {
+		loads++
+		return aliasFeedbagItems(map[string]string{"keeper": "KEEPER"}), nil
+	}
+
+	buddyArrives(sess, onlineBuddy("keeper"))
+	buddyArrives(sess, onlineBuddy("gone"))
+	require.Equal(t, 1, loads, "arrivals resolve aliases off one load")
+
+	sess.handleFeedbagMessage(wire.SNACMessage{
+		Frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagDeleteItem},
+		Body: wire.SNAC_0x13_0x0A_FeedbagDeleteItem{Items: []wire.FeedbagItem{
+			{ClassID: wire.FeedbagClassIdBuddy, Name: "gone"},
+			{ClassID: wire.FeedbagClassIdBuddy, Name: "keeper"},
+		}},
+	})
+	assert.Equal(t, 2, loads, "one reload serves the whole handler")
+
+	_, ok := sess.BuddyPresence(state.NewIdentScreenName("gone"))
+	assert.False(t, ok)
+	_, ok = sess.BuddyPresence(state.NewIdentScreenName("keeper"))
+	assert.True(t, ok)
+
+	assert.Equal(t, "KEEPER", sess.Aliases(context.Background())["keeper"])
+	_, err := sess.Feedbag(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, 2, loads)
 }

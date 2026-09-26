@@ -29,6 +29,7 @@ func requireSession(sm SessionResolver, next func(http.ResponseWriter, *http.Req
 func createTestSessionManagerWithOSCAR(screenName string, oscarSession *state.SessionInstance) (*SessionManager, string) {
 	mgr := NewSessionManager()
 	session, _ := mgr.CreateSession(state.DisplayScreenName(screenName), []string{"im", "presence", "buddylist", "sentIM", "typing"}, oscarSession, "", slog.Default())
+	session.FeedbagLoader = emptyFeedbagLoader
 	return mgr, session.AimSID
 }
 
@@ -75,6 +76,7 @@ func sendIMForDest(t *testing.T, dest, locateName, alias string) []Event {
 	mgr := NewSessionManager()
 	session, err := mgr.CreateSession(state.DisplayScreenName("Ann Dupree"), []string{"im", "sentIM", "conversation"}, oscarInstance, "", slog.Default())
 	require.NoError(t, err)
+	session.FeedbagLoader = emptyFeedbagLoader
 
 	handler := &MessagingHandler{
 		ICBMService:    icbmService,
@@ -84,9 +86,7 @@ func sendIMForDest(t *testing.T, dest, locateName, alias string) []Event {
 	}
 
 	// startSession wires this in production; SendIM reads aliases off the session.
-	session.BuddyAliasLoader = func(ctx context.Context) (map[string]string, error) {
-		return LookupBuddyAliases(ctx, handler.FeedbagService, session.OSCARSession)
-	}
+	session.FeedbagLoader = feedbagServiceLoader(handler.FeedbagService, session.OSCARSession)
 
 	req, err := http.NewRequest("GET", "/im/sendIM?aimsid="+session.AimSID+"&t="+url.QueryEscape(dest)+"&message=hi", nil)
 	require.NoError(t, err)
@@ -582,6 +582,7 @@ func TestMessagingHandler_SendIM_EchoesRealStates(t *testing.T) {
 		session, err := mgr.CreateSession(state.DisplayScreenName("Ann Dupree"),
 			[]string{"im", "sentIM"}, oscarInstance, "", slog.Default())
 		require.NoError(t, err)
+		session.FeedbagLoader = emptyFeedbagLoader
 
 		if recipientPresence != nil {
 			buddyArrives(session, *recipientPresence)
@@ -593,9 +594,7 @@ func TestMessagingHandler_SendIM_EchoesRealStates(t *testing.T) {
 			FeedbagService: stubFeedbagService(t, "mikekelly", ""),
 			Logger:         slog.Default(),
 		}
-		session.BuddyAliasLoader = func(ctx context.Context) (map[string]string, error) {
-			return LookupBuddyAliases(ctx, handler.FeedbagService, session.OSCARSession)
-		}
+		session.FeedbagLoader = feedbagServiceLoader(handler.FeedbagService, session.OSCARSession)
 
 		req, err := http.NewRequest("GET", "/im/sendIM?aimsid="+session.AimSID+"&t=mikekelly&message=hi", nil)
 		require.NoError(t, err)

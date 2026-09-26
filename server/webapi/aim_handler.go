@@ -312,12 +312,19 @@ func (h *AimHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 		return &BuddyListData{Groups: groups}, nil
 	}
 
-	// Wire the alias loader so OSCAR-driven im/presence events can repeat the
-	// buddy's friendly name. The client discards the alias it holds each time it
-	// merges a user map, so an event that omits it renames the buddy. The session
-	// caches what this returns until a feedbag change invalidates it.
-	session.BuddyAliasLoader = func(ctx context.Context) (map[string]string, error) {
-		return LookupBuddyAliases(ctx, h.FeedbagService, session.OSCARSession)
+	// Wire the feedbag loader. The session caches what it returns until a feedbag
+	// change invalidates it, and derives every read-only view of the roster from it.
+	session.FeedbagLoader = func(ctx context.Context) ([]wire.FeedbagItem, error) {
+		frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
+		snac, err := h.FeedbagService.Query(ctx, session.OSCARSession, frame)
+		if err != nil {
+			return nil, err
+		}
+		reply, ok := snac.Body.(wire.SNAC_0x13_0x06_FeedbagReply)
+		if !ok {
+			return nil, fmt.Errorf("unexpected feedbag reply type")
+		}
+		return reply.Items, nil
 	}
 
 	// Wire the buddy-icon URL formatter so presence broadcasts (BuddyArrived) can
@@ -328,16 +335,11 @@ func (h *AimHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 
 	// Wire permit/deny refresher so FeedbagUpdateItem SNACs trigger a permitDeny event.
 	session.PermitDenyRefresher = func(ctx context.Context) (any, error) {
-		frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
-		fb, err := h.FeedbagService.Query(ctx, session.OSCARSession, frame)
+		items, err := session.Feedbag(ctx)
 		if err != nil {
 			return nil, err
 		}
-		reply, ok := fb.Body.(wire.SNAC_0x13_0x06_FeedbagReply)
-		if !ok {
-			return nil, fmt.Errorf("unexpected feedbag reply type")
-		}
-		return permitDenyData(reply.Items), nil
+		return permitDenyData(items), nil
 	}
 
 	// Only IM-class rate limit updates should surface to the client alert.

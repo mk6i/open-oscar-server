@@ -76,9 +76,7 @@ func (h *BuddyListHandler) AddGroup(w http.ResponseWriter, r *http.Request, sess
 }
 
 func (h *BuddyListHandler) addGroupToFeedbag(ctx context.Context, sess *Session, groupName string) string {
-	// A session sees no SNAC for its own feedbag writes, so it drops the alias
-	// cache itself. See WebAPISession.InvalidateAliases.
-	defer sess.InvalidateAliases()
+	defer sess.InvalidateFeedbag()
 
 	frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
 	snac, err := h.FeedbagService.Query(ctx, sess.OSCARSession, frame)
@@ -166,7 +164,7 @@ func (h *BuddyListHandler) RemoveGroup(w http.ResponseWriter, r *http.Request, s
 
 // addBuddyToFeedbag adds a buddy to the user's feedbag.
 func (h *BuddyListHandler) addBuddyToFeedbag(ctx context.Context, sess *Session, buddyName, groupName string, preAuthorized bool, authorizationMsg string) string {
-	defer sess.InvalidateAliases()
+	defer sess.InvalidateFeedbag()
 
 	// Retrieve current feedbag
 	frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}

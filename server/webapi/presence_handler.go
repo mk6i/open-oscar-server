@@ -3,7 +3,6 @@ package webapi
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -198,16 +197,10 @@ func (h *PresenceHandler) directoryProfile(ctx context.Context, screenName strin
 
 // getBuddyListGroups retrieves the buddy list organized by groups.
 func (h *PresenceHandler) getBuddyListGroups(ctx context.Context, session *Session, wantProfileMsg bool) ([]BuddyGroupInfo, error) {
-	frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
-	reply, err := h.FeedbagService.Query(ctx, session.OSCARSession, frame)
+	items, err := session.Feedbag(ctx)
 	if err != nil {
 		return nil, err
 	}
-	body, ok := reply.Body.(wire.SNAC_0x13_0x06_FeedbagReply)
-	if !ok {
-		return nil, fmt.Errorf("unexpected feedbag reply body type %T", reply.Body)
-	}
-	items := body.Items
 
 	// Organize items into groups, keyed by GroupID. Group rows store their
 	// identity in GroupID (ItemID is 0 for every group), so a GroupID-keyed map
@@ -390,10 +383,13 @@ func (h *PresenceHandler) getUserPresence(ctx context.Context, instance *state.S
 
 	presence.State, presence.IdleTime = buddyWebState(info.TLVUserInfo, instance.IdentScreenName().UIN() == 0)
 
-	// Publish the icon only now that locate has confirmed the user is online and
-	// has not blocked the caller. Offline and blocking users return above without
-	// an icon, so neither their icon nor its activity-revealing hash leaks to a
-	// caller they are otherwise invisible to.
+	// An offline user publishes nothing; locate still answers for an invisible one.
+	if presence.State == "offline" {
+		return presence
+	}
+
+	// Offline, blocking and invisible users return before this, so neither their
+	// icon nor its activity-revealing hash leaks to a caller they are hidden from.
 	presence.BuddyIcon = h.IconSource.PublishedURL(ctx, baseURL, ident)
 
 	// The locate reply carries the screen name as the user formatted it, which

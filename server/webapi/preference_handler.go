@@ -216,6 +216,8 @@ type PermitDenyData struct {
 
 // SetPreferences handles GET /preference/set requests to update user preferences.
 func (h *PreferenceHandler) SetPreferences(w http.ResponseWriter, r *http.Request, session *Session) {
+	defer session.InvalidateFeedbag()
+
 	ctx := r.Context()
 
 	// Preferences are stored as OSCAR buddy prefs in the feedbag, which requires
@@ -452,6 +454,8 @@ func boolToPrefInt(b bool) int {
 
 // SetPermitDeny handles GET /preference/setPermitDeny requests to update permit/deny settings.
 func (h *PreferenceHandler) SetPermitDeny(w http.ResponseWriter, r *http.Request, session *Session) {
+	defer session.InvalidateFeedbag()
+
 	ctx := r.Context()
 
 	frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
@@ -601,20 +605,13 @@ func permitDenyData(fl []wire.FeedbagItem) PermitDenyData {
 func (h *PreferenceHandler) GetPermitDeny(w http.ResponseWriter, r *http.Request, session *Session) {
 	ctx := r.Context()
 
-	frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
-	fb, err := h.FeedbagService.Query(r.Context(), session.OSCARSession, frame)
+	items, err := session.Feedbag(ctx)
 	if err != nil {
 		SendError(w, r, http.StatusInternalServerError, "failed to retrieve feedbag")
 		return
 	}
 
-	reply, ok := fb.Body.(wire.SNAC_0x13_0x06_FeedbagReply)
-	if !ok {
-		SendError(w, r, http.StatusInternalServerError, "failed to retrieve feedbag")
-		return
-	}
-
-	pdd := permitDenyData(reply.Items)
+	pdd := permitDenyData(items)
 	h.Logger.DebugContext(ctx, "permit/deny settings retrieved",
 		"screenName", session.ScreenName.String(),
 		"pdMode", pdd.PDMode,

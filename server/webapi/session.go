@@ -64,28 +64,29 @@ var webAPICaps = [][16]byte{wire.CapICQCh2Extended}
 
 // Session represents an active Web AIM API session.
 type Session struct {
-	AimSID              string                                 // Unique session ID for web client
-	ScreenName          state.DisplayScreenName                // User identity
-	OSCARSession        *state.SessionInstance                 // Bridge to existing OSCAR session
-	BaseURL             string                                 // Web API base URL advertised to the web client, used to build absolute asset URLs
-	Events              []string                               // Subscribed event types
-	EventQueue          *EventQueue                            // Per-session event queue
-	ClientName          string                                 // Client application name
-	ClientVersion       string                                 // Client application version
-	CreatedAt           time.Time                              // SessionInstance creation time
-	LastAccessed        time.Time                              // Last activity time
-	ExpiresAt           time.Time                              // SessionInstance expiration time
-	FetchTimeout        int                                    // Long-polling timeout in milliseconds
-	TimeToNextFetch     int                                    // Suggested delay before next fetch
-	RemoteAddr          string                                 // Client IP address
-	BuddyListRefresher  func(ctx context.Context) (any, error) // Called on feedbag changes to push buddylist event
-	PermitDenyRefresher func(ctx context.Context) (any, error) // Called on feedbag changes to push permitDeny event
-	BuddyAliasLoader    func(ctx context.Context) (map[string]string, error)
+	AimSID              string                                                // Unique session ID for web client
+	ScreenName          state.DisplayScreenName                               // User identity
+	OSCARSession        *state.SessionInstance                                // Bridge to existing OSCAR session
+	BaseURL             string                                                // Web API base URL advertised to the web client, used to build absolute asset URLs
+	Events              []string                                              // Subscribed event types
+	EventQueue          *EventQueue                                           // Per-session event queue
+	ClientName          string                                                // Client application name
+	ClientVersion       string                                                // Client application version
+	CreatedAt           time.Time                                             // SessionInstance creation time
+	LastAccessed        time.Time                                             // Last activity time
+	ExpiresAt           time.Time                                             // SessionInstance expiration time
+	FetchTimeout        int                                                   // Long-polling timeout in milliseconds
+	TimeToNextFetch     int                                                   // Suggested delay before next fetch
+	RemoteAddr          string                                                // Client IP address
+	BuddyListRefresher  func(ctx context.Context) (any, error)                // Called on feedbag changes to push buddylist event
+	PermitDenyRefresher func(ctx context.Context) (any, error)                // Called on feedbag changes to push permitDeny event
+	FeedbagLoader       func(ctx context.Context) ([]wire.FeedbagItem, error) // Reads the owner's feedbag; every read-only view of the roster derives from it
 	// BuddyIconURL formats the absolute buddyIcon URL for a buddy from the icon
 	// hash carried in a presence SNAC. Returns "" when no URL can be published.
 	BuddyIconURL func(screenName state.IdentScreenName, hash []byte) string
-	aliases      map[string]string // cached BuddyAliasLoader result, nil when unloaded or invalidated
-	aliasMu      sync.Mutex
+	feedbag      []wire.FeedbagItem // cached FeedbagLoader result, nil when unloaded or invalidated
+	aliases      map[string]string  // aliases derived from feedbag, nil when unloaded or invalidated
+	feedbagMu    sync.Mutex
 	// presence is the session's view of its buddies' last-known presence, keyed by
 	// normalized aimId and fed by the BuddyArrived/BuddyDeparted SNACs the listener
 	// receives.
@@ -119,45 +120,75 @@ func (s *Session) IsExpired() bool {
 }
 
 // Aliases returns this session owner's private buddy aliases, keyed by normalized
-// screen name. Aliases live in the owner's feedbag, so the map is loaded once and
-// cached until a feedbag change invalidates it: a signon that brings a large buddy
-// list online costs one feedbag query instead of one per buddy.
-//
-// The map is owned by the session and must not be mutated by callers.
-//
-// aliasMu is deliberately held across the load rather than released while the
-// feedbag is queried. Another instance of the owner can rename a buddy mid-query,
-// and its FeedbagUpdateItem SNAC invalidates this cache; if the load ran outside
-// the lock, that query's pre-rename result could be stored *after* the
-// invalidation and serve the old alias until the next feedbag change. Holding the
-// lock makes the invalidation wait for the load and then win.
+// screen name, derived from the cached feedbag and memoized alongside it. Buddies
+// without an alias are absent. The map is owned by the session and must not be
+// mutated by callers.
 func (s *Session) Aliases(ctx context.Context) map[string]string {
-	s.aliasMu.Lock()
-	defer s.aliasMu.Unlock()
+	s.feedbagMu.Lock()
+	defer s.feedbagMu.Unlock()
 
-	// The loader is wired after the session is created, so an event arriving in
-	// that window has no way to resolve aliases.
-	if s.BuddyAliasLoader == nil {
-		return nil
-	}
 	if s.aliases == nil {
-		aliases, err := s.BuddyAliasLoader(ctx)
+		items, err := s.feedbagLocked(ctx)
 		if err != nil {
-			s.logger.Error("failed to load buddy aliases", "err", err.Error())
 			return nil
+		}
+		aliases := make(map[string]string)
+		for _, item := range items {
+			if item.ClassID != wire.FeedbagClassIdBuddy || item.Name == "" {
+				continue
+			}
+			alias, ok := item.String(wire.FeedbagAttributesAlias)
+			if !ok || alias == "" {
+				continue
+			}
+			aliases[state.NewIdentScreenName(item.Name).String()] = alias
 		}
 		s.aliases = aliases
 	}
 	return s.aliases
 }
 
-// InvalidateAliases drops the cached alias map so the next Aliases call reloads it.
+// Feedbag returns the owner's feedbag rows, reading them through FeedbagLoader on
+// the first call after a change and serving the cached copy afterwards. The slice
+// is owned by the session and must not be mutated by callers.
+//
+// Code that rewrites the feedbag must re-read it rather than use this: it computes
+// item ids and a pending diff from what it reads, and a stale snapshot would
+// overwrite another instance's change.
+func (s *Session) Feedbag(ctx context.Context) ([]wire.FeedbagItem, error) {
+	s.feedbagMu.Lock()
+	defer s.feedbagMu.Unlock()
+	return s.feedbagLocked(ctx)
+}
+
+// feedbagLocked loads and caches the feedbag. Callers hold feedbagMu.
+//
+// The lock is deliberately held across the load. Another instance can change the
+// list mid-read, and its feedbag SNAC invalidates this cache; a load outside the
+// lock could store its pre-change result after that invalidation.
+func (s *Session) feedbagLocked(ctx context.Context) ([]wire.FeedbagItem, error) {
+	if s.feedbag == nil {
+		items, err := s.FeedbagLoader(ctx)
+		if err != nil {
+			s.logger.Error("failed to load feedbag", "err", err.Error())
+			return nil, err
+		}
+		if items == nil {
+			// An empty feedbag must still count as loaded.
+			items = []wire.FeedbagItem{}
+		}
+		s.feedbag = items
+	}
+	return s.feedbag, nil
+}
+
+// InvalidateFeedbag drops the cached feedbag and the aliases derived from it.
 // Callers that change the owner's feedbag must call this: the feedbag service
-// relays FeedbagUpdateItem only to the owner's *other* instances, so a session
-// never sees a SNAC for its own writes.
-func (s *Session) InvalidateAliases() {
-	s.aliasMu.Lock()
-	defer s.aliasMu.Unlock()
+// relays its item SNACs only to the owner's *other* instances.
+func (s *Session) InvalidateFeedbag() {
+	s.feedbagMu.Lock()
+	defer s.feedbagMu.Unlock()
+	s.feedbag = nil
 	s.aliases = nil
 }
 
@@ -229,6 +260,26 @@ func (s *Session) forgetBuddyPresence(buddy state.IdentScreenName) {
 	s.presenceMu.Lock()
 	defer s.presenceMu.Unlock()
 	delete(s.presence, buddy.String())
+}
+
+// forgetUnlistedBuddies drops the cached presence of the named buddies that are no
+// longer on the roster. One still listed in another group is still watched.
+func (s *Session) forgetUnlistedBuddies(names []string) {
+	if len(names) == 0 {
+		return
+	}
+	items, err := s.Feedbag(s.ctx)
+	if err != nil {
+		// Without the roster a partial removal cannot be told from a full one, and
+		// a wrongly dropped entry reads offline until the buddy changes presence.
+		return
+	}
+	for _, name := range names {
+		if stillListsBuddy(items, name) {
+			continue
+		}
+		s.forgetBuddyPresence(state.NewIdentScreenName(name))
+	}
 }
 
 // isAIMViewer reports whether the session owner is an AIM account.
@@ -832,9 +883,6 @@ const feedbagResultAuthRequired = uint16(0x000E)
 // refreshBuddyList re-reads the roster and pushes it to the client. Runs on the SNAC
 // listener goroutine, so it uses the session context rather than a request context.
 func (s *Session) refreshBuddyList() {
-	// A buddy item carries its alias, so any feedbag write can change the map.
-	s.InvalidateAliases()
-
 	if s.BuddyListRefresher == nil {
 		return
 	}
@@ -847,6 +895,8 @@ func (s *Session) refreshBuddyList() {
 }
 
 func (s *Session) handleFeedbagMessage(msg wire.SNACMessage) {
+	s.InvalidateFeedbag()
+
 	switch msg.Frame.SubGroup {
 	case wire.FeedbagStatus:
 		// Insert/update/delete below reach only a user's *other* instances, so this
@@ -877,11 +927,13 @@ func (s *Session) handleFeedbagMessage(msg wire.SNACMessage) {
 		}
 
 		if isDelete {
+			var removed []string
 			for _, item := range items {
 				if item.ClassID == wire.FeedbagClassIdBuddy && item.Name != "" {
-					s.forgetBuddyPresence(state.NewIdentScreenName(item.Name))
+					removed = append(removed, item.Name)
 				}
 			}
+			s.forgetUnlistedBuddies(removed)
 		}
 
 		s.refreshBuddyList()

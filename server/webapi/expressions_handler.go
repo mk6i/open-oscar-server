@@ -161,6 +161,8 @@ type UploadData struct {
 
 // Upload handles POST /expressions/upload, which stores a buddy icon.
 func (h *ExpressionsHandler) Upload(w http.ResponseWriter, r *http.Request, session *Session) {
+	defer session.InvalidateFeedbag()
+
 	ctx := r.Context()
 
 	var bartType uint16

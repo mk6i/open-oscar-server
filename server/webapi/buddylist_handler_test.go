@@ -34,11 +34,12 @@ func TestBuddyListHandler_AddBuddy(t *testing.T) {
 			},
 			setupMocks: func(sm *mockSessionResolver, fs *mockFeedbagService, blmFs *mockFeedbagService, aimsid string) *Session {
 				session := &Session{
-					AimSID:       aimsid,
-					ScreenName:   state.DisplayScreenName("testuser"),
-					OSCARSession: state.NewSession().AddInstance(),
-					EventQueue:   NewEventQueue(100),
-					LastAccessed: time.Now(),
+					AimSID:        aimsid,
+					ScreenName:    state.DisplayScreenName("testuser"),
+					OSCARSession:  state.NewSession().AddInstance(),
+					EventQueue:    NewEventQueue(100),
+					LastAccessed:  time.Now(),
+					FeedbagLoader: emptyFeedbagLoader,
 				}
 
 				items := []wire.FeedbagItem{
@@ -63,11 +64,12 @@ func TestBuddyListHandler_AddBuddy(t *testing.T) {
 			},
 			setupMocks: func(sm *mockSessionResolver, fs *mockFeedbagService, blmFs *mockFeedbagService, aimsid string) *Session {
 				session := &Session{
-					AimSID:       aimsid,
-					ScreenName:   state.DisplayScreenName("testuser"),
-					OSCARSession: state.NewSession().AddInstance(),
-					EventQueue:   NewEventQueue(100),
-					LastAccessed: time.Now(),
+					AimSID:        aimsid,
+					ScreenName:    state.DisplayScreenName("testuser"),
+					OSCARSession:  state.NewSession().AddInstance(),
+					EventQueue:    NewEventQueue(100),
+					LastAccessed:  time.Now(),
+					FeedbagLoader: emptyFeedbagLoader,
 				}
 
 				// Friends group with existingbuddy already present
@@ -90,10 +92,11 @@ func TestBuddyListHandler_AddBuddy(t *testing.T) {
 			},
 			setupMocks: func(sm *mockSessionResolver, fs *mockFeedbagService, blmFs *mockFeedbagService, aimsid string) *Session {
 				return &Session{
-					AimSID:       aimsid,
-					ScreenName:   state.DisplayScreenName("testuser"),
-					EventQueue:   NewEventQueue(100),
-					LastAccessed: time.Now(),
+					AimSID:        aimsid,
+					ScreenName:    state.DisplayScreenName("testuser"),
+					EventQueue:    NewEventQueue(100),
+					LastAccessed:  time.Now(),
+					FeedbagLoader: emptyFeedbagLoader,
 				}
 			},
 			expectedStatusCode: http.StatusBadRequest,
@@ -149,11 +152,12 @@ func TestBuddyListHandler_AddGroup(t *testing.T) {
 
 	newSession := func(aimsid string) *Session {
 		return &Session{
-			AimSID:       aimsid,
-			ScreenName:   state.DisplayScreenName("testuser"),
-			OSCARSession: state.NewSession().AddInstance(),
-			EventQueue:   NewEventQueue(100),
-			LastAccessed: time.Now(),
+			AimSID:        aimsid,
+			ScreenName:    state.DisplayScreenName("testuser"),
+			OSCARSession:  state.NewSession().AddInstance(),
+			EventQueue:    NewEventQueue(100),
+			LastAccessed:  time.Now(),
+			FeedbagLoader: emptyFeedbagLoader,
 		}
 	}
 
@@ -280,11 +284,12 @@ func TestBuddyListHandler_RemoveBuddy(t *testing.T) {
 			queryParams: map[string][]string{"aimsid": {"sess"}, "buddy": {"someBuddy"}, "group": {"Friends"}},
 			setup: func(sm *mockSessionResolver, blm *BuddyListManager, fs *mockFeedbagService, aimsid string) *Session {
 				sess := &Session{
-					AimSID:       aimsid,
-					ScreenName:   state.DisplayScreenName("testuser"),
-					OSCARSession: state.NewSession().AddInstance(),
-					EventQueue:   NewEventQueue(100),
-					LastAccessed: time.Now(),
+					AimSID:        aimsid,
+					ScreenName:    state.DisplayScreenName("testuser"),
+					OSCARSession:  state.NewSession().AddInstance(),
+					EventQueue:    NewEventQueue(100),
+					LastAccessed:  time.Now(),
+					FeedbagLoader: emptyFeedbagLoader,
 				}
 				items := []wire.FeedbagItem{
 					{GroupID: 1, ItemID: 0, ClassID: wire.FeedbagClassIdGroup, Name: "Friends"},
@@ -402,11 +407,12 @@ func TestBuddyListHandler_RemoveGroup(t *testing.T) {
 			queryParams: map[string][]string{"aimsid": {"sess"}, "group": {"Friends"}},
 			setup: func(sm *mockSessionResolver, blm *BuddyListManager, fs *mockFeedbagService, aimsid string) *Session {
 				sess := &Session{
-					AimSID:       aimsid,
-					ScreenName:   state.DisplayScreenName("testuser"),
-					OSCARSession: state.NewSession().AddInstance(),
-					EventQueue:   NewEventQueue(100),
-					LastAccessed: time.Now(),
+					AimSID:        aimsid,
+					ScreenName:    state.DisplayScreenName("testuser"),
+					OSCARSession:  state.NewSession().AddInstance(),
+					EventQueue:    NewEventQueue(100),
+					LastAccessed:  time.Now(),
+					FeedbagLoader: emptyFeedbagLoader,
 				}
 				// Root order record + Friends group; DeleteGroup will delete Friends and update root.
 				items := []wire.FeedbagItem{
@@ -587,11 +593,12 @@ func TestBuddyListHandler_RenameGroup(t *testing.T) {
 	}
 	sessWithOSCAR := func(aimsid string) *Session {
 		return &Session{
-			AimSID:       aimsid,
-			ScreenName:   state.DisplayScreenName("testuser"),
-			OSCARSession: state.NewSession().AddInstance(),
-			EventQueue:   NewEventQueue(100),
-			LastAccessed: time.Now(),
+			AimSID:        aimsid,
+			ScreenName:    state.DisplayScreenName("testuser"),
+			OSCARSession:  state.NewSession().AddInstance(),
+			EventQueue:    NewEventQueue(100),
+			LastAccessed:  time.Now(),
+			FeedbagLoader: emptyFeedbagLoader,
 		}
 	}
 
@@ -669,11 +676,12 @@ func TestBuddyListHandler_MoveBuddy(t *testing.T) {
 	}
 	sessWithOSCAR := func(aimsid string) *Session {
 		return &Session{
-			AimSID:       aimsid,
-			ScreenName:   state.DisplayScreenName("testuser"),
-			OSCARSession: state.NewSession().AddInstance(),
-			EventQueue:   NewEventQueue(100),
-			LastAccessed: time.Now(),
+			AimSID:        aimsid,
+			ScreenName:    state.DisplayScreenName("testuser"),
+			OSCARSession:  state.NewSession().AddInstance(),
+			EventQueue:    NewEventQueue(100),
+			LastAccessed:  time.Now(),
+			FeedbagLoader: emptyFeedbagLoader,
 		}
 	}
 
@@ -758,11 +766,12 @@ func TestBuddyListHandler_SetBuddyAttribute(t *testing.T) {
 	}
 	sessWithOSCAR := func(aimsid string) *Session {
 		return &Session{
-			AimSID:       aimsid,
-			ScreenName:   state.DisplayScreenName("testuser"),
-			OSCARSession: state.NewSession().AddInstance(),
-			EventQueue:   NewEventQueue(100),
-			LastAccessed: time.Now(),
+			AimSID:        aimsid,
+			ScreenName:    state.DisplayScreenName("testuser"),
+			OSCARSession:  state.NewSession().AddInstance(),
+			EventQueue:    NewEventQueue(100),
+			LastAccessed:  time.Now(),
+			FeedbagLoader: emptyFeedbagLoader,
 		}
 	}
 
@@ -840,11 +849,12 @@ func TestBuddyListHandler_SetGroupAttribute(t *testing.T) {
 	}
 	sessWithOSCAR := func(aimsid string) *Session {
 		return &Session{
-			AimSID:       aimsid,
-			ScreenName:   state.DisplayScreenName("testuser"),
-			OSCARSession: state.NewSession().AddInstance(),
-			EventQueue:   NewEventQueue(100),
-			LastAccessed: time.Now(),
+			AimSID:        aimsid,
+			ScreenName:    state.DisplayScreenName("testuser"),
+			OSCARSession:  state.NewSession().AddInstance(),
+			EventQueue:    NewEventQueue(100),
+			LastAccessed:  time.Now(),
+			FeedbagLoader: emptyFeedbagLoader,
 		}
 	}
 
@@ -984,11 +994,12 @@ func TestBuddyListHandler_AddBuddy_PreAuthorized(t *testing.T) {
 			oscarSess.SetUIN(state.NewIdentScreenName(tt.screenName).UIN())
 
 			session := &Session{
-				AimSID:       "sid",
-				OSCARSession: oscarSess.AddInstance(),
-				ScreenName:   state.DisplayScreenName(tt.screenName),
-				EventQueue:   NewEventQueue(100),
-				LastAccessed: time.Now(),
+				AimSID:        "sid",
+				OSCARSession:  oscarSess.AddInstance(),
+				ScreenName:    state.DisplayScreenName(tt.screenName),
+				EventQueue:    NewEventQueue(100),
+				LastAccessed:  time.Now(),
+				FeedbagLoader: emptyFeedbagLoader,
 			}
 			sm.EXPECT().GetSession(mock.Anything, "sid").Return(session, nil)
 			sm.EXPECT().TouchSession(mock.Anything, "sid").Return(nil).Maybe()
@@ -1120,11 +1131,12 @@ func TestBuddyListHandler_AddBuddy_PendingFlagFollowsPairing(t *testing.T) {
 			oscarSess.SetUIN(state.NewIdentScreenName(tt.screenName).UIN())
 
 			session := &Session{
-				AimSID:       "sid",
-				OSCARSession: oscarSess.AddInstance(),
-				ScreenName:   state.DisplayScreenName(tt.screenName),
-				EventQueue:   NewEventQueue(100),
-				LastAccessed: time.Now(),
+				AimSID:        "sid",
+				OSCARSession:  oscarSess.AddInstance(),
+				ScreenName:    state.DisplayScreenName(tt.screenName),
+				EventQueue:    NewEventQueue(100),
+				LastAccessed:  time.Now(),
+				FeedbagLoader: emptyFeedbagLoader,
 			}
 			sm.EXPECT().GetSession(mock.Anything, "sid").Return(session, nil)
 			sm.EXPECT().TouchSession(mock.Anything, "sid").Return(nil).Maybe()

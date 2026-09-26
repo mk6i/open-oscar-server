@@ -1,6 +1,8 @@
 package webapi
 
 import (
+	"context"
+	"fmt"
 	"log/slog"
 	"testing"
 	"time"
@@ -67,11 +69,18 @@ func newTestOSCARInstance(t *testing.T, classes wire.RateLimitClasses) *state.Se
 // one OSCAR session and therefore one set of rate limit states.
 func newTestWebAPISessionOn(aimsid string, instance *state.SessionInstance) *Session {
 	return &Session{
-		AimSID:       aimsid,
-		ScreenName:   "me",
-		OSCARSession: instance,
-		EventQueue:   NewEventQueue(10),
+		AimSID:        aimsid,
+		ScreenName:    "me",
+		OSCARSession:  instance,
+		EventQueue:    NewEventQueue(10),
+		FeedbagLoader: emptyFeedbagLoader,
 	}
+}
+
+// emptyFeedbagLoader stands in for the loader startSession wires, for sessions
+// whose test does not care what is on the roster.
+func emptyFeedbagLoader(context.Context) ([]wire.FeedbagItem, error) {
+	return nil, nil
 }
 
 // newTestWebAPISession builds a WebAPI session backed by a real OSCAR session
@@ -127,4 +136,40 @@ func bartBuddy(screenName string, ids ...wire.BARTID) wire.TLVUserInfo {
 	info := wire.TLVUserInfo{ScreenName: screenName}
 	info.Append(wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, ids))
 	return info
+}
+
+// aliasFeedbagLoader returns a FeedbagLoader serving one buddy item per alias.
+func aliasFeedbagLoader(aliases map[string]string) func(context.Context) ([]wire.FeedbagItem, error) {
+	return func(context.Context) ([]wire.FeedbagItem, error) {
+		return aliasFeedbagItems(aliases), nil
+	}
+}
+
+// aliasFeedbagItems builds the buddy rows carrying the given aliases.
+func aliasFeedbagItems(aliases map[string]string) []wire.FeedbagItem {
+	items := make([]wire.FeedbagItem, 0, len(aliases))
+	var itemID uint16
+	for name, alias := range aliases {
+		itemID++
+		item := wire.FeedbagItem{ItemID: itemID, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: name}
+		item.TLVLBlock = wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesAlias, alias)}}
+		items = append(items, item)
+	}
+	return items
+}
+
+// feedbagServiceLoader returns a FeedbagLoader backed by a FeedbagService, as
+// startSession wires it.
+func feedbagServiceLoader(fs FeedbagService, instance *state.SessionInstance) func(context.Context) ([]wire.FeedbagItem, error) {
+	return func(ctx context.Context) ([]wire.FeedbagItem, error) {
+		snac, err := fs.Query(ctx, instance, wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery})
+		if err != nil {
+			return nil, err
+		}
+		reply, ok := snac.Body.(wire.SNAC_0x13_0x06_FeedbagReply)
+		if !ok {
+			return nil, fmt.Errorf("unexpected feedbag reply type")
+		}
+		return reply.Items, nil
+	}
 }

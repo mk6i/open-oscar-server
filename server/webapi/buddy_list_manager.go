@@ -68,16 +68,10 @@ type BuddyInfo struct {
 
 // GetBuddyListForUser retrieves and converts the buddy list for a user.
 func (m *BuddyListManager) GetBuddyListForUser(ctx context.Context, sess *Session) ([]BuddyGroup, error) {
-	frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
-	snac, err := m.feedbagService.Query(ctx, sess.OSCARSession, frame)
+	items, err := sess.Feedbag(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve feedbag: %w", err)
 	}
-	reply, ok := snac.Body.(wire.SNAC_0x13_0x06_FeedbagReply)
-	if !ok {
-		return nil, fmt.Errorf("failed to retrieve feedbag: unexpected reply type")
-	}
-	items := reply.Items
 
 	type buddy struct {
 		name  string
@@ -234,10 +228,7 @@ func (m *BuddyListManager) getBuddyInfo(ctx context.Context, sess *Session, budd
 
 // RemoveBuddyFromFeedbag removes a buddy from a group (or all groups if allGroups is true) using feedbag delete/update SNACs.
 func (m *BuddyListManager) RemoveBuddyFromFeedbag(ctx context.Context, sess *Session, buddyName, groupName string, allGroups bool) (resultCode string, err error) {
-	// Buddy items carry the owner's alias for the buddy, and the feedbag service
-	// relays a session's own writes only to the owner's other instances, so every
-	// method here that rewrites buddy items has to drop the alias cache itself.
-	defer sess.InvalidateAliases()
+	defer sess.InvalidateFeedbag()
 
 	buddyName = strings.TrimSpace(buddyName)
 	if buddyName == "" {
@@ -296,7 +287,7 @@ func (m *BuddyListManager) RemoveBuddyFromFeedbag(ctx context.Context, sess *Ses
 
 // RemoveGroupFromFeedbag deletes a buddy group and updates the root order (TOC DelGroup).
 func (m *BuddyListManager) RemoveGroupFromFeedbag(ctx context.Context, sess *Session, requestedGroup string) (resultCode string, err error) {
-	defer sess.InvalidateAliases()
+	defer sess.InvalidateFeedbag()
 
 	req := strings.TrimSpace(requestedGroup)
 	if req == "" {
@@ -355,7 +346,7 @@ func (m *BuddyListManager) RemoveGroupFromFeedbag(ctx context.Context, sess *Ses
 
 // RenameGroupInFeedbag renames a buddy group, updating the group item in place.
 func (m *BuddyListManager) RenameGroupInFeedbag(ctx context.Context, sess *Session, oldGroup, newGroup string) (resultCode string, err error) {
-	defer sess.InvalidateAliases()
+	defer sess.InvalidateFeedbag()
 
 	oldGroup = strings.TrimSpace(oldGroup)
 	newGroup = strings.TrimSpace(newGroup)
@@ -405,7 +396,7 @@ func (m *BuddyListManager) RenameGroupInFeedbag(ctx context.Context, sess *Sessi
 // MoveBuddyInFeedbag moves a buddy to a different group and/or repositions it
 // within a group's order.
 func (m *BuddyListManager) MoveBuddyInFeedbag(ctx context.Context, sess *Session, buddyName, fromGroup, toGroup, beforeBuddy string) (resultCode string, err error) {
-	defer sess.InvalidateAliases()
+	defer sess.InvalidateFeedbag()
 
 	buddyName = strings.TrimSpace(buddyName)
 	fromGroup = strings.TrimSpace(fromGroup)
@@ -486,7 +477,7 @@ func (m *BuddyListManager) MoveBuddyInFeedbag(ctx context.Context, sess *Session
 // SetBuddyAttributeInFeedbag sets a buddy's friendly (alias) name across all
 // groups it belongs to. An empty friendly clears the alias.
 func (m *BuddyListManager) SetBuddyAttributeInFeedbag(ctx context.Context, sess *Session, buddyName, friendly string) (resultCode string, err error) {
-	defer sess.InvalidateAliases()
+	defer sess.InvalidateFeedbag()
 
 	buddyName = strings.TrimSpace(buddyName)
 	if buddyName == "" {
@@ -527,7 +518,7 @@ func (m *BuddyListManager) SetBuddyAttributeInFeedbag(ctx context.Context, sess 
 // SetGroupAttributeInFeedbag sets a group's collapsed state. An empty group
 // targets the unnamed default group.
 func (m *BuddyListManager) SetGroupAttributeInFeedbag(ctx context.Context, sess *Session, groupName string, collapsed bool) (resultCode string, err error) {
-	defer sess.InvalidateAliases()
+	defer sess.InvalidateFeedbag()
 
 	groupName = strings.TrimSpace(groupName)
 	frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
@@ -620,39 +611,4 @@ func storedGroupNameForRequest(items []wire.FeedbagItem, requested string) (stri
 		}
 	}
 	return "", false
-}
-
-// FeedbagAliases collects the aliases the feedbag owner has assigned to their
-// buddies, keyed by normalized screen name. Buddies without an alias are absent.
-func FeedbagAliases(items []wire.FeedbagItem) map[string]string {
-	aliases := make(map[string]string)
-	for _, item := range items {
-		if item.ClassID != wire.FeedbagClassIdBuddy || item.Name == "" {
-			continue
-		}
-		alias, ok := item.String(wire.FeedbagAttributesAlias)
-		if !ok || alias == "" {
-			continue
-		}
-		aliases[state.NewIdentScreenName(item.Name).String()] = alias
-	}
-	return aliases
-}
-
-// LookupBuddyAliases returns the aliases the session owner has assigned to their
-// buddies, keyed by normalized screen name.
-//
-// Aliases are private to the viewer and live only in their feedbag, so they cannot
-// be derived from a locate reply the way display names are.
-func LookupBuddyAliases(ctx context.Context, feedbagService FeedbagService, instance *state.SessionInstance) (map[string]string, error) {
-	frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
-	snac, err := feedbagService.Query(ctx, instance, frame)
-	if err != nil {
-		return nil, err
-	}
-	reply, ok := snac.Body.(wire.SNAC_0x13_0x06_FeedbagReply)
-	if !ok {
-		return nil, fmt.Errorf("unexpected feedbag reply type")
-	}
-	return FeedbagAliases(reply.Items), nil
 }

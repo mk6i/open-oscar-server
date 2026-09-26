@@ -157,18 +157,20 @@ func TestPresenceHandler_GetPresence(t *testing.T) {
 				Logger:         slog.Default(),
 			}
 
-			if tt.seedPresence != nil {
-				sess, err := sessionMgr.GetSession(context.Background(), aimsid)
-				require.NoError(t, err)
-				tt.seedPresence(sess)
-			}
-
 			tt.setupMocks(feedbagService, locateService)
 
 			// Presence payloads carry the viewer's alias, so GetPresence reads the
 			// feedbag. Registered last so a case's own Query stub takes precedence.
 			feedbagService.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
 				Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{}}, nil).Maybe()
+
+			// Seeded after the stubs: an arrival resolves aliases off the feedbag.
+			sess, err := sessionMgr.GetSession(context.Background(), aimsid)
+			require.NoError(t, err)
+			sess.FeedbagLoader = feedbagServiceLoader(feedbagService, oscarInstance)
+			if tt.seedPresence != nil {
+				tt.seedPresence(sess)
+			}
 
 			reqURL := "/presence/get?aimsid=" + aimsid
 			if tt.queryParams != "" {
@@ -343,6 +345,7 @@ func TestPresenceHandler_GetPresence_BuddyListGrouping(t *testing.T) {
 	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
 	sess, err := sessionMgr.GetSession(context.Background(), aimsid)
 	require.NoError(t, err)
+	sess.FeedbagLoader = feedbagServiceLoader(feedbagService, oscarInstance)
 	buddyArrives(sess, onlineBuddy("alice"))
 	buddyArrives(sess, onlineBuddy("bob"))
 
@@ -1508,6 +1511,7 @@ func TestPresenceHandler_GetPresence_BuddyListQueriesOnlyAwayBuddies(t *testing.
 	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
 	sess, err := sessionMgr.GetSession(context.Background(), aimsid)
 	require.NoError(t, err)
+	sess.FeedbagLoader = feedbagServiceLoader(feedbagService, oscarInstance)
 
 	away := wire.TLVUserInfo{ScreenName: "awaybud"}
 	away.Append(wire.NewTLVBE(wire.OServiceUserInfoUserFlags, wire.OServiceUserFlagUnavailable))
@@ -1610,4 +1614,69 @@ func TestPresenceHandler_GetPresence_ForgottenTargetFallsBackToLocate(t *testing
 
 	// The stale "online" snapshot must not survive the eviction.
 	assert.Equal(t, "offline", got.Response.Data.Users[0].State)
+}
+
+// An invisible user reads as offline, and an offline user publishes nothing.
+func TestPresenceHandler_GetPresence_InvisibleUserPublishesNothing(t *testing.T) {
+	invisible := wire.TLVUserInfo{ScreenName: "sneaky"}
+	invisible.Append(wire.NewTLVBE(wire.OServiceUserInfoStatus, wire.OServiceUserStatusInvisible))
+	invisible.Append(wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, []wire.BARTID{testStatusBART}))
+
+	feedbagService := newMockFeedbagService(t)
+	feedbagService.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
+		Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{}}, nil).Maybe()
+
+	locateService := newMockLocateService(t)
+	locateService.EXPECT().UserInfoQuery(mock.Anything, mock.Anything, mock.Anything, screenNameMatcher("sneaky")).
+		Return(wire.SNACMessage{Body: wire.SNAC_0x02_0x06_LocateUserInfoReply{
+			TLVUserInfo: invisible,
+			LocateInfo: wire.TLVRestBlock{TLVList: wire.TLVList{
+				wire.NewTLVBE(wire.LocateTLVTagsInfoUnavailableData, "back later"),
+			}},
+		}}, nil).Once()
+
+	iconRetriever := newMockBuddyIconRetriever(t)
+
+	oscarInstance := state.NewSession().AddInstance()
+	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
+	sess, err := sessionMgr.GetSession(context.Background(), aimsid)
+	require.NoError(t, err)
+	sess.BaseURL = "http://api.example.com"
+
+	handler := &PresenceHandler{
+		SessionManager: sessionMgr,
+		FeedbagService: feedbagService,
+		LocateService:  locateService,
+		IconSource:     BuddyIconSource{IconRetriever: iconRetriever, Logger: slog.Default()},
+		Logger:         slog.Default(),
+	}
+
+	req, err := http.NewRequest("GET", "/presence/get?aimsid="+aimsid+"&t=sneaky", nil)
+	require.NoError(t, err)
+	rr := httptest.NewRecorder()
+	requireSession(handler.SessionManager, handler.GetPresence).ServeHTTP(rr, req)
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var got struct {
+		Response struct {
+			Data struct {
+				Users []struct {
+					State     string `json:"state"`
+					BuddyIcon string `json:"buddyIcon"`
+					StatusMsg string `json:"statusMsg"`
+					AwayMsg   string `json:"awayMsg"`
+				} `json:"users"`
+			} `json:"data"`
+		} `json:"response"`
+	}
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &got))
+	require.Len(t, got.Response.Data.Users, 1)
+
+	user := got.Response.Data.Users[0]
+	assert.Equal(t, "offline", user.State)
+	assert.Empty(t, user.BuddyIcon)
+	assert.Empty(t, user.StatusMsg)
+	assert.Empty(t, user.AwayMsg)
+
+	iconRetriever.AssertNotCalled(t, "BuddyIconMetadata", mock.Anything, mock.Anything)
 }
