@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/google/uuid"
 )
@@ -936,6 +937,44 @@ func ICBMFragmentList(text string) ([]ICBMCh1Fragment, error) {
 	}, nil
 }
 
+// ICBMFragmentList creates an ICBM fragment list for an instant message
+// payload.
+func ICBMFragmentListUnicode(text string) ([]ICBMCh1Fragment, error) {
+
+	// UCS-2 has no surrogate pairs, so runes outside the BMP are replaced
+	// with U+FFFD.
+	textBE := make([]byte, 0, len(text)*2)
+	for _, r := range text {
+		if r > 0xFFFF {
+			r = unicode.ReplacementChar
+		}
+		textBE = binary.BigEndian.AppendUint16(textBE, uint16(r))
+	}
+
+	msg := ICBMCh1Message{
+		Charset:  ICBMMessageEncodingUnicode,
+		Language: 0, // not clear what this means, but it works
+		Text:     textBE,
+	}
+	msgBuf := bytes.Buffer{}
+	if err := MarshalBE(msg, &msgBuf); err != nil {
+		return nil, fmt.Errorf("unable to marshal ICBM message: %w", err)
+	}
+
+	return []ICBMCh1Fragment{
+		{
+			ID:      5, // 5 = capabilities
+			Version: 1,
+			Payload: []byte{1, 6}, // 1 = text
+		},
+		{
+			ID:      1, // 1 = message text
+			Version: 1,
+			Payload: msgBuf.Bytes(),
+		},
+	}, nil
+}
+
 // UnmarshalICBMMessageText extracts message text from an ICBM fragment list.
 // Param b is a slice from TLV wire.ICBMTLVAOLIMData.
 //
@@ -957,7 +996,7 @@ func UnmarshalICBMMessageText(b []byte) (string, error) {
 				return "", fmt.Errorf("unable to unmarshal ICBM message: %w", err)
 			}
 			if msg.Charset == ICBMMessageEncodingUnicode {
-				return decodeUCS2BE(msg.Text), nil
+				return DecodeUCS2BE(msg.Text), nil
 			}
 			return string(msg.Text), nil
 		}
@@ -966,8 +1005,8 @@ func UnmarshalICBMMessageText(b []byte) (string, error) {
 	return "", errors.New("unable to find message fragment")
 }
 
-// decodeUCS2BE converts UCS-2 big-endian encoded bytes to a Go UTF-8 string.
-func decodeUCS2BE(data []byte) string {
+// DecodeUCS2BE converts UCS-2 big-endian encoded bytes to a Go UTF-8 string.
+func DecodeUCS2BE(data []byte) string {
 	if len(data) < 2 {
 		return ""
 	}

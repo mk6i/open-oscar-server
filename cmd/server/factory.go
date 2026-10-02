@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/kelseyhightower/envconfig"
+	"golang.org/x/text/encoding"
 	"golang.org/x/time/rate"
 
 	"github.com/mk6i/open-oscar-server/config"
@@ -34,6 +35,7 @@ type Container struct {
 	hmacCookieBaker        state.HMACCookieBaker
 	icbmSvc                *foodgroup.ICBMService
 	inMemorySessionManager *state.InMemorySessionManager
+	legacyCharset          encoding.Encoding
 	logger                 *slog.Logger
 	rateLimitClasses       wire.RateLimitClasses
 	snacRateLimits         wire.SNACRateLimits
@@ -64,6 +66,11 @@ func MakeCommonDeps() (Container, error) {
 	c.Listeners, err = c.cfg.ParseListenersCfg()
 	if err != nil {
 		return c, fmt.Errorf("unable to parse listener config: %s", err.Error())
+	}
+
+	c.legacyCharset, err = c.cfg.ParseICBMLegacyCharset()
+	if err != nil {
+		return c, fmt.Errorf("unable to parse ICBM legacy charset: %s", err.Error())
 	}
 
 	c.sqLiteUserStore, err = state.NewSQLiteUserStore(c.cfg.DBPath)
@@ -105,6 +112,7 @@ func MakeCommonDeps() (Container, error) {
 		c.sqLiteUserStore,
 		c.sqLiteUserStore,
 		c.snacRateLimits,
+		c.legacyCharset,
 		c.logger,
 	)
 
@@ -115,6 +123,7 @@ func MakeCommonDeps() (Container, error) {
 		c.logger,
 		c.inMemorySessionManager,
 		c.sqLiteUserStore,
+		c.legacyCharset,
 	)
 
 	c.feedbagSvc.BridgeICBMService(c.icbmSvc)

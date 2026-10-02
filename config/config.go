@@ -7,6 +7,9 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"golang.org/x/text/encoding"
+	"golang.org/x/text/encoding/charmap"
 )
 
 var (
@@ -155,6 +158,7 @@ type Config struct {
 	DisableAuth            bool   `envconfig:"DISABLE_AUTH" required:"true" basic:"true" ssl:"true" description:"Disable password check and auto-create new users at login time. Useful for quickly creating new accounts during development without having to register new users via the management API."`
 	DisableMultiLoginNotif bool   `envconfig:"DISABLE_MULTI_LOGIN_NOTIF" required:"false" basic:"true" ssl:"true" description:"Disable notification sent when another client signs in with the same screen name."`
 	LogLevel               string `envconfig:"LOG_LEVEL" required:"true" basic:"info" ssl:"info" description:"Set logging granularity. Possible values: 'trace', 'debug', 'info', 'warn', 'error'."`
+	ICBMLegacyCharset      string `envconfig:"ICBM_LEGACY_CHARSET" required:"false" default:"Windows1251" basic:"Windows1251" ssl:"Windows1251" description:"Fallback character set used to transcode IMs between Unicode-capable and legacy clients. Possible values: Windows1250 (central european: polish, czech, hungarian), Windows1251 (russian), Windows1252 (western european: english, french, german), Windows1253 (greek), Windows1254 (turkish), Windows1255 (hebrew), Windows1256 (arabic), Windows1257 (baltic: lithuanian, latvian, estonian), Windows1258 (vietnamese), KOI8R (russian), KOI8U (ukrainian)."`
 
 	// ICQ Legacy Protocol Configuration
 	ICQLegacy ICQLegacyConfig
@@ -370,6 +374,38 @@ func (c *Config) ParseListenersCfg() ([]ListenerGroup, error) {
 	}
 
 	return ret, nil
+}
+
+// legacyCharsetNames lists the supported ICBM_LEGACY_CHARSET values in the
+// order they are reported to the user.
+var legacyCharsetNames = []string{
+	"Windows1250", "Windows1251", "Windows1252", "Windows1253", "Windows1254",
+	"Windows1255", "Windows1256", "Windows1257", "Windows1258", "KOI8R", "KOI8U",
+}
+
+// legacyCharsets maps lower-cased ICBM_LEGACY_CHARSET values to charmaps.
+var legacyCharsets = map[string]*charmap.Charmap{
+	"windows1250": charmap.Windows1250,
+	"windows1251": charmap.Windows1251,
+	"windows1252": charmap.Windows1252,
+	"windows1253": charmap.Windows1253,
+	"windows1254": charmap.Windows1254,
+	"windows1255": charmap.Windows1255,
+	"windows1256": charmap.Windows1256,
+	"windows1257": charmap.Windows1257,
+	"windows1258": charmap.Windows1258,
+	"koi8r":       charmap.KOI8R,
+	"koi8u":       charmap.KOI8U,
+}
+
+// ParseICBMLegacyCharset returns the encoding named by ICBM_LEGACY_CHARSET,
+// matched case-insensitively.
+func (c *Config) ParseICBMLegacyCharset() (encoding.Encoding, error) {
+	cm, ok := legacyCharsets[strings.ToLower(strings.TrimSpace(c.ICBMLegacyCharset))]
+	if !ok {
+		return nil, fmt.Errorf("unsupported ICBM_LEGACY_CHARSET %q. Possible values: %s", c.ICBMLegacyCharset, strings.Join(legacyCharsetNames, ", "))
+	}
+	return cm, nil
 }
 
 func (c *Config) Validate() error {

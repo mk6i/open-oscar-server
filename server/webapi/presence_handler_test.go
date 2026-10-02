@@ -1278,12 +1278,12 @@ func TestPresenceHandler_SetStatus_Mood(t *testing.T) {
 		{
 			name:     "a known mood is advertised as its capability",
 			query:    "&mood=0icqmood6",
-			wantCaps: [][16]byte{wire.CapICQCh2Extended, wire.CapXStatusPlate},
+			wantCaps: [][16]byte{wire.CapICQCh2Extended, wire.CapUTF8Messages, wire.CapXStatusPlate},
 		},
 		{
 			name:     "a mood with only a placeholder capability still resolves",
 			query:    "&mood=0icqmood13",
-			wantCaps: [][16]byte{wire.CapICQCh2Extended, wire.CapMoodHavingFun},
+			wantCaps: [][16]byte{wire.CapICQCh2Extended, wire.CapUTF8Messages, wire.CapMoodHavingFun},
 		},
 		{
 			// The client sends mood= alongside every plain state change, so this
@@ -1291,7 +1291,7 @@ func TestPresenceHandler_SetStatus_Mood(t *testing.T) {
 			// mood is dropped.
 			name:     "an empty mood clears the capability",
 			query:    "&mood=",
-			wantCaps: [][16]byte{wire.CapICQCh2Extended},
+			wantCaps: [][16]byte{wire.CapICQCh2Extended, wire.CapUTF8Messages},
 		},
 		{
 			// A token the server cannot map is a client bug, not a reset: the
@@ -1331,7 +1331,7 @@ func TestPresenceHandler_SetStatus_MoodReplacesRatherThanAccumulates(t *testing.
 
 	gotCaps, code := setStatus("&mood=0icqmood4")
 	assert.Equal(t, http.StatusOK, code)
-	assert.Equal(t, [][16]byte{wire.CapICQCh2Extended, wire.CapXStatusBeer}, gotCaps,
+	assert.Equal(t, [][16]byte{wire.CapICQCh2Extended, wire.CapUTF8Messages, wire.CapXStatusBeer}, gotCaps,
 		"the previous mood must be dropped")
 }
 

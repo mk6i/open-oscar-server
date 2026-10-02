@@ -74,7 +74,7 @@ func (h *MessagingHandler) SendIM(w http.ResponseWriter, r *http.Request, sess *
 	}
 
 	// Add message data
-	frags, err := wire.ICBMFragmentList(message)
+	frags, err := wire.ICBMFragmentListUnicode(message)
 	if err != nil {
 		SendError(w, r, http.StatusInternalServerError, "failed to send message")
 		return

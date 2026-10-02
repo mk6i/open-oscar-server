@@ -12,6 +12,7 @@ import (
 
 	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
+	"golang.org/x/text/encoding"
 )
 
 var errICQBadRequest = errors.New("bad ICQ request")
@@ -24,6 +25,7 @@ func NewICQService(
 	logger *slog.Logger,
 	sessionRetriever SessionRetriever,
 	offlineMessageManager OfflineMessageManager,
+	legacyCharset encoding.Encoding,
 ) *ICQService {
 	return &ICQService{
 		messageRelayer:        messageRelayer,
@@ -32,6 +34,7 @@ func NewICQService(
 		logger:                logger,
 		sessionRetriever:      sessionRetriever,
 		offlineMessageManager: offlineMessageManager,
+		legacyCharset:         legacyCharset,
 		timeNow:               time.Now,
 		forwardICQAuthEvents: func(ctx context.Context, sender state.IdentScreenName, recipient state.IdentScreenName, authMsg wire.ICBMCh4Message) error {
 			return fmt.Errorf("no ICBMService available")
@@ -48,6 +51,7 @@ type ICQService struct {
 	userUpdater           ICQUserUpdater
 	timeNow               func() time.Time
 	offlineMessageManager OfflineMessageManager
+	legacyCharset         encoding.Encoding
 	forwardICQAuthEvents  func(ctx context.Context, sender state.IdentScreenName, recipient state.IdentScreenName, authMsg wire.ICBMCh4Message) error
 }
 
@@ -385,6 +389,8 @@ func (s *ICQService) OfflineMsgReq(ctx context.Context, inFrame wire.SNACFrame, 
 		return fmt.Errorf("retrieving messages: %w", err)
 	}
 
+	recipUnicode := instance.Session().HasCap(wire.CapUTF8Messages)
+
 	for _, msgIn := range messages {
 		if msgIn.Sender.UIN() != 0 {
 			reply := wire.ICQ_0x0041_DBQueryOfflineMsgReply{
@@ -405,7 +411,18 @@ func (s *ICQService) OfflineMsgReq(ctx context.Context, inFrame wire.SNACFrame, 
 			case wire.ICBMChannelIM:
 				if payload, hasIM := msgIn.Message.Bytes(wire.ICBMTLVAOLIMData); hasIM {
 					// send regular IM
-					msgText, err := wire.UnmarshalICBMMessageText(payload)
+					// The sender's capabilities are unknown at retrieval time, so
+					// the message charset alone decides the conversion. A message
+					// that fails to transcode is delivered as stored.
+					tlv := wire.TLV{Tag: wire.ICBMTLVAOLIMData, Value: payload}
+					// ICQ doesn't appear to support unicode offline messages, so
+					// force a conversion to fallback character set
+					if transcoded, err := transcodeMessage(s.legacyCharset, true, false, tlv); err != nil {
+						s.logger.WarnContext(ctx, "unable to transcode offline message", "sender", msgIn.Sender, "err", err)
+					} else {
+						tlv = transcoded
+					}
+					msgText, err := wire.UnmarshalICBMMessageText(tlv.Value)
 					if err != nil {
 						return fmt.Errorf("unmarshalling offline message: %w", err)
 					}
@@ -467,6 +484,17 @@ func (s *ICQService) OfflineMsgReq(ctx context.Context, inFrame wire.SNACFrame, 
 				// so it would shadow the stamp appended below.
 				if tlv.Tag == wire.ICBMTLVSendTime {
 					continue
+				}
+				// The sender's capabilities are unknown at retrieval time, so the
+				// message charset alone decides the conversion. A TLV that fails
+				// to transcode is delivered as stored.
+				if (clientIM.ChannelID == wire.ICBMChannelIM || clientIM.ChannelID == wire.ICBMChannelMIME) &&
+					tlv.Tag == wire.ICBMTLVAOLIMData {
+					if transcoded, err := transcodeMessage(s.legacyCharset, !recipUnicode, recipUnicode, tlv); err != nil {
+						s.logger.WarnContext(ctx, "unable to transcode offline message", "sender", msgIn.Sender, "err", err)
+					} else {
+						tlv = transcoded
+					}
 				}
 				clientIM.Append(tlv)
 			}

@@ -880,6 +880,13 @@ func sessOptUIN(UIN uint32) func(instance *state.SessionInstance) {
 	}
 }
 
+// sessOptCaps sets the instance's capability UUIDs
+func sessOptCaps(caps ...[16]byte) func(instance *state.SessionInstance) {
+	return func(instance *state.SessionInstance) {
+		instance.SetCaps(caps)
+	}
+}
+
 // sessOptCaps sets caps
 func sessOptWantTypingEvents(instance *state.SessionInstance) {
 	instance.Session().SetTypingEventsEnabled(true)

@@ -5,6 +5,9 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"golang.org/x/text/encoding"
+	"golang.org/x/text/encoding/charmap"
 )
 
 func TestParseListenersCfg(t *testing.T) {
@@ -984,6 +987,47 @@ func TestConfigValidate(t *testing.T) {
 
 			if err != nil {
 				t.Errorf("Config.Validate() unexpected error = %v", err)
+			}
+		})
+	}
+}
+
+func TestParseICBMLegacyCharset(t *testing.T) {
+	tests := []struct {
+		name        string
+		charset     string
+		want        encoding.Encoding
+		errContains string
+	}{
+		{name: "Windows1251", charset: "Windows1251", want: charmap.Windows1251},
+		{name: "KOI8U", charset: "KOI8U", want: charmap.KOI8U},
+		{name: "case-insensitive", charset: "koi8r", want: charmap.KOI8R},
+		{name: "surrounding whitespace", charset: " Windows1252 ", want: charmap.Windows1252},
+		{name: "unsupported charset", charset: "UTF8", errContains: `unsupported ICBM_LEGACY_CHARSET "UTF8"`},
+		{name: "unsupported charmap", charset: "Windows874", errContains: "Possible values: Windows1250"},
+		{name: "empty", charset: "", errContains: "unsupported ICBM_LEGACY_CHARSET"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := Config{ICBMLegacyCharset: tt.charset}
+			got, err := cfg.ParseICBMLegacyCharset()
+
+			if tt.errContains != "" {
+				if err == nil {
+					t.Fatalf("ParseICBMLegacyCharset() expected error but got none")
+				}
+				if !strings.Contains(err.Error(), tt.errContains) {
+					t.Errorf("ParseICBMLegacyCharset() error = %v, want error containing %q", err, tt.errContains)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("ParseICBMLegacyCharset() unexpected error = %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("ParseICBMLegacyCharset() = %v, want %v", got, tt.want)
 			}
 		})
 	}

@@ -60,7 +60,10 @@ const (
 // webAPICaps are the capabilities the Web API advertises on behalf of its
 // clients. It seeds every session's capability list and is sent as-is at
 // sign-on, so the two never drift.
-var webAPICaps = [][16]byte{wire.CapICQCh2Extended}
+var webAPICaps = [][16]byte{
+	wire.CapICQCh2Extended,
+	wire.CapUTF8Messages,
+}
 
 // Session represents an active Web AIM API session.
 type Session struct {

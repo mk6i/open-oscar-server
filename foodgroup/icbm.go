@@ -10,12 +10,15 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/patrickmn/go-cache"
-	"golang.org/x/net/html"
+	"unicode"
 
 	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
+
+	"github.com/patrickmn/go-cache"
+	"golang.org/x/exp/slices"
+	"golang.org/x/net/html"
+	"golang.org/x/text/encoding"
 )
 
 const (
@@ -26,7 +29,7 @@ const (
 )
 
 // NewICBMService returns a new instance of ICBMService.
-func NewICBMService(bartItemManager BARTItemManager, messageRelayer MessageRelayer, offlineMessageSaver OfflineMessageManager, relationshipFetcher RelationshipFetcher, sessionRetriever SessionRetriever, userManager UserManager, feedbagManager FeedbagManager, contactPreAuthorizer ContactPreAuthorizer, snacRateLimits wire.SNACRateLimits, logger *slog.Logger) *ICBMService {
+func NewICBMService(bartItemManager BARTItemManager, messageRelayer MessageRelayer, offlineMessageSaver OfflineMessageManager, relationshipFetcher RelationshipFetcher, sessionRetriever SessionRetriever, userManager UserManager, feedbagManager FeedbagManager, contactPreAuthorizer ContactPreAuthorizer, snacRateLimits wire.SNACRateLimits, legacyCharset encoding.Encoding, logger *slog.Logger) *ICBMService {
 	return &ICBMService{
 		relationshipFetcher:   relationshipFetcher,
 		buddyBroadcaster:      newBuddyNotifier(bartItemManager, relationshipFetcher, messageRelayer, sessionRetriever),
@@ -39,6 +42,7 @@ func NewICBMService(bartItemManager BARTItemManager, messageRelayer MessageRelay
 		timeNow:               time.Now,
 		sessionRetriever:      sessionRetriever,
 		snacRateLimits:        snacRateLimits,
+		legacyCharset:         legacyCharset,
 		convoTracker:          newConvoTracker(),
 		logger:                logger,
 		interval:              rateDecayInterval,
@@ -62,6 +66,7 @@ type ICBMService struct {
 	timeNow               func() time.Time
 	sessionRetriever      SessionRetriever
 	snacRateLimits        wire.SNACRateLimits
+	legacyCharset         encoding.Encoding
 	convoTracker          *convoTracker
 	logger                *slog.Logger
 	interval              time.Duration
@@ -195,6 +200,17 @@ func (s *ICBMService) ChannelMsgToHost(ctx context.Context, instance *state.Sess
 				}
 			}
 		}
+
+		if (clientIM.ChannelID == wire.ICBMChannelIM || clientIM.ChannelID == wire.ICBMChannelMIME) &&
+			tlv.Tag == wire.ICBMTLVAOLIMData {
+			// A TLV that fails to transcode is delivered as sent.
+			if transcoded, err := transcodeMessage(s.legacyCharset, instance.Session().HasCap(wire.CapUTF8Messages), recipSess.HasCap(wire.CapUTF8Messages), tlv); err != nil {
+				s.logger.WarnContext(ctx, "unable to transcode message", "recipient", recipSess.IdentScreenName(), "err", err)
+			} else {
+				tlv = transcoded
+			}
+		}
+
 		clientIM.Append(tlv)
 	}
 
@@ -243,6 +259,93 @@ func (s *ICBMService) ChannelMsgToHost(ctx context.Context, instance *state.Sess
 			ScreenName: inBody.ScreenName,
 		},
 	}, nil
+}
+
+// transcodeMessage recodes message text between UCS-2BE and the legacy 8-bit
+// charset enc when exactly one of sender and recip supports Unicode messages.
+func transcodeMessage(enc encoding.Encoding, senderUnicode bool, recipUnicode bool, tlv wire.TLV) (wire.TLV, error) {
+	if senderUnicode == recipUnicode {
+		// both speak unicode or don't speak unicode, no need to transcode
+		return tlv, nil
+	}
+
+	var frags []wire.ICBMCh1Fragment
+	if err := wire.UnmarshalBE(&frags, bytes.NewReader(tlv.Value)); err != nil {
+		return tlv, fmt.Errorf("unable to unmarshal ICBM message: %w", err)
+	}
+
+	msgIndex := slices.IndexFunc(frags, func(frg wire.ICBMCh1Fragment) bool {
+		return frg.ID == 1
+	})
+	if msgIndex == -1 {
+		return tlv, fmt.Errorf("unable to find ICBM fragment #1")
+	}
+
+	msg := wire.ICBMCh1Message{}
+	err := wire.UnmarshalBE(&msg, bytes.NewReader(frags[msgIndex].Payload))
+	if err != nil {
+		return tlv, fmt.Errorf("unable to unmarshal ICBM message: %w", err)
+	}
+
+	if msg.Charset == wire.ICBMMessageEncodingUnicode {
+		if recipUnicode {
+			return tlv, nil
+		}
+		frags, err = transcodeFromUnicode(enc, msg.Text)
+		if err != nil {
+			return wire.TLV{}, err
+		}
+		return wire.NewTLVBE(tlv.Tag, frags), nil
+	}
+
+	allASCII := true
+	for _, c := range msg.Text {
+		if c > unicode.MaxASCII {
+			allASCII = false
+			break
+		}
+	}
+	if allASCII || !recipUnicode {
+		return tlv, nil
+	}
+
+	frags, err = transcodeToUnicode(enc, msg.Text)
+	if err != nil {
+		return wire.TLV{}, err
+	}
+
+	return wire.NewTLVBE(tlv.Tag, frags), nil
+}
+
+// transcodeFromUnicode encodes UCS-2BE text into enc. Characters enc cannot
+// represent become '?'.
+func transcodeFromUnicode(enc encoding.Encoding, msg []byte) ([]wire.ICBMCh1Fragment, error) {
+	text, err := encoding.ReplaceUnsupported(enc.NewEncoder()).Bytes([]byte(wire.DecodeUCS2BE(msg)))
+	if err != nil {
+		return nil, fmt.Errorf("unable to unmarshal ICBM message: %w", err)
+	}
+	// ReplaceUnsupported substitutes the non-printing ASCII SUB character.
+	text = bytes.ReplaceAll(text, []byte{encoding.ASCIISub}, []byte{'?'})
+
+	frags, err := wire.ICBMFragmentList(string(text))
+	if err != nil {
+		return nil, fmt.Errorf("unable to unmarshal ICBM message: %w", err)
+	}
+	return frags, nil
+}
+
+func transcodeToUnicode(enc encoding.Encoding, msg []byte) ([]wire.ICBMCh1Fragment, error) {
+	byts := enc.NewDecoder().Bytes
+	text, err := byts(msg)
+	if err != nil {
+		return nil, fmt.Errorf("unable to unmarshal ICBM message: %w", err)
+	}
+
+	frags, err := wire.ICBMFragmentListUnicode(string(text))
+	if err != nil {
+		return nil, fmt.Errorf("unable to unmarshal ICBM message: %w", err)
+	}
+	return frags, nil
 }
 
 // canSendOfflineMessage returns true if the user can send an offline message.
@@ -561,6 +664,8 @@ func (s *ICBMService) OfflineRetrieve(ctx context.Context, instance *state.Sessi
 		return wire.SNACMessage{}, fmt.Errorf("retrieving messages: %w", err)
 	}
 
+	recipUnicode := instance.Session().HasCap(wire.CapUTF8Messages)
+
 	for _, event := range msgList {
 		clientIM := wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
 			Cookie:    event.Message.Cookie,
@@ -577,6 +682,17 @@ func (s *ICBMService) OfflineRetrieve(ctx context.Context, instance *state.Sessi
 			// shadow the stamp appended below.
 			if tlv.Tag == wire.ICBMTLVSendTime {
 				continue
+			}
+			// The sender's capabilities are unknown at retrieval time, so the
+			// message charset alone decides the conversion. A TLV that fails to
+			// transcode is delivered as stored.
+			if (clientIM.ChannelID == wire.ICBMChannelIM || clientIM.ChannelID == wire.ICBMChannelMIME) &&
+				tlv.Tag == wire.ICBMTLVAOLIMData {
+				if transcoded, err := transcodeMessage(s.legacyCharset, !recipUnicode, recipUnicode, tlv); err != nil {
+					s.logger.WarnContext(ctx, "unable to transcode offline message", "sender", event.Sender, "err", err)
+				} else {
+					tlv = transcoded
+				}
 			}
 			clientIM.Append(tlv)
 		}

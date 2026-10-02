@@ -1,6 +1,7 @@
 package foodgroup
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -16,6 +17,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"golang.org/x/text/encoding"
+	"golang.org/x/text/encoding/charmap"
 )
 
 func TestICBMService_ChannelMsgToHost(t *testing.T) {
@@ -2179,6 +2182,124 @@ func TestICBMService_ChannelMsgToHost(t *testing.T) {
 			expectOutput: nil,
 			wantErr:      nil,
 		},
+		{
+			name:     "unicode sender to legacy recipient, only the message text TLV is transcoded",
+			instance: newTestInstance("sender-screen-name", sessOptCaps(wire.CapUTF8Messages)),
+			mockParams: mockParams{
+				relationshipFetcherParams: relationshipFetcherParams{
+					relationshipParams: relationshipParams{
+						{
+							me:     state.NewIdentScreenName("sender-screen-name"),
+							them:   state.NewIdentScreenName("recipient-screen-name"),
+							result: state.Relationship{User: state.NewIdentScreenName("recipient-screen-name")},
+						},
+					},
+				},
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams{
+						{
+							screenName: state.NewIdentScreenName("recipient-screen-name"),
+							result:     newTestInstance("recipient-screen-name", sessOptSignonComplete).Session(),
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameActiveOnlyParams: relayToScreenNameActiveOnlyParams{
+						{
+							screenName: state.NewIdentScreenName("recipient-screen-name"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.ICBM,
+									SubGroup:  wire.ICBMChannelMsgToClient,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
+									ChannelID:   wire.ICBMChannelIM,
+									TLVUserInfo: newTestInstance("sender-screen-name", sessOptCaps(wire.CapUTF8Messages)).Session().TLVUserInfo(),
+									TLVRestBlock: wire.TLVRestBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.ICBMTLVAOLIMData, mustICBMFragmentList(t, "\xef\xf0\xe8\xe2\xe5\xf2")), // "привет" in Windows-1251
+											wire.NewTLVBE(wire.ICBMTLVAutoResponse, []byte{}),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			inputSNAC: wire.SNACMessage{
+				Body: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
+					ChannelID:  wire.ICBMChannelIM,
+					ScreenName: "recipient-screen-name",
+					TLVRestBlock: wire.TLVRestBlock{
+						TLVList: wire.TLVList{
+							wire.NewTLVBE(wire.ICBMTLVAOLIMData, mustICBMFragmentListUnicode(t, "привет")),
+							wire.NewTLVBE(wire.ICBMTLVAutoResponse, []byte{}),
+						},
+					},
+				},
+			},
+			expectOutput: nil,
+		},
+		{
+			name:     "unicode sender to legacy recipient, message text TLV that fails to transcode is delivered as sent",
+			instance: newTestInstance("sender-screen-name", sessOptCaps(wire.CapUTF8Messages)),
+			mockParams: mockParams{
+				relationshipFetcherParams: relationshipFetcherParams{
+					relationshipParams: relationshipParams{
+						{
+							me:     state.NewIdentScreenName("sender-screen-name"),
+							them:   state.NewIdentScreenName("recipient-screen-name"),
+							result: state.Relationship{User: state.NewIdentScreenName("recipient-screen-name")},
+						},
+					},
+				},
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams{
+						{
+							screenName: state.NewIdentScreenName("recipient-screen-name"),
+							result:     newTestInstance("recipient-screen-name", sessOptSignonComplete).Session(),
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameActiveOnlyParams: relayToScreenNameActiveOnlyParams{
+						{
+							screenName: state.NewIdentScreenName("recipient-screen-name"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.ICBM,
+									SubGroup:  wire.ICBMChannelMsgToClient,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
+									ChannelID:   wire.ICBMChannelIM,
+									TLVUserInfo: newTestInstance("sender-screen-name", sessOptCaps(wire.CapUTF8Messages)).Session().TLVUserInfo(),
+									TLVRestBlock: wire.TLVRestBlock{
+										TLVList: wire.TLVList{
+											{Tag: wire.ICBMTLVAOLIMData, Value: []byte{0x01, 0x01, 0x00}},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			inputSNAC: wire.SNACMessage{
+				Body: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
+					ChannelID:  wire.ICBMChannelIM,
+					ScreenName: "recipient-screen-name",
+					TLVRestBlock: wire.TLVRestBlock{
+						TLVList: wire.TLVList{
+							{Tag: wire.ICBMTLVAOLIMData, Value: []byte{0x01, 0x01, 0x00}},
+						},
+					},
+				},
+			},
+			expectOutput: nil,
+		},
 	}
 
 	for _, tc := range cases {
@@ -2250,6 +2371,7 @@ func TestICBMService_ChannelMsgToHost(t *testing.T) {
 				feedbagManager:       feedbagManager,
 				contactPreAuthorizer: contactPreAuth,
 				buddyBroadcaster:     buddyBroadcaster,
+				legacyCharset:        charmap.Windows1251,
 				logger:               discardLogger,
 			}
 			var forwardCalled bool
@@ -2266,6 +2388,232 @@ func TestICBMService_ChannelMsgToHost(t *testing.T) {
 			assert.ErrorIs(t, err, tc.wantErr)
 			assert.Equal(t, tc.expectOutput, outputSNAC)
 			assert.Equal(t, tc.expectForwardICQAuthEvents, forwardCalled)
+		})
+	}
+}
+
+func mustICBMFragmentList(t *testing.T, text string) []wire.ICBMCh1Fragment {
+	t.Helper()
+	frags, err := wire.ICBMFragmentList(text)
+	assert.NoError(t, err)
+	return frags
+}
+
+func mustICBMFragmentListUnicode(t *testing.T, text string) []wire.ICBMCh1Fragment {
+	t.Helper()
+	frags, err := wire.ICBMFragmentListUnicode(text)
+	assert.NoError(t, err)
+	return frags
+}
+
+// TestTranscodeMessage covers transcodeMessage, which is invoked from
+// ChannelMsgToHost (icbm.go) to recode ICBM channel 1/MIME message text
+// between UTF-8 (sent as UCS-2BE, wire.ICBMMessageEncodingUnicode) and
+// Windows-1251 (sent mislabeled as ASCII/Latin-1, per ICQ convention) when
+// the sender and recipient disagree on wire.CapUTF8Messages support.
+func TestTranscodeMessage(t *testing.T) {
+	senderUnicode := newTestInstance("sender-screen-name", sessOptCaps(wire.CapUTF8Messages)).Session()
+	senderLegacy := newTestInstance("sender-screen-name", sessOptCaps()).Session()
+	recipUnicode := newTestInstance("recip-screen-name", sessOptCaps(wire.CapUTF8Messages)).Session()
+	recipLegacy := newTestInstance("recip-screen-name", sessOptCaps()).Session()
+
+	mustMarshalBE := func(t *testing.T, v any) []byte {
+		t.Helper()
+		buf := &bytes.Buffer{}
+		assert.NoError(t, wire.MarshalBE(v, buf))
+		return buf.Bytes()
+	}
+
+	// msgTLV builds an ICBMTLVAOLIMData TLV containing a single message text
+	// fragment (ID 1) tagged with the given charset, carrying the raw bytes
+	// as-is (no charset-specific encoding applied).
+	msgTLV := func(charset uint16, text []byte) wire.TLV {
+		frags := []wire.ICBMCh1Fragment{
+			{
+				ID:      1,
+				Version: 1,
+				Payload: mustMarshalBE(t, wire.ICBMCh1Message{
+					Charset:  charset,
+					Language: 0,
+					Text:     text,
+				}),
+			},
+		}
+		return wire.NewTLVBE(wire.ICBMTLVAOLIMData, frags)
+	}
+
+	toCharset := func(t *testing.T, enc encoding.Encoding, s string) []byte {
+		t.Helper()
+		b, err := enc.NewEncoder().Bytes([]byte(s))
+		assert.NoError(t, err)
+		return b
+	}
+
+	toWindows1251 := func(t *testing.T, s string) []byte {
+		t.Helper()
+		return toCharset(t, charmap.Windows1251, s)
+	}
+
+	// unicodeTLV builds the TLV a UTF8-capable client sends for a channel 1
+	// message, mirroring wire.ICBMFragmentListUnicode.
+	unicodeTLV := func(t *testing.T, s string) wire.TLV {
+		t.Helper()
+		frags, err := wire.ICBMFragmentListUnicode(s)
+		assert.NoError(t, err)
+		return wire.NewTLVBE(wire.ICBMTLVAOLIMData, frags)
+	}
+
+	// windows1251TLV builds the TLV transcodeMessage emits when it recodes
+	// text down to Windows-1251, mirroring wire.ICBMFragmentList.
+	windows1251TLV := func(t *testing.T, windows1251Bytes []byte) wire.TLV {
+		t.Helper()
+		frags, err := wire.ICBMFragmentList(string(windows1251Bytes))
+		assert.NoError(t, err)
+		return wire.NewTLVBE(wire.ICBMTLVAOLIMData, frags)
+	}
+
+	noMsgFragmentTLV := wire.NewTLVBE(wire.ICBMTLVAOLIMData, []wire.ICBMCh1Fragment{
+		{ID: 5, Version: 1, Payload: []byte{1, 1, 2}}, // 5 = capabilities, no message text fragment
+	})
+
+	tests := []struct {
+		name        string
+		charset     encoding.Encoding
+		sender      *state.Session
+		recip       *state.Session
+		tlv         wire.TLV
+		expectTLV   wire.TLV
+		wantErr     bool
+		wantErrText string
+	}{
+		{
+			name:      "both sender and recipient speak unicode, tlv passed through unchanged",
+			sender:    senderUnicode,
+			recip:     recipUnicode,
+			tlv:       msgTLV(wire.ICBMMessageEncodingASCII, []byte("hello")),
+			expectTLV: msgTLV(wire.ICBMMessageEncodingASCII, []byte("hello")),
+		},
+		{
+			name:      "neither sender nor recipient speaks unicode, tlv passed through unchanged",
+			sender:    senderLegacy,
+			recip:     recipLegacy,
+			tlv:       msgTLV(wire.ICBMMessageEncodingASCII, []byte("hello")),
+			expectTLV: msgTLV(wire.ICBMMessageEncodingASCII, []byte("hello")),
+		},
+		{
+			name:        "no message text fragment present",
+			sender:      senderUnicode,
+			recip:       recipLegacy,
+			tlv:         noMsgFragmentTLV,
+			wantErr:     true,
+			wantErrText: "unable to find ICBM fragment #1",
+		},
+		{
+			name:      "ASCII charset with pure ASCII text, tlv passed through unchanged",
+			sender:    senderLegacy,
+			recip:     recipUnicode,
+			tlv:       msgTLV(wire.ICBMMessageEncodingASCII, []byte("hello world")),
+			expectTLV: msgTLV(wire.ICBMMessageEncodingASCII, []byte("hello world")),
+		},
+		{
+			name:      "Latin1 charset smuggling Windows-1251 text, recipient does not speak unicode, tlv passed through unchanged",
+			sender:    senderUnicode,
+			recip:     recipLegacy,
+			tlv:       msgTLV(wire.ICBMMessageEncodingLatin1, toWindows1251(t, "привет")),
+			expectTLV: msgTLV(wire.ICBMMessageEncodingLatin1, toWindows1251(t, "привет")),
+		},
+		{
+			name:      "Latin1 charset smuggling Windows-1251 text, recipient speaks unicode, decodes to a unicode fragment",
+			sender:    senderLegacy,
+			recip:     recipUnicode,
+			tlv:       msgTLV(wire.ICBMMessageEncodingLatin1, toWindows1251(t, "привет")),
+			expectTLV: unicodeTLV(t, "привет"),
+		},
+		{
+			name:      "Unicode charset, recipient speaks unicode, tlv passed through unchanged",
+			sender:    senderLegacy,
+			recip:     recipUnicode,
+			tlv:       unicodeTLV(t, "hello"),
+			expectTLV: unicodeTLV(t, "hello"),
+		},
+		{
+			name:      "Unicode charset, recipient does not speak unicode, encodes to Windows-1251",
+			sender:    senderUnicode,
+			recip:     recipLegacy,
+			tlv:       unicodeTLV(t, "привет"),
+			expectTLV: windows1251TLV(t, toWindows1251(t, "привет")),
+		},
+		{
+			name:      "Unicode charset, recipient does not speak unicode, encodes to configured KOI8-R",
+			charset:   charmap.KOI8R,
+			sender:    senderUnicode,
+			recip:     recipLegacy,
+			tlv:       unicodeTLV(t, "привет"),
+			expectTLV: windows1251TLV(t, toCharset(t, charmap.KOI8R, "привет")),
+		},
+		{
+			name:      "Latin1 charset smuggling KOI8-R text, recipient speaks unicode, decodes with configured KOI8-R",
+			charset:   charmap.KOI8R,
+			sender:    senderLegacy,
+			recip:     recipUnicode,
+			tlv:       msgTLV(wire.ICBMMessageEncodingLatin1, toCharset(t, charmap.KOI8R, "привет")),
+			expectTLV: unicodeTLV(t, "привет"),
+		},
+		{
+			name:      "Unicode charset text has no Windows-1251 representation, replaced with ?",
+			sender:    senderUnicode,
+			recip:     recipLegacy,
+			tlv:       unicodeTLV(t, "中文"),
+			expectTLV: windows1251TLV(t, []byte("??")),
+		},
+		{
+			name:      "Unicode charset text partially representable in Windows-1251, only unsupported runes replaced",
+			sender:    senderUnicode,
+			recip:     recipLegacy,
+			tlv:       unicodeTLV(t, "привет café"),
+			expectTLV: windows1251TLV(t, append(toWindows1251(t, "привет "), []byte("caf?")...)),
+		},
+		{
+			name:      "unrecognized charset is decoded from Windows-1251 to unicode unconditionally",
+			sender:    senderLegacy,
+			recip:     recipUnicode,
+			tlv:       msgTLV(0xBEEF, toWindows1251(t, "привет")),
+			expectTLV: unicodeTLV(t, "привет"),
+		},
+		{
+			name:        "tlv value fails to unmarshal as ICBM fragments",
+			sender:      senderUnicode,
+			recip:       recipLegacy,
+			tlv:         wire.TLV{Tag: wire.ICBMTLVAOLIMData, Value: []byte{0x01, 0x01, 0x00}},
+			wantErr:     true,
+			wantErrText: "unable to unmarshal ICBM message",
+		},
+		{
+			name:   "message text fragment payload fails to unmarshal",
+			sender: senderUnicode,
+			recip:  recipLegacy,
+			tlv: wire.NewTLVBE(wire.ICBMTLVAOLIMData, []wire.ICBMCh1Fragment{
+				{ID: 1, Version: 1, Payload: []byte{0x00}},
+			}),
+			wantErr:     true,
+			wantErrText: "unable to unmarshal ICBM message",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			charset := tt.charset
+			if charset == nil {
+				charset = charmap.Windows1251
+			}
+			got, err := transcodeMessage(charset, tt.sender.HasCap(wire.CapUTF8Messages), tt.recip.HasCap(wire.CapUTF8Messages), tt.tlv)
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErrText)
+				return
+			}
+			assert.NoError(t, err)
+			assert.Equal(t, tt.expectTLV, got)
 		})
 	}
 }
@@ -3055,7 +3403,7 @@ func TestICBMService_EvilRequest(t *testing.T) {
 }
 
 func TestICBMService_ParameterQuery(t *testing.T) {
-	svc := NewICBMService(nil, nil, nil, nil, nil, nil, nil, nil, wire.DefaultSNACRateLimits(), slog.Default())
+	svc := NewICBMService(nil, nil, nil, nil, nil, nil, nil, nil, wire.DefaultSNACRateLimits(), charmap.Windows1251, slog.Default())
 
 	have := svc.ParameterQuery(context.TODO(), wire.SNACFrame{RequestID: 1234})
 	want := wire.SNACMessage{
@@ -3107,13 +3455,68 @@ func TestICBMService_ClientErr(t *testing.T) {
 	messageRelayer.EXPECT().
 		RelayToScreenName(mock.Anything, state.NewIdentScreenName("recipientScreenName"), expect)
 
-	svc := NewICBMService(nil, messageRelayer, nil, nil, nil, nil, nil, nil, wire.DefaultSNACRateLimits(), slog.Default())
+	svc := NewICBMService(nil, messageRelayer, nil, nil, nil, nil, nil, nil, wire.DefaultSNACRateLimits(), charmap.Windows1251, slog.Default())
 
 	err := svc.ClientErr(context.Background(), instance, wire.SNACFrame{RequestID: 1234}, inBody)
 	assert.NoError(t, err)
 }
 
 func TestICBMService_OfflineRetrieve(t *testing.T) {
+	sent := time.Unix(1700000000, 0).UTC()
+
+	// storedIM builds the offline message stored for "recipient" from "sender".
+	storedIM := func(tlvs ...wire.TLV) []state.OfflineMessage {
+		return []state.OfflineMessage{
+			{
+				Message: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
+					Cookie:       1234,
+					ChannelID:    wire.ICBMChannelIM,
+					TLVRestBlock: wire.TLVRestBlock{TLVList: tlvs},
+				},
+				Recipient: state.NewIdentScreenName("recipient"),
+				Sender:    state.NewIdentScreenName("sender"),
+				Sent:      sent,
+			},
+		}
+	}
+
+	// relayedIM builds the message relayed to "recipient" on retrieval.
+	relayedIM := func(tlvs ...wire.TLV) relayToSelfParams {
+		msg := wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
+			Cookie:       1234,
+			ChannelID:    wire.ICBMChannelIM,
+			TLVUserInfo:  wire.TLVUserInfo{ScreenName: "sender"},
+			TLVRestBlock: wire.TLVRestBlock{},
+		}
+		msg.AppendList(tlvs)
+		msg.Append(wire.NewTLVBE(wire.ICBMTLVSendTime, uint32(sent.Unix())))
+		return relayToSelfParams{
+			{
+				screenName: state.NewIdentScreenName("recipient"),
+				message: wire.SNACMessage{
+					Frame: wire.SNACFrame{
+						FoodGroup: wire.ICBM,
+						SubGroup:  wire.ICBMChannelMsgToClient,
+						RequestID: wire.ReqIDFromServer,
+					},
+					Body: msg,
+				},
+			},
+		}
+	}
+
+	successReply := wire.SNACMessage{
+		Frame: wire.SNACFrame{
+			FoodGroup: wire.ICBM,
+			SubGroup:  wire.ICBMOfflineRetrieveReply,
+			RequestID: 42,
+		},
+		Body: wire.SNAC_0x04_0x17_ICBMOfflineRetrieveReply{},
+	}
+
+	cyrillicCP1251 := "\xef\xf0\xe8\xe2\xe5\xf2" // "привет" in Windows-1251
+	malformedIMData := wire.TLV{Tag: wire.ICBMTLVAOLIMData, Value: []byte{0x01, 0x01, 0x00}}
+
 	cases := []struct {
 		// name is the unit test name
 		name string
@@ -3300,6 +3703,82 @@ func TestICBMService_OfflineRetrieve(t *testing.T) {
 			},
 		},
 		{
+			name:           "unicode message to legacy recipient is transcoded to the legacy charset",
+			senderInstance: newTestInstance("recipient"),
+			inputSNAC:      wire.SNACMessage{Frame: wire.SNACFrame{RequestID: 42}},
+			expectOutput:   successReply,
+			mockParams: mockParams{
+				offlineMessageManagerParams: offlineMessageManagerParams{
+					retrieveMessagesParams: retrieveMessagesParams{
+						{
+							recipIn: state.NewIdentScreenName("recipient"),
+							messagesOut: storedIM(
+								wire.NewTLVBE(wire.ICBMTLVAOLIMData, mustICBMFragmentListUnicode(t, "привет")),
+								wire.NewTLVBE(wire.ICBMTLVAutoResponse, []byte{}),
+							),
+						},
+					},
+					deleteMessagesParams: deleteMessagesParams{
+						{recipIn: state.NewIdentScreenName("recipient")},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToSelfParams: relayedIM(
+						wire.NewTLVBE(wire.ICBMTLVAOLIMData, mustICBMFragmentList(t, cyrillicCP1251)),
+						wire.NewTLVBE(wire.ICBMTLVAutoResponse, []byte{}),
+					),
+				},
+			},
+		},
+		{
+			name:           "legacy charset message to unicode recipient is transcoded to unicode",
+			senderInstance: newTestInstance("recipient", sessOptCaps(wire.CapUTF8Messages)),
+			inputSNAC:      wire.SNACMessage{Frame: wire.SNACFrame{RequestID: 42}},
+			expectOutput:   successReply,
+			mockParams: mockParams{
+				offlineMessageManagerParams: offlineMessageManagerParams{
+					retrieveMessagesParams: retrieveMessagesParams{
+						{
+							recipIn: state.NewIdentScreenName("recipient"),
+							messagesOut: storedIM(
+								wire.NewTLVBE(wire.ICBMTLVAOLIMData, mustICBMFragmentList(t, cyrillicCP1251)),
+							),
+						},
+					},
+					deleteMessagesParams: deleteMessagesParams{
+						{recipIn: state.NewIdentScreenName("recipient")},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToSelfParams: relayedIM(
+						wire.NewTLVBE(wire.ICBMTLVAOLIMData, mustICBMFragmentListUnicode(t, "привет")),
+					),
+				},
+			},
+		},
+		{
+			name:           "message that fails to transcode is delivered as stored",
+			senderInstance: newTestInstance("recipient"),
+			inputSNAC:      wire.SNACMessage{Frame: wire.SNACFrame{RequestID: 42}},
+			expectOutput:   successReply,
+			mockParams: mockParams{
+				offlineMessageManagerParams: offlineMessageManagerParams{
+					retrieveMessagesParams: retrieveMessagesParams{
+						{
+							recipIn:     state.NewIdentScreenName("recipient"),
+							messagesOut: storedIM(malformedIMData),
+						},
+					},
+					deleteMessagesParams: deleteMessagesParams{
+						{recipIn: state.NewIdentScreenName("recipient")},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToSelfParams: relayedIM(malformedIMData),
+				},
+			},
+		},
+		{
 			name:           "propagates retrieve error",
 			senderInstance: newTestInstance("recipient"),
 			inputSNAC: wire.SNACMessage{
@@ -3347,6 +3826,8 @@ func TestICBMService_OfflineRetrieve(t *testing.T) {
 			svc := ICBMService{
 				messageRelayer:        messageRelayer,
 				offlineMessageManager: offlineMessageManager,
+				legacyCharset:         charmap.Windows1251,
+				logger:                slog.New(slog.NewTextHandler(io.Discard, nil)),
 			}
 
 			out, err := svc.OfflineRetrieve(context.Background(), tc.senderInstance, tc.inputSNAC.Frame)
