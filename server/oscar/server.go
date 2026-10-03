@@ -258,10 +258,10 @@ func (s oscarServer) connectToOSCARService(
 				// buddy list must be cleared before session is closed, otherwise
 				// there will be a race condition that could cause the buddy list
 				// be prematurely deleted.
-				if err := s.buddyListRegistry.UnregisterBuddyList(ctx, instance.IdentScreenName()); err != nil {
+				if err := s.buddyListRegistry.UnregisterBuddyList(ctx, sess.IdentScreenName()); err != nil {
 					s.logger.ErrorContext(ctx, "error removing buddy list entry", "err", err.Error())
 				}
-				s.chatSessionManager.RemoveUserFromAllChats(instance.IdentScreenName())
+				s.chatSessionManager.RemoveUserFromAllChats(sess.IdentScreenName())
 				s.authService.Signout(ctx, sess)
 			})
 		}
