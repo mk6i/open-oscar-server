@@ -412,18 +412,19 @@ func MgmtAPI(deps Container) *http.Server {
 		deps.sqLiteUserStore,        // userManager
 		deps.inMemorySessionManager, // sessionRetriever
 		buddyService,
-		deps.sqLiteUserStore,        // chatRoomRetriever
-		deps.sqLiteUserStore,        // chatRoomCreator
-		deps.sqLiteUserStore,        // chatRoomDeleter
-		deps.chatSessionManager,     // chatSessionRetriever
-		deps.sqLiteUserStore,        // directoryManager
-		deps.inMemorySessionManager, // messageRelayer
-		deps.sqLiteUserStore,        // bartAssetManager
-		deps.sqLiteUserStore,        // feedbagRetriever
-		deps.sqLiteUserStore,        // feedbagManager
-		deps.sqLiteUserStore,        // accountManager
-		deps.sqLiteUserStore,        // profileRetriever
-		deps.sqLiteUserStore,        // icqProfileManager
+		deps.sqLiteUserStore,          // chatRoomRetriever
+		deps.sqLiteUserStore,          // chatRoomCreator
+		deps.sqLiteUserStore,          // chatRoomDeleter
+		deps.chatSessionManager,       // chatSessionRetriever
+		deps.sqLiteUserStore,          // directoryManager
+		deps.inMemorySessionManager,   // messageRelayer
+		deps.icbmSvc.ChannelMsgToHost, // icbmSender
+		deps.sqLiteUserStore,          // bartAssetManager
+		deps.sqLiteUserStore,          // feedbagRetriever
+		deps.sqLiteUserStore,          // feedbagManager
+		deps.sqLiteUserStore,          // accountManager
+		deps.sqLiteUserStore,          // profileRetriever
+		deps.sqLiteUserStore,          // icqProfileManager
 		state.NewAccountCreator(deps.sqLiteUserStore.InsertUser),
 		logger,
 	)

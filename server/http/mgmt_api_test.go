@@ -1,6 +1,7 @@
 package http
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -1810,31 +1811,60 @@ func TestPrivateChatHandler_GET(t *testing.T) {
 }
 
 func TestInstantMessageHandler_POST(t *testing.T) {
-	type relayToScreenNameInputs struct {
-		sender    state.IdentScreenName
-		recipient state.IdentScreenName
-		msg       string
-	}
-
 	tt := []struct {
-		name                    string
-		relayToScreenNameInputs []relayToScreenNameInputs
-		body                    string
-		want                    string
-		statusCode              int
+		name       string
+		body       string
+		wantText   string
+		sendCalled bool
+		reply      *wire.SNACMessage
+		sendErr    error
+		want       string
+		statusCode int
 	}{
 		{
-			name: "send an instant message",
-			relayToScreenNameInputs: []relayToScreenNameInputs{
-				{
-					sender:    state.NewIdentScreenName("sender_sn"),
-					recipient: state.NewIdentScreenName("recip_sn"),
-					msg:       "hello world!",
-				},
-			},
+			name:       "send an instant message",
 			body:       `{"from":"sender_sn","to":"recip_sn","text":"hello world!"}`,
+			sendCalled: true,
 			want:       `Message sent successfully.`,
 			statusCode: http.StatusOK,
+		},
+		{
+			name:       "send an instant message with non-ASCII text",
+			body:       `{"from":"sender_sn","to":"recip_sn","text":"héllo wörld 日本 😀"}`,
+			wantText:   "héllo wörld 日本 \uFFFD",
+			sendCalled: true,
+			want:       `Message sent successfully.`,
+			statusCode: http.StatusOK,
+		},
+		{
+			name:       "recipient is offline",
+			body:       `{"from":"sender_sn","to":"recip_sn","text":"hello world!"}`,
+			sendCalled: true,
+			reply: &wire.SNACMessage{
+				Frame: wire.SNACFrame{FoodGroup: wire.ICBM, SubGroup: wire.ICBMErr},
+				Body:  wire.SNACError{Code: wire.ErrorCodeNotLoggedOn},
+			},
+			want:       `recipient is not online`,
+			statusCode: http.StatusNotFound,
+		},
+		{
+			name:       "sender is blocked",
+			body:       `{"from":"sender_sn","to":"recip_sn","text":"hello world!"}`,
+			sendCalled: true,
+			reply: &wire.SNACMessage{
+				Frame: wire.SNACFrame{FoodGroup: wire.ICBM, SubGroup: wire.ICBMErr},
+				Body:  wire.SNACError{Code: wire.ErrorCodeInLocalPermitDeny},
+			},
+			want:       `message blocked`,
+			statusCode: http.StatusForbidden,
+		},
+		{
+			name:       "send fails",
+			body:       `{"from":"sender_sn","to":"recip_sn","text":"hello world!"}`,
+			sendCalled: true,
+			sendErr:    io.EOF,
+			want:       `internal server error`,
+			statusCode: http.StatusInternalServerError,
 		},
 		{
 			name:       "with malformed body",
@@ -1846,37 +1876,49 @@ func TestInstantMessageHandler_POST(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			request := httptest.NewRequest(http.MethodPost, "/user", strings.NewReader(tc.body))
+			request := httptest.NewRequest(http.MethodPost, "/instant-message", strings.NewReader(tc.body))
 			responseRecorder := httptest.NewRecorder()
 
-			messageRelayer := newMockMessageRelayer(t)
+			sendCalled := false
+			icbmSender := func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) (*wire.SNACMessage, error) {
+				sendCalled = true
+				assert.Equal(t, state.NewIdentScreenName("sender_sn"), instance.IdentScreenName())
+				assert.Equal(t, wire.ICBM, inFrame.FoodGroup)
+				assert.Equal(t, wire.ICBMChannelMsgToHost, inFrame.SubGroup)
+				assert.Equal(t, "recip_sn", inBody.ScreenName)
+				assert.Equal(t, wire.ICBMChannelIM, inBody.ChannelID)
 
-			for _, params := range tc.relayToScreenNameInputs {
-				validateSNAC := func(msg wire.SNACMessage) bool {
-					body := msg.Body.(wire.SNAC_0x04_0x07_ICBMChannelMsgToClient)
-					assert.Equal(t, params.sender.String(), body.ScreenName)
+				assert.Equal(t, [][16]byte{wire.CapUTF8Messages}, instance.Caps())
 
-					b, ok := body.Bytes(wire.ICBMTLVAOLIMData)
-					assert.True(t, ok)
+				b, ok := inBody.Bytes(wire.ICBMTLVAOLIMData)
+				assert.True(t, ok)
 
-					txt, err := wire.UnmarshalICBMMessageText(b)
-					assert.NoError(t, err)
-					assert.Equal(t, params.msg, txt)
-					return true
+				var frags []wire.ICBMCh1Fragment
+				assert.NoError(t, wire.UnmarshalBE(&frags, bytes.NewBuffer(b)))
+				for _, frag := range frags {
+					if frag.ID == 1 {
+						msg := wire.ICBMCh1Message{}
+						assert.NoError(t, wire.UnmarshalBE(&msg, bytes.NewBuffer(frag.Payload)))
+						assert.Equal(t, wire.ICBMMessageEncodingUnicode, msg.Charset)
+					}
 				}
-				messageRelayer.EXPECT().
-					RelayToScreenName(mock.Anything, params.recipient, mock.MatchedBy(validateSNAC))
+
+				wantText := tc.wantText
+				if wantText == "" {
+					wantText = "hello world!"
+				}
+				txt, err := wire.UnmarshalICBMMessageText(b)
+				assert.NoError(t, err)
+				assert.Equal(t, wantText, txt)
+
+				return tc.reply, tc.sendErr
 			}
 
-			postInstantMessageHandler(responseRecorder, request, messageRelayer, slog.Default())
+			postInstantMessageHandler(responseRecorder, request, icbmSender, slog.Default())
 
-			if responseRecorder.Code != tc.statusCode {
-				t.Errorf("want status '%d', got '%d'", tc.statusCode, responseRecorder.Code)
-			}
-
-			if strings.TrimSpace(responseRecorder.Body.String()) != tc.want {
-				t.Errorf("want '%s', got '%s'", tc.want, responseRecorder.Body)
-			}
+			assert.Equal(t, tc.sendCalled, sendCalled)
+			assert.Equal(t, tc.statusCode, responseRecorder.Code)
+			assert.Equal(t, tc.want, strings.TrimSpace(responseRecorder.Body.String()))
 		})
 	}
 }

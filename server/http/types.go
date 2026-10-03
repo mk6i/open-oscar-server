@@ -128,6 +128,10 @@ type MessageRelayer interface {
 	RelayToScreenName(ctx context.Context, screenName state.IdentScreenName, msg wire.SNACMessage)
 }
 
+// ICBMSender sends an instant message from the given sender instance as if
+// the sender submitted wire.ICBMChannelMsgToHost.
+type ICBMSender func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) (*wire.SNACMessage, error)
+
 // ProfileRetriever defines a method for retrieving a user's free-form profile.
 type ProfileRetriever interface {
 	// Profile returns the user's profile information for the given screen name.

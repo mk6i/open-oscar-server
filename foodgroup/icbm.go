@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -16,7 +17,6 @@ import (
 	"github.com/mk6i/open-oscar-server/wire"
 
 	"github.com/patrickmn/go-cache"
-	"golang.org/x/exp/slices"
 	"golang.org/x/net/html"
 	"golang.org/x/text/encoding"
 )

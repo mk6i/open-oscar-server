@@ -23,7 +23,7 @@ import (
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
-func NewManagementAPI(bld config.Build, listener string, userManager UserManager, sessionRetriever SessionRetriever, buddyBroadcaster BuddyBroadcaster, chatRoomRetriever ChatRoomRetriever, chatRoomCreator ChatRoomCreator, chatRoomDeleter ChatRoomDeleter, chatSessionRetriever ChatSessionRetriever, directoryManager DirectoryManager, messageRelayer MessageRelayer, bartAssetManager BARTAssetManager, feedbagRetriever FeedBagRetriever, feedbagManager FeedbagManager, accountManager AccountManager, profileRetriever ProfileRetriever, icqProfileManager ICQProfileManager, createAccount state.CreateAccountFunc, logger *slog.Logger) *Server {
+func NewManagementAPI(bld config.Build, listener string, userManager UserManager, sessionRetriever SessionRetriever, buddyBroadcaster BuddyBroadcaster, chatRoomRetriever ChatRoomRetriever, chatRoomCreator ChatRoomCreator, chatRoomDeleter ChatRoomDeleter, chatSessionRetriever ChatSessionRetriever, directoryManager DirectoryManager, messageRelayer MessageRelayer, icbmSender ICBMSender, bartAssetManager BARTAssetManager, feedbagRetriever FeedBagRetriever, feedbagManager FeedbagManager, accountManager AccountManager, profileRetriever ProfileRetriever, icqProfileManager ICQProfileManager, createAccount state.CreateAccountFunc, logger *slog.Logger) *Server {
 	mux := http.NewServeMux()
 
 	// Handlers for '/user' route
@@ -99,7 +99,7 @@ func NewManagementAPI(bld config.Build, listener string, userManager UserManager
 
 	// Handlers for '/instant-message' route
 	mux.HandleFunc("POST /instant-message", func(w http.ResponseWriter, r *http.Request) {
-		postInstantMessageHandler(w, r, messageRelayer, logger)
+		postInstantMessageHandler(w, r, icbmSender, logger)
 	})
 
 	// Handlers for '/version' route
@@ -625,39 +625,63 @@ func writeUnescapeChatURL(w http.ResponseWriter, out []chatRoom) {
 	}
 }
 
-// postIMHandler handles the POST /instant-message endpoint.
-func postInstantMessageHandler(w http.ResponseWriter, r *http.Request, messageRelayer MessageRelayer, logger *slog.Logger) {
+// postInstantMessageHandler handles the POST /instant-message endpoint.
+func postInstantMessageHandler(w http.ResponseWriter, r *http.Request, icbmSender ICBMSender, logger *slog.Logger) {
 	input := instantMessage{}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		http.Error(w, "malformed input", http.StatusBadRequest)
 		return
 	}
 
-	tlv, err := wire.ICBMFragmentList(input.Text)
+	tlv, err := wire.ICBMFragmentListUnicode(input.Text)
 	if err != nil {
 		logger.Error("error sending message POST /instant-message", "err", err.Error())
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	msg := wire.SNACMessage{
-		Frame: wire.SNACFrame{
-			FoodGroup: wire.ICBM,
-			SubGroup:  wire.ICBMChannelMsgToClient,
-		},
-		Body: wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
-			ChannelID: 1,
-			TLVUserInfo: wire.TLVUserInfo{
-				ScreenName: input.From,
-			},
-			TLVRestBlock: wire.TLVRestBlock{
-				TLVList: wire.TLVList{
-					wire.NewTLVBE(wire.ICBMTLVAOLIMData, tlv),
-				},
+	sess := state.NewSession()
+	sess.SetIdentScreenName(state.NewIdentScreenName(input.From))
+	sess.SetDisplayScreenName(state.DisplayScreenName(input.From))
+	instance := sess.AddInstance()
+	instance.SetCaps([][16]byte{wire.CapUTF8Messages})
+
+	frame := wire.SNACFrame{
+		FoodGroup: wire.ICBM,
+		SubGroup:  wire.ICBMChannelMsgToHost,
+	}
+	body := wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
+		Cookie:     uint64(time.Now().UnixNano()),
+		ChannelID:  wire.ICBMChannelIM,
+		ScreenName: input.To,
+		TLVRestBlock: wire.TLVRestBlock{
+			TLVList: wire.TLVList{
+				wire.NewTLVBE(wire.ICBMTLVAOLIMData, tlv),
 			},
 		},
 	}
-	messageRelayer.RelayToScreenName(context.Background(), state.NewIdentScreenName(input.To), msg)
+
+	reply, err := icbmSender(r.Context(), instance, frame, body)
+	if err != nil {
+		logger.Error("error sending message POST /instant-message", "err", err.Error())
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if reply != nil {
+		if snacErr, ok := reply.Body.(wire.SNACError); ok {
+			switch snacErr.Code {
+			case wire.ErrorCodeNotLoggedOn:
+				http.Error(w, "recipient is not online", http.StatusNotFound)
+			case wire.ErrorCodeInLocalPermitDeny:
+				http.Error(w, "message blocked", http.StatusForbidden)
+			default:
+				logger.Error("error sending message POST /instant-message", "code", snacErr.Code)
+				http.Error(w, "internal server error", http.StatusInternalServerError)
+			}
+			return
+		}
+	}
 
 	w.WriteHeader(http.StatusOK)
 	_, _ = fmt.Fprintln(w, "Message sent successfully.")
