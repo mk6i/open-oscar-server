@@ -389,8 +389,6 @@ func (s *ICQService) OfflineMsgReq(ctx context.Context, inFrame wire.SNACFrame, 
 		return fmt.Errorf("retrieving messages: %w", err)
 	}
 
-	recipUnicode := instance.Session().HasCap(wire.CapUTF8Messages)
-
 	for _, msgIn := range messages {
 		if msgIn.Sender.UIN() != 0 {
 			reply := wire.ICQ_0x0041_DBQueryOfflineMsgReply{
@@ -415,9 +413,9 @@ func (s *ICQService) OfflineMsgReq(ctx context.Context, inFrame wire.SNACFrame, 
 					// the message charset alone decides the conversion. A message
 					// that fails to transcode is delivered as stored.
 					tlv := wire.TLV{Tag: wire.ICBMTLVAOLIMData, Value: payload}
-					// ICQ doesn't appear to support unicode offline messages, so
+					// ICQ doesn't appear to support Unicode offline messages, so
 					// force a conversion to fallback character set
-					if transcoded, err := transcodeMessage(s.legacyCharset, true, false, tlv); err != nil {
+					if transcoded, err := transcodeICQMessage(s.legacyCharset, false, tlv); err != nil {
 						s.logger.WarnContext(ctx, "unable to transcode offline message", "sender", msgIn.Sender, "err", err)
 					} else {
 						tlv = transcoded
@@ -490,7 +488,9 @@ func (s *ICQService) OfflineMsgReq(ctx context.Context, inFrame wire.SNACFrame, 
 				// to transcode is delivered as stored.
 				if (clientIM.ChannelID == wire.ICBMChannelIM || clientIM.ChannelID == wire.ICBMChannelMIME) &&
 					tlv.Tag == wire.ICBMTLVAOLIMData {
-					if transcoded, err := transcodeMessage(s.legacyCharset, !recipUnicode, recipUnicode, tlv); err != nil {
+					// ICQ doesn't appear to support Unicode offline messages, so
+					// force a conversion to fallback character set
+					if transcoded, err := transcodeICQMessage(s.legacyCharset, false, tlv); err != nil {
 						s.logger.WarnContext(ctx, "unable to transcode offline message", "sender", msgIn.Sender, "err", err)
 					} else {
 						tlv = transcoded

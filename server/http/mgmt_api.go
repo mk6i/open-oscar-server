@@ -633,13 +633,6 @@ func postInstantMessageHandler(w http.ResponseWriter, r *http.Request, icbmSende
 		return
 	}
 
-	tlv, err := wire.ICBMFragmentListUnicode(input.Text)
-	if err != nil {
-		logger.Error("error sending message POST /instant-message", "err", err.Error())
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		return
-	}
-
 	sess := state.NewSession()
 	sess.SetIdentScreenName(state.NewIdentScreenName(input.From))
 	sess.SetDisplayScreenName(state.DisplayScreenName(input.From))
@@ -654,12 +647,15 @@ func postInstantMessageHandler(w http.ResponseWriter, r *http.Request, icbmSende
 		Cookie:     uint64(time.Now().UnixNano()),
 		ChannelID:  wire.ICBMChannelIM,
 		ScreenName: input.To,
-		TLVRestBlock: wire.TLVRestBlock{
-			TLVList: wire.TLVList{
-				wire.NewTLVBE(wire.ICBMTLVAOLIMData, tlv),
-			},
-		},
 	}
+
+	tlv, err := wire.ICBMFragmentList(input.Text)
+	if err != nil {
+		logger.Error("error sending message POST /instant-message", "err", err.Error())
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	body.Append(wire.NewTLVBE(wire.ICBMTLVAOLIMData, tlv))
 
 	reply, err := icbmSender(r.Context(), instance, frame, body)
 	if err != nil {

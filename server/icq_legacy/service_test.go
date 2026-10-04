@@ -816,7 +816,7 @@ func TestICQLegacyService_GetOfflineMessages(t *testing.T) {
 										ChannelID: wire.ICBMChannelIM,
 										TLVRestBlock: wire.TLVRestBlock{
 											TLVList: func() wire.TLVList {
-												frags, _ := wire.ICBMFragmentList("hello offline")
+												frags, _ := wire.ICBMFragmentListASCII("hello offline")
 												return wire.TLVList{
 													wire.NewTLVBE(wire.ICBMTLVAOLIMData, frags),
 												}

@@ -888,7 +888,7 @@ func (s OServiceService) sendMultipleInstanceNotification(ctx context.Context, i
 }
 
 func systemMessage(msg string) (wire.SNACMessage, error) {
-	frags, err := wire.ICBMFragmentList(msg)
+	frags, err := wire.ICBMFragmentListASCII(msg)
 	if err != nil {
 		return wire.SNACMessage{}, fmt.Errorf("creating ICBM fragments: %w", err)
 	}

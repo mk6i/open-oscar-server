@@ -910,9 +910,25 @@ type SNAC_0x04_0x07_ICBMChannelMsgToClient struct {
 	TLVRestBlock
 }
 
-// ICBMFragmentList creates an ICBM fragment list for an instant message
-// payload.
+func AllASCII[T string | []byte](msg T) bool {
+	for i := 0; i < len(msg); i++ {
+		if msg[i] > unicode.MaxASCII {
+			return false
+		}
+	}
+	return true
+}
+
 func ICBMFragmentList(text string) ([]ICBMCh1Fragment, error) {
+	if AllASCII(text) {
+		return ICBMFragmentListASCII(text)
+	}
+	return ICBMFragmentListUnicode(text)
+}
+
+// ICBMFragmentListASCII creates an ICBM fragment list for an instant message
+// payload.
+func ICBMFragmentListASCII(text string) ([]ICBMCh1Fragment, error) {
 	msg := ICBMCh1Message{
 		Charset:  ICBMMessageEncodingASCII,
 		Language: 0, // not clear what this means, but it works
@@ -937,7 +953,7 @@ func ICBMFragmentList(text string) ([]ICBMCh1Fragment, error) {
 	}, nil
 }
 
-// ICBMFragmentList creates an ICBM fragment list for an instant message
+// ICBMFragmentListUnicode creates an ICBM fragment list for an instant message
 // payload.
 func ICBMFragmentListUnicode(text string) ([]ICBMCh1Fragment, error) {
 

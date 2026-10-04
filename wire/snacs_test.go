@@ -481,3 +481,44 @@ func TestFeedbagItem_RemoveOrderMembers(t *testing.T) {
 		assert.Equal(t, []uint16{5, 10}, order)
 	})
 }
+
+func TestAllASCII(t *testing.T) {
+	tests := []struct {
+		name string
+		msg  string
+		want bool
+	}{
+		{name: "empty", msg: "", want: true},
+		{name: "ASCII", msg: "hello world!", want: true},
+		{name: "DEL is ASCII", msg: "\x7f", want: true},
+		{name: "Latin-1 byte", msg: "\xe9", want: false},
+		{name: "multibyte UTF-8", msg: "héllo", want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, AllASCII(tt.msg))
+			assert.Equal(t, tt.want, AllASCII([]byte(tt.msg)))
+		})
+	}
+}
+
+func TestICBMFragmentList(t *testing.T) {
+	tests := []struct {
+		name string
+		text string
+		want func(string) ([]ICBMCh1Fragment, error)
+	}{
+		{name: "ASCII text is encoded as ASCII", text: "hello world!", want: ICBMFragmentListASCII},
+		{name: "empty text is encoded as ASCII", text: "", want: ICBMFragmentListASCII},
+		{name: "non-ASCII text is encoded as UCS-2", text: "héllo 日本", want: ICBMFragmentListUnicode},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			want, err := tt.want(tt.text)
+			assert.NoError(t, err)
+			got, err := ICBMFragmentList(tt.text)
+			assert.NoError(t, err)
+			assert.Equal(t, want, got)
+		})
+	}
+}

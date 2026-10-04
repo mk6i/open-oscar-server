@@ -2337,7 +2337,7 @@ func TestICQService_OfflineMsgReq(t *testing.T) {
 										TLVRestBlock: wire.TLVRestBlock{
 											TLVList: wire.TLVList{
 												wire.NewTLVBE(wire.ICBMTLVAOLIMData, func() []wire.ICBMCh1Fragment {
-													frags, err := wire.ICBMFragmentList("hello!")
+													frags, err := wire.ICBMFragmentListASCII("hello!")
 													assert.NoError(t, err)
 													return frags
 												}()),
@@ -2563,7 +2563,7 @@ func TestICQService_OfflineMsgReq(t *testing.T) {
 										TLVRestBlock: wire.TLVRestBlock{
 											TLVList: wire.TLVList{
 												wire.NewTLVBE(wire.ICBMTLVAOLIMData, func() []wire.ICBMCh1Fragment {
-													frags, err := wire.ICBMFragmentList("hello from AIM!")
+													frags, err := wire.ICBMFragmentListASCII("hello from AIM!")
 													assert.NoError(t, err)
 													return frags
 												}()),
@@ -2597,7 +2597,7 @@ func TestICQService_OfflineMsgReq(t *testing.T) {
 										},
 										TLVRestBlock: wire.TLVRestBlock{},
 									}
-									frags, err := wire.ICBMFragmentList("hello from AIM!")
+									frags, err := wire.ICBMFragmentListASCII("hello from AIM!")
 									assert.NoError(t, err)
 									msg.Append(wire.NewTLVBE(wire.ICBMTLVAOLIMData, frags))
 									msg.Append(wire.NewTLVBE(wire.ICBMTLVSendTime, uint32(time.Date(2024, time.August, 2, 12, 5, 0, 0, time.UTC).Unix())))

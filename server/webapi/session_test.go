@@ -384,7 +384,7 @@ func TestSession_RepeatsBuddyAliasOnOSCAREvents(t *testing.T) {
 
 	t.Run("incoming IM", func(t *testing.T) {
 		sess := newSession()
-		frags, err := wire.ICBMFragmentList("hello")
+		frags, err := wire.ICBMFragmentListASCII("hello")
 		require.NoError(t, err)
 		body := wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
 			ChannelID:   wire.ICBMChannelIM,
@@ -623,7 +623,7 @@ func TestSession_HandleIncomingIM_NormalizesAimID(t *testing.T) {
 		FeedbagLoader: emptyFeedbagLoader,
 	}
 
-	frags, err := wire.ICBMFragmentList("hello")
+	frags, err := wire.ICBMFragmentListASCII("hello")
 	assert.NoError(t, err)
 
 	body := wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
@@ -1090,7 +1090,7 @@ func TestSession_OfflineIM(t *testing.T) {
 
 	storedMsg := func(t *testing.T, withSendTime bool) wire.SNACMessage {
 		t.Helper()
-		frags, err := wire.ICBMFragmentList("sent while you were out")
+		frags, err := wire.ICBMFragmentListASCII("sent while you were out")
 		require.NoError(t, err)
 		body := wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
 			ChannelID:   wire.ICBMChannelIM,
@@ -1638,7 +1638,7 @@ func TestSession_IncomingIMReportsSenderPresenceFromTheView(t *testing.T) {
 
 	incomingIM := func(t *testing.T, sess *Session, from string) IMEvent {
 		t.Helper()
-		frags, err := wire.ICBMFragmentList("hello")
+		frags, err := wire.ICBMFragmentListASCII("hello")
 		require.NoError(t, err)
 		body := wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
 			ChannelID:   wire.ICBMChannelIM,
@@ -1984,7 +1984,7 @@ func TestSession_ForgetBuddyPresence(t *testing.T) {
 		buddyArrives(sess, onlineBuddy("Mike Kelly"))
 		sess.forgetBuddyPresence(state.NewIdentScreenName("mikekelly"))
 
-		frags, err := wire.ICBMFragmentList("hello")
+		frags, err := wire.ICBMFragmentListASCII("hello")
 		require.NoError(t, err)
 		body := wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
 			ChannelID:   wire.ICBMChannelIM,

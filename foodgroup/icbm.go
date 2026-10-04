@@ -11,7 +11,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode"
 
 	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
@@ -201,10 +200,9 @@ func (s *ICBMService) ChannelMsgToHost(ctx context.Context, instance *state.Sess
 			}
 		}
 
-		if (clientIM.ChannelID == wire.ICBMChannelIM || clientIM.ChannelID == wire.ICBMChannelMIME) &&
-			tlv.Tag == wire.ICBMTLVAOLIMData {
-			// A TLV that fails to transcode is delivered as sent.
-			if transcoded, err := transcodeMessage(s.legacyCharset, instance.Session().HasCap(wire.CapUTF8Messages), recipSess.HasCap(wire.CapUTF8Messages), tlv); err != nil {
+		if tlv.Tag == wire.ICBMTLVAOLIMData && recipSess.UIN() != 0 &&
+			(clientIM.ChannelID == wire.ICBMChannelIM || clientIM.ChannelID == wire.ICBMChannelMIME) {
+			if transcoded, err := transcodeICQMessage(s.legacyCharset, recipSess.HasCap(wire.CapUTF8Messages), tlv); err != nil {
 				s.logger.WarnContext(ctx, "unable to transcode message", "recipient", recipSess.IdentScreenName(), "err", err)
 			} else {
 				tlv = transcoded
@@ -261,14 +259,11 @@ func (s *ICBMService) ChannelMsgToHost(ctx context.Context, instance *state.Sess
 	}, nil
 }
 
-// transcodeMessage recodes message text between UCS-2BE and the legacy 8-bit
-// charset enc when exactly one of sender and recip supports Unicode messages.
-func transcodeMessage(enc encoding.Encoding, senderUnicode bool, recipUnicode bool, tlv wire.TLV) (wire.TLV, error) {
-	if senderUnicode == recipUnicode {
-		// both speak unicode or don't speak unicode, no need to transcode
-		return tlv, nil
-	}
-
+// transcodeICQMessage recodes the ICQ message into Unicode or the fallback encoding
+// depending on the recipient's Unicode support. Recode ASCII/Latin-1 containing
+// non ASCII/Latin-1 bytes into Unicode; Recode Unicode into the fallback encoding
+// if the recipient does not support Unicode.
+func transcodeICQMessage(enc encoding.Encoding, recipUnicode bool, tlv wire.TLV) (wire.TLV, error) {
 	var frags []wire.ICBMCh1Fragment
 	if err := wire.UnmarshalBE(&frags, bytes.NewReader(tlv.Value)); err != nil {
 		return tlv, fmt.Errorf("unable to unmarshal ICBM message: %w", err)
@@ -298,14 +293,7 @@ func transcodeMessage(enc encoding.Encoding, senderUnicode bool, recipUnicode bo
 		return wire.NewTLVBE(tlv.Tag, frags), nil
 	}
 
-	allASCII := true
-	for _, c := range msg.Text {
-		if c > unicode.MaxASCII {
-			allASCII = false
-			break
-		}
-	}
-	if allASCII || !recipUnicode {
+	if wire.AllASCII(string(msg.Text)) || !recipUnicode {
 		return tlv, nil
 	}
 
@@ -327,7 +315,7 @@ func transcodeFromUnicode(enc encoding.Encoding, msg []byte) ([]wire.ICBMCh1Frag
 	// ReplaceUnsupported substitutes the non-printing ASCII SUB character.
 	text = bytes.ReplaceAll(text, []byte{encoding.ASCIISub}, []byte{'?'})
 
-	frags, err := wire.ICBMFragmentList(string(text))
+	frags, err := wire.ICBMFragmentListASCII(string(text))
 	if err != nil {
 		return nil, fmt.Errorf("unable to unmarshal ICBM message: %w", err)
 	}
@@ -686,9 +674,9 @@ func (s *ICBMService) OfflineRetrieve(ctx context.Context, instance *state.Sessi
 			// The sender's capabilities are unknown at retrieval time, so the
 			// message charset alone decides the conversion. A TLV that fails to
 			// transcode is delivered as stored.
-			if (clientIM.ChannelID == wire.ICBMChannelIM || clientIM.ChannelID == wire.ICBMChannelMIME) &&
-				tlv.Tag == wire.ICBMTLVAOLIMData {
-				if transcoded, err := transcodeMessage(s.legacyCharset, !recipUnicode, recipUnicode, tlv); err != nil {
+			if tlv.Tag == wire.ICBMTLVAOLIMData && instance.UIN() != 0 &&
+				(clientIM.ChannelID == wire.ICBMChannelIM || clientIM.ChannelID == wire.ICBMChannelMIME) {
+				if transcoded, err := transcodeICQMessage(s.legacyCharset, recipUnicode, tlv); err != nil {
 					s.logger.WarnContext(ctx, "unable to transcode offline message", "sender", event.Sender, "err", err)
 				} else {
 					tlv = transcoded

@@ -73,13 +73,11 @@ func (h *MessagingHandler) SendIM(w http.ResponseWriter, r *http.Request, sess *
 		TLVRestBlock: wire.TLVRestBlock{},
 	}
 
-	// Add message data
-	frags, err := wire.ICBMFragmentListUnicode(message)
+	frags, err := wire.ICBMFragmentList(message)
 	if err != nil {
 		SendError(w, r, http.StatusInternalServerError, "failed to send message")
 		return
 	}
-
 	clientIM.Append(wire.NewTLVBE(wire.ICBMTLVAOLIMData, frags))
 
 	// Add auto-response flag if applicable

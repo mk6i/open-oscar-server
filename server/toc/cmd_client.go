@@ -1931,7 +1931,7 @@ func (s OSCARProxy) SendIM(ctx context.Context, sender *state.SessionInstance, a
 }
 
 func (s OSCARProxy) sendIm(ctx context.Context, sender *state.SessionInstance, msg string, recip string, autoReply []string) []string {
-	frags, err := wire.ICBMFragmentList(unescape(msg))
+	frags, err := wire.ICBMFragmentListASCII(unescape(msg))
 	if err != nil {
 		return s.runtimeErr(ctx, fmt.Errorf("wire.ICBMFragmentList: %w", err))
 	}

@@ -1890,6 +1890,15 @@ func TestInstantMessageHandler_POST(t *testing.T) {
 
 				assert.Equal(t, [][16]byte{wire.CapUTF8Messages}, instance.Caps())
 
+				wantText := tc.wantText
+				if wantText == "" {
+					wantText = "hello world!"
+				}
+				wantCharset := wire.ICBMMessageEncodingUnicode
+				if wire.AllASCII(wantText) {
+					wantCharset = wire.ICBMMessageEncodingASCII
+				}
+
 				b, ok := inBody.Bytes(wire.ICBMTLVAOLIMData)
 				assert.True(t, ok)
 
@@ -1899,14 +1908,10 @@ func TestInstantMessageHandler_POST(t *testing.T) {
 					if frag.ID == 1 {
 						msg := wire.ICBMCh1Message{}
 						assert.NoError(t, wire.UnmarshalBE(&msg, bytes.NewBuffer(frag.Payload)))
-						assert.Equal(t, wire.ICBMMessageEncodingUnicode, msg.Charset)
+						assert.Equal(t, wantCharset, msg.Charset)
 					}
 				}
 
-				wantText := tc.wantText
-				if wantText == "" {
-					wantText = "hello world!"
-				}
 				txt, err := wire.UnmarshalICBMMessageText(b)
 				assert.NoError(t, err)
 				assert.Equal(t, wantText, txt)

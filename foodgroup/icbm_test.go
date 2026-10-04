@@ -2183,7 +2183,7 @@ func TestICBMService_ChannelMsgToHost(t *testing.T) {
 			wantErr:      nil,
 		},
 		{
-			name:     "unicode sender to legacy recipient, only the message text TLV is transcoded",
+			name:     "unicode sender to legacy ICQ recipient, only the message text TLV is transcoded",
 			instance: newTestInstance("sender-screen-name", sessOptCaps(wire.CapUTF8Messages)),
 			mockParams: mockParams{
 				relationshipFetcherParams: relationshipFetcherParams{
@@ -2199,7 +2199,7 @@ func TestICBMService_ChannelMsgToHost(t *testing.T) {
 					retrieveSessionParams{
 						{
 							screenName: state.NewIdentScreenName("recipient-screen-name"),
-							result:     newTestInstance("recipient-screen-name", sessOptSignonComplete).Session(),
+							result:     newTestInstance("recipient-screen-name", sessOptSignonComplete, sessOptUIN(100003)).Session(),
 						},
 					},
 				},
@@ -2243,7 +2243,7 @@ func TestICBMService_ChannelMsgToHost(t *testing.T) {
 			expectOutput: nil,
 		},
 		{
-			name:     "unicode sender to legacy recipient, message text TLV that fails to transcode is delivered as sent",
+			name:     "unicode sender to legacy AIM recipient, message is delivered as sent",
 			instance: newTestInstance("sender-screen-name", sessOptCaps(wire.CapUTF8Messages)),
 			mockParams: mockParams{
 				relationshipFetcherParams: relationshipFetcherParams{
@@ -2260,6 +2260,66 @@ func TestICBMService_ChannelMsgToHost(t *testing.T) {
 						{
 							screenName: state.NewIdentScreenName("recipient-screen-name"),
 							result:     newTestInstance("recipient-screen-name", sessOptSignonComplete).Session(),
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameActiveOnlyParams: relayToScreenNameActiveOnlyParams{
+						{
+							screenName: state.NewIdentScreenName("recipient-screen-name"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.ICBM,
+									SubGroup:  wire.ICBMChannelMsgToClient,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
+									ChannelID:   wire.ICBMChannelIM,
+									TLVUserInfo: newTestInstance("sender-screen-name", sessOptCaps(wire.CapUTF8Messages)).Session().TLVUserInfo(),
+									TLVRestBlock: wire.TLVRestBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.ICBMTLVAOLIMData, mustICBMFragmentListUnicode(t, "привет")),
+											wire.NewTLVBE(wire.ICBMTLVAutoResponse, []byte{}),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			inputSNAC: wire.SNACMessage{
+				Body: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
+					ChannelID:  wire.ICBMChannelIM,
+					ScreenName: "recipient-screen-name",
+					TLVRestBlock: wire.TLVRestBlock{
+						TLVList: wire.TLVList{
+							wire.NewTLVBE(wire.ICBMTLVAOLIMData, mustICBMFragmentListUnicode(t, "привет")),
+							wire.NewTLVBE(wire.ICBMTLVAutoResponse, []byte{}),
+						},
+					},
+				},
+			},
+			expectOutput: nil,
+		},
+		{
+			name:     "unicode sender to legacy ICQ recipient, message text TLV that fails to transcode is delivered as sent",
+			instance: newTestInstance("sender-screen-name", sessOptCaps(wire.CapUTF8Messages)),
+			mockParams: mockParams{
+				relationshipFetcherParams: relationshipFetcherParams{
+					relationshipParams: relationshipParams{
+						{
+							me:     state.NewIdentScreenName("sender-screen-name"),
+							them:   state.NewIdentScreenName("recipient-screen-name"),
+							result: state.Relationship{User: state.NewIdentScreenName("recipient-screen-name")},
+						},
+					},
+				},
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams{
+						{
+							screenName: state.NewIdentScreenName("recipient-screen-name"),
+							result:     newTestInstance("recipient-screen-name", sessOptSignonComplete, sessOptUIN(100003)).Session(),
 						},
 					},
 				},
@@ -2394,7 +2454,7 @@ func TestICBMService_ChannelMsgToHost(t *testing.T) {
 
 func mustICBMFragmentList(t *testing.T, text string) []wire.ICBMCh1Fragment {
 	t.Helper()
-	frags, err := wire.ICBMFragmentList(text)
+	frags, err := wire.ICBMFragmentListASCII(text)
 	assert.NoError(t, err)
 	return frags
 }
@@ -2467,7 +2527,7 @@ func TestTranscodeMessage(t *testing.T) {
 	// text down to Windows-1251, mirroring wire.ICBMFragmentList.
 	windows1251TLV := func(t *testing.T, windows1251Bytes []byte) wire.TLV {
 		t.Helper()
-		frags, err := wire.ICBMFragmentList(string(windows1251Bytes))
+		frags, err := wire.ICBMFragmentListASCII(string(windows1251Bytes))
 		assert.NoError(t, err)
 		return wire.NewTLVBE(wire.ICBMTLVAOLIMData, frags)
 	}
@@ -2606,7 +2666,7 @@ func TestTranscodeMessage(t *testing.T) {
 			if charset == nil {
 				charset = charmap.Windows1251
 			}
-			got, err := transcodeMessage(charset, tt.sender.HasCap(wire.CapUTF8Messages), tt.recip.HasCap(wire.CapUTF8Messages), tt.tlv)
+			got, err := transcodeICQMessage(charset, tt.recip.HasCap(wire.CapUTF8Messages), tt.tlv)
 			if tt.wantErr {
 				assert.Error(t, err)
 				assert.Contains(t, err.Error(), tt.wantErrText)
@@ -3703,8 +3763,8 @@ func TestICBMService_OfflineRetrieve(t *testing.T) {
 			},
 		},
 		{
-			name:           "unicode message to legacy recipient is transcoded to the legacy charset",
-			senderInstance: newTestInstance("recipient"),
+			name:           "unicode message to legacy ICQ recipient is transcoded to the legacy charset",
+			senderInstance: newTestInstance("recipient", sessOptUIN(100003)),
 			inputSNAC:      wire.SNACMessage{Frame: wire.SNACFrame{RequestID: 42}},
 			expectOutput:   successReply,
 			mockParams: mockParams{
@@ -3731,8 +3791,36 @@ func TestICBMService_OfflineRetrieve(t *testing.T) {
 			},
 		},
 		{
-			name:           "legacy charset message to unicode recipient is transcoded to unicode",
-			senderInstance: newTestInstance("recipient", sessOptCaps(wire.CapUTF8Messages)),
+			name:           "unicode message to legacy AIM recipient is delivered as stored",
+			senderInstance: newTestInstance("recipient"),
+			inputSNAC:      wire.SNACMessage{Frame: wire.SNACFrame{RequestID: 42}},
+			expectOutput:   successReply,
+			mockParams: mockParams{
+				offlineMessageManagerParams: offlineMessageManagerParams{
+					retrieveMessagesParams: retrieveMessagesParams{
+						{
+							recipIn: state.NewIdentScreenName("recipient"),
+							messagesOut: storedIM(
+								wire.NewTLVBE(wire.ICBMTLVAOLIMData, mustICBMFragmentListUnicode(t, "привет")),
+								wire.NewTLVBE(wire.ICBMTLVAutoResponse, []byte{}),
+							),
+						},
+					},
+					deleteMessagesParams: deleteMessagesParams{
+						{recipIn: state.NewIdentScreenName("recipient")},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToSelfParams: relayedIM(
+						wire.NewTLVBE(wire.ICBMTLVAOLIMData, mustICBMFragmentListUnicode(t, "привет")),
+						wire.NewTLVBE(wire.ICBMTLVAutoResponse, []byte{}),
+					),
+				},
+			},
+		},
+		{
+			name:           "legacy charset message to unicode ICQ recipient is transcoded to unicode",
+			senderInstance: newTestInstance("recipient", sessOptCaps(wire.CapUTF8Messages), sessOptUIN(100003)),
 			inputSNAC:      wire.SNACMessage{Frame: wire.SNACFrame{RequestID: 42}},
 			expectOutput:   successReply,
 			mockParams: mockParams{
@@ -3758,7 +3846,7 @@ func TestICBMService_OfflineRetrieve(t *testing.T) {
 		},
 		{
 			name:           "message that fails to transcode is delivered as stored",
-			senderInstance: newTestInstance("recipient"),
+			senderInstance: newTestInstance("recipient", sessOptUIN(100003)),
 			inputSNAC:      wire.SNACMessage{Frame: wire.SNACFrame{RequestID: 42}},
 			expectOutput:   successReply,
 			mockParams: mockParams{
