@@ -513,7 +513,13 @@ paths:
   /instant-message:
     post:
       summary: Send an instant message
-      description: Send an instant message from one user to another. No error is raised if the recipient does not exist or the user is offline. The sender screen name does not need to exist.
+      description: |
+        Send an instant message from one user to another. Both the sender and the
+        recipient must be valid accounts. When sending from a system account, make
+        sure that account exists.
+
+        If the recipient is offline, the message is stored for delivery at their next
+        login when storeOffline is true; otherwise a 404 is returned.
       requestBody:
         required: true
         content:
@@ -530,11 +536,19 @@ paths:
                 text:
                   type: string
                   description: The text content of the message.
+                storeOffline:
+                  type: boolean
+                  default: false
+                  description: If true, store the message for an offline recipient instead of returning 404.
       responses:
         '200':
-          description: Message sent successfully.
+          description: Message sent or stored for offline delivery.
         '400':
           description: Bad request. Invalid input data.
+        '403':
+          description: Message blocked by the recipient.
+        '404':
+          description: Recipient is offline and the message was not stored, either because storeOffline is false or because the recipient does not exist, does not accept offline messages, or has a full offline inbox.
 
   /version:
     get:

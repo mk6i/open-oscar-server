@@ -279,9 +279,10 @@ type chatRoom struct {
 }
 
 type instantMessage struct {
-	From string `json:"from"`
-	To   string `json:"to"`
-	Text string `json:"text"`
+	From         string `json:"from"`
+	To           string `json:"to"`
+	Text         string `json:"text"`
+	StoreOffline bool   `json:"storeOffline"`
 }
 
 type directoryKeyword struct {

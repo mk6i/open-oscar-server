@@ -1815,6 +1815,7 @@ func TestInstantMessageHandler_POST(t *testing.T) {
 		name       string
 		body       string
 		wantText   string
+		wantStore  bool
 		sendCalled bool
 		reply      *wire.SNACMessage
 		sendErr    error
@@ -1839,6 +1840,37 @@ func TestInstantMessageHandler_POST(t *testing.T) {
 		{
 			name:       "recipient is offline",
 			body:       `{"from":"sender_sn","to":"recip_sn","text":"hello world!"}`,
+			sendCalled: true,
+			reply: &wire.SNACMessage{
+				Frame: wire.SNACFrame{FoodGroup: wire.ICBM, SubGroup: wire.ICBMErr},
+				Body:  wire.SNACError{Code: wire.ErrorCodeNotLoggedOn},
+			},
+			want:       `recipient is not online`,
+			statusCode: http.StatusNotFound,
+		},
+		{
+			name:       "store message for offline recipient",
+			body:       `{"from":"sender_sn","to":"recip_sn","text":"hello world!","storeOffline":true}`,
+			wantStore:  true,
+			sendCalled: true,
+			want:       `Message sent successfully.`,
+			statusCode: http.StatusOK,
+		},
+		{
+			name:       "offline recipient does not accept stored message",
+			body:       `{"from":"sender_sn","to":"recip_sn","text":"hello world!","storeOffline":true}`,
+			wantStore:  true,
+			sendCalled: true,
+			reply: &wire.SNACMessage{
+				Frame: wire.SNACFrame{FoodGroup: wire.ICBM, SubGroup: wire.ICBMErr},
+				Body:  wire.SNACError{Code: wire.ErrorCodeNotLoggedOn},
+			},
+			want:       `recipient is not online`,
+			statusCode: http.StatusNotFound,
+		},
+		{
+			name:       "do not store message for offline recipient",
+			body:       `{"from":"sender_sn","to":"recip_sn","text":"hello world!","storeOffline":false}`,
 			sendCalled: true,
 			reply: &wire.SNACMessage{
 				Frame: wire.SNACFrame{FoodGroup: wire.ICBM, SubGroup: wire.ICBMErr},
@@ -1889,6 +1921,9 @@ func TestInstantMessageHandler_POST(t *testing.T) {
 				assert.Equal(t, wire.ICBMChannelIM, inBody.ChannelID)
 
 				assert.Equal(t, [][16]byte{wire.CapUTF8Messages}, instance.Caps())
+
+				_, hasStore := inBody.Bytes(wire.ICBMTLVStore)
+				assert.Equal(t, tc.wantStore, hasStore)
 
 				wantText := tc.wantText
 				if wantText == "" {

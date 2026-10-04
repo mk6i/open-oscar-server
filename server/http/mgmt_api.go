@@ -656,6 +656,9 @@ func postInstantMessageHandler(w http.ResponseWriter, r *http.Request, icbmSende
 		return
 	}
 	body.Append(wire.NewTLVBE(wire.ICBMTLVAOLIMData, tlv))
+	if input.StoreOffline {
+		body.Append(wire.NewTLVBE(wire.ICBMTLVStore, []byte{}))
+	}
 
 	reply, err := icbmSender(r.Context(), instance, frame, body)
 	if err != nil {
