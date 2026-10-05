@@ -73,7 +73,7 @@ func main() {
 	g.Go(toc.ListenAndServe)
 
 	var webAPI *webapi.Server
-	if os.Getenv("ENABLE_WEBAPI") == "1" {
+	if deps.cfg.WebAPIEnabled {
 		webAPI = WebAPI(deps)
 		g.Go(webAPI.ListenAndServe)
 	}
@@ -91,7 +91,7 @@ func main() {
 	_ = kerb.Shutdown(shutdownCtx)
 	_ = api.Shutdown(shutdownCtx)
 	_ = toc.Shutdown(shutdownCtx)
-	if os.Getenv("ENABLE_WEBAPI") == "1" {
+	if deps.cfg.WebAPIEnabled {
 		_ = webAPI.Shutdown(shutdownCtx)
 	}
 	if deps.cfg.ICQLegacy.Enabled {

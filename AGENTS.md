@@ -30,7 +30,7 @@ The binary in `cmd/server` starts five servers concurrently via `errgroup`:
 | TOC      | TOC (text-based)           | 9898                                |
 | Kerberos | Kerberos auth              | 1088 (`POST /` via nginx on 80/443) |
 | MgmtAPI  | HTTP (management)          | 8080                                |
-| WebAPI   | HTTP (web AIM-style, AMF3) | 8081 (opt-in via `ENABLE_WEBAPI`)   |
+| WebAPI   | HTTP (web AIM-style, AMF3) | 8081 (disable via `WEBAPI_ENABLED`) |
 
 All five servers share a common dependency container (`Container` in
 `cmd/server/factory.go`) that wires together config, persistence, and business
