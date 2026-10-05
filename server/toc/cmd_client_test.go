@@ -5517,6 +5517,126 @@ func TestOSCARProxy_RecvClientCmd_SendIMEnc(t *testing.T) {
 			wantMsg: []string{},
 		},
 		{
+			name:     "successfully send ASCII-encoded instant message",
+			me:       newTestSession("me"),
+			givenCmd: []byte(`toc2_send_im_enc chattingChuck "F" A en "hello"`),
+			mockParams: mockParams{
+				icbmParams: icbmParams{
+					channelMsgToHostParamsICBM: channelMsgToHostParamsICBM{
+						{
+							sender:  state.NewIdentScreenName("me"),
+							inFrame: wire.SNACFrame{},
+							inBody: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
+								ChannelID:  wire.ICBMChannelIM,
+								ScreenName: "chattingChuck",
+								TLVRestBlock: wire.TLVRestBlock{
+									TLVList: wire.TLVList{
+										wire.NewTLVBE(wire.ICBMTLVAOLIMData, []wire.ICBMCh1Fragment{
+											{
+												ID:      5,
+												Version: 1,
+												Payload: []byte{1, 1, 2},
+											},
+											{
+												ID:      1,
+												Version: 1,
+												Payload: []byte{
+													0x00, 0x00,
+													0x00, 0x00,
+													'h', 'e', 'l', 'l', 'o',
+												},
+											},
+										}),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantMsg: []string{},
+		},
+		{
+			name:     "successfully send UTF-8-encoded non-ASCII instant message as unicode",
+			me:       newTestSession("me"),
+			givenCmd: []byte(`toc2_send_im_enc chattingChuck "F" U en "привет"`),
+			mockParams: mockParams{
+				icbmParams: icbmParams{
+					channelMsgToHostParamsICBM: channelMsgToHostParamsICBM{
+						{
+							sender:  state.NewIdentScreenName("me"),
+							inFrame: wire.SNACFrame{},
+							inBody: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
+								ChannelID:  wire.ICBMChannelIM,
+								ScreenName: "chattingChuck",
+								TLVRestBlock: wire.TLVRestBlock{
+									TLVList: wire.TLVList{
+										wire.NewTLVBE(wire.ICBMTLVAOLIMData, []wire.ICBMCh1Fragment{
+											{
+												ID:      5,
+												Version: 1,
+												Payload: []byte{1, 6},
+											},
+											{
+												ID:      1,
+												Version: 1,
+												Payload: []byte{
+													0x00, 0x02,
+													0x00, 0x00,
+													0x04, 0x3F, 0x04, 0x40, 0x04, 0x38, 0x04, 0x32, 0x04, 0x35, 0x04, 0x42,
+												},
+											},
+										}),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantMsg: []string{},
+		},
+		{
+			name:     "successfully send UTF-8-encoded ASCII instant message as ASCII",
+			me:       newTestSession("me"),
+			givenCmd: []byte(`toc2_send_im_enc chattingChuck "F" U en "hello"`),
+			mockParams: mockParams{
+				icbmParams: icbmParams{
+					channelMsgToHostParamsICBM: channelMsgToHostParamsICBM{
+						{
+							sender:  state.NewIdentScreenName("me"),
+							inFrame: wire.SNACFrame{},
+							inBody: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
+								ChannelID:  wire.ICBMChannelIM,
+								ScreenName: "chattingChuck",
+								TLVRestBlock: wire.TLVRestBlock{
+									TLVList: wire.TLVList{
+										wire.NewTLVBE(wire.ICBMTLVAOLIMData, []wire.ICBMCh1Fragment{
+											{
+												ID:      5,
+												Version: 1,
+												Payload: []byte{1, 1, 2},
+											},
+											{
+												ID:      1,
+												Version: 1,
+												Payload: []byte{
+													0x00, 0x00,
+													0x00, 0x00,
+													'h', 'e', 'l', 'l', 'o',
+												},
+											},
+										}),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantMsg: []string{},
+		},
+		{
 			name:     "successfully send encoded instant message with auto",
 			me:       newTestSession("me"),
 			givenCmd: []byte(`toc2_send_im_enc chattingChuck "F" utf-8 en "hello" auto`),

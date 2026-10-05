@@ -1887,6 +1887,9 @@ func (s OSCARProxy) RemoveDeny2(ctx context.Context, me *state.SessionInstance, 
 //	Internally, this uses the "TOC3" encoded message format
 //	This encoded message version supports a few more variables as well as encoding
 //
+// Encoding is A (ASCII) or U (UTF-8). U messages containing non-ASCII text are
+// sent as Unicode; everything else is sent as ASCII.
+//
 // Command syntax: toc2_send_im_enc <Destination user> "F" <Encoding> <Language> <Message> [auto]
 func (s OSCARProxy) SendIMEnc(ctx context.Context, sender *state.SessionInstance, args []byte) []string {
 	if msg, isLimited := s.checkRateLimit(ctx, sender, wire.ICBM, wire.ICBMChannelMsgToHost); isLimited {
@@ -1900,7 +1903,12 @@ func (s OSCARProxy) SendIMEnc(ctx context.Context, sender *state.SessionInstance
 		return s.runtimeErr(ctx, fmt.Errorf("parseArgs: %w", err))
 	}
 
-	return s.sendIm(ctx, sender, msg, recip, autoReply)
+	fragList := wire.ICBMFragmentListASCII
+	if enc == "U" {
+		fragList = wire.ICBMFragmentList
+	}
+
+	return s.sendIm(ctx, sender, fragList, msg, recip, autoReply)
 }
 
 // SendIM handles the toc_send_im and toc2_send_im TOC commands.
@@ -1927,11 +1935,11 @@ func (s OSCARProxy) SendIM(ctx context.Context, sender *state.SessionInstance, a
 		return s.runtimeErr(ctx, fmt.Errorf("parseArgs: %w", err))
 	}
 
-	return s.sendIm(ctx, sender, msg, recip, autoReply)
+	return s.sendIm(ctx, sender, wire.ICBMFragmentListASCII, msg, recip, autoReply)
 }
 
-func (s OSCARProxy) sendIm(ctx context.Context, sender *state.SessionInstance, msg string, recip string, autoReply []string) []string {
-	frags, err := wire.ICBMFragmentListASCII(unescape(msg))
+func (s OSCARProxy) sendIm(ctx context.Context, sender *state.SessionInstance, fragList func(string) ([]wire.ICBMCh1Fragment, error), msg string, recip string, autoReply []string) []string {
+	frags, err := fragList(unescape(msg))
 	if err != nil {
 		return s.runtimeErr(ctx, fmt.Errorf("wire.ICBMFragmentList: %w", err))
 	}

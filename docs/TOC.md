@@ -730,15 +730,19 @@ toc2_send_im_enc <destination_user> "F" <encoding> <language> <message> [auto]
 |------------------|-----------------------------------------|
 | destination_user | Normalized screen name                  |
 | "F"              | Unknown flag, always `F`                |
-| encoding         | Character encoding (e.g. `A` for ASCII) |
+| encoding         | `A` (ASCII) or `U` (UTF-8)              |
 | language         | Language code (e.g. `en`)               |
 | message          | Quoted, escaped message                 |
 | auto             | Optional `auto` for auto-response       |
+
+With `U`, a message containing non-ASCII characters is delivered as Unicode. Any other encoding value sends
+the message as ASCII.
 
 **Example:**
 
 ```
 toc2_send_im_enc toctest2 "F" A en "Hello from TOC2!"
+toc2_send_im_enc toctest2 "F" U en "Привет из TOC2!"
 ```
 
 ### toc2_set_pdmode
@@ -1631,7 +1635,18 @@ Capabilities indicate which features a client supports. They are set via
 | Games           | `0946134A-4C7F-11D1-8222-444553540000` |
 | Send Buddy List | `0946134B-4C7F-11D1-8222-444553540000` |
 | AIM/ICQ Interop | `0946134D-4C7F-11D1-8222-444553540000` |
+| UTF-8 Messages  | `0946134E-4C7F-11D1-8222-444553540000` |
 | Chat            | `748F2420-6287-11D1-8222-444553540000` |
+
+### Unicode Messages (ICQ)
+
+ICQ clients (numeric UIN screen names) must set the UTF-8 Messages capability
+to receive Unicode messages. Without it, Unicode messages sent to an ICQ client
+are converted to the server's legacy character set.
+
+```
+toc_set_caps 0946134E-4C7F-11D1-8222-444553540000
+```
 
 ### Short Capability Format
 
