@@ -1000,6 +1000,7 @@ type SessionInstance struct {
 	// Per-session connection state
 	remoteAddr     *netip.AddrPort
 	signonComplete bool
+	feedbagActive  bool
 	closed         bool
 	stopCh         chan struct{}
 	msgCh          chan wire.SNACMessage
@@ -1020,8 +1021,6 @@ type SessionInstance struct {
 	awayMsg           string
 	userInfoBitmask   uint16
 	userStatusBitmask uint32
-	// contactsInit indicates whether the client-side buddy list or feedbag has been initialized
-	contactsInit bool
 
 	// notify transaction: accumulate visibility notification targets during feedbag batches
 	notifyTxnActive     bool
@@ -1166,6 +1165,20 @@ func (s *SessionInstance) SignonComplete() bool {
 	return s.signonComplete
 }
 
+// SetFeedbagActive indicates that the instance has activated its feedbag.
+func (s *SessionInstance) SetFeedbagActive() {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.feedbagActive = true
+}
+
+// FeedbagActive indicates whether the instance has activated its feedbag.
+func (s *SessionInstance) FeedbagActive() bool {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.feedbagActive
+}
+
 // UnsetIdle removes the instance's idle state.
 func (s *SessionInstance) UnsetIdle() {
 	s.mutex.Lock()
@@ -1269,22 +1282,6 @@ func (s *SessionInstance) OnClose(fn func()) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	s.onInstanceCloseFn = fn
-}
-
-// ContactsInit returns whether the client-side buddy list has been loaded or
-// the feedbag has been initialized.
-func (s *SessionInstance) ContactsInit() bool {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-	return s.contactsInit
-}
-
-// SetContactsInit indicates that the client-side buddy list has been loaded or
-// the feedbag has been initialized.
-func (s *SessionInstance) SetContactsInit() {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	s.contactsInit = true
 }
 
 // BeginNotifyTxn starts accumulating notification targets during feedbag transactions.

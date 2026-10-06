@@ -2991,8 +2991,8 @@ func TestFeedbagService_Use(t *testing.T) {
 				},
 			},
 			checkSession: func(t *testing.T, instance *state.SessionInstance) {
-				assert.True(t, instance.ContactsInit())
 				assert.True(t, instance.Session().UsesFeedbag())
+				assert.True(t, instance.FeedbagActive())
 				assert.False(t, instance.Session().TypingEventsEnabled())
 			},
 		},
@@ -3022,8 +3022,8 @@ func TestFeedbagService_Use(t *testing.T) {
 				},
 			},
 			checkSession: func(t *testing.T, instance *state.SessionInstance) {
-				assert.True(t, instance.ContactsInit())
 				assert.True(t, instance.Session().UsesFeedbag())
+				assert.True(t, instance.FeedbagActive())
 				assert.False(t, instance.Session().TypingEventsEnabled())
 			},
 		},
@@ -3053,14 +3053,58 @@ func TestFeedbagService_Use(t *testing.T) {
 				},
 			},
 			checkSession: func(t *testing.T, instance *state.SessionInstance) {
-				assert.True(t, instance.ContactsInit())
 				assert.True(t, instance.Session().UsesFeedbag())
+				assert.True(t, instance.FeedbagActive())
 				assert.True(t, instance.Session().TypingEventsEnabled())
 			},
 		},
 		{
-			name:     "ICQ Lite order: feedbag use after ClientOnline broadcasts presence",
+			name:     "ICQBasic client, feedbag use before ClientOnline does not broadcast presence",
+			instance: newTestInstance("me", sessClientID("ICQBasic")),
+			mockParams: mockParams{
+				feedbagManagerParams: feedbagManagerParams{
+					useParams: useParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+						},
+					},
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+						},
+					},
+				},
+			},
+			checkSession: func(t *testing.T, instance *state.SessionInstance) {
+				assert.True(t, instance.Session().UsesFeedbag())
+				assert.True(t, instance.FeedbagActive())
+			},
+		},
+		{
+			name:     "non-ICQBasic client, feedbag use after ClientOnline does not broadcast presence",
 			instance: newTestInstance("me", sessOptSignonComplete),
+			mockParams: mockParams{
+				feedbagManagerParams: feedbagManagerParams{
+					useParams: useParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+						},
+					},
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+						},
+					},
+				},
+			},
+			checkSession: func(t *testing.T, instance *state.SessionInstance) {
+				assert.True(t, instance.Session().UsesFeedbag())
+				assert.True(t, instance.FeedbagActive())
+			},
+		},
+		{
+			name:     "ICQBasic client, feedbag use after ClientOnline broadcasts presence",
+			instance: newTestInstance("me", sessOptSignonComplete, sessClientID("ICQBasic")),
 			mockParams: mockParams{
 				feedbagManagerParams: feedbagManagerParams{
 					useParams: useParams{
@@ -3085,13 +3129,13 @@ func TestFeedbagService_Use(t *testing.T) {
 				},
 			},
 			checkSession: func(t *testing.T, instance *state.SessionInstance) {
-				assert.True(t, instance.ContactsInit())
 				assert.True(t, instance.Session().UsesFeedbag())
+				assert.True(t, instance.FeedbagActive())
 			},
 		},
 		{
-			name:     "ICQ Lite order: feedbag use after ClientOnline, BroadcastVisibility fails",
-			instance: newTestInstance("me", sessOptSignonComplete),
+			name:     "ICQBasic client, feedbag use after ClientOnline, BroadcastVisibility fails",
+			instance: newTestInstance("me", sessOptSignonComplete, sessClientID("ICQBasic")),
 			mockParams: mockParams{
 				feedbagManagerParams: feedbagManagerParams{
 					useParams: useParams{
@@ -3118,8 +3162,8 @@ func TestFeedbagService_Use(t *testing.T) {
 			},
 			wantErr: assert.AnError,
 			checkSession: func(t *testing.T, instance *state.SessionInstance) {
-				assert.True(t, instance.ContactsInit())
 				assert.True(t, instance.Session().UsesFeedbag())
+				assert.True(t, instance.FeedbagActive())
 			},
 		},
 	}

@@ -1094,7 +1094,7 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 	}{
 		{
 			name:     "set user status to visible aim < 6",
-			instance: newTestInstance("me", sessOptInvisible),
+			instance: newTestInstance("me", sessOptSignonComplete, sessOptInvisible),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -1140,8 +1140,46 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 			},
 		},
 		{
+			name:     "set user status to visible before sign-on, no arrival broadcast",
+			instance: newTestInstance("me", sessOptInvisible),
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields{
+					TLVRestBlock: wire.TLVRestBlock{
+						TLVList: wire.TLVList{
+							wire.NewTLVBE(wire.OServiceUserInfoStatus, uint32(0x0000)),
+						},
+					},
+				},
+			},
+			expectOutput: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.OService,
+					SubGroup:  wire.OServiceUserInfoUpdate,
+					// Pushes are unsolicited, so they carry the server request ID.
+					RequestID: wire.ReqIDFromServer,
+				},
+				Body: func(val any) bool {
+					snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
+					if !ok {
+						return false
+					}
+					if len(snac.UserInfo) == 0 {
+						return false
+					}
+					status, hasStatus := snac.UserInfo[0].Uint32BE(wire.OServiceUserInfoStatus)
+					return hasStatus && status == uint32(0x0000)
+				},
+			},
+			checkSession: func(t *testing.T, session *state.Session) {
+				assert.False(t, session.Invisible())
+			},
+		},
+		{
 			name:     "set user status to invisible aim < 6",
-			instance: newTestInstance("me"),
+			instance: newTestInstance("me", sessOptSignonComplete),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -1187,8 +1225,46 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 			},
 		},
 		{
+			name:     "set user status to invisible before sign-on, no departure broadcast",
+			instance: newTestInstance("me"),
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields{
+					TLVRestBlock: wire.TLVRestBlock{
+						TLVList: wire.TLVList{
+							wire.NewTLVBE(wire.OServiceUserInfoStatus, uint32(0x0100)),
+						},
+					},
+				},
+			},
+			expectOutput: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.OService,
+					SubGroup:  wire.OServiceUserInfoUpdate,
+					// Pushes are unsolicited, so they carry the server request ID.
+					RequestID: wire.ReqIDFromServer,
+				},
+				Body: func(val any) bool {
+					snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
+					if !ok {
+						return false
+					}
+					if len(snac.UserInfo) == 0 {
+						return false
+					}
+					status, hasStatus := snac.UserInfo[0].Uint32BE(wire.OServiceUserInfoStatus)
+					return hasStatus && status == uint32(0x0100)
+				},
+			},
+			checkSession: func(t *testing.T, session *state.Session) {
+				assert.True(t, session.Invisible())
+			},
+		},
+		{
 			name:     "set user status to visible aim >= 6",
-			instance: newTestInstance("me", sessOptInvisible, sessOptSetFoodGroupVersion(wire.OService, 4)),
+			instance: newTestInstance("me", sessOptSignonComplete, sessOptInvisible, sessOptSetFoodGroupVersion(wire.OService, 4)),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -1235,7 +1311,7 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 		},
 		{
 			name:     "set user status to invisible aim >= 6",
-			instance: newTestInstance("me", sessOptSetFoodGroupVersion(wire.OService, 4)),
+			instance: newTestInstance("me", sessOptSignonComplete, sessOptSetFoodGroupVersion(wire.OService, 4)),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -1282,7 +1358,7 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 		},
 		{
 			name:     "set busy status raises the unavailable flag",
-			instance: newTestInstance("me"),
+			instance: newTestInstance("me", sessOptSignonComplete),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -1326,7 +1402,7 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 		},
 		{
 			name:     "set away status raises the unavailable flag",
-			instance: newTestInstance("me"),
+			instance: newTestInstance("me", sessOptSignonComplete),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -1374,7 +1450,7 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 		},
 		{
 			name:     "set DND status raises the unavailable flag",
-			instance: newTestInstance("me"),
+			instance: newTestInstance("me", sessOptSignonComplete),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -1420,7 +1496,7 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 		},
 		{
 			name:     "set out status raises the unavailable flag",
-			instance: newTestInstance("me"),
+			instance: newTestInstance("me", sessOptSignonComplete),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -1468,7 +1544,7 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 			// Clients send combined masks, so an unavailable bit alongside invisible
 			// raises the flag and still hides the user.
 			name:     "set away and invisible status in one bitmask",
-			instance: newTestInstance("me"),
+			instance: newTestInstance("me", sessOptSignonComplete),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -1515,7 +1591,7 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 			// The away message rides along with the status bitmask that set it, so
 			// clearing the status clears the message too.
 			name: "clear status lowers the unavailable flag and drops the away message",
-			instance: newTestInstance("me",
+			instance: newTestInstance("me", sessOptSignonComplete,
 				sessOptUserStatusBitmask(wire.OServiceUserStatusAway),
 				sessOptCannedAwayMessage,
 				sessOptUserInfoFlag(wire.OServiceUserFlagUnavailable)),
@@ -1567,7 +1643,7 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 			// An away message set through LocateService.SetInfo owns the flag,
 			// because no unavailable status bit put it there.
 			name: "clear status keeps the unavailable flag of a user with an away message",
-			instance: newTestInstance("me",
+			instance: newTestInstance("me", sessOptSignonComplete,
 				sessOptCannedAwayMessage,
 				sessOptUserInfoFlag(wire.OServiceUserFlagUnavailable)),
 			inputSNAC: wire.SNACMessage{
@@ -1617,7 +1693,7 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 			// The user stays unavailable across the switch, so the away message set
 			// with the old status survives.
 			name: "switch from one unavailable status to another keeps the away message",
-			instance: newTestInstance("me",
+			instance: newTestInstance("me", sessOptSignonComplete,
 				sessOptUserStatusBitmask(wire.OServiceUserStatusBusy),
 				sessOptCannedAwayMessage,
 				sessOptUserInfoFlag(wire.OServiceUserFlagUnavailable)),
@@ -1670,7 +1746,7 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 			// Invisible is not an unavailable status, so going invisible from away
 			// lowers the flag and drops the message.
 			name: "swap an unavailable status for invisible drops the away message",
-			instance: newTestInstance("me",
+			instance: newTestInstance("me", sessOptSignonComplete,
 				sessOptUserStatusBitmask(wire.OServiceUserStatusAway),
 				sessOptCannedAwayMessage,
 				sessOptUserInfoFlag(wire.OServiceUserFlagUnavailable)),
@@ -1722,7 +1798,7 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 			// Away state belongs to the status TLV, so a request without one leaves
 			// the flag and the away message alone.
 			name: "set status message",
-			instance: newTestInstance("me",
+			instance: newTestInstance("me", sessOptSignonComplete,
 				sessOptCannedAwayMessage,
 				sessOptUserInfoFlag(wire.OServiceUserFlagUnavailable)),
 			inputSNAC: wire.SNACMessage{
@@ -1784,7 +1860,7 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 			// riding in the BART TLV: a client drops the status it shows for a buddy
 			// only when it is sent an empty one.
 			name:     "clear status message",
-			instance: newTestInstance("me", sessOptStatus(newTestStatusBARTID(t, "old"))),
+			instance: newTestInstance("me", sessOptSignonComplete, sessOptStatus(newTestStatusBARTID(t, "old"))),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -1840,7 +1916,7 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 			// Two changed fields, one arrival: the client would otherwise see the
 			// buddy blink twice.
 			name:     "status bitmask and status message in one request",
-			instance: newTestInstance("me"),
+			instance: newTestInstance("me", sessOptSignonComplete),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -1890,7 +1966,7 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 			// A client can set both in one request, and the status must survive the
 			// icon that precedes it in the list.
 			name:     "set status message alongside a buddy icon",
-			instance: newTestInstance("me"),
+			instance: newTestInstance("me", sessOptSignonComplete),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -1943,7 +2019,7 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 			// A buddy icon reference travels in the same TLV, and only the BART
 			// service stores those. Nothing changed here, so buddies hear nothing.
 			name:     "ignore a BART item that is not a status message",
-			instance: newTestInstance("me"),
+			instance: newTestInstance("me", sessOptSignonComplete),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -1981,7 +2057,7 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 		},
 		{
 			name:     "malformed BART item",
-			instance: newTestInstance("me"),
+			instance: newTestInstance("me", sessOptSignonComplete),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -2002,7 +2078,7 @@ func TestOServiceService_SetUserInfoFields(t *testing.T) {
 		},
 		{
 			name:     "set ICQ direct connect info",
-			instance: newTestInstance("1000003", sessOptUserInfoFlag(wire.OServiceUserFlagICQ)),
+			instance: newTestInstance("1000003", sessOptSignonComplete, sessOptUserInfoFlag(wire.OServiceUserFlagICQ)),
 			inputSNAC: wire.SNACMessage{
 				Frame: wire.SNACFrame{
 					RequestID: 1234,
@@ -2119,7 +2195,7 @@ func TestOServiceService_SetUserInfoFields_ClearUnavailableStatus(t *testing.T) 
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			instance := newTestInstance("me",
+			instance := newTestInstance("me", sessOptSignonComplete,
 				sessOptUserStatusBitmask(tt.status),
 				sessOptCannedAwayMessage,
 				sessOptUserInfoFlag(wire.OServiceUserFlagUnavailable))
@@ -3318,7 +3394,7 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 	}{
 		{
 			name:     "notify that BOS user is online",
-			instance: newTestInstance("me", sessOptCannedSignonTime, sessOptContactsInit),
+			instance: newTestInstance("me", sessOptCannedSignonTime),
 			bodyIn:   wire.SNAC_0x01_0x02_OServiceClientOnline{},
 			service:  wire.BOS,
 			mockParams: mockParams{
@@ -3354,8 +3430,45 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 			},
 		},
 		{
-			name:     "ICQ Lite order: ClientOnline before feedbag use",
-			instance: newTestInstance("me", sessOptCannedSignonTime),
+			name:     "ICQBasic client, feedbag already active, notify that BOS user is online",
+			instance: newTestInstance("me", sessOptCannedSignonTime, sessClientID("ICQBasic"), sessOptFeedbagActive),
+			bodyIn:   wire.SNAC_0x01_0x02_OServiceClientOnline{},
+			service:  wire.BOS,
+			mockParams: mockParams{
+				buddyBroadcasterParams: buddyBroadcasterParams{
+					broadcastVisibilityParams: broadcastVisibilityParams{
+						{
+							from:             state.NewIdentScreenName("me"),
+							filter:           nil,
+							doSendDepartures: false,
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Stats,
+									SubGroup:  wire.StatsSetMinReportInterval,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x0B_0x02_StatsSetMinReportInterval{
+									MinReportInterval: 1,
+								},
+							},
+						},
+					},
+				},
+			},
+			validateSess: func(t *testing.T, instance *state.SessionInstance) {
+				assert.True(t, instance.SignonComplete())
+			},
+		},
+		{
+			name:     "ICQBasic client, feedbag not active, defer buddy broadcast to feedbag use",
+			instance: newTestInstance("me", sessOptCannedSignonTime, sessClientID("ICQBasic")),
 			bodyIn:   wire.SNAC_0x01_0x02_OServiceClientOnline{},
 			service:  wire.BOS,
 			mockParams: mockParams{
@@ -3379,12 +3492,11 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 			},
 			validateSess: func(t *testing.T, instance *state.SessionInstance) {
 				assert.True(t, instance.SignonComplete())
-				assert.False(t, instance.ContactsInit())
 			},
 		},
 		{
 			name:     "notify that BOS user is online via Kerberos auth, does not have stored profile",
-			instance: newTestInstance("me", sessOptCannedSignonTime, sessOptKerberosAuth, sessOptContactsInit),
+			instance: newTestInstance("me", sessOptCannedSignonTime, sessOptKerberosAuth),
 			bodyIn:   wire.SNAC_0x01_0x02_OServiceClientOnline{},
 			service:  wire.BOS,
 			mockParams: mockParams{
@@ -3430,7 +3542,7 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 		},
 		{
 			name:     "notify that BOS user is online via Kerberos auth, has stored profile",
-			instance: newTestInstance("me", sessOptCannedSignonTime, sessOptKerberosAuth, sessOptContactsInit),
+			instance: newTestInstance("me", sessOptCannedSignonTime, sessOptKerberosAuth),
 			bodyIn:   wire.SNAC_0x01_0x02_OServiceClientOnline{},
 			service:  wire.BOS,
 			mockParams: mockParams{
@@ -3495,7 +3607,7 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 		},
 		{
 			name:     "notify that BOS user is online with 0 offline messages, no notification sent",
-			instance: newTestInstance("me", sessOptCannedSignonTime, sessOptOfflineMsgCount(0), sessOptContactsInit),
+			instance: newTestInstance("me", sessOptCannedSignonTime, sessOptOfflineMsgCount(0)),
 			bodyIn:   wire.SNAC_0x01_0x02_OServiceClientOnline{},
 			service:  wire.BOS,
 			mockParams: mockParams{
@@ -3533,7 +3645,7 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 		},
 		{
 			name:     "notify that BOS user is online with offline messages, send notification and reset count",
-			instance: newTestInstance("me", sessOptCannedSignonTime, sessOptOfflineMsgCount(3), sessOptContactsInit),
+			instance: newTestInstance("me", sessOptCannedSignonTime, sessOptOfflineMsgCount(3)),
 			bodyIn:   wire.SNAC_0x01_0x02_OServiceClientOnline{},
 			service:  wire.BOS,
 			mockParams: mockParams{
@@ -3590,7 +3702,7 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 		},
 		{
 			name:     "ICQ user with offline messages, no offline message notification sent",
-			instance: newTestInstance("100001", sessOptCannedSignonTime, sessOptOfflineMsgCount(3), sessOptContactsInit, sessOptUIN(100001)),
+			instance: newTestInstance("100001", sessOptCannedSignonTime, sessOptOfflineMsgCount(3), sessOptUIN(100001)),
 			bodyIn:   wire.SNAC_0x01_0x02_OServiceClientOnline{},
 			service:  wire.BOS,
 			mockParams: mockParams{
@@ -3635,7 +3747,6 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 				instance2 := instance1.Session().AddInstance()
 				instance2.SetSignonComplete()
 				instance3 := instance1.Session().AddInstance()
-				instance3.SetContactsInit()
 				// instance 3 is not yet signed on
 				return instance3
 			}(),
@@ -3693,7 +3804,6 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 				instance2 := instance1.Session().AddInstance()
 				instance2.SetSignonComplete()
 				instance3 := instance1.Session().AddInstance()
-				instance3.SetContactsInit()
 				// instance 3 is not yet signed on
 				return instance3
 			}(),
@@ -3737,7 +3847,7 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 		},
 		{
 			name:     "notify that BOS user is online with offline messages, SetOfflineMsgCount fails",
-			instance: newTestInstance("me", sessOptCannedSignonTime, sessOptOfflineMsgCount(2), sessOptContactsInit),
+			instance: newTestInstance("me", sessOptCannedSignonTime, sessOptOfflineMsgCount(2)),
 			bodyIn:   wire.SNAC_0x01_0x02_OServiceClientOnline{},
 			service:  wire.BOS,
 			wantErr:  assert.AnError,
@@ -4616,7 +4726,7 @@ func TestOServiceService_SetUserInfoFields_MultiInstance(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sender := newTestInstance("me")
+			sender := newTestInstance("me", sessOptSignonComplete)
 			other := sender.Session().AddInstance()
 
 			messageRelayer := newMockMessageRelayer(t)

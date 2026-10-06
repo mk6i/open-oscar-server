@@ -863,14 +863,14 @@ func sessOptIdle(dur time.Duration) func(instance *state.SessionInstance) {
 	}
 }
 
+// sessOptFeedbagActive sets the feedbag active flag to true
+func sessOptFeedbagActive(instance *state.SessionInstance) {
+	instance.SetFeedbagActive()
+}
+
 // sessOptSignonComplete sets the sign on complete flag to true
 func sessOptSignonComplete(instance *state.SessionInstance) {
 	instance.SetSignonComplete()
-}
-
-// sessOptContactsInit sets the contacts-init flag to true
-func sessOptContactsInit(instance *state.SessionInstance) {
-	instance.SetContactsInit()
 }
 
 // sessOptCaps sets caps

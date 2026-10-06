@@ -564,8 +564,8 @@ func (s *FeedbagService) EndCluster(ctx context.Context, instance *state.Session
 }
 
 // Use activates server-side buddy list state for feedbag clients at sign-on.
-// FeedbagUse and ClientOnline can arrive in either order; whichever handler runs
-// second performs the initial buddy presence broadcast when both are satisfied.
+// For ICQBasic clients that have already sent ClientOnline, it also performs
+// the initial buddy presence broadcast.
 func (s *FeedbagService) Use(ctx context.Context, instance *state.SessionInstance) error {
 	if err := s.feedbagManager.UseFeedbag(ctx, instance.IdentScreenName()); err != nil {
 		return fmt.Errorf("could not use feedbag: %w", err)
@@ -576,10 +576,9 @@ func (s *FeedbagService) Use(ctx context.Context, instance *state.SessionInstanc
 	}
 	setSessionBuddyPrefs(items, instance)
 	instance.Session().SetUsesFeedbag()
-	instance.SetContactsInit()
+	instance.SetFeedbagActive()
 
-	// ICQ Lite order: ClientOnline before FeedbagUse — broadcast here.
-	if instance.SignonComplete() {
+	if isICQBasic(instance) && instance.SignonComplete() {
 		if err := s.buddyBroadcaster.BroadcastVisibility(ctx, instance, nil, false); err != nil {
 			return fmt.Errorf("buddyBroadcaster.BroadcastVisibility: %w", err)
 		}

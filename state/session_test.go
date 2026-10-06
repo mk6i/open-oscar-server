@@ -940,6 +940,14 @@ func TestSession_SetAndGetMultiConnFlag(t *testing.T) {
 	assert.Equal(t, wire.MultiConnFlagsSingleClient, s.MultiConnFlag())
 }
 
+func TestSessionInstance_FeedbagActive(t *testing.T) {
+	instance := NewSession().AddInstance()
+	assert.False(t, instance.FeedbagActive())
+
+	instance.SetFeedbagActive()
+	assert.True(t, instance.FeedbagActive())
+}
+
 func TestSession_SetAndGetLastWarnLevel(t *testing.T) {
 	s := NewSession().AddInstance()
 	assert.Zero(t, s.Warning())
@@ -947,17 +955,6 @@ func TestSession_SetAndGetLastWarnLevel(t *testing.T) {
 	level := uint16(500)
 	s.Session().SetWarning(level)
 	assert.Equal(t, level, s.Warning())
-}
-
-func TestSessionInstance_ContactsInit(t *testing.T) {
-	instance := NewSession().AddInstance()
-	assert.False(t, instance.ContactsInit())
-
-	instance.SetContactsInit()
-	assert.True(t, instance.ContactsInit())
-
-	instance.SetContactsInit()
-	assert.True(t, instance.ContactsInit())
 }
 
 func TestInstance_Active(t *testing.T) {
