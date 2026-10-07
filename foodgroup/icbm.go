@@ -125,6 +125,12 @@ func (s *ICBMService) ChannelMsgToHost(ctx context.Context, instance *state.Sess
 		if _, saveOffline := inBody.Bytes(wire.ICBMTLVStore); !saveOffline {
 			return newICBMErr(inFrame.RequestID, wire.ErrorCodeNotLoggedOn), nil
 		}
+		if inBody.ChannelID != wire.ICBMChannelIM && inBody.ChannelID != wire.ICBMChannelICQ {
+			s.logger.Info("offline ICBM flag set for unsupported channel",
+				"channel", inBody.ChannelID,
+				"client_id", instance.ClientID())
+			return newICBMErr(inFrame.RequestID, wire.ErrorCodeNotLoggedOn), nil
+		}
 		canSend, err := s.canSendOfflineMessage(ctx, inBody)
 		if err != nil {
 			return nil, err

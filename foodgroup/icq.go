@@ -454,8 +454,11 @@ func (s *ICQService) OfflineMsgReq(ctx context.Context, inFrame wire.SNACFrame, 
 			}
 
 			if reply.MsgType == 0 {
-				return fmt.Errorf("did not find an appropriate saved message payload. channel: %d",
-					msgIn.Message.ChannelID)
+				s.logger.Info("no offline message payload for channel, skipping message",
+					"channel", msgIn.Message.ChannelID,
+					"sender", msgIn.Sender.UIN(),
+					"recipient", msgIn.Recipient)
+				continue
 			}
 
 			msgOut := wire.ICQMessageReplyEnvelope{

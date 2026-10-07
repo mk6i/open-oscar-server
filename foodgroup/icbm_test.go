@@ -593,6 +593,55 @@ func TestICBMService_ChannelMsgToHost(t *testing.T) {
 			},
 		},
 		{
+			name:     "don't store offline message for channel with no offline representation",
+			instance: newTestInstance("11111111", sessOptUIN(11111111)),
+			mockParams: mockParams{
+				relationshipFetcherParams: relationshipFetcherParams{
+					relationshipParams: relationshipParams{
+						{
+							me:   state.NewIdentScreenName("11111111"),
+							them: state.NewIdentScreenName("22222222"),
+							result: state.Relationship{
+								User: state.NewIdentScreenName("22222222"),
+							},
+						},
+					},
+				},
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams{
+						{
+							screenName: state.NewIdentScreenName("22222222"),
+							result:     nil,
+						},
+					},
+				},
+			},
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
+					ChannelID:  wire.ICBMChannelRendezvous,
+					ScreenName: "22222222",
+					TLVRestBlock: wire.TLVRestBlock{
+						TLVList: wire.TLVList{
+							wire.NewTLVBE(wire.ICBMTLVStore, []byte{}),
+						},
+					},
+				},
+			},
+			expectOutput: &wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.ICBM,
+					SubGroup:  wire.ICBMErr,
+					RequestID: 1234,
+				},
+				Body: wire.SNACError{
+					Code: wire.ErrorCodeNotLoggedOn,
+				},
+			},
+		},
+		{
 			name:     "send offline message to ICQ recipient",
 			instance: newTestInstance("11111111", sessOptUIN(11111111)),
 			inputSNAC: wire.SNACMessage{

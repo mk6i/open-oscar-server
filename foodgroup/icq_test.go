@@ -2837,6 +2837,106 @@ func TestICQService_OfflineMsgReq(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:     "skip offline messages with no ICQ offline representation, deliver the rest",
+			seq:      1,
+			instance: newTestInstance("11111111", sessOptUIN(11111111)),
+			mockParams: mockParams{
+				offlineMessageManagerParams: offlineMessageManagerParams{
+					retrieveMessagesParams: retrieveMessagesParams{
+						{
+							recipIn: state.NewIdentScreenName("11111111"),
+							messagesOut: []state.OfflineMessage{
+								{
+									Sender:    state.NewIdentScreenName("22222222"),
+									Recipient: state.NewIdentScreenName("11111111"),
+									Message: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
+										ChannelID: wire.ICBMChannelRendezvous,
+										TLVRestBlock: wire.TLVRestBlock{
+											TLVList: wire.TLVList{
+												wire.NewTLVBE(wire.ICBMTLVData, []byte{0x00, 0x00}),
+											},
+										},
+									},
+									Sent: time.Date(2024, time.August, 1, 8, 2, 0, 0, time.UTC),
+								},
+								{
+									Sender:    state.NewIdentScreenName("22222222"),
+									Recipient: state.NewIdentScreenName("11111111"),
+									Message: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
+										ChannelID: wire.ICBMChannelIM,
+									},
+									Sent: time.Date(2024, time.August, 1, 8, 3, 0, 0, time.UTC),
+								},
+								{
+									Sender:    state.NewIdentScreenName("22222222"),
+									Recipient: state.NewIdentScreenName("11111111"),
+									Message: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
+										ChannelID: wire.ICBMChannelICQ,
+									},
+									Sent: time.Date(2024, time.August, 1, 8, 4, 0, 0, time.UTC),
+								},
+								{
+									Sender:    state.NewIdentScreenName("22222222"),
+									Recipient: state.NewIdentScreenName("11111111"),
+									Message: wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
+										ChannelID: wire.ICBMChannelIM,
+										TLVRestBlock: wire.TLVRestBlock{
+											TLVList: wire.TLVList{
+												wire.NewTLVBE(wire.ICBMTLVAOLIMData, mustICBMFragmentList(t, "hello!")),
+											},
+										},
+									},
+									Sent: time.Date(2024, time.August, 2, 12, 5, 0, 0, time.UTC),
+								},
+							},
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToSelfParams: relayToSelfParams{
+						{
+							screenName: state.NewIdentScreenName("11111111"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.ICQ,
+									SubGroup:  wire.ICQDBReply,
+									Flags:     wire.SNACFlagsMoreToCome,
+									RequestID: 1234,
+								},
+								Body: wire.SNAC_0x15_0x02_DBReply{
+									TLVRestBlock: wire.TLVRestBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.ICQTLVTagsMetadata, wire.ICQMessageReplyEnvelope{
+												Message: wire.ICQ_0x0041_DBQueryOfflineMsgReply{
+													ICQMetadata: wire.ICQMetadata{
+														UIN:     11111111,
+														ReqType: wire.ICQDBQueryOfflineMsgReply,
+														Seq:     1,
+													},
+													SenderUIN: 22222222,
+													Year:      uint16(2024),
+													Month:     uint8(8),
+													Day:       uint8(2),
+													Hour:      uint8(12),
+													Minute:    uint8(5),
+													MsgType:   wire.ICBMExtendedMsgTypePlain,
+													Message:   "hello!",
+												},
+											}),
+										},
+									},
+								},
+							},
+						},
+						{
+							screenName: state.NewIdentScreenName("11111111"),
+							message:    offlineMsgReplyLast(11111111, 1, 1234),
+						},
+					},
+				},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
