@@ -162,6 +162,9 @@ type SentIMEvent struct {
 	MsgID     string   `json:"msgId,omitempty" xml:"msgId,omitempty"`
 	Timestamp int64    `json:"timestamp" xml:"timestamp"`
 	AutoResp  bool     `json:"autoResponse,omitempty" xml:"autoResponse,omitempty" amf3:"autoresponse"`
+	// ISent marks the echo to the session that sent the message. The client
+	// already shows that message, so it only renders a sentIM without it.
+	ISent bool `json:"iSent" xml:"iSent"`
 }
 
 // ClientErrorEvent tells a sender that the recipient rejected a message the server

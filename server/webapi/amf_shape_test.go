@@ -150,6 +150,7 @@ func TestAMFSentIMUsesClientFieldNames(t *testing.T) {
 			Dest:    UserInfo{AimID: "fred", DisplayID: "Fred", Friendly: "Freddy", UserType: "aim", State: "online"},
 			Message: "hi",
 			MsgID:   "beefcafe",
+			ISent:   true,
 		},
 	})
 
@@ -168,6 +169,7 @@ func TestAMFSentIMUsesClientFieldNames(t *testing.T) {
 	// Always sent, false included, and never under the JSON spelling.
 	assert.Equal(t, false, eventData["autoresponse"])
 	assert.NotContains(t, eventData, "autoResponse")
+	assert.Equal(t, true, eventData["iSent"])
 }
 
 // Presence is the whole user object the client's parseUser reads, not a subset.

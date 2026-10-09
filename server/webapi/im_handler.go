@@ -151,7 +151,7 @@ func (h *MessagingHandler) SendIM(w http.ResponseWriter, r *http.Request, sess *
 		"eventType", EventTypeSentIM,
 	)
 
-	responseData := &SendIMData{MsgID: messageID, State: "delivered"}
+	responseData := &SendIMData{MsgID: messageID, State: "delivered", Timestamp: now}
 	SendOK(w, r, responseData, h.Logger)
 }
 
@@ -218,6 +218,7 @@ func (h *MessagingHandler) pushSenderWebAPIEvents(sess *Session, recipient state
 		MsgID:     messageID,
 		Timestamp: now,
 		AutoResp:  autoResponse,
+		ISent:     true,
 	}
 	sess.EventQueue.Push(EventTypeSentIM, senderEventData)
 	if sess.IsSubscribedTo("conversation") {
@@ -270,6 +271,8 @@ func (h *MessagingHandler) SetTyping(w http.ResponseWriter, r *http.Request, ses
 type SendIMData struct {
 	MsgID string `json:"msgId" xml:"msgId"`
 	State string `json:"state" xml:"state"`
+	// Timestamp is the send time the sentIM echo carries, in Unix seconds.
+	Timestamp int64 `json:"timestamp" xml:"timestamp"`
 }
 
 // StoredIMsData is the fetchStoredIMs payload.

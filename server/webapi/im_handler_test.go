@@ -119,6 +119,7 @@ func TestMessagingHandler_SendIM_DestDisplayIDFromLocateReply(t *testing.T) {
 	assert.Equal(t, "Ann Dupree", sentIM.Sender.DisplayID)
 	assert.Equal(t, "mikelee", sentIM.Dest.AimID)
 	assert.Equal(t, "Mike Lee", sentIM.Dest.DisplayID)
+	assert.True(t, sentIM.ISent, "the sender's own echo must be marked iSent")
 
 	assert.Equal(t, "mikelee", conv.AimID)
 	assert.Equal(t, "Mike Lee", conv.DisplayID)
@@ -193,6 +194,7 @@ func TestMessagingHandler_SendIM(t *testing.T) {
 				assert.Contains(t, body, `"statusCode":200`)
 				assert.Contains(t, body, `"msgId"`)
 				assert.Contains(t, body, `"state":"delivered"`)
+				assert.Contains(t, body, `"timestamp":`)
 			},
 		},
 		{
