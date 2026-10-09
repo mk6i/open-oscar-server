@@ -220,9 +220,11 @@ func (h *MessagingHandler) pushSenderWebAPIEvents(sess *Session, recipient state
 		AutoResp:  autoResponse,
 		ISent:     true,
 	}
-	sess.EventQueue.Push(EventTypeSentIM, senderEventData)
-	if sess.IsSubscribedTo("conversation") {
-		sess.EventQueue.Push(EventTypeConversation, ConversationEventData("update", []ConversationEntryData{
+	if sess.IsSubscribedTo(EventTypeSentIM) {
+		sess.PushEvent(EventTypeSentIM, senderEventData)
+	}
+	if sess.IsSubscribedTo(EventTypeConversation) {
+		sess.PushEvent(EventTypeConversation, ConversationEventData("update", []ConversationEntryData{
 			ConversationEntry(recipientAimID, recipientDisplay, message, messageID, senderAimID, true, 0),
 		}))
 	}

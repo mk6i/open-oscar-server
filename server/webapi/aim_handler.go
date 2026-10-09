@@ -233,7 +233,7 @@ func (h *AimHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 	// outgoing IMs, prompting recipients to send typing notifications
 	// back. This must run after FeedbagService.Use, which otherwise
 	// overwrites the flag from stored prefs the web user may not have set.
-	instance.Session().SetTypingEventsEnabled(slices.Contains(events, "typing"))
+	instance.Session().SetTypingEventsEnabled(slices.Contains(events, string(EventTypeTyping)))
 
 	instance.SetSignonComplete()
 
@@ -415,23 +415,23 @@ func (h *AimHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 	// iterated with it, so the server fixes their order and each is queued once.
 	// myInfo and presence render the identity badge from the same payload and the
 	// client subscribes to both, which a per-subscription loop would queue twice.
-	if slices.Contains(events, "myInfo") || slices.Contains(events, "presence") {
+	if slices.Contains(events, string(EventTypeMyInfo)) || slices.Contains(events, string(EventTypePresence)) {
 		myInfoData := buildMyInfo(screenName, "online", myIconURL, myMoodURL)
 		myInfoData.StatusMsg = sessionStatusMsg(session.OSCARSession)
 		myInfoData.OnlineTime = time.Now().Unix()
 		myInfoData.MemberSince = time.Now().Unix() - 86400*30 // 30 days ago
-		session.EventQueue.Push(EventTypeMyInfo, myInfoData)
+		session.PushEvent(EventTypeMyInfo, myInfoData)
 	}
 
-	if slices.Contains(events, "conversation") {
-		session.EventQueue.Push(EventTypeConversation,
+	if slices.Contains(events, string(EventTypeConversation)) {
+		session.PushEvent(EventTypeConversation,
 			ConversationEventData("list", nil))
 	}
 
 	if slices.Contains(events, string(EventTypeService)) {
 		svcPayload := newServiceData()
 		data.Events.Service = svcPayload
-		session.EventQueue.Push(EventTypeService, svcPayload)
+		session.PushEvent(EventTypeService, svcPayload)
 	}
 
 	// The remaining seeds also populate the response payload, so they stay keyed off
@@ -448,7 +448,7 @@ func (h *AimHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 			}
 			blPayload := &BuddyListData{Groups: buddyGroups}
 			data.Events.BuddyList = blPayload
-			session.EventQueue.Push(EventTypeBuddyList, blPayload)
+			session.PushEvent(EventTypeBuddyList, blPayload)
 		case EventTypePreference:
 			// Seed the client with effective preference values: the user's stored
 			// prefs where set, and the server-side spec defaults otherwise. The
@@ -463,7 +463,7 @@ func (h *AimHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 				prefPayload = effectiveBuddyPrefs(item.TLVList)
 			}
 			data.Events.Preference = prefPayload
-			session.EventQueue.Push(EventTypePreference, prefPayload)
+			session.PushEvent(EventTypePreference, prefPayload)
 		case EventTypePermitDeny:
 			// The client keeps its privacy state solely in the model this event
 			// populates. Both the block/unblock menu action and the "blocked"
@@ -476,7 +476,7 @@ func (h *AimHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 				pdPayload = pdd
 			}
 			data.Events.PermitDeny = pdPayload
-			session.EventQueue.Push(EventTypePermitDeny, pdPayload)
+			session.PushEvent(EventTypePermitDeny, pdPayload)
 		}
 	}
 
@@ -493,7 +493,7 @@ func (h *AimHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 	// name against the buddy list it holds, and the conversation list is rebuilt from
 	// scratch on the first "list" the client sees. Both of those events are queued in
 	// the loop above, so the drain has to come after it.
-	if slices.Contains(events, "offlineIM") {
+	if slices.Contains(events, string(EventTypeOfflineIM)) {
 		frame := wire.SNACFrame{
 			FoodGroup: wire.ICBM,
 			SubGroup:  wire.ICBMOfflineRetrieve,
@@ -865,7 +865,7 @@ func seedRateLimitAlert(session *Session, classID wire.RateLimitClassID) {
 		return
 	}
 
-	session.EventQueue.Push(EventTypeRateLimit, RateLimitEvent{
+	session.PushEvent(EventTypeRateLimit, RateLimitEvent{
 		Classes: []RateLimitClass{
 			{
 				ID:     int(classID),

@@ -255,7 +255,7 @@ func (h *PreferenceHandler) SetPreferences(w http.ResponseWriter, r *http.Reques
 		// Notify the client's open windows via the event stream so display
 		// changes (e.g. bubbles/classic) take effect immediately without a
 		// browser refresh.
-		session.EventQueue.Push(EventTypePreference, applied)
+		session.PushEvent(EventTypePreference, applied)
 	}
 
 	h.Logger.DebugContext(ctx, "preferences updated",
@@ -559,7 +559,7 @@ func (h *PreferenceHandler) SetPermitDeny(w http.ResponseWriter, r *http.Request
 	// block/unblock menu label) only from the permitDeny event, and it sees no
 	// SNAC for the write it just made. Without this the block takes effect
 	// server-side but the UI keeps showing the buddy as unblocked.
-	session.EventQueue.Push(EventTypePermitDeny, pdd)
+	session.PushEvent(EventTypePermitDeny, pdd)
 
 	h.Logger.DebugContext(ctx, "permit/deny settings updated",
 		"screenName", session.ScreenName.String(),

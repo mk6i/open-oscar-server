@@ -300,8 +300,13 @@ func (s *Session) Touch() {
 }
 
 // IsSubscribedTo checks if the session is subscribed to a specific event type.
-func (s *Session) IsSubscribedTo(eventType string) bool {
-	return slices.Contains(s.Events, eventType)
+func (s *Session) IsSubscribedTo(eventType EventType) bool {
+	return slices.Contains(s.Events, string(eventType))
+}
+
+// PushEvent queues an event for delivery to the web client.
+func (s *Session) PushEvent(eventType EventType, data any) {
+	s.EventQueue.Push(eventType, data)
 }
 
 // StartListeningToOSCARSession starts a goroutine that listens to the OSCAR session's
@@ -333,7 +338,7 @@ func (s *Session) StartListeningToOSCARSession() {
 				// A teardown this session started needs no event, and gets
 				// none: Close closes the queue before it closes the instance,
 				// so this Push is a no-op on that path.
-				s.EventQueue.Push(EventTypeSessionEnded, struct{}{})
+				s.PushEvent(EventTypeSessionEnded, struct{}{})
 				return
 			}
 		}
@@ -391,7 +396,7 @@ func (s *Session) handleOServiceMessage(msg wire.SNACMessage) {
 // translate this into a fresh myInfo. The away message is the one field read off
 // the session, since no user info block carries the text.
 func (s *Session) handleUserInfoUpdate(msg wire.SNACMessage) {
-	if !s.IsSubscribedTo("myInfo") && !s.IsSubscribedTo("presence") {
+	if !s.IsSubscribedTo(EventTypeMyInfo) && !s.IsSubscribedTo(EventTypePresence) {
 		return
 	}
 
@@ -417,7 +422,7 @@ func (s *Session) handleUserInfoUpdate(msg wire.SNACMessage) {
 	myInfo.AwayMsg = s.OSCARSession.Session().AwayMessage()
 	myInfo.StatusMsg = userStatusMsg(info)
 
-	s.EventQueue.Push(EventTypeMyInfo, myInfo)
+	s.PushEvent(EventTypeMyInfo, myInfo)
 }
 
 // handleRateLimitUpdate translates a rate limit status change — broadcast by the
@@ -449,7 +454,7 @@ func (s *Session) handleRateLimitUpdate(msg wire.SNACMessage) {
 		return
 	}
 
-	s.EventQueue.Push(EventTypeRateLimit, RateLimitEvent{
+	s.PushEvent(EventTypeRateLimit, RateLimitEvent{
 		Classes: []RateLimitClass{
 			{ID: int(body.Rate.ID), Status: status},
 		},
@@ -483,7 +488,7 @@ func (s *Session) handleIncomingIM(msg wire.SNACMessage) {
 	// Retrieval answers only the instance that asked, and StartSession asks only
 	// when the client subscribed to offlineIM, so a stamped message here is one
 	// this session requested. A live IM still needs the im subscription.
-	if !isOffline && !s.IsSubscribedTo("im") {
+	if !isOffline && !s.IsSubscribedTo(EventTypeIM) {
 		return
 	}
 
@@ -530,7 +535,7 @@ func (s *Session) handleIncomingIM(msg wire.SNACMessage) {
 		if friendly == "" {
 			friendly = partnerDisplay
 		}
-		s.EventQueue.Push(EventTypeOfflineIM, OfflineIMEvent{
+		s.PushEvent(EventTypeOfflineIM, OfflineIMEvent{
 			AimID:     partnerAimID,
 			Friendly:  friendly,
 			Message:   messageText,
@@ -555,7 +560,7 @@ func (s *Session) handleIncomingIM(msg wire.SNACMessage) {
 			source.OnlineTime = presence.OnlineTime
 		}
 
-		s.EventQueue.Push(EventTypeIM, IMEvent{
+		s.PushEvent(EventTypeIM, IMEvent{
 			Source:    source,
 			Message:   messageText,
 			MsgID:     msgID,
@@ -568,14 +573,14 @@ func (s *Session) handleIncomingIM(msg wire.SNACMessage) {
 			"to", s.ScreenName)
 	}
 
-	if s.IsSubscribedTo("conversation") {
+	if s.IsSubscribedTo(EventTypeConversation) {
 		// unread is 0 here, not 1, because the "im"/"offlineIM" event pushed above
 		// already causes the client to increment its own persisted per-buddy unread
 		// tally. The "Recent chats" badge is the sum of that persisted tally and
 		// this conversation's unreadCount, so sending 1 here would double-count
 		// the message (badge shows 2 for the first IM). Mirrors the sent-IM path,
 		// which also passes 0.
-		s.EventQueue.Push(EventTypeConversation, ConversationEventData("update", []ConversationEntryData{
+		s.PushEvent(EventTypeConversation, ConversationEventData("update", []ConversationEntryData{
 			ConversationEntry(
 				partnerAimID,
 				partnerDisplay,
@@ -593,7 +598,7 @@ func (s *Session) handleIncomingIM(msg wire.SNACMessage) {
 // could not handle a message already delivered to it — into a clientError event
 // for the sender. Only OSCAR clients raise this SNAC.
 func (s *Session) handleClientError(msg wire.SNACMessage) {
-	if !s.IsSubscribedTo("im") {
+	if !s.IsSubscribedTo(EventTypeIM) {
 		return
 	}
 
@@ -611,7 +616,7 @@ func (s *Session) handleClientError(msg wire.SNACMessage) {
 		channel = "data"
 	}
 
-	s.EventQueue.Push(EventTypeClientError, ClientErrorEvent{
+	s.PushEvent(EventTypeClientError, ClientErrorEvent{
 		Source: UserInfo{
 			AimID:     sender.String(),
 			DisplayID: body.ScreenName,
@@ -625,7 +630,7 @@ func (s *Session) handleClientError(msg wire.SNACMessage) {
 
 // handleTypingNotification handles typing notifications.
 func (s *Session) handleTypingNotification(msg wire.SNACMessage) {
-	if !s.IsSubscribedTo("typing") {
+	if !s.IsSubscribedTo(EventTypeTyping) {
 		return
 	}
 
@@ -650,7 +655,7 @@ func (s *Session) handleTypingNotification(msg wire.SNACMessage) {
 		TypingStatus: typingStatus,
 	}
 
-	s.EventQueue.Push(EventTypeTyping, typingEvent)
+	s.PushEvent(EventTypeTyping, typingEvent)
 }
 
 // handleBuddyMessage handles buddy/presence SNAC messages.
@@ -679,7 +684,7 @@ func (s *Session) handleBuddyArrived(msg wire.SNACMessage) {
 
 	s.setBuddyPresence(buddy, presence)
 
-	if !s.IsSubscribedTo("presence") {
+	if !s.IsSubscribedTo(EventTypePresence) {
 		return
 	}
 
@@ -705,7 +710,7 @@ func (s *Session) handleBuddyArrived(msg wire.SNACMessage) {
 		presenceEvent.BuddyIcon = s.BuddyIconURL(buddy, presence.IconHash)
 	}
 
-	s.EventQueue.Push(EventTypePresence, presenceEvent)
+	s.PushEvent(EventTypePresence, presenceEvent)
 }
 
 // bartIDs returns the BART items a user info block carries. They travel as a list
@@ -863,7 +868,7 @@ func (s *Session) handleBuddyDeparted(msg wire.SNACMessage) {
 	// Recorded before the subscription check, for the same reason as arrivals.
 	s.setBuddyOffline(buddy)
 
-	if !s.IsSubscribedTo("presence") {
+	if !s.IsSubscribedTo(EventTypePresence) {
 		return
 	}
 
@@ -876,7 +881,7 @@ func (s *Session) handleBuddyDeparted(msg wire.SNACMessage) {
 		UserType: userTypeFor(buddy),
 	}
 
-	s.EventQueue.Push(EventTypePresence, presenceEvent)
+	s.PushEvent(EventTypePresence, presenceEvent)
 }
 
 // feedbagResultAuthRequired is the per-item feedbag result meaning the target's ICQ
@@ -894,7 +899,7 @@ func (s *Session) refreshBuddyList() {
 		s.logger.Error("failed to refresh buddy list after feedbag change", "err", err)
 		return
 	}
-	s.EventQueue.Push(EventTypeBuddyList, payload)
+	s.PushEvent(EventTypeBuddyList, payload)
 }
 
 func (s *Session) handleFeedbagMessage(msg wire.SNACMessage) {
@@ -904,7 +909,7 @@ func (s *Session) handleFeedbagMessage(msg wire.SNACMessage) {
 	case wire.FeedbagStatus:
 		// Insert/update/delete below reach only a user's *other* instances, so this
 		// is the one notification a session gets for its own feedbag write.
-		if !s.IsSubscribedTo(string(EventTypeBuddyList)) {
+		if !s.IsSubscribedTo(EventTypeBuddyList) {
 			return
 		}
 		if body, ok := msg.Body.(wire.SNAC_0x13_0x0E_FeedbagStatus); ok {
@@ -950,7 +955,7 @@ func (s *Session) handleFeedbagMessage(msg wire.SNACMessage) {
 					if err != nil {
 						s.logger.Error("failed to refresh permit/deny after feedbag change", "err", err)
 					} else {
-						s.EventQueue.Push(EventTypePermitDeny, pdd)
+						s.PushEvent(EventTypePermitDeny, pdd)
 					}
 					break
 				}
