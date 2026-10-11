@@ -67,12 +67,21 @@ make docker-run OSCAR_HOST=ras.dev
 
 Replace `ras.dev` with the hostname clients will use to connect.
 
+By default, you can enter *any* screen name and password at the AIM sign-in screen to auto-create an account.
+
+> Account auto-creation is meant to be a convenience feature for local development. In a production deployment, you
+should set `DISABLE_AUTH=false` in `config/ssl/settings.env` to enforce account authentication. User accounts can be
+created via the [Management API](../README.md#-management-api).
+
 ### 6. Client Configuration
 
 #### Certificate Database
 
-Follow the [AIM 6.x client setup instructions](AIM_6_7.md#aim-6265312-setup) to install the `certs/nss/` database on each
+Follow the [AIM 6.x client setup instructions](AIM_6_7.md#aim-62-75-setup) to install the `certs/nss/` database on each
 client.
+
+To make distribution easier, nginx serves the database files at `http://<OSCAR_HOST>/certs/nss/` (e.g.,
+`http://ras.dev/certs/nss/`), so clients can download them directly from the server.
 
 #### Resolving Hostname
 

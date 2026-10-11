@@ -63,6 +63,10 @@ services:
     # must exist first.
     depends_on:
       - open-oscar-server
+    # `make run-nginx` sets NGINX_UPSTREAM_HOST=open-oscar-server to send
+    # upstream traffic to a server running on the host instead.
+    extra_hosts:
+      - "${NGINX_UPSTREAM_HOST:-host.docker.internal}:host-gateway"
     ports:
       - "80:80"
       - "443:443"
@@ -71,3 +75,4 @@ services:
       - ./config/ssl/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./certs:/etc/nginx/certs:ro
       - ${CLIENT_DIR:-./clients}:/srv/client:ro
+      - ./certs:/srv/certs:ro

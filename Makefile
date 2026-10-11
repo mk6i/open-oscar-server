@@ -122,15 +122,16 @@ docker-run-stop: ## Stop Open OSCAR Server docker-compose services
 
 .PHONY: run
 run: # run the server with plain socket config
-	./scripts/run_dev.sh ./config/settings.env
+	go run -v ./cmd/server -config ./config/settings.env
 
 .PHONY: run-ssl
 run-ssl: # run the server with ssl socket config
-	./scripts/run_dev.sh ./config/ssl/settings.env
+	go run -v ./cmd/server -config ./config/ssl/settings.env
 
 .PHONY: run-nginx
-run-nginx: # run nginx for SSL termination
-	NGINX_IMAGE=$(NGINX_IMAGE) CLIENT_DIR=$(CLIENT_DIR) ./scripts/run_nginx.sh ./certs/server.pem
+run-nginx: # run nginx for SSL termination in front of `make run-ssl`
+	@[ -f ./certs/server.pem ] || { echo "./certs/server.pem not found, run 'make docker-cert' first"; exit 1; }
+	OSCAR_HOST=$(OSCAR_HOST) NGINX_UPSTREAM_HOST=open-oscar-server NGINX_IMAGE=$(NGINX_IMAGE) CLIENT_DIR=$(CLIENT_DIR) docker compose up --no-deps nginx
 
 ################################################################################
 # SSL Helpers

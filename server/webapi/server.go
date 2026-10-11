@@ -2,7 +2,6 @@ package webapi
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -353,18 +352,8 @@ type Handler struct {
 }
 
 func (h Handler) GetHelloWorldHandler(w http.ResponseWriter, r *http.Request) {
-	_, _ = fmt.Fprintf(w, "WebAPI Server Running\n")
-	// Must return the same JSON envelope as other Web AIM APIs.
 	h.Logger.Info("webapi root GET", "remote", r.RemoteAddr, "host", r.Host, "path", r.URL.Path)
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	resp := map[string]any{
-		"response": map[string]any{
-			"statusCode": 200,
-			"statusText": "Ok",
-			"data":       map[string]any{},
-		},
-	}
-	_ = json.NewEncoder(w).Encode(resp)
+	SendOK(w, r, nil, h.Logger)
 }
 
 // corsOptions maps the configured origin allowlist onto rs/cors.
