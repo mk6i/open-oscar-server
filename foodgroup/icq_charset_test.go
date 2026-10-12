@@ -7,6 +7,7 @@ import (
 	"golang.org/x/text/encoding/charmap"
 
 	"github.com/mk6i/open-oscar-server/state"
+	"github.com/mk6i/open-oscar-server/wire"
 )
 
 func TestLegacyToUTF8(t *testing.T) {
@@ -78,5 +79,49 @@ func TestUTF8ToLegacy(t *testing.T) {
 		stored := legacyToUTF8(charmap.Windows1251, sent)
 
 		assert.Equal(t, sent, utf8ToLegacy(charmap.Windows1251, stored))
+	})
+}
+
+func TestCh4Text(t *testing.T) {
+	// "Привет, люблю" as Windows-1251 bytes; "ю" is the separator byte 0xFE
+	reason1251 := "\xcf\xf0\xe8\xe2\xe5\xf2, \xeb\xfe\xe1\xeb\xfe"
+	request := func(nick, reason string) string {
+		return nick + "\xFEfirst\xFElast\xFEa@b.c\xFE1\xFE" + reason
+	}
+
+	t.Run("a stored UTF-8 request is encoded for a vintage client", func(t *testing.T) {
+		out := ch4TextToLegacy(charmap.Windows1251, request("Дима", "Привет, люблю"))
+
+		assert.Equal(t, request("\xc4\xe8\xec\xe0", reason1251), out)
+	})
+
+	t.Run("a request a vintage client sent is left alone on its way to another one", func(t *testing.T) {
+		in := request("\xc4\xe8\xec\xe0", reason1251)
+
+		assert.Equal(t, in, ch4TextToLegacy(charmap.Windows1251, in))
+	})
+
+	t.Run("a vintage request becomes UTF-8 with the reason intact", func(t *testing.T) {
+		out := ch4TextToUTF8(charmap.Windows1251, wire.ICBMMsgTypeAuthReq, request("\xc4\xe8\xec\xe0", reason1251))
+
+		assert.Equal(t, request("Дима", "Привет, люблю"), out)
+	})
+
+	t.Run("a stored UTF-8 request stays UTF-8 for a feedbag client", func(t *testing.T) {
+		in := request("Дима", "Привет, люблю")
+
+		assert.Equal(t, in, ch4TextToUTF8(charmap.Windows1251, wire.ICBMMsgTypeAuthReq, in))
+	})
+
+	t.Run("a vintage denial is a reason on its own", func(t *testing.T) {
+		assert.Equal(t, "Привет, люблю", ch4TextToUTF8(charmap.Windows1251, wire.ICBMMsgTypeAuthDeny, reason1251))
+	})
+
+	t.Run("a message TLV is re-encoded only when its text changes", func(t *testing.T) {
+		utf8TLV := wire.NewTLVLE(wire.ICBMTLVData, wire.ICBMCh4Message{UIN: 100, MessageType: wire.ICBMMsgTypeAuthDeny, Message: "Привет"})
+		legacyTLV := wire.NewTLVLE(wire.ICBMTLVData, wire.ICBMCh4Message{UIN: 100, MessageType: wire.ICBMMsgTypeAuthDeny, Message: "\xcf\xf0\xe8\xe2\xe5\xf2"})
+
+		assert.Equal(t, legacyTLV, ch4TLVToLegacy(charmap.Windows1251, utf8TLV))
+		assert.Equal(t, legacyTLV, ch4TLVToLegacy(charmap.Windows1251, legacyTLV))
 	})
 }

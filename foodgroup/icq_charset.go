@@ -1,7 +1,9 @@
 package foodgroup
 
 import (
+	"bytes"
 	"reflect"
+	"strings"
 	"unicode/utf8"
 
 	"golang.org/x/text/encoding"
@@ -97,4 +99,50 @@ func mapStringValues(v reflect.Value, fn func(string) string) {
 		v.Set(elem)
 		mapStringValues(elem.Elem(), fn)
 	}
+}
+
+// ch4Separator delimits the fields of an ICQ channel-4 message.
+const ch4Separator = "\xFE"
+
+// ch4TextToLegacy returns the text of a channel-4 message in the fallback
+// charset, for a client that does not use feedbag.
+func ch4TextToLegacy(enc encoding.Encoding, msg string) string {
+	fields := strings.Split(msg, ch4Separator)
+	for i := range fields {
+		fields[i] = utf8TextToLegacy(enc, fields[i])
+	}
+	return strings.Join(fields, ch4Separator)
+}
+
+// ch4TextToUTF8 returns the text of a channel-4 authorization message as UTF-8,
+// the encoding of the feedbag SNACs it is forwarded as. A fallback charset may
+// use the separator byte as a letter (0xFE is "ю" in Windows-1251), so a
+// request is split into its five leading fields and the reason, and any other
+// message is a reason on its own.
+func ch4TextToUTF8(enc encoding.Encoding, msgType uint8, msg string) string {
+	fieldCount := 1
+	if msgType == wire.ICBMMsgTypeAuthReq {
+		fieldCount = 6
+	}
+	fields := strings.SplitN(msg, ch4Separator, fieldCount)
+	for i := range fields {
+		fields[i] = legacyTextToUTF8(enc, fields[i])
+	}
+	return strings.Join(fields, ch4Separator)
+}
+
+// ch4TLVToLegacy re-encodes the text of a channel-4 message TLV with
+// ch4TextToLegacy. A TLV that does not parse or needs no conversion is returned
+// as is.
+func ch4TLVToLegacy(enc encoding.Encoding, tlv wire.TLV) wire.TLV {
+	msg := wire.ICBMCh4Message{}
+	if err := wire.UnmarshalLE(&msg, bytes.NewReader(tlv.Value)); err != nil {
+		return tlv
+	}
+	converted := ch4TextToLegacy(enc, msg.Message)
+	if converted == msg.Message {
+		return tlv
+	}
+	msg.Message = converted
+	return wire.NewTLVLE(tlv.Tag, msg)
 }

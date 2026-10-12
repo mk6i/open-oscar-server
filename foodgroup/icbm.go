@@ -156,6 +156,7 @@ func (s *ICBMService) ChannelMsgToHost(ctx context.Context, instance *state.Sess
 				authMsg.MessageType == wire.ICBMMsgTypeAuthOK ||
 				authMsg.MessageType == wire.ICBMMsgTypeAdded {
 				if recipSess.UsesFeedbag() {
+					authMsg.Message = ch4TextToUTF8(s.legacyCharset, authMsg.MessageType, authMsg.Message)
 					return nil, s.forwardICQAuthEvents(ctx, instance.IdentScreenName(), recipSess.IdentScreenName(), authMsg)
 				} else if authMsg.MessageType == wire.ICBMMsgTypeAuthOK {
 					if err := s.contactPreAuthorizer.RecordPreAuth(ctx, instance.IdentScreenName(), recipSess.IdentScreenName()); err != nil {
@@ -193,6 +194,10 @@ func (s *ICBMService) ChannelMsgToHost(ctx context.Context, instance *state.Sess
 			if tlv, err = addExternalIP(instance, tlv); err != nil {
 				return nil, fmt.Errorf("addExternalIP: %w", err)
 			}
+		}
+		if clientIM.ChannelID == wire.ICBMChannelICQ && tlv.Tag == wire.ICBMTLVData && !recipSess.UsesFeedbag() {
+			// A client without feedbag reads channel-4 text in its ANSI code page.
+			tlv = ch4TLVToLegacy(s.legacyCharset, tlv)
 		}
 		// Strip HTML from ICQ messages if recipient doesn't support XHTML.
 		// AIM clients send HTML formatted messages that should be preserved.

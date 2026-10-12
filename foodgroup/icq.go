@@ -444,6 +444,7 @@ func (s *ICQService) OfflineMsgReq(ctx context.Context, inFrame wire.SNACFrame, 
 						if instance.Session().UsesFeedbag() {
 							// send auth grant/deny/request SNACs instead of the legacy MSG_TYPE_*
 							// ICQ messages.
+							msg.Message = ch4TextToUTF8(s.legacyCharset, msg.MessageType, msg.Message)
 							if err := s.forwardICQAuthEvents(ctx, msgIn.Sender, msgIn.Recipient, msg); err != nil {
 								return fmt.Errorf("s.forwardICQAuthEvents: %w", err)
 							}
@@ -452,7 +453,7 @@ func (s *ICQService) OfflineMsgReq(ctx context.Context, inFrame wire.SNACFrame, 
 					}
 					reply.MsgType = msg.MessageType
 					reply.Flags = msg.Flags
-					reply.Message = msg.Message
+					reply.Message = ch4TextToLegacy(s.legacyCharset, msg.Message)
 				}
 			}
 
