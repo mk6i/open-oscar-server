@@ -168,17 +168,3 @@ macos-trust-ca: ## Trust $(CA_CERT) as a root in the macOS system keychain, repl
 		echo "removed previous $(CA_CERT_CN)"; \
 	done
 	sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain $(CA_CERT)
-
-################################################################################
-# Web Clients
-################################################################################
-
-# Seconds between Wayback Machine requests. The archive throttles by refusing
-# connections outright, so raise this rather than retrying harder if a run
-# starts stalling.
-WAYBACK_DELAY ?= 2.5
-
-.PHONY: fetch-aim-express
-fetch-aim-express: ## Mirror the archived AIM Express web clients from the Wayback Machine into $(CLIENT_DIR)
-	mkdir -p $(CLIENT_DIR)
-	./scripts/fetch_aimex.sh -o $(CLIENT_DIR) -d $(WAYBACK_DELAY)
