@@ -1,4 +1,4 @@
-FROM golang:1.26.2-alpine AS builder
+FROM golang:1.27.2-alpine AS builder
 
 WORKDIR /app
 
@@ -15,6 +15,6 @@ WORKDIR /app
 
 COPY --from=builder /app/open_oscar_server /app/
 
-EXPOSE 5190 8080 9898 1088 4000/udp
+EXPOSE 5190 5191 8080 8081 9898 1088 4000/udp
 
 CMD ["/app/open_oscar_server"]
