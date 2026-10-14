@@ -1,18 +1,26 @@
 # AIM for iOS Client Setup
 
-This guide explains how to connect the AIM for iOS client (v5.1.3) to Open OSCAR Server. The client talks to the
-server's Web API, so setup consists of pointing the app's server URLs at your Open OSCAR Server instance and installing
-the modified app on your device.
+This guide explains how to connect AIM for iOS 5.1.3 to Open OSCAR Server. The client talks to the server's Web API, so
+setup consists of pointing the app's server URLs at your Open OSCAR Server instance and installing the modified app on
+your device.
+
+The SSL-enabled examples in this guide assume your server's hostname is `ras.dev`, the hostname passed to
+`make docker-run`. If you use a different hostname, substitute it wherever `ras.dev` appears.
 
 <p align="center">
    <img width="320" alt="AIM for iOS Screenshot" src="https://github.com/user-attachments/assets/8b410e0e-060f-4626-bda9-e210f4a6548a" />
 </p>
 
+> [!NOTE]
+> Open OSCAR Server is not affiliated with or endorsed by AOL or Yahoo. AIM and AIM for iOS are trademarks of their
+> respective owners. This project does not distribute the AIM for iOS app; you are responsible for ensuring that
+> obtaining and using it complies with the laws that apply to you.
+
 ## Prerequisites
 
 1. **Compatible iOS Device**
 
-   AIM v5.1.3 is a 32-bit app, so it requires a device running iOS 5 through 10. iOS 11 and later do not run 32-bit
+   AIM 5.1.3 is a 32-bit app, so it requires a device running iOS 5 through 10. iOS 11 and later do not run 32-bit
    apps.
 
 2. **Ability to Sideload Apps**
@@ -37,7 +45,7 @@ the modified app on your device.
 
 1. **Acquire the AIM IPA**
 
-   Download AIM v5.1.3 from [archive.org](https://archive.org) by searching for `AOL Instant Messenger iOS`.
+   Download AIM 5.1.3 from [archive.org](https://archive.org) by searching for `AOL Instant Messenger iOS`.
 
 2. **Configure Server URLs**
 
@@ -47,9 +55,8 @@ the modified app on your device.
     - **Unencrypted:** `http://<server-ip>:8081/`, where `<server-ip>` is the LAN IP address or hostname of the
       machine running Open OSCAR Server, and `8081` is the default Web API port (`WEBAPI_LISTENERS`). Do not use
       `127.0.0.1`, which refers to the device itself.
-    - **SSL-enabled:** `https://<OSCAR_HOST>/`, where `<OSCAR_HOST>` is the hostname you passed to
-      `make docker-run` (e.g., `ras.dev`). The device must be able to resolve this hostname, either through DNS or its
-      hosts file.
+    - **SSL-enabled:** `https://ras.dev/`, where `ras.dev` is the hostname you passed to `make docker-run`. The
+      device must be able to resolve this hostname, either through DNS or its hosts file.
 
    <div align="center"><br>
 
@@ -76,26 +83,27 @@ the modified app on your device.
 
 4. **Install the Root CA Certificate (SSL only)**
 
-   If you're running an SSL-enabled setup, the device must trust your server's root CA certificate.
-
-   In Safari on the device, open `http://<OSCAR_HOST>/certs/ca.crt` and install the profile when prompted.
+   The device must trust your server's root CA certificate. In Safari on the device, open `http://ras.dev/certs/ca.crt`
+   and install the profile when prompted.
 
    <p align="center">
       <img width="320" alt="iOS Certificate Installation Screenshot" src="https://github.com/user-attachments/assets/b62aeb01-4d2a-4262-a602-d772f26b94b5" />
    </p>
 
-   On iOS 10.3 and later, you must also enable full trust for the certificate under **Settings → General → About → Certificate
-   Trust Settings**.
+   On iOS 10.3 and later, you must also enable full trust for the certificate under
+   **Settings → General → About → Certificate Trust Settings**.
 
 5. **Sign In**
 
-   Open the AIM app and sign in!
+   Open the AIM app and sign in with your Open OSCAR Server screen name and password.
 
 ## Troubleshooting
 
 **The client can't connect**
 
-Open `{BASE}` in Safari on the device. If successful, you should see the following payload:
+Open `https://ras.dev/` in Safari on the device. If you're running an unencrypted setup or a different hostname, adjust
+the URL to match the base URL you configured in step 2 (for example, `http://192.168.1.10:8081/`). If successful, you
+should see the following payload:
 
 ```json
 {"response":{"statusCode":200,"statusText":"Ok","data":{}}}
