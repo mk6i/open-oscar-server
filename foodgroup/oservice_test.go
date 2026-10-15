@@ -443,7 +443,7 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 			},
 		},
 		{
-			name:          "request info for connecting to admin svc with SSL, return admin svc SSL connection metadata",
+			name:          "request info for connecting to admin svc with SSL, return admin svc plaintext host with SSL state",
 			service:       wire.BOS,
 			listenerGroup: config.ListenerGroup{BOSAdvertisedHostPlain: "127.0.0.1:1234", BOSAdvertisedHostSSL: "127.0.0.1:1235"},
 			instance:      newTestInstance("me"),
@@ -470,7 +470,7 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
 							wire.NewTLVBE(wire.OServiceTLVTagsGroupID, wire.Admin),
-							wire.NewTLVBE(wire.OServiceTLVTagsReconnectHere, "127.0.0.1:1235"),
+							wire.NewTLVBE(wire.OServiceTLVTagsReconnectHere, "127.0.0.1:1234"),
 							wire.NewTLVBE(wire.OServiceTLVTagsLoginCookie, []byte("the-cookie")),
 							wire.NewTLVBE(wire.OServiceTLVTagsSSLState, uint8(0x02)),
 						},
@@ -553,7 +553,7 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 			},
 		},
 		{
-			name:          "request info for connecting to BART service with SSL, return BART SSL connection metadata",
+			name:          "request info for connecting to BART service with SSL, return BART plaintext host with SSL state",
 			service:       wire.BOS,
 			listenerGroup: config.ListenerGroup{BOSAdvertisedHostPlain: "127.0.0.1:1234", BOSAdvertisedHostSSL: "127.0.0.1:1235"},
 			instance:      newTestInstance("me"),
@@ -580,7 +580,7 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
 							wire.NewTLVBE(wire.OServiceTLVTagsGroupID, wire.BART),
-							wire.NewTLVBE(wire.OServiceTLVTagsReconnectHere, "127.0.0.1:1235"),
+							wire.NewTLVBE(wire.OServiceTLVTagsReconnectHere, "127.0.0.1:1234"),
 							wire.NewTLVBE(wire.OServiceTLVTagsLoginCookie, []byte("the-cookie")),
 							wire.NewTLVBE(wire.OServiceTLVTagsSSLState, uint8(0x02)),
 						},
@@ -797,7 +797,7 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 					RequestID: 1234,
 				},
 				Body: wire.SNAC_0x01_0x04_OServiceServiceRequest{
-					FoodGroup: wire.Admin,
+					FoodGroup: wire.Alert,
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
 							wire.NewTLVBE(wire.OserviceTLVTagsSSLUseSSL, []byte{}),
@@ -814,7 +814,7 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 				Body: wire.SNAC_0x01_0x05_OServiceServiceResponse{
 					TLVRestBlock: wire.TLVRestBlock{
 						TLVList: wire.TLVList{
-							wire.NewTLVBE(wire.OServiceTLVTagsGroupID, wire.Admin),
+							wire.NewTLVBE(wire.OServiceTLVTagsGroupID, wire.Alert),
 							wire.NewTLVBE(wire.OServiceTLVTagsReconnectHere, "127.0.0.1:1234"),
 							wire.NewTLVBE(wire.OServiceTLVTagsLoginCookie, []byte("the-cookie")),
 							wire.NewTLVBE(wire.OServiceTLVTagsSSLState, uint8(0x00)),
@@ -827,7 +827,7 @@ func TestOServiceService_ServiceRequest(t *testing.T) {
 					cookieIssueParams: cookieIssueParams{
 						{
 							dataIn: []byte{
-								0x00, 0x07, // admin service
+								0x00, 0x18, // alert service
 								0x02, 'm', 'e',
 								0x0,                // no client ID
 								0x0,                // no chat cookie

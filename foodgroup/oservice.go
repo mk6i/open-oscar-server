@@ -737,6 +737,13 @@ func (s OServiceService) ServiceRequest(ctx context.Context, service uint16, ins
 		if listenerGroup.HasSSL() {
 			host = listenerGroup.BOSAdvertisedHostSSL
 			stateCode = wire.OServiceServiceResponseSSLStateResume
+			if inBody.FoodGroup == wire.Admin || inBody.FoodGroup == wire.BART {
+				// Per Pidgin, AOL's Admin and BART servers advertised SSL but
+				// did not support it, so clients connect to them in plaintext
+				// despite the SSL state, so claim SSL while advertising the
+				// plaintext host.
+				host = listenerGroup.BOSAdvertisedHostPlain
+			}
 		} else {
 			// redirect to the plaintext host and let the client decide whether
 			// to downgrade or give up
