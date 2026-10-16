@@ -344,7 +344,7 @@ func (c *Config) ParseListenersCfg() ([]ListenerGroup, error) {
 		case v.BOSListenAddress == "":
 			return nil, fmt.Errorf("missing BOS listen address for listener `%s://`", k)
 		case v.HasSSL() && v.BOSListenAddressSSL == "":
-			return nil, fmt.Errorf("missing SSL BOS listen address for listener `%s://`", k)
+			return nil, fmt.Errorf("missing SSL BOS listen address for listener `%s://`. OSCAR_ADVERTISED_LISTENERS_SSL defines this listener, so OSCAR_LISTENERS_SSL needs a matching entry for the SSL terminator (e.g. OSCAR_LISTENERS_SSL=%s://0.0.0.0:5191)", k, strings.ToUpper(k))
 		}
 		v.Name = k
 		ret = append(ret, *v)
