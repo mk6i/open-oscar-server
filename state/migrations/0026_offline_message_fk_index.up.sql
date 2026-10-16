@@ -1,3 +1,9 @@
+DELETE
+FROM offlineMessage
+WHERE recipient NOT IN
+      (SELECT identScreenName FROM USERS)
+   OR sender NOT IN (SELECT identScreenName FROM USERS);
+
 ALTER TABLE offlineMessage
     RENAME TO offlineMessage_old;
 
