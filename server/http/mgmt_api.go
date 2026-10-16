@@ -158,7 +158,7 @@ func NewManagementAPI(bld config.Build, listener string, userManager UserManager
 
 	// Handlers for '/feedbag/{screen_name}/group/{group_name}' route
 	mux.HandleFunc("PUT /feedbag/{screen_name}/group/{group_name}", func(w http.ResponseWriter, r *http.Request) {
-		putFeedbagGroupHandler(w, r, feedbagManager, messageRelayer, logger, rand.Intn)
+		putFeedbagGroupHandler(w, r, userManager, feedbagManager, messageRelayer, logger, rand.Intn)
 	})
 
 	// Handlers for '/feedbag/{screen_name}/group/{group_id}/buddy/{buddy_screen_name}' route
@@ -1788,7 +1788,7 @@ func getFeedbagBuddyHandler(w http.ResponseWriter, r *http.Request, feedbagManag
 }
 
 // putFeedbagGroupHandler handles the PUT /feedbag/{screen_name}/group/{group_name} endpoint.
-func putFeedbagGroupHandler(w http.ResponseWriter, r *http.Request, feedbagManager FeedbagManager, messageRelayer MessageRelayer, logger *slog.Logger, intn func(n int) int) {
+func putFeedbagGroupHandler(w http.ResponseWriter, r *http.Request, userManager UserManager, feedbagManager FeedbagManager, messageRelayer MessageRelayer, logger *slog.Logger, intn func(n int) int) {
 	w.Header().Set("Content-Type", "application/json")
 
 	screenName := r.PathValue("screen_name")
@@ -1804,6 +1804,17 @@ func putFeedbagGroupHandler(w http.ResponseWriter, r *http.Request, feedbagManag
 	}
 
 	user := state.NewIdentScreenName(screenName)
+
+	u, err := userManager.User(r.Context(), user)
+	if err != nil {
+		logger.Error("error retrieving user", "err", err.Error())
+		errorMsg(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if u == nil {
+		errorMsg(w, "user not found", http.StatusNotFound)
+		return
+	}
 
 	items, err := feedbagManager.Feedbag(r.Context(), user)
 	if err != nil {

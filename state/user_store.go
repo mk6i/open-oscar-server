@@ -869,11 +869,19 @@ func (f SQLiteUserStore) InsertUser(ctx context.Context, u User) error {
 	return nil
 }
 
+// DeleteUser deletes a user, their feedbag, and every linked-account item in
+// other users' feedbags that points to them.
 func (f SQLiteUserStore) DeleteUser(ctx context.Context, screenName IdentScreenName) error {
+	tx, err := f.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
 	q := `
 		DELETE FROM users WHERE identScreenName = ?
 	`
-	result, err := f.db.ExecContext(ctx, q, screenName.String())
+	result, err := tx.ExecContext(ctx, q, screenName.String())
 	if err != nil {
 		return err
 	}
@@ -886,7 +894,14 @@ func (f SQLiteUserStore) DeleteUser(ctx context.Context, screenName IdentScreenN
 		return ErrNoUser
 	}
 
-	return nil
+	q = `
+		DELETE FROM feedbag WHERE classID = ? AND name = ?
+	`
+	if _, err := tx.ExecContext(ctx, q, wire.FeedbagClassIdAlInfo, screenName.String()); err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }
 
 func (f SQLiteUserStore) SetUserPassword(ctx context.Context, screenName IdentScreenName, newPassword string) error {

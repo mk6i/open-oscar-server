@@ -2407,6 +2407,44 @@ func TestAuthService_RegisterBOSSession(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:    "user suspended, return error without creating a session",
+			cookie:  aimAuthCookie,
+			wantErr: errors.New("user suspended"),
+			mockParams: mockParams{
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{
+							screenName: screenName.IdentScreenName(),
+							result: &state.User{
+								IdentScreenName:   screenName.IdentScreenName(),
+								DisplayScreenName: screenName,
+								SuspendedStatus:   wire.LoginErrSuspendedAccount,
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:    "user deleted, return error without creating a session",
+			cookie:  aimAuthCookie,
+			wantErr: errors.New("user suspended"),
+			mockParams: mockParams{
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{
+							screenName: screenName.IdentScreenName(),
+							result: &state.User{
+								IdentScreenName:   screenName.IdentScreenName(),
+								DisplayScreenName: screenName,
+								SuspendedStatus:   wire.LoginErrDeletedAccount,
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 
 	for _, tc := range cases {

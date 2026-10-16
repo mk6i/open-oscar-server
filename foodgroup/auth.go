@@ -132,6 +132,10 @@ func (s AuthService) RegisterBOSSession(ctx context.Context, authCookie state.Se
 	if u == nil {
 		return nil, fmt.Errorf("user not found")
 	}
+	// the cookie may predate the account's suspension
+	if u.SuspendedStatus > 0x0 {
+		return nil, fmt.Errorf("user suspended (status 0x%04x)", u.SuspendedStatus)
+	}
 
 	ctx, cancel := context.WithTimeout(ctx, time.Second*5)
 	defer cancel()

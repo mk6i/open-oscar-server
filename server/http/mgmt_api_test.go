@@ -3272,6 +3272,14 @@ func TestFeedbagGroupHandler_PUT(t *testing.T) {
 			wantStatusCode: http.StatusCreated,
 			wantResponse:   `{"group_id":5,"group_name":"Friends"}`,
 			mockParams: mockParams{
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{
+							screenName: state.NewIdentScreenName("userA"),
+							result:     &state.User{IdentScreenName: state.NewIdentScreenName("userA")},
+						},
+					},
+				},
 				feedbagManagerParams: feedbagManagerParams{
 					feedbagParams: feedbagParams{
 						{
@@ -3345,6 +3353,14 @@ func TestFeedbagGroupHandler_PUT(t *testing.T) {
 			wantStatusCode: http.StatusCreated,
 			wantResponse:   `{"group_id":2,"group_name":"Coworkers"}`,
 			mockParams: mockParams{
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{
+							screenName: state.NewIdentScreenName("userA"),
+							result:     &state.User{IdentScreenName: state.NewIdentScreenName("userA")},
+						},
+					},
+				},
 				feedbagManagerParams: feedbagManagerParams{
 					feedbagParams: feedbagParams{
 						{
@@ -3433,6 +3449,14 @@ func TestFeedbagGroupHandler_PUT(t *testing.T) {
 			wantStatusCode: http.StatusOK,
 			wantResponse:   `{"group_id":1,"group_name":"Friends"}`,
 			mockParams: mockParams{
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{
+							screenName: state.NewIdentScreenName("userA"),
+							result:     &state.User{IdentScreenName: state.NewIdentScreenName("userA")},
+						},
+					},
+				},
 				feedbagManagerParams: feedbagManagerParams{
 					feedbagParams: feedbagParams{
 						{
@@ -3471,6 +3495,42 @@ func TestFeedbagGroupHandler_PUT(t *testing.T) {
 			wantResponse:   `{"message":"group_name is required"}`,
 		},
 		{
+			name:           "user not found",
+			screenName:     "userA",
+			groupName:      "Friends",
+			groupIDGen:     func(n int) int { return 5 },
+			wantStatusCode: http.StatusNotFound,
+			wantResponse:   `{"message":"user not found"}`,
+			mockParams: mockParams{
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{
+							screenName: state.NewIdentScreenName("userA"),
+							result:     nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:           "error retrieving user",
+			screenName:     "userA",
+			groupName:      "Friends",
+			groupIDGen:     func(n int) int { return 5 },
+			wantStatusCode: http.StatusInternalServerError,
+			wantResponse:   `{"message":"internal server error"}`,
+			mockParams: mockParams{
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{
+							screenName: state.NewIdentScreenName("userA"),
+							err:        errors.New("database error"),
+						},
+					},
+				},
+			},
+		},
+		{
 			name:           "error retrieving feedbag",
 			screenName:     "userA",
 			groupName:      "Friends",
@@ -3478,6 +3538,14 @@ func TestFeedbagGroupHandler_PUT(t *testing.T) {
 			wantStatusCode: http.StatusInternalServerError,
 			wantResponse:   `{"message":"internal server error"}`,
 			mockParams: mockParams{
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{
+							screenName: state.NewIdentScreenName("userA"),
+							result:     &state.User{IdentScreenName: state.NewIdentScreenName("userA")},
+						},
+					},
+				},
 				feedbagManagerParams: feedbagManagerParams{
 					feedbagParams: feedbagParams{
 						{
@@ -3497,6 +3565,14 @@ func TestFeedbagGroupHandler_PUT(t *testing.T) {
 			wantStatusCode: http.StatusInternalServerError,
 			wantResponse:   `{"message":"internal server error"}`,
 			mockParams: mockParams{
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{
+							screenName: state.NewIdentScreenName("userA"),
+							result:     &state.User{IdentScreenName: state.NewIdentScreenName("userA")},
+						},
+					},
+				},
 				feedbagManagerParams: feedbagManagerParams{
 					feedbagParams: feedbagParams{
 						{
@@ -3543,6 +3619,12 @@ func TestFeedbagGroupHandler_PUT(t *testing.T) {
 			}
 			responseRecorder := httptest.NewRecorder()
 
+			userManager := newMockUserManager(t)
+			for _, params := range tc.mockParams.getUserParams {
+				userManager.EXPECT().
+					User(matchContext(), params.screenName).
+					Return(params.result, params.err)
+			}
 			feedbagManager := newMockFeedbagManager(t)
 			messageRelayer := newMockMessageRelayer(t)
 			for _, params := range tc.mockParams.feedbagParams {
@@ -3560,7 +3642,7 @@ func TestFeedbagGroupHandler_PUT(t *testing.T) {
 					RelayToScreenName(matchContext(), params.screenName, params.msg)
 			}
 
-			putFeedbagGroupHandler(responseRecorder, request, feedbagManager, messageRelayer, slog.Default(), tc.groupIDGen)
+			putFeedbagGroupHandler(responseRecorder, request, userManager, feedbagManager, messageRelayer, slog.Default(), tc.groupIDGen)
 
 			assert.Equal(t, tc.wantStatusCode, responseRecorder.Code)
 			assert.JSONEq(t, tc.wantResponse, responseRecorder.Body.String())

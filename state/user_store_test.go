@@ -61,6 +61,7 @@ func TestSQLiteUserStore_FeedbagUpsert(t *testing.T) {
 		}
 
 		me := NewIdentScreenName("me")
+		insertTestUsers(t, f, me)
 		if err := f.FeedbagUpsert(context.Background(), me, given); err != nil {
 			t.Fatalf("failed to upsert: %s", err.Error())
 		}
@@ -92,6 +93,7 @@ func TestSQLiteUserStore_FeedbagUpsert(t *testing.T) {
 		}
 
 		me := NewIdentScreenName("me")
+		insertTestUsers(t, f, me)
 		err = f.FeedbagUpsert(context.Background(), me, given)
 		assert.NoError(t, err)
 
@@ -119,6 +121,7 @@ func TestSQLiteUserStore_FeedbagUpsert(t *testing.T) {
 		}
 
 		me := NewIdentScreenName("me")
+		insertTestUsers(t, f, me)
 		err = f.FeedbagUpsert(context.Background(), me, given)
 		assert.NoError(t, err)
 
@@ -137,6 +140,7 @@ func TestSQLiteUserStore_FeedbagUpsert(t *testing.T) {
 		require.NoError(t, err)
 
 		me := NewIdentScreenName("me")
+		insertTestUsers(t, f, me)
 		err = f.FeedbagUpsert(context.Background(), me, []wire.FeedbagItem{
 			{
 				GroupID: 0,
@@ -170,6 +174,7 @@ func TestSQLiteUserStore_FeedbagUpsert(t *testing.T) {
 		require.NoError(t, err)
 
 		me := NewIdentScreenName("me")
+		insertTestUsers(t, f, me)
 		err = f.FeedbagUpsert(context.Background(), me, []wire.FeedbagItem{
 			{
 				GroupID:   0,
@@ -227,6 +232,7 @@ func TestFeedbagDelete(t *testing.T) {
 			},
 		}
 
+		insertTestUsers(t, f, screenName)
 		if err := f.FeedbagUpsert(context.Background(), screenName, itemsIn); err != nil {
 			t.Fatalf("failed to upsert: %s", err.Error())
 		}
@@ -270,6 +276,7 @@ func TestFeedbagDelete(t *testing.T) {
 			},
 		}
 
+		insertTestUsers(t, f, screenName)
 		if err := f.FeedbagUpsert(context.Background(), screenName, itemsIn); err != nil {
 			t.Fatalf("failed to upsert: %s", err.Error())
 		}
@@ -341,6 +348,7 @@ func TestLastModifiedNotEmpty(t *testing.T) {
 			Name:    "Friends",
 		},
 	}
+	insertTestUsers(t, f, screenName)
 	if err := f.FeedbagUpsert(context.Background(), screenName, itemsIn); err != nil {
 		t.Fatalf("failed to upsert: %s", err.Error())
 	}
@@ -678,6 +686,69 @@ func TestSQLiteUserStore_DeleteUser_DeleteExistentUser(t *testing.T) {
 	assert.Equal(t, want, have)
 }
 
+func TestSQLiteUserStore_DeleteUser_DeletesFeedbagAndLinks(t *testing.T) {
+	defer func() {
+		assert.NoError(t, os.Remove(testFile))
+	}()
+
+	f, err := NewSQLiteUserStore(testFile)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	userA := NewIdentScreenName("userA")
+	userB := NewIdentScreenName("userB")
+	userC := NewIdentScreenName("userC")
+	insertTestUsers(t, f, userA, userB, userC)
+
+	linkTo := func(itemID uint16, sn IdentScreenName) wire.FeedbagItem {
+		return wire.FeedbagItem{ItemID: itemID, ClassID: wire.FeedbagClassIdAlInfo, Name: sn.String()}
+	}
+	buddy := func(itemID uint16, sn IdentScreenName) wire.FeedbagItem {
+		return wire.FeedbagItem{GroupID: 1, ItemID: itemID, ClassID: wire.FeedbagClassIdBuddy, Name: sn.String()}
+	}
+
+	require.NoError(t, f.FeedbagUpsert(ctx, userA, []wire.FeedbagItem{linkTo(1, userB), buddy(2, userC)}))
+	require.NoError(t, f.FeedbagUpsert(ctx, userB, []wire.FeedbagItem{linkTo(1, userA), buddy(2, userC)}))
+	require.NoError(t, f.FeedbagUpsert(ctx, userC, []wire.FeedbagItem{linkTo(1, userB), buddy(2, userB)}))
+
+	require.NoError(t, f.DeleteUser(ctx, userB))
+
+	// the deleted user's own feedbag is gone
+	have, err := f.Feedbag(ctx, userB)
+	require.NoError(t, err)
+	assert.Empty(t, have)
+
+	// links to the deleted user are gone; other items, including a buddy item
+	// that names the deleted user, remain
+	have, err = f.Feedbag(ctx, userA)
+	require.NoError(t, err)
+	assert.Equal(t, []wire.FeedbagItem{buddy(2, userC)}, have)
+
+	have, err = f.Feedbag(ctx, userC)
+	require.NoError(t, err)
+	assert.Equal(t, []wire.FeedbagItem{buddy(2, userB)}, have)
+
+	// a re-registered screen name starts with an empty feedbag
+	insertTestUsers(t, f, userB)
+	have, err = f.Feedbag(ctx, userB)
+	require.NoError(t, err)
+	assert.Empty(t, have)
+}
+
+func TestSQLiteUserStore_FeedbagUpsert_RequiresUser(t *testing.T) {
+	defer func() {
+		assert.NoError(t, os.Remove(testFile))
+	}()
+
+	f, err := NewSQLiteUserStore(testFile)
+	require.NoError(t, err)
+
+	err = f.FeedbagUpsert(context.Background(), NewIdentScreenName("nobody"), []wire.FeedbagItem{
+		{GroupID: 1, ClassID: wire.FeedbagClassIdGroup, Name: "Friends"},
+	})
+	assert.ErrorContains(t, err, "FOREIGN KEY constraint failed")
+}
+
 func TestSQLiteUserStore_DeleteUser_DeleteNonExistentUser(t *testing.T) {
 	defer func() {
 		assert.NoError(t, os.Remove(testFile))
@@ -688,6 +759,19 @@ func TestSQLiteUserStore_DeleteUser_DeleteNonExistentUser(t *testing.T) {
 
 	err = f.DeleteUser(context.Background(), NewIdentScreenName("userA"))
 	assert.ErrorIs(t, ErrNoUser, err)
+}
+
+// insertTestUsers creates a minimal account for each screen name, since every
+// feedbag row must belong to a user.
+func insertTestUsers(t *testing.T, f *SQLiteUserStore, screenNames ...IdentScreenName) {
+	t.Helper()
+	for _, sn := range screenNames {
+		require.NoError(t, f.InsertUser(context.Background(), User{
+			IdentScreenName:   sn,
+			DisplayScreenName: DisplayScreenName(sn.String()),
+			IsICQ:             sn.UIN() != 0,
+		}))
+	}
 }
 
 func newFeedbagItem(classID uint16, itemID uint16, name string, feedbagPending bool) wire.FeedbagItem {
@@ -2829,6 +2913,7 @@ func TestSQLiteUserStore_BuddyIconMetadataExistingRef(t *testing.T) {
 			},
 		},
 	}
+	insertTestUsers(t, feedbagStore, screenName)
 	if err := feedbagStore.FeedbagUpsert(context.Background(), screenName, itemsIn); err != nil {
 		t.Fatalf("failed to upsert: %s", err.Error())
 	}
@@ -2866,6 +2951,7 @@ func TestSQLiteUserStore_BuddyIconMetadataMissingRef(t *testing.T) {
 			},
 		},
 	}
+	insertTestUsers(t, feedbagStore, existingScreenName)
 	if err := feedbagStore.FeedbagUpsert(context.Background(), existingScreenName, itemsIn); err != nil {
 		t.Fatalf("failed to upsert: %s", err.Error())
 	}
