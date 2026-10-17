@@ -260,6 +260,7 @@ type instanceHandle struct {
 	IsInvisible bool   `json:"is_invisible"`
 	RemoteAddr  string `json:"remote_addr"`
 	RemotePort  int    `json:"remote_port"`
+	ClientID    string `json:"client_id"`
 }
 
 type chatRoomCreate struct {

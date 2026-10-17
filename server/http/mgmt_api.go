@@ -300,6 +300,7 @@ func getSessionHandler(w http.ResponseWriter, r *http.Request, sessionRetriever 
 				IsAway:      inst.Away(),
 				AwayMessage: awayMsg,
 				IsInvisible: inst.Invisible(),
+				ClientID:    inst.ClientID(),
 			}
 			ra := inst.RemoteAddr()
 			if ra != nil {
