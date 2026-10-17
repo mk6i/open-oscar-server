@@ -57,8 +57,23 @@ func TestPresenceHandler_GetPresence(t *testing.T) {
 					Return(wire.SNACMessage{
 						Body: wire.SNAC_0x13_0x06_FeedbagReply{
 							Items: []wire.FeedbagItem{
-								{ItemID: 0, ClassID: wire.FeedbagClassIdGroup, Name: "Friends", GroupID: 1},
-								{ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, Name: "buddy1", GroupID: 1},
+								{
+									ClassID: wire.FeedbagClassIdGroup,
+									GroupID: 0,
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{2, 1}),
+										},
+									},
+								},
+								{ClassID: wire.FeedbagClassIdGroup, Name: "Coworkers", GroupID: 1},
+								{ClassID: wire.FeedbagClassIdBuddy, Name: "coworker1", GroupID: 1, ItemID: 1},
+								{ClassID: wire.FeedbagClassIdGroup, Name: "Friends", GroupID: 2},
+								{ClassID: wire.FeedbagClassIdBuddy, Name: "buddy1", GroupID: 2, ItemID: 2},
+								{ClassID: wire.FeedbagClassIdGroup, Name: "Family", GroupID: 3},
+								{ClassID: wire.FeedbagClassIdBuddy, Name: "family1", GroupID: 3, ItemID: 3},
+								{ClassID: wire.FeedbagClassIdGroup, Name: "Enemies", GroupID: 4},
+								{ClassID: wire.FeedbagClassIdBuddy, Name: "enemy1", GroupID: 4, ItemID: 4},
 							},
 						},
 					}, nil)
@@ -67,14 +82,46 @@ func TestPresenceHandler_GetPresence(t *testing.T) {
 			// buddy's arrival.
 			seedPresence: func(sess *Session) {
 				buddyArrives(sess, onlineBuddy("buddy1"))
+				buddyArrives(sess, onlineBuddy("coworker1"))
+				buddyArrives(sess, onlineBuddy("family1"))
+				buddyArrives(sess, onlineBuddy("enemy1"))
 			},
 			expectedStatusCode: http.StatusOK,
 			checkResponse: func(t *testing.T, body string) {
-				assert.Contains(t, body, `"statusCode":200`)
-				assert.Contains(t, body, `"groups"`)
-				assert.Contains(t, body, `"Friends"`)
-				assert.Contains(t, body, `"buddy1"`)
-				assert.Contains(t, body, `"online"`)
+				want := `{"response":{"statusCode":200,"statusText":"Ok","data":{"groups":[{"name":"Friends","buddies":[{"aimId":"buddy1","displayId":"buddy1","state":"online","userType":"aim"}]},{"name":"Coworkers","buddies":[{"aimId":"coworker1","displayId":"coworker1","state":"online","userType":"aim"}]},{"name":"Family","buddies":[{"aimId":"family1","displayId":"family1","state":"online","userType":"aim"}]},{"name":"Enemies","buddies":[{"aimId":"enemy1","displayId":"enemy1","state":"online","userType":"aim"}]}]}}}`
+				assert.Equal(t, want, body)
+			},
+		},
+		{
+			name:        "Success_BuddyList_NoGroupOrder",
+			queryParams: "bl=1",
+			setupMocks: func(fr *mockFeedbagService, ls *mockLocateService) {
+				// The root group has no order attribute, so groups keep their
+				// feedbag position.
+				fr.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
+					Return(wire.SNACMessage{
+						Body: wire.SNAC_0x13_0x06_FeedbagReply{
+							Items: []wire.FeedbagItem{
+								{ClassID: wire.FeedbagClassIdGroup, GroupID: 0},
+								{ClassID: wire.FeedbagClassIdGroup, Name: "Family", GroupID: 3},
+								{ClassID: wire.FeedbagClassIdBuddy, Name: "family1", GroupID: 3, ItemID: 3},
+								{ClassID: wire.FeedbagClassIdGroup, Name: "Coworkers", GroupID: 1},
+								{ClassID: wire.FeedbagClassIdBuddy, Name: "coworker1", GroupID: 1, ItemID: 1},
+								{ClassID: wire.FeedbagClassIdGroup, Name: "Friends", GroupID: 2},
+								{ClassID: wire.FeedbagClassIdBuddy, Name: "buddy1", GroupID: 2, ItemID: 2},
+							},
+						},
+					}, nil)
+			},
+			seedPresence: func(sess *Session) {
+				buddyArrives(sess, onlineBuddy("buddy1"))
+				buddyArrives(sess, onlineBuddy("coworker1"))
+				buddyArrives(sess, onlineBuddy("family1"))
+			},
+			expectedStatusCode: http.StatusOK,
+			checkResponse: func(t *testing.T, body string) {
+				want := `{"response":{"statusCode":200,"statusText":"Ok","data":{"groups":[{"name":"Family","buddies":[{"aimId":"family1","displayId":"family1","state":"online","userType":"aim"}]},{"name":"Coworkers","buddies":[{"aimId":"coworker1","displayId":"coworker1","state":"online","userType":"aim"}]},{"name":"Friends","buddies":[{"aimId":"buddy1","displayId":"buddy1","state":"online","userType":"aim"}]}]}}}`
+				assert.Equal(t, want, body)
 			},
 		},
 		{

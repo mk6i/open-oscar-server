@@ -55,8 +55,10 @@ type PresenceData struct {
 
 // BuddyGroupInfo represents a buddy group with its members.
 type BuddyGroupInfo struct {
-	Name    string              `json:"name" xml:"name"`
-	Buddies []BuddyPresenceInfo `json:"buddies" xml:"buddies>buddy"`
+	Name      string              `json:"name" xml:"name"`
+	Buddies   []BuddyPresenceInfo `json:"buddies" xml:"buddies>buddy"`
+	groupID   uint16
+	listIndex int
 }
 
 // BuddyPresenceInfo represents presence information for a buddy.
@@ -210,7 +212,7 @@ func (h *PresenceHandler) getBuddyListGroups(ctx context.Context, session *Sessi
 
 	// First pass: identify groups. Skip the root group (GroupID 0), which holds
 	// the master group order rather than buddies.
-	for _, item := range items {
+	for i, item := range items {
 		if item.ClassID != wire.FeedbagClassIdGroup || item.GroupID == 0 {
 			continue
 		}
@@ -219,8 +221,10 @@ func (h *PresenceHandler) getBuddyListGroups(ctx context.Context, session *Sessi
 			name = "Buddies" // Default group name
 		}
 		groupMap[item.GroupID] = &BuddyGroupInfo{
-			Name:    name,
-			Buddies: []BuddyPresenceInfo{},
+			Name:      name,
+			Buddies:   []BuddyPresenceInfo{},
+			groupID:   item.GroupID,
+			listIndex: i,
 		}
 	}
 
@@ -263,7 +267,51 @@ func (h *PresenceHandler) getBuddyListGroups(ctx context.Context, session *Sessi
 		groups = append(groups, *group)
 	}
 
+	if ordering, hasOrder := rootGroupOrder(items); hasOrder {
+		orderMap := make(map[uint16]int)
+		for i, order := range ordering {
+			orderMap[order] = i
+		}
+
+		var ordered []BuddyGroupInfo
+		var unordered []BuddyGroupInfo
+		for _, group := range groups {
+			if _, ok := orderMap[group.groupID]; ok {
+				ordered = append(ordered, group)
+			} else {
+				unordered = append(unordered, group)
+			}
+		}
+
+		// order groups present in ordering TLV by their position in the ordering TLV
+		slices.SortFunc(ordered, func(a, b BuddyGroupInfo) int {
+			return orderMap[a.groupID] - orderMap[b.groupID]
+		})
+		// order groups not in ordering TLV by list index
+		slices.SortFunc(unordered, func(a, b BuddyGroupInfo) int {
+			return a.listIndex - b.listIndex
+		})
+
+		groups = append(ordered, unordered...)
+	} else {
+		slices.SortFunc(groups, func(a, b BuddyGroupInfo) int {
+			return a.listIndex - b.listIndex
+		})
+	}
+
 	return groups, nil
+}
+
+// rootGroupOrder returns the group order stored on the root group, if any.
+func rootGroupOrder(items []wire.FeedbagItem) ([]uint16, bool) {
+	rootGrpIdx := slices.IndexFunc(items, func(item wire.FeedbagItem) bool {
+		return item.ClassID == wire.FeedbagClassIdGroup && item.GroupID == 0
+	})
+	if rootGrpIdx == -1 {
+		return []uint16{}, false
+	}
+	ordering, hasOrder := items[rootGrpIdx].Uint16SliceBE(wire.FeedbagAttributesOrder)
+	return ordering, hasOrder
 }
 
 // offlinePresenceInfo is the presence a user renders as when the session has no
