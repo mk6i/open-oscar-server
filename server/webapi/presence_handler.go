@@ -83,6 +83,7 @@ type BuddyPresenceInfo struct {
 	// Profile carries member-directory fields, present only under mdir=1. It must be
 	// non-nil even when empty: clients treat a missing profile as "not a user".
 	Profile *BuddyProfileInfo `json:"profile,omitempty" xml:"profile,omitempty"`
+	itemID  uint16
 }
 
 // BuddyProfileInfo is the nested "profile" object carried under mdir=1. Gender and
@@ -228,17 +229,15 @@ func (h *PresenceHandler) getBuddyListGroups(ctx context.Context, session *Sessi
 		}
 	}
 
-	// Second pass: add buddies to their group with presence info.
+	// Second pass: add buddies to their group with presence info. A buddy whose
+	// group row is missing is invalid and left out.
 	for _, item := range items {
 		if item.ClassID != wire.FeedbagClassIdBuddy || item.Name == "" {
 			continue
 		}
 		group, exists := groupMap[item.GroupID]
 		if !exists {
-			// Orphan buddy whose group row is missing: synthesize a default
-			// group for its GroupID so the buddy is not dropped.
-			group = &BuddyGroupInfo{Name: "Buddies", Buddies: []BuddyPresenceInfo{}}
-			groupMap[item.GroupID] = group
+			continue
 		}
 
 		// Served from the presence view, where blocked and offline buddies alike
@@ -250,6 +249,7 @@ func (h *PresenceHandler) getBuddyListGroups(ctx context.Context, session *Sessi
 		} else {
 			presence = h.cachedPresence(ctx, session, item.Name)
 		}
+		presence.itemID = item.ItemID
 		group.Buddies = append(group.Buddies, presence)
 	}
 
@@ -261,13 +261,43 @@ func (h *PresenceHandler) getBuddyListGroups(ctx context.Context, session *Sessi
 		}
 	}
 
+	// Sort buddies by their group's order attribute. Buddies are already in
+	// feedbag order, which the partition below preserves for unlisted buddies.
+	for _, group := range groupMap {
+		ordering, hasOrder := groupOrder(items, group.groupID)
+		if !hasOrder {
+			continue
+		}
+		orderMap := make(map[uint16]int)
+		for i, order := range ordering {
+			orderMap[order] = i
+		}
+
+		var ordered []BuddyPresenceInfo
+		var unordered []BuddyPresenceInfo
+		for _, buddy := range group.Buddies {
+			if _, ok := orderMap[buddy.itemID]; ok {
+				ordered = append(ordered, buddy)
+			} else {
+				unordered = append(unordered, buddy)
+			}
+		}
+
+		// order buddies present in ordering TLV by their position in the ordering TLV
+		slices.SortFunc(ordered, func(a, b BuddyPresenceInfo) int {
+			return orderMap[a.itemID] - orderMap[b.itemID]
+		})
+
+		group.Buddies = append(ordered, unordered...)
+	}
+
 	// Convert map to slice
 	groups := make([]BuddyGroupInfo, 0, len(groupMap))
 	for _, group := range groupMap {
 		groups = append(groups, *group)
 	}
 
-	if ordering, hasOrder := rootGroupOrder(items); hasOrder {
+	if ordering, hasOrder := groupOrder(items, 0); hasOrder {
 		orderMap := make(map[uint16]int)
 		for i, order := range ordering {
 			orderMap[order] = i
@@ -302,15 +332,16 @@ func (h *PresenceHandler) getBuddyListGroups(ctx context.Context, session *Sessi
 	return groups, nil
 }
 
-// rootGroupOrder returns the group order stored on the root group, if any.
-func rootGroupOrder(items []wire.FeedbagItem) ([]uint16, bool) {
-	rootGrpIdx := slices.IndexFunc(items, func(item wire.FeedbagItem) bool {
-		return item.ClassID == wire.FeedbagClassIdGroup && item.GroupID == 0
+// groupOrder returns the item order stored on a group, if any: group IDs for
+// the root group, buddy item IDs for the rest.
+func groupOrder(items []wire.FeedbagItem, groupID uint16) ([]uint16, bool) {
+	grpIdx := slices.IndexFunc(items, func(item wire.FeedbagItem) bool {
+		return item.ClassID == wire.FeedbagClassIdGroup && item.GroupID == groupID
 	})
-	if rootGrpIdx == -1 {
+	if grpIdx == -1 {
 		return []uint16{}, false
 	}
-	ordering, hasOrder := items[rootGrpIdx].Uint16SliceBE(wire.FeedbagAttributesOrder)
+	ordering, hasOrder := items[grpIdx].Uint16SliceBE(wire.FeedbagAttributesOrder)
 	return ordering, hasOrder
 }
 

@@ -52,7 +52,9 @@ func TestPresenceHandler_GetPresence(t *testing.T) {
 			name:        "Success_BuddyList",
 			queryParams: "bl=1",
 			setupMocks: func(fr *mockFeedbagService, ls *mockLocateService) {
-				// Return feedbag with a group and buddy
+				// The root group orders Friends before Coworkers; Family and Enemies
+				// are missing from it. Friends orders buddy2 before buddy1; buddy3
+				// and buddy4 are missing from it.
 				fr.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
 					Return(wire.SNACMessage{
 						Body: wire.SNAC_0x13_0x06_FeedbagReply{
@@ -68,8 +70,20 @@ func TestPresenceHandler_GetPresence(t *testing.T) {
 								},
 								{ClassID: wire.FeedbagClassIdGroup, Name: "Coworkers", GroupID: 1},
 								{ClassID: wire.FeedbagClassIdBuddy, Name: "coworker1", GroupID: 1, ItemID: 1},
-								{ClassID: wire.FeedbagClassIdGroup, Name: "Friends", GroupID: 2},
+								{
+									ClassID: wire.FeedbagClassIdGroup,
+									Name:    "Friends",
+									GroupID: 2,
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{5, 2}),
+										},
+									},
+								},
+								{ClassID: wire.FeedbagClassIdBuddy, Name: "buddy3", GroupID: 2, ItemID: 6},
 								{ClassID: wire.FeedbagClassIdBuddy, Name: "buddy1", GroupID: 2, ItemID: 2},
+								{ClassID: wire.FeedbagClassIdBuddy, Name: "buddy4", GroupID: 2, ItemID: 7},
+								{ClassID: wire.FeedbagClassIdBuddy, Name: "buddy2", GroupID: 2, ItemID: 5},
 								{ClassID: wire.FeedbagClassIdGroup, Name: "Family", GroupID: 3},
 								{ClassID: wire.FeedbagClassIdBuddy, Name: "family1", GroupID: 3, ItemID: 3},
 								{ClassID: wire.FeedbagClassIdGroup, Name: "Enemies", GroupID: 4},
@@ -82,13 +96,16 @@ func TestPresenceHandler_GetPresence(t *testing.T) {
 			// buddy's arrival.
 			seedPresence: func(sess *Session) {
 				buddyArrives(sess, onlineBuddy("buddy1"))
+				buddyArrives(sess, onlineBuddy("buddy2"))
+				buddyArrives(sess, onlineBuddy("buddy3"))
+				buddyArrives(sess, onlineBuddy("buddy4"))
 				buddyArrives(sess, onlineBuddy("coworker1"))
 				buddyArrives(sess, onlineBuddy("family1"))
 				buddyArrives(sess, onlineBuddy("enemy1"))
 			},
 			expectedStatusCode: http.StatusOK,
 			checkResponse: func(t *testing.T, body string) {
-				want := `{"response":{"statusCode":200,"statusText":"Ok","data":{"groups":[{"name":"Friends","buddies":[{"aimId":"buddy1","displayId":"buddy1","state":"online","userType":"aim"}]},{"name":"Coworkers","buddies":[{"aimId":"coworker1","displayId":"coworker1","state":"online","userType":"aim"}]},{"name":"Family","buddies":[{"aimId":"family1","displayId":"family1","state":"online","userType":"aim"}]},{"name":"Enemies","buddies":[{"aimId":"enemy1","displayId":"enemy1","state":"online","userType":"aim"}]}]}}}`
+				want := `{"response":{"statusCode":200,"statusText":"Ok","data":{"groups":[{"name":"Friends","buddies":[{"aimId":"buddy2","displayId":"buddy2","state":"online","userType":"aim"},{"aimId":"buddy1","displayId":"buddy1","state":"online","userType":"aim"},{"aimId":"buddy3","displayId":"buddy3","state":"online","userType":"aim"},{"aimId":"buddy4","displayId":"buddy4","state":"online","userType":"aim"}]},{"name":"Coworkers","buddies":[{"aimId":"coworker1","displayId":"coworker1","state":"online","userType":"aim"}]},{"name":"Family","buddies":[{"aimId":"family1","displayId":"family1","state":"online","userType":"aim"}]},{"name":"Enemies","buddies":[{"aimId":"enemy1","displayId":"enemy1","state":"online","userType":"aim"}]}]}}}`
 				assert.Equal(t, want, body)
 			},
 		},
@@ -96,14 +113,15 @@ func TestPresenceHandler_GetPresence(t *testing.T) {
 			name:        "Success_BuddyList_NoGroupOrder",
 			queryParams: "bl=1",
 			setupMocks: func(fr *mockFeedbagService, ls *mockLocateService) {
-				// The root group has no order attribute, so groups keep their
-				// feedbag position.
+				// Neither the root group nor Family has an order attribute, so groups
+				// and buddies keep their feedbag position.
 				fr.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
 					Return(wire.SNACMessage{
 						Body: wire.SNAC_0x13_0x06_FeedbagReply{
 							Items: []wire.FeedbagItem{
 								{ClassID: wire.FeedbagClassIdGroup, GroupID: 0},
 								{ClassID: wire.FeedbagClassIdGroup, Name: "Family", GroupID: 3},
+								{ClassID: wire.FeedbagClassIdBuddy, Name: "family2", GroupID: 3, ItemID: 9},
 								{ClassID: wire.FeedbagClassIdBuddy, Name: "family1", GroupID: 3, ItemID: 3},
 								{ClassID: wire.FeedbagClassIdGroup, Name: "Coworkers", GroupID: 1},
 								{ClassID: wire.FeedbagClassIdBuddy, Name: "coworker1", GroupID: 1, ItemID: 1},
@@ -117,10 +135,49 @@ func TestPresenceHandler_GetPresence(t *testing.T) {
 				buddyArrives(sess, onlineBuddy("buddy1"))
 				buddyArrives(sess, onlineBuddy("coworker1"))
 				buddyArrives(sess, onlineBuddy("family1"))
+				buddyArrives(sess, onlineBuddy("family2"))
 			},
 			expectedStatusCode: http.StatusOK,
 			checkResponse: func(t *testing.T, body string) {
-				want := `{"response":{"statusCode":200,"statusText":"Ok","data":{"groups":[{"name":"Family","buddies":[{"aimId":"family1","displayId":"family1","state":"online","userType":"aim"}]},{"name":"Coworkers","buddies":[{"aimId":"coworker1","displayId":"coworker1","state":"online","userType":"aim"}]},{"name":"Friends","buddies":[{"aimId":"buddy1","displayId":"buddy1","state":"online","userType":"aim"}]}]}}}`
+				want := `{"response":{"statusCode":200,"statusText":"Ok","data":{"groups":[{"name":"Family","buddies":[{"aimId":"family2","displayId":"family2","state":"online","userType":"aim"},{"aimId":"family1","displayId":"family1","state":"online","userType":"aim"}]},{"name":"Coworkers","buddies":[{"aimId":"coworker1","displayId":"coworker1","state":"online","userType":"aim"}]},{"name":"Friends","buddies":[{"aimId":"buddy1","displayId":"buddy1","state":"online","userType":"aim"}]}]}}}`
+				assert.Equal(t, want, body)
+			},
+		},
+		{
+			name:        "Success_BuddyList_DropsOrphans",
+			queryParams: "bl=1",
+			setupMocks: func(fr *mockFeedbagService, ls *mockLocateService) {
+				// orphan1 references a group with no group row; orphan2 sits in the
+				// root group.
+				fr.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
+					Return(wire.SNACMessage{
+						Body: wire.SNAC_0x13_0x06_FeedbagReply{
+							Items: []wire.FeedbagItem{
+								{
+									ClassID: wire.FeedbagClassIdGroup,
+									GroupID: 0,
+									TLVLBlock: wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1}),
+										},
+									},
+								},
+								{ClassID: wire.FeedbagClassIdBuddy, Name: "orphan1", GroupID: 7, ItemID: 1},
+								{ClassID: wire.FeedbagClassIdBuddy, Name: "orphan2", GroupID: 0, ItemID: 2},
+								{ClassID: wire.FeedbagClassIdGroup, Name: "Friends", GroupID: 1},
+								{ClassID: wire.FeedbagClassIdBuddy, Name: "buddy1", GroupID: 1, ItemID: 3},
+							},
+						},
+					}, nil)
+			},
+			seedPresence: func(sess *Session) {
+				buddyArrives(sess, onlineBuddy("buddy1"))
+				buddyArrives(sess, onlineBuddy("orphan1"))
+				buddyArrives(sess, onlineBuddy("orphan2"))
+			},
+			expectedStatusCode: http.StatusOK,
+			checkResponse: func(t *testing.T, body string) {
+				want := `{"response":{"statusCode":200,"statusText":"Ok","data":{"groups":[{"name":"Friends","buddies":[{"aimId":"buddy1","displayId":"buddy1","state":"online","userType":"aim"}]}]}}}`
 				assert.Equal(t, want, body)
 			},
 		},
