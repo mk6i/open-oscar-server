@@ -46,7 +46,7 @@ func TestSessionHandler_GET(t *testing.T) {
 		},
 		{
 			name:       "with sessions",
-			want:       `{"count":3,"sessions":[{"id":"usera","screen_name":"userA","online_seconds":100,"is_away":false,"away_message":"","idle_seconds":0,"is_invisible":false,"is_icq":false,"instance_count":2,"instances":[{"num":1,"idle_seconds":30,"is_away":false,"away_message":"","is_invisible":false,"remote_addr":"1.2.3.4","remote_port":1234},{"num":2,"idle_seconds":0,"is_away":false,"away_message":"","is_invisible":true,"remote_addr":"5.6.7.8","remote_port":5678}]},{"id":"userb","screen_name":"userB","online_seconds":200,"is_away":false,"away_message":"","idle_seconds":0,"is_invisible":true,"is_icq":false,"instance_count":2,"instances":[{"num":1,"idle_seconds":0,"is_away":false,"away_message":"","is_invisible":true,"remote_addr":"9.10.11.12","remote_port":9012},{"num":2,"idle_seconds":0,"is_away":false,"away_message":"","is_invisible":true,"remote_addr":"13.14.15.16","remote_port":1314}]},{"id":"100003","screen_name":"100003","online_seconds":300,"is_away":false,"away_message":"","idle_seconds":0,"is_invisible":false,"is_icq":true,"instance_count":1,"instances":[{"num":1,"idle_seconds":0,"is_away":false,"away_message":"","is_invisible":false,"remote_addr":"1.2.3.4","remote_port":1234}]}]}`,
+			want:       `{"count":3,"sessions":[{"id":"usera","screen_name":"userA","online_seconds":100,"is_away":false,"away_message":"","idle_seconds":0,"is_invisible":false,"is_icq":false,"instance_count":2,"instances":[{"num":1,"idle_seconds":30,"is_away":false,"away_message":"","is_invisible":false,"remote_addr":"1.2.3.4","remote_port":1234,"client_id":"AOL Instant Messenger, version 5.9.3702/WIN32"},{"num":2,"idle_seconds":0,"is_away":false,"away_message":"","is_invisible":true,"remote_addr":"5.6.7.8","remote_port":5678,"client_id":""}]},{"id":"userb","screen_name":"userB","online_seconds":200,"is_away":false,"away_message":"","idle_seconds":0,"is_invisible":true,"is_icq":false,"instance_count":2,"instances":[{"num":1,"idle_seconds":0,"is_away":false,"away_message":"","is_invisible":true,"remote_addr":"9.10.11.12","remote_port":9012,"client_id":"AOL Instant Messenger (SM), version 4.8.2790/WIN32"},{"num":2,"idle_seconds":0,"is_away":false,"away_message":"","is_invisible":true,"remote_addr":"13.14.15.16","remote_port":1314,"client_id":"WebAIM"}]},{"id":"100003","screen_name":"100003","online_seconds":300,"is_away":false,"away_message":"","idle_seconds":0,"is_invisible":false,"is_icq":true,"instance_count":1,"instances":[{"num":1,"idle_seconds":0,"is_away":false,"away_message":"","is_invisible":false,"remote_addr":"1.2.3.4","remote_port":1234,"client_id":"ICQBasic"}]}]}`,
 			statusCode: http.StatusOK,
 			createSessions: func() []*state.Session {
 				// userA: 2 instances - one idle (30s), one invisible
@@ -59,6 +59,7 @@ func TestSessionHandler_GET(t *testing.T) {
 				inst1 := userA.AddInstance()
 				inst1.SetSignonComplete()
 				inst1.SetIdle(30 * time.Second)
+				inst1.SetClientID("AOL Instant Messenger, version 5.9.3702/WIN32")
 				ip1, _ := netip.ParseAddrPort("1.2.3.4:1234")
 				inst1.SetRemoteAddr(&ip1)
 				inst2 := userA.AddInstance()
@@ -77,11 +78,13 @@ func TestSessionHandler_GET(t *testing.T) {
 				inst3 := userB.AddInstance()
 				inst3.SetSignonComplete()
 				inst3.SetUserStatusBitmask(wire.OServiceUserStatusInvisible)
+				inst3.SetClientID("AOL Instant Messenger (SM), version 4.8.2790/WIN32")
 				ip3, _ := netip.ParseAddrPort("9.10.11.12:9012")
 				inst3.SetRemoteAddr(&ip3)
 				inst4 := userB.AddInstance()
 				inst4.SetSignonComplete()
 				inst4.SetUserStatusBitmask(wire.OServiceUserStatusInvisible)
+				inst4.SetClientID("WebAIM")
 				ip4, _ := netip.ParseAddrPort("13.14.15.16:1314")
 				inst4.SetRemoteAddr(&ip4)
 
@@ -94,6 +97,7 @@ func TestSessionHandler_GET(t *testing.T) {
 				icqUser.SetSignonTime(fixedNow.Add(-300 * time.Second))
 				inst5 := icqUser.AddInstance()
 				inst5.SetSignonComplete()
+				inst5.SetClientID("ICQBasic")
 				ip5, _ := netip.ParseAddrPort("1.2.3.4:1234")
 				inst5.SetRemoteAddr(&ip5)
 
@@ -102,7 +106,7 @@ func TestSessionHandler_GET(t *testing.T) {
 		},
 		{
 			name:       "with away sessions",
-			want:       `{"count":2,"sessions":[{"id":"usera","screen_name":"userA","online_seconds":100,"is_away":false,"away_message":"","idle_seconds":0,"is_invisible":false,"is_icq":false,"instance_count":2,"instances":[{"num":1,"idle_seconds":0,"is_away":true,"away_message":"Away message 1","is_invisible":false,"remote_addr":"1.2.3.4","remote_port":1234},{"num":2,"idle_seconds":0,"is_away":false,"away_message":"","is_invisible":false,"remote_addr":"5.6.7.8","remote_port":5678}]},{"id":"userb","screen_name":"userB","online_seconds":200,"is_away":true,"away_message":"Away message 2","idle_seconds":0,"is_invisible":false,"is_icq":false,"instance_count":2,"instances":[{"num":1,"idle_seconds":0,"is_away":true,"away_message":"Away message 2","is_invisible":false,"remote_addr":"9.10.11.12","remote_port":9012},{"num":2,"idle_seconds":0,"is_away":true,"away_message":"Away message 2","is_invisible":false,"remote_addr":"13.14.15.16","remote_port":1314}]}]}`,
+			want:       `{"count":2,"sessions":[{"id":"usera","screen_name":"userA","online_seconds":100,"is_away":false,"away_message":"","idle_seconds":0,"is_invisible":false,"is_icq":false,"instance_count":2,"instances":[{"num":1,"idle_seconds":0,"is_away":true,"away_message":"Away message 1","is_invisible":false,"remote_addr":"1.2.3.4","remote_port":1234,"client_id":""},{"num":2,"idle_seconds":0,"is_away":false,"away_message":"","is_invisible":false,"remote_addr":"5.6.7.8","remote_port":5678,"client_id":""}]},{"id":"userb","screen_name":"userB","online_seconds":200,"is_away":true,"away_message":"Away message 2","idle_seconds":0,"is_invisible":false,"is_icq":false,"instance_count":2,"instances":[{"num":1,"idle_seconds":0,"is_away":true,"away_message":"Away message 2","is_invisible":false,"remote_addr":"9.10.11.12","remote_port":9012,"client_id":""},{"num":2,"idle_seconds":0,"is_away":true,"away_message":"Away message 2","is_invisible":false,"remote_addr":"13.14.15.16","remote_port":1314,"client_id":""}]}]}`,
 			statusCode: http.StatusOK,
 			createSessions: func() []*state.Session {
 				// userA: 2 instances - one away, one not away (away_message should be "")
@@ -196,7 +200,7 @@ func TestSessionHandlerScreenname_GET(t *testing.T) {
 		{
 			name:              "active session found for screenname",
 			requestScreenName: state.NewIdentScreenName("userA"),
-			want:              `{"count":1,"sessions":[{"id":"usera","screen_name":"userA","online_seconds":150,"is_away":false,"away_message":"","idle_seconds":0,"is_invisible":false,"is_icq":false,"instance_count":1,"instances":[{"num":1,"idle_seconds":0,"is_away":false,"away_message":"","is_invisible":false,"remote_addr":"1.2.3.4","remote_port":1234}]}]}`,
+			want:              `{"count":1,"sessions":[{"id":"usera","screen_name":"userA","online_seconds":150,"is_away":false,"away_message":"","idle_seconds":0,"is_invisible":false,"is_icq":false,"instance_count":1,"instances":[{"num":1,"idle_seconds":0,"is_away":false,"away_message":"","is_invisible":false,"remote_addr":"1.2.3.4","remote_port":1234,"client_id":"AOL Instant Messenger, version 5.9.3702/WIN32"}]}]}`,
 			statusCode:        http.StatusOK,
 			createSession: func() *state.Session {
 				sess := state.NewSession()
@@ -207,6 +211,7 @@ func TestSessionHandlerScreenname_GET(t *testing.T) {
 				sess.SetSignonTime(fixedNow.Add(-150 * time.Second))
 				instance := sess.AddInstance()
 				instance.SetSignonComplete()
+				instance.SetClientID("AOL Instant Messenger, version 5.9.3702/WIN32")
 				ip, _ := netip.ParseAddrPort("1.2.3.4:1234")
 				instance.SetRemoteAddr(&ip)
 				return sess

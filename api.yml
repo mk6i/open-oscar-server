@@ -271,6 +271,9 @@ paths:
                               remote_port:
                                 type: integer
                                 description: Remote port number of the user's connection to BOS or TOC.
+                              client_id:
+                                type: string
+                                description: Client name and version reported by the client at sign-on. Empty if not reported.
 
   /session/{screenname}:
     get:
@@ -347,6 +350,9 @@ paths:
                               remote_port:
                                 type: integer
                                 description: Remote port number of the user's connection to BOS or TOC
+                              client_id:
+                                type: string
+                                description: Client name and version reported by the client at sign-on. Empty if not reported.
         '404':
           description: User not found.
     delete:
