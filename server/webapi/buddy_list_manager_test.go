@@ -48,11 +48,11 @@ func TestBuddyListManager_GetBuddyListForUser(t *testing.T) {
 			wantErr: "failed to retrieve feedbag",
 		},
 		{
-			name: "root group missing order attribute yields no groups",
+			name: "root group only yields no groups",
 			fb: []wire.FeedbagItem{
 				{Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup, TLVLBlock: wire.TLVLBlock{}},
 			},
-			want: nil,
+			want: []BuddyGroup{},
 		},
 		{
 			name: "empty buddylist yields no groups",
@@ -62,7 +62,7 @@ func TestBuddyListManager_GetBuddyListForUser(t *testing.T) {
 					TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{})}},
 				},
 			},
-			want: nil,
+			want: []BuddyGroup{},
 		},
 		{
 			name: "single group with buddies",
@@ -101,7 +101,7 @@ func TestBuddyListManager_GetBuddyListForUser(t *testing.T) {
 					TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesPdMode, uint8(3))}},
 				},
 			},
-			want: nil,
+			want: []BuddyGroup{},
 		},
 		{
 			name: "buddy with alias",
@@ -288,6 +288,105 @@ func TestBuddyListManager_GetBuddyListForUser(t *testing.T) {
 					Buddies: []BuddyInfo{offlineWebAPIBuddy("solo", "solo")},
 				},
 			},
+		},
+		{
+			name: "group without order attribute lists buddies in feedbag order",
+			fb: []wire.FeedbagItem{
+				{
+					Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+					TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{100})}},
+				},
+				{Name: "Buddies", GroupID: 100, ItemID: 0, ClassID: wire.FeedbagClassIdGroup},
+				{ItemID: 9, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "user9"},
+				{ItemID: 3, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "user3"},
+			},
+			want: []BuddyGroup{
+				{
+					Name: "Buddies",
+					ID:   100,
+					Buddies: []BuddyInfo{
+						offlineWebAPIBuddy("user9", "user9"),
+						offlineWebAPIBuddy("user3", "user3"),
+					},
+				},
+			},
+		},
+		{
+			name: "buddy missing from group order follows listed buddies",
+			fb: []wire.FeedbagItem{
+				{
+					Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+					TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{100})}},
+				},
+				{Name: "Buddies", GroupID: 100, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+					TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{2})}}},
+				{ItemID: 1, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "unlisted"},
+				{ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "listed"},
+			},
+			want: []BuddyGroup{
+				{
+					Name: "Buddies",
+					ID:   100,
+					Buddies: []BuddyInfo{
+						offlineWebAPIBuddy("listed", "listed"),
+						offlineWebAPIBuddy("unlisted", "unlisted"),
+					},
+				},
+			},
+		},
+		{
+			name: "group missing from root order follows listed groups",
+			fb: []wire.FeedbagItem{
+				{
+					Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+					TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{200})}},
+				},
+				{Name: "Unlisted", GroupID: 100, ItemID: 0, ClassID: wire.FeedbagClassIdGroup},
+				{Name: "Listed", GroupID: 200, ItemID: 0, ClassID: wire.FeedbagClassIdGroup},
+			},
+			want: []BuddyGroup{
+				{Name: "Listed", ID: 200, Buddies: []BuddyInfo{}},
+				{Name: "Unlisted", ID: 100, Buddies: []BuddyInfo{}},
+			},
+		},
+		{
+			name: "groups follow feedbag position when root group has no order attribute",
+			fb: []wire.FeedbagItem{
+				{Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup},
+				{Name: "Family", GroupID: 200, ItemID: 0, ClassID: wire.FeedbagClassIdGroup},
+				{Name: "Friends", GroupID: 100, ItemID: 0, ClassID: wire.FeedbagClassIdGroup},
+			},
+			want: []BuddyGroup{
+				{Name: "Family", ID: 200, Buddies: []BuddyInfo{}},
+				{Name: "Friends", ID: 100, Buddies: []BuddyInfo{}},
+			},
+		},
+		{
+			name: "orphan buddy with root order is left out",
+			fb: []wire.FeedbagItem{
+				{
+					Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+					TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{100})}},
+				},
+				{Name: "Buddies", GroupID: 100, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+					TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1})}}},
+				{ItemID: 1, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "user1"},
+				{ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, GroupID: 300, Name: "orphan"},
+			},
+			want: []BuddyGroup{
+				{
+					Name:    "Buddies",
+					ID:      100,
+					Buddies: []BuddyInfo{offlineWebAPIBuddy("user1", "user1")},
+				},
+			},
+		},
+		{
+			name: "orphan buddy without root order is left out",
+			fb: []wire.FeedbagItem{
+				{ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, GroupID: 300, Name: "orphan"},
+			},
+			want: []BuddyGroup{},
 		},
 	}
 

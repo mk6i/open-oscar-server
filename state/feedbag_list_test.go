@@ -1425,3 +1425,127 @@ func TestFeedbagList_SetIcon(t *testing.T) {
 		assert.Len(t, fl.Items(), 1)
 	})
 }
+
+// feedbagItemNames returns the names of items, in order.
+func feedbagItemNames(items []wire.FeedbagItem) []string {
+	var names []string
+	for _, item := range items {
+		names = append(names, item.Name)
+	}
+	return names
+}
+
+// orderedGroup returns a group item whose order attribute lists the given IDs.
+func orderedGroup(name string, groupID uint16, order ...uint16) wire.FeedbagItem {
+	return wire.FeedbagItem{
+		Name:    name,
+		ClassID: wire.FeedbagClassIdGroup,
+		GroupID: groupID,
+		TLVLBlock: wire.TLVLBlock{
+			TLVList: wire.TLVList{
+				wire.NewTLVBE(wire.FeedbagAttributesOrder, order),
+			},
+		},
+	}
+}
+
+func TestFeedbagList_Groups(t *testing.T) {
+	t.Run("orders listed groups by the root order, then unlisted groups by position", func(t *testing.T) {
+		fl := NewFeedbagList([]wire.FeedbagItem{
+			orderedGroup("", 0, 3, 1),
+			{Name: "A", ClassID: wire.FeedbagClassIdGroup, GroupID: 1},
+			{Name: "buddy", ClassID: wire.FeedbagClassIdBuddy, GroupID: 1, ItemID: 10},
+			{Name: "B", ClassID: wire.FeedbagClassIdGroup, GroupID: 2},
+			{Name: "permit", ClassID: wire.FeedbagClassIDPermit, ItemID: 11},
+			{Name: "C", ClassID: wire.FeedbagClassIdGroup, GroupID: 3},
+			{Name: "D", ClassID: wire.FeedbagClassIdGroup, GroupID: 4},
+		}, nil)
+		assert.Equal(t, []string{"C", "A", "B", "D"}, feedbagItemNames(fl.Groups()))
+	})
+
+	t.Run("ignores order entries with no matching group", func(t *testing.T) {
+		fl := NewFeedbagList([]wire.FeedbagItem{
+			orderedGroup("", 0, 9, 2, 1),
+			{Name: "A", ClassID: wire.FeedbagClassIdGroup, GroupID: 1},
+			{Name: "B", ClassID: wire.FeedbagClassIdGroup, GroupID: 2},
+		}, nil)
+		assert.Equal(t, []string{"B", "A"}, feedbagItemNames(fl.Groups()))
+	})
+
+	t.Run("keeps feedbag position when the root group has no order", func(t *testing.T) {
+		fl := NewFeedbagList([]wire.FeedbagItem{
+			{ClassID: wire.FeedbagClassIdGroup, GroupID: 0},
+			{Name: "C", ClassID: wire.FeedbagClassIdGroup, GroupID: 3},
+			{Name: "A", ClassID: wire.FeedbagClassIdGroup, GroupID: 1},
+			{Name: "B", ClassID: wire.FeedbagClassIdGroup, GroupID: 2},
+		}, nil)
+		assert.Equal(t, []string{"C", "A", "B"}, feedbagItemNames(fl.Groups()))
+	})
+
+	t.Run("keeps feedbag position when there is no root group", func(t *testing.T) {
+		fl := NewFeedbagList([]wire.FeedbagItem{
+			{Name: "C", ClassID: wire.FeedbagClassIdGroup, GroupID: 3},
+			{Name: "A", ClassID: wire.FeedbagClassIdGroup, GroupID: 1},
+		}, nil)
+		assert.Equal(t, []string{"C", "A"}, feedbagItemNames(fl.Groups()))
+	})
+
+	t.Run("returns no groups for an empty feedbag", func(t *testing.T) {
+		fl := NewFeedbagList(nil, nil)
+		assert.Empty(t, fl.Groups())
+	})
+}
+
+func TestFeedbagList_Buddies(t *testing.T) {
+	t.Run("orders listed buddies by the group order, then unlisted buddies by position", func(t *testing.T) {
+		friends := orderedGroup("Friends", 1, 5, 2)
+		fl := NewFeedbagList([]wire.FeedbagItem{
+			{ClassID: wire.FeedbagClassIdGroup, GroupID: 0},
+			friends,
+			{Name: "buddy3", ClassID: wire.FeedbagClassIdBuddy, GroupID: 1, ItemID: 6},
+			{Name: "other", ClassID: wire.FeedbagClassIdBuddy, GroupID: 2, ItemID: 8},
+			{Name: "buddy1", ClassID: wire.FeedbagClassIdBuddy, GroupID: 1, ItemID: 2},
+			{Name: "buddy4", ClassID: wire.FeedbagClassIdBuddy, GroupID: 1, ItemID: 7},
+			{Name: "buddy2", ClassID: wire.FeedbagClassIdBuddy, GroupID: 1, ItemID: 5},
+		}, nil)
+		assert.Equal(t, []string{"buddy2", "buddy1", "buddy3", "buddy4"}, feedbagItemNames(fl.Buddies(friends)))
+	})
+
+	t.Run("excludes a buddy in another group that shares a listed item ID", func(t *testing.T) {
+		friends := orderedGroup("Friends", 1, 5)
+		fl := NewFeedbagList([]wire.FeedbagItem{
+			friends,
+			{Name: "buddy1", ClassID: wire.FeedbagClassIdBuddy, GroupID: 1, ItemID: 5},
+			{Name: "other", ClassID: wire.FeedbagClassIdBuddy, GroupID: 2, ItemID: 5},
+		}, nil)
+		assert.Equal(t, []string{"buddy1"}, feedbagItemNames(fl.Buddies(friends)))
+	})
+
+	t.Run("keeps feedbag position when the group has no order", func(t *testing.T) {
+		family := wire.FeedbagItem{Name: "Family", ClassID: wire.FeedbagClassIdGroup, GroupID: 1}
+		fl := NewFeedbagList([]wire.FeedbagItem{
+			family,
+			{Name: "family2", ClassID: wire.FeedbagClassIdBuddy, GroupID: 1, ItemID: 9},
+			{Name: "other", ClassID: wire.FeedbagClassIdBuddy, GroupID: 2, ItemID: 4},
+			{Name: "family1", ClassID: wire.FeedbagClassIdBuddy, GroupID: 1, ItemID: 3},
+		}, nil)
+		assert.Equal(t, []string{"family2", "family1"}, feedbagItemNames(fl.Buddies(family)))
+	})
+
+	t.Run("returns no buddies for an empty group", func(t *testing.T) {
+		empty := wire.FeedbagItem{Name: "Empty", ClassID: wire.FeedbagClassIdGroup, GroupID: 3}
+		fl := NewFeedbagList([]wire.FeedbagItem{
+			empty,
+			{Name: "Friends", ClassID: wire.FeedbagClassIdGroup, GroupID: 1},
+			{Name: "buddy1", ClassID: wire.FeedbagClassIdBuddy, GroupID: 1, ItemID: 2},
+		}, nil)
+		assert.Empty(t, fl.Buddies(empty))
+	})
+
+	t.Run("panics on a non-group item", func(t *testing.T) {
+		fl := NewFeedbagList(nil, nil)
+		assert.Panics(t, func() {
+			fl.Buddies(wire.FeedbagItem{Name: "buddy1", ClassID: wire.FeedbagClassIdBuddy})
+		})
+	})
+}

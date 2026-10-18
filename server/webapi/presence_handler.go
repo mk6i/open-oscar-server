@@ -202,65 +202,39 @@ func (h *PresenceHandler) getBuddyListGroups(ctx context.Context, session *Sessi
 		return nil, err
 	}
 
-	// Organize items into groups, keyed by GroupID. Group rows store their
-	// identity in GroupID (ItemID is 0 for every group), so a GroupID-keyed map
-	// is the only way to associate buddies — which reference their group via
-	// GroupID — with the right group.
-	groupMap := make(map[uint16]*BuddyGroupInfo)
+	fl := state.NewFeedbagList(items, nil)
 
-	// First pass: identify groups. Skip the root group (GroupID 0), which holds
-	// the master group order rather than buddies.
-	for _, item := range items {
-		if item.ClassID != wire.FeedbagClassIdGroup || item.GroupID == 0 {
-			continue
-		}
-		name := item.Name
+	var groups []BuddyGroupInfo
+	for _, group := range fl.Groups() {
+		name := group.Name
 		if name == "" {
 			name = "Buddies" // Default group name
 		}
-		groupMap[item.GroupID] = &BuddyGroupInfo{
-			Name:    name,
-			Buddies: []BuddyPresenceInfo{},
+		info := BuddyGroupInfo{Name: name, Buddies: []BuddyPresenceInfo{}}
+		for _, buddy := range fl.Buddies(group) {
+			if buddy.Name == "" {
+				continue
+			}
+			// Served from the presence view, where blocked and offline buddies
+			// alike come back as "offline". profileMsg is the exception: profile
+			// text is only reachable through a locate reply.
+			var presence BuddyPresenceInfo
+			if wantProfileMsg {
+				presence = h.getUserPresence(ctx, session.OSCARSession, session.BaseURL, state.DisplayScreenName(buddy.Name), true)
+			} else {
+				presence = h.cachedPresence(ctx, session, buddy.Name)
+			}
+			// The client's user-object merge deletes any alias it holds, so the
+			// buddy list has to carry friendly for aliased buddies.
+			presence.Friendly, _ = buddy.String(wire.FeedbagAttributesAlias)
+			info.Buddies = append(info.Buddies, presence)
 		}
-	}
-
-	// Second pass: add buddies to their group with presence info.
-	for _, item := range items {
-		if item.ClassID != wire.FeedbagClassIdBuddy || item.Name == "" {
-			continue
-		}
-		group, exists := groupMap[item.GroupID]
-		if !exists {
-			// Orphan buddy whose group row is missing: synthesize a default
-			// group for its GroupID so the buddy is not dropped.
-			group = &BuddyGroupInfo{Name: "Buddies", Buddies: []BuddyPresenceInfo{}}
-			groupMap[item.GroupID] = group
-		}
-
-		// Served from the presence view, where blocked and offline buddies alike
-		// come back as "offline". profileMsg is the exception: profile text is only
-		// reachable through a locate reply.
-		var presence BuddyPresenceInfo
-		if wantProfileMsg {
-			presence = h.getUserPresence(ctx, session.OSCARSession, session.BaseURL, state.DisplayScreenName(item.Name), true)
-		} else {
-			presence = h.cachedPresence(ctx, session, item.Name)
-		}
-		group.Buddies = append(group.Buddies, presence)
+		groups = append(groups, info)
 	}
 
 	// If no groups exist at all, return a single default group.
-	if len(groupMap) == 0 {
-		groupMap[0] = &BuddyGroupInfo{
-			Name:    "Buddies",
-			Buddies: []BuddyPresenceInfo{},
-		}
-	}
-
-	// Convert map to slice
-	groups := make([]BuddyGroupInfo, 0, len(groupMap))
-	for _, group := range groupMap {
-		groups = append(groups, *group)
+	if len(groups) == 0 {
+		groups = []BuddyGroupInfo{{Name: "Buddies", Buddies: []BuddyPresenceInfo{}}}
 	}
 
 	return groups, nil

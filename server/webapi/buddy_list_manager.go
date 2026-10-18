@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand"
-	"slices"
 	"strings"
 
 	"github.com/mk6i/open-oscar-server/state"
@@ -73,95 +72,24 @@ func (m *BuddyListManager) GetBuddyListForUser(ctx context.Context, sess *Sessio
 		return nil, fmt.Errorf("failed to retrieve feedbag: %w", err)
 	}
 
-	type buddy struct {
-		name  string
-		alias string
-	}
-	type group struct {
-		name    string
-		buddies map[uint16]buddy
-		order   []uint16
-	}
-	type feedbagBL struct {
-		order  []uint16
-		groups map[uint16]group
-	}
-	bl := feedbagBL{groups: make(map[uint16]group)}
+	fl := state.NewFeedbagList(items, nil)
 
-	for _, item := range items {
-		if item.ClassID != wire.FeedbagClassIdGroup {
-			continue
-		}
-		if item.GroupID == 0 {
-			val, hasVal := item.Uint16SliceBE(wire.FeedbagAttributesOrder)
-			if hasVal {
-				bl.order = val
-			}
-			continue
-		}
-		name := item.Name
-		if name == "" {
-			name = "Buddies"
-		}
-		g := group{
-			name:    name,
-			buddies: make(map[uint16]buddy),
-		}
-		val, _ := item.Uint16SliceBE(wire.FeedbagAttributesOrder)
-		g.order = val
-		bl.groups[item.GroupID] = g
-	}
-
-	for _, item := range items {
-		if item.ClassID != wire.FeedbagClassIdBuddy || item.Name == "" {
-			continue
-		}
-		if _, exists := bl.groups[item.GroupID]; !exists {
-			bl.groups[item.GroupID] = group{
-				name:    "Buddies",
-				buddies: make(map[uint16]buddy),
-				order:   nil,
-			}
-		}
-		b := buddy{name: item.Name}
-		if val, hasVal := item.String(wire.FeedbagAttributesAlias); hasVal {
-			b.alias = val
-		}
-		g := bl.groups[item.GroupID]
-		g.buddies[item.ItemID] = b
-		bl.groups[item.GroupID] = g
-	}
-
-	groupOrder := bl.order
-	if len(groupOrder) == 0 && len(bl.groups) > 0 {
-		groupOrder = make([]uint16, 0, len(bl.groups))
-		for gid := range bl.groups {
-			groupOrder = append(groupOrder, gid)
-		}
-		slices.Sort(groupOrder)
-	}
-
-	var out []BuddyGroup
-	for _, gid := range groupOrder {
-		g, ok := bl.groups[gid]
-		if !ok {
-			continue
-		}
-		groupName := g.name
+	out := []BuddyGroup{}
+	for _, group := range fl.Groups() {
+		groupName := group.Name
 		if groupName == "" {
 			groupName = "Buddies"
 		}
-		wg := BuddyGroup{ID: int(gid), Name: groupName, Buddies: []BuddyInfo{}}
-		for _, bid := range g.order {
-			b, ok := g.buddies[bid]
-			if !ok {
+		wg := BuddyGroup{ID: int(group.GroupID), Name: groupName, Buddies: []BuddyInfo{}}
+		for _, buddy := range fl.Buddies(group) {
+			if buddy.Name == "" {
 				continue
 			}
-			info := m.getBuddyInfo(ctx, sess, b.name)
+			info := m.getBuddyInfo(ctx, sess, buddy.Name)
 			// The alias belongs in friendly, not displayId: the client renders
 			// friendly in preference to displayId but still shows displayId as
 			// the buddy's actual screen name.
-			info.Friendly = b.alias
+			info.Friendly, _ = buddy.String(wire.FeedbagAttributesAlias)
 			wg.Buddies = append(wg.Buddies, info)
 		}
 		out = append(out, wg)

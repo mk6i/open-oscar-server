@@ -413,6 +413,117 @@ func (f *FeedbagList) Items() []wire.FeedbagItem {
 	return result
 }
 
+// Groups returns the feedbag's groups, excluding the root group. When the root
+// group has an order attribute, groups follow that order and groups missing
+// from it are appended in feedbag order; otherwise all groups are in feedbag
+// order.
+func (f *FeedbagList) Groups() []wire.FeedbagItem {
+
+	groupOrder := func(items []*wire.FeedbagItem, groupID uint16) ([]uint16, bool) {
+		grpIdx := slices.IndexFunc(items, func(item *wire.FeedbagItem) bool {
+			return item.ClassID == wire.FeedbagClassIdGroup && item.GroupID == groupID
+		})
+		if grpIdx == -1 {
+			return []uint16{}, false
+		}
+		ordering, hasOrder := items[grpIdx].Uint16SliceBE(wire.FeedbagAttributesOrder)
+		return ordering, hasOrder
+	}
+
+	if ordering, hasOrder := groupOrder(f.items, 0); hasOrder {
+		orderMap := make(map[uint16]int)
+		for i, order := range ordering {
+			orderMap[order] = i
+		}
+
+		var ordered []*wire.FeedbagItem
+		var unordered []*wire.FeedbagItem
+		for _, group := range f.items {
+			if group.ClassID == wire.FeedbagClassIdGroup && group.GroupID > 0 {
+				if _, ok := orderMap[group.GroupID]; ok {
+					ordered = append(ordered, group)
+				} else {
+					unordered = append(unordered, group)
+				}
+			}
+		}
+
+		// order groups present in ordering TLV by their position in the ordering TLV
+		slices.SortFunc(ordered, func(a, b *wire.FeedbagItem) int {
+			return orderMap[a.GroupID] - orderMap[b.GroupID]
+		})
+
+		ret := make([]wire.FeedbagItem, 0, len(ordered)+len(unordered))
+		for _, group := range ordered {
+			ret = append(ret, *group)
+		}
+		for _, group := range unordered {
+			ret = append(ret, *group)
+		}
+		return ret
+	}
+
+	var ret []wire.FeedbagItem
+	for _, group := range f.items {
+		if group.ClassID == wire.FeedbagClassIdGroup && group.GroupID != 0 {
+			ret = append(ret, *group)
+		}
+	}
+
+	return ret
+}
+
+// Buddies returns the buddies in groupItem. When groupItem has an order
+// attribute, buddies follow that order and buddies missing from it are
+// appended in feedbag order; otherwise all buddies are in feedbag order.
+func (f *FeedbagList) Buddies(groupItem wire.FeedbagItem) []wire.FeedbagItem {
+	if groupItem.ClassID != wire.FeedbagClassIdGroup {
+		panic("Buddies called on non-group item")
+	}
+
+	if ordering, hasOrder := groupItem.Uint16SliceBE(wire.FeedbagAttributesOrder); hasOrder {
+		orderMap := make(map[uint16]int)
+		for i, order := range ordering {
+			orderMap[order] = i
+		}
+
+		var ordered []*wire.FeedbagItem
+		var unordered []*wire.FeedbagItem
+		for _, buddy := range f.items {
+			if buddy.ClassID == wire.FeedbagClassIdBuddy && buddy.GroupID == groupItem.GroupID {
+				if _, ok := orderMap[buddy.ItemID]; ok {
+					ordered = append(ordered, buddy)
+				} else {
+					unordered = append(unordered, buddy)
+				}
+			}
+		}
+
+		// order buddies present in ordering TLV by their position in the ordering TLV
+		slices.SortFunc(ordered, func(a, b *wire.FeedbagItem) int {
+			return orderMap[a.ItemID] - orderMap[b.ItemID]
+		})
+
+		ret := make([]wire.FeedbagItem, 0, len(ordered)+len(unordered))
+		for _, buddy := range ordered {
+			ret = append(ret, *buddy)
+		}
+		for _, buddy := range unordered {
+			ret = append(ret, *buddy)
+		}
+		return ret
+	}
+
+	var ret []wire.FeedbagItem
+	for _, buddy := range f.items {
+		if buddy.ClassID == wire.FeedbagClassIdBuddy && buddy.GroupID == groupItem.GroupID {
+			ret = append(ret, *buddy)
+		}
+	}
+
+	return ret
+}
+
 // rootGroup retrieves the root group, creating one if non-existent.
 func (f *FeedbagList) rootGroup() *wire.FeedbagItem {
 	var root *wire.FeedbagItem
