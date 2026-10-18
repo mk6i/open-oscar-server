@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net"
@@ -1244,3 +1245,329 @@ func Test_oscarServer_receiveSessMessages_Chat_integration(t *testing.T) {
 
 	signoutWG.Wait()
 }
+
+func TestOscarServer_RouteConnection_BOS_SessionClosedPriorToRegisterReturn(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	addr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:8080")
+	assert.NoError(t, err)
+
+	clientFake := fakeConn{
+		Conn:   serverConn,
+		local:  addr,
+		remote: addr,
+	}
+
+	screenName := state.NewIdentScreenName("test-user")
+	sess := state.NewSession()
+	sess.SetIdentScreenName(screenName)
+	instance := sess.AddInstance()
+
+	go func() {
+		flap := wire.FLAPFrame{}
+		assert.NoError(t, wire.UnmarshalBE(&flap, clientConn))
+		flapSignonFrame := wire.FLAPSignonFrame{}
+		assert.NoError(t, wire.UnmarshalBE(&flapSignonFrame, bytes.NewBuffer(flap.Payload)))
+
+		flapSignonFrame = wire.FLAPSignonFrame{
+			FLAPVersion: 1,
+		}
+		flapSignonFrame.Append(wire.NewTLVBE(wire.OServiceTLVTagsLoginCookie, []byte("the-cookie")))
+		buf := &bytes.Buffer{}
+		assert.NoError(t, wire.MarshalBE(flapSignonFrame, buf))
+		flap = wire.FLAPFrame{
+			StartMarker: 42,
+			FrameType:   wire.FLAPFrameSignon,
+			Payload:     buf.Bytes(),
+		}
+		assert.NoError(t, wire.MarshalBE(flap, clientConn))
+
+		_ = clientConn.Close()
+	}()
+
+	signoutCalled := make(chan struct{})
+	unregisterCalled := make(chan struct{})
+	removeChatsCalled := make(chan struct{})
+
+	authService := newMockAuthService(t)
+	authService.EXPECT().
+		CrackCookie(mock.Anything).
+		Return(state.ServerCookie{Service: wire.BOS}, time.Now().Add(time.Minute), nil)
+
+	authService.EXPECT().
+		RegisterBOSSession(mock.Anything, state.ServerCookie{Service: wire.BOS}, mock.Anything).
+		Run(func(ctx context.Context, cookie state.ServerCookie, conf func(*state.Session)) {
+			if conf != nil {
+				conf(sess)
+			}
+			// Simulate a concurrent sign-on evicting/closing the session prior to RegisterBOSSession return.
+			// This reproduces issue #207 where OnSessionClose runs while the outer instance variable is nil.
+			sess.CloseSession()
+		}).
+		Return(instance, nil)
+
+	authService.EXPECT().
+		Signout(mock.Anything, sess).
+		Run(func(ctx context.Context, s *state.Session) {
+			close(signoutCalled)
+		})
+
+	buddyListRegistry := newMockBuddyListRegistry(t)
+	buddyListRegistry.EXPECT().
+		RegisterBuddyList(mock.Anything, screenName).
+		Return(nil).
+		Maybe()
+	buddyListRegistry.EXPECT().
+		UnregisterBuddyList(mock.Anything, screenName).
+		Run(func(ctx context.Context, name state.IdentScreenName) {
+			close(unregisterCalled)
+		}).
+		Return(nil)
+
+	departureNotifier := newMockDepartureNotifier(t)
+	departureNotifier.EXPECT().
+		BroadcastBuddyDeparted(mock.Anything, screenName).
+		Return(nil).
+		Maybe()
+	departureNotifier.EXPECT().
+		BroadcastBuddyArrived(mock.Anything, mock.Anything, mock.Anything).
+		Return(nil).
+		Maybe()
+
+	onlineNotifier := newMockOnlineNotifier(t)
+	onlineNotifier.EXPECT().
+		HostOnline(mock.Anything).
+		Return(wire.SNACMessage{
+			Frame: wire.SNACFrame{FoodGroup: wire.OService, SubGroup: wire.OServiceHostOnline},
+			Body:  wire.SNAC_0x01_0x03_OServiceHostOnline{},
+		}).
+		Maybe()
+
+	chatSessionManager := newMockChatSessionManager(t)
+	chatSessionManager.EXPECT().
+		RemoveUserFromAllChats(screenName).
+		Run(func(name state.IdentScreenName) {
+			close(removeChatsCalled)
+		})
+
+	server := oscarServer{
+		rateLimitUpdater:   noopRateLimitUpdater{},
+		authService:        authService,
+		logger:             slog.New(slog.NewTextHandler(io.Discard, nil)),
+		onlineNotifier:     onlineNotifier,
+		buddyListRegistry:  buddyListRegistry,
+		chatSessionManager: chatSessionManager,
+		departureNotifier:  departureNotifier,
+		recalcWarning:      func(ctx context.Context, instance *state.SessionInstance) error { return nil },
+		lowerWarnLevel:     func(ctx context.Context, instance *state.SessionInstance) {},
+	}
+
+	assert.NotPanics(t, func() {
+		_ = server.routeConnection(context.Background(), clientFake, config.Endpoint{})
+	})
+
+	select {
+	case <-signoutCalled:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for Signout")
+	}
+
+	select {
+	case <-unregisterCalled:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for UnregisterBuddyList")
+	}
+
+	select {
+	case <-removeChatsCalled:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for RemoveUserFromAllChats")
+	}
+}
+
+func TestOscarServer_RouteConnection_BOS_RegisterErrorCleansUpSession(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	addr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:8080")
+	assert.NoError(t, err)
+
+	clientFake := fakeConn{
+		Conn:   serverConn,
+		local:  addr,
+		remote: addr,
+	}
+
+	screenName := state.NewIdentScreenName("error-user")
+	sess := state.NewSession()
+	sess.SetIdentScreenName(screenName)
+	_ = sess.AddInstance()
+
+	go func() {
+		flap := wire.FLAPFrame{}
+		assert.NoError(t, wire.UnmarshalBE(&flap, clientConn))
+		flapSignonFrame := wire.FLAPSignonFrame{}
+		assert.NoError(t, wire.UnmarshalBE(&flapSignonFrame, bytes.NewBuffer(flap.Payload)))
+
+		flapSignonFrame = wire.FLAPSignonFrame{
+			FLAPVersion: 1,
+		}
+		flapSignonFrame.Append(wire.NewTLVBE(wire.OServiceTLVTagsLoginCookie, []byte("the-cookie")))
+		buf := &bytes.Buffer{}
+		assert.NoError(t, wire.MarshalBE(flapSignonFrame, buf))
+		flap = wire.FLAPFrame{
+			StartMarker: 42,
+			FrameType:   wire.FLAPFrameSignon,
+			Payload:     buf.Bytes(),
+		}
+		assert.NoError(t, wire.MarshalBE(flap, clientConn))
+		_ = clientConn.Close()
+	}()
+
+	signoutCalled := make(chan struct{})
+	regErr := errors.New("registration failed post session creation")
+
+	authService := newMockAuthService(t)
+	authService.EXPECT().
+		CrackCookie(mock.Anything).
+		Return(state.ServerCookie{Service: wire.BOS}, time.Now().Add(time.Minute), nil)
+
+	authService.EXPECT().
+		RegisterBOSSession(mock.Anything, state.ServerCookie{Service: wire.BOS}, mock.Anything).
+		Run(func(ctx context.Context, cookie state.ServerCookie, conf func(*state.Session)) {
+			if conf != nil {
+				conf(sess)
+			}
+		}).
+		Return(nil, regErr)
+
+	authService.EXPECT().
+		Signout(mock.Anything, sess).
+		Run(func(ctx context.Context, s *state.Session) {
+			close(signoutCalled)
+		})
+
+	buddyListRegistry := newMockBuddyListRegistry(t)
+	buddyListRegistry.EXPECT().
+		UnregisterBuddyList(mock.Anything, screenName).
+		Return(nil)
+
+	departureNotifier := newMockDepartureNotifier(t)
+	departureNotifier.EXPECT().
+		BroadcastBuddyDeparted(mock.Anything, screenName).
+		Return(nil).
+		Maybe()
+
+	chatSessionManager := newMockChatSessionManager(t)
+	chatSessionManager.EXPECT().
+		RemoveUserFromAllChats(screenName)
+
+	server := oscarServer{
+		rateLimitUpdater:   noopRateLimitUpdater{},
+		authService:        authService,
+		logger:             slog.New(slog.NewTextHandler(io.Discard, nil)),
+		buddyListRegistry:  buddyListRegistry,
+		chatSessionManager: chatSessionManager,
+		departureNotifier:  departureNotifier,
+	}
+
+	err = server.routeConnection(context.Background(), clientFake, config.Endpoint{})
+	assert.ErrorIs(t, err, regErr)
+
+	select {
+	case <-signoutCalled:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for Signout on registration error")
+	}
+}
+
+func TestOscarServer_RouteConnection_BOS_NilInstanceCleansUpSession(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	addr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:8080")
+	assert.NoError(t, err)
+
+	clientFake := fakeConn{
+		Conn:   serverConn,
+		local:  addr,
+		remote: addr,
+	}
+
+	screenName := state.NewIdentScreenName("nil-inst-user")
+	sess := state.NewSession()
+	sess.SetIdentScreenName(screenName)
+	_ = sess.AddInstance()
+
+	go func() {
+		flap := wire.FLAPFrame{}
+		assert.NoError(t, wire.UnmarshalBE(&flap, clientConn))
+		flapSignonFrame := wire.FLAPSignonFrame{}
+		assert.NoError(t, wire.UnmarshalBE(&flapSignonFrame, bytes.NewBuffer(flap.Payload)))
+
+		flapSignonFrame = wire.FLAPSignonFrame{
+			FLAPVersion: 1,
+		}
+		flapSignonFrame.Append(wire.NewTLVBE(wire.OServiceTLVTagsLoginCookie, []byte("the-cookie")))
+		buf := &bytes.Buffer{}
+		assert.NoError(t, wire.MarshalBE(flapSignonFrame, buf))
+		flap = wire.FLAPFrame{
+			StartMarker: 42,
+			FrameType:   wire.FLAPFrameSignon,
+			Payload:     buf.Bytes(),
+		}
+		assert.NoError(t, wire.MarshalBE(flap, clientConn))
+		_ = clientConn.Close()
+	}()
+
+	signoutCalled := make(chan struct{})
+
+	authService := newMockAuthService(t)
+	authService.EXPECT().
+		CrackCookie(mock.Anything).
+		Return(state.ServerCookie{Service: wire.BOS}, time.Now().Add(time.Minute), nil)
+
+	authService.EXPECT().
+		RegisterBOSSession(mock.Anything, state.ServerCookie{Service: wire.BOS}, mock.Anything).
+		Run(func(ctx context.Context, cookie state.ServerCookie, conf func(*state.Session)) {
+			if conf != nil {
+				conf(sess)
+			}
+		}).
+		Return(nil, nil)
+
+	authService.EXPECT().
+		Signout(mock.Anything, sess).
+		Run(func(ctx context.Context, s *state.Session) {
+			close(signoutCalled)
+		})
+
+	buddyListRegistry := newMockBuddyListRegistry(t)
+	buddyListRegistry.EXPECT().
+		UnregisterBuddyList(mock.Anything, screenName).
+		Return(nil)
+
+	departureNotifier := newMockDepartureNotifier(t)
+	departureNotifier.EXPECT().
+		BroadcastBuddyDeparted(mock.Anything, screenName).
+		Return(nil).
+		Maybe()
+
+	chatSessionManager := newMockChatSessionManager(t)
+	chatSessionManager.EXPECT().
+		RemoveUserFromAllChats(screenName)
+
+	server := oscarServer{
+		rateLimitUpdater:   noopRateLimitUpdater{},
+		authService:        authService,
+		logger:             slog.New(slog.NewTextHandler(io.Discard, nil)),
+		buddyListRegistry:  buddyListRegistry,
+		chatSessionManager: chatSessionManager,
+		departureNotifier:  departureNotifier,
+	}
+
+	err = server.routeConnection(context.Background(), clientFake, config.Endpoint{})
+	assert.ErrorContains(t, err, "session not found")
+
+	select {
+	case <-signoutCalled:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for Signout on nil instance")
+	}
+}
+

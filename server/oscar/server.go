@@ -244,7 +244,9 @@ func (s oscarServer) connectToOSCARService(
 	switch cookie.Service {
 	case wire.BOS:
 
+		var createdSession *state.Session
 		sessCfg := func(sess *state.Session) {
+			createdSession = sess
 			sess.OnSessionClose(func() {
 				if !shuttingDown(ctx) {
 					if err := s.departureNotifier.BroadcastBuddyDeparted(ctx, sess.IdentScreenName()); err != nil {
@@ -268,6 +270,11 @@ func (s oscarServer) connectToOSCARService(
 
 		instance, err = s.authService.RegisterBOSSession(ctx, cookie, sessCfg)
 		if err != nil {
+			if createdSession != nil {
+				createdSession.CloseSession()
+			} else if instance != nil {
+				instance.CloseInstance()
+			}
 			if errors.Is(err, state.ErrMaxConcurrentSessionsReached) {
 				s.logger.Debug("session registration failed", "err", err.Error())
 				block := wire.TLVRestBlock{}
@@ -282,6 +289,9 @@ func (s oscarServer) connectToOSCARService(
 			return err
 		}
 		if instance == nil {
+			if createdSession != nil {
+				createdSession.CloseSession()
+			}
 			return errors.New("session not found")
 		}
 		defer func() {
