@@ -963,9 +963,11 @@ func sessionUserInfo(instance *state.SessionInstance, multiInstance bool) wire.T
 		info.Append(wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, bartIDs))
 	}
 
-	// the profile is account-level, so report the most recent update made by
-	// any instance
-	info.Append(wire.NewTLVBE(wire.OServiceUserInfoSigTime, uint32(instance.Profile().UpdateTime.Unix())))
+	var sigTime uint32
+	if updated := instance.Profile().UpdateTime; !updated.IsZero() {
+		sigTime = uint32(updated.Unix())
+	}
+	info.Append(wire.NewTLVBE(wire.OServiceUserInfoSigTime, sigTime))
 
 	// user flags are the same for every instance, except for the away flag,
 	// which is only set when every instance is away

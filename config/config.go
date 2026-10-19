@@ -152,7 +152,7 @@ type Config struct {
 	TOCListeners            []string `envconfig:"TOC_LISTENERS" required:"true" basic:"0.0.0.0:9898" ssl:"0.0.0.0:9898" description:"Network listeners for TOC protocol service.\n\nFormat: Comma-separated list of hostname:port pairs.\n\nExamples:\n\t// All interfaces\n\t0.0.0.0:9898\n\t// Multiple listeners\n\t0.0.0.0:9898,192.168.1.10:9899"`
 	APIListener             string   `envconfig:"API_LISTENER" required:"true" basic:"127.0.0.1:8080" ssl:"127.0.0.1:8080" description:"Network listener for management API binds to. Only 1 listener can be specified. (Default 127.0.0.1 restricts to same machine only)."`
 	WebAPIEnabled           bool     `envconfig:"WEBAPI_ENABLED" required:"false" default:"true" basic:"true" ssl:"true" description:"Enable the WebAPI, which serves web-based AIM clients such as AIM Express. When enabled, the server listens on WEBAPI_LISTENERS."`
-	WebAPIListeners         []string `envconfig:"WEBAPI_LISTENERS" required:"false" basic:"0.0.0.0:8081" ssl:"0.0.0.0:8081" description:"Network listeners for WebAPI. See OSCAR_LISTENERS doc for more details.\n\nExamples:\n\t// Listen on all interfaces\n\tLAN://0.0.0.0:8081\n\t// Separate Internet and LAN config\n\tWAN://142.250.176.206:8081,LAN://192.168.1.10:8082"`
+	WebAPIListeners         []string `envconfig:"WEBAPI_LISTENERS" required:"false" basic:"0.0.0.0:8081" ssl:"0.0.0.0:8081" description:"Network listeners for WebAPI.\n\nFormat: Comma-separated list of hostname:port pairs.\n\nExamples:\n\t// All interfaces\n\t0.0.0.0:8081\n\t// Multiple listeners\n\t0.0.0.0:8081,192.168.1.10:8082"`
 	WebAPIAllowedOrigins    []string `envconfig:"WEBAPI_ALLOWED_ORIGINS" required:"false" basic:"http://localhost:*" ssl:"http://localhost:*" description:"Origins allowed to call the WebAPI from a browser (CORS). A browser blocks a cross-origin response whose origin is not listed here, so the client serving the web app must appear in this list.\n\nFormat:\n\t- Comma-separated list of [SCHEME]://[HOSTNAME]:[PORT]\n\t- An origin is the scheme, host and port together: a client served from another port needs its own entry\n\t- Omit the port when it is the scheme default, the way a browser writes it: https://aim.example.com, not https://aim.example.com:443\n\t- No trailing slash, path, query or fragment\n\t- An entry may contain one wildcard (*) standing in for 0 or more characters, in the host or the port: https://*.example.com, http://localhost:* . Only one wildcard per entry, the scheme cannot be wildcarded, and matching one costs a little more per request\n\t- A lone * allows any origin, which is also what an unset or empty value means\n\nExamples:\n\t// Single origin\n\thttps://ras.dev\n\t// Web app on a separate port, plus the API host itself\n\thttp://localhost:8000,https://ras.dev\n\t// Any origin (development only)\n\t*"`
 
 	DBPath                 string `envconfig:"DB_PATH" required:"true" basic:"oscar.sqlite" ssl:"oscar.sqlite" description:"The path to the SQLite database file. The file and DB schema are auto-created if they doesn't exist."`
@@ -410,11 +410,13 @@ func (c *Config) ParseICBMLegacyCharset() (encoding.Encoding, error) {
 }
 
 func (c *Config) Validate() error {
-	// Validate TOCListeners (format: hostname:port pairs)
+	// Validate TOCListeners (format: hostname:port pairs). Every entry is
+	// bound as given, and an empty address binds a random port on all
+	// interfaces.
 	for _, listener := range c.TOCListeners {
 		listener = strings.TrimSpace(listener)
 		if listener == "" {
-			continue
+			return fmt.Errorf("invalid TOC listeners %q: empty entry. Remove the trailing or doubled comma from TOC_LISTENERS", strings.Join(c.TOCListeners, ","))
 		}
 
 		host, port, err := net.SplitHostPort(listener)
@@ -450,11 +452,12 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("invalid API listener %q: missing port. Valid format: HOST:PORT (e.g., 127.0.0.1:8080)", c.APIListener)
 	}
 
-	// Validate WebAPIListeners (format: hostname:port pairs, no scheme)
+	// Validate WebAPIListeners (format: hostname:port pairs, no scheme). Every
+	// entry is bound as given, and an empty address binds :80 on all interfaces.
 	for _, listener := range c.WebAPIListeners {
 		listener = strings.TrimSpace(listener)
 		if listener == "" {
-			continue
+			return fmt.Errorf("invalid web API listeners %q: empty entry. Remove the trailing or doubled comma from WEBAPI_LISTENERS", strings.Join(c.WebAPIListeners, ","))
 		}
 
 		host, port, err := net.SplitHostPort(listener)

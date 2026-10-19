@@ -99,7 +99,7 @@ func NewManagementAPI(bld config.Build, listener string, userManager UserManager
 
 	// Handlers for '/instant-message' route
 	mux.HandleFunc("POST /instant-message", func(w http.ResponseWriter, r *http.Request) {
-		postInstantMessageHandler(w, r, icbmSender, logger)
+		postInstantMessageHandler(w, r, userManager, icbmSender, logger)
 	})
 
 	// Handlers for '/version' route
@@ -627,10 +627,21 @@ func writeUnescapeChatURL(w http.ResponseWriter, out []chatRoom) {
 }
 
 // postInstantMessageHandler handles the POST /instant-message endpoint.
-func postInstantMessageHandler(w http.ResponseWriter, r *http.Request, icbmSender ICBMSender, logger *slog.Logger) {
+func postInstantMessageHandler(w http.ResponseWriter, r *http.Request, userManager UserManager, icbmSender ICBMSender, logger *slog.Logger) {
 	input := instantMessage{}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		http.Error(w, "malformed input", http.StatusBadRequest)
+		return
+	}
+
+	sender, err := userManager.User(r.Context(), state.NewIdentScreenName(input.From))
+	if err != nil {
+		logger.Error("error retrieving sender POST /instant-message", "err", err.Error())
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if sender == nil {
+		http.Error(w, "sender does not exist", http.StatusBadRequest)
 		return
 	}
 
@@ -1497,6 +1508,10 @@ func postLinkedAccountHandler(w http.ResponseWriter, r *http.Request, userManage
 
 	if fbList.HasLinkedScreenName(body.LinkedScreenName) {
 		errorMsg(w, "linked account already exists", http.StatusConflict)
+		return
+	}
+	if len(fbList.LinkedScreenNames()) >= state.MaxLinkedScreenNames {
+		errorMsg(w, fmt.Sprintf("user already has the maximum of %d linked accounts", state.MaxLinkedScreenNames), http.StatusConflict)
 		return
 	}
 	fbList.AddLinkedScreenName(body.LinkedScreenName)

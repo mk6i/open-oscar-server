@@ -3005,7 +3005,7 @@ func TestOServiceService_UserInfoQuery_UserInfoBlocks(t *testing.T) {
 		// The account block always carries a sig time, zero when no profile is set.
 		sigVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoSigTime)
 		require.True(t, ok)
-		require.Equal(t, uint32(time.Time{}.Unix()), sigVal)
+		require.Equal(t, uint32(0), sigVal)
 
 		// A client that does not speak the multi-instance fields is told nothing
 		// about the session's other connections.
@@ -3079,7 +3079,7 @@ func TestOServiceService_UserInfoQuery_UserInfoBlocks(t *testing.T) {
 		// The account block always carries a sig time, zero without a profile.
 		sigVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoSigTime)
 		require.True(t, ok)
-		require.Equal(t, uint32(time.Time{}.Unix()), sigVal)
+		require.Equal(t, uint32(0), sigVal)
 
 		primaryBytes, ok := got.UserInfo[0].Bytes(wire.OServiceUserInfoPrimaryInstance)
 		require.True(t, ok)
@@ -3122,7 +3122,7 @@ func TestOServiceService_UserInfoQuery_UserInfoBlocks(t *testing.T) {
 		// The account block always carries a sig time, zero without a profile.
 		sigVal, ok := got.UserInfo[0].Uint32BE(wire.OServiceUserInfoSigTime)
 		require.True(t, ok)
-		require.Equal(t, uint32(time.Time{}.Unix()), sigVal)
+		require.Equal(t, uint32(0), sigVal)
 
 		// The oldest instance is the primary one
 		primaryBytes, ok := got.UserInfo[0].Bytes(wire.OServiceUserInfoPrimaryInstance)

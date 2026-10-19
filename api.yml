@@ -550,7 +550,7 @@ paths:
         '200':
           description: Message sent or stored for offline delivery.
         '400':
-          description: Bad request. Invalid input data.
+          description: Bad request. Invalid input data, or the sender does not exist.
         '403':
           description: Message blocked by the recipient.
         '404':
@@ -1328,7 +1328,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/MessageResponse'
         '409':
-          description: Linked account relationship already exists.
+          description: Linked account relationship already exists, or the user already has the maximum of 4 linked accounts.
           content:
             application/json:
               schema:

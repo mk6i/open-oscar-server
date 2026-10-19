@@ -87,7 +87,7 @@ func (s *FeedbagService) RightsQuery(_ context.Context, inFrame wire.SNACFrame) 
 	maxItemsByClass[wire.FeedbagClassIdRootCreator] = 1
 	maxItemsByClass[wire.FeedbagClassIdImportTimestamp] = 1
 	maxItemsByClass[wire.FeedbagClassIdBart] = 200
-	maxItemsByClass[wire.FeedbagClassIdAlInfo] = 4
+	maxItemsByClass[wire.FeedbagClassIdAlInfo] = state.MaxLinkedScreenNames
 
 	return wire.SNACMessage{
 		Frame: wire.SNACFrame{

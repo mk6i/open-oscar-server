@@ -1816,36 +1816,47 @@ func TestPrivateChatHandler_GET(t *testing.T) {
 }
 
 func TestInstantMessageHandler_POST(t *testing.T) {
+	senderExists := getUserParams{
+		{
+			screenName: state.NewIdentScreenName("sender_sn"),
+			result:     &state.User{IdentScreenName: state.NewIdentScreenName("sender_sn")},
+		},
+	}
+
 	tt := []struct {
-		name       string
-		body       string
-		wantText   string
-		wantStore  bool
-		sendCalled bool
-		reply      *wire.SNACMessage
-		sendErr    error
-		want       string
-		statusCode int
+		name          string
+		body          string
+		getUserParams getUserParams
+		wantText      string
+		wantStore     bool
+		sendCalled    bool
+		reply         *wire.SNACMessage
+		sendErr       error
+		want          string
+		statusCode    int
 	}{
 		{
-			name:       "send an instant message",
-			body:       `{"from":"sender_sn","to":"recip_sn","text":"hello world!"}`,
-			sendCalled: true,
-			want:       `Message sent successfully.`,
-			statusCode: http.StatusOK,
+			name:          "send an instant message",
+			body:          `{"from":"sender_sn","to":"recip_sn","text":"hello world!"}`,
+			getUserParams: senderExists,
+			sendCalled:    true,
+			want:          `Message sent successfully.`,
+			statusCode:    http.StatusOK,
 		},
 		{
-			name:       "send an instant message with non-ASCII text",
-			body:       `{"from":"sender_sn","to":"recip_sn","text":"héllo wörld 日本 😀"}`,
-			wantText:   "héllo wörld 日本 \uFFFD",
-			sendCalled: true,
-			want:       `Message sent successfully.`,
-			statusCode: http.StatusOK,
+			name:          "send an instant message with non-ASCII text",
+			body:          `{"from":"sender_sn","to":"recip_sn","text":"héllo wörld 日本 😀"}`,
+			wantText:      "héllo wörld 日本 \uFFFD",
+			getUserParams: senderExists,
+			sendCalled:    true,
+			want:          `Message sent successfully.`,
+			statusCode:    http.StatusOK,
 		},
 		{
-			name:       "recipient is offline",
-			body:       `{"from":"sender_sn","to":"recip_sn","text":"hello world!"}`,
-			sendCalled: true,
+			name:          "recipient is offline",
+			body:          `{"from":"sender_sn","to":"recip_sn","text":"hello world!"}`,
+			getUserParams: senderExists,
+			sendCalled:    true,
 			reply: &wire.SNACMessage{
 				Frame: wire.SNACFrame{FoodGroup: wire.ICBM, SubGroup: wire.ICBMErr},
 				Body:  wire.SNACError{Code: wire.ErrorCodeNotLoggedOn},
@@ -1854,18 +1865,20 @@ func TestInstantMessageHandler_POST(t *testing.T) {
 			statusCode: http.StatusNotFound,
 		},
 		{
-			name:       "store message for offline recipient",
-			body:       `{"from":"sender_sn","to":"recip_sn","text":"hello world!","storeOffline":true}`,
-			wantStore:  true,
-			sendCalled: true,
-			want:       `Message sent successfully.`,
-			statusCode: http.StatusOK,
+			name:          "store message for offline recipient",
+			body:          `{"from":"sender_sn","to":"recip_sn","text":"hello world!","storeOffline":true}`,
+			wantStore:     true,
+			getUserParams: senderExists,
+			sendCalled:    true,
+			want:          `Message sent successfully.`,
+			statusCode:    http.StatusOK,
 		},
 		{
-			name:       "offline recipient does not accept stored message",
-			body:       `{"from":"sender_sn","to":"recip_sn","text":"hello world!","storeOffline":true}`,
-			wantStore:  true,
-			sendCalled: true,
+			name:          "offline recipient does not accept stored message",
+			body:          `{"from":"sender_sn","to":"recip_sn","text":"hello world!","storeOffline":true}`,
+			wantStore:     true,
+			getUserParams: senderExists,
+			sendCalled:    true,
 			reply: &wire.SNACMessage{
 				Frame: wire.SNACFrame{FoodGroup: wire.ICBM, SubGroup: wire.ICBMErr},
 				Body:  wire.SNACError{Code: wire.ErrorCodeNotLoggedOn},
@@ -1874,9 +1887,10 @@ func TestInstantMessageHandler_POST(t *testing.T) {
 			statusCode: http.StatusNotFound,
 		},
 		{
-			name:       "do not store message for offline recipient",
-			body:       `{"from":"sender_sn","to":"recip_sn","text":"hello world!","storeOffline":false}`,
-			sendCalled: true,
+			name:          "do not store message for offline recipient",
+			body:          `{"from":"sender_sn","to":"recip_sn","text":"hello world!","storeOffline":false}`,
+			getUserParams: senderExists,
+			sendCalled:    true,
 			reply: &wire.SNACMessage{
 				Frame: wire.SNACFrame{FoodGroup: wire.ICBM, SubGroup: wire.ICBMErr},
 				Body:  wire.SNACError{Code: wire.ErrorCodeNotLoggedOn},
@@ -1885,9 +1899,10 @@ func TestInstantMessageHandler_POST(t *testing.T) {
 			statusCode: http.StatusNotFound,
 		},
 		{
-			name:       "sender is blocked",
-			body:       `{"from":"sender_sn","to":"recip_sn","text":"hello world!"}`,
-			sendCalled: true,
+			name:          "sender is blocked",
+			body:          `{"from":"sender_sn","to":"recip_sn","text":"hello world!"}`,
+			getUserParams: senderExists,
+			sendCalled:    true,
 			reply: &wire.SNACMessage{
 				Frame: wire.SNACFrame{FoodGroup: wire.ICBM, SubGroup: wire.ICBMErr},
 				Body:  wire.SNACError{Code: wire.ErrorCodeInLocalPermitDeny},
@@ -1896,10 +1911,35 @@ func TestInstantMessageHandler_POST(t *testing.T) {
 			statusCode: http.StatusForbidden,
 		},
 		{
-			name:       "send fails",
-			body:       `{"from":"sender_sn","to":"recip_sn","text":"hello world!"}`,
-			sendCalled: true,
-			sendErr:    io.EOF,
+			name:          "send fails",
+			body:          `{"from":"sender_sn","to":"recip_sn","text":"hello world!"}`,
+			getUserParams: senderExists,
+			sendCalled:    true,
+			sendErr:       io.EOF,
+			want:          `internal server error`,
+			statusCode:    http.StatusInternalServerError,
+		},
+		{
+			name: "sender does not exist",
+			body: `{"from":"sender_sn","to":"recip_sn","text":"hello world!","storeOffline":true}`,
+			getUserParams: getUserParams{
+				{
+					screenName: state.NewIdentScreenName("sender_sn"),
+					result:     nil,
+				},
+			},
+			want:       `sender does not exist`,
+			statusCode: http.StatusBadRequest,
+		},
+		{
+			name: "sender lookup fails",
+			body: `{"from":"sender_sn","to":"recip_sn","text":"hello world!"}`,
+			getUserParams: getUserParams{
+				{
+					screenName: state.NewIdentScreenName("sender_sn"),
+					err:        io.EOF,
+				},
+			},
 			want:       `internal server error`,
 			statusCode: http.StatusInternalServerError,
 		},
@@ -1915,6 +1955,13 @@ func TestInstantMessageHandler_POST(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			request := httptest.NewRequest(http.MethodPost, "/instant-message", strings.NewReader(tc.body))
 			responseRecorder := httptest.NewRecorder()
+
+			userManager := newMockUserManager(t)
+			for _, params := range tc.getUserParams {
+				userManager.EXPECT().
+					User(matchContext(), params.screenName).
+					Return(params.result, params.err)
+			}
 
 			sendCalled := false
 			icbmSender := func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) (*wire.SNACMessage, error) {
@@ -1959,7 +2006,7 @@ func TestInstantMessageHandler_POST(t *testing.T) {
 				return tc.reply, tc.sendErr
 			}
 
-			postInstantMessageHandler(responseRecorder, request, icbmSender, slog.Default())
+			postInstantMessageHandler(responseRecorder, request, userManager, icbmSender, slog.Default())
 
 			assert.Equal(t, tc.sendCalled, sendCalled)
 			assert.Equal(t, tc.statusCode, responseRecorder.Code)
@@ -5470,6 +5517,81 @@ func TestPostLinkedAccountHandler(t *testing.T) {
 							screenName: state.NewIdentScreenName("test1"),
 							result: []wire.FeedbagItem{
 								{ClassID: wire.FeedbagClassIdAlInfo, Name: "test2"},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:       "link below cap returns 201",
+			screenname: "test1",
+			body:       `{"linked_screen_name":"test2"}`,
+			statusCode: http.StatusCreated,
+			want:       ``,
+			mockParams: mockParams{
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{
+							screenName: state.NewIdentScreenName("test1"),
+							result:     &state.User{IdentScreenName: state.NewIdentScreenName("test1")},
+						},
+						{
+							screenName: state.NewIdentScreenName("test2"),
+							result:     &state.User{IdentScreenName: state.NewIdentScreenName("test2")},
+						},
+					},
+				},
+				feedbagManagerParams: feedbagManagerParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("test1"),
+							result: []wire.FeedbagItem{
+								{ClassID: wire.FeedbagClassIdAlInfo, Name: "link1", ItemID: 1},
+								{ClassID: wire.FeedbagClassIdAlInfo, Name: "link2", ItemID: 2},
+								{ClassID: wire.FeedbagClassIdAlInfo, Name: "link3", ItemID: 3},
+							},
+						},
+					},
+					feedbagUpsertParams: feedbagUpsertParams{
+						{
+							screenName: state.NewIdentScreenName("test1"),
+							items: []wire.FeedbagItem{
+								{ItemID: 4, ClassID: wire.FeedbagClassIdAlInfo, Name: "test2"},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:       "link cap reached returns 409",
+			screenname: "test1",
+			body:       `{"linked_screen_name":"test2"}`,
+			statusCode: http.StatusConflict,
+			want:       `{"message":"user already has the maximum of 4 linked accounts"}`,
+			mockParams: mockParams{
+				userManagerParams: userManagerParams{
+					getUserParams: getUserParams{
+						{
+							screenName: state.NewIdentScreenName("test1"),
+							result:     &state.User{IdentScreenName: state.NewIdentScreenName("test1")},
+						},
+						{
+							screenName: state.NewIdentScreenName("test2"),
+							result:     &state.User{IdentScreenName: state.NewIdentScreenName("test2")},
+						},
+					},
+				},
+				feedbagManagerParams: feedbagManagerParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("test1"),
+							result: []wire.FeedbagItem{
+								{ClassID: wire.FeedbagClassIdAlInfo, Name: "link1", ItemID: 1},
+								{ClassID: wire.FeedbagClassIdAlInfo, Name: "link2", ItemID: 2},
+								{ClassID: wire.FeedbagClassIdAlInfo, Name: "link3", ItemID: 3},
+								{ClassID: wire.FeedbagClassIdAlInfo, Name: "link4", ItemID: 4},
 							},
 						},
 					},

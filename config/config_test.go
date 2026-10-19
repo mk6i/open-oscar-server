@@ -640,7 +640,28 @@ func TestConfigValidate(t *testing.T) {
 				APIListener:     "127.0.0.1:8080",
 				WebAPIListeners: []string{"0.0.0.0:8081"},
 			},
-			wantErr: false,
+			wantErr:     true,
+			errContains: "invalid TOC listeners \"   ,  ,  \": empty entry",
+		},
+		{
+			name: "TOC listeners with trailing comma",
+			config: Config{
+				TOCListeners:    []string{"0.0.0.0:9898", ""},
+				APIListener:     "127.0.0.1:8080",
+				WebAPIListeners: []string{"0.0.0.0:8081"},
+			},
+			wantErr:     true,
+			errContains: "invalid TOC listeners \"0.0.0.0:9898,\": empty entry. Remove the trailing or doubled comma from TOC_LISTENERS",
+		},
+		{
+			name: "TOC listeners with doubled comma",
+			config: Config{
+				TOCListeners:    []string{"0.0.0.0:9898", "", "192.168.1.10:9899"},
+				APIListener:     "127.0.0.1:8080",
+				WebAPIListeners: []string{"0.0.0.0:8081"},
+			},
+			wantErr:     true,
+			errContains: "invalid TOC listeners \"0.0.0.0:9898,,192.168.1.10:9899\": empty entry",
 		},
 		{
 			name: "whitespace-only API listener",
@@ -667,6 +688,35 @@ func TestConfigValidate(t *testing.T) {
 				TOCListeners:    []string{"0.0.0.0:9898"},
 				APIListener:     "127.0.0.1:8080",
 				WebAPIListeners: []string{"   ", "  "},
+			},
+			wantErr:     true,
+			errContains: "invalid web API listeners \"   ,  \": empty entry",
+		},
+		{
+			name: "web API listeners with trailing comma",
+			config: Config{
+				TOCListeners:    []string{"0.0.0.0:9898"},
+				APIListener:     "127.0.0.1:8080",
+				WebAPIListeners: []string{"0.0.0.0:8081", ""},
+			},
+			wantErr:     true,
+			errContains: "invalid web API listeners \"0.0.0.0:8081,\": empty entry. Remove the trailing or doubled comma from WEBAPI_LISTENERS",
+		},
+		{
+			name: "web API listeners with doubled comma",
+			config: Config{
+				TOCListeners:    []string{"0.0.0.0:9898"},
+				APIListener:     "127.0.0.1:8080",
+				WebAPIListeners: []string{"0.0.0.0:8081", "", "192.168.1.10:8082"},
+			},
+			wantErr:     true,
+			errContains: "invalid web API listeners \"0.0.0.0:8081,,192.168.1.10:8082\": empty entry",
+		},
+		{
+			name: "no web API listeners",
+			config: Config{
+				TOCListeners: []string{"0.0.0.0:9898"},
+				APIListener:  "127.0.0.1:8080",
 			},
 			wantErr: false,
 		},

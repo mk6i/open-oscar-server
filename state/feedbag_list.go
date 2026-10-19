@@ -10,6 +10,10 @@ import (
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
+// MaxLinkedScreenNames is the most linked screen names a feedbag may hold, as
+// advertised to clients in the feedbag rights reply.
+const MaxLinkedScreenNames = 4
+
 // ErrGroupNotFound is returned when a feedbag group cannot be found.
 var ErrGroupNotFound = errors.New("group not found")
 
