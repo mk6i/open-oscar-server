@@ -13,6 +13,10 @@ import (
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
+// defaultSystemMsgScreenName is the screen name system messages are sent from
+// when SYSTEM_MSG_SCREEN_NAME is not set.
+const defaultSystemMsgScreenName = "OOS System Msg"
+
 // OServiceService provides functionality for the OService food group, which
 // provides an assortment of services useful across multiple food groups.
 type OServiceService struct {
@@ -878,7 +882,7 @@ func (s OServiceService) sendOfflineMessageNotification(ctx context.Context, ins
 		"not wish to receive offline messages, please go to "+
 		"<a href=\"https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=RDdQw4w9WgXcQ&start_radio=1&pp=ygUJcmljayByb2xsoAcB\">IM Settings</a>.", instance.OfflineMsgCount())
 
-	message, err := systemMessage(msg)
+	message, err := systemMessage(s.systemMsgScreenName(), msg)
 	if err != nil {
 		return err
 	}
@@ -897,7 +901,7 @@ func (s OServiceService) sendMultipleInstanceNotification(ctx context.Context, i
 		"<a href=\"https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=RDdQw4w9WgXcQ&start_radio=1&pp=ygUJcmljayByb2xsoAcB\">here</a> "+
 		"for more information.", instance.DisplayScreenName(), instance.Session().InstanceCount())
 
-	message, err := systemMessage(msg)
+	message, err := systemMessage(s.systemMsgScreenName(), msg)
 	if err != nil {
 		return err
 	}
@@ -907,7 +911,16 @@ func (s OServiceService) sendMultipleInstanceNotification(ctx context.Context, i
 	return nil
 }
 
-func systemMessage(msg string) (wire.SNACMessage, error) {
+// systemMsgScreenName returns the screen name that system messages are sent
+// from.
+func (s OServiceService) systemMsgScreenName() string {
+	if s.cfg.SystemMsgScreenName != "" {
+		return s.cfg.SystemMsgScreenName
+	}
+	return defaultSystemMsgScreenName
+}
+
+func systemMessage(screenName string, msg string) (wire.SNACMessage, error) {
 	frags, err := wire.ICBMFragmentListASCII(msg)
 	if err != nil {
 		return wire.SNACMessage{}, fmt.Errorf("creating ICBM fragments: %w", err)
@@ -922,7 +935,7 @@ func systemMessage(msg string) (wire.SNACMessage, error) {
 		Body: wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
 			ChannelID: wire.ICBMChannelIM,
 			TLVUserInfo: wire.TLVUserInfo{
-				ScreenName: "OOS System Msg",
+				ScreenName: screenName,
 			},
 			TLVRestBlock: wire.TLVRestBlock{
 				TLVList: []wire.TLV{
