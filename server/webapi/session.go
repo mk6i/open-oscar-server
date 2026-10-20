@@ -100,6 +100,10 @@ type Session struct {
 	sentIMs     map[uint64]string // OSCAR message cookie -> the msgId given to the client
 	sentIMOrder []uint64          // insertion order of sentIMs, oldest first
 	sentIMMu    sync.Mutex
+	// typingPeers lists all peers whose last live IM asked for typing events.
+	// Only these peers are sent this session's typing events.
+	typingPeers   map[string]bool
+	typingPeersMu sync.Mutex
 	// IMRateClassID is the rate class that sending an IM spends. The web client
 	// renders any rate limit event as the IM banner, so only this class's updates
 	// may reach it. Zero disables the alert.
@@ -484,6 +488,10 @@ func (s *Session) handleIncomingIM(msg wire.SNACMessage) {
 	// so its presence marks this as a delivery of something sent while the user was
 	// signed off, and carries the moment the sender actually sent it.
 	sentTime, isOffline := body.Uint32BE(wire.ICBMTLVSendTime)
+
+	if !isOffline && (body.ChannelID == wire.ICBMChannelIM || body.ChannelID == wire.ICBMChannelMIME) {
+		s.setPeerWantsTyping(state.NewIdentScreenName(body.ScreenName), body.HasTag(wire.ICBMTLVWantEvents))
+	}
 
 	// Retrieval answers only the instance that asked, and StartSession asks only
 	// when the client subscribed to offlineIM, so a stamped message here is one
@@ -1239,6 +1247,28 @@ func (s *Session) msgIDForCookie(cookie uint64) string {
 	s.sentIMMu.Lock()
 	defer s.sentIMMu.Unlock()
 	return s.sentIMs[cookie]
+}
+
+// setPeerWantsTyping records whether a peer's latest IM asked for typing events.
+func (s *Session) setPeerWantsTyping(peer state.IdentScreenName, wants bool) {
+	s.typingPeersMu.Lock()
+	defer s.typingPeersMu.Unlock()
+	if !wants {
+		delete(s.typingPeers, peer.String())
+		return
+	}
+	if s.typingPeers == nil {
+		s.typingPeers = make(map[string]bool)
+	}
+	s.typingPeers[peer.String()] = true
+}
+
+// PeerWantsTyping reports whether a peer's latest IM asked for typing events. A
+// peer that has not sent this session an IM has not asked.
+func (s *Session) PeerWantsTyping(peer state.IdentScreenName) bool {
+	s.typingPeersMu.Lock()
+	defer s.typingPeersMu.Unlock()
+	return s.typingPeers[peer.String()]
 }
 
 // WebAPIStoredIM is one message in a Web AIM session's in-memory IM log.

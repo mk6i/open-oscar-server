@@ -403,13 +403,15 @@ func TestMessagingHandler_SetTyping(t *testing.T) {
 	tests := []struct {
 		name               string
 		queryParams        string
+		peerWantsTyping    bool
 		setupMocks         func(*mockICBMService)
 		expectedStatusCode int
 		checkResponse      func(*testing.T, string)
 	}{
 		{
-			name:        "Success_TypingStarted",
-			queryParams: "t=recipient&typingStatus=typing",
+			name:            "Success_TypingStarted",
+			queryParams:     "t=recipient&typingStatus=typing",
+			peerWantsTyping: true,
 			setupMocks: func(is *mockICBMService) {
 				is.EXPECT().ClientEvent(mock.Anything, oscarInstance, wire.SNACFrame{}, wire.SNAC_0x04_0x14_ICBMClientEvent{
 					ChannelID:  wire.ICBMChannelIM,
@@ -423,8 +425,9 @@ func TestMessagingHandler_SetTyping(t *testing.T) {
 			},
 		},
 		{
-			name:        "Success_TypingPaused",
-			queryParams: "t=recipient&typingStatus=typed",
+			name:            "Success_TypingPaused",
+			queryParams:     "t=recipient&typingStatus=typed",
+			peerWantsTyping: true,
 			setupMocks: func(is *mockICBMService) {
 				is.EXPECT().ClientEvent(mock.Anything, oscarInstance, wire.SNACFrame{}, wire.SNAC_0x04_0x14_ICBMClientEvent{
 					ChannelID:  wire.ICBMChannelIM,
@@ -435,8 +438,9 @@ func TestMessagingHandler_SetTyping(t *testing.T) {
 			expectedStatusCode: http.StatusOK,
 		},
 		{
-			name:        "Success_TypingStopped",
-			queryParams: "t=recipient&typingStatus=none",
+			name:            "Success_TypingStopped",
+			queryParams:     "t=recipient&typingStatus=none",
+			peerWantsTyping: true,
 			setupMocks: func(is *mockICBMService) {
 				is.EXPECT().ClientEvent(mock.Anything, oscarInstance, wire.SNACFrame{}, wire.SNAC_0x04_0x14_ICBMClientEvent{
 					ChannelID:  wire.ICBMChannelIM,
@@ -445,6 +449,15 @@ func TestMessagingHandler_SetTyping(t *testing.T) {
 				}).Return(nil)
 			},
 			expectedStatusCode: http.StatusOK,
+		},
+		{
+			name:               "PeerDidNotAskForTyping",
+			queryParams:        "t=recipient&typingStatus=typing",
+			setupMocks:         func(is *mockICBMService) {},
+			expectedStatusCode: http.StatusOK,
+			checkResponse: func(t *testing.T, body string) {
+				assert.Contains(t, body, `"statusCode":200`)
+			},
 		},
 		{
 			name:               "Error_MissingRecipient",
@@ -462,6 +475,9 @@ func TestMessagingHandler_SetTyping(t *testing.T) {
 			icbmService := newMockICBMService(t)
 
 			sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
+			sess, err := sessionMgr.GetSession(context.Background(), aimsid)
+			require.NoError(t, err)
+			sess.setPeerWantsTyping(state.NewIdentScreenName("Recipient"), tt.peerWantsTyping)
 
 			handler := &MessagingHandler{
 				ICBMService:    icbmService,

@@ -656,6 +656,45 @@ func TestSession_HandleIncomingIM_NormalizesAimID(t *testing.T) {
 	assert.Equal(t, "hello", msgs[0].Message)
 }
 
+func TestSession_HandleIncomingIM_TracksPeerWantsTyping(t *testing.T) {
+	frags, err := wire.ICBMFragmentListASCII("hello")
+	require.NoError(t, err)
+
+	im := func(wantEvents bool, offline bool) wire.SNACMessage {
+		body := wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
+			ChannelID:   wire.ICBMChannelIM,
+			TLVUserInfo: wire.TLVUserInfo{ScreenName: "Mike Kelly"},
+		}
+		body.Append(wire.NewTLVBE(wire.ICBMTLVAOLIMData, frags))
+		if wantEvents {
+			body.Append(wire.NewTLVBE(wire.ICBMTLVWantEvents, []byte{}))
+		}
+		if offline {
+			body.Append(wire.NewTLVBE(wire.ICBMTLVSendTime, uint32(1)))
+		}
+		return wire.SNACMessage{Body: body}
+	}
+
+	sess := &Session{
+		ScreenName:    state.DisplayScreenName("me"),
+		EventQueue:    NewEventQueue(10),
+		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		FeedbagLoader: emptyFeedbagLoader,
+	}
+	peer := state.NewIdentScreenName("mikekelly")
+
+	assert.False(t, sess.PeerWantsTyping(peer), "no IM received yet")
+
+	sess.handleIncomingIM(im(true, false))
+	assert.True(t, sess.PeerWantsTyping(peer))
+
+	sess.handleIncomingIM(im(false, true))
+	assert.True(t, sess.PeerWantsTyping(peer), "offline IM does not change the peer's preference")
+
+	sess.handleIncomingIM(im(false, false))
+	assert.False(t, sess.PeerWantsTyping(peer))
+}
+
 func TestSession_HandleTypingNotification_NormalizesAimID(t *testing.T) {
 	sess := &Session{
 		Events:        []string{"typing"},

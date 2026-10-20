@@ -240,6 +240,12 @@ func (h *MessagingHandler) SetTyping(w http.ResponseWriter, r *http.Request, ses
 		return
 	}
 
+	// refrain from sending a typing event if the peer didn't ask for one
+	if !sess.PeerWantsTyping(state.NewIdentScreenName(recipient)) {
+		SendOK(w, r, nil, h.Logger)
+		return
+	}
+
 	typingStatus := r.URL.Query().Get("typingStatus")
 	if typingStatus == "" {
 		typingStatus = "none"
