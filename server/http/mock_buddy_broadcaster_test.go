@@ -8,6 +8,7 @@ import (
 	"context"
 
 	"github.com/mk6i/open-oscar-server/state"
+	"github.com/mk6i/open-oscar-server/wire"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -113,5 +114,40 @@ func (_c *mockBuddyBroadcaster_BroadcastVisibility_Call) Return(err error) *mock
 
 func (_c *mockBuddyBroadcaster_BroadcastVisibility_Call) RunAndReturn(run func(ctx context.Context, you *state.SessionInstance, filter []state.IdentScreenName, sendDepartures bool) error) *mockBuddyBroadcaster_BroadcastVisibility_Call {
 	_c.Call.Return(run)
+	return _c
+}
+
+// BroadcastBuddyArrived provides a mock function for the type mockBuddyBroadcaster
+func (_mock *mockBuddyBroadcaster) BroadcastBuddyArrived(ctx context.Context, screenName state.IdentScreenName, userInfo wire.TLVUserInfo) error {
+	ret := _mock.Called(ctx, screenName, userInfo)
+
+	if len(ret) == 0 {
+		panic("no return value specified for BroadcastBuddyArrived")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, state.IdentScreenName, wire.TLVUserInfo) error); ok {
+		r0 = returnFunc(ctx, screenName, userInfo)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// mockBuddyBroadcaster_BroadcastBuddyArrived_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'BroadcastBuddyArrived'
+type mockBuddyBroadcaster_BroadcastBuddyArrived_Call struct {
+	*mock.Call
+}
+
+// BroadcastBuddyArrived is a helper method to define mock.On call
+//   - ctx context.Context
+//   - screenName state.IdentScreenName
+//   - userInfo wire.TLVUserInfo
+func (_e *mockBuddyBroadcaster_Expecter) BroadcastBuddyArrived(ctx any, screenName any, userInfo any) *mockBuddyBroadcaster_BroadcastBuddyArrived_Call {
+	return &mockBuddyBroadcaster_BroadcastBuddyArrived_Call{Call: _e.mock.On("BroadcastBuddyArrived", ctx, screenName, userInfo)}
+}
+
+func (_c *mockBuddyBroadcaster_BroadcastBuddyArrived_Call) Return(err error) *mockBuddyBroadcaster_BroadcastBuddyArrived_Call {
+	_c.Call.Return(err)
 	return _c
 }
