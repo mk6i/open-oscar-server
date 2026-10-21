@@ -23,6 +23,7 @@ The following features are supported:
 **AIM**
 
 - [x] Windows AIM Clients: [v1.x-v5.x](./docs/CLIENT.md), [v6.x-v7.x](docs/AIM_6_7.md)
+- [x] 3rd Party Clients: [Pidgin](docs/CLIENT_PIDGIN.md), [BumbleBe](https://codeberg.org/nikisoft/BumbleBe)
 - [x] Away Messages
 - [x] Buddy Icons (v4.x, v5.x)
 - [x] Buddy List
@@ -38,10 +39,12 @@ The following features are supported:
 - [x] File Sharing
     - LAN Only: Direct Connect, Get File
     - Lan/Internet: [Send File](./docs/RENDEZVOUS.md)
+- [x] WebAPI / WIM Clients: [iOS](docs/CLIENT_IOS.md), [Android](docs/CLIENT_ANDROID.md), [AIM Express](docs/CLIENT_AIM_EXPRESS.md), [Mandarin](docs/CLIENT_MANDARIN.md)
 
 **ICQ**
 
 - [x] Windows ICQ Clients: [98x, 99x, 2000x, 2001x, 2002x, 2003x, 4, 5](./docs/CLIENT_ICQ.md)
+- [x] 3rd Party Clients: [Jimm](https://sourceforge.net/projects/jimm/), QIP, [Kopete](https://apps.kde.org/kopete/), [Pidgin](docs/CLIENT_PIDGIN.md)
 - [x] Instant Messaging
 - [x] Profiles
 - [x] User Search
