@@ -3676,8 +3676,8 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 						{
 							screenName: state.NewIdentScreenName("me"),
 							message: func() wire.SNACMessage {
-								msg, err := systemMessage("You just received 3 IM(s) while you were offline. If you " +
-									"do not wish to receive offline messages, please go to " +
+								msg, err := systemMessage(defaultSystemMsgScreenName, "You just received 3 IM(s) while you were offline. If you "+
+									"do not wish to receive offline messages, please go to "+
 									"<a href=\"https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=RDdQw4w9WgXcQ&start_radio=1&pp=ygUJcmljayByb2xsoAcB\">IM Settings</a>.")
 								require.NoError(t, err)
 								return msg
@@ -3782,8 +3782,68 @@ func TestOServiceService_ClientOnline(t *testing.T) {
 						{
 							screenName: state.NewIdentScreenName("me"),
 							message: func() wire.SNACMessage {
-								msg, err := systemMessage("Your screen name (me) is now signed into Open OSCAR Server in 3 locations. Click " +
-									"<a href=\"https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=RDdQw4w9WgXcQ&start_radio=1&pp=ygUJcmljayByb2xsoAcB\">here</a> " +
+								msg, err := systemMessage(defaultSystemMsgScreenName, "Your screen name (me) is now signed into Open OSCAR Server in 3 locations. Click "+
+									"<a href=\"https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=RDdQw4w9WgXcQ&start_radio=1&pp=ygUJcmljayByb2xsoAcB\">here</a> "+
+									"for more information.")
+								require.NoError(t, err)
+								return msg
+							}(),
+						},
+					},
+				},
+			},
+			validateSess: func(t *testing.T, instance *state.SessionInstance) {
+				assert.True(t, instance.Session().Instance(3).SignonComplete())
+			},
+		},
+		{
+			name: "notify that BOS user is logged in to multiple locations, SystemMsgScreenName is set",
+			instance: func() *state.SessionInstance {
+				instance1 := newTestInstance("me")
+				instance1.SetSignonComplete()
+				instance2 := instance1.Session().AddInstance()
+				instance2.SetSignonComplete()
+				instance3 := instance1.Session().AddInstance()
+				// instance 3 is not yet signed on
+				return instance3
+			}(),
+			bodyIn:  wire.SNAC_0x01_0x02_OServiceClientOnline{},
+			service: wire.BOS,
+			cfg: config.Config{
+				SystemMsgScreenName: "AIM Bot",
+			},
+			mockParams: mockParams{
+				buddyBroadcasterParams: buddyBroadcasterParams{
+					broadcastVisibilityParams: broadcastVisibilityParams{
+						{
+							from:             state.NewIdentScreenName("me"),
+							filter:           nil,
+							doSendDepartures: false,
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Stats,
+									SubGroup:  wire.StatsSetMinReportInterval,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x0B_0x02_StatsSetMinReportInterval{
+									MinReportInterval: 1,
+								},
+							},
+						},
+					},
+					relayToOtherInstancesParams: relayToOtherInstancesParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: func() wire.SNACMessage {
+								msg, err := systemMessage("AIM Bot", "Your screen name (me) is now signed into Open OSCAR Server in 3 locations. Click "+
+									"<a href=\"https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=RDdQw4w9WgXcQ&start_radio=1&pp=ygUJcmljayByb2xsoAcB\">here</a> "+
 									"for more information.")
 								require.NoError(t, err)
 								return msg
