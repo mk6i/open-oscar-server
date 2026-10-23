@@ -3,6 +3,7 @@ package http
 import (
 	"bytes"
 	"context"
+	"crypto/md5"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -58,6 +59,10 @@ func NewManagementAPI(bld config.Build, listener string, userManager UserManager
 	// Handlers for '/user/{screenname}/icon' route
 	mux.HandleFunc("GET /user/{screenname}/icon", func(w http.ResponseWriter, r *http.Request) {
 		getUserBuddyIconHandler(w, r, userManager, feedbagRetriever, bartAssetManager, logger)
+	})
+
+	mux.HandleFunc("PUT /user/{screenname}/icon", func(w http.ResponseWriter, r *http.Request) {
+		putUserBuddyIconHandler(w, r, userManager, feedbagManager, bartAssetManager, sessionRetriever, messageRelayer, buddyBroadcaster, logger, rand.Intn)
 	})
 
 	// Handlers for '/user/{screenname}/icq' route
@@ -729,6 +734,121 @@ func getUserBuddyIconHandler(w http.ResponseWriter, r *http.Request, u UserManag
 	}
 	w.Header().Set("Content-Type", http.DetectContentType(icon))
 	_, _ = w.Write(icon)
+}
+
+// buddyIconMaxBytes caps an uploaded buddy icon, matching the limit the Web
+// API applies to icons users upload themselves.
+const buddyIconMaxBytes = 64 << 10
+
+// putUserBuddyIconHandler handles the PUT /user/{screenname}/icon endpoint.
+//
+// The request body is the image itself. Setting an icon takes two writes, the
+// same two an OSCAR client makes: the image goes into the BART store under its
+// MD5 hash, and the user's feedbag gets a BART item pointing at that hash. A
+// signed-on user then has the change pushed to their clients and to the
+// buddies watching them; a signed-off user picks it up at next sign-on.
+func putUserBuddyIconHandler(w http.ResponseWriter, r *http.Request, u UserManager, feedbagManager FeedbagManager, b BARTAssetManager, sessionRetriever SessionRetriever, messageRelayer MessageRelayer, buddyBroadcaster BuddyBroadcaster, logger *slog.Logger, randInt func(n int) int) {
+	w.Header().Set("Content-Type", "application/json")
+
+	screenName := state.NewIdentScreenName(r.PathValue("screenname"))
+	user, err := u.User(r.Context(), screenName)
+	if err != nil {
+		logger.Error("error retrieving user", "err", err.Error())
+		errorMsg(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if user == nil {
+		errorMsg(w, "user not found", http.StatusNotFound)
+		return
+	}
+
+	// One byte past the cap distinguishes "exactly at the limit" from "over it".
+	image, err := io.ReadAll(io.LimitReader(r.Body, buddyIconMaxBytes+1))
+	if err != nil {
+		errorMsg(w, "failed to read request body", http.StatusBadRequest)
+		return
+	}
+	switch {
+	case len(image) == 0:
+		errorMsg(w, "empty image", http.StatusBadRequest)
+		return
+	case len(image) > buddyIconMaxBytes:
+		errorMsg(w, fmt.Sprintf("image too large. max: %d bytes", buddyIconMaxBytes), http.StatusRequestEntityTooLarge)
+		return
+	}
+	if !strings.HasPrefix(http.DetectContentType(image), "image/") {
+		errorMsg(w, "body is not an image", http.StatusBadRequest)
+		return
+	}
+
+	sum := md5.Sum(image)
+	hash := sum[:]
+
+	if err := b.InsertBARTItem(r.Context(), hash, image, wire.BARTTypesBuddyIcon); err != nil && !errors.Is(err, state.ErrBARTItemExists) {
+		logger.Error("error storing buddy icon", "err", err.Error())
+		errorMsg(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	items, err := feedbagManager.Feedbag(r.Context(), screenName)
+	if err != nil {
+		logger.Error("error retrieving feedbag", "err", err.Error())
+		errorMsg(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	item, inserted := state.NewFeedbagList(items, randInt).SetIcon(wire.BARTTypesBuddyIcon, hash)
+	if err := feedbagManager.FeedbagUpsert(r.Context(), screenName, []wire.FeedbagItem{item}); err != nil {
+		logger.Error("error updating feedbag", "err", err.Error())
+		errorMsg(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if session := sessionRetriever.RetrieveSession(screenName); session != nil {
+		session.SetBuddyIcon(wire.BARTID{
+			Type: wire.BARTTypesBuddyIcon,
+			BARTInfo: wire.BARTInfo{
+				Flags: wire.BARTFlagsCustom,
+				Hash:  hash,
+			},
+		})
+
+		// Keep the client's copy of the feedbag in step with the server's.
+		subGroup := wire.FeedbagUpdateItem
+		if inserted {
+			subGroup = wire.FeedbagInsertItem
+		}
+		messageRelayer.RelayToScreenName(r.Context(), screenName, wire.SNACMessage{
+			Frame: wire.SNACFrame{
+				FoodGroup: wire.Feedbag,
+				SubGroup:  subGroup,
+				RequestID: wire.ReqIDFromServer,
+			},
+			Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
+				Items: []wire.FeedbagItem{item},
+			},
+		})
+		messageRelayer.RelayToScreenName(r.Context(), screenName, wire.SNACMessage{
+			Frame: wire.SNACFrame{
+				FoodGroup: wire.OService,
+				SubGroup:  wire.OServiceUserInfoUpdate,
+				RequestID: wire.ReqIDFromServer,
+			},
+			Body: wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate{
+				UserInfo: []wire.TLVUserInfo{session.TLVUserInfo()},
+			},
+		})
+
+		// Buddies learn of a new icon from the hash in the user's arrival.
+		if err := buddyBroadcaster.BroadcastBuddyArrived(r.Context(), screenName, session.TLVUserInfo()); err != nil {
+			logger.Error("error broadcasting buddy icon", "err", err.Error())
+		}
+	}
+
+	_ = json.NewEncoder(w).Encode(BARTAsset{
+		Hash: hex.EncodeToString(hash),
+		Type: wire.BARTTypesBuddyIcon,
+	})
 }
 
 // getUserAccountHandler handles the GET /user/{screenname}/account endpoint.
@@ -1927,6 +2047,14 @@ func putFeedbagBuddyHandler(w http.ResponseWriter, r *http.Request, buddyBroadca
 		}
 	}
 
+	// The body is optional: callers that predate the alias send none, or an
+	// empty JSON value, and still get a buddy without a display name.
+	var body struct {
+		Alias string `json:"alias"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	alias := strings.TrimSpace(body.Alias)
+
 	items, err := feedbagManager.Feedbag(r.Context(), me)
 	if err != nil {
 		logger.Error("error retrieving feedbag", "err", err.Error())
@@ -1982,6 +2110,12 @@ func putFeedbagBuddyHandler(w http.ResponseWriter, r *http.Request, buddyBroadca
 	if buddyItem.ItemID == 0 {
 		errorMsg(w, "maximum items reached", http.StatusConflict)
 		return
+	}
+
+	// Clients store the contact's display name on the buddy item itself;
+	// without it they show the bare screen name.
+	if alias != "" {
+		buddyItem.Append(wire.NewTLVBE(wire.FeedbagAttributesAlias, alias))
 	}
 
 	group.AppendOrderMembers(buddyItem.ItemID)
