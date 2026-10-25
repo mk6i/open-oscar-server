@@ -8,7 +8,6 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
 
 	"github.com/stretchr/testify/assert"
@@ -24,10 +23,8 @@ func TestServer_handleTOCRequest_serverShutdown(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		sv := Server{
-			bosProxy:       testOSCARProxy(t),
-			logger:         slog.Default(),
-			recalcWarning:  func(ctx context.Context, instance *state.SessionInstance) error { return nil },
-			lowerWarnLevel: func(ctx context.Context, instance *state.SessionInstance) {},
+			bosProxy: testOSCARProxy(t),
+			logger:   slog.Default(),
 		}
 
 		serverReader, _ := io.Pipe()
@@ -36,8 +33,8 @@ func TestServer_handleTOCRequest_serverShutdown(t *testing.T) {
 		closeConn := func() {
 			_ = serverReader.Close()
 		}
-		sess := newTestSession("me")
-		err := sv.handleTOCRequest(ctx, closeConn, sess, NewChatRegistry(), fc)
+		me, _ := newTestTOCConn(newTestSession("me"))
+		err := sv.handleTOCRequest(ctx, closeConn, me, fc)
 		assert.True(t, errors.Is(err, errTOCProcessing) || errors.Is(err, errServerWrite))
 	}()
 
@@ -60,16 +57,14 @@ func TestServer_handleTOCRequest_clientReadDisconnect(t *testing.T) {
 		closeConn := func() {
 			_ = serverReader.Close()
 		}
-		sess := newTestSession("me")
+		me, _ := newTestTOCConn(newTestSession("me"))
 		fc := wire.NewFlapClient(0, serverReader, nil)
 
 		sv := Server{
-			bosProxy:       testOSCARProxy(t),
-			logger:         slog.Default(),
-			recalcWarning:  func(ctx context.Context, instance *state.SessionInstance) error { return nil },
-			lowerWarnLevel: func(ctx context.Context, instance *state.SessionInstance) {},
+			bosProxy: testOSCARProxy(t),
+			logger:   slog.Default(),
 		}
-		err := sv.handleTOCRequest(context.Background(), closeConn, sess, NewChatRegistry(), fc)
+		err := sv.handleTOCRequest(context.Background(), closeConn, me, fc)
 		assert.ErrorIs(t, err, errClientReq)
 		assert.ErrorIs(t, err, io.ErrClosedPipe)
 	}()
@@ -86,7 +81,7 @@ func TestServer_handleTOCRequest_sessClose(t *testing.T) {
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 
-	sess := newTestSession("me")
+	me, bos := newTestTOCConn(newTestSession("me"))
 
 	go func() {
 		defer wg.Done()
@@ -99,18 +94,17 @@ func TestServer_handleTOCRequest_sessClose(t *testing.T) {
 		}
 
 		sv := Server{
-			bosProxy:       testOSCARProxy(t),
-			logger:         slog.Default(),
-			recalcWarning:  func(ctx context.Context, instance *state.SessionInstance) error { return nil },
-			lowerWarnLevel: func(ctx context.Context, instance *state.SessionInstance) {},
+			bosProxy: testOSCARProxy(t),
+			logger:   slog.Default(),
 		}
-		err := sv.handleTOCRequest(context.Background(), closeConn, sess, NewChatRegistry(), fc)
+		err := sv.handleTOCRequest(context.Background(), closeConn, me, fc)
 		assert.ErrorIs(t, err, errTOCProcessing)
 		assert.ErrorIs(t, err, errDisconnect)
 	}()
 
-	// close the session, simulating another client login kicking this session
-	sess.CloseInstance()
+	// close the BOS connection, simulating another client login kicking this
+	// session
+	bos.Close()
 
 	// wait for handleTOCRequest to return
 	wg.Wait()
@@ -129,16 +123,14 @@ func TestServer_handleTOCRequest_replyFailure(t *testing.T) {
 		closeConn := func() {
 			_ = serverReader.Close()
 		}
-		sess := newTestSession("me")
+		me, _ := newTestTOCConn(newTestSession("me"))
 		fc := wire.NewFlapClient(0, serverReader, serverWriter)
 
 		sv := Server{
-			bosProxy:       testOSCARProxy(t),
-			logger:         slog.Default(),
-			recalcWarning:  func(ctx context.Context, instance *state.SessionInstance) error { return nil },
-			lowerWarnLevel: func(ctx context.Context, instance *state.SessionInstance) {},
+			bosProxy: testOSCARProxy(t),
+			logger:   slog.Default(),
 		}
-		err := sv.handleTOCRequest(context.Background(), closeConn, sess, NewChatRegistry(), fc)
+		err := sv.handleTOCRequest(context.Background(), closeConn, me, fc)
 		assert.ErrorIs(t, err, errServerWrite)
 		assert.ErrorIs(t, err, io.ErrClosedPipe)
 	}()
@@ -172,12 +164,11 @@ func TestServer_handleTOCRequest_happyPath(t *testing.T) {
 		}
 		fc := wire.NewFlapClient(0, serverReader, serverWriter)
 		sv := Server{
-			bosProxy:       testOSCARProxy(t),
-			logger:         slog.Default(),
-			recalcWarning:  func(ctx context.Context, instance *state.SessionInstance) error { return nil },
-			lowerWarnLevel: func(ctx context.Context, instance *state.SessionInstance) {},
+			bosProxy: testOSCARProxy(t),
+			logger:   slog.Default(),
 		}
-		err := sv.handleTOCRequest(context.Background(), closeConn, newTestSession("me"), NewChatRegistry(), fc)
+		me, _ := newTestTOCConn(newTestSession("me"))
+		err := sv.handleTOCRequest(context.Background(), closeConn, me, fc)
 		assert.ErrorIs(t, err, errClientReq)
 		assert.ErrorIs(t, err, io.ErrClosedPipe)
 	}()

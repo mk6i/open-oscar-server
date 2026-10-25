@@ -22,7 +22,9 @@ var (
 	date    = "unknown"
 )
 
-func init() {
+// parseFlags handles the command line flags and loads the config file into the
+// environment.
+func parseFlags() {
 	cfgFile := flag.String("config", "settings.env", "Path to config file")
 	showHelp := flag.Bool("help", false, "Display help")
 	showVersion := flag.Bool("version", false, "Display build information")
@@ -49,6 +51,8 @@ func init() {
 }
 
 func main() {
+	parseFlags()
+
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
@@ -69,7 +73,7 @@ func main() {
 	api := MgmtAPI(deps)
 	g.Go(api.ListenAndServe)
 
-	toc := TOC(deps)
+	toc := TOC(deps, oscar)
 	g.Go(toc.ListenAndServe)
 
 	var webAPI *webapi.Server

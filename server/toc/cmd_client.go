@@ -9,11 +9,11 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/url"
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -23,141 +23,94 @@ import (
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
-// NewChatRegistry creates a new ChatRegistry instance.
-func NewChatRegistry() *ChatRegistry {
-	chatRegistry := &ChatRegistry{
-		lookup:   make(map[int]wire.ICBMRoomInfo),
-		sessions: make(map[int]*state.SessionInstance),
-		m:        sync.RWMutex{},
-	}
-	return chatRegistry
-}
-
-// ChatRegistry manages the chat rooms that a user is connected to during a TOC
-// session. It maintains mappings between chat room identifiers, metadata, and
-// active chat sessions.
-//
-// This struct provides thread-safe operations for adding, retrieving, and managing
-// chat room metadata and associated sessions.
-type ChatRegistry struct {
-	lookup   map[int]wire.ICBMRoomInfo      // Maps chat room IDs to their metadata.
-	sessions map[int]*state.SessionInstance // Tracks active chat sessions by chat room ID.
-	nextID   int                            // Incremental identifier for newly added chat rooms.
-	m        sync.RWMutex                   // Synchronization primitive for concurrent access.
-}
-
-// Add registers metadata for a newly joined chat room and returns a unique
-// identifier for it. If the room is already registered, it returns the existing ID.
-func (c *ChatRegistry) Add(room wire.ICBMRoomInfo) int {
-	c.m.Lock()
-	defer c.m.Unlock()
-	for chatID, r := range c.lookup {
-		if r == room {
-			return chatID
-		}
-	}
-	id := c.nextID
-	c.lookup[id] = room
-	c.nextID++
-	return id
-}
-
-// LookupRoom retrieves metadata for the chat room registered with chatID.
-// It returns the room metadata and a boolean indicating whether the chat ID
-// was found.
-func (c *ChatRegistry) LookupRoom(chatID int) (wire.ICBMRoomInfo, bool) {
-	c.m.RLock()
-	defer c.m.RUnlock()
-	room, found := c.lookup[chatID]
-	return room, found
-}
-
-// RegisterSess associates a chat session with a chat room. If a session is
-// already registered for the given chat ID, it will be overwritten.
-func (c *ChatRegistry) RegisterSess(chatID int, instance *state.SessionInstance) {
-	c.m.Lock()
-	defer c.m.Unlock()
-	c.sessions[chatID] = instance
-}
-
-// RetrieveSess retrieves the chat session associated with the given chat ID.
-// If no session is registered for the chat ID, it returns nil.
-func (c *ChatRegistry) RetrieveSess(chatID int) *state.SessionInstance {
-	c.m.RLock()
-	defer c.m.RUnlock()
-	return c.sessions[chatID]
-}
-
-// RemoveSess removes a chat session.
-func (c *ChatRegistry) RemoveSess(chatID int) {
-	c.m.Lock()
-	defer c.m.Unlock()
-	delete(c.sessions, chatID)
-}
-
-// Sessions retrieves all the chat sessions.
-func (c *ChatRegistry) Sessions() []*state.SessionInstance {
-	c.m.RLock()
-	defer c.m.RUnlock()
-	sessions := make([]*state.SessionInstance, 0, len(c.sessions))
-	for _, s := range c.sessions {
-		sessions = append(sessions, s)
-	}
-	return sessions
-}
-
 // OSCARProxy acts as a bridge between TOC clients and the OSCAR server,
 // translating protocol messages between the two.
 //
 // It performs the following functions:
-//   - Receives TOC messages from the client, converts them into SNAC messages,
-//     and forwards them to the OSCAR server. The SNAC response is then converted
-//     back into a TOC response for the client.
-//   - Receives incoming messages from the OSCAR server and translates them into
-//     TOC responses for the client.
+//   - Receives TOC commands from the client, converts them into SNAC
+//     requests, and sends them to the OSCAR server (cmd_client.go).
+//   - Receives SNACs from the OSCAR server, both replies to those requests and
+//     server-initiated messages, and translates them into TOC responses for
+//     the client (cmd_server.go).
 type OSCARProxy struct {
-	AdminService       AdminService
-	AuthService        AuthService
-	BuddyListRegistry  BuddyListRegistry
-	BuddyService       BuddyService
-	ChatNavService     ChatNavService
-	ChatService        ChatService
-	ChatSessionManager ChatSessionManager
-	CookieBaker        CookieBaker
-	DirSearchService   DirSearchService
-	ICBMService        ICBMService
-	LocateService      LocateService
-	Logger             *slog.Logger
-	OServiceService    OServiceService
-	PermitDenyService  PermitDenyService
-	TOCConfigStore     TOCConfigStore
-	SessionRetriever   SessionRetriever
-	FeedbagService     FeedbagService
-	FeedbagManager     FeedbagManager
-	SNACRateLimits     wire.SNACRateLimits
-	HTTPIPRateLimiter  *IPRateLimiter
+	CookieBaker       CookieBaker
+	DirSearchService  DirSearchService
+	HTTPIPRateLimiter *IPRateLimiter
+	LocateService     LocateService
+	Logger            *slog.Logger
+	// OSCARServer serves the OSCAR connections TOC opens for its users.
+	OSCARServer OSCARServer
+	// OSCAREndpoint is the OSCAR listener that TOC's connections appear to
+	// arrive on.
+	OSCAREndpoint    config.Endpoint
+	SessionRetriever SessionRetriever
+	TOCConfigStore   TOCConfigStore
 	// RandIntn is the source for feedbag item ID generation.
 	// Inject a deterministic func in tests to assert exact feedbag item slices.
 	RandIntn func(n int) int
 }
 
-// RecvClientCmd processes a client TOC command and returns a server reply.
+// signonTimeout bounds how long signon waits for each OSCAR server reply.
+const signonTimeout = 10 * time.Second
+
+// Request contexts are cached with each SNAC that TOC sends to the OSCAR
+// server, under the SNAC's request ID (see snacCache). When the reply or error
+// comes back, cmd_server.go uses the context's type to tell which TOC command
+// the reply answers, and the context's fields for what the reply doesn't
+// carry.
+type (
+	// getStatusReqCtx is the request context of a toc_get_status user info
+	// query.
+	getStatusReqCtx struct {
+		screenName string
+	}
+
+	// evilReqCtx is the request context of a toc_evil warning.
+	evilReqCtx struct{}
+
+	// changePasswdReqCtx is the request context of a toc_change_passwd admin
+	// request.
+	changePasswdReqCtx struct{}
+
+	// formatNickReqCtx is the request context of a toc_format_nickname admin
+	// request.
+	formatNickReqCtx struct{}
+
+	// chatJoinReqCtx is the request context of the room creation that starts
+	// toc_chat_join.
+	chatJoinReqCtx struct{}
+
+	// chatAcceptReqCtx is the request context of the room info query that
+	// starts toc_chat_accept.
+	chatAcceptReqCtx struct {
+		chatID int
+	}
+
+	// chatServiceReqCtx is the request context of a request for a chat room
+	// connection.
+	chatServiceReqCtx struct {
+		chatID   int
+		roomName string
+	}
+
+	// feedbagChangeReqCtx is the request context of a feedbag change.
+	feedbagChangeReqCtx struct{}
+
+	// feedbagReloadReqCtx is the request context of a feedbag query that
+	// reloads the feedbag mirror. marker identifies the changes sent before
+	// the query.
+	feedbagReloadReqCtx struct {
+		marker uint64
+	}
+)
+
+// RecvClientCmd processes a client TOC command and returns the replies that
+// don't depend on a response from the OSCAR server. Replies that do are sent
+// by cmd_server.go once the response arrives.
 //
-// * sessBOS is the current user's session.
-// * chatRegistry manages the current user's chat sessions
+// * me is the current user's TOC connection.
 // * payload is the command + arguments
-// * toCh is the channel that transports messages to client
-// * doAsync performs async tasks, is auto-cleaned up by caller
-//
-// It returns true if the server can continue processing commands.
-func (s OSCARProxy) RecvClientCmd(
-	ctx context.Context,
-	sessBOS *state.SessionInstance,
-	chatRegistry *ChatRegistry,
-	payload []byte,
-	toCh chan<- []string,
-	doAsync func(f func() error),
-) (replies []string) {
+func (s OSCARProxy) RecvClientCmd(ctx context.Context, me *tocConn, payload []byte) (replies []string) {
 
 	cmd := payload
 	var args []byte
@@ -171,104 +124,115 @@ func (s OSCARProxy) RecvClientCmd(
 		s.Logger.InfoContext(ctx, "client request", "command", cmd)
 	}
 
+	if bytes.HasPrefix(cmd, []byte("toc2_")) && !me.IsTOC2() {
+		s.Logger.ErrorContext(ctx, fmt.Sprintf("TOC2 command %s from a TOC1 session", cmd))
+		return []string{cmdInternalSvcErr}
+	}
+
 	switch string(cmd) {
 	case "toc_send_im", "toc2_send_im":
-		return s.SendIM(ctx, sessBOS, args)
+		return s.SendIM(ctx, me, args)
 	case "toc_init_done":
-		return s.InitDone(ctx, sessBOS)
+		return s.InitDone(ctx, me)
 	case "toc_add_buddy":
-		return s.AddBuddy(ctx, sessBOS, args)
+		return s.AddBuddy(ctx, me, args)
 	case "toc_get_status":
-		return s.GetStatus(ctx, sessBOS, args)
+		return s.GetStatus(ctx, me, args)
 	case "toc_remove_buddy":
-		return s.RemoveBuddy(ctx, sessBOS, args)
+		return s.RemoveBuddy(ctx, me, args)
 	case "toc_add_permit":
-		return s.AddPermit(ctx, sessBOS, args)
+		return s.AddPermit(ctx, me, args)
 	case "toc_add_deny":
-		return s.AddDeny(ctx, sessBOS, args)
+		return s.AddDeny(ctx, me, args)
 	case "toc_set_away":
-		return s.SetAway(ctx, sessBOS, args)
+		return s.SetAway(ctx, me, args)
 	case "toc_set_caps":
-		return s.SetCaps(ctx, sessBOS, args)
+		return s.SetCaps(ctx, me, args)
 	case "toc_evil":
-		return s.Evil(ctx, sessBOS, args)
+		return s.Evil(ctx, me, args)
 	case "toc_get_info":
-		return s.GetInfoURL(ctx, sessBOS, args)
+		return s.GetInfoURL(ctx, me, args)
 	case "toc_change_passwd":
-		return s.ChangePassword(ctx, sessBOS, args)
+		return s.ChangePassword(ctx, me, args)
 	case "toc_format_nickname":
-		return s.FormatNickname(ctx, sessBOS, args)
-	case "toc_chat_join", "toc_chat_accept":
-		var chatID int
-		var msg []string
-
-		if string(cmd) == "toc_chat_join" {
-			chatID, msg = s.ChatJoin(ctx, sessBOS, chatRegistry, args)
-		} else {
-			chatID, msg = s.ChatAccept(ctx, sessBOS, chatRegistry, args)
-		}
-
-		if len(msg) > 0 && msg[0] == cmdInternalSvcErr {
-			return msg
-		}
-
-		doAsync(func() error {
-			sess := chatRegistry.RetrieveSess(chatID)
-			s.RecvChat(ctx, sess, chatID, toCh)
-			return nil
-		})
-
-		return msg
+		return s.FormatNickname(ctx, me, args)
+	case "toc_chat_join":
+		return s.ChatJoin(ctx, me, args)
+	case "toc_chat_accept":
+		return s.ChatAccept(ctx, me, args)
 	case "toc_chat_send":
-		return s.ChatSend(ctx, chatRegistry, args)
+		return s.ChatSend(ctx, me, args)
 	case "toc_chat_whisper":
-		return s.ChatWhisper(ctx, chatRegistry, args)
+		return s.ChatWhisper(ctx, me, args)
 	case "toc_chat_leave":
-		return s.ChatLeave(ctx, chatRegistry, args)
+		return s.ChatLeave(ctx, me, args)
 	case "toc_set_info":
-		return s.SetInfo(ctx, sessBOS, args)
+		return s.SetInfo(ctx, me, args)
 	case "toc_set_dir":
-		return s.SetDir(ctx, sessBOS, args)
+		return s.SetDir(ctx, me, args)
 	case "toc_set_idle":
-		return s.SetIdle(ctx, sessBOS, args)
+		return s.SetIdle(ctx, me, args)
 	case "toc_set_config":
-		return s.SetConfig(ctx, sessBOS, args)
+		return s.SetConfig(ctx, me, args)
 	case "toc_chat_invite":
-		return s.ChatInvite(ctx, sessBOS, chatRegistry, args)
+		return s.ChatInvite(ctx, me, args)
 	case "toc_dir_search":
-		return s.GetDirSearchURL(ctx, sessBOS, args)
+		return s.GetDirSearchURL(ctx, me, args)
 	case "toc_get_dir":
-		return s.GetDirURL(ctx, sessBOS, args)
+		return s.GetDirURL(ctx, me, args)
 	case "toc_rvous_accept":
-		return s.RvousAccept(ctx, sessBOS, args)
+		return s.RvousAccept(ctx, me, args)
 	case "toc_rvous_cancel":
-		return s.RvousCancel(ctx, sessBOS, args)
+		return s.RvousCancel(ctx, me, args)
 	case "toc2_set_pdmode":
-		return s.SetPDMode(ctx, sessBOS, args)
+		return s.SetPDMode(ctx, me, args)
 	case "toc2_send_im_enc":
-		return s.SendIMEnc(ctx, sessBOS, args)
+		return s.SendIMEnc(ctx, me, args)
 	case "toc2_remove_buddy":
-		return s.RemoveBuddy2(ctx, sessBOS, args)
+		return s.RemoveBuddy2(ctx, me, args)
 	case "toc2_new_group":
-		return s.NewGroup(ctx, sessBOS, args)
+		return s.NewGroup(ctx, me, args)
 	case "toc2_del_group":
-		return s.DelGroup(ctx, sessBOS, args)
+		return s.DelGroup(ctx, me, args)
 	case "toc2_new_buddies":
-		return s.NewBuddies(ctx, sessBOS, args)
+		return s.NewBuddies(ctx, me, args)
 	case "toc2_add_permit":
-		return s.AddPermit2(ctx, sessBOS, args)
+		return s.AddPermit2(ctx, me, args)
 	case "toc2_remove_permit":
-		return s.RemovePermit2(ctx, sessBOS, args)
+		return s.RemovePermit2(ctx, me, args)
 	case "toc2_add_deny":
-		return s.AddDeny2(ctx, sessBOS, args)
+		return s.AddDeny2(ctx, me, args)
 	case "toc2_remove_deny":
-		return s.RemoveDeny2(ctx, sessBOS, args)
+		return s.RemoveDeny2(ctx, me, args)
 	case "toc2_client_event":
-		return s.SendClientEvent(ctx, sessBOS, args)
+		return s.SendClientEvent(ctx, me, args)
 	}
 
 	s.Logger.ErrorContext(ctx, fmt.Sprintf("unsupported TOC command %s", cmd))
 	return []string{cmdInternalSvcErr}
+}
+
+// send sends a SNAC request to the OSCAR server over conn. The request is
+// cached by request ID along with data so that cmd_server.go can handle the
+// reply. It returns a TOC error if the SNAC could not be sent.
+func (s OSCARProxy) send(ctx context.Context, me *tocConn, conn oscarConn, foodGroup uint16, subGroup uint16, body any, data any) []string {
+	frame := wire.SNACFrame{
+		FoodGroup: foodGroup,
+		SubGroup:  subGroup,
+	}
+	me.cache.add(&frame, data)
+	return s.sendFrame(ctx, me, conn, frame, body)
+}
+
+// sendFrame sends a SNAC request whose frame is already cached. It returns a
+// TOC error if the SNAC could not be sent.
+func (s OSCARProxy) sendFrame(ctx context.Context, me *tocConn, conn oscarConn, frame wire.SNACFrame, body any) []string {
+	if err := conn.SendSNAC(frame, body); err != nil {
+		me.cache.remove(frame.RequestID)
+		return s.runtimeErr(ctx, fmt.Errorf("SendSNAC(%s, %s): %w",
+			wire.FoodGroupName(frame.FoodGroup), wire.SubGroupName(frame.FoodGroup, frame.SubGroup), err))
+	}
+	return nil
 }
 
 // AddBuddy handles the toc_add_buddy TOC command.
@@ -278,11 +242,7 @@ func (s OSCARProxy) RecvClientCmd(
 //	Add buddies to your buddy list. This does not change your saved config.
 //
 // Command syntax: toc_add_buddy <Buddy User 1> [<Buddy User2> [<Buddy User 3> [...]]]
-func (s OSCARProxy) AddBuddy(ctx context.Context, me *state.SessionInstance, args []byte) []string {
-	if msg, isLimited := s.checkRateLimit(ctx, me, wire.Buddy, wire.BuddyAddBuddies); isLimited {
-		return msg
-	}
-
+func (s OSCARProxy) AddBuddy(ctx context.Context, me *tocConn, args []byte) []string {
 	users, err := parseArgs(args)
 	if err != nil {
 		return s.runtimeErr(ctx, fmt.Errorf("parseArgs: %w", err))
@@ -295,10 +255,9 @@ func (s OSCARProxy) AddBuddy(ctx context.Context, me *state.SessionInstance, arg
 		}{ScreenName: sn})
 	}
 
-	if _, err := s.BuddyService.AddBuddies(ctx, me, wire.SNACFrame{}, snac); err != nil {
-		return s.runtimeErr(ctx, fmt.Errorf("BuddyService.AddBuddies: %w", err))
+	if msg := s.send(ctx, me, me.bos, wire.Buddy, wire.BuddyAddBuddies, snac, nil); msg != nil {
+		return msg
 	}
-
 	return []string{}
 }
 
@@ -312,11 +271,7 @@ func (s OSCARProxy) AddBuddy(ctx context.Context, me *state.SessionInstance, arg
 //	arguments does nothing and your permit list remains the same.
 //
 // Command syntax: toc_add_permit [ <User 1> [<User 2> [...]]]
-func (s OSCARProxy) AddPermit(ctx context.Context, me *state.SessionInstance, args []byte) []string {
-	if msg, isLimited := s.checkRateLimit(ctx, me, wire.PermitDeny, wire.PermitDenyAddDenyListEntries); isLimited {
-		return msg
-	}
-
+func (s OSCARProxy) AddPermit(ctx context.Context, me *tocConn, args []byte) []string {
 	users, err := parseArgs(args)
 	if err != nil {
 		return s.runtimeErr(ctx, fmt.Errorf("parseArgs: %w", err))
@@ -329,8 +284,8 @@ func (s OSCARProxy) AddPermit(ctx context.Context, me *state.SessionInstance, ar
 		}{ScreenName: sn})
 	}
 
-	if err := s.PermitDenyService.AddPermListEntries(ctx, me, snac); err != nil {
-		return s.runtimeErr(ctx, fmt.Errorf("PermitDenyService.AddPermListEntries: %w", err))
+	if msg := s.send(ctx, me, me.bos, wire.PermitDeny, wire.PermitDenyAddPermListEntries, snac, nil); msg != nil {
+		return msg
 	}
 	return []string{}
 }
@@ -345,11 +300,7 @@ func (s OSCARProxy) AddPermit(ctx context.Context, me *state.SessionInstance, ar
 //	does nothing and your deny list remains unchanged.
 //
 // Command syntax: toc_add_deny [ <User 1> [<User 2> [...]]]
-func (s OSCARProxy) AddDeny(ctx context.Context, me *state.SessionInstance, args []byte) []string {
-	if msg, isLimited := s.checkRateLimit(ctx, me, wire.PermitDeny, wire.PermitDenyAddDenyListEntries); isLimited {
-		return msg
-	}
-
+func (s OSCARProxy) AddDeny(ctx context.Context, me *tocConn, args []byte) []string {
 	users, err := parseArgs(args)
 	if err != nil {
 		return s.runtimeErr(ctx, fmt.Errorf("parseArgs: %w", err))
@@ -362,8 +313,8 @@ func (s OSCARProxy) AddDeny(ctx context.Context, me *state.SessionInstance, args
 		}{ScreenName: sn})
 	}
 
-	if err := s.PermitDenyService.AddDenyListEntries(ctx, me, snac); err != nil {
-		return s.runtimeErr(ctx, fmt.Errorf("PermitDenyService.AddDenyListEntries: %w", err))
+	if msg := s.send(ctx, me, me.bos, wire.PermitDeny, wire.PermitDenyAddDenyListEntries, snac, nil); msg != nil {
+		return msg
 	}
 	return []string{}
 }
@@ -375,12 +326,10 @@ func (s OSCARProxy) AddDeny(ctx context.Context, me *state.SessionInstance, args
 //	Change a user's password. An ADMIN_PASSWD_STATUS or ERROR message will be
 //	sent back to the client.
 //
+// The reply is sent by AdminChangeReply.
+//
 // Command syntax: toc_change_passwd <existing_passwd> <new_passwd>
-func (s OSCARProxy) ChangePassword(ctx context.Context, me *state.SessionInstance, args []byte) []string {
-	if msg, isLimited := s.checkRateLimit(ctx, me, wire.Admin, wire.AdminInfoChangeRequest); isLimited {
-		return msg
-	}
-
+func (s OSCARProxy) ChangePassword(ctx context.Context, me *tocConn, args []byte) []string {
 	var oldPass, newPass string
 
 	if _, err := parseArgs(args, &oldPass, &newPass); err != nil {
@@ -389,7 +338,7 @@ func (s OSCARProxy) ChangePassword(ctx context.Context, me *state.SessionInstanc
 	oldPass = unescape(oldPass)
 	newPass = unescape(newPass)
 
-	reqSNAC := wire.SNAC_0x07_0x04_AdminInfoChangeRequest{
+	snac := wire.SNAC_0x07_0x04_AdminInfoChangeRequest{
 		TLVRestBlock: wire.TLVRestBlock{
 			TLVList: wire.TLVList{
 				wire.NewTLVBE(wire.AdminTLVOldPassword, oldPass),
@@ -398,29 +347,10 @@ func (s OSCARProxy) ChangePassword(ctx context.Context, me *state.SessionInstanc
 		},
 	}
 
-	reply, err := s.AdminService.InfoChangeRequest(ctx, me, wire.SNACFrame{}, reqSNAC)
-	if err != nil {
-		return s.runtimeErr(ctx, fmt.Errorf("AdminService.InfoChangeRequest: %w", err))
+	if msg := s.send(ctx, me, me.bos, wire.Admin, wire.AdminInfoChangeRequest, snac, changePasswdReqCtx{}); msg != nil {
+		return msg
 	}
-
-	replyBody, ok := reply.Body.(wire.SNAC_0x07_0x05_AdminChangeReply)
-	if !ok {
-		return s.runtimeErr(ctx, fmt.Errorf("AdminService.InfoChangeRequest: unexpected response type %v", replyBody))
-	}
-
-	code, ok := replyBody.Uint16BE(wire.AdminTLVErrorCode)
-	if ok {
-		switch code {
-		case wire.AdminInfoErrorInvalidPasswordLength:
-			return []string{"ERROR:" + wire.TOCErrorAdminInvalidInput}
-		case wire.AdminInfoErrorValidatePassword:
-			return []string{"ERROR:" + wire.TOCErrorAuthIncorrectNickOrPassword}
-		default:
-			return []string{"ERROR:" + wire.TOCErrorAdminProcessingRequest}
-		}
-	}
-
-	return []string{"ADMIN_PASSWD_STATUS:0"}
+	return []string{}
 }
 
 // ChatAccept handles the toc_chat_accept TOC command.
@@ -430,129 +360,35 @@ func (s OSCARProxy) ChangePassword(ctx context.Context, me *state.SessionInstanc
 //	Accept a CHAT_INVITE message from TOC. The server will send a CHAT_JOIN in
 //	response.
 //
+// This command looks up the invited room. ChatNavInfo continues the join once
+// the room info arrives.
+//
 // Command syntax: toc_chat_accept <Chat Room ID>
-func (s OSCARProxy) ChatAccept(
-	ctx context.Context,
-	me *state.SessionInstance,
-	chatRegistry *ChatRegistry,
-	args []byte,
-) (int, []string) {
-
+func (s OSCARProxy) ChatAccept(ctx context.Context, me *tocConn, args []byte) []string {
 	var chatIDStr string
 
 	if _, err := parseArgs(args, &chatIDStr); err != nil {
-		return 0, s.runtimeErr(ctx, fmt.Errorf("parseArgs: %w", err))
+		return s.runtimeErr(ctx, fmt.Errorf("parseArgs: %w", err))
 	}
 
 	chatID, err := strconv.Atoi(chatIDStr)
 	if err != nil {
-		return 0, s.runtimeErr(ctx, fmt.Errorf("strconv.Atoi: %w", err))
+		return s.runtimeErr(ctx, fmt.Errorf("strconv.Atoi: %w", err))
 	}
-	chatInfo, found := chatRegistry.LookupRoom(chatID)
+	chatInfo, found := me.chats.LookupRoom(chatID)
 	if !found {
-		return 0, s.runtimeErr(ctx, fmt.Errorf("chatRegistry.LookupRoom: no chat found for ID %d", chatID))
+		return s.runtimeErr(ctx, fmt.Errorf("chatRegistry.LookupRoom: no chat found for ID %d", chatID))
 	}
 
-	if msg, isLimited := s.checkRateLimit(ctx, me, wire.ChatNav, wire.ChatNavRequestRoomInfo); isLimited {
-		return 0, msg
-	}
-
-	reqRoomSNAC := wire.SNAC_0x0D_0x04_ChatNavRequestRoomInfo{
+	snac := wire.SNAC_0x0D_0x04_ChatNavRequestRoomInfo{
 		Cookie:         chatInfo.Cookie,
 		Exchange:       chatInfo.Exchange,
 		InstanceNumber: chatInfo.Instance,
 	}
-	reqRoomReply, err := s.ChatNavService.RequestRoomInfo(ctx, wire.SNACFrame{}, reqRoomSNAC)
-	if err != nil {
-		return 0, s.runtimeErr(ctx, fmt.Errorf("ChatNavService.RequestRoomInfo: %w", err))
+	if msg := s.send(ctx, me, me.bos, wire.ChatNav, wire.ChatNavRequestRoomInfo, snac, chatAcceptReqCtx{chatID: chatID}); msg != nil {
+		return msg
 	}
-
-	reqRoomReplyBody, ok := reqRoomReply.Body.(wire.SNAC_0x0D_0x09_ChatNavNavInfo)
-	if !ok {
-		return 0, s.runtimeErr(
-			ctx,
-			fmt.Errorf("chatNavService.RequestRoomInfo: unexpected response type %v", reqRoomReplyBody),
-		)
-	}
-	b, hasInfo := reqRoomReplyBody.Bytes(wire.ChatNavTLVRoomInfo)
-	if !hasInfo {
-		return 0, s.runtimeErr(ctx, errors.New("reqRoomReplyBody.Bytes: missing wire.ChatNavTLVRoomInfo"))
-	}
-
-	roomInfo := wire.SNAC_0x0E_0x02_ChatRoomInfoUpdate{}
-	if err := wire.UnmarshalBE(&roomInfo, bytes.NewReader(b)); err != nil {
-		return 0, s.runtimeErr(ctx, fmt.Errorf("wire.UnmarshalBE: %w", err))
-	}
-
-	roomName, hasName := roomInfo.Bytes(wire.ChatRoomTLVRoomName)
-	if !hasName {
-		return 0, s.runtimeErr(ctx, errors.New("roomInfo.Bytes: missing wire.ChatRoomTLVRoomName"))
-	}
-
-	if msg, isLimited := s.checkRateLimit(ctx, me, wire.OService, wire.OServiceServiceRequest); isLimited {
-		return 0, msg
-	}
-
-	svcReqSNAC := wire.SNAC_0x01_0x04_OServiceServiceRequest{
-		FoodGroup: wire.Chat,
-		TLVRestBlock: wire.TLVRestBlock{
-			TLVList: wire.TLVList{
-				wire.NewTLVBE(0x01, wire.SNAC_0x01_0x04_TLVRoomInfo{
-					Cookie: chatInfo.Cookie,
-				}),
-			},
-		},
-	}
-	svcReqReply, err := s.OServiceService.ServiceRequest(ctx, wire.BOS, me, wire.SNACFrame{}, svcReqSNAC, config.ListenerGroup{})
-	if err != nil {
-		return 0, s.runtimeErr(ctx, fmt.Errorf("OServiceServiceBOS.ServiceRequest: %w", err))
-	}
-
-	svcReqReplyBody, ok := svcReqReply.Body.(wire.SNAC_0x01_0x05_OServiceServiceResponse)
-	if !ok {
-		return 0, s.runtimeErr(
-			ctx,
-			fmt.Errorf("OServiceServiceBOS.ServiceRequest: unexpected response type %v", svcReqReplyBody),
-		)
-	}
-
-	loginCookie, hasCookie := svcReqReplyBody.Bytes(wire.OServiceTLVTagsLoginCookie)
-	if !hasCookie {
-		return 0, s.runtimeErr(ctx, errors.New("missing wire.OServiceTLVTagsLoginCookie"))
-	}
-
-	// todo: naming for cookie: login cookie, server cookie, or auth cookie?
-	serverCookie, _, err := s.AuthService.CrackCookie(loginCookie)
-	if err != nil {
-		return 0, s.runtimeErr(ctx, fmt.Errorf("AuthService.CrackCookie: %w", err))
-	}
-
-	sessCfg := func(sess *state.Session) {
-		sess.OnSessionClose(func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-			defer cancel()
-			s.AuthService.SignoutChat(ctx, sess)
-		})
-	}
-	chatSess, err := s.AuthService.RegisterChatSession(ctx, serverCookie, sessCfg)
-	if err != nil {
-		return 0, s.runtimeErr(ctx, fmt.Errorf("AuthService.RegisterChatSession: %w", err))
-	}
-
-	if msg, isLimited := s.checkRateLimit(ctx, me, wire.OService, wire.OServiceClientOnline); isLimited {
-		return 0, msg
-	}
-
-	if err := s.OServiceService.ClientOnline(ctx, wire.Chat, wire.SNAC_0x01_0x02_OServiceClientOnline{}, chatSess); err != nil {
-		return 0, s.runtimeErr(ctx, fmt.Errorf("OServiceServiceChat.ClientOnline: %w", err))
-	}
-
-	chatRegistry.RegisterSess(chatID, chatSess)
-	if me.IsTOC2() {
-		chatSess.SetTOC2(me.SupportsTOC2MsgEnc())
-	}
-
-	return chatID, []string{fmt.Sprintf("CHAT_JOIN:%d:%s", chatID, roomName)}
+	return []string{}
 }
 
 // ChatInvite handles the toc_chat_invite TOC command.
@@ -563,7 +399,7 @@ func (s OSCARProxy) ChatAccept(
 //	Remember to quote and encode the invite message.
 //
 // Command syntax: toc_chat_invite <Chat Room ID> <Invite Msg> <buddy1> [<buddy2> [<buddy3> [...]]]
-func (s OSCARProxy) ChatInvite(ctx context.Context, me *state.SessionInstance, chatRegistry *ChatRegistry, args []byte) []string {
+func (s OSCARProxy) ChatInvite(ctx context.Context, me *tocConn, args []byte) []string {
 	var chatRoomIDStr, msg string
 
 	users, err := parseArgs(args, &chatRoomIDStr, &msg)
@@ -577,16 +413,12 @@ func (s OSCARProxy) ChatInvite(ctx context.Context, me *state.SessionInstance, c
 		return s.runtimeErr(ctx, fmt.Errorf("strconv.Atoi: %w", err))
 	}
 
-	roomInfo, found := chatRegistry.LookupRoom(chatID)
+	roomInfo, found := me.chats.LookupRoom(chatID)
 	if !found {
 		return s.runtimeErr(ctx, fmt.Errorf("chatRegistry.LookupRoom: chat ID `%d` not found", chatID))
 	}
 
 	for _, guest := range users {
-		if msg, isLimited := s.checkRateLimit(ctx, me, wire.ICBM, wire.ICBMChannelMsgToHost); isLimited {
-			return msg
-		}
-
 		snac := wire.SNAC_0x04_0x06_ICBMChannelMsgToHost{
 			ChannelID:  wire.ICBMChannelRendezvous,
 			ScreenName: guest,
@@ -609,8 +441,8 @@ func (s OSCARProxy) ChatInvite(ctx context.Context, me *state.SessionInstance, c
 			},
 		}
 
-		if _, err := s.ICBMService.ChannelMsgToHost(ctx, me, wire.SNACFrame{}, snac); err != nil {
-			return s.runtimeErr(ctx, fmt.Errorf("ICBMService.ChannelMsgToHost: %w", err))
+		if msg := s.send(ctx, me, me.bos, wire.ICBM, wire.ICBMChannelMsgToHost, snac, nil); msg != nil {
+			return msg
 		}
 	}
 
@@ -630,31 +462,24 @@ func (s OSCARProxy) ChatInvite(ctx context.Context, me *state.SessionInstance, c
 //	if the room couldn't be joined or a CHAT_JOIN message. The Chat Room Name
 //	is case-insensitive and consecutive spaces are removed.
 //
+// This command creates the room, or retrieves it if it already exists.
+// ChatNavInfo continues the join once the room info arrives.
+//
 // Command syntax: toc_chat_join <Exchange> <Chat Room Name>
-func (s OSCARProxy) ChatJoin(
-	ctx context.Context,
-	me *state.SessionInstance,
-	chatRegistry *ChatRegistry,
-	args []byte,
-) (int, []string) {
+func (s OSCARProxy) ChatJoin(ctx context.Context, me *tocConn, args []byte) []string {
 	var exchangeStr, roomName string
 
 	if _, err := parseArgs(args, &exchangeStr, &roomName); err != nil {
-		return 0, s.runtimeErr(ctx, fmt.Errorf("parseArgs: %w", err))
+		return s.runtimeErr(ctx, fmt.Errorf("parseArgs: %w", err))
 	}
 	roomName = unescape(roomName)
 
-	// create room or retrieve the room if it already exists
 	exchange, err := strconv.Atoi(exchangeStr)
 	if err != nil {
-		return 0, s.runtimeErr(ctx, fmt.Errorf("strconv.Atoi: %w", err))
+		return s.runtimeErr(ctx, fmt.Errorf("strconv.Atoi: %w", err))
 	}
 
-	if msg, isLimited := s.checkRateLimit(ctx, me, wire.Chat, wire.ChatRoomInfoUpdate); isLimited {
-		return 0, msg
-	}
-
-	mkRoomReq := wire.SNAC_0x0E_0x02_ChatRoomInfoUpdate{
+	snac := wire.SNAC_0x0E_0x02_ChatRoomInfoUpdate{
 		Exchange: uint16(exchange),
 		Cookie:   "create",
 		TLVBlock: wire.TLVBlock{
@@ -663,98 +488,52 @@ func (s OSCARProxy) ChatJoin(
 			},
 		},
 	}
-	mkRoomReply, err := s.ChatNavService.CreateRoom(ctx, me, wire.SNACFrame{}, mkRoomReq)
-	if err != nil {
-		return 0, s.runtimeErr(ctx, fmt.Errorf("ChatNavService.CreateRoom: %w", err))
+	if msg := s.send(ctx, me, me.bos, wire.ChatNav, wire.ChatNavCreateRoom, snac, chatJoinReqCtx{}); msg != nil {
+		return msg
 	}
+	return []string{}
+}
 
-	mkRoomReplyBody, ok := mkRoomReply.Body.(wire.SNAC_0x0D_0x09_ChatNavNavInfo)
-	if !ok {
-		return 0, s.runtimeErr(
-			ctx,
-			fmt.Errorf("chatNavService.CreateRoom: unexpected response type %v", mkRoomReplyBody),
-		)
-	}
-	buf, ok := mkRoomReplyBody.Bytes(wire.ChatNavTLVRoomInfo)
-	if !ok {
-		return 0, s.runtimeErr(ctx, errors.New("mkRoomReplyBody.Bytes: missing wire.ChatNavTLVRoomInfo"))
-	}
-
-	inBody := wire.SNAC_0x0E_0x02_ChatRoomInfoUpdate{}
-	if err := wire.UnmarshalBE(&inBody, bytes.NewReader(buf)); err != nil {
-		return 0, s.runtimeErr(ctx, fmt.Errorf("wire.UnmarshalBE: %w", err))
-	}
-
-	if msg, isLimited := s.checkRateLimit(ctx, me, wire.OService, wire.OServiceServiceRequest); isLimited {
-		return 0, msg
-	}
-
-	svcReqSNAC := wire.SNAC_0x01_0x04_OServiceServiceRequest{
+// requestChatService asks the BOS server for a connection to the chat room
+// identified by cookie. ChatServiceResponse finishes the join once the
+// connection details arrive.
+func (s OSCARProxy) requestChatService(ctx context.Context, me *tocConn, chatID int, roomName string, cookie string) []string {
+	snac := wire.SNAC_0x01_0x04_OServiceServiceRequest{
 		FoodGroup: wire.Chat,
 		TLVRestBlock: wire.TLVRestBlock{
 			TLVList: wire.TLVList{
 				wire.NewTLVBE(0x01, wire.SNAC_0x01_0x04_TLVRoomInfo{
-					Cookie: inBody.Cookie,
+					Cookie: cookie,
 				}),
 			},
 		},
 	}
-	svcReqReply, err := s.OServiceService.ServiceRequest(ctx, wire.BOS, me, wire.SNACFrame{}, svcReqSNAC, config.ListenerGroup{})
+	return s.send(ctx, me, me.bos, wire.OService, wire.OServiceServiceRequest, snac, chatServiceReqCtx{
+		chatID:   chatID,
+		roomName: roomName,
+	})
+}
+
+// connectChat opens a connection to the chat room identified by loginCookie
+// and signs the user into the room.
+func (s OSCARProxy) connectChat(ctx context.Context, me *tocConn, loginCookie []byte) (oscarConn, error) {
+	conn, err := s.connectService(me.clientAddr, loginCookie)
 	if err != nil {
-		return 0, s.runtimeErr(ctx, fmt.Errorf("OServiceServiceBOS.ServiceRequest: %w", err))
+		return nil, fmt.Errorf("connectService: %w", err)
 	}
 
-	svcReqReplyBody, ok := svcReqReply.Body.(wire.SNAC_0x01_0x05_OServiceServiceResponse)
-	if !ok {
-		return 0, s.runtimeErr(
-			ctx,
-			fmt.Errorf("OServiceServiceBOS.ServiceRequest: unexpected response type %v", svcReqReplyBody),
-		)
+	subscribe := wire.SNAC_0x01_0x08_OServiceRateParamsSubAdd{
+		ClassIDs: []uint16{1, 2, 3, 4, 5},
 	}
-
-	loginCookie, hasCookie := svcReqReplyBody.Bytes(wire.OServiceTLVTagsLoginCookie)
-	if !hasCookie {
-		return 0, s.runtimeErr(ctx, errors.New("svcReqReplyBody.Bytes: missing wire.OServiceTLVTagsLoginCookie"))
+	if msg := s.send(ctx, me, conn, wire.OService, wire.OServiceRateParamsSubAdd, subscribe, nil); msg != nil {
+		conn.Close()
+		return nil, errors.New("unable to subscribe to rate limit changes")
 	}
-
-	// todo: naming for cookie: login cookie, server cookie, or auth cookie?
-	serverCookie, _, err := s.AuthService.CrackCookie(loginCookie)
-	if err != nil {
-		return 0, s.runtimeErr(ctx, fmt.Errorf("AuthService.CrackCookie: %w", err))
+	if msg := s.send(ctx, me, conn, wire.OService, wire.OServiceClientOnline, wire.SNAC_0x01_0x02_OServiceClientOnline{}, nil); msg != nil {
+		conn.Close()
+		return nil, errors.New("unable to send client online")
 	}
-
-	sessCfg := func(sess *state.Session) {
-		sess.OnSessionClose(func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-			defer cancel()
-			s.AuthService.SignoutChat(ctx, sess)
-		})
-	}
-	chatSess, err := s.AuthService.RegisterChatSession(ctx, serverCookie, sessCfg)
-	if err != nil {
-		return 0, s.runtimeErr(ctx, fmt.Errorf("AuthService.RegisterChatSession: %w", err))
-	}
-
-	if msg, isLimited := s.checkRateLimit(ctx, me, wire.OService, wire.OServiceClientOnline); isLimited {
-		return 0, msg
-	}
-
-	if err := s.OServiceService.ClientOnline(ctx, wire.Chat, wire.SNAC_0x01_0x02_OServiceClientOnline{}, chatSess); err != nil {
-		return 0, s.runtimeErr(ctx, fmt.Errorf("OServiceServiceChat.ClientOnline: %w", err))
-	}
-
-	roomInfo := wire.ICBMRoomInfo{
-		Exchange: inBody.Exchange,
-		Cookie:   inBody.Cookie,
-		Instance: inBody.InstanceNumber,
-	}
-	chatID := chatRegistry.Add(roomInfo)
-	chatRegistry.RegisterSess(chatID, chatSess)
-	if me.IsTOC2() {
-		chatSess.SetTOC2(me.SupportsTOC2MsgEnc())
-	}
-
-	return chatID, []string{fmt.Sprintf("CHAT_JOIN:%d:%s", chatID, roomName)}
+	return conn, nil
 }
 
 // ChatLeave handles the toc_chat_leave TOC command.
@@ -764,7 +543,7 @@ func (s OSCARProxy) ChatJoin(
 //	Leave the chat room.
 //
 // Command syntax: toc_chat_leave <Chat Room ID>
-func (s OSCARProxy) ChatLeave(ctx context.Context, chatRegistry *ChatRegistry, args []byte) []string {
+func (s OSCARProxy) ChatLeave(ctx context.Context, me *tocConn, args []byte) []string {
 	var chatIDStr string
 
 	if _, err := parseArgs(args, &chatIDStr); err != nil {
@@ -776,14 +555,14 @@ func (s OSCARProxy) ChatLeave(ctx context.Context, chatRegistry *ChatRegistry, a
 		return s.runtimeErr(ctx, fmt.Errorf("strconv.Atoi: %w", err))
 	}
 
-	me := chatRegistry.RetrieveSess(chatID)
-	if me == nil {
-		return s.runtimeErr(ctx, fmt.Errorf("chatRegistry.RetrieveSess: chat session `%d` not found", chatID))
+	conn := me.chats.RetrieveConn(chatID)
+	if conn == nil {
+		return s.runtimeErr(ctx, fmt.Errorf("chatRegistry.RetrieveConn: chat session `%d` not found", chatID))
 	}
 
-	me.CloseInstance() // stop async server SNAC reply handler for this chat room
+	conn.Close() // stop async server SNAC reply handler for this chat room
 
-	chatRegistry.RemoveSess(chatID)
+	me.chats.RemoveConn(chatID)
 
 	return []string{fmt.Sprintf("CHAT_LEFT:%d", chatID)}
 }
@@ -797,8 +576,10 @@ func (s OSCARProxy) ChatLeave(ctx context.Context, chatRegistry *ChatRegistry, a
 //	chat UI, since you will get a CHAT_IN with the message. Remember to quote
 //	and encode the message.
 //
+// The reflected message is sent by ChatIn.
+//
 // Command syntax: toc_chat_send <Chat Room ID> <Message>
-func (s OSCARProxy) ChatSend(ctx context.Context, chatRegistry *ChatRegistry, args []byte) []string {
+func (s OSCARProxy) ChatSend(ctx context.Context, me *tocConn, args []byte) []string {
 	var chatIDStr, msg string
 
 	if _, err := parseArgs(args, &chatIDStr, &msg); err != nil {
@@ -811,20 +592,13 @@ func (s OSCARProxy) ChatSend(ctx context.Context, chatRegistry *ChatRegistry, ar
 		return s.runtimeErr(ctx, fmt.Errorf("strconv.Atoi: %w", err))
 	}
 
-	me := chatRegistry.RetrieveSess(chatID)
-	if me == nil {
-		return s.runtimeErr(ctx, fmt.Errorf("chatRegistry.RetrieveSess: session for chat ID `%d` not found", chatID))
-	}
-
-	if errMsg, isLimited := s.checkRateLimit(ctx, me, wire.Chat, wire.ChatChannelMsgToHost); isLimited {
-		return errMsg
+	conn := me.chats.RetrieveConn(chatID)
+	if conn == nil {
+		return s.runtimeErr(ctx, fmt.Errorf("chatRegistry.RetrieveConn: session for chat ID `%d` not found", chatID))
 	}
 
 	block := wire.TLVRestBlock{}
-	// the order of these TLVs matters for AIM 2.x. if out of order, screen
-	// names do not appear with each chat message.
 	block.Append(wire.NewTLVBE(wire.ChatTLVEnableReflectionFlag, uint8(1)))
-	block.Append(wire.NewTLVBE(wire.ChatTLVSenderInformation, me.Session().TLVUserInfo()))
 	block.Append(wire.NewTLVBE(wire.ChatTLVPublicWhisperFlag, []byte{}))
 	block.Append(wire.NewTLVBE(wire.ChatTLVMessageInfo, wire.TLVRestBlock{
 		TLVList: wire.TLVList{
@@ -836,44 +610,10 @@ func (s OSCARProxy) ChatSend(ctx context.Context, chatRegistry *ChatRegistry, ar
 		Channel:      wire.ICBMChannelMIME,
 		TLVRestBlock: block,
 	}
-	reply, err := s.ChatService.ChannelMsgToHost(ctx, me, wire.SNACFrame{}, snac)
-	if err != nil {
-		return s.runtimeErr(ctx, fmt.Errorf("ChatService.ChannelMsgToHost: %w", err))
+	if msg := s.send(ctx, me, conn, wire.Chat, wire.ChatChannelMsgToHost, snac, nil); msg != nil {
+		return msg
 	}
-
-	if reply == nil {
-		return s.runtimeErr(ctx, errors.New("ChatService.ChannelMsgToHost: missing response "))
-	}
-
-	switch v := reply.Body.(type) {
-	case wire.SNAC_0x0E_0x06_ChatChannelMsgToClient:
-		msgInfo, ok := v.Bytes(wire.ChatTLVMessageInfo)
-		if !ok {
-			return s.runtimeErr(ctx, errors.New("ChatService.ChannelMsgToHost: missing wire.ChatTLVMessageInfo"))
-		}
-		reflectMsg, err := wire.UnmarshalChatMessageText(msgInfo)
-		if err != nil {
-			return s.runtimeErr(ctx, fmt.Errorf("wire.UnmarshalChatMessageText: %w", err))
-		}
-
-		senderInfo, ok := v.Bytes(wire.ChatTLVSenderInformation)
-		if !ok {
-			return s.runtimeErr(ctx, errors.New("ChatService.ChannelMsgToHost: missing wire.ChatTLVSenderInformation"))
-		}
-
-		var userInfo wire.TLVUserInfo
-		if err := wire.UnmarshalBE(&userInfo, bytes.NewReader(senderInfo)); err != nil {
-			return s.runtimeErr(ctx, fmt.Errorf("wire.UnmarshalBE: %w", err))
-		}
-
-		if me.SupportsTOC2MsgEnc() {
-			return []string{fmt.Sprintf("CHAT_IN_ENC:%d:%s:F:A:en:%s", chatID, userInfo.ScreenName, reflectMsg)}
-		}
-
-		return []string{fmt.Sprintf("CHAT_IN:%d:%s:F:%s", chatID, userInfo.ScreenName, reflectMsg)}
-	default:
-		return s.runtimeErr(ctx, errors.New("ChatService.ChannelMsgToHost: unexpected response"))
-	}
+	return []string{}
 }
 
 // ChatWhisper handles the toc_chat_whisper TOC command.
@@ -887,7 +627,7 @@ func (s OSCARProxy) ChatSend(ctx context.Context, chatRegistry *ChatRegistry, ar
 //	be displayed in the chat room UI.
 //
 // Command syntax: toc_chat_whisper <Chat Room ID> <dst_user> <Message>
-func (s OSCARProxy) ChatWhisper(ctx context.Context, chatRegistry *ChatRegistry, args []byte) []string {
+func (s OSCARProxy) ChatWhisper(ctx context.Context, me *tocConn, args []byte) []string {
 	var chatIDStr, recip, msg string
 
 	if _, err := parseArgs(args, &chatIDStr, &recip, &msg); err != nil {
@@ -900,17 +640,12 @@ func (s OSCARProxy) ChatWhisper(ctx context.Context, chatRegistry *ChatRegistry,
 		return s.runtimeErr(ctx, fmt.Errorf("strconv.Atoi: %w", err))
 	}
 
-	me := chatRegistry.RetrieveSess(chatID)
-	if me == nil {
-		return s.runtimeErr(ctx, fmt.Errorf("chatRegistry.RetrieveSess: session for chat ID `%d` not found", chatID))
-	}
-
-	if errMsg, isLimited := s.checkRateLimit(ctx, me, wire.Chat, wire.ChatChannelMsgToHost); isLimited {
-		return errMsg
+	conn := me.chats.RetrieveConn(chatID)
+	if conn == nil {
+		return s.runtimeErr(ctx, fmt.Errorf("chatRegistry.RetrieveConn: session for chat ID `%d` not found", chatID))
 	}
 
 	block := wire.TLVRestBlock{}
-	block.Append(wire.NewTLVBE(wire.ChatTLVSenderInformation, me.Session().TLVUserInfo()))
 	block.Append(wire.NewTLVBE(wire.ChatTLVWhisperToUser, recip))
 	block.Append(wire.NewTLVBE(wire.ChatTLVMessageInfo, wire.TLVRestBlock{
 		TLVList: wire.TLVList{
@@ -922,10 +657,9 @@ func (s OSCARProxy) ChatWhisper(ctx context.Context, chatRegistry *ChatRegistry,
 		Channel:      wire.ICBMChannelMIME,
 		TLVRestBlock: block,
 	}
-	if _, err = s.ChatService.ChannelMsgToHost(ctx, me, wire.SNACFrame{}, snac); err != nil {
-		return s.runtimeErr(ctx, fmt.Errorf("ChatService.ChannelMsgToHost: %w", err))
+	if msg := s.send(ctx, me, conn, wire.Chat, wire.ChatChannelMsgToHost, snac, nil); msg != nil {
+		return msg
 	}
-
 	return []string{}
 }
 
@@ -938,14 +672,11 @@ func (s OSCARProxy) ChatWhisper(ctx context.Context, chatRegistry *ChatRegistry,
 //	people who have recently sent you ims. The higher someones evil level, the
 //	slower they can send message.
 //
-// An ERROR message will be sent back to the client if the warning was unsuccessful.
+// An ERROR message will be sent back to the client if the warning was
+// unsuccessful (see SNACError).
 //
 // Command syntax: toc_evil <User> <norm|anon>
-func (s OSCARProxy) Evil(ctx context.Context, me *state.SessionInstance, args []byte) []string {
-	if errMsg, isLimited := s.checkRateLimit(ctx, me, wire.ICBM, wire.ICBMEvilRequest); isLimited {
-		return errMsg
-	}
-
+func (s OSCARProxy) Evil(ctx context.Context, me *tocConn, args []byte) []string {
 	var user, scope string
 
 	if _, err := parseArgs(args, &user, &scope); err != nil {
@@ -965,20 +696,10 @@ func (s OSCARProxy) Evil(ctx context.Context, me *state.SessionInstance, args []
 		return s.runtimeErr(ctx, fmt.Errorf("incorrect warning type `%s`. allowed values: anon, norm", scope))
 	}
 
-	response, err := s.ICBMService.EvilRequest(ctx, me, wire.SNACFrame{}, snac)
-	if err != nil {
-		return s.runtimeErr(ctx, fmt.Errorf("ICBMService.EvilRequest: %w", err))
+	if msg := s.send(ctx, me, me.bos, wire.ICBM, wire.ICBMEvilRequest, snac, evilReqCtx{}); msg != nil {
+		return msg
 	}
-
-	switch v := response.Body.(type) {
-	case wire.SNAC_0x04_0x09_ICBMEvilReply:
-		return []string{}
-	case wire.SNACError:
-		s.Logger.InfoContext(ctx, "unable to warn user", "code", v.Code)
-		return []string{"ERROR:" + wire.TOCErrorGeneralWarningUserNotAvailable}
-	default:
-		return s.runtimeErr(ctx, errors.New("unexpected response"))
-	}
+	return []string{}
 }
 
 // FormatNickname handles the toc_format_nickname TOC command.
@@ -993,12 +714,10 @@ func (s OSCARProxy) Evil(ctx context.Context, me *state.SessionInstance, args []
 //	[NICK is also sent with ADMIN_NICK_STATUS. This gets called [...] whenever
 //	you do a format change.
 //
+// The reply is sent by AdminChangeReply.
+//
 // Command syntax: toc_format_nickname <new_format>
-func (s OSCARProxy) FormatNickname(ctx context.Context, me *state.SessionInstance, args []byte) []string {
-	if errMsg, isLimited := s.checkRateLimit(ctx, me, wire.Admin, wire.AdminInfoChangeRequest); isLimited {
-		return errMsg
-	}
-
+func (s OSCARProxy) FormatNickname(ctx context.Context, me *tocConn, args []byte) []string {
 	var newFormat string
 
 	if _, err := parseArgs(args, &newFormat); err != nil {
@@ -1008,7 +727,7 @@ func (s OSCARProxy) FormatNickname(ctx context.Context, me *state.SessionInstanc
 	// remove curly braces added by TiK
 	newFormat = strings.Trim(newFormat, "{}")
 
-	reqSNAC := wire.SNAC_0x07_0x04_AdminInfoChangeRequest{
+	snac := wire.SNAC_0x07_0x04_AdminInfoChangeRequest{
 		TLVRestBlock: wire.TLVRestBlock{
 			TLVList: wire.TLVList{
 				wire.NewTLVBE(wire.AdminTLVScreenNameFormatted, newFormat),
@@ -1016,31 +735,10 @@ func (s OSCARProxy) FormatNickname(ctx context.Context, me *state.SessionInstanc
 		},
 	}
 
-	reply, err := s.AdminService.InfoChangeRequest(ctx, me, wire.SNACFrame{}, reqSNAC)
-	if err != nil {
-		return s.runtimeErr(ctx, fmt.Errorf("AdminService.InfoChangeRequest: %w", err))
+	if msg := s.send(ctx, me, me.bos, wire.Admin, wire.AdminInfoChangeRequest, snac, formatNickReqCtx{}); msg != nil {
+		return msg
 	}
-
-	replyBody, ok := reply.Body.(wire.SNAC_0x07_0x05_AdminChangeReply)
-	if !ok {
-		return s.runtimeErr(ctx, fmt.Errorf("AdminService.InfoChangeRequest: unexpected response type %v", replyBody))
-	}
-
-	code, ok := replyBody.Uint16BE(wire.AdminTLVErrorCode)
-	if ok {
-		switch code {
-		case wire.AdminInfoErrorInvalidNickNameLength, wire.AdminInfoErrorInvalidNickName:
-			return []string{"ERROR:" + wire.TOCErrorAdminInvalidInput}
-		default:
-			return []string{"ERROR:" + wire.TOCErrorAdminProcessingRequest}
-		}
-	}
-	val, hasVal := replyBody.String(wire.AdminTLVScreenNameFormatted)
-	if !hasVal {
-		return s.runtimeErr(ctx, fmt.Errorf("AdminService.InfoChangeRequest: missing AdminTLVScreenNameFormatted %v", replyBody))
-	}
-
-	return []string{"ADMIN_NICK_STATUS:0", "NICK:" + val}
+	return []string{}
 }
 
 // GetDirSearchURL handles the toc_dir_search TOC command.
@@ -1059,8 +757,8 @@ func (s OSCARProxy) FormatNickname(ctx context.Context, me *state.SessionInstanc
 //	Returns either a GOTO_URL or ERROR msg.
 //
 // Command syntax: toc_dir_search <info information>
-func (s OSCARProxy) GetDirSearchURL(ctx context.Context, me *state.SessionInstance, args []byte) []string {
-	if status := me.Session().EvaluateRateLimit(time.Now(), 1); status == wire.RateLimitStatusLimited {
+func (s OSCARProxy) GetDirSearchURL(ctx context.Context, me *tocConn, args []byte) []string {
+	if !me.limiter.Allow() {
 		return []string{rateLimitExceededErr}
 	}
 
@@ -1117,8 +815,8 @@ func (s OSCARProxy) GetDirSearchURL(ctx context.Context, me *state.SessionInstan
 //	Gets a user's dir info a GOTO_URL or ERROR message will be sent back to the client.
 //
 // Command syntax: toc_get_dir <username>
-func (s OSCARProxy) GetDirURL(ctx context.Context, me *state.SessionInstance, args []byte) []string {
-	if status := me.Session().EvaluateRateLimit(time.Now(), 1); status == wire.RateLimitStatusLimited {
+func (s OSCARProxy) GetDirURL(ctx context.Context, me *tocConn, args []byte) []string {
+	if !me.limiter.Allow() {
 		return []string{rateLimitExceededErr}
 	}
 
@@ -1147,8 +845,8 @@ func (s OSCARProxy) GetDirURL(ctx context.Context, me *state.SessionInstance, ar
 //	Gets a user's info a GOTO_URL or ERROR message will be sent back to the client.
 //
 // Command syntax: toc_get_info <username>
-func (s OSCARProxy) GetInfoURL(ctx context.Context, me *state.SessionInstance, args []byte) []string {
-	if status := me.Session().EvaluateRateLimit(time.Now(), 1); status == wire.RateLimitStatusLimited {
+func (s OSCARProxy) GetInfoURL(ctx context.Context, me *tocConn, args []byte) []string {
+	if !me.limiter.Allow() {
 		return []string{rateLimitExceededErr}
 	}
 
@@ -1180,39 +878,23 @@ func (s OSCARProxy) GetInfoURL(ctx context.Context, me *state.SessionInstance, a
 //	guy appears to be online. The command is used in both TOC1 and TOC2 with
 //	the same syntax.
 //
+// The reply is sent by UserInfoReply or SNACError.
+//
 // Command syntax: toc_get_status <screenname>
-func (s OSCARProxy) GetStatus(ctx context.Context, me *state.SessionInstance, args []byte) []string {
-	if errMsg, isLimited := s.checkRateLimit(ctx, me, wire.Locate, wire.LocateUserInfoQuery); isLimited {
-		return errMsg
-	}
-
+func (s OSCARProxy) GetStatus(ctx context.Context, me *tocConn, args []byte) []string {
 	var them string
 
 	if _, err := parseArgs(args, &them); err != nil {
 		return s.runtimeErr(ctx, fmt.Errorf("parseArgs: %w", err))
 	}
 
-	inBody := wire.SNAC_0x02_0x05_LocateUserInfoQuery{
+	snac := wire.SNAC_0x02_0x05_LocateUserInfoQuery{
 		ScreenName: them,
 	}
-
-	info, err := s.LocateService.UserInfoQuery(ctx, me, wire.SNACFrame{}, inBody)
-	if err != nil {
-		return s.runtimeErr(ctx, fmt.Errorf("LocateService.UserInfoQuery: %w", err))
+	if msg := s.send(ctx, me, me.bos, wire.Locate, wire.LocateUserInfoQuery, snac, getStatusReqCtx{screenName: them}); msg != nil {
+		return msg
 	}
-
-	switch v := info.Body.(type) {
-	case wire.SNACError:
-		if v.Code == wire.ErrorCodeNotLoggedOn {
-			return []string{fmt.Sprintf("ERROR:%s:%s", wire.TOCErrorGeneralUserNotAvailable, them)}
-		} else {
-			return s.runtimeErr(ctx, fmt.Errorf("LocateService.UserInfoQuery error code: %d", v.Code))
-		}
-	case wire.SNAC_0x02_0x06_LocateUserInfoReply:
-		return []string{userInfoToUpdateBuddy(v.TLVUserInfo, me)}
-	default:
-		return s.runtimeErr(ctx, fmt.Errorf("AdminService.InfoChangeRequest: unexpected response type %v", v))
-	}
+	return []string{}
 }
 
 // InitDone handles the toc_init_done TOC command.
@@ -1230,16 +912,9 @@ func (s OSCARProxy) GetStatus(ctx context.Context, me *state.SessionInstance, ar
 // implemented.
 //
 // Command syntax: toc_init_done
-func (s OSCARProxy) InitDone(ctx context.Context, instance *state.SessionInstance) []string {
-	err := s.FeedbagManager.UseFeedbag(ctx, instance.IdentScreenName())
-	if err != nil {
-		return s.runtimeErr(ctx, fmt.Errorf("FeedbagManager.UseFeedbag: %w", err))
-	}
-	if errMsg, isLimited := s.checkRateLimit(ctx, instance, wire.OService, wire.OServiceClientOnline); isLimited {
-		return errMsg
-	}
-	if err := s.OServiceService.ClientOnline(ctx, wire.BOS, wire.SNAC_0x01_0x02_OServiceClientOnline{}, instance); err != nil {
-		return s.runtimeErr(ctx, fmt.Errorf("OServiceServiceBOS.ClientOnliney: %w", err))
+func (s OSCARProxy) InitDone(ctx context.Context, me *tocConn) []string {
+	if msg := s.send(ctx, me, me.bos, wire.OService, wire.OServiceClientOnline, wire.SNAC_0x01_0x02_OServiceClientOnline{}, nil); msg != nil {
+		return msg
 	}
 	return []string{}
 }
@@ -1251,11 +926,7 @@ func (s OSCARProxy) InitDone(ctx context.Context, instance *state.SessionInstanc
 //	Remove buddies from your buddy list. This does not change your saved config.
 //
 // Command syntax: toc_remove_buddy <Buddy User 1> [<Buddy User2> [<Buddy User 3> [...]]]
-func (s OSCARProxy) RemoveBuddy(ctx context.Context, me *state.SessionInstance, args []byte) []string {
-	if errMsg, isLimited := s.checkRateLimit(ctx, me, wire.Buddy, wire.BuddyDelBuddies); isLimited {
-		return errMsg
-	}
-
+func (s OSCARProxy) RemoveBuddy(ctx context.Context, me *tocConn, args []byte) []string {
 	users, err := parseArgs(args)
 	if err != nil {
 		return s.runtimeErr(ctx, fmt.Errorf("parseArgs: %w", err))
@@ -1268,8 +939,8 @@ func (s OSCARProxy) RemoveBuddy(ctx context.Context, me *state.SessionInstance, 
 		}{ScreenName: sn})
 	}
 
-	if err := s.BuddyService.DelBuddies(ctx, me, snac); err != nil {
-		return s.runtimeErr(ctx, fmt.Errorf("BuddyService.DelBuddies: %w", err))
+	if msg := s.send(ctx, me, me.bos, wire.Buddy, wire.BuddyDelBuddies, snac, nil); msg != nil {
+		return msg
 	}
 	return []string{}
 }
@@ -1286,11 +957,7 @@ func (s OSCARProxy) RemoveBuddy(ctx context.Context, me *state.SessionInstance, 
 // passed in the TiK client, the reference implementation.
 //
 // Command syntax: toc_rvous_accept <nick> <cookie> <service>
-func (s OSCARProxy) RvousAccept(ctx context.Context, me *state.SessionInstance, args []byte) []string {
-	if errMsg, isLimited := s.checkRateLimit(ctx, me, wire.ICBM, wire.ICBMChannelMsgToHost); isLimited {
-		return errMsg
-	}
-
+func (s OSCARProxy) RvousAccept(ctx context.Context, me *tocConn, args []byte) []string {
 	var nick, cookie, service string
 
 	if _, err := parseArgs(args, &nick, &cookie, &service); err != nil {
@@ -1324,10 +991,9 @@ func (s OSCARProxy) RvousAccept(ctx context.Context, me *state.SessionInstance, 
 		},
 	}
 
-	if _, err = s.ICBMService.ChannelMsgToHost(ctx, me, wire.SNACFrame{}, snac); err != nil {
-		return s.runtimeErr(ctx, fmt.Errorf("ICBMService.ChannelMsgToHost: %w", err))
+	if msg := s.send(ctx, me, me.bos, wire.ICBM, wire.ICBMChannelMsgToHost, snac, nil); msg != nil {
+		return msg
 	}
-
 	return []string{}
 }
 
@@ -1343,11 +1009,7 @@ func (s OSCARProxy) RvousAccept(ctx context.Context, me *state.SessionInstance, 
 // passed in the TiK client, the reference implementation.
 //
 // Command syntax: toc_rvous_cancel <nick> <cookie> <service>
-func (s OSCARProxy) RvousCancel(ctx context.Context, me *state.SessionInstance, args []byte) []string {
-	if errMsg, isLimited := s.checkRateLimit(ctx, me, wire.ICBM, wire.ICBMChannelMsgToHost); isLimited {
-		return errMsg
-	}
-
+func (s OSCARProxy) RvousCancel(ctx context.Context, me *tocConn, args []byte) []string {
 	var nick, cookie, service string
 
 	if _, err := parseArgs(args, &nick, &cookie, &service); err != nil {
@@ -1386,11 +1048,56 @@ func (s OSCARProxy) RvousCancel(ctx context.Context, me *state.SessionInstance, 
 		},
 	}
 
-	if _, err = s.ICBMService.ChannelMsgToHost(ctx, me, wire.SNACFrame{}, snac); err != nil {
-		return s.runtimeErr(ctx, fmt.Errorf("ICBMService.ChannelMsgToHost: %w", err))
+	if msg := s.send(ctx, me, me.bos, wire.ICBM, wire.ICBMChannelMsgToHost, snac, nil); msg != nil {
+		return msg
 	}
-
 	return []string{}
+}
+
+// upsertFeedbag sends feedbag items to insert or update.
+func (s OSCARProxy) upsertFeedbag(ctx context.Context, me *tocConn, subGroup uint16, items []wire.FeedbagItem) []string {
+	body := any(wire.SNAC_0x13_0x08_FeedbagInsertItem{Items: items})
+	if subGroup == wire.FeedbagUpdateItem {
+		body = wire.SNAC_0x13_0x09_FeedbagUpdateItem{Items: items}
+	}
+	return s.sendFeedbagChange(ctx, me, subGroup, body, false, items)
+}
+
+// deleteFeedbag sends feedbag items to delete.
+func (s OSCARProxy) deleteFeedbag(ctx context.Context, me *tocConn, items []wire.FeedbagItem) []string {
+	body := wire.SNAC_0x13_0x0A_FeedbagDeleteItem{Items: items}
+	return s.sendFeedbagChange(ctx, me, wire.FeedbagDeleteItem, body, true, items)
+}
+
+// sendFeedbagChange sends a feedbag change and records it in the feedbag
+// mirror as pending until the server confirms it.
+func (s OSCARProxy) sendFeedbagChange(ctx context.Context, me *tocConn, subGroup uint16, body any, del bool, items []wire.FeedbagItem) []string {
+	me.feedbag.sendMu.Lock()
+	defer me.feedbag.sendMu.Unlock()
+
+	frame := wire.SNACFrame{
+		FoodGroup: wire.Feedbag,
+		SubGroup:  subGroup,
+	}
+	me.cache.add(&frame, feedbagChangeReqCtx{})
+	me.feedbag.sent(frame.RequestID, del, items)
+
+	if msg := s.sendFrame(ctx, me, me.bos, frame, body); msg != nil {
+		me.feedbag.discard(frame.RequestID)
+		return msg
+	}
+	return nil
+}
+
+// reloadFeedbag queries the server's feedbag to replace the feedbag mirror.
+// FeedbagReply finishes the reload.
+func (s OSCARProxy) reloadFeedbag(ctx context.Context, me *tocConn) []string {
+	me.feedbag.sendMu.Lock()
+	defer me.feedbag.sendMu.Unlock()
+
+	return s.send(ctx, me, me.bos, wire.Feedbag, wire.FeedbagQuery, struct{}{}, feedbagReloadReqCtx{
+		marker: me.feedbag.mark(),
+	})
 }
 
 // SetPDMode handles the toc2_set_pdmode TOC2 command.
@@ -1401,11 +1108,7 @@ func (s OSCARProxy) RvousCancel(ctx context.Context, me *state.SessionInstance, 
 //	3 = Allow "permit group" only, 4 = Block "deny group" only, 5 = Allow buddy list only.
 //
 // Command syntax: toc2_set_pdmode <mode>
-func (s OSCARProxy) SetPDMode(ctx context.Context, me *state.SessionInstance, args []byte) []string {
-	if errMsg, isLimited := s.checkRateLimit(ctx, me, wire.OService, wire.FeedbagInsertItem); isLimited {
-		return errMsg
-	}
-
+func (s OSCARProxy) SetPDMode(ctx context.Context, me *tocConn, args []byte) []string {
 	var pdModeStr string
 
 	if _, err := parseArgs(args, &pdModeStr); err != nil {
@@ -1421,18 +1124,12 @@ func (s OSCARProxy) SetPDMode(ctx context.Context, me *state.SessionInstance, ar
 		return s.runtimeErr(ctx, errors.New("invalid pd mode specified"))
 	}
 
-	fb, err := s.FeedbagManager.Feedbag(ctx, me.IdentScreenName())
-	if err != nil {
-		return s.runtimeErr(ctx, fmt.Errorf("FeedbagManager.Feedbag: %w", err))
-	}
-
-	fl := state.NewFeedbagList(fb, s.RandIntn)
+	fl := state.NewFeedbagList(me.feedbag.snapshot(), s.RandIntn)
 	fl.SetMode(uint8(mode))
 
 	if pending := fl.PendingUpdates(); len(pending) > 0 {
-		frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem}
-		if _, err := s.FeedbagService.UpsertItem(ctx, me, frame, pending); err != nil {
-			return s.runtimeErr(ctx, fmt.Errorf("FeedbagService.UpsertItem: %w", err))
+		if msg := s.upsertFeedbag(ctx, me, wire.FeedbagInsertItem, pending); msg != nil {
+			return msg
 		}
 	}
 
@@ -1447,11 +1144,7 @@ func (s OSCARProxy) SetPDMode(ctx context.Context, me *state.SessionInstance, ar
 //	quoted and you can't add more than one per command.
 //
 // Command syntax: toc2_new_group <group>
-func (s OSCARProxy) NewGroup(ctx context.Context, me *state.SessionInstance, args []byte) []string {
-	if errMsg, isLimited := s.checkRateLimit(ctx, me, wire.Feedbag, wire.FeedbagInsertItem); isLimited {
-		return errMsg
-	}
-
+func (s OSCARProxy) NewGroup(ctx context.Context, me *tocConn, args []byte) []string {
 	var groupName string
 	if _, err := parseArgs(args, &groupName); err != nil {
 		return s.runtimeErr(ctx, fmt.Errorf("parseArgs: %w", err))
@@ -1462,18 +1155,12 @@ func (s OSCARProxy) NewGroup(ctx context.Context, me *state.SessionInstance, arg
 		return s.runtimeErr(ctx, fmt.Errorf("empty group name"))
 	}
 
-	fb, err := s.FeedbagManager.Feedbag(ctx, me.IdentScreenName())
-	if err != nil {
-		return s.runtimeErr(ctx, fmt.Errorf("FeedbagManager.Feedbag: %w", err))
-	}
-
-	fl := state.NewFeedbagList(fb, s.RandIntn)
+	fl := state.NewFeedbagList(me.feedbag.snapshot(), s.RandIntn)
 	fl.AddGroup(groupName)
 
 	if pending := fl.PendingUpdates(); len(pending) > 0 {
-		frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem}
-		if _, err := s.FeedbagService.UpsertItem(ctx, me, frame, pending); err != nil {
-			return s.runtimeErr(ctx, fmt.Errorf("FeedbagService.UpsertItem: %w", err))
+		if msg := s.upsertFeedbag(ctx, me, wire.FeedbagInsertItem, pending); msg != nil {
+			return msg
 		}
 	}
 
@@ -1487,11 +1174,7 @@ func (s OSCARProxy) NewGroup(ctx context.Context, me *state.SessionInstance, arg
 //	Delete a group.
 //
 // Command syntax: toc2_del_group <group>
-func (s OSCARProxy) DelGroup(ctx context.Context, me *state.SessionInstance, args []byte) []string {
-	if errMsg, isLimited := s.checkRateLimit(ctx, me, wire.Feedbag, wire.FeedbagDeleteItem); isLimited {
-		return errMsg
-	}
-
+func (s OSCARProxy) DelGroup(ctx context.Context, me *tocConn, args []byte) []string {
 	var groupName string
 	if _, err := parseArgs(args, &groupName); err != nil {
 		return s.runtimeErr(ctx, fmt.Errorf("parseArgs: %w", err))
@@ -1502,29 +1185,20 @@ func (s OSCARProxy) DelGroup(ctx context.Context, me *state.SessionInstance, arg
 		return s.runtimeErr(ctx, fmt.Errorf("empty group name"))
 	}
 
-	fb, err := s.FeedbagManager.Feedbag(ctx, me.IdentScreenName())
-	if err != nil {
-		return s.runtimeErr(ctx, fmt.Errorf("FeedbagManager.Feedbag: %w", err))
-	}
-
-	fl := state.NewFeedbagList(fb, s.RandIntn)
+	fl := state.NewFeedbagList(me.feedbag.snapshot(), s.RandIntn)
 	fl.DeleteGroup(groupName)
 
-	if pending := fl.PendingDeletes(); len(pending) > 0 {
-		deleteItem := wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
-			Items: pending,
-		}
-		if _, err := s.FeedbagService.DeleteItem(ctx, me, wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagDeleteItem}, deleteItem); err != nil {
-			return s.runtimeErr(ctx, fmt.Errorf("FeedbagService.DeleteItem: %w", err))
-		}
-	} else {
+	pending := fl.PendingDeletes()
+	if len(pending) == 0 {
 		return s.runtimeErr(ctx, fmt.Errorf("group not found: %s", groupName))
+	}
+	if msg := s.deleteFeedbag(ctx, me, pending); msg != nil {
+		return msg
 	}
 
 	if pending := fl.PendingUpdates(); len(pending) > 0 {
-		frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem}
-		if _, err := s.FeedbagService.UpsertItem(ctx, me, frame, pending); err != nil {
-			return s.runtimeErr(ctx, fmt.Errorf("FeedbagService.UpsertItem: %w", err))
+		if msg := s.upsertFeedbag(ctx, me, wire.FeedbagInsertItem, pending); msg != nil {
+			return msg
 		}
 	}
 
@@ -1544,11 +1218,7 @@ func (s OSCARProxy) DelGroup(ctx context.Context, me *state.SessionInstance, arg
 // Where <lf> is a linefeed character (ASCII 10).
 //
 // Command syntax: toc2_new_buddies <config format>
-func (s OSCARProxy) NewBuddies(ctx context.Context, me *state.SessionInstance, args []byte) []string {
-	if errMsg, isLimited := s.checkRateLimit(ctx, me, wire.Feedbag, wire.FeedbagInsertItem); isLimited {
-		return errMsg
-	}
-
+func (s OSCARProxy) NewBuddies(ctx context.Context, me *tocConn, args []byte) []string {
 	// Parse config string (handle quotes, unescape)
 	configStr := string(args)
 	configStr = strings.Trim(configStr, "'\" ")
@@ -1564,12 +1234,7 @@ func (s OSCARProxy) NewBuddies(ctx context.Context, me *state.SessionInstance, a
 		return s.runtimeErr(ctx, fmt.Errorf("parseTOC2Config: %w", err))
 	}
 
-	fb, err := s.FeedbagManager.Feedbag(ctx, me.IdentScreenName())
-	if err != nil {
-		return s.runtimeErr(ctx, fmt.Errorf("FeedbagManager.Feedbag: %w", err))
-	}
-
-	fl := state.NewFeedbagList(fb, s.RandIntn)
+	fl := state.NewFeedbagList(me.feedbag.snapshot(), s.RandIntn)
 
 	var replies []string
 
@@ -1613,10 +1278,11 @@ func (s OSCARProxy) NewBuddies(ctx context.Context, me *state.SessionInstance, a
 	if pending := fl.PendingUpdates(); len(pending) > 0 {
 
 		buddyItems := make(map[uint16][]wire.FeedbagItem)
+		var groupOrder []uint16
 		for _, item := range pending {
 			if item.ClassID == wire.FeedbagClassIdBuddy {
 				if _, ok := buddyItems[item.GroupID]; !ok {
-					buddyItems[item.GroupID] = nil
+					groupOrder = append(groupOrder, item.GroupID)
 				}
 				buddyItems[item.GroupID] = append(buddyItems[item.GroupID], item)
 			}
@@ -1626,20 +1292,23 @@ func (s OSCARProxy) NewBuddies(ctx context.Context, me *state.SessionInstance, a
 			return replies
 		}
 
+		// all groups go in one SNAC, ahead of all buddies in another
+		var groups []wire.FeedbagItem
 		for _, item := range pending {
 			if item.ClassID == wire.FeedbagClassIdGroup {
-				frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagUpdateItem}
-				if _, err := s.FeedbagService.UpsertItem(ctx, me, frame, []wire.FeedbagItem{item}); err != nil {
-					return s.runtimeErr(ctx, fmt.Errorf("FeedbagService.UpsertItem: %w", err))
-				}
+				groups = append(groups, item)
 			}
 		}
+		if msg := s.upsertFeedbag(ctx, me, wire.FeedbagUpdateItem, groups); msg != nil {
+			return msg
+		}
 
-		for _, buddies := range buddyItems {
-			frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem}
-			if _, err := s.FeedbagService.UpsertItem(ctx, me, frame, buddies); err != nil {
-				return s.runtimeErr(ctx, fmt.Errorf("FeedbagService.UpsertItem: %w", err))
-			}
+		var buddies []wire.FeedbagItem
+		for _, groupID := range groupOrder {
+			buddies = append(buddies, buddyItems[groupID]...)
+		}
+		if msg := s.upsertFeedbag(ctx, me, wire.FeedbagInsertItem, buddies); msg != nil {
+			return msg
 		}
 	}
 
@@ -1653,11 +1322,7 @@ func (s OSCARProxy) NewBuddies(ctx context.Context, me *state.SessionInstance, a
 //	You can remove multiple names in the same group using the syntax <screenname> <screenname> <group>.
 //
 // Command syntax: toc2_remove_buddy <screenname> [screenname] ... [screenname] <group>
-func (s OSCARProxy) RemoveBuddy2(ctx context.Context, me *state.SessionInstance, args []byte) []string {
-	if errMsg, isLimited := s.checkRateLimit(ctx, me, wire.Feedbag, wire.FeedbagDeleteItem); isLimited {
-		return errMsg
-	}
-
+func (s OSCARProxy) RemoveBuddy2(ctx context.Context, me *tocConn, args []byte) []string {
 	params, err := parseArgs(args)
 	if err != nil {
 		return s.runtimeErr(ctx, fmt.Errorf("parseArgs: %w", err))
@@ -1666,12 +1331,7 @@ func (s OSCARProxy) RemoveBuddy2(ctx context.Context, me *state.SessionInstance,
 		return s.runtimeErr(ctx, fmt.Errorf("missing params: need at least one screenname and group"))
 	}
 
-	fb, err := s.FeedbagManager.Feedbag(ctx, me.IdentScreenName())
-	if err != nil {
-		return s.runtimeErr(ctx, fmt.Errorf("FeedbagManager.Feedbag: %w", err))
-	}
-
-	fl := state.NewFeedbagList(fb, s.RandIntn)
+	fl := state.NewFeedbagList(me.feedbag.snapshot(), s.RandIntn)
 
 	groupName := params[len(params)-1]
 	screenNames := params[:len(params)-1]
@@ -1684,19 +1344,14 @@ func (s OSCARProxy) RemoveBuddy2(ctx context.Context, me *state.SessionInstance,
 	// ensure to delete buddies before groups to ensure they correctly propagate
 	// to concurrent sessions
 	if pending := fl.PendingDeletes(); len(pending) > 0 {
-		frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagDeleteItem}
-		deleteItem := wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
-			Items: pending,
-		}
-		if _, err := s.FeedbagService.DeleteItem(ctx, me, frame, deleteItem); err != nil {
-			return s.runtimeErr(ctx, fmt.Errorf("FeedbagService.DeleteItem: %w", err))
+		if msg := s.deleteFeedbag(ctx, me, pending); msg != nil {
+			return msg
 		}
 	}
 
 	if pending := fl.PendingUpdates(); len(pending) > 0 {
-		frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagUpdateItem}
-		if _, err := s.FeedbagService.UpsertItem(ctx, me, frame, pending); err != nil {
-			return s.runtimeErr(ctx, fmt.Errorf("FeedbagService.UpsertItem: %w", err))
+		if msg := s.upsertFeedbag(ctx, me, wire.FeedbagUpdateItem, pending); msg != nil {
+			return msg
 		}
 	}
 
@@ -1711,11 +1366,7 @@ func (s OSCARProxy) RemoveBuddy2(ctx context.Context, me *state.SessionInstance,
 //	multiple people at a time by separating the screennames with a space.
 //
 // Command syntax: toc2_add_permit <screenname> [screenname] ...
-func (s OSCARProxy) AddPermit2(ctx context.Context, me *state.SessionInstance, args []byte) []string {
-	if errMsg, isLimited := s.checkRateLimit(ctx, me, wire.Feedbag, wire.FeedbagInsertItem); isLimited {
-		return errMsg
-	}
-
+func (s OSCARProxy) AddPermit2(ctx context.Context, me *tocConn, args []byte) []string {
 	screenNames, err := parseArgs(args)
 	if err != nil {
 		return s.runtimeErr(ctx, fmt.Errorf("parseArgs: %w", err))
@@ -1725,21 +1376,15 @@ func (s OSCARProxy) AddPermit2(ctx context.Context, me *state.SessionInstance, a
 		return s.runtimeErr(ctx, fmt.Errorf("no screennames provided"))
 	}
 
-	fb, err := s.FeedbagManager.Feedbag(ctx, me.IdentScreenName())
-	if err != nil {
-		return s.runtimeErr(ctx, fmt.Errorf("FeedbagManager.Feedbag: %w", err))
-	}
-
-	fl := state.NewFeedbagList(fb, s.RandIntn)
+	fl := state.NewFeedbagList(me.feedbag.snapshot(), s.RandIntn)
 
 	for _, sn := range screenNames {
 		fl.PermitUser(sn)
 	}
 
 	if pending := fl.PendingUpdates(); len(pending) > 0 {
-		frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem}
-		if _, err := s.FeedbagService.UpsertItem(ctx, me, frame, pending); err != nil {
-			return s.runtimeErr(ctx, fmt.Errorf("FeedbagService.UpsertItem: %w", err))
+		if msg := s.upsertFeedbag(ctx, me, wire.FeedbagInsertItem, pending); msg != nil {
+			return msg
 		}
 	}
 
@@ -1754,11 +1399,7 @@ func (s OSCARProxy) AddPermit2(ctx context.Context, me *state.SessionInstance, a
 //	remove multiple people at a time by separating the screennames with a space.
 //
 // Command syntax: toc2_remove_permit <screenname> [screenname] ...
-func (s OSCARProxy) RemovePermit2(ctx context.Context, me *state.SessionInstance, args []byte) []string {
-	if errMsg, isLimited := s.checkRateLimit(ctx, me, wire.Feedbag, wire.FeedbagDeleteItem); isLimited {
-		return errMsg
-	}
-
+func (s OSCARProxy) RemovePermit2(ctx context.Context, me *tocConn, args []byte) []string {
 	screenNames, err := parseArgs(args)
 	if err != nil {
 		return s.runtimeErr(ctx, fmt.Errorf("parseArgs: %w", err))
@@ -1768,23 +1409,15 @@ func (s OSCARProxy) RemovePermit2(ctx context.Context, me *state.SessionInstance
 		return s.runtimeErr(ctx, fmt.Errorf("no screennames provided"))
 	}
 
-	fb, err := s.FeedbagManager.Feedbag(ctx, me.IdentScreenName())
-	if err != nil {
-		return s.runtimeErr(ctx, fmt.Errorf("FeedbagManager.Feedbag: %w", err))
-	}
-
-	fl := state.NewFeedbagList(fb, s.RandIntn)
+	fl := state.NewFeedbagList(me.feedbag.snapshot(), s.RandIntn)
 
 	for _, sn := range screenNames {
 		fl.DeletePermit(sn)
 	}
 
 	if pending := fl.PendingDeletes(); len(pending) > 0 {
-		deleteItem := wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
-			Items: pending,
-		}
-		if _, err := s.FeedbagService.DeleteItem(ctx, me, wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagDeleteItem}, deleteItem); err != nil {
-			return s.runtimeErr(ctx, fmt.Errorf("FeedbagService.DeleteItem: %w", err))
+		if msg := s.deleteFeedbag(ctx, me, pending); msg != nil {
+			return msg
 		}
 	}
 
@@ -1799,11 +1432,7 @@ func (s OSCARProxy) RemovePermit2(ctx context.Context, me *state.SessionInstance
 //	multiple people at a time by separating the screennames with a space.
 //
 // Command syntax: toc2_add_deny <screenname> [screenname] ...
-func (s OSCARProxy) AddDeny2(ctx context.Context, me *state.SessionInstance, args []byte) []string {
-	if errMsg, isLimited := s.checkRateLimit(ctx, me, wire.Feedbag, wire.FeedbagInsertItem); isLimited {
-		return errMsg
-	}
-
+func (s OSCARProxy) AddDeny2(ctx context.Context, me *tocConn, args []byte) []string {
 	screenNames, err := parseArgs(args)
 	if err != nil {
 		return s.runtimeErr(ctx, fmt.Errorf("parseArgs: %w", err))
@@ -1813,21 +1442,15 @@ func (s OSCARProxy) AddDeny2(ctx context.Context, me *state.SessionInstance, arg
 		return s.runtimeErr(ctx, fmt.Errorf("no screennames provided"))
 	}
 
-	fb, err := s.FeedbagManager.Feedbag(ctx, me.IdentScreenName())
-	if err != nil {
-		return s.runtimeErr(ctx, fmt.Errorf("FeedbagManager.Feedbag: %w", err))
-	}
-
-	fl := state.NewFeedbagList(fb, s.RandIntn)
+	fl := state.NewFeedbagList(me.feedbag.snapshot(), s.RandIntn)
 
 	for _, sn := range screenNames {
 		fl.DenyUser(sn)
 	}
 
 	if pending := fl.PendingUpdates(); len(pending) > 0 {
-		frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem}
-		if _, err := s.FeedbagService.UpsertItem(ctx, me, frame, pending); err != nil {
-			return s.runtimeErr(ctx, fmt.Errorf("FeedbagService.UpsertItem: %w", err))
+		if msg := s.upsertFeedbag(ctx, me, wire.FeedbagInsertItem, pending); msg != nil {
+			return msg
 		}
 	}
 
@@ -1842,11 +1465,7 @@ func (s OSCARProxy) AddDeny2(ctx context.Context, me *state.SessionInstance, arg
 //	remove multiple people at a time by separating the screennames with a space.
 //
 // Command syntax: toc2_remove_deny <screenname> [screenname] ...
-func (s OSCARProxy) RemoveDeny2(ctx context.Context, me *state.SessionInstance, args []byte) []string {
-	if errMsg, isLimited := s.checkRateLimit(ctx, me, wire.Feedbag, wire.FeedbagDeleteItem); isLimited {
-		return errMsg
-	}
-
+func (s OSCARProxy) RemoveDeny2(ctx context.Context, me *tocConn, args []byte) []string {
 	screenNames, err := parseArgs(args)
 	if err != nil {
 		return s.runtimeErr(ctx, fmt.Errorf("parseArgs: %w", err))
@@ -1856,23 +1475,15 @@ func (s OSCARProxy) RemoveDeny2(ctx context.Context, me *state.SessionInstance, 
 		return s.runtimeErr(ctx, fmt.Errorf("no screennames provided"))
 	}
 
-	fb, err := s.FeedbagManager.Feedbag(ctx, me.IdentScreenName())
-	if err != nil {
-		return s.runtimeErr(ctx, fmt.Errorf("FeedbagManager.Feedbag: %w", err))
-	}
-
-	fl := state.NewFeedbagList(fb, s.RandIntn)
+	fl := state.NewFeedbagList(me.feedbag.snapshot(), s.RandIntn)
 
 	for _, sn := range screenNames {
 		fl.DeleteDeny(sn)
 	}
 
 	if pending := fl.PendingDeletes(); len(pending) > 0 {
-		deleteItem := wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
-			Items: pending,
-		}
-		if _, err := s.FeedbagService.DeleteItem(ctx, me, wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagDeleteItem}, deleteItem); err != nil {
-			return s.runtimeErr(ctx, fmt.Errorf("FeedbagService.DeleteItem: %w", err))
+		if msg := s.deleteFeedbag(ctx, me, pending); msg != nil {
+			return msg
 		}
 	}
 
@@ -1891,11 +1502,7 @@ func (s OSCARProxy) RemoveDeny2(ctx context.Context, me *state.SessionInstance, 
 // sent as Unicode; everything else is sent as ASCII.
 //
 // Command syntax: toc2_send_im_enc <Destination user> "F" <Encoding> <Language> <Message> [auto]
-func (s OSCARProxy) SendIMEnc(ctx context.Context, sender *state.SessionInstance, args []byte) []string {
-	if msg, isLimited := s.checkRateLimit(ctx, sender, wire.ICBM, wire.ICBMChannelMsgToHost); isLimited {
-		return msg
-	}
-
+func (s OSCARProxy) SendIMEnc(ctx context.Context, me *tocConn, args []byte) []string {
 	var recip, unknown, enc, lang, msg string
 
 	autoReply, err := parseArgs(args, &recip, &unknown, &enc, &lang, &msg)
@@ -1908,7 +1515,7 @@ func (s OSCARProxy) SendIMEnc(ctx context.Context, sender *state.SessionInstance
 		fragList = wire.ICBMFragmentList
 	}
 
-	return s.sendIm(ctx, sender, fragList, msg, recip, autoReply)
+	return s.sendIm(ctx, me, fragList, msg, recip, autoReply)
 }
 
 // SendIM handles the toc_send_im and toc2_send_im TOC commands.
@@ -1923,11 +1530,7 @@ func (s OSCARProxy) SendIMEnc(ctx context.Context, sender *state.SessionInstance
 //
 // Command syntax: toc_send_im <Destination User> <Message> [auto]
 // Command syntax: toc2_send_im <user> <message> [auto]
-func (s OSCARProxy) SendIM(ctx context.Context, sender *state.SessionInstance, args []byte) []string {
-	if msg, isLimited := s.checkRateLimit(ctx, sender, wire.ICBM, wire.ICBMChannelMsgToHost); isLimited {
-		return msg
-	}
-
+func (s OSCARProxy) SendIM(ctx context.Context, me *tocConn, args []byte) []string {
 	var recip, msg string
 
 	autoReply, err := parseArgs(args, &recip, &msg)
@@ -1935,10 +1538,10 @@ func (s OSCARProxy) SendIM(ctx context.Context, sender *state.SessionInstance, a
 		return s.runtimeErr(ctx, fmt.Errorf("parseArgs: %w", err))
 	}
 
-	return s.sendIm(ctx, sender, wire.ICBMFragmentListASCII, msg, recip, autoReply)
+	return s.sendIm(ctx, me, wire.ICBMFragmentListASCII, msg, recip, autoReply)
 }
 
-func (s OSCARProxy) sendIm(ctx context.Context, sender *state.SessionInstance, fragList func(string) ([]wire.ICBMCh1Fragment, error), msg string, recip string, autoReply []string) []string {
+func (s OSCARProxy) sendIm(ctx context.Context, me *tocConn, fragList func(string) ([]wire.ICBMCh1Fragment, error), msg string, recip string, autoReply []string) []string {
 	frags, err := fragList(unescape(msg))
 	if err != nil {
 		return s.runtimeErr(ctx, fmt.Errorf("wire.ICBMFragmentList: %w", err))
@@ -1958,13 +1561,11 @@ func (s OSCARProxy) sendIm(ctx context.Context, sender *state.SessionInstance, f
 		snac.Append(wire.NewTLVBE(wire.ICBMTLVAutoResponse, []byte{}))
 	}
 
-	// send message and ignore response since there is no TOC error code to
-	// handle errors such as "user is offline", etc.
-	_, err = s.ICBMService.ChannelMsgToHost(ctx, sender, wire.SNACFrame{}, snac)
-	if err != nil {
-		return s.runtimeErr(ctx, fmt.Errorf("ICBMService.ChannelMsgToHost: %w", err))
+	// errors such as "user is offline" are not reported to the client since
+	// there is no TOC error code for them
+	if msg := s.send(ctx, me, me.bos, wire.ICBM, wire.ICBMChannelMsgToHost, snac, nil); msg != nil {
+		return msg
 	}
-
 	return []string{}
 }
 
@@ -1976,11 +1577,7 @@ func (s OSCARProxy) sendIm(ctx context.Context, sender *state.SessionInstance, f
 //	1 for typing paused, 2 for currently typing.
 //
 // Command syntax: toc2_client_event <user> <typing status>
-func (s OSCARProxy) SendClientEvent(ctx context.Context, sender *state.SessionInstance, args []byte) []string {
-	if msg, isLimited := s.checkRateLimit(ctx, sender, wire.ICBM, wire.ICBMClientEvent); isLimited {
-		return msg
-	}
-
+func (s OSCARProxy) SendClientEvent(ctx context.Context, me *tocConn, args []byte) []string {
 	var user, statusStr string
 	if _, err := parseArgs(args, &user, &statusStr); err != nil {
 		return s.runtimeErr(ctx, fmt.Errorf("SendClientEvent: invalid args: %w", err))
@@ -1989,14 +1586,14 @@ func (s OSCARProxy) SendClientEvent(ctx context.Context, sender *state.SessionIn
 	if err != nil || status > 2 {
 		return s.runtimeErr(ctx, fmt.Errorf("SendClientEvent: typing status must be 0, 1, or 2, got %q", statusStr))
 	}
-	inBody := wire.SNAC_0x04_0x14_ICBMClientEvent{
+	snac := wire.SNAC_0x04_0x14_ICBMClientEvent{
 		Cookie:     0,
 		ChannelID:  wire.ICBMChannelIM,
 		ScreenName: user,
 		Event:      uint16(status),
 	}
-	if err := s.ICBMService.ClientEvent(ctx, sender, wire.SNACFrame{}, inBody); err != nil {
-		return s.runtimeErr(ctx, fmt.Errorf("ICBMService.ClientEvent: %w", err))
+	if msg := s.send(ctx, me, me.bos, wire.ICBM, wire.ICBMClientEvent, snac, nil); msg != nil {
+		return msg
 	}
 	return []string{}
 }
@@ -2011,11 +1608,7 @@ func (s OSCARProxy) SendClientEvent(ctx context.Context, sender *state.SessionIn
 //	information.
 //
 // Command syntax: toc_set_away [<away message>]
-func (s OSCARProxy) SetAway(ctx context.Context, me *state.SessionInstance, args []byte) []string {
-	if errMsg, isLimited := s.checkRateLimit(ctx, me, wire.Locate, wire.LocateSetInfo); isLimited {
-		return errMsg
-	}
-
+func (s OSCARProxy) SetAway(ctx context.Context, me *tocConn, args []byte) []string {
 	maybeMsg, err := parseArgs(args)
 	if err != nil {
 		return s.runtimeErr(ctx, fmt.Errorf("parseArgs: %w", err))
@@ -2034,10 +1627,9 @@ func (s OSCARProxy) SetAway(ctx context.Context, me *state.SessionInstance, args
 		},
 	}
 
-	if err := s.LocateService.SetInfo(ctx, me, snac); err != nil {
-		return s.runtimeErr(ctx, fmt.Errorf("LocateService.SetInfo: %w", err))
+	if msg := s.send(ctx, me, me.bos, wire.Locate, wire.LocateSetInfo, snac, nil); msg != nil {
+		return msg
 	}
-
 	return []string{}
 }
 
@@ -2053,11 +1645,7 @@ func (s OSCARProxy) SetAway(ctx context.Context, me *state.SessionInstance, args
 // chat.
 //
 // Command syntax: toc_set_caps [ <Capability 1> [<Capability 2> [...]]]
-func (s OSCARProxy) SetCaps(ctx context.Context, me *state.SessionInstance, args []byte) []string {
-	if errMsg, isLimited := s.checkRateLimit(ctx, me, wire.Locate, wire.LocateSetInfo); isLimited {
-		return errMsg
-	}
-
+func (s OSCARProxy) SetCaps(ctx context.Context, me *tocConn, args []byte) []string {
 	params, err := parseArgs(args)
 	if err != nil {
 		return s.runtimeErr(ctx, fmt.Errorf("parseArgs: %w", err))
@@ -2098,10 +1686,9 @@ func (s OSCARProxy) SetCaps(ctx context.Context, me *state.SessionInstance, args
 		},
 	}
 
-	if err := s.LocateService.SetInfo(ctx, me, snac); err != nil {
-		return s.runtimeErr(ctx, fmt.Errorf("LocateService.SetInfo: %w", err))
+	if msg := s.send(ctx, me, me.bos, wire.Locate, wire.LocateSetInfo, snac, nil); msg != nil {
+		return msg
 	}
-
 	return []string{}
 }
 
@@ -2130,8 +1717,8 @@ func (s OSCARProxy) SetCaps(ctx context.Context, me *state.SessionInstance, args
 // the config as received from the client.
 //
 // Command syntax: toc_set_config <Config Info>
-func (s OSCARProxy) SetConfig(ctx context.Context, me *state.SessionInstance, args []byte) []string {
-	if status := me.Session().EvaluateRateLimit(time.Now(), 1); status == wire.RateLimitStatusLimited {
+func (s OSCARProxy) SetConfig(ctx context.Context, me *tocConn, args []byte) []string {
+	if !me.limiter.Allow() {
 		return []string{rateLimitExceededErr}
 	}
 
@@ -2169,11 +1756,7 @@ func (s OSCARProxy) SetConfig(ctx context.Context, me *state.SessionInstance, ar
 // The fields "email" and "allow web searches" are ignored by this method.
 //
 // Command syntax: toc_set_dir <info information>
-func (s OSCARProxy) SetDir(ctx context.Context, me *state.SessionInstance, args []byte) []string {
-	if errMsg, isLimited := s.checkRateLimit(ctx, me, wire.Locate, wire.LocateSetDirInfo); isLimited {
-		return errMsg
-	}
-
+func (s OSCARProxy) SetDir(ctx context.Context, me *tocConn, args []byte) []string {
 	var info string
 
 	if _, err := parseArgs(args, &info); err != nil {
@@ -2205,10 +1788,9 @@ func (s OSCARProxy) SetDir(ctx context.Context, me *state.SessionInstance, args 
 			},
 		},
 	}
-	if _, err := s.LocateService.SetDirInfo(ctx, me, wire.SNACFrame{}, snac); err != nil {
-		return s.runtimeErr(ctx, fmt.Errorf("LocateService.SetDirInfo: %w", err))
+	if msg := s.send(ctx, me, me.bos, wire.Locate, wire.LocateSetDirInfo, snac, nil); msg != nil {
+		return msg
 	}
-
 	return []string{}
 }
 
@@ -2222,11 +1804,7 @@ func (s OSCARProxy) SetDir(ctx context.Context, me *state.SessionInstance, args 
 //	incrementing this number, so do not repeatedly call with new idle times.
 //
 // Command syntax: toc_set_idle <idle secs>
-func (s OSCARProxy) SetIdle(ctx context.Context, me *state.SessionInstance, args []byte) []string {
-	if errMsg, isLimited := s.checkRateLimit(ctx, me, wire.OService, wire.OServiceIdleNotification); isLimited {
-		return errMsg
-	}
-
+func (s OSCARProxy) SetIdle(ctx context.Context, me *tocConn, args []byte) []string {
 	var idleTimeStr string
 
 	if _, err := parseArgs(args, &idleTimeStr); err != nil {
@@ -2241,10 +1819,9 @@ func (s OSCARProxy) SetIdle(ctx context.Context, me *state.SessionInstance, args
 	snac := wire.SNAC_0x01_0x11_OServiceIdleNotification{
 		IdleTime: uint32(t),
 	}
-	if err := s.OServiceService.IdleNotification(ctx, me, snac); err != nil {
-		return s.runtimeErr(ctx, fmt.Errorf("OServiceServiceBOS.IdleNotification: %w", err))
+	if msg := s.send(ctx, me, me.bos, wire.OService, wire.OServiceIdleNotification, snac, nil); msg != nil {
+		return msg
 	}
-
 	return []string{}
 }
 
@@ -2255,11 +1832,7 @@ func (s OSCARProxy) SetIdle(ctx context.Context, me *state.SessionInstance, args
 //	Set the LOCATE user information. This is basic HTML. Remember to encode the info.
 //
 // Command syntax: toc_set_info <info information>
-func (s OSCARProxy) SetInfo(ctx context.Context, me *state.SessionInstance, args []byte) []string {
-	if errMsg, isLimited := s.checkRateLimit(ctx, me, wire.Locate, wire.LocateSetInfo); isLimited {
-		return errMsg
-	}
-
+func (s OSCARProxy) SetInfo(ctx context.Context, me *tocConn, args []byte) []string {
 	var info string
 
 	if _, err := parseArgs(args, &info); err != nil {
@@ -2274,10 +1847,9 @@ func (s OSCARProxy) SetInfo(ctx context.Context, me *state.SessionInstance, args
 			},
 		},
 	}
-	if err := s.LocateService.SetInfo(ctx, me, snac); err != nil {
-		return s.runtimeErr(ctx, fmt.Errorf("LocateService.SetInfo: %w", err))
+	if msg := s.send(ctx, me, me.bos, wire.Locate, wire.LocateSetInfo, snac, nil); msg != nil {
+		return msg
 	}
-
 	return []string{}
 }
 
@@ -2306,10 +1878,12 @@ func (s OSCARProxy) SetInfo(ctx context.Context, me *state.SessionInstance, args
 // include additional trailing parameters (e.g. agent string, code); see
 // BlueTOC documentation.
 //
+// It returns the user's TOC connection, or nil if signon failed.
+//
 // Command syntax: toc_signon <authorizer host> <authorizer port> <User Name> <Password> <language> <version>
 // Command syntax: toc2_signon <authorizer host> <authorizer port> <User Name> <Password> <language> <version>
 // Command syntax: toc2_login <authorizer host> <authorizer port> <User Name> <Password> <language> <version> [additional params...]
-func (s OSCARProxy) Signon(ctx context.Context, args []byte, recalcWarning func(ctx context.Context, instance *state.SessionInstance) error, lowerWarnLevel func(ctx context.Context, instance *state.SessionInstance), chatRegistry *ChatRegistry) (*state.SessionInstance, []string) {
+func (s OSCARProxy) Signon(ctx context.Context, args []byte, clientAddr net.Addr) (*tocConn, []string) {
 	var cmd, userName, password string
 
 	if _, err := parseArgs(args, &cmd, nil, nil, &userName, &password); err != nil {
@@ -2331,20 +1905,24 @@ func (s OSCARProxy) Signon(ctx context.Context, args []byte, recalcWarning func(
 		return nil, s.runtimeErr(ctx, fmt.Errorf("hex.DecodeString: %w", err))
 	}
 
-	signonFrame := wire.FLAPSignonFrame{}
-	signonFrame.Append(wire.NewTLVBE(wire.LoginTLVTagsScreenName, userName))
-	signonFrame.Append(wire.NewTLVBE(wire.LoginTLVTagsRoastedTOCPassword, passwordHash))
+	signonTLVs := []wire.TLV{
+		wire.NewTLVBE(wire.LoginTLVTagsScreenName, userName),
+		wire.NewTLVBE(wire.LoginTLVTagsRoastedTOCPassword, passwordHash),
+	}
 	if cmd == "toc2_login" || cmd == "toc2_signon" {
-		signonFrame.Append(wire.NewTLVBE(wire.LoginTLVTagsMultiConnFlags, wire.MultiConnFlagsRecentClient))
+		signonTLVs = append(signonTLVs, wire.NewTLVBE(wire.LoginTLVTagsMultiConnFlags, wire.MultiConnFlagsRecentClient))
 	}
 
-	block, err := s.AuthService.FLAPLogin(ctx, signonFrame, config.Endpoint{})
+	block, err := s.authenticate(clientAddr, signonTLVs)
 	if err != nil {
-		return nil, s.runtimeErr(ctx, fmt.Errorf("AuthService.FLAPLogin: %w", err))
+		return nil, s.runtimeErr(ctx, fmt.Errorf("authenticate: %w", err))
 	}
 
-	if block.HasTag(wire.LoginTLVTagsErrorSubcode) {
-		s.Logger.DebugContext(ctx, "login failed")
+	if code, failed := block.Uint16BE(wire.LoginTLVTagsErrorSubcode); failed {
+		s.Logger.DebugContext(ctx, "login failed", "code", code)
+		if code == wire.LoginErrRateLimitExceeded {
+			return nil, []string{"ERROR:" + wire.TOCErrorAuthRatedFromLogin}
+		}
 		return nil, []string{"ERROR:" + wire.TOCErrorAuthIncorrectNickOrPassword}
 	}
 
@@ -2353,125 +1931,127 @@ func (s OSCARProxy) Signon(ctx context.Context, args []byte, recalcWarning func(
 		return nil, s.runtimeErr(ctx, fmt.Errorf("unable to get session id from payload"))
 	}
 
-	// todo: naming for cookie: login cookie, server cookie, or auth cookie?
-	serverCookie, _, err := s.AuthService.CrackCookie(authCookie)
+	bos, err := s.connectService(clientAddr, authCookie)
 	if err != nil {
-		return nil, s.runtimeErr(ctx, fmt.Errorf("AuthService.CrackCookie: %w", err))
+		return nil, s.runtimeErr(ctx, fmt.Errorf("connectService: %w", err))
 	}
 
-	fnCfg := func(sess *state.Session) {
-		sess.OnSessionClose(func() {
-			if !shuttingDown(ctx) {
-				if err := s.BuddyService.BroadcastBuddyDeparted(ctx, sess.IdentScreenName()); err != nil {
-					s.Logger.ErrorContext(ctx, "error sending buddy departure notifications", "err", err.Error())
-				}
-			}
+	me := newTOCConn(bos, state.NewIdentScreenName(userName), clientAddr)
+	me.isTOC2 = cmd != "toc_signon"
+	me.supportsMsgEnc = cmd == "toc2_login"
 
-			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-			defer cancel()
-
-			// buddy list must be cleared before session is closed, otherwise
-			// there will be a race condition that could cause the buddy list
-			// be prematurely deleted.
-			if err := s.BuddyListRegistry.UnregisterBuddyList(ctx, sess.IdentScreenName()); err != nil {
-				s.Logger.ErrorContext(ctx, "error removing buddy list entry", "err", err.Error())
-			}
-			s.ChatSessionManager.RemoveUserFromAllChats(sess.IdentScreenName())
-			s.AuthService.Signout(ctx, sess)
-		})
-
-	}
-
-	instance, err := s.AuthService.RegisterBOSSession(ctx, serverCookie, fnCfg)
+	msgs, err := s.signonConfig(ctx, me, cmd)
 	if err != nil {
-		return nil, s.runtimeErr(ctx, fmt.Errorf("AuthService.RegisterBOSSession: %w", err))
+		bos.Close()
+		return nil, s.runtimeErr(ctx, err)
 	}
-
-	if err = instance.Session().RunOnce(func() error {
-		// make buddy list visible to other users
-		if err := s.BuddyListRegistry.RegisterBuddyList(ctx, instance.IdentScreenName()); err != nil {
-			return fmt.Errorf("unable to init buddy list: %w", err)
-		}
-		// restore warning level from last session
-		if err := recalcWarning(ctx, instance); err != nil {
-			return fmt.Errorf("failed to recalculate warning level: %w", err)
-		}
-		// periodically decay warning level
-		go lowerWarnLevel(ctx, instance)
-		// broadcast rate limit transitions to every instance on the account
-		go s.OServiceService.MonitorRateLimits(ctx, instance.Session())
-		return nil
-	}); err != nil {
-		return nil, s.runtimeErr(ctx, fmt.Errorf("Session.RunOnce: %w", err))
-	}
-
-	// Update user visibility when an instance closes, as the user's overall status may change.
-	// Example: With 1 away and 1 non-away instance, the user appears available. If the non-away
-	// instance closes, the user should appear away.
-	instance.OnClose(func() {
-		if shuttingDown(ctx) {
-			return
-		}
-		if instance.Session().Invisible() {
-			if err := s.BuddyService.BroadcastBuddyDeparted(ctx, instance.IdentScreenName()); err != nil {
-				s.Logger.ErrorContext(ctx, "error sending buddy departure notifications", "err", err.Error())
-			}
-		} else {
-			if err := s.BuddyService.BroadcastBuddyArrived(ctx, instance.IdentScreenName(), instance.Session().TLVUserInfo()); err != nil {
-				s.Logger.ErrorContext(ctx, "error sending buddy arrival notifications", "err", err.Error())
-			}
-		}
-	})
-
-	// set chat capability so that... tk
-	instance.SetCaps([][16]byte{wire.CapChat})
-
-	if cmd == "toc_signon" {
-		u, err := s.TOCConfigStore.User(ctx, instance.IdentScreenName())
-		if err != nil {
-			return nil, s.runtimeErr(ctx, fmt.Errorf("TOCConfigStore.User: %w", err))
-		}
-		if u == nil {
-			return nil, s.runtimeErr(ctx, fmt.Errorf("TOCConfigStore.User: user not found"))
-		}
-
-		return instance, []string{"SIGN_ON:TOC1.0", fmt.Sprintf("CONFIG:%s", u.TOCConfig), fmt.Sprintf("NICK:%s", instance.DisplayScreenName().String())}
-	}
-
-	supportsTOC2MsgEnc := cmd == "toc2_login"
-	instance.SetTOC2(supportsTOC2MsgEnc)
-
-	if err := s.FeedbagService.Use(ctx, instance); err != nil {
-		return instance, s.runtimeErr(ctx, fmt.Errorf("FeedbagService.Use: %w", err))
-	}
-
-	fb, err := s.FeedbagManager.Feedbag(ctx, instance.IdentScreenName())
-	if err != nil {
-		return instance, s.runtimeErr(ctx, fmt.Errorf("FeedbagManager.Feedbag: %w", err))
-	}
-
-	signon := []string{
-		"SIGN_ON:TOC2.0",
-		fmt.Sprintf("NICK:%s", instance.DisplayScreenName().String()),
-	}
-
-	cfg, err := buildToc2Config(fb)
-	if err != nil {
-		return instance, s.runtimeErr(ctx, fmt.Errorf("buildToc2Config: %w", err))
-	}
-	signon = append(signon, cfg...)
-
-	return instance, signon
+	return me, msgs
 }
 
-func shuttingDown(ctx context.Context) bool {
-	select {
-	case <-ctx.Done():
-		// server is shutting down, don't send buddy notifications
-		return true
-	default:
+// signonConfig prepares a newly signed-on TOC connection and returns the
+// SIGN_ON, NICK and config messages for the client.
+func (s OSCARProxy) signonConfig(ctx context.Context, me *tocConn, cmd string) ([]string, error) {
+	// learn when the server starts dropping the user's requests
+	subscribe := wire.SNAC_0x01_0x08_OServiceRateParamsSubAdd{
+		ClassIDs: []uint16{1, 2, 3, 4, 5},
 	}
-	return false
+	if msg := s.send(ctx, me, me.bos, wire.OService, wire.OServiceRateParamsSubAdd, subscribe, nil); msg != nil {
+		return nil, errors.New("unable to subscribe to rate limit changes")
+	}
+
+	// advertise chat support, since TOC clients don't report capabilities
+	// until they send toc_set_caps
+	caps := wire.SNAC_0x02_0x04_LocateSetInfo{
+		TLVRestBlock: wire.TLVRestBlock{
+			TLVList: wire.TLVList{
+				wire.NewTLVBE(wire.LocateTLVTagsInfoCapabilities, []uuid.UUID{wire.CapChat}),
+			},
+		},
+	}
+	if msg := s.send(ctx, me, me.bos, wire.Locate, wire.LocateSetInfo, caps, nil); msg != nil {
+		return nil, errors.New("unable to set capabilities")
+	}
+
+	reply, err := s.await(ctx, me, wire.OService, wire.OServiceUserInfoQuery, struct{}{})
+	if err != nil {
+		return nil, fmt.Errorf("unable to query user info: %w", err)
+	}
+	userInfo, ok := reply.Body.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
+	if !ok || len(userInfo.UserInfo) == 0 {
+		return nil, fmt.Errorf("unexpected user info reply %v", reply.Frame)
+	}
+	nick := "NICK:" + userInfo.UserInfo[0].ScreenName
+
+	if cmd == "toc_signon" {
+		u, err := s.TOCConfigStore.User(ctx, me.IdentScreenName())
+		if err != nil {
+			return nil, fmt.Errorf("TOCConfigStore.User: %w", err)
+		}
+		if u == nil {
+			return nil, fmt.Errorf("TOCConfigStore.User: user not found")
+		}
+		return []string{"SIGN_ON:TOC1.0", fmt.Sprintf("CONFIG:%s", u.TOCConfig), nick}, nil
+	}
+
+	if msg := s.send(ctx, me, me.bos, wire.Feedbag, wire.FeedbagUse, struct{}{}, nil); msg != nil {
+		return nil, errors.New("unable to use feedbag")
+	}
+
+	reply, err = s.await(ctx, me, wire.Feedbag, wire.FeedbagQuery, struct{}{})
+	if err != nil {
+		return nil, fmt.Errorf("unable to query feedbag: %w", err)
+	}
+	feedbag, ok := reply.Body.(wire.SNAC_0x13_0x06_FeedbagReply)
+	if !ok {
+		return nil, fmt.Errorf("unexpected feedbag reply %v", reply.Frame)
+	}
+
+	me.feedbag.reset(feedbag.Items)
+
+	cfg, err := buildToc2Config(feedbag.Items)
+	if err != nil {
+		return nil, fmt.Errorf("buildToc2Config: %w", err)
+	}
+	return append([]string{"SIGN_ON:TOC2.0", nick}, cfg...), nil
+}
+
+// await sends a SNAC request over the BOS connection and waits for its reply.
+// SNACs that arrive in the meantime are kept for RecvBOS. It is only used
+// during signon, before RecvBOS starts.
+func (s OSCARProxy) await(ctx context.Context, me *tocConn, foodGroup uint16, subGroup uint16, body any) (wire.SNACMessage, error) {
+	frame := wire.SNACFrame{
+		FoodGroup: foodGroup,
+		SubGroup:  subGroup,
+	}
+	me.cache.add(&frame, nil)
+	defer me.cache.remove(frame.RequestID)
+
+	if err := me.bos.SendSNAC(frame, body); err != nil {
+		return wire.SNACMessage{}, fmt.Errorf("SendSNAC: %w", err)
+	}
+
+	timeout := time.NewTimer(signonTimeout)
+	defer timeout.Stop()
+
+	for {
+		select {
+		case msg := <-me.bos.Messages():
+			if msg.Frame.FoodGroup != foodGroup || msg.Frame.RequestID != frame.RequestID {
+				me.backlog = append(me.backlog, msg)
+				continue
+			}
+			if snacErr, ok := msg.Body.(wire.SNACError); ok {
+				return wire.SNACMessage{}, fmt.Errorf("received SNAC error code %d", snacErr.Code)
+			}
+			return msg, nil
+		case <-me.bos.Closed():
+			return wire.SNACMessage{}, errSignedOff
+		case <-timeout.C:
+			return wire.SNACMessage{}, errors.New("timed out waiting for reply")
+		case <-ctx.Done():
+			return wire.SNACMessage{}, ctx.Err()
+		}
+	}
 }
 
 // buildToc2Config constructs configuration for CONFIG2
@@ -2557,11 +2137,17 @@ func buildToc2Config(fb []wire.FeedbagItem) ([]string, error) {
 	}
 
 	for _, gid := range buddylist.order {
-		group := buddylist.groups[gid]
+		group, ok := buddylist.groups[gid]
+		if !ok {
+			continue // the root group lists a group that isn't in the feedbag
+		}
 		cfg = append(cfg, "g:"+group.name)
 
 		for _, bid := range group.order {
-			buddy := group.buddies[bid]
+			buddy, ok := group.buddies[bid]
+			if !ok {
+				continue // the group lists a buddy that isn't in the feedbag
+			}
 			tmpLine := "b:" + buddy.name
 			if buddy.alias != "" {
 				tmpLine += ":" + buddy.alias
@@ -2625,23 +2211,6 @@ func parseArgs(payload []byte, args ...*string) (varArgs []string, err error) {
 func (s OSCARProxy) runtimeErr(ctx context.Context, err error) []string {
 	s.Logger.ErrorContext(ctx, "internal service error", "err", err.Error())
 	return []string{cmdInternalSvcErr}
-}
-
-func (s OSCARProxy) checkRateLimit(ctx context.Context, sender *state.SessionInstance, foodGroup uint16, subGroup uint16) ([]string, bool) {
-	rateClassID, ok := s.SNACRateLimits.RateClassLookup(foodGroup, subGroup)
-	if !ok {
-		s.Logger.ErrorContext(ctx, "rate limit not found, allowing request through")
-		return []string{}, false
-	}
-
-	if status := sender.Session().EvaluateRateLimit(time.Now(), rateClassID); status == wire.RateLimitStatusLimited {
-		s.Logger.DebugContext(ctx, "(toc) rate limit exceeded, dropping SNAC",
-			"foodgroup", wire.FoodGroupName(foodGroup),
-			"subgroup", wire.SubGroupName(foodGroup, subGroup))
-		return []string{rateLimitExceededErr}, true
-	}
-
-	return []string{}, false
 }
 
 // unescape removes escaping from the following TOC characters: \ { } ( ) [ ] $ "

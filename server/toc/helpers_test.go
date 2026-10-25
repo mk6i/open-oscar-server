@@ -1,168 +1,22 @@
 package toc
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"io"
+	"net"
+	"sync"
+	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
+	"github.com/mk6i/open-oscar-server/config"
 	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
 )
-
-type adminParams struct {
-	infoChangeRequestParams
-}
-
-type infoChangeRequestParams []struct {
-	me     state.IdentScreenName
-	inBody wire.SNAC_0x07_0x04_AdminInfoChangeRequest
-	msg    wire.SNACMessage
-	err    error
-}
-
-type addBuddiesParams []struct {
-	me     state.IdentScreenName
-	inBody wire.SNAC_0x03_0x04_BuddyAddBuddies
-	err    error
-}
-
-type delBuddiesParams []struct {
-	me     state.IdentScreenName
-	inBody wire.SNAC_0x03_0x05_BuddyDelBuddies
-	err    error
-}
-
-type buddyParams struct {
-	addBuddiesParams
-	delBuddiesParams
-}
-
-type chatParams struct {
-	channelMsgToHostParamsChat
-}
-
-type createRoomParams []struct {
-	me     state.IdentScreenName
-	inBody wire.SNAC_0x0E_0x02_ChatRoomInfoUpdate
-	msg    wire.SNACMessage
-	err    error
-}
-
-type requestRoomInfoParams []struct {
-	inBody wire.SNAC_0x0D_0x04_ChatNavRequestRoomInfo
-	msg    wire.SNACMessage
-	err    error
-}
-
-type chatNavParams struct {
-	createRoomParams
-	requestRoomInfoParams
-}
-
-type channelMsgToHostParamsChat []struct {
-	sender state.IdentScreenName
-	inBody wire.SNAC_0x0E_0x05_ChatChannelMsgToHost
-	result *wire.SNACMessage
-	err    error
-}
-
-type channelMsgToHostParamsICBM []struct {
-	sender  state.IdentScreenName
-	inFrame wire.SNACFrame
-	inBody  wire.SNAC_0x04_0x06_ICBMChannelMsgToHost
-	result  *wire.SNACMessage
-	err     error
-}
-
-type clientEventParams []struct {
-	sender state.IdentScreenName
-	inBody wire.SNAC_0x04_0x14_ICBMClientEvent
-	err    error
-}
-
-type evilRequestParams []struct {
-	me     state.IdentScreenName
-	inBody wire.SNAC_0x04_0x08_ICBMEvilRequest
-	msg    wire.SNACMessage
-	err    error
-}
-
-type icbmParams struct {
-	channelMsgToHostParamsICBM
-	clientEventParams
-	evilRequestParams
-}
-
-type clientOnlineParams []struct {
-	body    wire.SNAC_0x01_0x02_OServiceClientOnline
-	me      state.IdentScreenName
-	service uint16
-	err     error
-}
-
-type idleNotificationParams []struct {
-	me     state.IdentScreenName
-	bodyIn wire.SNAC_0x01_0x11_OServiceIdleNotification
-	err    error
-}
-
-type serviceRequestParams []struct {
-	me     state.IdentScreenName
-	bodyIn wire.SNAC_0x01_0x04_OServiceServiceRequest
-	msg    wire.SNACMessage
-	err    error
-}
-
-type oServiceParams struct {
-	clientOnlineParams
-	idleNotificationParams
-	serviceRequestParams
-}
-
-type flapLoginParams []struct {
-	frame wire.FLAPSignonFrame
-	tlv   wire.TLVRestBlock
-	err   error
-}
-
-type registerBOSSessionParams []struct {
-	authCookie state.ServerCookie
-	instance   *state.SessionInstance
-	err        error
-}
-
-type registerChatSessionParams []struct {
-	authCookie state.ServerCookie
-	instance   *state.SessionInstance
-	err        error
-}
-
-type authParams struct {
-	crackCookieParams
-	flapLoginParams
-	registerBOSSessionParams
-	registerChatSessionParams
-}
-
-type crackCookieParams []struct {
-	cookieIn  []byte
-	cookieOut state.ServerCookie
-	err       error
-}
-
-type setDirInfoParams []struct {
-	me     state.IdentScreenName
-	inBody wire.SNAC_0x02_0x09_LocateSetDirInfo
-	msg    wire.SNACMessage
-	err    error
-}
-
-type setInfoParams []struct {
-	me     state.IdentScreenName
-	inBody wire.SNAC_0x02_0x04_LocateSetInfo
-	err    error
-}
 
 type userInfoQueryParams []struct {
 	me     state.IdentScreenName
@@ -178,8 +32,6 @@ type dirInfoParams []struct {
 }
 
 type locateParams struct {
-	setDirInfoParams
-	setInfoParams
 	userInfoQueryParams
 	dirInfoParams
 }
@@ -194,42 +46,10 @@ type dirSearchParams struct {
 	infoQueryParams
 }
 
-type addDenyListEntriesParams []struct {
-	me   state.IdentScreenName
-	body wire.SNAC_0x09_0x07_PermitDenyAddDenyListEntries
-	err  error
-}
-
-type addPermListEntriesParams []struct {
-	me   state.IdentScreenName
-	body wire.SNAC_0x09_0x05_PermitDenyAddPermListEntries
-	err  error
-}
-
-type permitDenyParams struct {
-	addDenyListEntriesParams
-	addPermListEntriesParams
-}
-
-type registerBuddyListParams []struct {
-	user state.IdentScreenName
-	err  error
-}
-
-type buddyListRegistryParams struct {
-	registerBuddyListParams
-}
-
 type setTOCConfigParams []struct {
 	user   state.IdentScreenName
 	config string
 	err    error
-}
-
-type userParams []struct {
-	screenName   state.IdentScreenName
-	returnedUser *state.User
-	err          error
 }
 
 type retrieveSessionParams []struct {
@@ -243,81 +63,41 @@ type sessionRetrieverParams struct {
 
 type tocConfigParams struct {
 	setTOCConfigParams
-	userParams
 }
 
 type feedBagParams struct {
-	useFeedbagParams
 	feedbagParams
-	feedbagServiceUseParams
-	feedbagServiceUpsertItemParams
-	feedbagServiceDeleteItemParams
+	upsertFeedbagParams
+	deleteFeedbagParams
 }
 
-// feedbagServiceUseParams is the list of parameters for each expected
-// FeedbagService.Use call (e.g. for TOC2 Signon).
-type feedbagServiceUseParams []struct {
-	err error
-}
-
-type useFeedbagParams []struct {
-	me  state.IdentScreenName
-	err error
-}
-
-// feedbagParams is the list of parameters passed at the mock
-// FeedbagManager.Feedbag call site (e.g. for NewBuddies).
+// feedbagParams holds the user's feedbag before a command runs.
 type feedbagParams []struct {
-	screenName state.IdentScreenName
-	results    []wire.FeedbagItem
-	err        error
+	results []wire.FeedbagItem
 }
 
-// feedbagServiceUpsertItemParams is the list of parameters for each expected
-// FeedbagService.UpsertItem call. Frame is the expected SNACFrame, items is the
-// exact slice of feedbag items (order of params = order of calls).
-type feedbagServiceUpsertItemParams []struct {
+// upsertFeedbagParams is the list of feedbag insert or update SNACs a command
+// is expected to send, in order. frame holds the expected subgroup, items the
+// exact feedbag items, and err the error the connection returns for the send.
+type upsertFeedbagParams []struct {
 	frame wire.SNACFrame
 	items []wire.FeedbagItem
-	msg   *wire.SNACMessage
 	err   error
 }
 
-// feedbagServiceDeleteItemParams is the list of parameters for each expected
-// FeedbagService.DeleteItem call.
-type feedbagServiceDeleteItemParams []struct {
+// deleteFeedbagParams is the list of feedbag delete SNACs a command is
+// expected to send, in order, before any upserts.
+type deleteFeedbagParams []struct {
 	frame  wire.SNACFrame
 	inBody wire.SNAC_0x13_0x0A_FeedbagDeleteItem
-	msg    *wire.SNACMessage
 	err    error
 }
 
-// removeUserFromAllChatsParams is the list of parameters for each expected
-// ChatSessionManager.RemoveUserFromAllChats call.
-type removeUserFromAllChatsParams []struct {
-	user state.IdentScreenName
-}
-
-// chatSessionManagerParams groups mock expectations for ChatSessionManager.
-type chatSessionManagerParams struct {
-	removeUserFromAllChatsParams
-}
-
 type mockParams struct {
-	adminParams
-	authParams
-	buddyListRegistryParams
-	buddyParams
-	chatNavParams
-	chatParams
-	chatSessionManagerParams
 	cookieBakerParams
 	dirSearchParams
-	icbmParams
 	locateParams
-	oServiceParams
 	feedBagParams
-	permitDenyParams
 	sessionRetrieverParams
 	tocConfigParams
 }
@@ -332,6 +112,126 @@ type issueParams []struct {
 // cookieBakerParams groups the method scenarios for a CookieBaker.
 type cookieBakerParams struct {
 	issueParams issueParams
+}
+
+// fakeOSCARConn is an oscarConn that records the SNACs sent to it. The nth
+// send returns sendErrs[n], if set. Tests feed server SNACs through msgs.
+type fakeOSCARConn struct {
+	mu        sync.Mutex
+	sent      []wire.SNACMessage
+	sendErrs  []error
+	msgs      chan wire.SNACMessage
+	closed    chan struct{}
+	closeOnce sync.Once
+}
+
+func newFakeOSCARConn() *fakeOSCARConn {
+	return &fakeOSCARConn{
+		msgs:   make(chan wire.SNACMessage),
+		closed: make(chan struct{}),
+	}
+}
+
+func (c *fakeOSCARConn) SendSNAC(frame wire.SNACFrame, body any) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	n := len(c.sent)
+	c.sent = append(c.sent, wire.SNACMessage{Frame: frame, Body: body})
+	if n < len(c.sendErrs) {
+		return c.sendErrs[n]
+	}
+	return nil
+}
+
+func (c *fakeOSCARConn) Messages() <-chan wire.SNACMessage {
+	return c.msgs
+}
+
+func (c *fakeOSCARConn) Closed() <-chan struct{} {
+	return c.closed
+}
+
+func (c *fakeOSCARConn) Close() {
+	c.closeOnce.Do(func() {
+		close(c.closed)
+	})
+}
+
+func (c *fakeOSCARConn) isClosed() bool {
+	select {
+	case <-c.closed:
+		return true
+	default:
+		return false
+	}
+}
+
+// sentSNACs returns a copy of the SNACs sent so far.
+func (c *fakeOSCARConn) sentSNACs() []wire.SNACMessage {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]wire.SNACMessage(nil), c.sent...)
+}
+
+// newTestTOCConn creates a TOC connection for the user of instance whose BOS
+// connection is a fakeOSCARConn.
+func newTestTOCConn(instance *state.SessionInstance) (*tocConn, *fakeOSCARConn) {
+	bos := newFakeOSCARConn()
+	me := newTOCConn(bos, instance.IdentScreenName(), &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1234})
+	me.toCh = make(chan []string, 16)
+	me.goAsync = func(f func() error) { go f() }
+	return me, bos
+}
+
+// newSNAC returns the SNAC message a TOC connection sends as its reqIDth
+// request.
+func newSNAC(foodGroup uint16, subGroup uint16, reqID uint32, body any) wire.SNACMessage {
+	return wire.SNACMessage{
+		Frame: wire.SNACFrame{
+			FoodGroup: foodGroup,
+			SubGroup:  subGroup,
+			RequestID: reqID,
+		},
+		Body: body,
+	}
+}
+
+// feedbagSNACs returns the feedbag SNACs that params expect a command to send.
+// A command sends at most one SNAC per subgroup, in the order deletes,
+// updates, inserts, so params' items are combined by subgroup in table order.
+// It also returns the error for each send. Sends stop at the first error.
+func feedbagSNACs(params feedBagParams) ([]wire.SNACMessage, []error) {
+	var deletes, updates, inserts []wire.FeedbagItem
+	var deleteErr, updateErr, insertErr error
+	for _, p := range params.deleteFeedbagParams {
+		deletes = append(deletes, p.inBody.Items...)
+		deleteErr = errors.Join(deleteErr, p.err)
+	}
+	for _, p := range params.upsertFeedbagParams {
+		if p.frame.SubGroup == wire.FeedbagUpdateItem {
+			updates = append(updates, p.items...)
+			updateErr = errors.Join(updateErr, p.err)
+		} else {
+			inserts = append(inserts, p.items...)
+			insertErr = errors.Join(insertErr, p.err)
+		}
+	}
+
+	var want []wire.SNACMessage
+	var errs []error
+	add := func(subGroup uint16, items []wire.FeedbagItem, body any, err error) bool {
+		if len(items) == 0 {
+			return true
+		}
+		want = append(want, newSNAC(wire.Feedbag, subGroup, uint32(len(want)+1), body))
+		errs = append(errs, err)
+		return err == nil
+	}
+	if add(wire.FeedbagDeleteItem, deletes, wire.SNAC_0x13_0x0A_FeedbagDeleteItem{Items: deletes}, deleteErr) &&
+		add(wire.FeedbagUpdateItem, updates, wire.SNAC_0x13_0x09_FeedbagUpdateItem{Items: updates}, updateErr) {
+		add(wire.FeedbagInsertItem, inserts, wire.SNAC_0x13_0x08_FeedbagInsertItem{Items: inserts}, insertErr)
+	}
+	return want, errs
 }
 
 // matchSession matches a mock call based session ident screen name.
@@ -407,4 +307,168 @@ func matchContext() interface{} {
 		_, ok := ctx.(context.Context)
 		return ok
 	})
+}
+
+// receivedSNAC is a SNAC that a fake OSCAR service received from TOC, with
+// its body still marshaled.
+type receivedSNAC struct {
+	frame wire.SNACFrame
+	body  []byte
+}
+
+// newReceivedSNAC returns the receivedSNAC for a SNAC TOC sends as its
+// reqIDth request.
+func newReceivedSNAC(t *testing.T, foodGroup uint16, subGroup uint16, reqID uint32, body any) receivedSNAC {
+	buf := &bytes.Buffer{}
+	assert.NoError(t, wire.MarshalBE(body, buf))
+	return receivedSNAC{
+		frame: wire.SNACFrame{FoodGroup: foodGroup, SubGroup: subGroup, RequestID: reqID},
+		body:  buf.Bytes(),
+	}
+}
+
+// fakeOSCARServer is an OSCARServer that serves each connection TOC opens
+// with the next of its handlers, in order.
+type fakeOSCARServer struct {
+	mu          sync.Mutex
+	handlers    []func(conn net.Conn)
+	clientAddrs []net.Addr
+}
+
+func (s *fakeOSCARServer) ServeConn(conn net.Conn, _ config.Endpoint) {
+	defer conn.Close()
+
+	s.mu.Lock()
+	s.clientAddrs = append(s.clientAddrs, conn.RemoteAddr())
+	if len(s.handlers) == 0 {
+		s.mu.Unlock()
+		return
+	}
+	handler := s.handlers[0]
+	s.handlers = s.handlers[1:]
+	s.mu.Unlock()
+
+	handler(conn)
+}
+
+// fakeAuth returns an auth service handler that records the client's signon
+// frame in got and replies with replyTLVs.
+func fakeAuth(got *wire.FLAPSignonFrame, replyTLVs ...wire.TLV) func(conn net.Conn) {
+	return func(conn net.Conn) {
+		flapc := wire.NewFlapClient(100, conn, conn)
+		if err := flapc.SendSignonFrame(nil); err != nil {
+			return
+		}
+		frame, err := flapc.ReceiveSignonFrame()
+		if err != nil {
+			return
+		}
+		*got = frame
+		_ = flapc.NewSignoff(wire.TLVRestBlock{TLVList: replyTLVs})
+	}
+}
+
+// fakeAuthBUCP returns an auth service handler that records the client's
+// signon frame in got and replies with a BUCP login response holding
+// replyTLVs, as the OSCAR server does when it rate limits an address that
+// recently used BUCP login.
+func fakeAuthBUCP(got *wire.FLAPSignonFrame, replyTLVs ...wire.TLV) func(conn net.Conn) {
+	return func(conn net.Conn) {
+		flapc := wire.NewFlapClient(100, conn, conn)
+		if err := flapc.SendSignonFrame(nil); err != nil {
+			return
+		}
+		frame, err := flapc.ReceiveSignonFrame()
+		if err != nil {
+			return
+		}
+		*got = frame
+		_ = flapc.SendSNAC(wire.SNACFrame{FoodGroup: wire.BUCP, SubGroup: wire.BUCPLoginResponse},
+			wire.SNAC_0x17_0x03_BUCPLoginResponse{TLVRestBlock: wire.TLVRestBlock{TLVList: replyTLVs}})
+	}
+}
+
+// fakeService is the server side of a BOS or chat connection opened by TOC. It
+// records the login cookie and the SNACs TOC sends, and answers each SNAC with
+// reply.
+type fakeService struct {
+	// refuse makes the service sign the client off instead of going online.
+	refuse bool
+	// greeting are SNACs sent right after the service goes online.
+	greeting []wire.SNACMessage
+	// reply returns the SNACs that answer a SNAC from TOC.
+	reply func(frame wire.SNACFrame) []wire.SNACMessage
+	// ended, if set, is closed once TOC closes the connection.
+	ended chan struct{}
+
+	mu     sync.Mutex
+	cookie []byte
+	snacs  []receivedSNAC
+}
+
+func (f *fakeService) handle(conn net.Conn) {
+	if f.ended != nil {
+		defer close(f.ended)
+	}
+	flapc := wire.NewFlapClient(100, conn, conn)
+	if err := flapc.SendSignonFrame(nil); err != nil {
+		return
+	}
+	signon, err := flapc.ReceiveSignonFrame()
+	if err != nil {
+		return
+	}
+	f.mu.Lock()
+	f.cookie, _ = signon.Bytes(wire.OServiceTLVTagsLoginCookie)
+	f.mu.Unlock()
+
+	if f.refuse {
+		_ = flapc.NewSignoff(wire.TLVRestBlock{})
+		return
+	}
+	if err := flapc.SendSNAC(wire.SNACFrame{FoodGroup: wire.OService, SubGroup: wire.OServiceHostOnline},
+		wire.SNAC_0x01_0x03_OServiceHostOnline{}); err != nil {
+		return
+	}
+	for _, msg := range f.greeting {
+		if err := flapc.SendSNAC(msg.Frame, msg.Body); err != nil {
+			return
+		}
+	}
+
+	for {
+		flap, err := flapc.ReceiveFLAP()
+		if err != nil || flap.FrameType != wire.FLAPFrameData {
+			return
+		}
+		r := bytes.NewReader(flap.Payload)
+		frame := wire.SNACFrame{}
+		if err := wire.UnmarshalBE(&frame, r); err != nil {
+			return
+		}
+		body, _ := io.ReadAll(r)
+		if len(body) == 0 {
+			body = nil
+		}
+
+		f.mu.Lock()
+		f.snacs = append(f.snacs, receivedSNAC{frame: frame, body: body})
+		f.mu.Unlock()
+
+		if f.reply == nil {
+			continue
+		}
+		for _, msg := range f.reply(frame) {
+			if err := flapc.SendSNAC(msg.Frame, msg.Body); err != nil {
+				return
+			}
+		}
+	}
+}
+
+// received returns the login cookie and the SNACs received so far.
+func (f *fakeService) received() ([]byte, []receivedSNAC) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.cookie, append([]receivedSNAC(nil), f.snacs...)
 }
