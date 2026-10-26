@@ -171,42 +171,12 @@ packages:
           filename: "mock_user_manager_manager_test.go"
   github.com/mk6i/open-oscar-server/server/toc:
     interfaces:
-      AdminService:
-        config:
-          filename: "mock_admin_service_test.go"
-      BuddyService:
-        config:
-          filename: "mock_buddy_service_test.go"
-      ChatService:
-        config:
-          filename: "mock_chat_service_test.go"
-      ChatNavService:
-        config:
-          filename: "mock_chat_nav_service_test.go"
-      ChatSessionManager:
-        config:
-          filename: "mock_chat_session_manager_test.go"
-      ICBMService:
-        config:
-          filename: "mock_icbm_service_test.go"
-      OServiceService:
-        config:
-          filename: "mock_oservice_service_test.go"
-      AuthService:
-        config:
-          filename: "mock_auth_service_test.go"
       LocateService:
         config:
           filename: "mock_locate_service_test.go"
       DirSearchService:
         config:
           filename: "mock_dir_search_service_test.go"
-      PermitDenyService:
-        config:
-          filename: "mock_permit_deny_service_test.go"
-      BuddyListRegistry:
-        config:
-          filename: "mock_buddy_list_registry_test.go"
       TOCConfigStore:
         config:
           filename: "mock_toc_config_store_test.go"
@@ -216,12 +186,6 @@ packages:
       SessionRetriever:
         config:
           filename: "mock_session_retriever_test.go"
-      FeedbagService:
-        config:
-          filename: "mock_feedbag_service_test.go"
-      FeedbagManager:
-        config:
-          filename: "mock_feedbag_manager_test.go"
   github.com/mk6i/open-oscar-server/server/kerberos:
     interfaces:
       AuthService:

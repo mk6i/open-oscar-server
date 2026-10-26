@@ -1011,8 +1011,6 @@ type SessionInstance struct {
 	capabilities      [][16]byte
 	foodGroupVersions [wire.MDir + 1]uint16
 	multiConnFlag     wire.MultiConnFlag
-	toc2              bool
-	toc2MsgEnc        bool
 	icqDCInfo         wire.ICQDCInfo
 
 	// Per-session state
@@ -1079,28 +1077,6 @@ func (s *SessionInstance) SetClientID(clientID string) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	s.clientID = clientID
-}
-
-// SetTOC2 sets this instance to TOC2. supportsTOC2MsgEnc is true for toc2_login (encoded messaging), false for toc2_signon.
-func (s *SessionInstance) SetTOC2(supportsTOC2MsgEnc bool) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	s.toc2 = true
-	s.toc2MsgEnc = supportsTOC2MsgEnc
-}
-
-// IsTOC2 returns true when the client is TOC2 (with or without encoded messaging).
-func (s *SessionInstance) IsTOC2() bool {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-	return s.toc2
-}
-
-// SupportsTOC2MsgEnc returns true only when TOC2 with encoded messaging (toc2_login).
-func (s *SessionInstance) SupportsTOC2MsgEnc() bool {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-	return s.toc2MsgEnc
 }
 
 //

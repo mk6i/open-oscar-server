@@ -684,7 +684,6 @@ func TestOSCARProxy_NewServeMux(t *testing.T) {
 				Logger:            slog.Default(),
 				SessionRetriever:  sessionRetriever,
 				HTTPIPRateLimiter: NewIPRateLimiter(rate.Every(1*time.Minute), 10, 1*time.Minute),
-				SNACRateLimits:    wire.DefaultSNACRateLimits(),
 			}
 
 			req, err := http.NewRequest(http.MethodGet, tc.path, nil)

@@ -112,7 +112,10 @@ func (s *Server) ListenAndServe() error {
 
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.logger.Debug("Initiating graceful shutdown...")
+	// connections are tracked under connMu, so none can start after this
+	s.connMu.Lock()
 	s.shutdownCancel()
+	s.connMu.Unlock()
 	s.cleanupListeners()
 
 	// Wait for handlers to complete
@@ -148,14 +151,37 @@ func (s *Server) acceptLoop(ln net.Listener, endpointCfg config.Endpoint) {
 			continue
 		}
 
-		// track connection
-		s.connMu.Lock()
-		s.conns[conn] = struct{}{}
-		s.connMu.Unlock()
-
-		s.connWg.Add(1)
+		if !s.trackConn(conn) {
+			_ = conn.Close()
+			continue
+		}
 		go s.handleConnection(s.shutdownCtx, conn, endpointCfg)
 	}
+}
+
+// ServeConn serves a connection that didn't come from one of the server's
+// listeners, such as an in-memory connection opened by the TOC server, as if
+// it had arrived on the listener at endpointCfg. It returns when the
+// connection ends.
+func (s *Server) ServeConn(conn net.Conn, endpointCfg config.Endpoint) {
+	if !s.trackConn(conn) {
+		_ = conn.Close()
+		return
+	}
+	s.handleConnection(s.shutdownCtx, conn, endpointCfg)
+}
+
+// trackConn registers conn so that Shutdown waits for it. It returns false
+// if the server is shutting down.
+func (s *Server) trackConn(conn net.Conn) bool {
+	s.connMu.Lock()
+	defer s.connMu.Unlock()
+	if s.shutdownCtx.Err() != nil {
+		return false
+	}
+	s.conns[conn] = struct{}{}
+	s.connWg.Add(1)
+	return true
 }
 
 func (s *Server) handleConnection(ctx context.Context, conn net.Conn, endpointCfg config.Endpoint) {

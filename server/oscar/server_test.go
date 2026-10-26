@@ -1244,3 +1244,65 @@ func Test_oscarServer_receiveSessMessages_Chat_integration(t *testing.T) {
 
 	signoutWG.Wait()
 }
+
+func newServeConnTestServer() *Server {
+	return NewServer(
+		nil,
+		nil,
+		nil,
+		nil,
+		slog.Default(),
+		nil,
+		nil,
+		nil,
+		wire.DefaultSNACRateLimits(),
+		nil,
+		nil,
+		func(ctx context.Context, instance *state.SessionInstance) error { return nil },
+		func(ctx context.Context, instance *state.SessionInstance) {},
+	)
+}
+
+func TestServer_ServeConn(t *testing.T) {
+	server := newServeConnTestServer()
+
+	var gotEndpoint config.Endpoint
+	var gotRemote net.Addr
+	server.handler = func(ctx context.Context, conn net.Conn, endpointCfg config.Endpoint) error {
+		gotEndpoint = endpointCfg
+		gotRemote = conn.RemoteAddr()
+		return nil
+	}
+
+	serverEnd, clientEnd := net.Pipe()
+	clientAddr := &net.TCPAddr{IP: net.IPv4(10, 0, 0, 5), Port: 4321}
+	endpoint := config.Endpoint{ListenAddress: ":5190", Group: config.ListenerGroup{Name: "LOCAL"}}
+
+	server.ServeConn(fakeConn{Conn: serverEnd, remote: clientAddr}, endpoint)
+
+	assert.Equal(t, endpoint, gotEndpoint)
+	assert.Equal(t, clientAddr, gotRemote)
+
+	// the connection is closed once served
+	_, err := clientEnd.Read(make([]byte, 1))
+	assert.Error(t, err)
+	assert.Empty(t, server.conns)
+}
+
+func TestServer_ServeConn_afterShutdown(t *testing.T) {
+	server := newServeConnTestServer()
+
+	called := false
+	server.handler = func(ctx context.Context, conn net.Conn, endpointCfg config.Endpoint) error {
+		called = true
+		return nil
+	}
+	assert.NoError(t, server.Shutdown(context.Background()))
+
+	serverEnd, clientEnd := net.Pipe()
+	server.ServeConn(serverEnd, config.Endpoint{})
+
+	assert.False(t, called)
+	_, err := clientEnd.Read(make([]byte, 1))
+	assert.Error(t, err)
+}

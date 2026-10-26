@@ -430,50 +430,17 @@ func MgmtAPI(deps Container) *http.Server {
 	)
 }
 
-// TOC creates a TOC server.
-func TOC(deps Container) *toc.Server {
+// TOC creates a TOC server whose users connect to oscarServer.
+func TOC(deps Container, oscarServer *oscar.Server) *toc.Server {
 	logger := deps.logger.With("svc", "TOC")
 
 	return toc.NewServer(
 		deps.cfg.TOCListeners,
 		logger,
 		toc.OSCARProxy{
-			AdminService: foodgroup.NewAdminService(
-				deps.sqLiteUserStore,
-				deps.sqLiteUserStore,
-				deps.sqLiteUserStore,
-				deps.inMemorySessionManager,
-				deps.inMemorySessionManager,
-				deps.logger,
-			),
-			AuthService: foodgroup.NewAuthService(
-				deps.cfg,
-				deps.inMemorySessionManager,
-				deps.inMemorySessionManager,
-				deps.chatSessionManager,
-				deps.sqLiteUserStore,
-				deps.hmacCookieBaker,
-				deps.chatSessionManager,
-				deps.sqLiteUserStore,
-				deps.sqLiteUserStore,
-				deps.sqLiteUserStore,
-				deps.rateLimitClasses,
-				state.NewAccountCreator(deps.sqLiteUserStore.InsertUser),
-				logger,
-			),
-			BuddyListRegistry: deps.sqLiteUserStore,
-			BuddyService: foodgroup.NewBuddyService(
-				deps.inMemorySessionManager,
-				deps.sqLiteUserStore,
-				deps.sqLiteUserStore,
-				deps.inMemorySessionManager,
-				deps.sqLiteUserStore,
-				deps.sqLiteUserStore,
-			),
-			ChatSessionManager: deps.chatSessionManager,
-			CookieBaker:        deps.hmacCookieBaker,
-			DirSearchService:   foodgroup.NewODirService(logger, deps.sqLiteUserStore),
-			ICBMService:        deps.icbmSvc,
+			CookieBaker:       deps.hmacCookieBaker,
+			DirSearchService:  foodgroup.NewODirService(logger, deps.sqLiteUserStore),
+			HTTPIPRateLimiter: toc.NewIPRateLimiter(rate.Every(1*time.Minute), 10, 1*time.Minute),
 			LocateService: foodgroup.NewLocateService(
 				deps.sqLiteUserStore,
 				deps.inMemorySessionManager,
@@ -482,42 +449,13 @@ func TOC(deps Container) *toc.Server {
 				deps.inMemorySessionManager,
 				deps.sqLiteUserStore,
 			),
-			Logger: logger,
-			OServiceService: foodgroup.NewOServiceService(
-				deps.cfg,
-				deps.inMemorySessionManager,
-				logger,
-				deps.hmacCookieBaker,
-				deps.sqLiteUserStore,
-				deps.sqLiteUserStore,
-				deps.inMemorySessionManager,
-				deps.sqLiteUserStore,
-				deps.snacRateLimits,
-				deps.chatSessionManager,
-				deps.sqLiteUserStore,
-				deps.sqLiteUserStore,
-				deps.sqLiteUserStore,
-			),
-			PermitDenyService: foodgroup.NewPermitDenyService(
-				deps.sqLiteUserStore,
-				deps.sqLiteUserStore,
-				deps.sqLiteUserStore,
-				deps.inMemorySessionManager,
-				deps.inMemorySessionManager,
-			),
-			TOCConfigStore:    deps.sqLiteUserStore,
-			ChatService:       foodgroup.NewChatService(deps.chatSessionManager),
-			ChatNavService:    foodgroup.NewChatNavService(logger, deps.sqLiteUserStore),
-			FeedbagManager:    deps.sqLiteUserStore,
-			FeedbagService:    deps.feedbagSvc,
-			SNACRateLimits:    deps.snacRateLimits,
-			HTTPIPRateLimiter: toc.NewIPRateLimiter(rate.Every(1*time.Minute), 10, 1*time.Minute),
-			SessionRetriever:  deps.inMemorySessionManager,
-			RandIntn:          rand.Intn,
+			Logger:           logger,
+			OSCARServer:      oscarServer,
+			OSCAREndpoint:    deps.Listeners[0].PlainEndpoint(),
+			SessionRetriever: deps.inMemorySessionManager,
+			TOCConfigStore:   deps.sqLiteUserStore,
+			RandIntn:         rand.Intn,
 		},
-		toc.NewIPRateLimiter(rate.Every(1*time.Minute), 10, 1*time.Minute),
-		deps.icbmSvc.RestoreWarningLevel,
-		deps.icbmSvc.UpdateWarnLevel,
 	)
 }
 

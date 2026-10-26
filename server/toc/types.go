@@ -2,115 +2,41 @@ package toc
 
 import (
 	"context"
-	"net/http"
+	"net"
 	"time"
-
-	"github.com/google/uuid"
 
 	"github.com/mk6i/open-oscar-server/config"
 	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
-type BuddyService interface {
-	AddBuddies(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x03_0x04_BuddyAddBuddies) (*wire.SNACMessage, error)
-	BroadcastBuddyArrived(ctx context.Context, screenName state.IdentScreenName, userInfo wire.TLVUserInfo) error
-	BroadcastBuddyDeparted(ctx context.Context, screenName state.IdentScreenName) error
-	DelBuddies(ctx context.Context, instance *state.SessionInstance, inBody wire.SNAC_0x03_0x05_BuddyDelBuddies) error
-	RightsQuery(ctx context.Context, inFrame wire.SNACFrame) wire.SNACMessage
+// OSCARServer serves OSCAR connections that the TOC server opens on behalf of
+// its users.
+type OSCARServer interface {
+	// ServeConn serves conn as if it had been accepted on the listener at
+	// endpointCfg, and returns when the connection ends.
+	ServeConn(conn net.Conn, endpointCfg config.Endpoint)
 }
 
-type ChatService interface {
-	ChannelMsgToHost(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x0E_0x05_ChatChannelMsgToHost) (*wire.SNACMessage, error)
-}
-
-type ChatNavService interface {
-	CreateRoom(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x0E_0x02_ChatRoomInfoUpdate) (wire.SNACMessage, error)
-	ExchangeInfo(ctx context.Context, inFrame wire.SNACFrame, inBody wire.SNAC_0x0D_0x03_ChatNavRequestExchangeInfo) (wire.SNACMessage, error)
-	RequestChatRights(ctx context.Context, inFrame wire.SNACFrame) wire.SNACMessage
-	RequestRoomInfo(ctx context.Context, inFrame wire.SNACFrame, inBody wire.SNAC_0x0D_0x04_ChatNavRequestRoomInfo) (wire.SNACMessage, error)
-}
-
-type ICBMService interface {
-	ChannelMsgToHost(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) (*wire.SNACMessage, error)
-	ClientEvent(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x14_ICBMClientEvent) error
-	EvilRequest(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x08_ICBMEvilRequest) (wire.SNACMessage, error)
-	ParameterQuery(ctx context.Context, inFrame wire.SNACFrame) wire.SNACMessage
-	ClientErr(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x0B_ICBMClientErr) error
-}
-
-type OServiceService interface {
-	ClientOnline(ctx context.Context, service uint16, inBody wire.SNAC_0x01_0x02_OServiceClientOnline, instance *state.SessionInstance) error
-	IdleNotification(ctx context.Context, instance *state.SessionInstance, inBody wire.SNAC_0x01_0x11_OServiceIdleNotification) error
-	MonitorRateLimits(ctx context.Context, session *state.Session)
-	ServiceRequest(ctx context.Context, service uint16, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x01_0x04_OServiceServiceRequest, listenerGroup config.ListenerGroup) (wire.SNACMessage, error)
-}
-
-type AuthService interface {
-	BUCPChallenge(ctx context.Context, inBody wire.SNAC_0x17_0x06_BUCPChallengeRequest, newUUID func() uuid.UUID) (wire.SNACMessage, error)
-	BUCPLogin(ctx context.Context, inBody wire.SNAC_0x17_0x02_BUCPLoginRequest, endpointCfg config.Endpoint) (wire.SNACMessage, error)
-	CrackCookie(authCookie []byte) (state.ServerCookie, time.Time, error)
-	FLAPLogin(ctx context.Context, inFrame wire.FLAPSignonFrame, endpointCfg config.Endpoint) (wire.TLVRestBlock, error)
-	RegisterBOSSession(ctx context.Context, authCookie state.ServerCookie, cfg func(*state.Session)) (*state.SessionInstance, error)
-	RegisterChatSession(ctx context.Context, authCookie state.ServerCookie, cfg func(sess *state.Session)) (*state.SessionInstance, error)
-	RetrieveBOSSession(ctx context.Context, authCookie state.ServerCookie) (*state.SessionInstance, error)
-	Signout(ctx context.Context, session *state.Session)
-	SignoutChat(ctx context.Context, sess *state.Session)
-}
-
+// LocateService looks up user profiles and directory info for the TOC HTTP
+// pages.
 type LocateService interface {
-	SetDirInfo(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x02_0x09_LocateSetDirInfo) (wire.SNACMessage, error)
-	SetInfo(ctx context.Context, instance *state.SessionInstance, inBody wire.SNAC_0x02_0x04_LocateSetInfo) error
 	UserInfoQuery(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x02_0x05_LocateUserInfoQuery) (wire.SNACMessage, error)
 	DirInfo(ctx context.Context, inFrame wire.SNACFrame, inBody wire.SNAC_0x02_0x0B_LocateGetDirInfo) (wire.SNACMessage, error)
 }
 
+// DirSearchService searches the user directory for the TOC HTTP pages.
 type DirSearchService interface {
 	InfoQuery(ctx context.Context, inFrame wire.SNACFrame, inBody wire.SNAC_0x0F_0x02_InfoQuery) (wire.SNACMessage, error)
 }
 
-type PermitDenyService interface {
-	AddDenyListEntries(ctx context.Context, instance *state.SessionInstance, inBody wire.SNAC_0x09_0x07_PermitDenyAddDenyListEntries) error
-	AddPermListEntries(ctx context.Context, instance *state.SessionInstance, inBody wire.SNAC_0x09_0x05_PermitDenyAddPermListEntries) error
-	DelDenyListEntries(ctx context.Context, instance *state.SessionInstance, inBody wire.SNAC_0x09_0x08_PermitDenyDelDenyListEntries) error
-	DelPermListEntries(ctx context.Context, instance *state.SessionInstance, inBody wire.SNAC_0x09_0x06_PermitDenyDelPermListEntries) error
-	RightsQuery(ctx context.Context, inFrame wire.SNACFrame) wire.SNACMessage
-}
-
-// BuddyListRegistry is the interface for keeping track of users with active
-// buddy lists. Once registered, a user becomes visible to other users' buddy
-// lists and vice versa.
-type BuddyListRegistry interface {
-	RegisterBuddyList(ctx context.Context, user state.IdentScreenName) error
-	UnregisterBuddyList(ctx context.Context, user state.IdentScreenName) error
-}
-
+// TOCConfigStore loads and saves users' TOC configs.
 type TOCConfigStore interface {
 	// SetTOCConfig sets the user's TOC config. The TOC config is the server-side
 	// buddy list functionality for TOC. This configuration is not available to
 	// OSCAR clients.
 	SetTOCConfig(ctx context.Context, user state.IdentScreenName, config string) error
 	User(ctx context.Context, screenName state.IdentScreenName) (*state.User, error)
-}
-
-type FeedbagManager interface {
-	// Feedbag fetches the contents of a user's feedbag for CONFIG2
-	Feedbag(ctx context.Context, screenName state.IdentScreenName) ([]wire.FeedbagItem, error)
-	UseFeedbag(ctx context.Context, screenName state.IdentScreenName) error
-}
-
-// FeedbagService defines the interface for managing server-side buddy lists
-// (feedbag) and related operations.
-type FeedbagService interface {
-	DeleteItem(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x0A_FeedbagDeleteItem) (*wire.SNACMessage, error)
-	Query(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame) (wire.SNACMessage, error)
-	QueryIfModified(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x05_FeedbagQueryIfModified) (wire.SNACMessage, error)
-	RespondAuthorizeToHost(ctx context.Context, instance state.IdentScreenName, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x1A_FeedbagRespondAuthorizeToHost) error
-	RightsQuery(ctx context.Context, inFrame wire.SNACFrame) wire.SNACMessage
-	StartCluster(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x11_FeedbagStartCluster)
-	EndCluster(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame) error
-	UpsertItem(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, items []wire.FeedbagItem) (*wire.SNACMessage, error)
-	Use(ctx context.Context, instance *state.SessionInstance) error
 }
 
 // CookieBaker defines methods for issuing and verifying AIM authentication tokens ("cookies").
@@ -126,10 +52,6 @@ type CookieBaker interface {
 	Issue(data []byte, ttl time.Duration) ([]byte, error)
 }
 
-type AdminService interface {
-	InfoChangeRequest(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x07_0x04_AdminInfoChangeRequest) (wire.SNACMessage, error)
-}
-
 // SessionRetriever defines a method for retrieving an active session
 // associated with a given screen name.
 type SessionRetriever interface {
@@ -137,17 +59,4 @@ type SessionRetriever interface {
 	// or nil if no active session exists. Returns the Session object if there
 	// are active instances with complete signon.
 	RetrieveSession(screenName state.IdentScreenName) *state.Session
-}
-
-type OSCARProxyer interface {
-	Signon(ctx context.Context, args []byte, isTOC1 bool) (*state.Session, []string)
-	RecvBOS(ctx context.Context, sessBOS *state.Session, chatRegistry *ChatRegistry, msgCh chan<- []string) error
-	RecvClientCmd(ctx context.Context, sessBOS *state.Session, chatRegistry *ChatRegistry, payload []byte, toCh chan<- []string, doAsync func(f func() error)) []string
-	NewServeMux() http.Handler
-}
-
-// ChatSessionManager is the interface for closing chat sessions
-// when a client disconnects.
-type ChatSessionManager interface {
-	RemoveUserFromAllChats(user state.IdentScreenName)
 }

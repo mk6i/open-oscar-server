@@ -10,7 +10,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"net/netip"
 	"sync"
 	"syscall"
 	"time"
@@ -19,7 +18,6 @@ import (
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/time/rate"
 
-	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
@@ -37,7 +35,6 @@ var (
 type contextKey string
 
 const (
-	ipContextKey         contextKey = "ip"
 	screenNameContextKey contextKey = "screenName"
 )
 
@@ -133,24 +130,18 @@ func NewServer(
 	endpointCfg []string,
 	logger *slog.Logger,
 	BOSProxy OSCARProxy,
-	ipRateLimiter *IPRateLimiter,
-	recalcWarning func(ctx context.Context, instance *state.SessionInstance) error,
-	lowerWarnLevel func(ctx context.Context, instance *state.SessionInstance),
 ) *Server {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
 	s := &Server{
-		bosProxy:           BOSProxy,
-		conns:              make(map[net.Conn]struct{}),
-		endpointCfg:        endpointCfg,
-		logger:             logger,
-		loginIPRateLimiter: ipRateLimiter,
-		recalcWarning:      recalcWarning,
-		lowerWarnLevel:     lowerWarnLevel,
-		servers:            make([]*http.Server, 0, len(endpointCfg)),
-		shutdownCancel:     cancel,
-		shutdownCtx:        ctx,
+		bosProxy:       BOSProxy,
+		conns:          make(map[net.Conn]struct{}),
+		endpointCfg:    endpointCfg,
+		logger:         logger,
+		servers:        make([]*http.Server, 0, len(endpointCfg)),
+		shutdownCancel: cancel,
+		shutdownCtx:    ctx,
 	}
 
 	for range endpointCfg {
@@ -169,11 +160,8 @@ func NewServer(
 // TOC/FLAP requests. It acts as a gateway, forwarding all TOC requests
 // to the OSCAR server for processing.
 type Server struct {
-	bosProxy           OSCARProxy
-	logger             *slog.Logger
-	loginIPRateLimiter *IPRateLimiter
-	recalcWarning      func(ctx context.Context, instance *state.SessionInstance) error
-	lowerWarnLevel     func(ctx context.Context, instance *state.SessionInstance)
+	bosProxy OSCARProxy
+	logger   *slog.Logger
 
 	endpointCfg []string
 	listeners   []net.Listener
@@ -346,49 +334,22 @@ func (s *Server) dispatchFLAP(ctx context.Context, conn net.Conn) error {
 	}
 	defer closeConn()
 
-	ctx = context.WithValue(ctx, ipContextKey, conn.RemoteAddr().String())
-
 	clientFlap, err := s.initFLAP(ctx, conn)
 	if err != nil {
 		return err
 	}
 
-	ip, _, err := net.SplitHostPort(conn.RemoteAddr().String())
-	if err != nil {
-		s.logger.Error("failed to parse remote address", "err", err.Error())
-		return err
-	}
-
-	if ok := s.loginIPRateLimiter.Allow(ip); !ok {
-		s.logger.InfoContext(ctx, "user rate limited at login, dropping connection")
-		if err := clientFlap.SendDataFrame([]byte("ERROR:983")); err != nil {
-			return fmt.Errorf("clientFlap.SendDataFrame: %w", err)
-		}
-		return nil
-	}
-
-	chatRegistry := NewChatRegistry()
-
-	sessBOS, err := s.login(ctx, clientFlap, chatRegistry)
+	me, err := s.login(ctx, clientFlap, conn.RemoteAddr())
 	if err != nil {
 		return fmt.Errorf("s.login: %w", err)
 	}
-	if sessBOS == nil {
-		return nil // user not found
+	if me == nil {
+		return nil // signon failed
 	}
 
-	ctx = context.WithValue(ctx, screenNameContextKey, sessBOS.IdentScreenName())
+	ctx = context.WithValue(ctx, screenNameContextKey, me.IdentScreenName())
 
-	remoteAddr, ok := ctx.Value(ipContextKey).(string)
-	if ok {
-		ip, err := netip.ParseAddrPort(remoteAddr)
-		if err != nil {
-			return errors.New("unable to parse ip addr")
-		}
-		sessBOS.SetRemoteAddr(&ip)
-	}
-
-	return s.handleTOCRequest(ctx, closeConn, sessBOS, chatRegistry, clientFlap)
+	return s.handleTOCRequest(ctx, closeConn, me, clientFlap)
 }
 
 // handleTOCRequest processes incoming TOC requests and coordinates their handling.
@@ -402,8 +363,7 @@ func (s *Server) dispatchFLAP(ctx context.Context, conn net.Conn) error {
 func (s *Server) handleTOCRequest(
 	ctx context.Context,
 	closeConn func(),
-	sessBOS *state.SessionInstance,
-	chatRegistry *ChatRegistry,
+	me *tocConn,
 	clientFlap *wire.FlapClient,
 ) error {
 	// TOC response queue
@@ -411,21 +371,26 @@ func (s *Server) handleTOCRequest(
 
 	g, ctx := errgroup.WithContext(ctx)
 
+	me.toCh = msgCh
+	me.goAsync = func(f func(ctx context.Context) error) {
+		g.Go(func() error { return f(ctx) })
+	}
+
 	// process TOC client requests and enqueue TOC server responses
-	g.Go(func() error {
-		err := s.runClientCommands(ctx, g.Go, sessBOS, chatRegistry, clientFlap, msgCh)
+	me.goAsync(func(ctx context.Context) error {
+		err := s.runClientCommands(ctx, me, clientFlap)
 		return errors.Join(err, errClientReq)
 	})
 
 	// translate OSCAR server responses to TOC responses and enqueue them
-	g.Go(func() error {
-		err := s.bosProxy.RecvBOS(ctx, sessBOS, chatRegistry, msgCh)
+	me.goAsync(func(ctx context.Context) error {
+		err := s.bosProxy.RecvBOS(ctx, me)
 		closeConn() // unblock runClientCommands
 		return errors.Join(err, errTOCProcessing)
 	})
 
 	// send TOC server responses to the client
-	g.Go(func() error {
+	me.goAsync(func(ctx context.Context) error {
 		err := s.sendToClient(ctx, msgCh, clientFlap)
 		closeConn() // unblock runClientCommands
 		return errors.Join(err, errServerWrite)
@@ -434,7 +399,7 @@ func (s *Server) handleTOCRequest(
 	return g.Wait()
 }
 
-func (s *Server) runClientCommands(ctx context.Context, doAsync func(f func() error), sessBOS *state.SessionInstance, chatRegistry *ChatRegistry, clientFlap *wire.FlapClient, toCh chan<- []string) error {
+func (s *Server) runClientCommands(ctx context.Context, me *tocConn, clientFlap *wire.FlapClient) error {
 	for {
 		clientFrame, err := clientFlap.ReceiveFLAP()
 		if err != nil {
@@ -456,10 +421,10 @@ func (s *Server) runClientCommands(ctx context.Context, doAsync func(f func() er
 				return errors.New("TOC command exceeds maximum length (2048)")
 			}
 
-			msg := s.bosProxy.RecvClientCmd(ctx, sessBOS, chatRegistry, clientFrame.Payload, toCh, doAsync)
+			msg := s.bosProxy.RecvClientCmd(ctx, me, clientFrame.Payload)
 			if len(msg) > 0 {
 				select {
-				case toCh <- msg:
+				case me.toCh <- msg:
 				case <-ctx.Done():
 					return nil
 				}
@@ -495,7 +460,7 @@ func (s *Server) sendToClient(ctx context.Context, toClient <-chan []string, cli
 	}
 }
 
-func (s *Server) login(ctx context.Context, clientFlap *wire.FlapClient, chatRegistry *ChatRegistry) (*state.SessionInstance, error) {
+func (s *Server) login(ctx context.Context, clientFlap *wire.FlapClient, clientAddr net.Addr) (*tocConn, error) {
 	clientFrame, err := clientFlap.ReceiveFLAP()
 	if err != nil {
 		if errors.Is(err, io.EOF) {
@@ -504,15 +469,18 @@ func (s *Server) login(ctx context.Context, clientFlap *wire.FlapClient, chatReg
 		return nil, fmt.Errorf("clientFlap.ReceiveFLAP: %w", err)
 	}
 
-	sessBOS, reply := s.bosProxy.Signon(ctx, clientFrame.Payload, s.recalcWarning, s.lowerWarnLevel, chatRegistry)
+	me, reply := s.bosProxy.Signon(ctx, clientFrame.Payload, clientAddr)
 
 	for _, m := range reply {
 		if err := clientFlap.SendDataFrame([]byte(m)); err != nil {
+			if me != nil {
+				me.bos.Close()
+			}
 			return nil, fmt.Errorf("clientFlap.SendDataFrame: %w", err)
 		}
 	}
 
-	return sessBOS, nil
+	return me, nil
 }
 
 // initFLAP sets up a new FLAP connection. It returns a flap client if the
