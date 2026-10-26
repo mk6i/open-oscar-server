@@ -384,10 +384,6 @@ func (stubSessionResolver) GetSession(context.Context, string) (*Session, error)
 
 func (stubSessionResolver) TouchSession(context.Context, string) error { return nil }
 
-func newTestRateLimitMiddleware() *RateLimitMiddleware {
-	return NewRateLimitMiddleware(wire.DefaultSNACRateLimits(), slog.New(slog.DiscardHandler))
-}
-
 // assertRateLimited checks that a response is the Web API's rate limit
 // rejection: HTTP 200 at the transport level so the client parses the body,
 // with envelope code 430 carrying the rejection inside. wantRetryAfter is the
@@ -409,106 +405,12 @@ func assertRateLimited(t *testing.T, rec *httptest.ResponseRecorder, wantRetryAf
 	assert.Equal(t, "rate limit exceeded", envelope.Response.StatusText)
 }
 
-func TestRateLimitMiddleware_OSCAR(t *testing.T) {
-	tests := []struct {
-		name string
-		// foodGroup/subGroup passed to the middleware
-		foodGroup uint16
-		subGroup  uint16
-		// requests is how many times the wrapped handler is invoked
-		requests int
-		// wantCalls is how many of those requests reach the handler
-		wantCalls int
-		// wantRetryAfter is the Retry-After header on the final rejection, "" for
-		// a rejection that carries none
-		wantRetryAfter string
-	}{
-		{
-			name:      "first request is allowed",
-			foodGroup: wire.ICBM,
-			subGroup:  wire.ICBMChannelMsgToHost,
-			requests:  1,
-			wantCalls: 1,
-		},
-		{
-			name:      "a burst trips the limit",
-			foodGroup: wire.ICBM,
-			subGroup:  wire.ICBMChannelMsgToHost,
-			requests:  5,
-			wantCalls: 1,
-			// retryAfterFor rounds the sub-second wait these tight classes need
-			// up to the minRetryAfter floor.
-			wantRetryAfter: "1",
-		},
-		{
-			name:      "sustained abuse escalates to disconnect",
-			foodGroup: wire.ICBM,
-			subGroup:  wire.ICBMChannelMsgToHost,
-			// the 7th request drives the average below DisconnectLevel
-			requests:  7,
-			wantCalls: 1,
-			// a disconnected session has no aimsid left to retry with
-			wantRetryAfter: "",
-		},
-		{
-			// A non-IM class is enforced the same way. The middleware only ever
-			// rejects; notifying the client is the per-account monitor's job, and
-			// it surfaces only the IM class to the alert.
-			name:           "a non-IM class is still enforced",
-			foodGroup:      wire.Feedbag,
-			subGroup:       wire.FeedbagInsertItem,
-			requests:       5,
-			wantCalls:      1,
-			wantRetryAfter: "1",
-		},
-		{
-			name: "unmapped SNAC fails open",
-			// 0xFFFF is not a food group, so no rate class maps to it
-			foodGroup: 0xFFFF,
-			subGroup:  0xFFFF,
-			requests:  5,
-			wantCalls: 5,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			session := newTestWebAPISession(t, tightRateLimitClasses())
-			middleware := newTestRateLimitMiddleware()
-
-			calls := 0
-			handler := middleware.OSCAR(tt.foodGroup, tt.subGroup)(
-				func(w http.ResponseWriter, r *http.Request, s *Session) {
-					calls++
-					w.WriteHeader(http.StatusOK)
-				})
-
-			var last *httptest.ResponseRecorder
-			for range tt.requests {
-				last = httptest.NewRecorder()
-				handler(last, httptest.NewRequest(http.MethodGet, "/im/sendIM", nil), session)
-			}
-
-			assert.Equal(t, tt.wantCalls, calls)
-			// The middleware enforces the limit but never pushes rate limit
-			// events; that is the per-account monitor's responsibility.
-			assert.Empty(t, rateLimitEventStatuses(t, session))
-
-			if tt.wantCalls < tt.requests {
-				assertRateLimited(t, last, tt.wantRetryAfter)
-			} else {
-				assert.Equal(t, http.StatusOK, last.Code)
-			}
-		})
-	}
-}
-
 // Retry-After must name a wait that actually clears the limit. A rejected
 // request is still charged, so a client retrying on the advertised interval
 // drives the moving average toward that interval: a hint below the class's
 // ClearLevel holds the average under the bar and the client stays limited
 // forever.
-func TestRetryAfterFor_clearsTheLimit(t *testing.T) {
+func TestRetryAfter_clearsTheLimit(t *testing.T) {
 	classes := wire.DefaultRateLimitClasses()
 
 	for _, class := range classes.All() {
@@ -528,7 +430,12 @@ func TestRetryAfterFor_clearsTheLimit(t *testing.T) {
 			}
 
 			// Wait exactly as long as the rejection advertised, then retry.
-			retryAfter := retryAfterFor(sess.RateLimitStates()[class.ID-1])
+			rcs := sess.RateLimitStates()[class.ID-1]
+			retryAfter := retryAfter(wire.RateParamsSNAC{
+				WindowSize:   uint32(rcs.WindowSize),
+				ClearLevel:   uint32(rcs.ClearLevel),
+				CurrentLevel: uint32(rcs.CurrentLevel),
+			})
 			now = now.Add(retryAfter)
 
 			assert.Equal(t, wire.RateLimitStatusClear, sess.EvaluateRateLimit(now, class.ID),
@@ -537,38 +444,9 @@ func TestRetryAfterFor_clearsTheLimit(t *testing.T) {
 	}
 }
 
-// The rejection advertises the wait computed for the class it charged, not a
-// flat one.
-func TestRateLimitMiddleware_OSCAR_retryAfterMatchesClass(t *testing.T) {
-	session := newTestWebAPISession(t, wire.DefaultRateLimitClasses())
-	middleware := newTestRateLimitMiddleware()
-
-	handler := middleware.OSCAR(wire.ICBM, wire.ICBMChannelMsgToHost)(
-		func(w http.ResponseWriter, r *http.Request, s *Session) {})
-
-	classID, ok := wire.DefaultSNACRateLimits().RateClassLookup(wire.ICBM, wire.ICBMChannelMsgToHost)
-	require.True(t, ok)
-
-	// Back-to-back requests trip the limit; keep going until one is rejected.
-	var rec *httptest.ResponseRecorder
-	for range 20 {
-		rec = httptest.NewRecorder()
-		handler(rec, httptest.NewRequest(http.MethodGet, "/im/sendIM", nil), session)
-		if rec.Header().Get("Retry-After") != "" {
-			break
-		}
-	}
-
-	want := retryAfterFor(session.OSCARSession.Session().RateLimitStates()[classID-1])
-	assert.Equal(t, fmt.Sprintf("%d", int(want.Seconds())), rec.Header().Get("Retry-After"))
-	// The production IM class clears at 5100ms, so the wait is necessarily
-	// longer than the flat 5s hint this replaced.
-	assert.Greater(t, want, 5*time.Second)
-}
-
 // The rejection is encoded in whatever format the request negotiates, via the
 // same SendResponse path a normal handler uses.
-func TestRateLimitMiddleware_sendRateLimited(t *testing.T) {
+func TestSendRateLimited(t *testing.T) {
 	tests := []struct {
 		name string
 		// query is appended to the request URL
@@ -618,7 +496,7 @@ func TestRateLimitMiddleware_sendRateLimited(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			rec := httptest.NewRecorder()
-			newTestRateLimitMiddleware().sendRateLimited(rec, httptest.NewRequest(http.MethodGet, "/im/sendIM"+tt.query, nil), 5*time.Second)
+			sendRateLimited(rec, httptest.NewRequest(http.MethodGet, "/im/sendIM"+tt.query, nil), 5*time.Second, slog.Default())
 
 			body, err := io.ReadAll(rec.Body)
 			assert.NoError(t, err)
@@ -633,10 +511,10 @@ func TestRateLimitMiddleware_sendRateLimited(t *testing.T) {
 // A client asking for XML or AMF (via f= or the Accept header) still gets a
 // parseable rejection envelope rather than JSON, since the rejection rides the
 // same SendResponse path as a normal handler.
-func TestRateLimitMiddleware_sendRateLimited_nonJSONFormats(t *testing.T) {
+func TestSendRateLimited_nonJSONFormats(t *testing.T) {
 	t.Run("f=xml", func(t *testing.T) {
 		rec := httptest.NewRecorder()
-		newTestRateLimitMiddleware().sendRateLimited(rec, httptest.NewRequest(http.MethodGet, "/im/sendIM?f=xml", nil), 5*time.Second)
+		sendRateLimited(rec, httptest.NewRequest(http.MethodGet, "/im/sendIM?f=xml", nil), 5*time.Second, slog.Default())
 
 		assert.Equal(t, http.StatusOK, rec.Code)
 		assert.Equal(t, "5", rec.Header().Get("Retry-After"))
@@ -648,7 +526,7 @@ func TestRateLimitMiddleware_sendRateLimited_nonJSONFormats(t *testing.T) {
 
 	t.Run("f=amf", func(t *testing.T) {
 		rec := httptest.NewRecorder()
-		newTestRateLimitMiddleware().sendRateLimited(rec, httptest.NewRequest(http.MethodGet, "/im/sendIM?f=amf", nil), 5*time.Second)
+		sendRateLimited(rec, httptest.NewRequest(http.MethodGet, "/im/sendIM?f=amf", nil), 5*time.Second, slog.Default())
 
 		assert.Equal(t, http.StatusOK, rec.Code)
 		assert.Equal(t, "5", rec.Header().Get("Retry-After"))
@@ -660,7 +538,7 @@ func TestRateLimitMiddleware_sendRateLimited_nonJSONFormats(t *testing.T) {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/im/sendIM", nil)
 		req.Header.Set("Accept", "application/x-amf")
-		newTestRateLimitMiddleware().sendRateLimited(rec, req, 5*time.Second)
+		sendRateLimited(rec, req, 5*time.Second, slog.Default())
 
 		assert.Equal(t, http.StatusOK, rec.Code)
 		assert.Contains(t, rec.Header().Get("Content-Type"), "amf")

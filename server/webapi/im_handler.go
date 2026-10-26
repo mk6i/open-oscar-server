@@ -16,10 +16,7 @@ import (
 
 // MessagingHandler handles Web AIM API messaging endpoints
 type MessagingHandler struct {
-	ICBMService    ICBMService
-	LocateService  LocateService
-	FeedbagService FeedbagService
-	Logger         *slog.Logger
+	Logger *slog.Logger
 }
 
 // SendIM handles the /im/sendIM endpoint for sending instant messages
@@ -91,58 +88,54 @@ func (h *MessagingHandler) SendIM(w http.ResponseWriter, r *http.Request, sess *
 		clientIM.Append(wire.NewTLVBE(wire.ICBMTLVStore, []byte{}))
 	}
 
-	frame := wire.SNACFrame{
-		FoodGroup: wire.ICBM,
-		SubGroup:  wire.ICBMChannelMsgToHost,
-		RequestID: wire.ReqIDFromServer,
+	// A web client asks for typing events through its event subscription.
+	if sess.IsSubscribedTo(EventTypeTyping) {
+		clientIM.Append(wire.NewTLVBE(wire.ICBMTLVWantEvents, []byte{}))
 	}
-	// Recorded before the send: ChannelMsgToHost delivers synchronously, so an
-	// ICBMClientErr can reach the pump before it returns. A mapping left by a failed
-	// send ages out under sentIMCookieLimit.
+
+	// The host ack is the reply to a message the server accepted.
+	clientIM.Append(wire.NewTLVBE(wire.ICBMTLVRequestHostAck, []byte{}))
+
+	// Recorded before the send: an ICBMClientErr for the message can reach the
+	// inbound loop before the reply does. A mapping left by a failed send ages
+	// out under sentIMCookieLimit.
 	sess.RecordSentIM(cookieUint64, messageID)
 
-	resp, err := h.ICBMService.ChannelMsgToHost(r.Context(), sess.OSCARSession, frame, clientIM)
-
+	resp, err := sess.request(ctx, wire.ICBM, wire.ICBMChannelMsgToHost, clientIM, wire.ICBMHostAck)
 	if err != nil {
-		SendError(w, r, http.StatusInternalServerError, "failed to send message")
+		h.Logger.DebugContext(ctx, "failed to send message", "err", err.Error())
+		sendRequestError(w, r, err, "failed to send message", h.Logger)
 		return
 	}
 
-	if resp != nil {
-		switch {
-		case resp.Frame.FoodGroup == wire.ICBM && resp.Frame.SubGroup == wire.ICBMErr:
-			if errSn, ok := resp.Body.(wire.SNACError); ok {
-				switch errSn.Code {
-				case wire.ErrorCodeNotLoggedOn:
-					subCode, hasSubCode := errSn.Uint16BE(wire.ErrorTLVErrorSubcode)
-					if hasSubCode && subCode == wire.ICBMSubErrOfflineIMExceedMax {
-						h.Logger.DebugContext(ctx, "user's offline messages full")
-						h.sendUndeliverable(w, r, "recipient's offline message store is full")
-					} else {
-						h.Logger.DebugContext(ctx, "recipient offline")
-						h.sendUndeliverable(w, r, "recipient is offline and cannot receive offline messages")
-					}
-					return
-				case wire.ErrorCodeInLocalPermitDeny:
-					h.Logger.DebugContext(ctx, "you blocked this user")
-					h.sendUndeliverable(w, r, "you have blocked this user")
-					return
-				}
+	if errSn, ok := resp.Body.(wire.SNACError); ok {
+		switch errSn.Code {
+		case wire.ErrorCodeNotLoggedOn:
+			subCode, hasSubCode := errSn.Uint16BE(wire.ErrorTLVErrorSubcode)
+			if hasSubCode && subCode == wire.ICBMSubErrOfflineIMExceedMax {
+				h.Logger.DebugContext(ctx, "user's offline messages full")
+				h.sendUndeliverable(w, r, "recipient's offline message store is full")
+			} else {
+				h.Logger.DebugContext(ctx, "recipient offline")
+				h.sendUndeliverable(w, r, "recipient is offline and cannot receive offline messages")
 			}
-			h.Logger.DebugContext(ctx, "message rejected by ICBM service")
-			h.sendUndeliverable(w, r, "failed to send message")
 			return
-		case resp.Frame.FoodGroup == wire.ICBM && resp.Frame.SubGroup == wire.ICBMHostAck:
-			h.Logger.DebugContext(ctx, "received host ack")
+		case wire.ErrorCodeInLocalPermitDeny:
+			h.Logger.DebugContext(ctx, "you blocked this user")
+			h.sendUndeliverable(w, r, "you have blocked this user")
+			return
 		}
+		h.Logger.DebugContext(ctx, "message rejected by ICBM service")
+		h.sendUndeliverable(w, r, "failed to send message")
+		return
 	}
 
 	sess.AddStoredIM(recipientIdent.String(), sess.ScreenName.IdentScreenName().String(), message, messageID, now)
 
-	recipientDisplay := h.resolveDisplayName(ctx, sess.OSCARSession, recipientIdent)
+	recipientDisplay := h.resolveDisplayName(ctx, sess, recipientIdent)
 	// The alias lives in the sender's feedbag, so unlike the display name it cannot
 	// be read off a locate reply.
-	recipientAlias := sess.Aliases(ctx)[recipientIdent.String()]
+	recipientAlias := sess.aliasFor(recipientIdent)
 	h.pushSenderWebAPIEvents(sess, recipientIdent, recipientDisplay, recipientAlias, message, messageID, now, autoResponse)
 
 	h.Logger.DebugContext(ctx, "queued sentIM event for sender",
@@ -162,12 +155,12 @@ func (h *MessagingHandler) sendUndeliverable(w http.ResponseWriter, r *http.Requ
 
 // resolveDisplayName returns the recipient's screen name as they formatted it,
 // or "" when it cannot be determined because they are offline or blocked.
-func (h *MessagingHandler) resolveDisplayName(ctx context.Context, instance *state.SessionInstance, recipient state.IdentScreenName) string {
-	reply, err := h.LocateService.UserInfoQuery(ctx, instance, wire.SNACFrame{},
+func (h *MessagingHandler) resolveDisplayName(ctx context.Context, sess *Session, recipient state.IdentScreenName) string {
+	reply, err := sess.request(ctx, wire.Locate, wire.LocateUserInfoQuery,
 		wire.SNAC_0x02_0x05_LocateUserInfoQuery{
 			Type:       uint16(wire.LocateTypeUnavailable),
 			ScreenName: recipient.String(),
-		})
+		}, wire.LocateUserInfoReply)
 	if err != nil {
 		h.Logger.DebugContext(ctx, "failed to resolve recipient display name",
 			"screenName", recipient.String(), "error", err)
@@ -211,7 +204,7 @@ func (h *MessagingHandler) pushSenderWebAPIEvents(sess *Session, recipient state
 			AimID:     senderAimID,
 			DisplayID: sess.ScreenName.String(),
 			UserType:  userTypeFor(sess.ScreenName.IdentScreenName()),
-			State:     selfWebState(sess.OSCARSession.Session().TLVUserInfo(), sess.isAIMViewer()),
+			State:     selfWebState(sess.self.userInfo(), sess.isAIMViewer()),
 		},
 		Dest:      dest,
 		Message:   message,
@@ -266,9 +259,9 @@ func (h *MessagingHandler) SetTyping(w http.ResponseWriter, r *http.Request, ses
 		ScreenName: recipient,
 		Event:      event,
 	}
-	if err := h.ICBMService.ClientEvent(ctx, sess.OSCARSession, wire.SNACFrame{}, inBody); err != nil {
+	if err := sess.send(wire.ICBM, wire.ICBMClientEvent, inBody); err != nil {
 		h.Logger.ErrorContext(ctx, "failed to send typing notification", "error", err)
-		SendError(w, r, http.StatusInternalServerError, "internal server error")
+		sendRequestError(w, r, err, "internal server error", h.Logger)
 		return
 	}
 

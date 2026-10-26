@@ -4,18 +4,24 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
+	"hash/fnv"
 	"log/slog"
-	mrand "math/rand/v2"
 	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
+	"golang.org/x/sync/errgroup"
+	"golang.org/x/time/rate"
+
+	"github.com/mk6i/open-oscar-server/server/oscarclient"
 	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
 )
@@ -67,36 +73,45 @@ var webAPICaps = [][16]byte{
 
 // Session represents an active Web AIM API session.
 type Session struct {
-	AimSID              string                                                // Unique session ID for web client
-	ScreenName          state.DisplayScreenName                               // User identity
-	OSCARSession        *state.SessionInstance                                // Bridge to existing OSCAR session
-	BaseURL             string                                                // Web API base URL advertised to the web client, used to build absolute asset URLs
-	Events              []string                                              // Subscribed event types
-	EventQueue          *EventQueue                                           // Per-session event queue
-	ClientName          string                                                // Client application name
-	ClientVersion       string                                                // Client application version
-	CreatedAt           time.Time                                             // SessionInstance creation time
-	LastAccessed        time.Time                                             // Last activity time
-	ExpiresAt           time.Time                                             // SessionInstance expiration time
-	FetchTimeout        int                                                   // Long-polling timeout in milliseconds
-	TimeToNextFetch     int                                                   // Suggested delay before next fetch
-	RemoteAddr          string                                                // Client IP address
-	BuddyListRefresher  func(ctx context.Context) (any, error)                // Called on feedbag changes to push buddylist event
-	PermitDenyRefresher func(ctx context.Context) (any, error)                // Called on feedbag changes to push permitDeny event
-	FeedbagLoader       func(ctx context.Context) ([]wire.FeedbagItem, error) // Reads the owner's feedbag; every read-only view of the roster derives from it
+	AimSID              string                                 // Unique session ID for web client
+	ScreenName          state.DisplayScreenName                // User identity
+	BaseURL             string                                 // Web API base URL advertised to the web client, used to build absolute asset URLs
+	Events              []string                               // Subscribed event types
+	EventQueue          *EventQueue                            // Per-session event queue
+	ClientName          string                                 // Client application name
+	ClientVersion       string                                 // Client application version
+	CreatedAt           time.Time                              // SessionInstance creation time
+	LastAccessed        time.Time                              // Last activity time
+	ExpiresAt           time.Time                              // SessionInstance expiration time
+	FetchTimeout        int                                    // Long-polling timeout in milliseconds
+	TimeToNextFetch     int                                    // Suggested delay before next fetch
+	RemoteAddr          string                                 // Client IP address
+	BuddyListRefresher  func(ctx context.Context) (any, error) // Called on feedbag changes to push buddylist event
+	PermitDenyRefresher func(ctx context.Context) (any, error) // Called on feedbag changes to push permitDeny event
 	// BuddyIconURL formats the absolute buddyIcon URL for a buddy from the icon
 	// hash carried in a presence SNAC. Returns "" when no URL can be published.
 	BuddyIconURL func(screenName state.IdentScreenName, hash []byte) string
-	feedbag      []wire.FeedbagItem // cached FeedbagLoader result, nil when unloaded or invalidated
-	aliases      map[string]string  // aliases derived from feedbag, nil when unloaded or invalidated
-	feedbagMu    sync.Mutex
+	// feedbag is the owner's feedbag as the OSCAR server confirmed it, plus
+	// the change the session is waiting on.
+	feedbag state.FeedbagMirror
+	// feedbagMu admits one feedbag change or reload at a time. A change holds
+	// it from the snapshot it diffs against to its last FeedbagStatus.
+	feedbagMu sync.Mutex
+	// feedbagStale is set when a feedbag change or reload fails, so the
+	// server's feedbag may differ from the mirror. The mirror is reloaded
+	// before the next change, or when a rate class clears.
+	feedbagStale atomic.Bool
+	// feedbagQuery is the session's outstanding feedbag query.
+	feedbagQuery feedbagQuery
 	// presence is the session's view of its buddies' last-known presence, keyed by
-	// normalized aimId and fed by the BuddyArrived/BuddyDeparted SNACs the listener
-	// receives.
+	// normalized aimId and fed by the BuddyArrived/BuddyDeparted SNACs the inbound
+	// loop receives.
 	presence    map[string]BuddyPresence
 	presenceMu  sync.RWMutex
 	imLog       map[string][]WebAPIStoredIM
 	imLogMu     sync.Mutex
+	imRepeats   map[uint64]uint64 // count of IMs received, by hash of sender, cookie and text
+	imRepeatsMu sync.Mutex
 	sentIMs     map[uint64]string // OSCAR message cookie -> the msgId given to the client
 	sentIMOrder []uint64          // insertion order of sentIMs, oldest first
 	sentIMMu    sync.Mutex
@@ -109,8 +124,34 @@ type Session struct {
 	// may reach it. Zero disables the alert.
 	IMRateClassID wire.RateLimitClassID
 	logger        *slog.Logger // Logger for debugging
-	listeners     sync.WaitGroup
 
+	// bos is the session's connection to the OSCAR BOS service.
+	bos oscarclient.Conn
+	// cache matches replies from the OSCAR server to the requests that
+	// produced them.
+	cache *oscarclient.SNACCache
+	// snacRateLimits maps SNACs to the rate classes the OSCAR server charges.
+	snacRateLimits wire.SNACRateLimits
+	// requestTimeout bounds how long a request waits for its reply.
+	requestTimeout time.Duration
+	// rates holds the rate class status the OSCAR server last announced.
+	rates rateLimitState
+	// self is the session owner's user info.
+	self selfInfo
+	// online is closed once the OSCAR server has finished bringing the
+	// session online.
+	online     chan struct{}
+	onlineOnce sync.Once
+	// refreshCh wakes the refresher, which reloads a stale feedbag and
+	// pushes the buddy list. It holds one request, so requests made while
+	// one is pending coalesce.
+	refreshCh chan struct{}
+	// lookups bounds the session's calls to routes made of rate-limit-exempt
+	// lookups.
+	lookups *rate.Limiter
+
+	// g runs the session's goroutines, which end when ctx is cancelled.
+	g      *errgroup.Group
 	ctx    context.Context
 	cancel context.CancelFunc
 
@@ -124,87 +165,6 @@ type Session struct {
 // IsExpired checks if the session has expired.
 func (s *Session) IsExpired() bool {
 	return time.Now().After(s.ExpiresAt)
-}
-
-// Aliases returns this session owner's private buddy aliases, keyed by normalized
-// screen name, derived from the cached feedbag and memoized alongside it. Buddies
-// without an alias are absent. The map is owned by the session and must not be
-// mutated by callers.
-func (s *Session) Aliases(ctx context.Context) map[string]string {
-	s.feedbagMu.Lock()
-	defer s.feedbagMu.Unlock()
-
-	if s.aliases == nil {
-		items, err := s.feedbagLocked(ctx)
-		if err != nil {
-			return nil
-		}
-		aliases := make(map[string]string)
-		for _, item := range items {
-			if item.ClassID != wire.FeedbagClassIdBuddy || item.Name == "" {
-				continue
-			}
-			alias, ok := item.String(wire.FeedbagAttributesAlias)
-			if !ok || alias == "" {
-				continue
-			}
-			aliases[state.NewIdentScreenName(item.Name).String()] = alias
-		}
-		s.aliases = aliases
-	}
-	return s.aliases
-}
-
-// Feedbag returns the owner's feedbag rows, reading them through FeedbagLoader on
-// the first call after a change and serving the cached copy afterwards. The slice
-// is owned by the session and must not be mutated by callers.
-//
-// Code that rewrites the feedbag must re-read it rather than use this: it computes
-// item ids and a pending diff from what it reads, and a stale snapshot would
-// overwrite another instance's change.
-func (s *Session) Feedbag(ctx context.Context) ([]wire.FeedbagItem, error) {
-	s.feedbagMu.Lock()
-	defer s.feedbagMu.Unlock()
-	return s.feedbagLocked(ctx)
-}
-
-// feedbagLocked loads and caches the feedbag. Callers hold feedbagMu.
-//
-// The lock is deliberately held across the load. Another instance can change the
-// list mid-read, and its feedbag SNAC invalidates this cache; a load outside the
-// lock could store its pre-change result after that invalidation.
-func (s *Session) feedbagLocked(ctx context.Context) ([]wire.FeedbagItem, error) {
-	if s.feedbag == nil {
-		items, err := s.FeedbagLoader(ctx)
-		if err != nil {
-			s.logger.Error("failed to load feedbag", "err", err.Error())
-			return nil, err
-		}
-		if items == nil {
-			// An empty feedbag must still count as loaded.
-			items = []wire.FeedbagItem{}
-		}
-		s.feedbag = items
-	}
-	return s.feedbag, nil
-}
-
-// InvalidateFeedbag drops the cached feedbag and the aliases derived from it.
-// Callers that change the owner's feedbag must call this: the feedbag service
-// relays its item SNACs only to the owner's *other* instances.
-func (s *Session) InvalidateFeedbag() {
-	s.feedbagMu.Lock()
-	defer s.feedbagMu.Unlock()
-	s.feedbag = nil
-	s.aliases = nil
-}
-
-// aliasFor returns this session owner's private alias for buddy, or "" when none is
-// set. The web client deletes the alias it holds whenever it merges a user map, so
-// every event naming a buddy has to repeat it.
-func (s *Session) aliasFor(buddy state.IdentScreenName) string {
-	// Runs on the SNAC listener goroutine, which has no request context.
-	return s.Aliases(s.ctx)[buddy.String()]
 }
 
 // BuddyPresence is a buddy's last-known presence, assembled from the
@@ -275,12 +235,7 @@ func (s *Session) forgetUnlistedBuddies(names []string) {
 	if len(names) == 0 {
 		return
 	}
-	items, err := s.Feedbag(s.ctx)
-	if err != nil {
-		// Without the roster a partial removal cannot be told from a full one, and
-		// a wrongly dropped entry reads offline until the buddy changes presence.
-		return
-	}
+	items := s.Feedbag()
 	for _, name := range names {
 		if stillListsBuddy(items, name) {
 			continue
@@ -313,45 +268,28 @@ func (s *Session) PushEvent(eventType EventType, data any) {
 	s.EventQueue.Push(eventType, data)
 }
 
-// StartListeningToOSCARSession starts a goroutine that listens to the OSCAR session's
-// message channel and converts SNAC messages into WebAPI events.
-func (s *Session) StartListeningToOSCARSession() {
+// Start translates the SNACs the session receives from the OSCAR server into
+// events. The caller wires the session's callbacks first, since the inbound
+// loop reads them.
+func (s *Session) Start() {
+	s.goAsync(s.recvBOS)
+	s.goAsync(s.refreshBuddyLists)
+}
+
+// goAsync runs f in the session's goroutine group, which Close cancels and
+// waits for. It does nothing once the session is closing.
+func (s *Session) goAsync(f func(ctx context.Context) error) {
 	s.closeMu.Lock()
 	defer s.closeMu.Unlock()
 	if s.closed {
 		return
 	}
-
-	s.listeners.Go(func() {
-		msgCh := s.OSCARSession.ReceiveMessage()
-		for {
-			select {
-			case msg, ok := <-msgCh:
-				if !ok {
-					// Channel closed, OSCAR session ended
-					return
-				}
-				s.handleSNACMessage(msg)
-			case <-s.OSCARSession.Closed():
-				// The OSCAR instance went away without this session asking — a
-				// boot, a rate-limit disconnect. Tell the client rather than
-				// leaving its parked fetcher to hang: a sessionEnded event
-				// releases the poll at once and the client signs off on the
-				// spot, instead of waiting out the reaper's next sweep.
-				//
-				// A teardown this session started needs no event, and gets
-				// none: Close closes the queue before it closes the instance,
-				// so this Push is a no-op on that path.
-				s.PushEvent(EventTypeSessionEnded, struct{}{})
-				return
-			}
-		}
-	})
+	s.g.Go(func() error { return f(s.ctx) })
 }
 
 // Close tears down the session: it releases any parked event fetchers, closes
-// the OSCAR instance, and waits for the listener goroutine to unwind. Safe to
-// call more than once.
+// the OSCAR connection, and waits for the session's goroutines to finish. Safe
+// to call more than once.
 func (s *Session) Close() {
 	s.closeMu.Lock()
 	if s.closed {
@@ -362,10 +300,19 @@ func (s *Session) Close() {
 	s.closeMu.Unlock()
 
 	s.EventQueue.Close()
-	s.OSCARSession.CloseInstance()
-
 	s.cancel()
-	s.listeners.Wait()
+	s.bos.Close()
+	_ = s.g.Wait()
+}
+
+// oscarClosed reports whether the session's OSCAR connection has closed.
+func (s *Session) oscarClosed() bool {
+	select {
+	case <-s.bos.Closed():
+		return true
+	default:
+		return false
+	}
 }
 
 // handleSNACMessage converts a SNAC message into WebAPI events and pushes them to the event queue.
@@ -380,6 +327,12 @@ func (s *Session) handleSNACMessage(msg wire.SNACMessage) {
 		s.handleFeedbagMessage(msg)
 	case wire.OService:
 		s.handleOServiceMessage(msg)
+	case wire.Stats:
+		// The server sets the report interval last when it brings a session
+		// online, after the arrivals of the owner's online buddies.
+		if msg.Frame.SubGroup == wire.StatsSetMinReportInterval {
+			s.onlineOnce.Do(func() { close(s.online) })
+		}
 	}
 }
 
@@ -388,8 +341,18 @@ func (s *Session) handleSNACMessage(msg wire.SNACMessage) {
 func (s *Session) handleOServiceMessage(msg wire.SNACMessage) {
 	switch msg.Frame.SubGroup {
 	case wire.OServiceUserInfoUpdate:
+		if body, ok := msg.Body.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate); ok && len(body.UserInfo) > 0 {
+			s.self.setRelayed(body.UserInfo[0])
+		}
 		s.handleUserInfoUpdate(msg)
 	case wire.OServiceRateParamChange:
+		if body, ok := msg.Body.(wire.SNAC_0x01_0x0A_OServiceRateParamsChange); ok {
+			s.rates.announce(body.Code, body.Rate, time.Now())
+			// the server may have dropped feedbag changes while limited
+			if body.Code == rateParamsChangeClear && s.feedbagStale.Load() {
+				s.wakeRefresher()
+			}
+		}
 		s.handleRateLimitUpdate(msg)
 	}
 }
@@ -423,7 +386,7 @@ func (s *Session) handleUserInfoUpdate(msg wire.SNACMessage) {
 		s.BuddyIconURL(screenName.IdentScreenName(), hash),
 		moodIconURL(s.BaseURL, webState, userInfoCaps(info)),
 	)
-	myInfo.AwayMsg = s.OSCARSession.Session().AwayMessage()
+	myInfo.AwayMsg = s.self.awayMessage()
 	myInfo.StatusMsg = userStatusMsg(info)
 
 	s.PushEvent(EventTypeMyInfo, myInfo)
@@ -515,17 +478,13 @@ func (s *Session) handleIncomingIM(msg wire.SNACMessage) {
 	// Check if it's an auto-response (channel 2)
 	autoResponse := body.ChannelID == 0x0002
 
-	// msgId must be unique per delivered event. The OSCAR cookie is not a
-	// reliable unique id (some clients reuse it across messages), and the web
-	// client dedupes its conversation list by msgId, silently dropping any
-	// collisions. Mint a fresh random id instead of reusing body.Cookie.
-	msgID := strconv.FormatUint(mrand.Uint64(), 16)
 	// SNAC user info carries the sender's display screen name. The web client
 	// keys conversations and users by the normalized aimId and only renders
 	// displayId, so the two forms must not be interchanged.
 	partnerDisplay := body.ScreenName
 	partner := state.NewIdentScreenName(partnerDisplay)
 	partnerAimID := partner.String()
+	msgID := s.incomingIMID(partner, body.Cookie, messageText)
 
 	// An offline message is logged under the time it was sent, so the stored-IM
 	// history it lands in stays in the order the conversation happened.
@@ -835,20 +794,14 @@ func hasAwayMsg(webState string) bool {
 // awayMessage reads a buddy's away message, which lives in the locate reply's
 // LocateInfo and so is absent from presence broadcasts. Callers ask only for a
 // buddy the view already reports as unavailable.
-func awayMessage(
-	ctx context.Context,
-	locateService LocateService,
-	instance *state.SessionInstance,
-	buddy state.IdentScreenName,
-	logger *slog.Logger,
-) string {
-	reply, err := locateService.UserInfoQuery(ctx, instance, wire.SNACFrame{},
+func (s *Session) awayMessage(ctx context.Context, buddy state.IdentScreenName) string {
+	reply, err := s.request(ctx, wire.Locate, wire.LocateUserInfoQuery,
 		wire.SNAC_0x02_0x05_LocateUserInfoQuery{
 			Type:       uint16(wire.LocateTypeUnavailable),
 			ScreenName: buddy.String(),
-		})
+		}, wire.LocateUserInfoReply)
 	if err != nil {
-		logger.WarnContext(ctx, "failed to query away message",
+		s.logger.WarnContext(ctx, "failed to query away message",
 			"screenName", buddy.String(), "error", err)
 		return ""
 	}
@@ -896,77 +849,89 @@ func (s *Session) handleBuddyDeparted(msg wire.SNACMessage) {
 // settings require authorization, so the item was not stored.
 const feedbagResultAuthRequired = uint16(0x000E)
 
-// refreshBuddyList re-reads the roster and pushes it to the client. Runs on the SNAC
-// listener goroutine, so it uses the session context rather than a request context.
+// refreshBuddyList asks the refresher to push the buddy list to the client.
+// Building it needs replies from the OSCAR server, which the inbound loop
+// can't wait for. Requests made while one is pending coalesce into it.
 func (s *Session) refreshBuddyList() {
-	if s.BuddyListRefresher == nil {
-		return
+	if s.IsSubscribedTo(EventTypeBuddyList) {
+		s.wakeRefresher()
 	}
-	payload, err := s.BuddyListRefresher(s.ctx)
-	if err != nil {
-		s.logger.Error("failed to refresh buddy list after feedbag change", "err", err)
-		return
-	}
-	s.PushEvent(EventTypeBuddyList, payload)
 }
 
+// wakeRefresher asks the refresher to run.
+func (s *Session) wakeRefresher() {
+	select {
+	case s.refreshCh <- struct{}{}:
+	default:
+	}
+}
+
+// refreshBuddyLists reloads a stale feedbag and pushes the buddy list to
+// the client each time it's woken, until ctx is done.
+func (s *Session) refreshBuddyLists(ctx context.Context) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-s.refreshCh:
+			s.reloadStaleFeedbag(ctx)
+			if s.BuddyListRefresher == nil || !s.IsSubscribedTo(EventTypeBuddyList) {
+				continue
+			}
+			payload, err := s.BuddyListRefresher(ctx)
+			if err != nil {
+				s.logger.Error("failed to refresh buddy list after feedbag change", "err", err)
+				continue
+			}
+			s.PushEvent(EventTypeBuddyList, payload)
+		}
+	}
+}
+
+// handleFeedbagMessage applies the feedbag changes made at the owner's other
+// locations. A FeedbagStatus arriving here answers a change the session gave
+// up on, so the mirror is already stale and reloads before the next change.
 func (s *Session) handleFeedbagMessage(msg wire.SNACMessage) {
-	s.InvalidateFeedbag()
+	var items []wire.FeedbagItem
+	var del bool
+	switch body := msg.Body.(type) {
+	case wire.SNAC_0x13_0x08_FeedbagInsertItem:
+		items = body.Items
+	case wire.SNAC_0x13_0x09_FeedbagUpdateItem:
+		items = body.Items
+	case wire.SNAC_0x13_0x0A_FeedbagDeleteItem:
+		items, del = body.Items, true
+	default:
+		return
+	}
 
-	switch msg.Frame.SubGroup {
-	case wire.FeedbagStatus:
-		// Insert/update/delete below reach only a user's *other* instances, so this
-		// is the one notification a session gets for its own feedbag write.
-		if !s.IsSubscribedTo(EventTypeBuddyList) {
-			return
-		}
-		if body, ok := msg.Body.(wire.SNAC_0x13_0x0E_FeedbagStatus); ok {
-			// A buddy declined for authorization is not stored, and is simply
-			// absent from the refreshed roster.
-			if slices.Contains(body.Results, feedbagResultAuthRequired) {
-				s.logger.Info("feedbag item declined pending authorization")
+	s.applyRemoteFeedbag(del, items)
+
+	// Only a delete carries items that may leave buddies unwatched.
+	if del {
+		var removed []string
+		for _, item := range items {
+			if item.ClassID == wire.FeedbagClassIdBuddy && item.Name != "" {
+				removed = append(removed, item.Name)
 			}
 		}
-		s.refreshBuddyList()
+		s.forgetUnlistedBuddies(removed)
+	}
 
-	case wire.FeedbagInsertItem, wire.FeedbagUpdateItem, wire.FeedbagDeleteItem:
-		// An insert and an update both relay an UpdateItem body; only a delete
-		// carries a DeleteItem body.
-		var items []wire.FeedbagItem
-		isDelete := false
-		switch body := msg.Body.(type) {
-		case wire.SNAC_0x13_0x09_FeedbagUpdateItem:
-			items = body.Items
-		case wire.SNAC_0x13_0x0A_FeedbagDeleteItem:
-			items = body.Items
-			isDelete = true
-		}
+	s.refreshBuddyList()
 
-		if isDelete {
-			var removed []string
-			for _, item := range items {
-				if item.ClassID == wire.FeedbagClassIdBuddy && item.Name != "" {
-					removed = append(removed, item.Name)
+	if s.PermitDenyRefresher != nil {
+		for _, item := range items {
+			if item.ClassID == wire.FeedbagClassIDPermit ||
+				item.ClassID == wire.FeedbagClassIDDeny ||
+				item.ClassID == wire.FeedbagClassIdPdinfo {
+				pdd, err := s.PermitDenyRefresher(s.ctx)
+				if err != nil {
+					s.logger.Error("failed to refresh permit/deny after feedbag change", "err", err)
+				} else {
+					s.PushEvent(EventTypePermitDeny, pdd)
 				}
-			}
-			s.forgetUnlistedBuddies(removed)
-		}
-
-		s.refreshBuddyList()
-
-		if s.PermitDenyRefresher != nil {
-			for _, item := range items {
-				if item.ClassID == wire.FeedbagClassIDPermit ||
-					item.ClassID == wire.FeedbagClassIDDeny ||
-					item.ClassID == wire.FeedbagClassIdPdinfo {
-					pdd, err := s.PermitDenyRefresher(s.ctx)
-					if err != nil {
-						s.logger.Error("failed to refresh permit/deny after feedbag change", "err", err)
-					} else {
-						s.PushEvent(EventTypePermitDeny, pdd)
-					}
-					break
-				}
+				break
 			}
 		}
 	}
@@ -991,14 +956,13 @@ func NewSessionManager() *SessionManager {
 	}
 }
 
-// CreateSession creates a new WebAPI session.
+// CreateSession creates a new WebAPI session whose OSCAR connection is bos.
 //
-// The session does not begin listening to its OSCAR instance yet: the caller
-// must wire the session's refresher callbacks (BuddyListRefresher, BuddyIconURL,
-// ...) and then call StartListeningToOSCARSession. Wiring them after the
-// listener starts would race the goroutine, which reads them as it converts
-// SNACs into events.
-func (m *SessionManager) CreateSession(screenName state.DisplayScreenName, events []string, oscarSession *state.SessionInstance, baseURL string, logger *slog.Logger) (*Session, error) {
+// The session does not translate the SNACs it receives yet: the caller must
+// wire the session's refresher callbacks (BuddyListRefresher, BuddyIconURL,
+// ...) and then call Start. Wiring them after Start would race the inbound
+// loop, which reads them as it converts SNACs into events.
+func (m *SessionManager) CreateSession(screenName state.DisplayScreenName, events []string, bos oscarclient.Conn, snacRateLimits wire.SNACRateLimits, baseURL string, logger *slog.Logger) (*Session, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -1014,14 +978,23 @@ func (m *SessionManager) CreateSession(screenName state.DisplayScreenName, event
 		return nil, err
 	}
 
+	session := newSession(aimsid, screenName, events, bos, snacRateLimits, baseURL, logger)
+	m.sessions[aimsid] = session
+
+	return session, nil
+}
+
+// newSession creates a session over the OSCAR connection bos.
+func newSession(aimsid string, screenName state.DisplayScreenName, events []string, bos oscarclient.Conn, snacRateLimits wire.SNACRateLimits, baseURL string, logger *slog.Logger) *Session {
 	now := time.Now()
 	sessCtx, sessCancel := context.WithCancel(context.Background())
-	session := &Session{
-		ctx:             sessCtx,
+	g, gCtx := errgroup.WithContext(sessCtx)
+	return &Session{
+		ctx:             gCtx,
 		cancel:          sessCancel,
+		g:               g,
 		AimSID:          aimsid,
 		ScreenName:      screenName,
-		OSCARSession:    oscarSession,
 		BaseURL:         baseURL,
 		Events:          events,
 		EventQueue:      NewEventQueue(1000), // Max 1000 events per session
@@ -1032,15 +1005,14 @@ func (m *SessionManager) CreateSession(screenName state.DisplayScreenName, event
 		TimeToNextFetch: 500,   // 500ms suggested delay
 		logger:          logger,
 		capabilities:    slices.Clone(webAPICaps),
+		bos:             bos,
+		cache:           oscarclient.NewSNACCache(),
+		snacRateLimits:  snacRateLimits,
+		requestTimeout:  defaultRequestTimeout,
+		refreshCh:       make(chan struct{}, 1),
+		online:          make(chan struct{}),
+		lookups:         rate.NewLimiter(rate.Every(lookupInterval), lookupBurst),
 	}
-
-	m.sessions[aimsid] = session
-
-	// The caller starts the OSCAR listener (StartListeningToOSCARSession) once it
-	// has wired the session's refresher callbacks; starting it here would race
-	// those assignments.
-
-	return session, nil
 }
 
 // GetSession retrieves a session by aimsid.
@@ -1057,12 +1029,10 @@ func (m *SessionManager) GetSession(ctx context.Context, aimsid string) (*Sessio
 		return nil, ErrWebAPISessionExpired
 	}
 
-	// A rate-limit disconnect (EvaluateRateLimit -> Session.CloseSession) closes
-	// every instance for the account while this web session is still unexpired.
-	// The aimsid must stop resolving at that point, otherwise a client told to
-	// disconnect could keep issuing charged requests against a dead session (the
-	// reaper only removes it on time expiry, up to a TTL later).
-	if session.OSCARSession.IsClosed() {
+	// A closed OSCAR connection (a boot, a rate-limit disconnect) ends the
+	// session while it is still unexpired. The aimsid must stop resolving at
+	// that point rather than when the reaper next sweeps it.
+	if session.oscarClosed() {
 		return nil, ErrWebAPISessionExpired
 	}
 
@@ -1147,7 +1117,7 @@ func (m *SessionManager) reapExpired() {
 	now := time.Now()
 	var expired []*Session
 	for aimsid, session := range m.sessions {
-		if now.After(session.ExpiresAt) || session.OSCARSession.IsClosed() {
+		if now.After(session.ExpiresAt) || session.oscarClosed() {
 			delete(m.sessions, aimsid)
 			expired = append(expired, session)
 		}
@@ -1278,6 +1248,31 @@ type WebAPIStoredIM struct {
 	Message string
 	MsgID   string
 	Date    int64 // Unix seconds
+}
+
+// incomingIMID returns the msgId of an IM received from sender. Every session
+// of the account derives the same msgId for an IM, since the client keeps one
+// IM history for all of the account's tabs and dedupes it by msgId. Senders
+// may reuse a cookie, so the msgId also counts the IMs with the same sender,
+// cookie and text that the session received before.
+func (s *Session) incomingIMID(sender state.IdentScreenName, cookie uint64, text string) string {
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(sender.String()))
+	_, _ = h.Write([]byte{0})
+	_ = binary.Write(h, binary.BigEndian, cookie)
+	_, _ = h.Write([]byte(text))
+	key := h.Sum64()
+
+	s.imRepeatsMu.Lock()
+	if s.imRepeats == nil {
+		s.imRepeats = make(map[uint64]uint64)
+	}
+	n := s.imRepeats[key]
+	s.imRepeats[key] = n + 1
+	s.imRepeatsMu.Unlock()
+
+	_ = binary.Write(h, binary.BigEndian, n)
+	return strconv.FormatUint(h.Sum64(), 16)
 }
 
 // AddStoredIM appends a message to the per-partner log for this session.
