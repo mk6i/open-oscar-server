@@ -3037,6 +3037,68 @@ func TestSQLiteUserStore_SetDirectoryInfo(t *testing.T) {
 	})
 }
 
+func TestSQLiteUserStore_AIMDirectoryEntries(t *testing.T) {
+	defer func() {
+		assert.NoError(t, os.Remove(testFile))
+	}()
+
+	f, err := NewSQLiteUserStore(testFile)
+	assert.NoError(t, err)
+
+	category, err := f.CreateCategory(context.Background(), "Hobbies")
+	assert.NoError(t, err)
+	for _, name := range []string{"Biking", "Chess"} {
+		_, err := f.CreateKeyword(context.Background(), name, category.ID)
+		assert.NoError(t, err)
+	}
+
+	for _, name := range []string{"alice", "bob", "carol", "dave"} {
+		err := f.InsertUser(context.Background(), User{
+			IdentScreenName:   NewIdentScreenName(name),
+			DisplayScreenName: DisplayScreenName(name),
+		})
+		assert.NoError(t, err)
+	}
+
+	aliceInfo := AIMNameAndAddr{
+		FirstName:  "Alice",
+		LastName:   "Doe",
+		MiddleName: "Marie",
+		MaidenName: "Smith",
+		Country:    "USA",
+		State:      "CA",
+		City:       "San Francisco",
+		NickName:   "Ali",
+		ZIPCode:    "94105",
+		Address:    "123 Main St",
+	}
+	bobInfo := AIMNameAndAddr{City: "Austin"}
+
+	alice := NewIdentScreenName("alice")
+	assert.NoError(t, f.SetDirectoryInfo(context.Background(), alice, aliceInfo))
+	assert.NoError(t, f.SetKeywords(context.Background(), alice, [5]string{"Biking", "Chess"}))
+	assert.NoError(t, f.SetDirectoryInfo(context.Background(), NewIdentScreenName("bob"), bobInfo))
+	assert.NoError(t, f.SetKeywords(context.Background(), NewIdentScreenName("carol"), [5]string{"Chess"}))
+
+	entries, err := f.AIMDirectoryEntries(context.Background())
+	assert.NoError(t, err)
+	assert.Equal(t, []AIMDirectoryEntry{
+		{DisplayScreenName: "alice", Info: aliceInfo, Keywords: []string{"Biking", "Chess"}},
+		{DisplayScreenName: "bob", Info: bobInfo},
+		{DisplayScreenName: "carol", Keywords: []string{"Chess"}},
+	}, entries)
+
+	assert.NoError(t, f.SetDirectoryInfo(context.Background(), alice, AIMNameAndAddr{}))
+	assert.NoError(t, f.SetKeywords(context.Background(), alice, [5]string{}))
+
+	entries, err = f.AIMDirectoryEntries(context.Background())
+	assert.NoError(t, err)
+	assert.Equal(t, []AIMDirectoryEntry{
+		{DisplayScreenName: "bob", Info: bobInfo},
+		{DisplayScreenName: "carol", Keywords: []string{"Chess"}},
+	}, entries)
+}
+
 func TestSQLiteUserStore_Categories(t *testing.T) {
 	t.Run("Retrieve Keyword Categories Successfully", func(t *testing.T) {
 		defer func() {

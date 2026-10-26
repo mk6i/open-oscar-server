@@ -247,6 +247,16 @@ type AIMNameAndAddr struct {
 	Address string
 }
 
+// AIMDirectoryEntry is a user's listing in the user directory.
+type AIMDirectoryEntry struct {
+	// DisplayScreenName is the user's display screen name.
+	DisplayScreenName DisplayScreenName
+	// Info is the user's name and address information.
+	Info AIMNameAndAddr
+	// Keywords are the user's directory keywords, in slot order.
+	Keywords []string
+}
+
 // ICQBasicInfo holds basic information about an ICQ user, including their name, contact details, and location.
 type ICQBasicInfo struct {
 	// Address is the user's residential address.
