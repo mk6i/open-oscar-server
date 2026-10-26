@@ -47,6 +47,68 @@ func (_m *mockDirectoryManager) EXPECT() *mockDirectoryManager_Expecter {
 	return &mockDirectoryManager_Expecter{mock: &_m.Mock}
 }
 
+// AIMDirectoryEntries provides a mock function for the type mockDirectoryManager
+func (_mock *mockDirectoryManager) AIMDirectoryEntries(ctx context.Context) ([]state.AIMDirectoryEntry, error) {
+	ret := _mock.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for AIMDirectoryEntries")
+	}
+
+	var r0 []state.AIMDirectoryEntry
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context) ([]state.AIMDirectoryEntry, error)); ok {
+		return returnFunc(ctx)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context) []state.AIMDirectoryEntry); ok {
+		r0 = returnFunc(ctx)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]state.AIMDirectoryEntry)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = returnFunc(ctx)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// mockDirectoryManager_AIMDirectoryEntries_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AIMDirectoryEntries'
+type mockDirectoryManager_AIMDirectoryEntries_Call struct {
+	*mock.Call
+}
+
+// AIMDirectoryEntries is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *mockDirectoryManager_Expecter) AIMDirectoryEntries(ctx any) *mockDirectoryManager_AIMDirectoryEntries_Call {
+	return &mockDirectoryManager_AIMDirectoryEntries_Call{Call: _e.mock.On("AIMDirectoryEntries", ctx)}
+}
+
+func (_c *mockDirectoryManager_AIMDirectoryEntries_Call) Run(run func(ctx context.Context)) *mockDirectoryManager_AIMDirectoryEntries_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *mockDirectoryManager_AIMDirectoryEntries_Call) Return(aIMDirectoryEntrys []state.AIMDirectoryEntry, err error) *mockDirectoryManager_AIMDirectoryEntries_Call {
+	_c.Call.Return(aIMDirectoryEntrys, err)
+	return _c
+}
+
+func (_c *mockDirectoryManager_AIMDirectoryEntries_Call) RunAndReturn(run func(ctx context.Context) ([]state.AIMDirectoryEntry, error)) *mockDirectoryManager_AIMDirectoryEntries_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Categories provides a mock function for the type mockDirectoryManager
 func (_mock *mockDirectoryManager) Categories(ctx context.Context) ([]state.Category, error) {
 	ret := _mock.Called(ctx)
@@ -425,6 +487,132 @@ func (_c *mockDirectoryManager_KeywordsByCategory_Call) Return(keywords []state.
 }
 
 func (_c *mockDirectoryManager_KeywordsByCategory_Call) RunAndReturn(run func(ctx context.Context, categoryID uint8) ([]state.Keyword, error)) *mockDirectoryManager_KeywordsByCategory_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// SetDirectoryInfo provides a mock function for the type mockDirectoryManager
+func (_mock *mockDirectoryManager) SetDirectoryInfo(ctx context.Context, screenName state.IdentScreenName, info state.AIMNameAndAddr) error {
+	ret := _mock.Called(ctx, screenName, info)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetDirectoryInfo")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, state.IdentScreenName, state.AIMNameAndAddr) error); ok {
+		r0 = returnFunc(ctx, screenName, info)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// mockDirectoryManager_SetDirectoryInfo_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetDirectoryInfo'
+type mockDirectoryManager_SetDirectoryInfo_Call struct {
+	*mock.Call
+}
+
+// SetDirectoryInfo is a helper method to define mock.On call
+//   - ctx context.Context
+//   - screenName state.IdentScreenName
+//   - info state.AIMNameAndAddr
+func (_e *mockDirectoryManager_Expecter) SetDirectoryInfo(ctx any, screenName any, info any) *mockDirectoryManager_SetDirectoryInfo_Call {
+	return &mockDirectoryManager_SetDirectoryInfo_Call{Call: _e.mock.On("SetDirectoryInfo", ctx, screenName, info)}
+}
+
+func (_c *mockDirectoryManager_SetDirectoryInfo_Call) Run(run func(ctx context.Context, screenName state.IdentScreenName, info state.AIMNameAndAddr)) *mockDirectoryManager_SetDirectoryInfo_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 state.IdentScreenName
+		if args[1] != nil {
+			arg1 = args[1].(state.IdentScreenName)
+		}
+		var arg2 state.AIMNameAndAddr
+		if args[2] != nil {
+			arg2 = args[2].(state.AIMNameAndAddr)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *mockDirectoryManager_SetDirectoryInfo_Call) Return(err error) *mockDirectoryManager_SetDirectoryInfo_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *mockDirectoryManager_SetDirectoryInfo_Call) RunAndReturn(run func(ctx context.Context, screenName state.IdentScreenName, info state.AIMNameAndAddr) error) *mockDirectoryManager_SetDirectoryInfo_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// SetKeywords provides a mock function for the type mockDirectoryManager
+func (_mock *mockDirectoryManager) SetKeywords(ctx context.Context, screenName state.IdentScreenName, keywords [5]string) error {
+	ret := _mock.Called(ctx, screenName, keywords)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetKeywords")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, state.IdentScreenName, [5]string) error); ok {
+		r0 = returnFunc(ctx, screenName, keywords)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// mockDirectoryManager_SetKeywords_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetKeywords'
+type mockDirectoryManager_SetKeywords_Call struct {
+	*mock.Call
+}
+
+// SetKeywords is a helper method to define mock.On call
+//   - ctx context.Context
+//   - screenName state.IdentScreenName
+//   - keywords [5]string
+func (_e *mockDirectoryManager_Expecter) SetKeywords(ctx any, screenName any, keywords any) *mockDirectoryManager_SetKeywords_Call {
+	return &mockDirectoryManager_SetKeywords_Call{Call: _e.mock.On("SetKeywords", ctx, screenName, keywords)}
+}
+
+func (_c *mockDirectoryManager_SetKeywords_Call) Run(run func(ctx context.Context, screenName state.IdentScreenName, keywords [5]string)) *mockDirectoryManager_SetKeywords_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 state.IdentScreenName
+		if args[1] != nil {
+			arg1 = args[1].(state.IdentScreenName)
+		}
+		var arg2 [5]string
+		if args[2] != nil {
+			arg2 = args[2].([5]string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *mockDirectoryManager_SetKeywords_Call) Return(err error) *mockDirectoryManager_SetKeywords_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *mockDirectoryManager_SetKeywords_Call) RunAndReturn(run func(ctx context.Context, screenName state.IdentScreenName, keywords [5]string) error) *mockDirectoryManager_SetKeywords_Call {
 	_c.Call.Return(run)
 	return _c
 }

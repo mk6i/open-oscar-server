@@ -68,6 +68,11 @@ func NewManagementAPI(bld config.Build, listener string, userManager UserManager
 		putICQProfileHandler(w, r, icqProfileManager, logger)
 	})
 
+	// Handlers for '/user/{screenname}/directory' route
+	mux.HandleFunc("DELETE /user/{screenname}/directory", func(w http.ResponseWriter, r *http.Request) {
+		deleteUserDirectoryHandler(w, r, directoryManager, logger)
+	})
+
 	// Handlers for '/session' route
 	mux.HandleFunc("GET /session", func(w http.ResponseWriter, r *http.Request) {
 		getSessionHandler(w, r, sessionRetriever, time.Now)
@@ -133,6 +138,11 @@ func NewManagementAPI(bld config.Build, listener string, userManager UserManager
 	// Handlers for '/directory/keyword/{id}' route
 	mux.HandleFunc("DELETE /directory/keyword/{id}", func(w http.ResponseWriter, r *http.Request) {
 		deleteDirectoryKeywordHandler(w, r, directoryManager, logger)
+	})
+
+	// Handlers for '/directory/user' route
+	mux.HandleFunc("GET /directory/user", func(w http.ResponseWriter, r *http.Request) {
+		getDirectoryUserHandler(w, r, directoryManager, logger)
 	})
 
 	// Handlers for '/bart' route
@@ -1075,6 +1085,68 @@ func deleteDirectoryKeywordHandler(w http.ResponseWriter, r *http.Request, manag
 			errorMsg(w, "internal server error", http.StatusInternalServerError)
 			return
 		}
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// getDirectoryUserHandler handles the GET /directory/user endpoint.
+func getDirectoryUserHandler(w http.ResponseWriter, r *http.Request, manager DirectoryManager, logger *slog.Logger) {
+	w.Header().Set("Content-Type", "application/json")
+	entries, err := manager.AIMDirectoryEntries(r.Context())
+	if err != nil {
+		logger.Error("error in GET /directory/user", "err", err.Error())
+		errorMsg(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	out := make([]directoryUserHandle, len(entries))
+	for i, entry := range entries {
+		keywords := entry.Keywords
+		if keywords == nil {
+			keywords = []string{}
+		}
+		out[i] = directoryUserHandle{
+			ScreenName: entry.DisplayScreenName.String(),
+			FirstName:  entry.Info.FirstName,
+			MiddleName: entry.Info.MiddleName,
+			LastName:   entry.Info.LastName,
+			MaidenName: entry.Info.MaidenName,
+			Nickname:   entry.Info.NickName,
+			City:       entry.Info.City,
+			State:      entry.Info.State,
+			Country:    entry.Info.Country,
+			Address:    entry.Info.Address,
+			ZIP:        entry.Info.ZIPCode,
+			Keywords:   keywords,
+		}
+	}
+
+	if err := json.NewEncoder(w).Encode(out); err != nil {
+		errorMsg(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+// deleteUserDirectoryHandler handles the DELETE /user/{screenname}/directory endpoint.
+func deleteUserDirectoryHandler(w http.ResponseWriter, r *http.Request, manager DirectoryManager, logger *slog.Logger) {
+	screenName := state.NewIdentScreenName(r.PathValue("screenname"))
+
+	if err := manager.SetDirectoryInfo(r.Context(), screenName, state.AIMNameAndAddr{}); err != nil {
+		switch {
+		case errors.Is(err, state.ErrNoUser):
+			errorMsg(w, "user not found", http.StatusNotFound)
+			return
+		default:
+			logger.Error("error in DELETE /user/{screenname}/directory", "err", err.Error())
+			errorMsg(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	if err := manager.SetKeywords(r.Context(), screenName, [5]string{}); err != nil {
+		logger.Error("error in DELETE /user/{screenname}/directory", "err", err.Error())
+		errorMsg(w, "internal server error", http.StatusInternalServerError)
+		return
 	}
 
 	w.WriteHeader(http.StatusNoContent)
