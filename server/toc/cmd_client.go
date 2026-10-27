@@ -18,7 +18,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/mk6i/open-oscar-server/config"
+	"github.com/mk6i/open-oscar-server/server/oscarclient"
 	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
 )
@@ -38,11 +38,8 @@ type OSCARProxy struct {
 	HTTPIPRateLimiter *IPRateLimiter
 	LocateService     LocateService
 	Logger            *slog.Logger
-	// OSCARServer serves the OSCAR connections TOC opens for its users.
-	OSCARServer OSCARServer
-	// OSCAREndpoint is the OSCAR listener that TOC's connections appear to
-	// arrive on.
-	OSCAREndpoint    config.Endpoint
+	// Dialer opens the OSCAR connections TOC makes for its users.
+	Dialer           oscarclient.Dialer
 	SessionRetriever SessionRetriever
 	TOCConfigStore   TOCConfigStore
 	// RandIntn is the source for feedbag item ID generation.
@@ -54,10 +51,10 @@ type OSCARProxy struct {
 const signonTimeout = 10 * time.Second
 
 // Request contexts are cached with each SNAC that TOC sends to the OSCAR
-// server, under the SNAC's request ID (see snacCache). When the reply or error
-// comes back, cmd_server.go uses the context's type to tell which TOC command
-// the reply answers, and the context's fields for what the reply doesn't
-// carry.
+// server, under the SNAC's request ID (see oscarclient.SNACCache). When the
+// reply or error comes back, cmd_server.go uses the context's type to tell
+// which TOC command the reply answers, and the context's fields for what the
+// reply doesn't carry.
 type (
 	// getStatusReqCtx is the request context of a toc_get_status user info
 	// query.
@@ -215,20 +212,20 @@ func (s OSCARProxy) RecvClientCmd(ctx context.Context, me *tocConn, payload []by
 // send sends a SNAC request to the OSCAR server over conn. The request is
 // cached by request ID along with data so that cmd_server.go can handle the
 // reply. It returns a TOC error if the SNAC could not be sent.
-func (s OSCARProxy) send(ctx context.Context, me *tocConn, conn oscarConn, foodGroup uint16, subGroup uint16, body any, data any) []string {
+func (s OSCARProxy) send(ctx context.Context, me *tocConn, conn oscarclient.Conn, foodGroup uint16, subGroup uint16, body any, data any) []string {
 	frame := wire.SNACFrame{
 		FoodGroup: foodGroup,
 		SubGroup:  subGroup,
 	}
-	me.cache.add(&frame, data)
+	me.cache.Add(&frame, data)
 	return s.sendFrame(ctx, me, conn, frame, body)
 }
 
 // sendFrame sends a SNAC request whose frame is already cached. It returns a
 // TOC error if the SNAC could not be sent.
-func (s OSCARProxy) sendFrame(ctx context.Context, me *tocConn, conn oscarConn, frame wire.SNACFrame, body any) []string {
+func (s OSCARProxy) sendFrame(ctx context.Context, me *tocConn, conn oscarclient.Conn, frame wire.SNACFrame, body any) []string {
 	if err := conn.SendSNAC(frame, body); err != nil {
-		me.cache.remove(frame.RequestID)
+		me.cache.Remove(frame.RequestID)
 		return s.runtimeErr(ctx, fmt.Errorf("SendSNAC(%s, %s): %w",
 			wire.FoodGroupName(frame.FoodGroup), wire.SubGroupName(frame.FoodGroup, frame.SubGroup), err))
 	}
@@ -516,10 +513,10 @@ func (s OSCARProxy) requestChatService(ctx context.Context, me *tocConn, chatID 
 
 // connectChat opens a connection to the chat room identified by loginCookie
 // and signs the user into the room.
-func (s OSCARProxy) connectChat(ctx context.Context, me *tocConn, loginCookie []byte) (oscarConn, error) {
-	conn, err := s.connectService(me.clientAddr, loginCookie)
+func (s OSCARProxy) connectChat(ctx context.Context, me *tocConn, loginCookie []byte) (oscarclient.Conn, error) {
+	conn, err := s.Dialer.ConnectService(ctx, me.clientAddr, loginCookie)
 	if err != nil {
-		return nil, fmt.Errorf("connectService: %w", err)
+		return nil, fmt.Errorf("ConnectService: %w", err)
 	}
 
 	subscribe := wire.SNAC_0x01_0x08_OServiceRateParamsSubAdd{
@@ -1072,18 +1069,18 @@ func (s OSCARProxy) deleteFeedbag(ctx context.Context, me *tocConn, items []wire
 // sendFeedbagChange sends a feedbag change and records it in the feedbag
 // mirror as pending until the server confirms it.
 func (s OSCARProxy) sendFeedbagChange(ctx context.Context, me *tocConn, subGroup uint16, body any, del bool, items []wire.FeedbagItem) []string {
-	me.feedbag.sendMu.Lock()
-	defer me.feedbag.sendMu.Unlock()
+	me.feedbagSendMu.Lock()
+	defer me.feedbagSendMu.Unlock()
 
 	frame := wire.SNACFrame{
 		FoodGroup: wire.Feedbag,
 		SubGroup:  subGroup,
 	}
-	me.cache.add(&frame, feedbagChangeReqCtx{})
-	me.feedbag.sent(frame.RequestID, del, items)
+	me.cache.Add(&frame, feedbagChangeReqCtx{})
+	me.feedbag.Sent(frame.RequestID, del, items)
 
 	if msg := s.sendFrame(ctx, me, me.bos, frame, body); msg != nil {
-		me.feedbag.discard(frame.RequestID)
+		me.feedbag.Discard(frame.RequestID)
 		return msg
 	}
 	return nil
@@ -1092,11 +1089,11 @@ func (s OSCARProxy) sendFeedbagChange(ctx context.Context, me *tocConn, subGroup
 // reloadFeedbag queries the server's feedbag to replace the feedbag mirror.
 // FeedbagReply finishes the reload.
 func (s OSCARProxy) reloadFeedbag(ctx context.Context, me *tocConn) []string {
-	me.feedbag.sendMu.Lock()
-	defer me.feedbag.sendMu.Unlock()
+	me.feedbagSendMu.Lock()
+	defer me.feedbagSendMu.Unlock()
 
 	return s.send(ctx, me, me.bos, wire.Feedbag, wire.FeedbagQuery, struct{}{}, feedbagReloadReqCtx{
-		marker: me.feedbag.mark(),
+		marker: me.feedbag.Mark(),
 	})
 }
 
@@ -1124,7 +1121,7 @@ func (s OSCARProxy) SetPDMode(ctx context.Context, me *tocConn, args []byte) []s
 		return s.runtimeErr(ctx, errors.New("invalid pd mode specified"))
 	}
 
-	fl := state.NewFeedbagList(me.feedbag.snapshot(), s.RandIntn)
+	fl := state.NewFeedbagList(me.feedbag.Snapshot(), s.RandIntn)
 	fl.SetMode(uint8(mode))
 
 	if pending := fl.PendingUpdates(); len(pending) > 0 {
@@ -1155,7 +1152,7 @@ func (s OSCARProxy) NewGroup(ctx context.Context, me *tocConn, args []byte) []st
 		return s.runtimeErr(ctx, fmt.Errorf("empty group name"))
 	}
 
-	fl := state.NewFeedbagList(me.feedbag.snapshot(), s.RandIntn)
+	fl := state.NewFeedbagList(me.feedbag.Snapshot(), s.RandIntn)
 	fl.AddGroup(groupName)
 
 	if pending := fl.PendingUpdates(); len(pending) > 0 {
@@ -1185,7 +1182,7 @@ func (s OSCARProxy) DelGroup(ctx context.Context, me *tocConn, args []byte) []st
 		return s.runtimeErr(ctx, fmt.Errorf("empty group name"))
 	}
 
-	fl := state.NewFeedbagList(me.feedbag.snapshot(), s.RandIntn)
+	fl := state.NewFeedbagList(me.feedbag.Snapshot(), s.RandIntn)
 	fl.DeleteGroup(groupName)
 
 	pending := fl.PendingDeletes()
@@ -1234,7 +1231,7 @@ func (s OSCARProxy) NewBuddies(ctx context.Context, me *tocConn, args []byte) []
 		return s.runtimeErr(ctx, fmt.Errorf("parseTOC2Config: %w", err))
 	}
 
-	fl := state.NewFeedbagList(me.feedbag.snapshot(), s.RandIntn)
+	fl := state.NewFeedbagList(me.feedbag.Snapshot(), s.RandIntn)
 
 	var replies []string
 
@@ -1331,7 +1328,7 @@ func (s OSCARProxy) RemoveBuddy2(ctx context.Context, me *tocConn, args []byte) 
 		return s.runtimeErr(ctx, fmt.Errorf("missing params: need at least one screenname and group"))
 	}
 
-	fl := state.NewFeedbagList(me.feedbag.snapshot(), s.RandIntn)
+	fl := state.NewFeedbagList(me.feedbag.Snapshot(), s.RandIntn)
 
 	groupName := params[len(params)-1]
 	screenNames := params[:len(params)-1]
@@ -1376,7 +1373,7 @@ func (s OSCARProxy) AddPermit2(ctx context.Context, me *tocConn, args []byte) []
 		return s.runtimeErr(ctx, fmt.Errorf("no screennames provided"))
 	}
 
-	fl := state.NewFeedbagList(me.feedbag.snapshot(), s.RandIntn)
+	fl := state.NewFeedbagList(me.feedbag.Snapshot(), s.RandIntn)
 
 	for _, sn := range screenNames {
 		fl.PermitUser(sn)
@@ -1409,7 +1406,7 @@ func (s OSCARProxy) RemovePermit2(ctx context.Context, me *tocConn, args []byte)
 		return s.runtimeErr(ctx, fmt.Errorf("no screennames provided"))
 	}
 
-	fl := state.NewFeedbagList(me.feedbag.snapshot(), s.RandIntn)
+	fl := state.NewFeedbagList(me.feedbag.Snapshot(), s.RandIntn)
 
 	for _, sn := range screenNames {
 		fl.DeletePermit(sn)
@@ -1442,7 +1439,7 @@ func (s OSCARProxy) AddDeny2(ctx context.Context, me *tocConn, args []byte) []st
 		return s.runtimeErr(ctx, fmt.Errorf("no screennames provided"))
 	}
 
-	fl := state.NewFeedbagList(me.feedbag.snapshot(), s.RandIntn)
+	fl := state.NewFeedbagList(me.feedbag.Snapshot(), s.RandIntn)
 
 	for _, sn := range screenNames {
 		fl.DenyUser(sn)
@@ -1475,7 +1472,7 @@ func (s OSCARProxy) RemoveDeny2(ctx context.Context, me *tocConn, args []byte) [
 		return s.runtimeErr(ctx, fmt.Errorf("no screennames provided"))
 	}
 
-	fl := state.NewFeedbagList(me.feedbag.snapshot(), s.RandIntn)
+	fl := state.NewFeedbagList(me.feedbag.Snapshot(), s.RandIntn)
 
 	for _, sn := range screenNames {
 		fl.DeleteDeny(sn)
@@ -1913,9 +1910,9 @@ func (s OSCARProxy) Signon(ctx context.Context, args []byte, clientAddr net.Addr
 		signonTLVs = append(signonTLVs, wire.NewTLVBE(wire.LoginTLVTagsMultiConnFlags, wire.MultiConnFlagsRecentClient))
 	}
 
-	block, err := s.authenticate(clientAddr, signonTLVs)
+	block, err := s.Dialer.Authenticate(clientAddr, signonTLVs)
 	if err != nil {
-		return nil, s.runtimeErr(ctx, fmt.Errorf("authenticate: %w", err))
+		return nil, s.runtimeErr(ctx, fmt.Errorf("Authenticate: %w", err))
 	}
 
 	if code, failed := block.Uint16BE(wire.LoginTLVTagsErrorSubcode); failed {
@@ -1931,9 +1928,9 @@ func (s OSCARProxy) Signon(ctx context.Context, args []byte, clientAddr net.Addr
 		return nil, s.runtimeErr(ctx, fmt.Errorf("unable to get session id from payload"))
 	}
 
-	bos, err := s.connectService(clientAddr, authCookie)
+	bos, err := s.Dialer.ConnectService(ctx, clientAddr, authCookie)
 	if err != nil {
-		return nil, s.runtimeErr(ctx, fmt.Errorf("connectService: %w", err))
+		return nil, s.runtimeErr(ctx, fmt.Errorf("ConnectService: %w", err))
 	}
 
 	me := newTOCConn(bos, state.NewIdentScreenName(userName), clientAddr)
@@ -2006,7 +2003,7 @@ func (s OSCARProxy) signonConfig(ctx context.Context, me *tocConn, cmd string) (
 		return nil, fmt.Errorf("unexpected feedbag reply %v", reply.Frame)
 	}
 
-	me.feedbag.reset(feedbag.Items)
+	me.feedbag.Reset(feedbag.Items)
 
 	cfg, err := buildToc2Config(feedbag.Items)
 	if err != nil {
@@ -2023,8 +2020,8 @@ func (s OSCARProxy) await(ctx context.Context, me *tocConn, foodGroup uint16, su
 		FoodGroup: foodGroup,
 		SubGroup:  subGroup,
 	}
-	me.cache.add(&frame, nil)
-	defer me.cache.remove(frame.RequestID)
+	me.cache.Add(&frame, nil)
+	defer me.cache.Remove(frame.RequestID)
 
 	if err := me.bos.SendSNAC(frame, body); err != nil {
 		return wire.SNACMessage{}, fmt.Errorf("SendSNAC: %w", err)
@@ -2045,7 +2042,7 @@ func (s OSCARProxy) await(ctx context.Context, me *tocConn, foodGroup uint16, su
 			}
 			return msg, nil
 		case <-me.bos.Closed():
-			return wire.SNACMessage{}, errSignedOff
+			return wire.SNACMessage{}, oscarclient.ErrSignedOff
 		case <-timeout.C:
 			return wire.SNACMessage{}, errors.New("timed out waiting for reply")
 		case <-ctx.Done():

@@ -9,12 +9,14 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/netip"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/mk6i/open-oscar-server/config"
+	"github.com/mk6i/open-oscar-server/server/oscarclient"
 	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
 )
@@ -23,24 +25,16 @@ import (
 type AimHandler struct {
 	SessionManager   *SessionManager
 	AuthService      AuthService
-	FeedbagService   FeedbagService
-	ICBMService      ICBMService
-	LocateService    LocateService
-	OServiceService  OServiceService
 	BuddyListManager *BuddyListManager
-	BuddyService     BuddyService
 	IconSource       BuddyIconSource
+	// Dialer connects sessions to the OSCAR server.
+	Dialer oscarclient.Dialer
 	// BOSListener is the listener group startOSCARSession advertises a BOS
 	// address from.
 	BOSListener config.ListenerGroup
-	// SNACRateLimits is the same SNAC-to-rate-class mapping RateLimitMiddleware
-	// enforces against, so the class a session alerts on cannot drift from the
-	// one it is charged.
-	SNACRateLimits  wire.SNACRateLimits
-	Logger          *slog.Logger
-	FnSessCfg       func(sess *state.Session)
-	FnSessInit      func(instance *state.SessionInstance) func() error
-	FnInstanceClose func(instance *state.SessionInstance) func()
+	// SNACRateLimits maps SNACs to the rate classes the OSCAR server charges.
+	SNACRateLimits wire.SNACRateLimits
+	Logger         *slog.Logger
 }
 
 // MyInfo is the user's own identity blob, which the Web AIM client renders in
@@ -202,59 +196,13 @@ func (h *AimHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 		"token", tokenPreview,
 		"screenName", screenName)
 
-	var instance *state.SessionInstance
-
-	// Create OSCAR session
-	instance, err = h.AuthService.RegisterBOSSession(ctx, cookie, h.FnSessCfg)
+	// The token is the login cookie that a BOS connection signs on with.
+	signonCtx, cancel := context.WithTimeout(ctx, bosSignonTimeout)
+	defer cancel()
+	bos, err := h.Dialer.ConnectService(signonCtx, clientAddr(r), rawCookie)
 	if err != nil {
-		h.Logger.ErrorContext(ctx, "failed to create OSCAR session", "err", err.Error())
+		h.Logger.ErrorContext(ctx, "failed to connect to BOS", "err", err.Error())
 		SendEnvelopeStatus(w, r, http.StatusServiceUnavailable, "unable to establish session", h.Logger)
-		return
-	}
-
-	if err = instance.Session().RunOnce(h.FnSessInit(instance)); err != nil {
-		h.Logger.ErrorContext(context.Background(), "failed to init session", "err", err.Error())
-		// RunOnce has already closed the whole session; this is belt-and-braces,
-		// since CloseInstance is idempotent and nothing else owns the instance yet.
-		instance.CloseInstance()
-		SendEnvelopeStatus(w, r, http.StatusInternalServerError, "internal server error", h.Logger)
-		return
-	}
-
-	instance.OnClose(h.FnInstanceClose(instance))
-
-	if err := h.FeedbagService.Use(ctx, instance); err != nil {
-		h.Logger.ErrorContext(ctx, "failed to use feedbag", "err", err.Error())
-	}
-
-	// A web client signals that it wants typing events through its event
-	// subscription, not through a stored feedbag buddy pref. Reflect that
-	// on the OSCAR session so ICBMService attaches the WantEvents TLV to
-	// outgoing IMs, prompting recipients to send typing notifications
-	// back. This must run after FeedbagService.Use, which otherwise
-	// overwrites the flag from stored prefs the web user may not have set.
-	instance.Session().SetTypingEventsEnabled(slices.Contains(events, string(EventTypeTyping)))
-
-	instance.SetSignonComplete()
-
-	setInfo := wire.SNAC_0x02_0x04_LocateSetInfo{
-		TLVRestBlock: wire.TLVRestBlock{
-			TLVList: wire.TLVList{
-				wire.NewTLVBE(wire.LocateTLVTagsInfoCapabilities, webAPICaps),
-			},
-		},
-	}
-	if err := h.LocateService.SetInfo(ctx, instance, setInfo); err != nil {
-		h.Logger.ErrorContext(ctx, "failed to set capabilities", "err", err.Error())
-		instance.CloseInstance()
-		SendEnvelopeStatus(w, r, http.StatusInternalServerError, "internal server error", h.Logger)
-		return
-	}
-
-	if err := h.OServiceService.ClientOnline(ctx, wire.BOS, wire.SNAC_0x01_0x02_OServiceClientOnline{}, instance); err != nil {
-		h.Logger.ErrorContext(ctx, "failed to set client online", "err", err.Error())
-		instance.CloseInstance()
-		SendEnvelopeStatus(w, r, http.StatusInternalServerError, "internal server error", h.Logger)
 		return
 	}
 
@@ -267,31 +215,22 @@ func (h *AimHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 		h.Logger.ErrorContext(ctx, "no rate class maps to sending an IM, rate limit events are disabled")
 	}
 
-	// Subscribe the same way an OSCAR client does at handshake, so the per-account
-	// monitor broadcasts this class's transitions to this session.
-	if imRateClassID != 0 {
-		h.OServiceService.RateParamsSubAdd(ctx, instance, wire.SNAC_0x01_0x08_OServiceRateParamsSubAdd{
-			ClassIDs: []uint16{uint16(imRateClassID)},
-		})
-	}
-
 	// Create WebAPI session
 	// Record the origin the client reached us on. Asset URLs published to the
 	// client (buddy icons) must be absolute, since the client page is served from
 	// a different origin than this API, and they are built in places that have no
 	// request in hand. Pinning the origin here also keeps those URLs on the same
 	// host as the wellKnownUrls advertised below. It is passed into CreateSession
-	// so it is set before the session is published and its listener goroutine can
+	// so it is set before the session is published and its inbound loop can
 	// read it.
 	baseURL := baseURLFromRequest(r)
 
-	session, err := h.SessionManager.CreateSession(screenName, events, instance, baseURL, h.Logger)
+	session, err := h.SessionManager.CreateSession(screenName, events, bos, h.SNACRateLimits, baseURL, h.Logger)
 	if err != nil {
 		h.Logger.ErrorContext(ctx, "failed to create session", "err", err.Error())
 		// CreateSession refuses once the manager is shut down, so this is the
-		// path a startSession racing shutdown takes. The WebAPISession that
-		// would have owned the instance was never created.
-		instance.CloseInstance()
+		// path a startSession racing shutdown takes.
+		bos.Close()
 		SendEnvelopeStatus(w, r, http.StatusInternalServerError, "failed to create session", h.Logger)
 		return
 	}
@@ -305,26 +244,7 @@ func (h *AimHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 	// The refresher yields the whole buddylist event payload, not just the groups,
 	// so the session that pushes it does not have to know the payload's shape.
 	session.BuddyListRefresher = func(ctx context.Context) (any, error) {
-		groups, err := h.BuddyListManager.GetBuddyListForUser(ctx, session)
-		if err != nil {
-			return nil, err
-		}
-		return &BuddyListData{Groups: groups}, nil
-	}
-
-	// Wire the feedbag loader. The session caches what it returns until a feedbag
-	// change invalidates it, and derives every read-only view of the roster from it.
-	session.FeedbagLoader = func(ctx context.Context) ([]wire.FeedbagItem, error) {
-		frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
-		snac, err := h.FeedbagService.Query(ctx, session.OSCARSession, frame)
-		if err != nil {
-			return nil, err
-		}
-		reply, ok := snac.Body.(wire.SNAC_0x13_0x06_FeedbagReply)
-		if !ok {
-			return nil, fmt.Errorf("unexpected feedbag reply type")
-		}
-		return reply.Items, nil
+		return &BuddyListData{Groups: h.BuddyListManager.GetBuddyListForUser(ctx, session)}, nil
 	}
 
 	// Wire the buddy-icon URL formatter so presence broadcasts (BuddyArrived) can
@@ -335,21 +255,23 @@ func (h *AimHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 
 	// Wire permit/deny refresher so FeedbagUpdateItem SNACs trigger a permitDeny event.
 	session.PermitDenyRefresher = func(ctx context.Context) (any, error) {
-		items, err := session.Feedbag(ctx)
-		if err != nil {
-			return nil, err
-		}
-		return permitDenyData(items), nil
+		return permitDenyData(session.Feedbag()), nil
 	}
 
 	// Only IM-class rate limit updates should surface to the client alert.
 	session.IMRateClassID = imRateClassID
-	seedRateLimitAlert(session, imRateClassID)
 
-	// Now that every refresher callback is wired, start the OSCAR listener. Doing
-	// this inside CreateSession would race these assignments, since the goroutine
-	// reads the callbacks as it converts SNACs into events.
-	session.StartListeningToOSCARSession()
+	// Now that every refresher callback is wired, start the inbound loop, which
+	// delivers the replies sign-on waits for.
+	session.Start()
+
+	if err := session.signOn(signonCtx); err != nil {
+		h.Logger.ErrorContext(ctx, "failed to sign on", "err", err.Error())
+		_ = h.SessionManager.RemoveSession(ctx, session.AimSID)
+		SendEnvelopeStatus(w, r, http.StatusInternalServerError, "internal server error", h.Logger)
+		return
+	}
+	seedRateLimitAlert(session, imRateClassID)
 
 	// Store client info
 	session.ClientName = clientName
@@ -384,9 +306,9 @@ func (h *AimHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 		Events: &StartSessionEvents{},
 	}
 
-	myMoodURL := moodIconURL(baseURL, "online", session.OSCARSession.Session().Caps())
+	myMoodURL := moodIconURL(baseURL, "online", userInfoCaps(session.self.userInfo()))
 	myInfoPayload := buildMyInfo(screenName, "online", myIconURL, myMoodURL)
-	myInfoPayload.StatusMsg = sessionStatusMsg(session.OSCARSession)
+	myInfoPayload.StatusMsg = userStatusMsg(session.self.userInfo())
 	myInfoPayload.OnlineTime = time.Now().Unix()
 	myInfoPayload.MemberSince = time.Now().Unix() - 86400*30 // 30 days ago
 	myInfoPayload.Self = &MyInfoSelf{
@@ -417,7 +339,7 @@ func (h *AimHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 	// client subscribes to both, which a per-subscription loop would queue twice.
 	if slices.Contains(events, string(EventTypeMyInfo)) || slices.Contains(events, string(EventTypePresence)) {
 		myInfoData := buildMyInfo(screenName, "online", myIconURL, myMoodURL)
-		myInfoData.StatusMsg = sessionStatusMsg(session.OSCARSession)
+		myInfoData.StatusMsg = userStatusMsg(session.self.userInfo())
 		myInfoData.OnlineTime = time.Now().Unix()
 		myInfoData.MemberSince = time.Now().Unix() - 86400*30 // 30 days ago
 		session.PushEvent(EventTypeMyInfo, myInfoData)
@@ -439,14 +361,7 @@ func (h *AimHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 	for _, event := range events {
 		switch EventType(event) {
 		case EventTypeBuddyList:
-			buddyGroups, err := h.BuddyListManager.GetBuddyListForUser(ctx, session)
-			if err != nil {
-				h.Logger.ErrorContext(ctx, "failed to get buddy list", "err", err.Error())
-			}
-			if buddyGroups == nil {
-				buddyGroups = []BuddyGroup{}
-			}
-			blPayload := &BuddyListData{Groups: buddyGroups}
+			blPayload := &BuddyListData{Groups: h.BuddyListManager.GetBuddyListForUser(ctx, session)}
 			data.Events.BuddyList = blPayload
 			session.PushEvent(EventTypeBuddyList, blPayload)
 		case EventTypePreference:
@@ -456,12 +371,7 @@ func (h *AimHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 			// this event and has no default of its own for them, so an omitted pref
 			// would silently fall back to the client's hidden default and, for
 			// showGroups, hide group headers.
-			prefPayload := &PreferenceData{}
-			if item, err := buddyPrefsItem(ctx, h.FeedbagService, session.OSCARSession); err != nil {
-				h.Logger.ErrorContext(ctx, "failed to get preferences", "err", err.Error())
-			} else {
-				prefPayload = effectiveBuddyPrefs(item.TLVList)
-			}
+			prefPayload := effectiveBuddyPrefs(buddyPrefsItem(session.Feedbag()).TLVList)
 			data.Events.Preference = prefPayload
 			session.PushEvent(EventTypePreference, prefPayload)
 		case EventTypePermitDeny:
@@ -482,24 +392,19 @@ func (h *AimHandler) StartSession(w http.ResponseWriter, r *http.Request) {
 
 	// Drain messages stored while the user was signed off. The service relays them
 	// as ordinary ICBMChannelMsgToClient SNACs stamped with a send time, which the
-	// listener started above turns into offlineIM events. Retrieval deletes them
+	// inbound loop started above turns into offlineIM events. Retrieval deletes them
 	// from the store and the Web API has no ack, so this is the one delivery attempt.
 	// Skip it for a client that did not subscribe, which leaves the messages stored
 	// for a session that wants them rather than spending them on one that does not.
 	//
-	// This trails every event queued above because the listener pushes from its own
+	// This trails every event queued above because the inbound loop pushes from its own
 	// goroutine, so anything drained here can overtake a later push. An offlineIM
 	// names its sender by bare aimId and leaves the client to resolve the display
 	// name against the buddy list it holds, and the conversation list is rebuilt from
 	// scratch on the first "list" the client sees. Both of those events are queued in
 	// the loop above, so the drain has to come after it.
 	if slices.Contains(events, string(EventTypeOfflineIM)) {
-		frame := wire.SNACFrame{
-			FoodGroup: wire.ICBM,
-			SubGroup:  wire.ICBMOfflineRetrieve,
-			RequestID: wire.ReqIDFromServer,
-		}
-		if _, err := h.ICBMService.OfflineRetrieve(ctx, instance, frame); err != nil {
+		if err := session.send(wire.ICBM, wire.ICBMOfflineRetrieve, struct{}{}); err != nil {
 			h.Logger.ErrorContext(ctx, "failed to retrieve offline messages", "err", err.Error())
 		}
 	}
@@ -650,9 +555,9 @@ func (h *AimHandler) AddTempBuddy(w http.ResponseWriter, r *http.Request, sessio
 		}{ScreenName: buddyName})
 	}
 
-	if _, err := h.BuddyService.AddTempBuddies(ctx, session.OSCARSession, wire.SNACFrame{}, snac); err != nil {
+	if err := session.send(wire.Buddy, wire.BuddyAddTempBuddies, snac); err != nil {
 		h.Logger.ErrorContext(ctx, "add temp buddies failed", "aimsid", aimsid, "err", err.Error())
-		SendError(w, r, http.StatusInternalServerError, "unable to add temporary buddies")
+		sendRequestError(w, r, err, "unable to add temporary buddies", h.Logger)
 		return
 	}
 
@@ -688,9 +593,9 @@ func (h *AimHandler) RemoveTempBuddy(w http.ResponseWriter, r *http.Request, ses
 		}{ScreenName: buddyName})
 	}
 
-	if err := h.BuddyService.DelTempBuddies(ctx, session.OSCARSession, snac); err != nil {
+	if err := session.send(wire.Buddy, wire.BuddyDelTempBuddies, snac); err != nil {
 		h.Logger.ErrorContext(ctx, "remove temp buddies failed", "aimsid", aimsid, "err", err.Error())
-		SendError(w, r, http.StatusInternalServerError, "unable to remove temporary buddies")
+		sendRequestError(w, r, err, "unable to remove temporary buddies", h.Logger)
 		return
 	}
 
@@ -847,11 +752,10 @@ func parseBoolParam(value string) bool {
 // seedRateLimitAlert raises the client's rate limit alert when a session starts
 // on an account that is already rate limited.
 //
-// The monitor broadcasts transitions, not current state, so a session signing on
+// The server announces transitions, not current state, so a session signing on
 // mid-limit missed the one that raised the alert — and the client's alert is
-// sticky, so the eventual "clear" would arrive with nothing to dismiss. An OSCAR
-// client learns the current state from the rate params it gets at handshake; this
-// is the Web API's equivalent.
+// sticky, so the eventual "clear" would arrive with nothing to dismiss. The
+// session learns the current state from the rate params it reads at sign-on.
 //
 // Only the limited state is seeded: alert is a warning the user cannot act on,
 // and seeding clear would render nothing.
@@ -859,9 +763,7 @@ func seedRateLimitAlert(session *Session, classID wire.RateLimitClassID) {
 	if classID == 0 {
 		return
 	}
-
-	status := session.OSCARSession.Session().RateLimitStates()[classID-1].CurrentStatus
-	if status != wire.RateLimitStatusLimited {
+	if _, limited := session.rates.limited(classID, time.Now()); !limited {
 		return
 	}
 
@@ -869,10 +771,24 @@ func seedRateLimitAlert(session *Session, classID wire.RateLimitClassID) {
 		Classes: []RateLimitClass{
 			{
 				ID:     int(classID),
-				Status: rateLimitStatusName(status),
+				Status: rateLimitStatusName(wire.RateLimitStatusLimited),
 			},
 		},
 	})
+}
+
+// bosSignonTimeout bounds how long startSession waits to connect to BOS and
+// sign on.
+const bosSignonTimeout = 15 * time.Second
+
+// clientAddr returns the address r came from, which the OSCAR server records
+// as the session's.
+func clientAddr(r *http.Request) net.Addr {
+	addrPort, err := netip.ParseAddrPort(r.RemoteAddr)
+	if err != nil {
+		return &net.TCPAddr{}
+	}
+	return net.TCPAddrFromAddrPort(addrPort)
 }
 
 // buildMyInfo assembles the shared base of a myInfo payload — the user's own

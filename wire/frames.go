@@ -50,6 +50,12 @@ type SNACFrame struct {
 	RequestID uint32
 }
 
+// SNACType identifies a kind of SNAC by its food group and subgroup.
+type SNACType struct {
+	FoodGroup uint16
+	SubGroup  uint16
+}
+
 const (
 	// SNACFlagsMoreToCome is set on SNAC frames that are part of a multi-packet
 	// response (bit 0). Use it on every fragment except the last.

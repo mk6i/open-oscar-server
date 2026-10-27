@@ -1,94 +1,129 @@
 package webapi
 
 import (
-	"context"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 
-	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
-// buddyPrefsFeedbag builds a feedbag reply carrying a single buddy-prefs item
-// with the given prefs pre-set.
-func buddyPrefsFeedbag(prefs map[uint16]bool) wire.SNACMessage {
+// buddyPrefsFeedbag builds a buddy-prefs item with the given prefs pre-set.
+func buddyPrefsFeedbag(prefs map[uint16]bool) wire.FeedbagItem {
 	var list wire.TLVList
 	for num, val := range prefs {
 		list = wire.SetBuddyPref(list, num, val)
 	}
-	return wire.SNACMessage{
-		Body: wire.SNAC_0x13_0x06_FeedbagReply{
-			Items: []wire.FeedbagItem{
-				{ClassID: wire.FeedbagClassIdBuddyPrefs, ItemID: 1, TLVLBlock: wire.TLVLBlock{TLVList: list}},
-			},
-		},
-	}
+	return wire.FeedbagItem{ClassID: wire.FeedbagClassIdBuddyPrefs, ItemID: 1, TLVLBlock: wire.TLVLBlock{TLVList: list}}
+}
+
+// newPrefsSession returns a session manager holding a running session for
+// "testuser" whose OSCAR server is server, with its feedbag loaded.
+func newPrefsSession(t *testing.T, server *feedbagServer) (*SessionManager, *Session, *fakeConn) {
+	t.Helper()
+	conn := newFakeConn().answering(server.respond)
+	mgr, sess := createTestSessionManager(t, "testuser", conn)
+	loadTestFeedbag(t, sess)
+	return mgr, sess, conn
 }
 
 func TestPreferenceHandler_SetPreferences(t *testing.T) {
-	fs := newMockFeedbagService(t)
-	oscarInstance := state.NewSession().AddInstance()
-	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
-
 	// Existing feedbag already has acceptCustomBart (0x0B, default false) enabled;
 	// it must survive the read-modify-write. Using a default-false pref means an
 	// observed true value can only come from the stored bit, not the default.
-	fs.EXPECT().Query(mock.Anything, oscarInstance, mock.Anything).
-		Return(buddyPrefsFeedbag(map[uint16]bool{wire.FeedbagBuddyPrefsAcceptCustomBart: true}), nil)
-
-	var upserted []wire.FeedbagItem
-	fs.EXPECT().UpsertItem(mock.Anything, oscarInstance, mock.Anything, mock.Anything).
-		Run(func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, items []wire.FeedbagItem) {
-			upserted = items
-		}).
-		Return(nil, nil)
+	server := newFeedbagServer(buddyPrefsFeedbag(map[uint16]bool{wire.FeedbagBuddyPrefsAcceptCustomBart: true}))
+	sessionMgr, sess, conn := newPrefsSession(t, server)
 
 	handler := &PreferenceHandler{
 		SessionManager: sessionMgr,
-		FeedbagService: fs,
 		Logger:         slog.Default(),
 	}
 
-	req, _ := http.NewRequest("GET", "/preference/set?aimsid="+aimsid+"&playIMSound=0&discloseTyping=1", nil)
+	req, _ := http.NewRequest("GET", "/preference/set?aimsid="+sess.AimSID+"&playIMSound=0&discloseTyping=1", nil)
 	rr := httptest.NewRecorder()
 	requireSession(handler.SessionManager, handler.SetPreferences).ServeHTTP(rr, req)
 
 	assert.Equal(t, http.StatusOK, rr.Code)
-	if assert.Len(t, upserted, 1) {
-		item := upserted[0]
-		assert.Equal(t, wire.FeedbagClassIdBuddyPrefs, item.ClassID)
+	changes := sentFeedbagChanges(conn)
+	require.Len(t, changes, 1)
+	assert.Equal(t, uint16(wire.FeedbagInsertItem), changes[0].SubGroup)
+	require.Len(t, changes[0].Items, 1)
+	item := changes[0].Items[0]
+	assert.Equal(t, wire.FeedbagClassIdBuddyPrefs, item.ClassID)
+	assert.Equal(t, uint16(1), item.ItemID)
 
-		assertPref := func(num uint16, want bool) {
-			assert.Equalf(t, want, wire.BuddyPref(item.TLVList, num), "pref 0x%02x", num)
-		}
-		assertPref(wire.FeedbagBuddyPrefsAcceptCustomBart, true) // preserved (default false)
-		assertPref(0x15, false)                                  // playIMSound off (default true)
-		assertPref(0x16, true)                                   // discloseTyping on
+	assertPref := func(num uint16, want bool) {
+		assert.Equalf(t, want, wire.BuddyPref(item.TLVList, num), "pref 0x%02x", num)
+	}
+	assertPref(wire.FeedbagBuddyPrefsAcceptCustomBart, true) // preserved (default false)
+	assertPref(0x15, false)                                  // playIMSound off (default true)
+	assertPref(0x16, true)                                   // discloseTyping on
+
+	assert.Equal(t, server.stored(), sess.Feedbag())
+}
+
+func TestPreferenceHandler_SetPreferences_ChangeFails(t *testing.T) {
+	tests := []struct {
+		name string
+		// limit gates the feedbag rate class.
+		limit      bool
+		status     func(wire.SNACMessage) []wire.SNACMessage
+		wantStatus int
+	}{
+		{
+			name: "the server rejects the change",
+			status: func(wire.SNACMessage) []wire.SNACMessage {
+				return []wire.SNACMessage{snacErr(wire.Feedbag, wire.ErrorCodeNotSupportedByHost)}
+			},
+			wantStatus: http.StatusInternalServerError,
+		},
+		{
+			name:       "the feedbag rate class is limited",
+			limit:      true,
+			wantStatus: statusRateLimited,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := newFeedbagServer()
+			server.status = tt.status
+			sessionMgr, sess, _ := newPrefsSession(t, server)
+			if tt.limit {
+				limitRateClass(sess, wire.Feedbag, wire.FeedbagInsertItem)
+			}
+
+			handler := &PreferenceHandler{
+				SessionManager: sessionMgr,
+				Logger:         slog.Default(),
+			}
+
+			req, _ := http.NewRequest("GET", "/preference/set?aimsid="+sess.AimSID+"&playIMSound=0", nil)
+			rr := httptest.NewRecorder()
+			requireSession(handler.SessionManager, handler.SetPreferences).ServeHTTP(rr, req)
+
+			assert.Equal(t, tt.wantStatus, envelopeStatus(t, rr.Body.Bytes()))
+			assert.Empty(t, sess.EventQueue.GetAllEvents(), "an unsaved preference is not announced")
+			assert.Empty(t, sess.Feedbag())
+		})
 	}
 }
 
 func TestPreferenceHandler_GetPreferences_Selected(t *testing.T) {
-	fs := newMockFeedbagService(t)
-	oscarInstance := state.NewSession().AddInstance()
-	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
-
 	// playIMSound (0x15) explicitly disabled in the feedbag.
-	fs.EXPECT().Query(mock.Anything, oscarInstance, mock.Anything).
-		Return(buddyPrefsFeedbag(map[uint16]bool{0x15: false}), nil)
+	sessionMgr, sess, _ := newPrefsSession(t, newFeedbagServer(buddyPrefsFeedbag(map[uint16]bool{0x15: false})))
 
 	handler := &PreferenceHandler{
 		SessionManager: sessionMgr,
-		FeedbagService: fs,
 		Logger:         slog.Default(),
 	}
 
 	// Request two prefs: playIMSound (stored=false) and acceptIcons (unset -> default true).
-	req, _ := http.NewRequest("GET", "/preference/get?aimsid="+aimsid+"&playIMSound&acceptIcons", nil)
+	req, _ := http.NewRequest("GET", "/preference/get?aimsid="+sess.AimSID+"&playIMSound&acceptIcons", nil)
 	rr := httptest.NewRecorder()
 	requireSession(handler.SessionManager, handler.GetPreferences).ServeHTTP(rr, req)
 
@@ -101,21 +136,15 @@ func TestPreferenceHandler_GetPreferences_Selected(t *testing.T) {
 }
 
 func TestPreferenceHandler_GetPreferences_All(t *testing.T) {
-	fs := newMockFeedbagService(t)
-	oscarInstance := state.NewSession().AddInstance()
-	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
-
 	// Empty feedbag -> every pref resolves to its spec default.
-	fs.EXPECT().Query(mock.Anything, oscarInstance, mock.Anything).
-		Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{}}, nil)
+	sessionMgr, sess, _ := newPrefsSession(t, newFeedbagServer())
 
 	handler := &PreferenceHandler{
 		SessionManager: sessionMgr,
-		FeedbagService: fs,
 		Logger:         slog.Default(),
 	}
 
-	req, _ := http.NewRequest("GET", "/preference/get?aimsid="+aimsid, nil)
+	req, _ := http.NewRequest("GET", "/preference/get?aimsid="+sess.AimSID, nil)
 	rr := httptest.NewRecorder()
 	requireSession(handler.SessionManager, handler.GetPreferences).ServeHTTP(rr, req)
 
@@ -126,21 +155,15 @@ func TestPreferenceHandler_GetPreferences_All(t *testing.T) {
 }
 
 func TestPreferenceHandler_GetPreferences_AMF(t *testing.T) {
-	fs := newMockFeedbagService(t)
-	oscarInstance := state.NewSession().AddInstance()
-	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
-
-	fs.EXPECT().Query(mock.Anything, oscarInstance, mock.Anything).
-		Return(buddyPrefsFeedbag(map[uint16]bool{0x15: false}), nil)
+	sessionMgr, sess, _ := newPrefsSession(t, newFeedbagServer(buddyPrefsFeedbag(map[uint16]bool{0x15: false})))
 
 	handler := &PreferenceHandler{
 		SessionManager: sessionMgr,
-		FeedbagService: fs,
 		Logger:         slog.Default(),
 	}
 
 	// Single-pref AMF request returns a numeric value (not wrapped in jsonData).
-	req, _ := http.NewRequest("GET", "/preference/get?aimsid="+aimsid+"&f=amf&playIMSound", nil)
+	req, _ := http.NewRequest("GET", "/preference/get?aimsid="+sess.AimSID+"&f=amf&playIMSound", nil)
 	rr := httptest.NewRecorder()
 	requireSession(handler.SessionManager, handler.GetPreferences).ServeHTTP(rr, req)
 
@@ -180,32 +203,22 @@ func TestEffectiveBuddyPrefs_AppliesDefaultsWhenNothingSet(t *testing.T) {
 func TestPreferenceHandler_SetPermitDeny_QueuesPermitDenyEvent(t *testing.T) {
 	// The client renders blocked buddies from the permitDeny event alone, and it
 	// sees no SNAC for its own write, so the handler has to queue the new state.
-	fs := newMockFeedbagService(t)
-	oscarInstance := state.NewSession().AddInstance()
-	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
-
-	fs.EXPECT().Query(mock.Anything, oscarInstance, mock.Anything).
-		Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{}}, nil)
-	fs.EXPECT().UpsertItem(mock.Anything, oscarInstance, mock.Anything, mock.Anything).
-		Return(nil, nil)
+	server := newFeedbagServer()
+	sessionMgr, sess, conn := newPrefsSession(t, server)
 
 	handler := &PreferenceHandler{
 		SessionManager: sessionMgr,
-		FeedbagService: fs,
 		Logger:         slog.Default(),
 	}
 
-	req, _ := http.NewRequest("GET", "/preference/setPermitDeny?aimsid="+aimsid+"&pdMode=denySome&pdBlock=BlockedUser", nil)
+	req, _ := http.NewRequest("GET", "/preference/setPermitDeny?aimsid="+sess.AimSID+"&pdMode=denySome&pdBlock=BlockedUser", nil)
 	rr := httptest.NewRecorder()
 	requireSession(handler.SessionManager, handler.SetPermitDeny).ServeHTTP(rr, req)
 	assert.Equal(t, http.StatusOK, rr.Code)
 
-	session, err := sessionMgr.GetSession(context.Background(), aimsid)
-	assert.NoError(t, err)
-
 	var pdd PermitDenyData
 	var found bool
-	for _, event := range session.EventQueue.GetAllEvents() {
+	for _, event := range sess.EventQueue.GetAllEvents() {
 		if event.Type == EventTypePermitDeny {
 			pdd, found = event.Data.(PermitDenyData)
 		}
@@ -213,6 +226,59 @@ func TestPreferenceHandler_SetPermitDeny_QueuesPermitDenyEvent(t *testing.T) {
 	assert.True(t, found, "expected a permitDeny event to be queued")
 	assert.Equal(t, "denySome", pdd.PDMode)
 	assert.Equal(t, []string{"blockeduser"}, pdd.DenyList)
+
+	changes := sentFeedbagChanges(conn)
+	require.Len(t, changes, 1)
+	assert.Equal(t, uint16(wire.FeedbagInsertItem), changes[0].SubGroup)
+	assert.Equal(t, permitDenyData(server.stored()), permitDenyData(sess.Feedbag()))
+}
+
+func TestPreferenceHandler_SetPermitDeny_EditsLists(t *testing.T) {
+	// Removals go out after the upserts, and a name both added to and removed
+	// from a list in one request ends up off it.
+	server := newFeedbagServer(
+		wire.FeedbagItem{ClassID: wire.FeedbagClassIDPermit, GroupID: 0, ItemID: 10, Name: "oldfriend"},
+		wire.FeedbagItem{ClassID: wire.FeedbagClassIDDeny, GroupID: 0, ItemID: 11, Name: "pest"},
+	)
+	sessionMgr, sess, conn := newPrefsSession(t, server)
+
+	handler := &PreferenceHandler{
+		SessionManager: sessionMgr,
+		Logger:         slog.Default(),
+	}
+
+	req, _ := http.NewRequest("GET", "/preference/setPermitDeny?aimsid="+sess.AimSID+
+		"&pdAllow=newfriend,flipper&pdAllowRemove=oldfriend,flipper&pdBlockRemove=pest", nil)
+	rr := httptest.NewRecorder()
+	requireSession(handler.SessionManager, handler.SetPermitDeny).ServeHTTP(rr, req)
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var subGroups []uint16
+	for _, change := range sentFeedbagChanges(conn) {
+		subGroups = append(subGroups, change.SubGroup)
+	}
+	assert.Equal(t, []uint16{wire.FeedbagInsertItem, wire.FeedbagDeleteItem}, subGroups)
+
+	pdd := permitDenyData(server.stored())
+	assert.Equal(t, []string{"newfriend"}, pdd.PermitList)
+	assert.Empty(t, pdd.DenyList)
+	assert.Equal(t, pdd, permitDenyData(sess.Feedbag()))
+}
+
+func TestPreferenceHandler_SetPermitDeny_InvalidModeSendsNothing(t *testing.T) {
+	sessionMgr, sess, conn := newPrefsSession(t, newFeedbagServer())
+
+	handler := &PreferenceHandler{
+		SessionManager: sessionMgr,
+		Logger:         slog.Default(),
+	}
+
+	req, _ := http.NewRequest("GET", "/preference/setPermitDeny?aimsid="+sess.AimSID+"&pdMode=bogus&pdBlock=someone", nil)
+	rr := httptest.NewRecorder()
+	requireSession(handler.SessionManager, handler.SetPermitDeny).ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusBadRequest, rr.Code)
+	assert.Empty(t, sentFeedbagChanges(conn))
 }
 
 func TestPermitDenyData_DefaultsToPermitAllWithoutPDInfo(t *testing.T) {

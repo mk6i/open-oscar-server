@@ -4,9 +4,11 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -14,6 +16,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/time/rate"
 
 	"github.com/mk6i/open-oscar-server/config"
@@ -83,7 +86,7 @@ func TestServer_ListenAndServeAndShutdown(t *testing.T) {
 		func(ctx context.Context, instance *state.SessionInstance) {},
 	)
 
-	server.handler = func(ctx context.Context, conn net.Conn, endpointCfg config.Endpoint) error {
+	server.handler = func(ctx context.Context, conn net.Conn, endpointCfg config.Endpoint, rateLimitExempt []wire.SNACType) error {
 		go func() {
 			<-ctx.Done()
 			_ = conn.Close()
@@ -263,7 +266,7 @@ func TestOscarServer_RouteConnection_Auth_BUCP(t *testing.T) {
 		logger:           slog.Default(),
 		ipRateLimiter:    NewIPRateLimiter(rate.Every(1*time.Minute), 10, 1*time.Minute),
 	}
-	assert.NoError(t, rt.routeConnection(context.Background(), clientFake, config.Endpoint{Group: config.ListenerGroup{BOSAdvertisedHostPlain: "localhost:5190"}}))
+	assert.NoError(t, rt.routeConnection(context.Background(), clientFake, config.Endpoint{Group: config.ListenerGroup{BOSAdvertisedHostPlain: "localhost:5190"}}, nil))
 
 	wg.Wait()
 }
@@ -339,7 +342,7 @@ func TestOscarServer_RouteConnection_Auth_FLAP(t *testing.T) {
 		logger:           slog.Default(),
 		ipRateLimiter:    NewIPRateLimiter(rate.Every(1*time.Minute), 10, 1*time.Minute),
 	}
-	assert.NoError(t, rt.routeConnection(context.Background(), clientFake, config.Endpoint{Group: config.ListenerGroup{BOSAdvertisedHostPlain: "localhost:5190"}}))
+	assert.NoError(t, rt.routeConnection(context.Background(), clientFake, config.Endpoint{Group: config.ListenerGroup{BOSAdvertisedHostPlain: "localhost:5190"}}, nil))
 
 	wg.Wait()
 }
@@ -466,7 +469,7 @@ func TestOscarServer_RouteConnection_BOS(t *testing.T) {
 			defer wg.Done()
 		},
 	}
-	assert.NoError(t, rt.routeConnection(context.Background(), clientFake, config.Endpoint{}))
+	assert.NoError(t, rt.routeConnection(context.Background(), clientFake, config.Endpoint{}, nil))
 
 	wg.Wait()
 }
@@ -580,7 +583,7 @@ func TestOscarServer_RouteConnection_BOS_MultiSessionSignoff(t *testing.T) {
 			defer wg.Done()
 		},
 	}
-	assert.NoError(t, rt.routeConnection(context.Background(), clientFake, config.Endpoint{}))
+	assert.NoError(t, rt.routeConnection(context.Background(), clientFake, config.Endpoint{}, nil))
 
 	wg.Wait()
 }
@@ -643,7 +646,7 @@ func TestOscarServer_RouteConnection_BOS_MaxConcurrentSessionsReached(t *testing
 		authService:      authService,
 		logger:           slog.Default(),
 	}
-	assert.NoError(t, rt.routeConnection(context.Background(), clientFake, config.Endpoint{}))
+	assert.NoError(t, rt.routeConnection(context.Background(), clientFake, config.Endpoint{}, nil))
 
 	wg.Wait()
 }
@@ -755,7 +758,7 @@ func TestOscarServer_RouteConnection_Chat(t *testing.T) {
 		chatSessionManager: chatSessionManager,
 		departureNotifier:  departureNotifier,
 	}
-	assert.NoError(t, rt.routeConnection(context.Background(), clientFake, config.Endpoint{}))
+	assert.NoError(t, rt.routeConnection(context.Background(), clientFake, config.Endpoint{}, nil))
 
 	wg.Wait()
 
@@ -858,7 +861,7 @@ func TestOscarServer_RouteConnection_Admin(t *testing.T) {
 		chatSessionManager: chatSessionManager,
 		departureNotifier:  departureNotifier,
 	}
-	assert.NoError(t, rt.routeConnection(context.Background(), clientFake, config.Endpoint{}))
+	assert.NoError(t, rt.routeConnection(context.Background(), clientFake, config.Endpoint{}, nil))
 
 	wg.Wait()
 }
@@ -880,7 +883,7 @@ func Test_oscarServer_dispatchIncomingMessages_shutdownSignoff(t *testing.T) {
 		instance := state.NewSession().AddInstance()
 		instance.SetMultiConnFlag(wire.MultiConnFlagsRecentClient)
 		flapc := wire.NewFlapClient(0, serverConn, serverConn)
-		err := srv.dispatchIncomingMessages(ctx, wire.BOS, instance, flapc, serverConn, config.Endpoint{})
+		err := srv.dispatchIncomingMessages(ctx, wire.BOS, instance, flapc, serverConn, config.Endpoint{}, nil)
 		assert.NoError(t, err)
 	}()
 
@@ -910,7 +913,7 @@ func Test_oscarServer_dispatchIncomingMessages_disconnect_old_client(t *testing.
 			logger:           slog.Default(),
 		}
 		flapc := wire.NewFlapClient(0, serverConn, serverConn)
-		err := srv.dispatchIncomingMessages(ctx, wire.BOS, instance, flapc, serverConn, config.Endpoint{})
+		err := srv.dispatchIncomingMessages(ctx, wire.BOS, instance, flapc, serverConn, config.Endpoint{}, nil)
 		assert.NoError(t, err)
 	}()
 
@@ -940,7 +943,7 @@ func Test_oscarServer_dispatchIncomingMessages_disconnect_new_client(t *testing.
 			logger:           slog.Default(),
 		}
 		flapc := wire.NewFlapClient(0, serverConn, serverConn)
-		err := srv.dispatchIncomingMessages(ctx, wire.BOS, instance, flapc, serverConn, config.Endpoint{})
+		err := srv.dispatchIncomingMessages(ctx, wire.BOS, instance, flapc, serverConn, config.Endpoint{}, nil)
 		assert.NoError(t, err)
 	}()
 
@@ -952,6 +955,139 @@ func Test_oscarServer_dispatchIncomingMessages_disconnect_new_client(t *testing.
 	assert.Equal(t, wire.FLAPFrameSignoff, frame.FrameType)
 
 	wg.Wait()
+}
+
+// SNACs exempt from rate limiting on a connection are neither dropped nor
+// charged, while the connection's other SNACs still are.
+func Test_oscarServer_dispatchIncomingMessages_rateLimitExempt(t *testing.T) {
+	exempt := wire.SNACType{FoodGroup: wire.Locate, SubGroup: wire.LocateUserInfoQuery}
+	charged := wire.SNACType{FoodGroup: wire.Locate, SubGroup: wire.LocateSetInfo}
+	rateLimits := wire.DefaultSNACRateLimits()
+	exemptClass, ok := rateLimits.RateClassLookup(exempt.FoodGroup, exempt.SubGroup)
+	require.True(t, ok)
+	chargedClass, ok := rateLimits.RateClassLookup(charged.FoodGroup, charged.SubGroup)
+	require.True(t, ok)
+
+	// From MaxLevel 200, each back-to-back SNAC halves the moving average,
+	// so the second one in a class is limited.
+	var classes [5]wire.RateClass
+	for i := range classes {
+		classes[i] = wire.RateClass{
+			ID:              wire.RateLimitClassID(i + 1),
+			WindowSize:      2,
+			ClearLevel:      100,
+			AlertLevel:      80,
+			LimitLevel:      70,
+			DisconnectLevel: 2,
+			MaxLevel:        200,
+		}
+	}
+	instance := state.NewSession().AddInstance()
+	instance.Session().SetRateClasses(time.Now(), wire.NewRateLimitClasses(classes))
+	before := instance.Session().RateLimitStates()
+
+	var mu sync.Mutex
+	handled := map[wire.SNACType]int{}
+	srv := oscarServer{
+		rateLimitUpdater: noopRateLimitUpdater{},
+		rateLimits:       rateLimits,
+		logger:           slog.Default(),
+		snacHandler: func(_ context.Context, _ uint16, _ *state.SessionInstance, inFrame wire.SNACFrame, _ io.Reader, _ ResponseWriter, _ config.Endpoint) error {
+			mu.Lock()
+			defer mu.Unlock()
+			handled[wire.SNACType{FoodGroup: inFrame.FoodGroup, SubGroup: inFrame.SubGroup}]++
+			return nil
+		},
+	}
+
+	pr, pw := io.Pipe()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		flapc := wire.NewFlapClient(0, nil, io.Discard)
+		err := srv.dispatchIncomingMessages(context.Background(), wire.BOS, instance, flapc, pr, config.Endpoint{}, []wire.SNACType{exempt})
+		assert.NoError(t, err)
+	}()
+
+	send := func(snacType wire.SNACType) {
+		snac := bytes.Buffer{}
+		require.NoError(t, wire.MarshalBE(wire.SNACFrame{FoodGroup: snacType.FoodGroup, SubGroup: snacType.SubGroup}, &snac))
+		frame := wire.FLAPFrame{StartMarker: 42, FrameType: wire.FLAPFrameData, Payload: snac.Bytes()}
+		require.NoError(t, wire.MarshalBE(frame, pw))
+	}
+	for range 5 {
+		send(exempt)
+	}
+	for range 5 {
+		send(charged)
+	}
+	require.NoError(t, pw.Close())
+	<-done
+
+	assert.Equal(t, 5, handled[exempt], "an exempt SNAC is never dropped")
+	assert.Equal(t, 1, handled[charged], "the charged SNACs after the first are limited")
+
+	after := instance.Session().RateLimitStates()
+	require.NotEqual(t, exemptClass, chargedClass)
+	assert.Equal(t, before[exemptClass-1].CurrentLevel, after[exemptClass-1].CurrentLevel, "an exempt SNAC is not charged")
+	assert.Less(t, after[chargedClass-1].CurrentLevel, before[chargedClass-1].CurrentLevel)
+}
+
+// Make sure the frame reader exits when the dispatch loop ends with frames
+// still in flight.
+func Test_oscarServer_dispatchIncomingMessages_readerExits(t *testing.T) {
+	const fn = "dispatchIncomingMessages"
+	before := blockedSends(fn)
+
+	pr, pw := io.Pipe()
+	release := make(chan struct{})
+	srv := oscarServer{
+		rateLimitUpdater: noopRateLimitUpdater{},
+		logger:           slog.Default(),
+		snacHandler: func(context.Context, uint16, *state.SessionInstance, wire.SNACFrame, io.Reader, ResponseWriter, config.Endpoint) error {
+			<-release
+			return errors.New("handler failed")
+		},
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		instance := state.NewSession().AddInstance()
+		flapc := wire.NewFlapClient(0, nil, io.Discard)
+		err := srv.dispatchIncomingMessages(context.Background(), wire.BOS, instance, flapc, pr, config.Endpoint{}, nil)
+		assert.Error(t, err)
+	}()
+
+	// the handler holds the first frame, the channel buffers the second, and
+	// the reader holds the third
+	snac := bytes.Buffer{}
+	assert.NoError(t, wire.MarshalBE(wire.SNACFrame{FoodGroup: wire.ICBM, SubGroup: wire.ICBMChannelMsgToHost}, &snac))
+	for range 3 {
+		frame := wire.FLAPFrame{StartMarker: 42, FrameType: wire.FLAPFrameData, Payload: snac.Bytes()}
+		assert.NoError(t, wire.MarshalBE(frame, pw))
+	}
+
+	close(release)
+	<-done
+	assert.NoError(t, pw.Close())
+
+	assert.Eventually(t, func() bool {
+		return blockedSends(fn) == before
+	}, time.Second, 10*time.Millisecond)
+}
+
+// blockedSends counts the goroutines blocked sending on a channel in fn.
+func blockedSends(fn string) int {
+	buf := make([]byte, 1<<20)
+	buf = buf[:runtime.Stack(buf, true)]
+	n := 0
+	for _, stack := range strings.Split(string(buf), "\n\n") {
+		if strings.Contains(stack, "[chan send") && strings.Contains(stack, fn) {
+			n++
+		}
+	}
+	return n
 }
 
 func Test_oscarServer_receiveSessMessages_BOS_integration(t *testing.T) {
@@ -1045,7 +1181,7 @@ func Test_oscarServer_receiveSessMessages_BOS_integration(t *testing.T) {
 
 	// Run the server handler in background so we can drive the session
 	doneServer := make(chan error, 1)
-	go func() { doneServer <- server.routeConnection(context.Background(), clientFake, config.Endpoint{}) }()
+	go func() { doneServer <- server.routeConnection(context.Background(), clientFake, config.Endpoint{}, nil) }()
 
 	// Wait for HostOnline to be received so session is ready
 	select {
@@ -1181,7 +1317,7 @@ func Test_oscarServer_receiveSessMessages_Chat_integration(t *testing.T) {
 
 	// Run the server handler in background so we can drive the session
 	doneServer := make(chan error, 1)
-	go func() { doneServer <- server.routeConnection(context.Background(), clientFake, config.Endpoint{}) }()
+	go func() { doneServer <- server.routeConnection(context.Background(), clientFake, config.Endpoint{}, nil) }()
 
 	// Wait for HostOnline to be received so session is ready
 	select {
@@ -1268,20 +1404,24 @@ func TestServer_ServeConn(t *testing.T) {
 
 	var gotEndpoint config.Endpoint
 	var gotRemote net.Addr
-	server.handler = func(ctx context.Context, conn net.Conn, endpointCfg config.Endpoint) error {
+	var gotExempt []wire.SNACType
+	server.handler = func(ctx context.Context, conn net.Conn, endpointCfg config.Endpoint, rateLimitExempt []wire.SNACType) error {
 		gotEndpoint = endpointCfg
 		gotRemote = conn.RemoteAddr()
+		gotExempt = rateLimitExempt
 		return nil
 	}
 
 	serverEnd, clientEnd := net.Pipe()
 	clientAddr := &net.TCPAddr{IP: net.IPv4(10, 0, 0, 5), Port: 4321}
 	endpoint := config.Endpoint{ListenAddress: ":5190", Group: config.ListenerGroup{Name: "LOCAL"}}
+	exempt := []wire.SNACType{{FoodGroup: wire.Locate, SubGroup: wire.LocateUserInfoQuery}}
 
-	server.ServeConn(fakeConn{Conn: serverEnd, remote: clientAddr}, endpoint)
+	server.ServeConn(fakeConn{Conn: serverEnd, remote: clientAddr}, endpoint, exempt)
 
 	assert.Equal(t, endpoint, gotEndpoint)
 	assert.Equal(t, clientAddr, gotRemote)
+	assert.Equal(t, exempt, gotExempt)
 
 	// the connection is closed once served
 	_, err := clientEnd.Read(make([]byte, 1))
@@ -1293,14 +1433,14 @@ func TestServer_ServeConn_afterShutdown(t *testing.T) {
 	server := newServeConnTestServer()
 
 	called := false
-	server.handler = func(ctx context.Context, conn net.Conn, endpointCfg config.Endpoint) error {
+	server.handler = func(ctx context.Context, conn net.Conn, endpointCfg config.Endpoint, rateLimitExempt []wire.SNACType) error {
 		called = true
 		return nil
 	}
 	assert.NoError(t, server.Shutdown(context.Background()))
 
 	serverEnd, clientEnd := net.Pipe()
-	server.ServeConn(serverEnd, config.Endpoint{})
+	server.ServeConn(serverEnd, config.Endpoint{}, nil)
 
 	assert.False(t, called)
 	_, err := clientEnd.Read(make([]byte, 1))

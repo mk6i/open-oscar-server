@@ -38,18 +38,19 @@ logic.
 
 ## Key packages
 
-| Package           | Role                                                                                                                                                                                                           |
-|-------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `cmd/server`      | Entry point; wires dependencies and starts all servers.                                                                                                                                                        |
-| `config`          | Configuration via env vars (`envconfig`). Config files are generated from the `Config` struct—do **not** edit them by hand; run `make config` instead.                                                         |
-| `foodgroup`       | Core business logic for OSCAR "food groups": Auth, Buddy, Feedbag, ICBM, Chat, BART, Locate, OService, ICQ, Admin, PermitDeny, ODir, Stats, UserLookup, ChatNav. Shared by the OSCAR, TOC, and WebAPI servers. |
-| `wire`            | Wire formats: OSCAR SNAC/FLAP encoding, TLV, food group codes, rate limits, frames, plus AMF3 encoding for the Web AIM client.                                                                                 |
-| `state`           | Persistence and in-memory state: `SQLiteUserStore`, `InMemorySessionManager`, `InMemoryChatSessionManager`, DB migrations.                                                                                     |
-| `server/oscar`    | OSCAR protocol server; SNAC routing and handler wiring.                                                                                                                                                        |
-| `server/toc`      | TOC protocol server (text-based). Each TOC user is an OSCAR client of the OSCAR server, connected over in-memory OSCAR connections (`OSCARServer.ServeConn`).                                                  |
-| `server/kerberos` | Kerberos auth server.                                                                                                                                                                                          |
-| `server/http`     | Management HTTP API (users, sessions, chat rooms). Spec: `api.yml`.                                                                                                                                            |
-| `server/webapi`   | Web AIM-style API (AMF3). Spec: `docs/open_api/webapi.yml`.                                                                                                                                                    |
+| Package              | Role                                                                                                                                                                                                           |
+|----------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `cmd/server`         | Entry point; wires dependencies and starts all servers.                                                                                                                                                        |
+| `config`             | Configuration via env vars (`envconfig`). Config files are generated from the `Config` struct—do **not** edit them by hand; run `make config` instead.                                                         |
+| `foodgroup`          | Core business logic for OSCAR "food groups": Auth, Buddy, Feedbag, ICBM, Chat, BART, Locate, OService, ICQ, Admin, PermitDeny, ODir, Stats, UserLookup, ChatNav. Shared by the OSCAR, TOC, and WebAPI servers. |
+| `wire`               | Wire formats: OSCAR SNAC/FLAP encoding, TLV, food group codes, rate limits, frames, plus AMF3 encoding for the Web AIM client.                                                                                 |
+| `state`              | Persistence and in-memory state: `SQLiteUserStore`, `InMemorySessionManager`, `InMemoryChatSessionManager`, DB migrations.                                                                                     |
+| `server/oscar`       | OSCAR protocol server; SNAC routing and handler wiring.                                                                                                                                                        |
+| `server/toc`         | TOC protocol server (text-based). Each TOC user is an OSCAR client of the OSCAR server (see `server/oscarclient`).                                                                                             |
+| `server/oscarclient` | Client side of the in-memory OSCAR connections that TOC and WebAPI open to the OSCAR server (`Server.ServeConn`): dialer, SNAC decoding and request tracking.                                                  |
+| `server/kerberos`    | Kerberos auth server.                                                                                                                                                                                          |
+| `server/http`        | Management HTTP API (users, sessions, chat rooms). Spec: `api.yml`.                                                                                                                                            |
+| `server/webapi`      | Web AIM-style API (AMF3). Each session is an OSCAR client of the OSCAR server (see `server/oscarclient`). Spec: `docs/open_api/webapi.yml`.                                                                    |
 
 ## Database
 

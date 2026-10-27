@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/mk6i/open-oscar-server/server/oscarclient"
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
@@ -66,7 +67,7 @@ func (s OSCARProxy) recvBOSSNAC(ctx context.Context, me *tocConn, snac wire.SNAC
 		msg = s.Eviled(v)
 	case wire.SNAC_0x01_0x0A_OServiceRateParamsChange:
 		msg = s.RateParamsChange(v)
-		if v.Code == rateParamsChangeClear && me.feedbag.hasPending() {
+		if v.Code == rateParamsChangeClear && me.feedbag.HasPending() {
 			// the server may have dropped feedbag changes without replying
 			// while limited
 			msg = s.reloadFeedbag(ctx, me)
@@ -77,18 +78,18 @@ func (s OSCARProxy) recvBOSSNAC(ctx context.Context, me *tocConn, snac wire.SNAC
 		}
 	case wire.SNAC_0x13_0x08_FeedbagInsertItem:
 		if me.IsTOC2() {
-			me.feedbag.applyRemote(false, v.Items)
+			me.feedbag.ApplyRemote(false, v.Items)
 			msg = s.Inserted2(me, v.Items)
 		}
 	case wire.SNAC_0x13_0x09_FeedbagUpdateItem:
 		if me.IsTOC2() {
-			me.feedbag.applyRemote(false, v.Items)
+			me.feedbag.ApplyRemote(false, v.Items)
 			msg = s.Inserted2(me, v.Items)
 		}
 	case wire.SNAC_0x13_0x0A_FeedbagDeleteItem:
 		if me.IsTOC2() {
 			msg = s.Deleted2(me, v)
-			me.feedbag.applyRemote(true, v.Items)
+			me.feedbag.ApplyRemote(true, v.Items)
 		}
 	case wire.SNACError:
 		msg = s.SNACError(ctx, me, snac.Frame, v)
@@ -106,7 +107,7 @@ func (s OSCARProxy) recvBOSSNAC(ctx context.Context, me *tocConn, snac wire.SNAC
 		s.FeedbagReply(me, snac.Frame, v)
 	case wire.SNAC_0x04_0x09_ICBMEvilReply:
 		// the warning succeeded and there's nothing to tell the client
-		me.cache.take(snac.Frame)
+		me.cache.Take(snac.Frame)
 	default:
 		s.Logger.DebugContext(ctx, fmt.Sprintf("unsupported snac. foodgroup: %s subgroup: %s",
 			wire.FoodGroupName(snac.Frame.FoodGroup),
@@ -120,7 +121,7 @@ func (s OSCARProxy) recvBOSSNAC(ctx context.Context, me *tocConn, snac wire.SNAC
 
 // RecvChat routes SNACs from a chat room connection to their corresponding
 // TOC handlers. It ignores any SNAC for which there is no TOC response.
-func (s OSCARProxy) RecvChat(ctx context.Context, me *tocConn, conn oscarConn, chatID int) {
+func (s OSCARProxy) RecvChat(ctx context.Context, me *tocConn, conn oscarclient.Conn, chatID int) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -136,7 +137,7 @@ func (s OSCARProxy) RecvChat(ctx context.Context, me *tocConn, conn oscarConn, c
 				sendOrCancel(ctx, me.toCh, s.ChatUpdateBuddyArrived(v, chatID))
 			case wire.SNAC_0x0E_0x06_ChatChannelMsgToClient:
 				// a reflected message answers the user's own toc_chat_send
-				me.cache.take(snac.Frame)
+				me.cache.Take(snac.Frame)
 				sendOrCancel(ctx, me.toCh, s.ChatIn(ctx, me, v, chatID))
 			case wire.SNAC_0x01_0x0A_OServiceRateParamsChange:
 				if msg := s.RateParamsChange(v); len(msg) > 0 {
@@ -168,14 +169,14 @@ func (s OSCARProxy) RateParamsChange(snac wire.SNAC_0x01_0x0A_OServiceRateParams
 // SNACError handles an error reply from the OSCAR server according to the
 // request that caused it.
 func (s OSCARProxy) SNACError(ctx context.Context, me *tocConn, frame wire.SNACFrame, snac wire.SNACError) []string {
-	req, ok := me.cache.take(frame)
+	req, ok := me.cache.Take(frame)
 	if !ok {
 		s.Logger.DebugContext(ctx, "received SNAC error for unknown request",
 			"foodgroup", wire.FoodGroupName(frame.FoodGroup), "code", snac.Code)
 		return nil
 	}
 
-	switch data := req.data.(type) {
+	switch data := req.Data.(type) {
 	case getStatusReqCtx:
 		if snac.Code == wire.ErrorCodeNotLoggedOn {
 			return []string{fmt.Sprintf("ERROR:%s:%s", wire.TOCErrorGeneralUserNotAvailable, data.screenName)}
@@ -186,14 +187,14 @@ func (s OSCARProxy) SNACError(ctx context.Context, me *tocConn, frame wire.SNACF
 		return []string{"ERROR:" + wire.TOCErrorGeneralWarningUserNotAvailable}
 	case feedbagChangeReqCtx:
 		s.Logger.DebugContext(ctx, "feedbag change failed", "code", snac.Code)
-		me.feedbag.discard(frame.RequestID)
+		me.feedbag.Discard(frame.RequestID)
 		return nil
 	case chatJoinReqCtx, chatAcceptReqCtx, chatServiceReqCtx:
 		return s.runtimeErr(ctx, fmt.Errorf("unable to join chat room, %s error code: %d",
-			wire.SubGroupName(req.frame.FoodGroup, req.frame.SubGroup), snac.Code))
+			wire.SubGroupName(req.Frame.FoodGroup, req.Frame.SubGroup), snac.Code))
 	default:
 		s.Logger.DebugContext(ctx, "received SNAC error",
-			"request", wire.SubGroupName(req.frame.FoodGroup, req.frame.SubGroup), "code", snac.Code)
+			"request", wire.SubGroupName(req.Frame.FoodGroup, req.Frame.SubGroup), "code", snac.Code)
 		return nil
 	}
 }
@@ -201,25 +202,25 @@ func (s OSCARProxy) SNACError(ctx context.Context, me *tocConn, frame wire.SNACF
 // FeedbagStatus confirms the items of a feedbag change that the server
 // accepted.
 func (s OSCARProxy) FeedbagStatus(me *tocConn, frame wire.SNACFrame, snac wire.SNAC_0x13_0x0E_FeedbagStatus) {
-	me.cache.take(frame)
-	me.feedbag.confirm(frame.RequestID, snac.Results)
+	me.cache.Take(frame)
+	me.feedbag.Confirm(frame.RequestID, snac.Results)
 }
 
 // FeedbagReply finishes reloading the feedbag mirror.
 func (s OSCARProxy) FeedbagReply(me *tocConn, frame wire.SNACFrame, snac wire.SNAC_0x13_0x06_FeedbagReply) {
-	req, ok := me.cache.take(frame)
+	req, ok := me.cache.Take(frame)
 	if !ok {
 		return
 	}
-	if data, ok := req.data.(feedbagReloadReqCtx); ok {
-		me.feedbag.reload(data.marker, snac.Items)
+	if data, ok := req.Data.(feedbagReloadReqCtx); ok {
+		me.feedbag.Reload(data.marker, snac.Items)
 	}
 }
 
 // UserInfoReply handles the user info reply to toc_get_status, which is sent
 // to the client as UPDATE_BUDDY.
 func (s OSCARProxy) UserInfoReply(me *tocConn, frame wire.SNACFrame, snac wire.SNAC_0x02_0x06_LocateUserInfoReply) []string {
-	me.cache.take(frame)
+	me.cache.Take(frame)
 	return []string{userInfoToUpdateBuddy(snac.TLVUserInfo, me)}
 }
 
@@ -227,7 +228,7 @@ func (s OSCARProxy) UserInfoReply(me *tocConn, frame wire.SNACFrame, snac wire.S
 // ADMIN_PASSWD_STATUS, or to toc_format_nickname, sent as ADMIN_NICK_STATUS
 // and NICK.
 func (s OSCARProxy) AdminChangeReply(ctx context.Context, me *tocConn, frame wire.SNACFrame, snac wire.SNAC_0x07_0x05_AdminChangeReply) []string {
-	req, ok := me.cache.take(frame)
+	req, ok := me.cache.Take(frame)
 	if !ok {
 		s.Logger.DebugContext(ctx, "received admin change reply for unknown request")
 		return nil
@@ -235,7 +236,7 @@ func (s OSCARProxy) AdminChangeReply(ctx context.Context, me *tocConn, frame wir
 
 	code, hasErr := snac.Uint16BE(wire.AdminTLVErrorCode)
 
-	switch req.data.(type) {
+	switch req.Data.(type) {
 	case changePasswdReqCtx:
 		if hasErr {
 			switch code {
@@ -263,14 +264,14 @@ func (s OSCARProxy) AdminChangeReply(ctx context.Context, me *tocConn, frame wir
 		}
 		return []string{"ADMIN_NICK_STATUS:0", "NICK:" + val}
 	default:
-		return s.runtimeErr(ctx, fmt.Errorf("AdminChangeReply: unexpected request %v", req.frame))
+		return s.runtimeErr(ctx, fmt.Errorf("AdminChangeReply: unexpected request %v", req.Frame))
 	}
 }
 
 // ChatNavInfo continues toc_chat_join and toc_chat_accept once the chat room
 // info arrives, by requesting a connection to the room.
 func (s OSCARProxy) ChatNavInfo(ctx context.Context, me *tocConn, frame wire.SNACFrame, snac wire.SNAC_0x0D_0x09_ChatNavNavInfo) []string {
-	req, ok := me.cache.take(frame)
+	req, ok := me.cache.Take(frame)
 	if !ok {
 		s.Logger.DebugContext(ctx, "received chat nav info for unknown request")
 		return nil
@@ -290,7 +291,7 @@ func (s OSCARProxy) ChatNavInfo(ctx context.Context, me *tocConn, frame wire.SNA
 		return s.runtimeErr(ctx, errors.New("roomInfo.String: missing wire.ChatRoomTLVRoomName"))
 	}
 
-	switch data := req.data.(type) {
+	switch data := req.Data.(type) {
 	case chatJoinReqCtx:
 		chatID := me.chats.Add(wire.ICBMRoomInfo{
 			Exchange: roomInfo.Exchange,
@@ -301,7 +302,7 @@ func (s OSCARProxy) ChatNavInfo(ctx context.Context, me *tocConn, frame wire.SNA
 	case chatAcceptReqCtx:
 		return s.requestChatService(ctx, me, data.chatID, roomName, roomInfo.Cookie)
 	default:
-		return s.runtimeErr(ctx, fmt.Errorf("ChatNavNavInfo: unexpected request %v", req.frame))
+		return s.runtimeErr(ctx, fmt.Errorf("ChatNavNavInfo: unexpected request %v", req.Frame))
 	}
 }
 
@@ -310,14 +311,14 @@ func (s OSCARProxy) ChatNavInfo(ctx context.Context, me *tocConn, frame wire.SNA
 // from the room, so that the client knows the room before its first
 // CHAT_UPDATE_BUDDY.
 func (s OSCARProxy) ChatServiceResponse(ctx context.Context, me *tocConn, frame wire.SNACFrame, snac wire.SNAC_0x01_0x05_OServiceServiceResponse) []string {
-	req, ok := me.cache.take(frame)
+	req, ok := me.cache.Take(frame)
 	if !ok {
 		s.Logger.DebugContext(ctx, "received service response for unknown request")
 		return nil
 	}
-	data, ok := req.data.(chatServiceReqCtx)
+	data, ok := req.Data.(chatServiceReqCtx)
 	if !ok {
-		return s.runtimeErr(ctx, fmt.Errorf("OServiceServiceResponse: unexpected request %v", req.frame))
+		return s.runtimeErr(ctx, fmt.Errorf("OServiceServiceResponse: unexpected request %v", req.Frame))
 	}
 
 	loginCookie, hasCookie := snac.Bytes(wire.OServiceTLVTagsLoginCookie)
@@ -660,7 +661,7 @@ func (s OSCARProxy) UpdateBuddyDeparted(snac wire.SNAC_0x03_0x0C_BuddyDeparted, 
 // from the feedbag mirror; buddy alias comes from TLV.
 func (s OSCARProxy) Inserted2(me *tocConn, items []wire.FeedbagItem) []string {
 	var out []string
-	groupNameByID := me.feedbag.groupNames()
+	groupNameByID := me.feedbag.GroupNames()
 	for _, item := range items {
 		switch item.ClassID {
 		case wire.FeedbagClassIdGroup:
@@ -708,7 +709,7 @@ func (s OSCARProxy) Inserted2(me *tocConn, items []wire.FeedbagItem) []string {
 // that deleted buddies' group names can still be found there.
 func (s OSCARProxy) Deleted2(me *tocConn, snac wire.SNAC_0x13_0x0A_FeedbagDeleteItem) []string {
 	var out []string
-	groupNameByID := me.feedbag.groupNames()
+	groupNameByID := me.feedbag.GroupNames()
 	for _, item := range snac.Items {
 		switch item.ClassID {
 		case wire.FeedbagClassIdGroup:

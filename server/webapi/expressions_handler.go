@@ -26,28 +26,22 @@ type Expression struct {
 	URL  string `json:"url" xml:"url"`
 }
 
-const bartUploadMaxBytes = 64 << 10
+// bartUploadMaxBytes is the largest image a BARTUploadQuery carries in one
+// FLAP frame: the frame's 65535-byte payload less the SNAC header (10 bytes)
+// and the upload's type and length fields (2 bytes each).
+const bartUploadMaxBytes = 65535 - 14
 
 // ExpressionsHandler handles Web AIM API expressions/buddy icon endpoints.
 type ExpressionsHandler struct {
-	IconSource     BuddyIconSource
-	BARTService    BARTService
-	FeedbagService FeedbagService
-	Logger         *slog.Logger
+	IconSource BuddyIconSource
+	Logger     *slog.Logger
 }
 
 // NewExpressionsHandler creates a new ExpressionsHandler.
-func NewExpressionsHandler(
-	iconSource BuddyIconSource,
-	bartService BARTService,
-	feedbagService FeedbagService,
-	logger *slog.Logger,
-) *ExpressionsHandler {
+func NewExpressionsHandler(iconSource BuddyIconSource, logger *slog.Logger) *ExpressionsHandler {
 	return &ExpressionsHandler{
-		IconSource:     iconSource,
-		BARTService:    bartService,
-		FeedbagService: feedbagService,
-		Logger:         logger,
+		IconSource: iconSource,
+		Logger:     logger,
 	}
 }
 
@@ -161,8 +155,6 @@ type UploadData struct {
 
 // Upload handles POST /expressions/upload, which stores a buddy icon.
 func (h *ExpressionsHandler) Upload(w http.ResponseWriter, r *http.Request, session *Session) {
-	defer session.InvalidateFeedbag()
-
 	ctx := r.Context()
 
 	var bartType uint16
@@ -195,19 +187,18 @@ func (h *ExpressionsHandler) Upload(w http.ResponseWriter, r *http.Request, sess
 		return
 	}
 
-	uploadReply, err := h.BARTService.UpsertItem(ctx, session.OSCARSession,
-		wire.SNACFrame{FoodGroup: wire.BART, SubGroup: wire.BARTUploadQuery},
-		wire.SNAC_0x10_0x02_BARTUploadQuery{Type: bartType, Data: image})
+	uploadReply, err := session.request(ctx, wire.BART, wire.BARTUploadQuery,
+		wire.SNAC_0x10_0x02_BARTUploadQuery{Type: bartType, Data: image}, wire.BARTUploadReply)
 	if err != nil {
 		h.Logger.ErrorContext(ctx, "failed to store BART item", "err", err.Error())
-		SendError(w, r, http.StatusInternalServerError, "failed to store expression")
+		sendRequestError(w, r, err, "failed to store expression", h.Logger)
 		return
 	}
 
 	body, ok := uploadReply.Body.(wire.SNAC_0x10_0x03_BARTUploadReply)
 	if !ok {
 		h.Logger.ErrorContext(ctx, "unexpected BART upload reply",
-			"type", fmt.Sprintf("%T", uploadReply.Body))
+			"reply", wire.SubGroupName(uploadReply.Frame.FoodGroup, uploadReply.Frame.SubGroup))
 		SendError(w, r, http.StatusInternalServerError, "failed to store expression")
 		return
 	}
@@ -217,15 +208,15 @@ func (h *ExpressionsHandler) Upload(w http.ResponseWriter, r *http.Request, sess
 		return
 	}
 
-	if err := h.publishIcon(ctx, session.OSCARSession, bartType, body.ID.Hash); err != nil {
+	if err := publishIcon(ctx, session, bartType, body.ID.Hash); err != nil {
 		h.Logger.ErrorContext(ctx, "failed to publish buddy icon",
-			"screenName", session.OSCARSession.IdentScreenName().String(), "err", err.Error())
-		SendError(w, r, http.StatusInternalServerError, "failed to publish expression")
+			"screenName", session.ScreenName.String(), "err", err.Error())
+		sendRequestError(w, r, err, "failed to publish expression", h.Logger)
 		return
 	}
 
 	h.Logger.InfoContext(ctx, "stored buddy icon",
-		"screenName", session.OSCARSession.IdentScreenName().String(),
+		"screenName", session.ScreenName.String(),
 		"bytes", len(image),
 		"hash", fmt.Sprintf("%x", body.ID.Hash))
 
@@ -235,36 +226,24 @@ func (h *ExpressionsHandler) Upload(w http.ResponseWriter, r *http.Request, sess
 // publishIcon points the user's feedbag BART reference at hash, which is what
 // makes the icon visible to buddies and to expressions/get.
 //
-// Upserting the item runs the same path an OSCAR client takes when it sets an
-// icon: the feedbag service sees the asset already in the BART store, stamps it
-// on the session and broadcasts the change to buddies.
-func (h *ExpressionsHandler) publishIcon(
-	ctx context.Context,
-	instance *state.SessionInstance,
-	bartType uint16,
-	hash []byte,
-) error {
-	msg, err := h.FeedbagService.Query(ctx, instance,
-		wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery})
+// The feedbag change takes the same path an OSCAR client's does when it sets
+// an icon: the feedbag service sees the asset already in the BART store, stamps
+// it on the session and broadcasts the change to buddies.
+func publishIcon(ctx context.Context, session *Session, bartType uint16, hash []byte) error {
+	items, err := session.lockFeedbag(ctx)
 	if err != nil {
 		return err
 	}
-	reply, ok := msg.Body.(wire.SNAC_0x13_0x06_FeedbagReply)
-	if !ok {
-		return fmt.Errorf("unexpected feedbag reply %T", msg.Body)
-	}
+	defer session.unlockFeedbag()
 
-	fl := state.NewFeedbagList(reply.Items, rand.Intn)
+	fl := state.NewFeedbagList(items, rand.Intn)
 	item, inserted := fl.SetIcon(bartType, hash)
 
 	subGroup := wire.FeedbagUpdateItem
 	if inserted {
 		subGroup = wire.FeedbagInsertItem
 	}
-
-	_, err = h.FeedbagService.UpsertItem(ctx, instance,
-		wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: subGroup},
-		[]wire.FeedbagItem{item})
+	_, err = session.changeFeedbag(ctx, subGroup, []wire.FeedbagItem{item})
 	return err
 }
 

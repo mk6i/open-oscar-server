@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/mk6i/open-oscar-server/server/oscarclient"
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
@@ -1078,7 +1079,7 @@ func TestOSCARProxy_RecvBOS_Inserted2(t *testing.T) {
 
 			me := testConn(withTOC2(true))
 			for _, params := range tc.mockParams.feedbagParams {
-				me.feedbag.reset(params.results)
+				me.feedbag.Reset(params.results)
 			}
 
 			ch := make(chan []string)
@@ -1232,7 +1233,7 @@ func TestOSCARProxy_RecvBOS_Deleted2(t *testing.T) {
 
 			me := testConn(withTOC2(true))
 			for _, params := range tc.mockParams.feedbagParams {
-				me.feedbag.reset(params.results)
+				me.feedbag.Reset(params.results)
 			}
 
 			ch := make(chan []string)
@@ -1549,7 +1550,7 @@ func TestOSCARProxy_RecvBOS_Replies(t *testing.T) {
 
 			me := testConn()
 			if tc.reqFrame != nil {
-				me.cache.add(tc.reqFrame, tc.reqData)
+				me.cache.Add(tc.reqFrame, tc.reqData)
 			}
 			if tc.givenRoom != nil {
 				me.chats.Add(*tc.givenRoom)
@@ -1571,8 +1572,8 @@ func TestOSCARProxy_RecvBOS_Replies(t *testing.T) {
 			assert.Equal(t, tc.wantSNACs, bos.sentSNACs())
 
 			cached := make(map[uint32]any)
-			for id, entry := range me.cache.entries {
-				cached[id] = entry.data
+			for id, entry := range me.cache.Pending() {
+				cached[id] = entry.Data
 			}
 			if tc.wantCached == nil {
 				tc.wantCached = map[uint32]any{}
@@ -1602,8 +1603,8 @@ func TestOSCARProxy_RecvBOS_ChatServiceResponse(t *testing.T) {
 	}
 	oscarServer := &fakeOSCARServer{handlers: []func(net.Conn){chat.handle}}
 	svc := OSCARProxy{
-		Logger:      slog.Default(),
-		OSCARServer: oscarServer,
+		Logger: slog.Default(),
+		Dialer: oscarclient.Dialer{Server: oscarServer, Logger: slog.Default()},
 	}
 
 	wg := &sync.WaitGroup{}
@@ -1616,7 +1617,7 @@ func TestOSCARProxy_RecvBOS_ChatServiceResponse(t *testing.T) {
 			assert.NoError(t, f(ctx))
 		}()
 	}
-	me.cache.add(&wire.SNACFrame{FoodGroup: wire.OService, SubGroup: wire.OServiceServiceRequest},
+	me.cache.Add(&wire.SNACFrame{FoodGroup: wire.OService, SubGroup: wire.OServiceServiceRequest},
 		chatServiceReqCtx{chatID: 0, roomName: "My Room"})
 	ch := make(chan []string)
 	me.toCh = ch
@@ -1761,7 +1762,7 @@ func TestOSCARProxy_RecvBOS_FeedbagMirror(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	me := testConn(withTOC2(true))
-	me.feedbag.reset([]wire.FeedbagItem{work, alice})
+	me.feedbag.Reset([]wire.FeedbagItem{work, alice})
 	svc := testOSCARProxy(t)
 
 	ch := make(chan []string)
@@ -1778,8 +1779,8 @@ func TestOSCARProxy_RecvBOS_FeedbagMirror(t *testing.T) {
 	assert.Nil(t, svc.upsertFeedbag(ctx, me, wire.FeedbagInsertItem, []wire.FeedbagItem{bob, carol}))
 	bos.msgs <- newSNAC(wire.Feedbag, wire.FeedbagStatus, 1, wire.SNAC_0x13_0x0E_FeedbagStatus{Results: []uint16{0, 0x0E}})
 	assertResponse(t, me, ch, nil)
-	assert.False(t, me.feedbag.hasPending())
-	assert.Equal(t, []wire.FeedbagItem{work, alice, bob}, me.feedbag.snapshot())
+	assert.False(t, me.feedbag.HasPending())
+	assert.Equal(t, []wire.FeedbagItem{work, alice, bob}, me.feedbag.Snapshot())
 
 	// changes from other locations update the mirror
 	bos.msgs <- newSNAC(wire.Feedbag, wire.FeedbagInsertItem, wire.ReqIDFromServer,
@@ -1789,7 +1790,7 @@ func TestOSCARProxy_RecvBOS_FeedbagMirror(t *testing.T) {
 	bos.msgs <- newSNAC(wire.Feedbag, wire.FeedbagDeleteItem, wire.ReqIDFromServer,
 		wire.SNAC_0x13_0x0A_FeedbagDeleteItem{Items: []wire.FeedbagItem{alice}})
 	assert.Equal(t, []string{"DELETED2:b:alice:Work"}, <-ch)
-	assert.Equal(t, []wire.FeedbagItem{work, bob, carol}, me.feedbag.snapshot())
+	assert.Equal(t, []wire.FeedbagItem{work, bob, carol}, me.feedbag.Snapshot())
 
 	// a change may be dropped while the server is limiting requests, so the
 	// mirror is reloaded once the limit clears
@@ -1807,8 +1808,8 @@ func TestOSCARProxy_RecvBOS_FeedbagMirror(t *testing.T) {
 	bos.msgs <- newSNAC(wire.Feedbag, wire.FeedbagReply, 3,
 		wire.SNAC_0x13_0x06_FeedbagReply{Items: []wire.FeedbagItem{work, bob, carol}})
 	assertResponse(t, me, ch, nil)
-	assert.False(t, me.feedbag.hasPending())
-	assert.Equal(t, []wire.FeedbagItem{work, bob, carol}, me.feedbag.snapshot())
+	assert.False(t, me.feedbag.HasPending())
+	assert.Equal(t, []wire.FeedbagItem{work, bob, carol}, me.feedbag.Snapshot())
 
 	// with nothing pending, a cleared limit doesn't reload the mirror
 	bos.msgs <- newSNAC(wire.OService, wire.OServiceRateParamChange, wire.ReqIDFromServer,
@@ -1820,8 +1821,8 @@ func TestOSCARProxy_RecvBOS_FeedbagMirror(t *testing.T) {
 	assert.Nil(t, svc.upsertFeedbag(ctx, me, wire.FeedbagInsertItem, []wire.FeedbagItem{dave}))
 	bos.msgs <- newSNAC(wire.Feedbag, wire.FeedbagErr, 4, wire.SNACError{Code: wire.ErrorCodeInsufficientRights})
 	assertResponse(t, me, ch, nil)
-	assert.False(t, me.feedbag.hasPending())
-	assert.Equal(t, []wire.FeedbagItem{work, bob, carol}, me.feedbag.snapshot())
+	assert.False(t, me.feedbag.HasPending())
+	assert.Equal(t, []wire.FeedbagItem{work, bob, carol}, me.feedbag.Snapshot())
 
 	cancel()
 	wg.Wait()
