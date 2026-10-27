@@ -22,6 +22,8 @@ type account struct {
 	Profile string `json:"profile,omitempty"`
 	// AwayMessage is the last away message used.
 	AwayMessage string `json:"away_message,omitempty"`
+	// Font is the style applied to messages the user sends.
+	Font fontStyle `json:"font,omitzero"`
 }
 
 // matches reports whether a is the account for server and screenName.

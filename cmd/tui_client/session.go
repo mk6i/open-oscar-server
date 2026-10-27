@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"html"
 	"strings"
 	"time"
 
@@ -708,20 +707,30 @@ func (s *sessionModel) do(key string, f func(ctx context.Context) (string, error
 	}
 }
 
+// compose turns a typed message into HTML in the user's font style.
+// Formatting tags typed into the message are kept.
+func (s *sessionModel) compose(text string) string {
+	msg := sanitizeHTML(text)
+	if a := s.account(); a != nil {
+		msg = a.Font.wrap(msg)
+	}
+	return msg
+}
+
 // sendToCurrent sends a line typed into the input to the active window.
 func (s *sessionModel) sendToCurrent(text string) tea.Cmd {
 	w := s.current()
 	switch w.kind {
 	case winIM:
-		return s.sendIM(w.peer, html.EscapeString(text), false)
+		return s.sendIM(w.peer, s.compose(text), false)
 	case winChat:
 		if w.room == nil {
 			s.appendTo(w, errorStyle.Render("You are not in this chat room. Use /join to rejoin."))
 			return nil
 		}
-		room := w.room
+		room, msg := w.room, s.compose(text)
 		return s.do(w.key, func(context.Context) (string, error) {
-			if err := room.Send(html.EscapeString(text)); err != nil {
+			if err := room.Send(msg); err != nil {
 				return "Message not sent", err
 			}
 			return "", nil

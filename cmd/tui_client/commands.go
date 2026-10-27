@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"html"
+	"strconv"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -22,6 +22,7 @@ var helpText = []string{
 	"  /warn [name]             warn a user who recently messaged you",
 	"  /warnanon [name]         warn anonymously",
 	"  /profile                 edit your profile",
+	"  /font                    show your message style; see /font help to change it",
 	"  /away [message]          set an away message",
 	"  /back                    clear your away message",
 	"  /join <room>             join or create a chat room",
@@ -35,6 +36,21 @@ var helpText = []string{
 	"Keys: Tab toggles the buddy list, Ctrl+N/Ctrl+P switch windows, Ctrl+W closes",
 	"a window, PgUp/PgDn scroll. In the buddy list: Enter IMs, i shows info, w warns,",
 	"b blocks or unblocks, d removes.",
+	"Messages may contain formatting HTML such as <b>bold</b>, <i>, <u>, <s>,",
+	"<font color=\"red\">, <a href=\"...\"> and <br>. Other text is sent as typed.",
+}
+
+// fontHelp describes the /font command.
+var fontHelp = []string{
+	"Your message style is applied to every IM and chat message you send:",
+	"  /font                    show your style with a sample",
+	"  /font color <color>      text color: a name such as red, or #RRGGBB",
+	"  /font back <color>       background color",
+	"  /font face <font name>   font face, such as Arial or Comic Sans MS",
+	"  /font size <1-7>         font size (AIM's default is 2)",
+	"  /font bold|italic|underline [on|off]   toggle a style",
+	"  /font <setting> none     clear a color, face or size",
+	"  /font reset              clear your whole style",
 }
 
 // runCommand runs a slash command typed into the input.
@@ -70,7 +86,7 @@ func (s *sessionModel) runCommand(line string) tea.Cmd {
 		}
 		s.activate(s.imWindow(args[0]))
 		if msg := strings.TrimSpace(strings.TrimPrefix(rest, args[0])); msg != "" {
-			return s.sendIM(args[0], html.EscapeString(msg), false)
+			return s.sendIM(args[0], s.compose(msg), false)
 		}
 	case "/info", "/whois":
 		if sn, ok := target(); ok {
@@ -115,6 +131,8 @@ func (s *sessionModel) runCommand(line string) tea.Cmd {
 		s.input.Blur()
 		s.editing = true
 		return nil
+	case "/font":
+		return s.fontCommand(args)
 	case "/away":
 		msg := rest
 		if msg == "" {
@@ -200,5 +218,89 @@ func (s *sessionModel) runCommand(line string) tea.Cmd {
 	default:
 		s.notify(fmt.Sprintf("Unknown command %s. Type /help for a list of commands.", cmd), true)
 	}
+	return nil
+}
+
+// fontCommand runs /font, which shows or changes the user's message style.
+func (s *sessionModel) fontCommand(args []string) tea.Cmd {
+	a := s.account()
+	if a == nil {
+		s.notify("Your account isn't saved, so your style can't be changed.", true)
+		return nil
+	}
+	if len(args) == 0 {
+		s.notify("Your style: "+a.Font.describe()+". Sample: "+s.render(a.Font.wrap("The quick brown fox")), false)
+		return nil
+	}
+
+	f := a.Font
+	setting, value := strings.ToLower(args[0]), strings.Join(args[1:], " ")
+	clear := strings.EqualFold(value, "none")
+	toggle := func(cur bool) (bool, bool) {
+		switch strings.ToLower(value) {
+		case "":
+			return !cur, true
+		case "on", "yes", "true":
+			return true, true
+		case "off", "no", "false":
+			return false, true
+		}
+		return cur, false
+	}
+
+	var ok bool
+	switch setting {
+	case "help":
+		w := s.windows[0]
+		for _, h := range fontHelp {
+			w.add(h)
+		}
+		s.activate(w)
+		return nil
+	case "reset":
+		f, ok = fontStyle{}, true
+	case "color", "colour", "back", "background":
+		var c string
+		if clear {
+			ok = true
+		} else {
+			c, ok = normalizeColor(value)
+		}
+		if setting == "color" || setting == "colour" {
+			f.Color = c
+		} else {
+			f.Back = c
+		}
+	case "face":
+		f.Face, ok = value, value != ""
+		if clear {
+			f.Face = ""
+		}
+	case "size":
+		if clear {
+			f.Size, ok = 0, true
+		} else if n, err := strconv.Atoi(value); err == nil && n >= 1 && n <= 7 {
+			f.Size, ok = n, true
+		}
+	case "bold":
+		f.Bold, ok = toggle(f.Bold)
+	case "italic":
+		f.Italic, ok = toggle(f.Italic)
+	case "underline":
+		f.Underline, ok = toggle(f.Underline)
+	default:
+		s.notify("Unknown /font setting "+setting+". Type /font help for usage.", true)
+		return nil
+	}
+	if !ok {
+		s.notify(fmt.Sprintf("Invalid value %q for /font %s. Type /font help for usage.", value, setting), true)
+		return nil
+	}
+
+	a.Font = f
+	if err := s.cfg.save(); err != nil {
+		s.notify("Unable to save config: "+err.Error(), true)
+	}
+	s.notify("Your style: "+f.describe()+". Sample: "+s.render(f.wrap("The quick brown fox")), false)
 	return nil
 }

@@ -166,7 +166,7 @@ func convert(s string, ansi, darkBackground bool) string {
 			case atom.S, atom.Strike, atom.Del:
 				push(tok.DataAtom, func(s *style) { s.strike = true })
 			case atom.Font:
-				color, ok := parseColor(attr(tok, "color"))
+				color, ok := ParseColor(attr(tok, "color"))
 				push(tok.DataAtom, func(s *style) {
 					if ok {
 						s.color = adjustColor(color, darkBackground)
@@ -260,8 +260,9 @@ var namedColors = map[string]int{
 	"pink": 0xFFC0CB, "brown": 0xA52A2A,
 }
 
-// parseColor parses an HTML color such as "#FF0000", "FF0000" or "red".
-func parseColor(s string) (int, bool) {
+// ParseColor parses an HTML color such as "#FF0000", "F00" or "red" into a
+// 24-bit RGB value.
+func ParseColor(s string) (int, bool) {
 	s = strings.ToLower(strings.TrimSpace(s))
 	if c, ok := namedColors[s]; ok {
 		return c, true
