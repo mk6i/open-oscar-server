@@ -112,3 +112,74 @@ func TestConn_request(t *testing.T) {
 	require.ErrorAs(t, c.Err(), &signoff)
 	assert.Equal(t, uint16(wire.OServiceDiscErrNewLogin), signoff.Code)
 }
+
+func TestSignoffErr(t *testing.T) {
+	tests := []struct {
+		name string
+		tlvs []wire.TLV
+		want *SignoffError
+	}{
+		{
+			name: "no reason given",
+			want: &SignoffError{},
+		},
+		{
+			name: "uint8 code with more info URL",
+			tlvs: []wire.TLV{
+				wire.NewTLVBE(0x0009, uint8(0x01)),
+				wire.NewTLVBE(0x000B, "https://example.com/why"),
+			},
+			want: &SignoffError{Code: 0x01, URL: "https://example.com/why"},
+		},
+		{
+			name: "uint16 login error code",
+			tlvs: []wire.TLV{wire.NewTLVBE(wire.LoginTLVTagsErrorSubcode, wire.LoginErrSuspendedAccount)},
+			want: &SignoffError{Code: wire.LoginErrSuspendedAccount},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			buf := &bytes.Buffer{}
+			require.NoError(t, wire.MarshalBE(wire.TLVRestBlock{TLVList: tt.tlvs}, buf))
+			assert.Equal(t, tt.want, signoffErr(buf.Bytes()))
+		})
+	}
+}
+
+func TestDecodeRateClassIDs(t *testing.T) {
+	// two classes; only the count and first ID are read
+	body := []byte{0x00, 0x02, 0x00, 0x01, 0xFF, 0xFF}
+	ids, err := decodeRateClassIDs(bytes.NewReader(body))
+	require.NoError(t, err)
+	assert.Equal(t, rateClassIDs{1, 2}, ids)
+}
+
+func TestConn_requestAll_multiPart(t *testing.T) {
+	addr := fakeService(t, func(flapc *wire.FlapClient) {
+		frame, err := receiveFrame(flapc)
+		if err != nil {
+			return
+		}
+		for i, name := range []string{"alice", "bob"} {
+			flags := wire.SNACFlagsMoreToCome
+			if i == 1 {
+				flags = 0
+			}
+			_ = flapc.SendSNAC(wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagReply, Flags: flags, RequestID: frame.RequestID},
+				wire.SNAC_0x13_0x06_FeedbagReply{Items: []wire.FeedbagItem{{Name: name}}})
+		}
+		_, _ = receiveFrame(flapc) // wait for the client to hang up
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	c, err := connectService(ctx, addr, []byte("cookie"), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	require.NoError(t, err)
+	defer c.Close()
+
+	parts, err := c.requestAll(ctx, wire.Feedbag, wire.FeedbagQuery, struct{}{})
+	require.NoError(t, err)
+	require.Len(t, parts, 2)
+	assert.Equal(t, "alice", parts[0].Body.(wire.SNAC_0x13_0x06_FeedbagReply).Items[0].Name)
+	assert.Equal(t, "bob", parts[1].Body.(wire.SNAC_0x13_0x06_FeedbagReply).Items[0].Name)
+}

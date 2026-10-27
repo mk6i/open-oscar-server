@@ -131,6 +131,8 @@ func Dial(ctx context.Context, cfg Config) (*Client, error) {
 // list, sets the profile and capabilities, and tells the server the client is
 // ready.
 func (c *Client) signon(ctx context.Context) error {
+	c.bos.negotiate(ctx)
+
 	reply, err := c.bos.request(ctx, wire.OService, wire.OServiceUserInfoQuery, struct{}{})
 	if err != nil {
 		return fmt.Errorf("query user info: %w", err)
@@ -139,22 +141,18 @@ func (c *Client) signon(ctx context.Context) error {
 		c.self = newUserInfo(info.UserInfo[0])
 	}
 
-	reply, err = c.bos.request(ctx, wire.Feedbag, wire.FeedbagQuery, struct{}{})
+	// a large buddy list may arrive in several parts
+	parts, err := c.bos.requestAll(ctx, wire.Feedbag, wire.FeedbagQuery, struct{}{})
 	if err != nil {
 		return fmt.Errorf("query buddy list: %w", err)
 	}
-	if fb, ok := reply.Body.(wire.SNAC_0x13_0x06_FeedbagReply); ok {
-		c.fb.items = fb.Items
+	for _, part := range parts {
+		if fb, ok := part.Body.(wire.SNAC_0x13_0x06_FeedbagReply); ok {
+			c.fb.items = append(c.fb.items, fb.Items...)
+		}
 	}
 
 	if err := c.bos.send(wire.Feedbag, wire.FeedbagUse, struct{}{}); err != nil {
-		return err
-	}
-
-	// learn when the server starts dropping requests for sending too fast
-	if err := c.bos.send(wire.OService, wire.OServiceRateParamsSubAdd, wire.SNAC_0x01_0x08_OServiceRateParamsSubAdd{
-		ClassIDs: []uint16{1, 2, 3, 4, 5},
-	}); err != nil {
 		return err
 	}
 
@@ -168,7 +166,7 @@ func (c *Client) signon(ctx context.Context) error {
 		return err
 	}
 
-	return c.bos.send(wire.OService, wire.OServiceClientOnline, wire.SNAC_0x01_0x02_OServiceClientOnline{})
+	return c.bos.clientOnline()
 }
 
 // Events returns the channel on which the client reports activity. The

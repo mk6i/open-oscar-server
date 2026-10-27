@@ -217,7 +217,8 @@ func (c *Client) joinFromNavInfo(ctx context.Context, reply wire.SNACMessage) (*
 	c.chats[room.ID()] = room
 	c.mu.Unlock()
 
-	if err := conn.send(wire.OService, wire.OServiceClientOnline, wire.SNAC_0x01_0x02_OServiceClientOnline{}); err != nil {
+	conn.negotiate(ctx)
+	if err := conn.clientOnline(); err != nil {
 		conn.Close()
 		c.mu.Lock()
 		delete(c.chats, room.ID())
