@@ -50,6 +50,8 @@ logic.
 | `server/kerberos` | Kerberos auth server.                                                                                                                                                                                          |
 | `server/http`     | Management HTTP API (users, sessions, chat rooms). Spec: `api.yml`.                                                                                                                                            |
 | `server/webapi`   | Web AIM-style API (AMF3). Spec: `docs/open_api/webapi.yml`.                                                                                                                                                    |
+| `client`          | OSCAR client library (BUCP login, buddy list, IMs, chat, profiles, warn/block) for testing the server. Independent of the server: the server must never import it.                                             |
+| `cmd/tui_client`  | Interactive terminal OSCAR client built on `client` (Bubble Tea). Run with `go run ./cmd/tui_client`.                                                                                                          |
 
 ## Database
 
