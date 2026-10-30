@@ -325,6 +325,9 @@ type ICQUserUpdater interface {
 // MessageRelayer defines methods for delivering SNAC messages to one or more
 // AIM screen names.
 type MessageRelayer interface {
+	// RelayToAll sends the given SNAC message to all sessions.
+	RelayToAll(ctx context.Context, msg wire.SNACMessage)
+
 	// RelayToScreenNames sends the given SNAC message to all specified screen names.
 	RelayToScreenNames(ctx context.Context, screenNames []state.IdentScreenName, msg wire.SNACMessage)
 

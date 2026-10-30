@@ -128,6 +128,15 @@ type MessageRelayer interface {
 	RelayToScreenName(ctx context.Context, screenName state.IdentScreenName, msg wire.SNACMessage)
 }
 
+// PopupDisplayer defines methods for showing popups to users.
+type PopupDisplayer interface {
+	// Display shows a popup to the given screen names.
+	Display(ctx context.Context, screenNames []state.IdentScreenName, message string, url string, width uint16, height uint16) error
+
+	// DisplayAll shows a popup to all connected users.
+	DisplayAll(ctx context.Context, message string, url string, width uint16, height uint16) error
+}
+
 // ICBMSender sends an instant message from the given sender instance as if
 // the sender submitted wire.ICBMChannelMsgToHost.
 type ICBMSender func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) (*wire.SNACMessage, error)
@@ -284,6 +293,19 @@ type instantMessage struct {
 	To           string `json:"to"`
 	Text         string `json:"text"`
 	StoreOffline bool   `json:"storeOffline"`
+}
+
+type popup struct {
+	Recipients []string `json:"recipients"`
+	Broadcast  bool     `json:"broadcast"`
+	Message    string   `json:"message"`
+	URL        string   `json:"url"`
+	Width      uint16   `json:"width"`
+	Height     uint16   `json:"height"`
+}
+
+type popupResult struct {
+	Offline []string `json:"offline"`
 }
 
 type directoryKeyword struct {

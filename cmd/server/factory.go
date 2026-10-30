@@ -406,6 +406,7 @@ func MgmtAPI(deps Container) *http.Server {
 		deps.sqLiteUserStore,
 		deps.sqLiteUserStore,
 	)
+	popupService := foodgroup.NewPopupService(deps.inMemorySessionManager, deps.legacyCharset)
 	return http.NewManagementAPI(
 		bld,
 		deps.cfg.APIListener,
@@ -419,6 +420,7 @@ func MgmtAPI(deps Container) *http.Server {
 		deps.sqLiteUserStore,          // directoryManager
 		deps.inMemorySessionManager,   // messageRelayer
 		deps.icbmSvc.ChannelMsgToHost, // icbmSender
+		popupService,                  // popupDisplayer
 		deps.sqLiteUserStore,          // bartAssetManager
 		deps.sqLiteUserStore,          // feedbagRetriever
 		deps.sqLiteUserStore,          // feedbagManager

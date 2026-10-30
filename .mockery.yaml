@@ -98,6 +98,9 @@ packages:
       MessageRelayer:
         config:
           filename: "mock_message_relayer_test.go"
+      PopupDisplayer:
+        config:
+          filename: "mock_popup_displayer_test.go"
       ProfileRetriever:
         config:
           filename: "mock_profile_retriever_test.go"

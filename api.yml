@@ -556,6 +556,73 @@ paths:
         '404':
           description: Recipient is offline and the message was not stored, either because storeOffline is false or because the recipient does not exist, does not accept offline messages, or has a full offline inbox.
 
+  /popup:
+    post:
+      summary: Display a popup
+      description: |
+        Display a popup window to the given recipients, or to all connected users
+        when broadcast is true. Set either recipients or broadcast, not both.
+        Popups are not stored for offline users. Popups do not scroll, so set
+        width and height to fit the message.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - message
+              properties:
+                recipients:
+                  type: array
+                  items:
+                    type: string
+                  description: The AIM screen names or ICQ UINs of the recipients.
+                broadcast:
+                  type: boolean
+                  default: false
+                  description: If true, display the popup to all connected users.
+                message:
+                  type: string
+                  minLength: 1
+                  maxLength: 8000
+                  description: The text content of the popup. Supports HTML. Encoded with ICBM_LEGACY_CHARSET, and characters outside it become '?'.
+                url:
+                  type: string
+                  maxLength: 2048
+                  description: The page opened by the More Info button. The button is hidden when omitted.
+                width:
+                  type: integer
+                  minimum: 0
+                  maximum: 65535
+                  default: 320
+                  description: The width of the text area.
+                height:
+                  type: integer
+                  minimum: 0
+                  maximum: 65535
+                  default: 200
+                  description: The height of the text area.
+      responses:
+        '200':
+          description: Popup sent.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  offline:
+                    type: array
+                    items:
+                      type: string
+                    description: Recipients who were offline and did not receive the popup.
+        '400':
+          description: Bad request. Invalid input data.
+        '404':
+          description: None of the recipients are online.
+        '500':
+          description: Internal server error.
+
   /version:
     get:
       summary: Get build information of RAS.

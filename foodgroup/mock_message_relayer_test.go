@@ -48,6 +48,52 @@ func (_m *mockMessageRelayer) EXPECT() *mockMessageRelayer_Expecter {
 	return &mockMessageRelayer_Expecter{mock: &_m.Mock}
 }
 
+// RelayToAll provides a mock function for the type mockMessageRelayer
+func (_mock *mockMessageRelayer) RelayToAll(ctx context.Context, msg wire.SNACMessage) {
+	_mock.Called(ctx, msg)
+	return
+}
+
+// mockMessageRelayer_RelayToAll_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RelayToAll'
+type mockMessageRelayer_RelayToAll_Call struct {
+	*mock.Call
+}
+
+// RelayToAll is a helper method to define mock.On call
+//   - ctx context.Context
+//   - msg wire.SNACMessage
+func (_e *mockMessageRelayer_Expecter) RelayToAll(ctx any, msg any) *mockMessageRelayer_RelayToAll_Call {
+	return &mockMessageRelayer_RelayToAll_Call{Call: _e.mock.On("RelayToAll", ctx, msg)}
+}
+
+func (_c *mockMessageRelayer_RelayToAll_Call) Run(run func(ctx context.Context, msg wire.SNACMessage)) *mockMessageRelayer_RelayToAll_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 wire.SNACMessage
+		if args[1] != nil {
+			arg1 = args[1].(wire.SNACMessage)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *mockMessageRelayer_RelayToAll_Call) Return() *mockMessageRelayer_RelayToAll_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *mockMessageRelayer_RelayToAll_Call) RunAndReturn(run func(ctx context.Context, msg wire.SNACMessage)) *mockMessageRelayer_RelayToAll_Call {
+	_c.Run(run)
+	return _c
+}
+
 // RelayToOtherInstances provides a mock function for the type mockMessageRelayer
 func (_mock *mockMessageRelayer) RelayToOtherInstances(ctx context.Context, instance *state.SessionInstance, msg wire.SNACMessage) {
 	_mock.Called(ctx, instance, msg)

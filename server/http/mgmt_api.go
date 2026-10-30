@@ -23,7 +23,7 @@ import (
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
-func NewManagementAPI(bld config.Build, listener string, userManager UserManager, sessionRetriever SessionRetriever, buddyBroadcaster BuddyBroadcaster, chatRoomRetriever ChatRoomRetriever, chatRoomCreator ChatRoomCreator, chatRoomDeleter ChatRoomDeleter, chatSessionRetriever ChatSessionRetriever, directoryManager DirectoryManager, messageRelayer MessageRelayer, icbmSender ICBMSender, bartAssetManager BARTAssetManager, feedbagRetriever FeedBagRetriever, feedbagManager FeedbagManager, accountManager AccountManager, profileRetriever ProfileRetriever, icqProfileManager ICQProfileManager, createAccount state.CreateAccountFunc, logger *slog.Logger) *Server {
+func NewManagementAPI(bld config.Build, listener string, userManager UserManager, sessionRetriever SessionRetriever, buddyBroadcaster BuddyBroadcaster, chatRoomRetriever ChatRoomRetriever, chatRoomCreator ChatRoomCreator, chatRoomDeleter ChatRoomDeleter, chatSessionRetriever ChatSessionRetriever, directoryManager DirectoryManager, messageRelayer MessageRelayer, icbmSender ICBMSender, popupDisplayer PopupDisplayer, bartAssetManager BARTAssetManager, feedbagRetriever FeedBagRetriever, feedbagManager FeedbagManager, accountManager AccountManager, profileRetriever ProfileRetriever, icqProfileManager ICQProfileManager, createAccount state.CreateAccountFunc, logger *slog.Logger) *Server {
 	mux := http.NewServeMux()
 
 	// Handlers for '/user' route
@@ -100,6 +100,11 @@ func NewManagementAPI(bld config.Build, listener string, userManager UserManager
 	// Handlers for '/instant-message' route
 	mux.HandleFunc("POST /instant-message", func(w http.ResponseWriter, r *http.Request) {
 		postInstantMessageHandler(w, r, userManager, icbmSender, logger)
+	})
+
+	// Handlers for '/popup' route
+	mux.HandleFunc("POST /popup", func(w http.ResponseWriter, r *http.Request) {
+		postPopupHandler(w, r, sessionRetriever, popupDisplayer, logger)
 	})
 
 	// Handlers for '/version' route
@@ -696,6 +701,66 @@ func postInstantMessageHandler(w http.ResponseWriter, r *http.Request, userManag
 
 	w.WriteHeader(http.StatusOK)
 	_, _ = fmt.Fprintln(w, "Message sent successfully.")
+}
+
+const (
+	maxPopupMessageLen = 8000
+	maxPopupURLLen     = 2048
+)
+
+// postPopupHandler handles the POST /popup endpoint.
+func postPopupHandler(w http.ResponseWriter, r *http.Request, sessionRetriever SessionRetriever, popupDisplayer PopupDisplayer, logger *slog.Logger) {
+	input := popup{}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		http.Error(w, "malformed input", http.StatusBadRequest)
+		return
+	}
+	if input.Broadcast == (len(input.Recipients) > 0) {
+		http.Error(w, "set either recipients or broadcast", http.StatusBadRequest)
+		return
+	}
+	if input.Message == "" || len(input.Message) > maxPopupMessageLen {
+		http.Error(w, fmt.Sprintf("message must be 1 to %d bytes", maxPopupMessageLen), http.StatusBadRequest)
+		return
+	}
+	if len(input.URL) > maxPopupURLLen {
+		http.Error(w, fmt.Sprintf("url must not exceed %d bytes", maxPopupURLLen), http.StatusBadRequest)
+		return
+	}
+
+	var err error
+	out := popupResult{Offline: []string{}}
+	if input.Broadcast {
+		err = popupDisplayer.DisplayAll(r.Context(), input.Message, input.URL, input.Width, input.Height)
+	} else {
+		online := make([]state.IdentScreenName, 0, len(input.Recipients))
+		for _, recipient := range input.Recipients {
+			screenName := state.NewIdentScreenName(recipient)
+			if slices.Contains(online, screenName) {
+				continue
+			}
+			if sessionRetriever.RetrieveSession(screenName) == nil {
+				out.Offline = append(out.Offline, recipient)
+				continue
+			}
+			online = append(online, screenName)
+		}
+		if len(online) == 0 {
+			http.Error(w, "no recipients are online", http.StatusNotFound)
+			return
+		}
+		err = popupDisplayer.Display(r.Context(), online, input.Message, input.URL, input.Width, input.Height)
+	}
+	if err != nil {
+		logger.Error("error displaying popup POST /popup", "err", err.Error())
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(out); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 // getUserBuddyIconHandler handles the GET /user/{screenname}/icon endpoint.

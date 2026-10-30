@@ -314,18 +314,25 @@ func transcodeICQMessage(enc encoding.Encoding, recipUnicode bool, tlv wire.TLV)
 // transcodeFromUnicode encodes UCS-2BE text into enc. Characters enc cannot
 // represent become '?'.
 func transcodeFromUnicode(enc encoding.Encoding, msg []byte) ([]wire.ICBMCh1Fragment, error) {
-	text, err := encoding.ReplaceUnsupported(enc.NewEncoder()).Bytes([]byte(wire.DecodeUCS2BE(msg)))
+	text, err := encodeLegacy(enc, wire.DecodeUCS2BE(msg))
 	if err != nil {
 		return nil, fmt.Errorf("unable to unmarshal ICBM message: %w", err)
 	}
-	// ReplaceUnsupported substitutes the non-printing ASCII SUB character.
-	text = bytes.ReplaceAll(text, []byte{encoding.ASCIISub}, []byte{'?'})
 
 	frags, err := wire.ICBMFragmentListASCII(string(text))
 	if err != nil {
 		return nil, fmt.Errorf("unable to unmarshal ICBM message: %w", err)
 	}
 	return frags, nil
+}
+
+func encodeLegacy(enc encoding.Encoding, text string) ([]byte, error) {
+	encoded, err := encoding.ReplaceUnsupported(enc.NewEncoder()).Bytes([]byte(text))
+	if err != nil {
+		return nil, err
+	}
+	// ReplaceUnsupported substitutes the non-printing ASCII SUB character.
+	return bytes.ReplaceAll(encoded, []byte{encoding.ASCIISub}, []byte{'?'}), nil
 }
 
 func transcodeToUnicode(enc encoding.Encoding, msg []byte) ([]wire.ICBMCh1Fragment, error) {
