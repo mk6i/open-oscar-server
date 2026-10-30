@@ -181,8 +181,6 @@ type directoryManagerParams struct {
 	deleteCategoryParams
 	deleteKeywordParams
 	keywordsByCategoryParams
-	setDirectoryInfoParams
-	setKeywordsParams
 }
 
 // aimDirectoryEntriesParams is the list of parameters passed at the mock
@@ -235,22 +233,6 @@ type deleteKeywordParams []struct {
 type keywordsByCategoryParams []struct {
 	categoryID uint8
 	result     []state.Keyword
-	err        error
-}
-
-// setDirectoryInfoParams is the list of parameters passed at the mock
-// DirectoryManager.SetDirectoryInfo call site
-type setDirectoryInfoParams []struct {
-	screenName state.IdentScreenName
-	info       state.AIMNameAndAddr
-	err        error
-}
-
-// setKeywordsParams is the list of parameters passed at the mock
-// DirectoryManager.SetKeywords call site
-type setKeywordsParams []struct {
-	screenName state.IdentScreenName
-	keywords   [5]string
 	err        error
 }
 

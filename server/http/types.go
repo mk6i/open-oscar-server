@@ -104,13 +104,6 @@ type DirectoryManager interface {
 
 	// KeywordsByCategory returns all keywords under the specified category.
 	KeywordsByCategory(ctx context.Context, categoryID uint8) ([]state.Keyword, error)
-
-	// SetDirectoryInfo sets a user's directory info. It returns
-	// state.ErrNoUser if the user does not exist.
-	SetDirectoryInfo(ctx context.Context, screenName state.IdentScreenName, info state.AIMNameAndAddr) error
-
-	// SetKeywords sets a user's directory keywords.
-	SetKeywords(ctx context.Context, screenName state.IdentScreenName, keywords [5]string) error
 }
 
 // FeedBagRetriever defines methods for retrieving buddy list metadata.
@@ -307,7 +300,7 @@ type directoryCategory struct {
 	Name string `json:"name"`
 }
 
-type directoryUserHandle struct {
+type aimDirectoryEntryHandle struct {
 	ScreenName string   `json:"screen_name"`
 	FirstName  string   `json:"first_name"`
 	MiddleName string   `json:"middle_name"`

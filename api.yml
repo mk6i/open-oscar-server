@@ -197,30 +197,6 @@ paths:
         '404':
           description: User not found, or user has no buddy icon
 
-  /user/{screenname}/directory:
-    delete:
-      summary: Clear a user's directory entry
-      description: Clear the name, address and keywords from a user's entry in the OSCAR user directory.
-      parameters:
-        - in: path
-          name: screenname
-          schema:
-            type: string
-          description: User's screen name.
-          required: true
-      responses:
-        '204':
-          description: Directory entry cleared successfully.
-        '404':
-          description: User not found.
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-
   /session:
     get:
       summary: Get active sessions
@@ -853,10 +829,10 @@ paths:
                   message:
                     type: string
 
-  /directory/user:
+  /directory/aim:
     get:
-      summary: Get all user directory entries
-      description: Retrieve the OSCAR user directory entries of all users who have directory info or keywords set.
+      summary: Get all AIM user directory entries
+      description: Retrieve the AIM user directory entries of all users who have directory info or keywords set.
       responses:
         '200':
           description: Successful response containing a list of directory entries.
