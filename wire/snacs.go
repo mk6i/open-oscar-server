@@ -1214,7 +1214,16 @@ type SNAC_0x07_0x07_AdminConfirmReply struct {
 const (
 	PopupErr     uint16 = 0x0001
 	PopupDisplay uint16 = 0x0002
+
+	PopupTLVMessage uint16 = 0x0001
+	PopupTLVURL     uint16 = 0x0002
+	PopupTLVWidth   uint16 = 0x0003
+	PopupTLVHeight  uint16 = 0x0004
 )
+
+type SNAC_0x08_0x02_PopupDisplay struct {
+	TLVRestBlock
+}
 
 //
 // 0x09: PermitDeny
