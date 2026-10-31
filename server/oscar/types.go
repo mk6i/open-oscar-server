@@ -138,6 +138,7 @@ type ICQService interface {
 	SetWorkInfo(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x03F3_DBQueryMetaReqSetWorkInfo, seq uint16) error
 	ShortUserInfo(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x04BA_DBQueryMetaReqShortInfo, seq uint16) error
 	XMLReqData(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x0898_DBQueryMetaReqXMLReq, seq uint16) error
+	DirectoryQuery(ctx context.Context, instance *state.SessionInstance, frame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryQuery, seq uint16) error
 }
 
 type LocateService interface {

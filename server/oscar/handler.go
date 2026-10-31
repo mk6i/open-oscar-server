@@ -549,6 +549,14 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 				return nil
 			}
 			return rt.FullUserInfo(ctx, instance, inFrame, userInfo, icqMD.Seq)
+		case wire.ICQDBQueryMetaReqDirectoryQuery:
+			envelope := wire.ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryQuery{}
+			if err := wire.UnmarshalLE(&envelope, buf); err != nil {
+				return err
+			}
+			if err := rt.ICQService.DirectoryQuery(ctx, instance, inFrame, envelope, icqMD.Seq); err != nil {
+				return err
+			}
 		case wire.ICQDBQueryMetaReqXMLReq:
 			req := wire.ICQ_0x07D0_0x0898_DBQueryMetaReqXMLReq{}
 			if err := wire.UnmarshalLE(&req, buf); err != nil {

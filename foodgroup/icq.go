@@ -3,9 +3,11 @@ package foodgroup
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -66,6 +68,231 @@ func (s *ICQService) DeleteMsgReq(ctx context.Context, instance *state.SessionIn
 		return fmt.Errorf("deleting messages: %w", err)
 	}
 	return nil
+}
+
+func (s *ICQService) DirectoryQuery(ctx context.Context, instance *state.SessionInstance, frame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryQuery, seq uint16) error {
+	req := wire.ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryBody{}
+	if err := wire.UnmarshalBE(&req, bytes.NewReader(inBody.Body)); err != nil {
+		return err
+	}
+
+	// QIP 2012 puts the meta request subtype in the nested SNAC.
+	subType := req.SubType
+	if subType == wire.ICQDBQueryMetaReqDirectoryQuery {
+		subType = wire.ICQDirectoryQueryInfo
+	}
+	versioned := req.Flags&0x8000 != 0
+
+	switch subType {
+	case wire.ICQDirectoryQueryInfo, wire.ICQDirectoryQueryMultiInfo:
+	default:
+		return s.directoryError(ctx, instance, frame.RequestID, seq, subType, versioned)
+	}
+
+	body2 := struct {
+		Extras *struct {
+			Body []byte `oscar:"len_prefix=uint16"`
+		} `oscar:"variant"`
+		Filler [8]byte
+		Block  uint16
+	}{}
+	if versioned {
+		body2.Extras = &struct {
+			Body []byte `oscar:"len_prefix=uint16"`
+		}{}
+	}
+	bodReader := bytes.NewReader(req.Body)
+	if err := wire.UnmarshalBE(&body2, bodReader); err != nil {
+		return err
+	}
+
+	if body2.Block != 2 {
+		return nil
+	}
+
+	body3 := struct {
+		Page  uint16
+		Count uint16
+		wire.TLVLBlock
+	}{}
+	if err := wire.UnmarshalBE(&body3, bodReader); err != nil {
+		return err
+	}
+
+	var c state.ICQUserSearchCriteria
+	for _, tlv := range body3.TLVList {
+		val := string(tlv.Value)
+		if val == "" {
+			continue
+		}
+		switch tlv.Tag {
+		case wire.ICQDirTLVTagsUID:
+			if uin, err := strconv.ParseUint(val, 10, 32); err == nil {
+				c.UIN = new(uint32(uin))
+			}
+		case wire.ICQDirTLVTagsFirstName:
+			c.FirstName = new(val)
+		case wire.ICQDirTLVTagsLastName:
+			c.LastName = new(val)
+		case wire.ICQDirTLVTagsNickname:
+			c.NickName = new(val)
+		case wire.ICQDirTLVTagsVerifiedEmail:
+			c.Email = new(val)
+		}
+	}
+
+	users, err := s.userFinder.SearchICQUsers(ctx, c)
+	if err != nil {
+		s.logger.ErrorContext(ctx, "directory search failed", "requester", instance.UIN(), "err", err.Error())
+		return s.directoryError(ctx, instance, frame.RequestID, seq, subType, versioned)
+	}
+
+	if len(users) == 0 {
+		// A zero block count closes the search on the client.
+		return s.directoryReply(ctx, instance, frame.RequestID, seq, directoryReplyBody{
+			subType:   wire.ICQDirectoryQueryInfoAck,
+			result:    wire.ICQDirectoryResultOK,
+			pages:     1,
+			versioned: versioned,
+		})
+	}
+
+	total := uint32(len(users))
+	for i, u := range users {
+		last := i == len(users)-1
+
+		tlvs := wire.TLVList{}
+		tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsUID, u.IdentScreenName.String()))
+
+		if u.ICQInfo.Basic.FirstName != "" {
+			tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsFirstName, u.ICQInfo.Basic.FirstName))
+		}
+		if u.ICQInfo.Basic.LastName != "" {
+			tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsLastName, u.ICQInfo.Basic.LastName))
+		}
+		if u.ICQInfo.Basic.Nickname != "" {
+			tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsNickname, u.ICQInfo.Basic.Nickname))
+		}
+		if u.ICQInfo.Basic.EmailAddress != "" {
+			tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsVerifiedEmail, u.ICQInfo.Basic.EmailAddress))
+		}
+		if u.ICQInfo.More.Gender != 0 {
+			tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsGender, uint8(u.ICQInfo.More.Gender)))
+		}
+		if days, ok := wire.ICQDirDate(u.ICQInfo.More.BirthYear, u.ICQInfo.More.BirthMonth, u.ICQInfo.More.BirthDay); ok {
+			tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsBirthDate, dirDateBytes(days)))
+		}
+
+		authOptional := uint8(0)
+		if !u.ICQInfo.Permissions.AuthRequired {
+			authOptional = 1
+		}
+		tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsAuthRequired, authOptional))
+
+		if u.ICQInfo.Basic.CountryCode != 0 {
+			addr := wire.TLVList{}
+			// 0x008C is the country tag inside an address record.
+			addr.Append(wire.NewTLVBE(0x008C, uint32(u.ICQInfo.Basic.CountryCode)))
+			blob := &bytes.Buffer{}
+			if err := wire.MarshalBE(wire.TLVRestBlock{TLVList: addr}, blob); err != nil {
+				return err
+			}
+			tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsHomeAddress, blob.Bytes()))
+		}
+
+		err := s.directoryReply(ctx, instance, frame.RequestID, seq, directoryReplyBody{
+			subType:   wire.ICQDirectoryQueryInfoAck,
+			result:    wire.ICQDirectoryResultOK,
+			item:      tlvs,
+			total:     total,
+			pages:     1,
+			more:      !last,
+			versioned: versioned,
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// directoryReplyBody describes the contents of a directory reply. An empty item
+// means "nothing found" and leaves the block count at zero. The version block is
+// written only when the client sent one.
+type directoryReplyBody struct {
+	subType   uint16
+	result    uint8
+	item      wire.TLVList
+	total     uint32
+	pages     uint16
+	more      bool
+	versioned bool
+}
+
+// directoryReply wraps a directory reply in the directory envelope and sends it.
+// A client parses exactly one record per packet, so each hit is sent on its own
+// with the more-to-come flag raised on all but the last. Only the last packet
+// of a result set uses the "response" subtype, which is what closes the search.
+func (s *ICQService) directoryReply(ctx context.Context, instance *state.SessionInstance, requestID uint32, seq uint16, r directoryReplyBody) error {
+	header := wire.ICQDirectoryReply{
+		SNACFamily: wire.ICQDirectorySNACFamily,
+		SubType:    r.subType,
+		Result:     r.result,
+		Total:      r.total,
+		BlockCount: 1, // let's see if we really need to set this to 0 to indicate no records
+		Items:      wire.TLVLBlock{TLVList: r.item},
+	}
+	if r.more {
+		header.Flags |= 0x0001
+	}
+	if r.versioned {
+		header.SetVersion1(r.pages)
+	}
+
+	body := &bytes.Buffer{}
+	if err := wire.MarshalBE(header, body); err != nil {
+		return err
+	}
+
+	if body.Len() > math.MaxUint16 {
+		return errors.New("directory payload too long")
+	}
+
+	snacFlags := uint16(0)
+	replySubType := wire.ICQDBQueryMetaReplyDirectoryResponse
+	if r.more {
+		snacFlags = wire.SNACFlagsMoreToCome
+		replySubType = wire.ICQDBQueryMetaReplyDirectoryData
+	}
+
+	msg := wire.ICQMessageReplyEnvelope{
+		Message: wire.ICQ_0x07DA_0x0FAA_DBQueryMetaReplyDirectory{
+			ICQMetadata: wire.ICQMetadata{
+				UIN:     instance.UIN(),
+				ReqType: wire.ICQDBQueryMetaReply,
+				Seq:     seq,
+			},
+			ReqSubType: replySubType,
+			Success:    wire.ICQStatusCodeOK,
+			Payload:    body.Bytes(),
+		},
+	}
+	return s.reply(ctx, instance, msg, requestID, snacFlags)
+}
+
+// directoryError answers with a refusal in the directory envelope.
+func (s *ICQService) directoryError(ctx context.Context, instance *state.SessionInstance, requestID uint32, seq uint16, subType uint16, versioned bool) error {
+	return s.directoryReply(ctx, instance, requestID, seq, directoryReplyBody{
+		subType:   subType,
+		versioned: versioned,
+	})
+}
+
+// dirDateBytes encodes a day count as the big-endian float the client expects.
+func dirDateBytes(days float64) []byte {
+	var buf [8]byte
+	binary.BigEndian.PutUint64(buf[:], math.Float64bits(days))
+	return buf[:]
 }
 
 func (s *ICQService) FindByICQName(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x0515_DBQueryMetaReqSearchByDetails, seq uint16) error {

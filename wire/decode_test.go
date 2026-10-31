@@ -694,6 +694,127 @@ func TestUnmarshal(t *testing.T) {
 			},
 			given: []byte{0x0, 0xa, 0x0, 0x2, 0x4, 0xd2, 0x0, 0x14, 0x0, 0x2, 0x4, 0xd2},
 		},
+		{
+			name: "variant struct pre-set is filled mid-struct",
+			prototype: &struct {
+				Val0    uint16
+				Variant *struct {
+					Val1 uint16
+				} `oscar:"variant"`
+				Val2 uint8
+			}{
+				Variant: &struct {
+					Val1 uint16
+				}{},
+			},
+			want: &struct {
+				Val0    uint16
+				Variant *struct {
+					Val1 uint16
+				} `oscar:"variant"`
+				Val2 uint8
+			}{
+				Val0: 34,
+				Variant: &struct {
+					Val1 uint16
+				}{
+					Val1: 100,
+				},
+				Val2: 7,
+			},
+			given: []byte{
+				0x00, 0x22, // Val0
+				0x00, 0x64, // Val1
+				0x07, // Val2
+			},
+		},
+		{
+			name: "variant struct nil is skipped and consumes nothing",
+			prototype: &struct {
+				Val0    uint16
+				Variant *struct {
+					Val1 uint16
+				} `oscar:"variant"`
+				Val2 uint8
+			}{},
+			want: &struct {
+				Val0    uint16
+				Variant *struct {
+					Val1 uint16
+				} `oscar:"variant"`
+				Val2 uint8
+			}{
+				Val0: 34,
+				Val2: 7,
+			},
+			given: []byte{
+				0x00, 0x22, // Val0
+				0x07, // Val2
+			},
+		},
+		{
+			name: "variant struct pre-set with uint16 len_prefix",
+			prototype: &struct {
+				Variant *struct {
+					Val1 uint16
+				} `oscar:"len_prefix=uint16,variant"`
+				Val2 uint8
+			}{
+				Variant: &struct {
+					Val1 uint16
+				}{},
+			},
+			want: &struct {
+				Variant *struct {
+					Val1 uint16
+				} `oscar:"len_prefix=uint16,variant"`
+				Val2 uint8
+			}{
+				Variant: &struct {
+					Val1 uint16
+				}{
+					Val1: 100,
+				},
+				Val2: 7,
+			},
+			given: []byte{
+				0x00, 0x02, // Variant len
+				0x00, 0x64, // Val1
+				0x07, // Val2
+			},
+		},
+		{
+			name: "variant struct pre-set with read error",
+			prototype: &struct {
+				Variant *struct {
+					Val1 uint16
+				} `oscar:"variant"`
+			}{
+				Variant: &struct {
+					Val1 uint16
+				}{},
+			},
+			wantErr: io.ErrUnexpectedEOF,
+			given:   []byte{0x00},
+		},
+		{
+			name: "variant field that isn't a pointer to a struct is unsupported",
+			prototype: &struct {
+				Variant *uint16 `oscar:"variant"`
+			}{},
+			wantErr: ErrUnmarshalFailure,
+			given:   []byte{0x00, 0x22},
+		},
+		{
+			name: "variant and optional on the same field is unsupported",
+			prototype: &struct {
+				Variant *struct {
+					Val1 uint16
+				} `oscar:"variant,optional"`
+			}{},
+			wantErr: ErrUnmarshalFailure,
+			given:   []byte{0x00, 0x22},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

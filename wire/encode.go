@@ -15,6 +15,7 @@ var (
 	errMarshalFailureNilSNAC = errors.New("attempting to marshal a nil SNAC")
 	errNonOptionalPointer    = errors.New("pointer fields must reference structs and have an `optional` struct tag")
 	errOptionalNonPointer    = errors.New("optional fields must be pointers")
+	errVariantNonPointer     = errors.New("variant fields must be pointers to structs")
 	errInvalidStructTag      = errors.New("invalid struct tag")
 )
 
@@ -42,6 +43,16 @@ func marshal(t reflect.Type, v reflect.Value, tag reflect.StructTag, w io.Writer
 	oscTag, err := parseOSCARTag(tag)
 	if err != nil {
 		return err
+	}
+
+	if oscTag.variant {
+		if err := checkVariantType(t); err != nil {
+			return err
+		}
+		if v.IsNil() {
+			return nil // variant is not present
+		}
+		return marshalStruct(t.Elem(), v.Elem(), oscTag, w, order)
 	}
 
 	if oscTag.optional {
@@ -73,6 +84,14 @@ func marshal(t reflect.Type, v reflect.Value, tag reflect.StructTag, w io.Writer
 	default:
 		return fmt.Errorf("unsupported type %v", t.Kind())
 	}
+}
+
+// checkVariantType verifies that a variant field is a pointer to a struct.
+func checkVariantType(t reflect.Type) error {
+	if t.Kind() != reflect.Pointer || t.Elem().Kind() != reflect.Struct {
+		return fmt.Errorf("%w: got %v", errVariantNonPointer, t)
+	}
+	return nil
 }
 
 func marshalInterface(v reflect.Value, w io.Writer, tag oscarTag, order binary.ByteOrder) error {
@@ -156,7 +175,11 @@ func marshalStruct(t reflect.Type, v reflect.Value, oscTag oscarTag, w io.Writer
 		for i := 0; i < t.NumField(); i++ {
 			field := t.Field(i)
 			value := v.Field(i)
-			if field.Type.Kind() == reflect.Pointer {
+			fieldTag, err := parseOSCARTag(field.Tag)
+			if err != nil {
+				return err
+			}
+			if field.Type.Kind() == reflect.Pointer && !fieldTag.variant {
 				if i != t.NumField()-1 {
 					return fmt.Errorf("pointer type found at non-final field %s", field.Name)
 				}
@@ -212,6 +235,9 @@ type oscarTag struct {
 	hasLenPrefix   bool
 	lenPrefix      reflect.Kind
 	optional       bool
+	// variant marks a pointer-to-struct field that is processed only if the
+	// pointer is non-nil, at any position in the struct.
+	variant        bool
 	nullTerminated bool
 	// quirk names an unmarshal-only decode exception
 	quirk string
@@ -273,6 +299,8 @@ func parseOSCARTag(tag reflect.StructTag) (oscarTag, error) {
 			switch key {
 			case "optional":
 				oscTag.optional = true
+			case "variant":
+				oscTag.variant = true
 			case "nullterm":
 				oscTag.nullTerminated = true
 			default:
@@ -285,6 +313,9 @@ func parseOSCARTag(tag reflect.StructTag) (oscarTag, error) {
 	var err error
 	if oscTag.hasCountPrefix && oscTag.hasLenPrefix {
 		err = fmt.Errorf("%w: struct elem has both len_prefix and count_prefix", errInvalidStructTag)
+	}
+	if oscTag.variant && oscTag.optional {
+		err = fmt.Errorf("%w: struct elem has both variant and optional", errInvalidStructTag)
 	}
 	return oscTag, err
 }

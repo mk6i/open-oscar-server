@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/google/uuid"
@@ -2069,6 +2070,7 @@ const (
 	ICQTLVTagsOriginallyFromState       uint16 = 0x032A // User originally from state
 	ICQTLVTagsOriginallyFromCountryCode uint16 = 0x0334 // User originally from country (code)
 
+	ICQDirTLVTagsUID            uint16 = 0x0032 // Privacy token (16 bytes)
 	ICQDirTLVTagsPrivacyToken   uint16 = 0x003C // Privacy token (16 bytes)
 	ICQDirTLVTagsVerifiedEmail  uint16 = 0x0050 // Verified email address
 	ICQDirTLVTagsPendingEmail   uint16 = 0x0055 // Pending email address
@@ -2099,6 +2101,10 @@ const (
 	ICQDirTLVTagsWebAware       uint16 = 0x0212 // Web aware flag (online visibility via web)
 	ICQDirTLVTagsStatusNote     uint16 = 0x0226 // Status note/message
 
+	ICQDirGenderUnknown uint8 = 0
+	ICQDirGenderFemale  uint8 = 1
+	ICQDirGenderMale    uint8 = 2
+
 	ICQStatusCodeOK   uint8 = 0x0A
 	ICQStatusCodeFail uint8 = 0x32
 	ICQStatusCodeErr  uint8 = 0x14
@@ -2110,6 +2116,23 @@ const (
 	ICQDBQueryMetaReq             uint16 = 0x07D0
 	ICQDBQueryMetaReply           uint16 = 0x07DA
 )
+
+// icqDirEpoch is where dates start in the directory protocol.
+var icqDirEpoch = time.Date(1900, time.January, 1, 0, 0, 0, 0, time.UTC)
+
+// ICQDirDate converts a date into the day count the directory protocol uses.
+// It returns false if the date is unset or precedes the epoch.
+func ICQDirDate(year uint16, month uint8, day uint8) (float64, bool) {
+	if year == 0 || month == 0 || day == 0 {
+		return 0, false
+	}
+	t := time.Date(int(year), time.Month(month), int(day), 0, 0, 0, 0, time.UTC)
+	days := t.Sub(icqDirEpoch).Hours() / 24
+	if days < 0 {
+		return 0, false
+	}
+	return days, true
+}
 
 const (
 	ICQUserFlagPublishEmailYes uint8 = 0
@@ -2203,6 +2226,28 @@ type ICQ_0x07D0_0x0654_DBQueryMetaReqSetICQPhone struct {
 
 type ICQ_0x07D0_0x051F_DBQueryMetaReqSearchByUIN struct {
 	UIN uint32
+}
+
+type ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryQuery struct {
+	Body []byte `oscar:"len_prefix=uint16"`
+	//BigEndianRequestEnvelope
+	//Envelope struct {
+	//	Family  uint16
+	//	SubType uint16
+	//	Flags   uint16
+	//	Seq     uint16
+	//	Command uint16
+	//	Body    []byte
+	//} `oscar:"len_prefix=uint16"`
+}
+
+type ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryBody struct {
+	Family  uint16
+	SubType uint16
+	Flags   uint16
+	Seq     uint16
+	Command uint16
+	Body    []byte
 }
 
 type ICQ_0x07D0_0x0569_DBQueryMetaReqSearchByUIN2 struct {
@@ -2349,6 +2394,82 @@ type ICQ_0x07D0_0x03EA_DBQueryMetaReqSetBasicInfo struct {
 
 type SNAC_0x15_0x02_DBReply struct {
 	TLVRestBlock
+}
+
+const (
+	// ICQDirectorySNACFamily is the family of the nested SNAC header that a
+	// directory request and reply carry inside the meta message.
+	ICQDirectorySNACFamily uint16 = 0x05B9
+
+	// ICQDirectorySNACVersion goes into TLV(1) of the nested header's extra
+	// block.
+	ICQDirectorySNACVersion uint16 = 0x0002
+)
+
+const (
+	ICQDirectoryQueryInfo      uint16 = 0x0002
+	ICQDirectoryQueryMultiInfo uint16 = 0x0006
+	ICQDirectoryQueryInfoAck   uint16 = 0x0009
+	ICQDirectorySetInfo        uint16 = 0x0003
+	ICQDirectorySetInfoAck     uint16 = 0x000A
+)
+
+// ICQDirectoryResultOK is the result byte of a successful directory reply.
+const ICQDirectoryResultOK uint8 = 0x01
+
+const (
+	ICQDBQueryMetaReplyDirectoryData      uint16 = 0x0FAA
+	ICQDBQueryMetaReplyDirectoryResponse  uint16 = 0x0FB4
+	ICQDBQueryMetaReplyDirectoryUpdateAck uint16 = 0x0FDC
+)
+
+type ICQ_0x07DA_0x0FAA_DBQueryMetaReplyDirectory struct {
+	ICQMetadata
+	ReqSubType uint16
+	Success    uint8
+	Payload    []byte `oscar:"len_prefix=uint16,nullterm"`
+}
+
+// ICQDirectoryReply is the nested directory SNAC that carries a directory
+// query reply inside the meta reply payload. The variant fields are present
+// only when the client sent the version block, and Items holds at most one
+// block, the hit.
+type ICQDirectoryReply struct {
+	SNACFamily uint16
+	SubType    uint16
+	Flags      uint16
+	Seq        uint16
+	Command    uint16
+	Extras     *TLVLBlock `oscar:"variant"`
+	Result     uint8
+	ErrMsg     string `oscar:"len_prefix=uint16"`
+	Void       [10]byte
+	Void2      *struct {
+		Void [6]byte
+	} `oscar:"variant"`
+	Total uint32
+	Pages *struct {
+		Pages uint16
+	} `oscar:"variant"`
+	BlockCount uint16
+	Items      TLVLBlock
+}
+
+// SetVersion1 fills in the variant fields that clients sending the version
+// block expect.
+func (r *ICQDirectoryReply) SetVersion1(pages uint16) {
+	r.Flags |= 0x8000
+	r.Extras = &TLVLBlock{
+		TLVList: TLVList{
+			NewTLVBE(1, ICQDirectorySNACVersion),
+		},
+	}
+	r.Void2 = &struct {
+		Void [6]byte
+	}{}
+	r.Pages = &struct {
+		Pages uint16
+	}{Pages: pages}
 }
 
 type ICQ_0x07DA_0x010E_DBQueryMetaReplyHomePageCat struct {
@@ -2520,6 +2641,10 @@ type ICQMetadata struct {
 // ICQMessageRequestEnvelope is a helper struct that provides syntactic sugar for
 // unmarshaling an ICQ message into a little-endian byte array.
 type ICQMessageRequestEnvelope struct {
+	Body []byte `oscar:"len_prefix=uint16"`
+}
+
+type BigEndianRequestEnvelope struct {
 	Body []byte `oscar:"len_prefix=uint16"`
 }
 
