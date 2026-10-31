@@ -3,14 +3,13 @@ package webapi
 import (
 	"bytes"
 	"context"
+	"crypto/md5"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"log/slog"
-	mrand "math/rand/v2"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -515,11 +514,16 @@ func (s *Session) handleIncomingIM(msg wire.SNACMessage) {
 	// Check if it's an auto-response (channel 2)
 	autoResponse := body.ChannelID == 0x0002
 
-	// msgId must be unique per delivered event. The OSCAR cookie is not a
-	// reliable unique id (some clients reuse it across messages), and the web
-	// client dedupes its conversation list by msgId, silently dropping any
-	// collisions. Mint a fresh random id instead of reusing body.Cookie.
-	msgID := strconv.FormatUint(mrand.Uint64(), 16)
+	// msgId must be unique per delivered event so that the client can properly
+	// dedupe messages. the SNAC contains enough unique data—request ID, cookie,
+	// message text—that hashing the whole struct creates a sufficiently unique
+	// identifier.
+	h := md5.New()
+	if err := wire.MarshalBE(msg, h); err != nil {
+		s.logger.Error("unable to marshal ICBM msg for hash", "err", err.Error())
+	}
+	msgID := hex.EncodeToString(h.Sum(nil))
+
 	// SNAC user info carries the sender's display screen name. The web client
 	// keys conversations and users by the normalized aimId and only renders
 	// displayId, so the two forms must not be interchanged.

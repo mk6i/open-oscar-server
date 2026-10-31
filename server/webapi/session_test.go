@@ -695,6 +695,122 @@ func TestSession_HandleIncomingIM_TracksPeerWantsTyping(t *testing.T) {
 	assert.False(t, sess.PeerWantsTyping(peer))
 }
 
+// The client dedupes delivered IMs by msgId, so the id is derived from the SNAC:
+// the same SNAC always maps to the same id, and SNACs that differ get different ids.
+func TestSession_HandleIncomingIM_MsgID(t *testing.T) {
+	type imParams struct {
+		cookie uint64
+		sender string
+		text   string
+	}
+
+	newIM := func(t *testing.T, p imParams) wire.SNACMessage {
+		t.Helper()
+		frags, err := wire.ICBMFragmentListASCII(p.text)
+		require.NoError(t, err)
+		body := wire.SNAC_0x04_0x07_ICBMChannelMsgToClient{
+			Cookie:      p.cookie,
+			ChannelID:   wire.ICBMChannelIM,
+			TLVUserInfo: wire.TLVUserInfo{ScreenName: p.sender},
+		}
+		body.Append(wire.NewTLVBE(wire.ICBMTLVAOLIMData, frags))
+		return wire.SNACMessage{
+			Frame: wire.SNACFrame{
+				FoodGroup: wire.ICBM,
+				SubGroup:  wire.ICBMChannelMsgToClient,
+				RequestID: wire.ReqIDFromServer,
+			},
+			Body: body,
+		}
+	}
+
+	newSession := func() *Session {
+		return &Session{
+			ScreenName:    state.DisplayScreenName("me"),
+			Events:        []string{"im", "conversation"},
+			EventQueue:    NewEventQueue(10),
+			logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+			FeedbagLoader: emptyFeedbagLoader,
+		}
+	}
+
+	msgIDOf := func(t *testing.T, msg wire.SNACMessage) string {
+		t.Helper()
+		sess := newSession()
+		sess.handleIncomingIM(msg)
+		events := sess.EventQueue.GetAllEvents()
+		require.NotEmpty(t, events)
+		return events[0].Data.(IMEvent).MsgID
+	}
+
+	base := imParams{cookie: 1234, sender: "Mike Kelly", text: "hello"}
+
+	tests := []struct {
+		name     string
+		other    imParams
+		wantSame bool
+	}{
+		{
+			name:     "identical SNAC yields the same msgId",
+			other:    base,
+			wantSame: true,
+		},
+		{
+			name:     "different cookie yields a different msgId",
+			other:    imParams{cookie: 5678, sender: base.sender, text: base.text},
+			wantSame: false,
+		},
+		{
+			name:     "different text yields a different msgId",
+			other:    imParams{cookie: base.cookie, sender: base.sender, text: "goodbye"},
+			wantSame: false,
+		},
+		{
+			name:     "different sender yields a different msgId",
+			other:    imParams{cookie: base.cookie, sender: "Someone Else", text: base.text},
+			wantSame: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			baseID := msgIDOf(t, newIM(t, base))
+			otherID := msgIDOf(t, newIM(t, tt.other))
+
+			raw, err := hex.DecodeString(baseID)
+			require.NoError(t, err, "msgId is hex encoded")
+			assert.Len(t, raw, 16, "msgId is an MD5 digest")
+
+			if tt.wantSame {
+				assert.Equal(t, baseID, otherID)
+			} else {
+				assert.NotEqual(t, baseID, otherID)
+			}
+		})
+	}
+
+	// The conversation entry and the stored-IM log carry the same id as the im
+	// event so the client matches them to the message it already displayed.
+	t.Run("same msgId on im event, conversation entry, and stored IM", func(t *testing.T) {
+		sess := newSession()
+		sess.handleIncomingIM(newIM(t, base))
+
+		events := sess.EventQueue.GetAllEvents()
+		require.Len(t, events, 2)
+		msgID := events[0].Data.(IMEvent).MsgID
+		require.NotEmpty(t, msgID)
+
+		convData := events[1].Data.(*ConversationData)
+		require.Len(t, convData.Conversations, 1)
+		require.NotNil(t, convData.Conversations[0].LastIM)
+		assert.Equal(t, msgID, convData.Conversations[0].LastIM.MsgID)
+
+		stored := sess.GetStoredIMs(StoredIMQuery{PartnerAimID: "mikekelly", NToGet: 10})
+		require.Len(t, stored, 1)
+		assert.Equal(t, msgID, stored[0].MsgID)
+	})
+}
+
 func TestSession_HandleTypingNotification_NormalizesAimID(t *testing.T) {
 	sess := &Session{
 		Events:        []string{"typing"},
