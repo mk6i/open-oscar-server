@@ -829,6 +829,59 @@ paths:
                   message:
                     type: string
 
+  /directory/aim:
+    get:
+      summary: Get all AIM user directory entries
+      description: Retrieve the AIM user directory entries of all users who have directory info or keywords set.
+      responses:
+        '200':
+          description: Successful response containing a list of directory entries.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    screen_name:
+                      type: string
+                      description: The user's display screen name.
+                    first_name:
+                      type: string
+                      description: The user's first name.
+                    middle_name:
+                      type: string
+                      description: The user's middle name.
+                    last_name:
+                      type: string
+                      description: The user's last name.
+                    maiden_name:
+                      type: string
+                      description: The user's maiden name.
+                    nickname:
+                      type: string
+                      description: The user's nickname.
+                    city:
+                      type: string
+                      description: The user's city.
+                    state:
+                      type: string
+                      description: The user's state or region.
+                    country:
+                      type: string
+                      description: The user's country.
+                    address:
+                      type: string
+                      description: The user's street address.
+                    zip:
+                      type: string
+                      description: The user's ZIP or postal code.
+                    keywords:
+                      type: array
+                      description: The user's directory keywords.
+                      items:
+                        type: string
+
   /bart:
     get:
       summary: Get BART entries by type

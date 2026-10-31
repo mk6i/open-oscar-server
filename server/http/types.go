@@ -83,6 +83,10 @@ type ChatSessionRetriever interface {
 // DirectoryManager defines methods for managing interest categories and keywords
 // used in user profiles and directory listings.
 type DirectoryManager interface {
+	// AIMDirectoryEntries returns the user directory listing of every user
+	// who has directory info or keywords set.
+	AIMDirectoryEntries(ctx context.Context) ([]state.AIMDirectoryEntry, error)
+
 	// Categories returns all existing directory categories.
 	Categories(ctx context.Context) ([]state.Category, error)
 
@@ -294,6 +298,21 @@ type directoryKeyword struct {
 type directoryCategory struct {
 	ID   uint8  `json:"id"`
 	Name string `json:"name"`
+}
+
+type aimDirectoryEntryHandle struct {
+	ScreenName string   `json:"screen_name"`
+	FirstName  string   `json:"first_name"`
+	MiddleName string   `json:"middle_name"`
+	LastName   string   `json:"last_name"`
+	MaidenName string   `json:"maiden_name"`
+	Nickname   string   `json:"nickname"`
+	City       string   `json:"city"`
+	State      string   `json:"state"`
+	Country    string   `json:"country"`
+	Address    string   `json:"address"`
+	ZIP        string   `json:"zip"`
+	Keywords   []string `json:"keywords"`
 }
 
 type directoryCategoryCreate struct {

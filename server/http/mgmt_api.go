@@ -135,6 +135,11 @@ func NewManagementAPI(bld config.Build, listener string, userManager UserManager
 		deleteDirectoryKeywordHandler(w, r, directoryManager, logger)
 	})
 
+	// Handlers for '/directory/aim' route
+	mux.HandleFunc("GET /directory/aim", func(w http.ResponseWriter, r *http.Request) {
+		getDirectoryAIMHandler(w, r, directoryManager, logger)
+	})
+
 	// Handlers for '/bart' route
 	mux.HandleFunc("GET /bart", func(w http.ResponseWriter, r *http.Request) {
 		getBARTByTypeHandler(w, r, bartAssetManager, logger)
@@ -1078,6 +1083,43 @@ func deleteDirectoryKeywordHandler(w http.ResponseWriter, r *http.Request, manag
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// getDirectoryAIMHandler handles the GET /directory/aim endpoint.
+func getDirectoryAIMHandler(w http.ResponseWriter, r *http.Request, manager DirectoryManager, logger *slog.Logger) {
+	w.Header().Set("Content-Type", "application/json")
+	entries, err := manager.AIMDirectoryEntries(r.Context())
+	if err != nil {
+		logger.Error("error in GET /directory/aim", "err", err.Error())
+		errorMsg(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	out := make([]aimDirectoryEntryHandle, len(entries))
+	for i, entry := range entries {
+		keywords := entry.Keywords
+		if keywords == nil {
+			keywords = []string{}
+		}
+		out[i] = aimDirectoryEntryHandle{
+			ScreenName: entry.DisplayScreenName.String(),
+			FirstName:  entry.Info.FirstName,
+			MiddleName: entry.Info.MiddleName,
+			LastName:   entry.Info.LastName,
+			MaidenName: entry.Info.MaidenName,
+			Nickname:   entry.Info.NickName,
+			City:       entry.Info.City,
+			State:      entry.Info.State,
+			Country:    entry.Info.Country,
+			Address:    entry.Info.Address,
+			ZIP:        entry.Info.ZIPCode,
+			Keywords:   keywords,
+		}
+	}
+
+	if err := json.NewEncoder(w).Encode(out); err != nil {
+		errorMsg(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 // getICQProfileHandler handles the GET /user/{screenname}/icq endpoint.

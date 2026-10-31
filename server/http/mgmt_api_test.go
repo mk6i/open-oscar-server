@@ -2137,6 +2137,103 @@ func TestDirectoryCategoryHandler_GET(t *testing.T) {
 	}
 }
 
+func TestDirectoryAIMHandler_GET(t *testing.T) {
+	tt := []struct {
+		name       string
+		want       string
+		statusCode int
+		mockParams mockParams
+	}{
+		{
+			name:       "no entries",
+			want:       `[]`,
+			statusCode: http.StatusOK,
+			mockParams: mockParams{
+				directoryManagerParams: directoryManagerParams{
+					aimDirectoryEntriesParams: aimDirectoryEntriesParams{
+						{
+							result: nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:       "error fetching entries",
+			want:       `{"message":"internal server error"}`,
+			statusCode: http.StatusInternalServerError,
+			mockParams: mockParams{
+				directoryManagerParams: directoryManagerParams{
+					aimDirectoryEntriesParams: aimDirectoryEntriesParams{
+						{
+							result: nil,
+							err:    errors.New("error fetching entries"),
+						},
+					},
+				},
+			},
+		},
+		{
+			name:       "fetch some entries",
+			want:       `[{"screen_name":"Big Al","first_name":"Al","middle_name":"B","last_name":"Smith","maiden_name":"Jones","nickname":"Bigs","city":"Reno","state":"NV","country":"USA","address":"1 Main St","zip":"89501","keywords":["jazz","chess"]},{"screen_name":"Sue","first_name":"","middle_name":"","last_name":"","maiden_name":"","nickname":"","city":"","state":"","country":"","address":"","zip":"","keywords":[]}]`,
+			statusCode: http.StatusOK,
+			mockParams: mockParams{
+				directoryManagerParams: directoryManagerParams{
+					aimDirectoryEntriesParams: aimDirectoryEntriesParams{
+						{
+							result: []state.AIMDirectoryEntry{
+								{
+									DisplayScreenName: "Big Al",
+									Info: state.AIMNameAndAddr{
+										FirstName:  "Al",
+										MiddleName: "B",
+										LastName:   "Smith",
+										MaidenName: "Jones",
+										NickName:   "Bigs",
+										City:       "Reno",
+										State:      "NV",
+										Country:    "USA",
+										Address:    "1 Main St",
+										ZIPCode:    "89501",
+									},
+									Keywords: []string{"jazz", "chess"},
+								},
+								{
+									DisplayScreenName: "Sue",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			responseRecorder := httptest.NewRecorder()
+			request := httptest.NewRequest(http.MethodGet, "/directory/aim", nil)
+
+			directoryManager := newMockDirectoryManager(t)
+			for _, params := range tc.mockParams.aimDirectoryEntriesParams {
+				directoryManager.EXPECT().
+					AIMDirectoryEntries(matchContext()).
+					Return(params.result, params.err)
+			}
+
+			getDirectoryAIMHandler(responseRecorder, request, directoryManager, slog.Default())
+
+			if responseRecorder.Code != tc.statusCode {
+				t.Errorf("Want status '%d', got '%d'", tc.statusCode, responseRecorder.Code)
+			}
+
+			if strings.TrimSpace(responseRecorder.Body.String()) != tc.want {
+				t.Errorf("Want '%s', got '%s'", tc.want, responseRecorder.Body)
+			}
+		})
+	}
+}
+
 func TestDirectoryCategoryKeywordHandler_GET(t *testing.T) {
 	tt := []struct {
 		name       string

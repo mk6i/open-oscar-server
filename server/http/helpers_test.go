@@ -174,12 +174,20 @@ type chatSessionRetrieverAllSessionsParams []struct {
 }
 
 type directoryManagerParams struct {
+	aimDirectoryEntriesParams
 	categoriesParams
 	createCategoryParams
 	createKeywordParams
 	deleteCategoryParams
 	deleteKeywordParams
 	keywordsByCategoryParams
+}
+
+// aimDirectoryEntriesParams is the list of parameters passed at the mock
+// DirectoryManager.AIMDirectoryEntries call site
+type aimDirectoryEntriesParams []struct {
+	result []state.AIMDirectoryEntry
+	err    error
 }
 
 // categoriesParams is the list of parameters passed at the mock

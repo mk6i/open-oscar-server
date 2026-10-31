@@ -281,6 +281,97 @@ func (f SQLiteUserStore) FindByAIMNameAndAddr(ctx context.Context, info AIMNameA
 	return users, nil
 }
 
+// AIMDirectoryEntries returns every user that has user directory info or
+// keywords set, ordered by screen name.
+func (f SQLiteUserStore) AIMDirectoryEntries(ctx context.Context) ([]AIMDirectoryEntry, error) {
+	q := `
+		SELECT
+			u.displayScreenName,
+			u.aim_firstName,
+			u.aim_lastName,
+			u.aim_middleName,
+			u.aim_maidenName,
+			u.aim_country,
+			u.aim_state,
+			u.aim_city,
+			u.aim_nickName,
+			u.aim_zipCode,
+			u.aim_address,
+			k1.name,
+			k2.name,
+			k3.name,
+			k4.name,
+			k5.name
+		FROM users u
+		LEFT JOIN aimKeyword k1 ON k1.id = u.aim_keyword1
+		LEFT JOIN aimKeyword k2 ON k2.id = u.aim_keyword2
+		LEFT JOIN aimKeyword k3 ON k3.id = u.aim_keyword3
+		LEFT JOIN aimKeyword k4 ON k4.id = u.aim_keyword4
+		LEFT JOIN aimKeyword k5 ON k5.id = u.aim_keyword5
+		WHERE u.aim_firstName <> ''
+		   OR u.aim_lastName <> ''
+		   OR u.aim_middleName <> ''
+		   OR u.aim_maidenName <> ''
+		   OR u.aim_country <> ''
+		   OR u.aim_state <> ''
+		   OR u.aim_city <> ''
+		   OR u.aim_nickName <> ''
+		   OR u.aim_zipCode <> ''
+		   OR u.aim_address <> ''
+		   OR u.aim_keyword1 IS NOT NULL
+		   OR u.aim_keyword2 IS NOT NULL
+		   OR u.aim_keyword3 IS NOT NULL
+		   OR u.aim_keyword4 IS NOT NULL
+		   OR u.aim_keyword5 IS NOT NULL
+		ORDER BY u.identScreenName
+	`
+
+	rows, err := f.db.QueryContext(ctx, q)
+	if err != nil {
+		return nil, fmt.Errorf("AIMDirectoryEntries: %w", err)
+	}
+	defer rows.Close()
+
+	var entries []AIMDirectoryEntry
+	for rows.Next() {
+		var entry AIMDirectoryEntry
+		var keywords [5]sql.NullString
+		err := rows.Scan(
+			&entry.DisplayScreenName,
+			&entry.Info.FirstName,
+			&entry.Info.LastName,
+			&entry.Info.MiddleName,
+			&entry.Info.MaidenName,
+			&entry.Info.Country,
+			&entry.Info.State,
+			&entry.Info.City,
+			&entry.Info.NickName,
+			&entry.Info.ZIPCode,
+			&entry.Info.Address,
+			&keywords[0],
+			&keywords[1],
+			&keywords[2],
+			&keywords[3],
+			&keywords[4],
+		)
+		if err != nil {
+			return nil, fmt.Errorf("AIMDirectoryEntries: %w", err)
+		}
+		for _, k := range keywords {
+			if k.Valid {
+				entry.Keywords = append(entry.Keywords, k.String)
+			}
+		}
+		entries = append(entries, entry)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("AIMDirectoryEntries: %w", err)
+	}
+
+	return entries, nil
+}
+
 // icqInterestsWhereClause builds SQL and args for matching a category code and
 // keyword(s) against the four stored interest slots (same semantics as
 // FindByICQInterests).
