@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/google/uuid"
@@ -2069,6 +2070,7 @@ const (
 	ICQTLVTagsOriginallyFromState       uint16 = 0x032A // User originally from state
 	ICQTLVTagsOriginallyFromCountryCode uint16 = 0x0334 // User originally from country (code)
 
+	ICQDirTLVTagsUID            uint16 = 0x0032 // User ID, the UIN as a decimal string
 	ICQDirTLVTagsPrivacyToken   uint16 = 0x003C // Privacy token (16 bytes)
 	ICQDirTLVTagsVerifiedEmail  uint16 = 0x0050 // Verified email address
 	ICQDirTLVTagsPendingEmail   uint16 = 0x0055 // Pending email address
@@ -2077,6 +2079,7 @@ const (
 	ICQDirTLVTagsNickname       uint16 = 0x0078 // Nickname
 	ICQDirTLVTagsGender         uint16 = 0x0082 // Gender (1=Female, 2=Male)
 	ICQDirTLVTagsEmailAddresses uint16 = 0x008C // Email addresses (record list)
+	ICQDirTLVTagsAddressCountry uint16 = 0x008C // Country inside an address record
 	ICQDirTLVTagsHomeAddress    uint16 = 0x0096 // Home address
 	ICQDirTLVTagsOriginAddress  uint16 = 0x00A0 // Origin/birth address
 	ICQDirTLVTagsLanguage1      uint16 = 0x00AA // Primary language
@@ -2098,6 +2101,18 @@ const (
 	ICQDirTLVTagsPrivacyLevel   uint16 = 0x01F9 // Privacy level
 	ICQDirTLVTagsWebAware       uint16 = 0x0212 // Web aware flag (online visibility via web)
 	ICQDirTLVTagsStatusNote     uint16 = 0x0226 // Status note/message
+	ICQDirTLVTagsOnlineStatus   uint16 = 0x0190 // Online status in a search hit (0=offline, 1=online, 2=hidden)
+	ICQDirTLVTagsOnlineOnly     uint16 = 0x0136 // Online users only (search request filter)
+
+	// Tags that appear only in a search request. They do not match the profile
+	// tags of the same number.
+	ICQDirTLVTagsSearchCountry  uint16 = 0x00BE // Country code (4 bytes)
+	ICQDirTLVTagsSearchLanguage uint16 = 0x00FA // Spoken language code (2 bytes)
+	ICQDirTLVTagsSearchAge      uint16 = 0x0154 // Age range (2 words)
+
+	ICQDirStatusOffline uint16 = 0
+	ICQDirStatusOnline  uint16 = 1
+	ICQDirStatusHidden  uint16 = 2
 
 	ICQStatusCodeOK   uint8 = 0x0A
 	ICQStatusCodeFail uint8 = 0x32
@@ -2110,6 +2125,23 @@ const (
 	ICQDBQueryMetaReq             uint16 = 0x07D0
 	ICQDBQueryMetaReply           uint16 = 0x07DA
 )
+
+// directoryEpoch is the day that directory dates are counted from.
+var directoryEpoch = time.Date(1900, time.January, 1, 0, 0, 0, 0, time.UTC)
+
+// ICQDirDate returns how many days lie between 1900-01-01 and the given date,
+// which is how a directory hit carries a birth date. ok is false if the year,
+// month or day is unset, or if the date falls before 1900.
+func ICQDirDate(year uint16, month uint8, day uint8) (days float64, ok bool) {
+	if year == 0 || month == 0 || day == 0 {
+		return 0, false
+	}
+	date := time.Date(int(year), time.Month(month), int(day), 0, 0, 0, 0, time.UTC)
+	if date.Before(directoryEpoch) {
+		return 0, false
+	}
+	return date.Sub(directoryEpoch).Hours() / 24, true
+}
 
 const (
 	ICQUserFlagPublishEmailYes uint8 = 0
@@ -2349,6 +2381,151 @@ type ICQ_0x07D0_0x03EA_DBQueryMetaReqSetBasicInfo struct {
 
 type SNAC_0x15_0x02_DBReply struct {
 	TLVRestBlock
+}
+
+// The directory protocol travels as a SNAC of its own inside the payload of the
+// meta request and reply.
+const (
+	ICQDirNestedFamily  uint16 = 0x05B9
+	ICQDirNestedVersion uint16 = 0x0002 // the value of the version TLV
+)
+
+// Commands of the nested SNAC, carried in its subtype field.
+const (
+	ICQDirCmdQuery      uint16 = 0x0002 // a search or one profile lookup
+	ICQDirCmdQueryMulti uint16 = 0x0006 // profile lookups for several users
+	ICQDirCmdQueryAck   uint16 = 0x0009 // the answer to a query
+)
+
+// Block tags. A query body begins with one, and it is the only thing that
+// separates a search from a profile lookup, since both use ICQDirCmdQuery.
+const (
+	ICQDirBlockSearch uint16 = 0x0002
+	ICQDirBlockLookup uint16 = 0x0003
+)
+
+// Subtypes of the meta reply that wraps a directory packet, and the result byte
+// inside the packet.
+const (
+	ICQDBQueryMetaReplyDirectoryData     uint16 = 0x0FAA
+	ICQDBQueryMetaReplyDirectoryResponse uint16 = 0x0FB4
+
+	ICQDirResultOK uint8 = 0x01
+)
+
+type ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryQuery struct {
+	Body []byte `oscar:"len_prefix=uint16"`
+}
+
+type ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryBody struct {
+	Family  uint16
+	SubType uint16
+	Flags   uint16
+	Seq     uint16
+	Command uint16
+	Body    []byte
+}
+
+// Versioned reports whether the client sent the version block, which the reply
+// has to mirror.
+func (b ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryBody) Versioned() bool {
+	return b.Flags&0x8000 != 0
+}
+
+// ICQDirectorySearchQuery is what a directory search carries after its block
+// tag: a page number, how many conditions follow, and the conditions as TLVs.
+type ICQDirectorySearchQuery struct {
+	Page  uint16
+	Count uint16
+	TLVLBlock
+}
+
+// ICQDirectoryInfoQuery is what a profile lookup carries after its block tag:
+// a count and the TLVs that name the user.
+type ICQDirectoryInfoQuery struct {
+	Count uint32
+	TLVLBlock
+}
+
+// ICQDirectoryReplyBody holds the values that go into one directory reply
+// packet. Leave Item empty to send a packet with no result block at all.
+// Versioned adds the extra fields that only version-block clients expect.
+type ICQDirectoryReplyBody struct {
+	SubType   uint16
+	Result    uint8
+	Item      TLVList
+	Total     uint32
+	Pages     uint16
+	More      bool
+	Versioned bool
+}
+
+type ICQ_0x07DA_0x0FAA_DBQueryMetaReplyDirectory struct {
+	ICQMetadata
+	ReqSubType uint16
+	Success    uint8
+	Payload    []byte `oscar:"len_prefix=uint16"`
+}
+
+// ICQDirectoryQueryHeader is the first part of a directory query body after the
+// nested SNAC header: the optional version extras, a filler, and the block tag.
+// The extras exist only for clients that send the version block; SetVersioned
+// turns them on.
+type ICQDirectoryQueryHeader struct {
+	Extras *struct {
+		Body []byte `oscar:"len_prefix=uint16"`
+	} `oscar:"variant"`
+	Filler [8]byte
+	Block  uint16
+}
+
+// SetVersioned makes the header read the extras that clients sending the
+// version block put before the filler.
+func (h *ICQDirectoryQueryHeader) SetVersioned() {
+	h.Extras = &struct {
+		Body []byte `oscar:"len_prefix=uint16"`
+	}{}
+}
+
+// ICQDirectoryReply is the nested directory SNAC carried in the payload of a
+// meta reply. The variant fields are filled in by SetVersion1 for clients that
+// sent the version block, and Items holds either one result or nothing.
+type ICQDirectoryReply struct {
+	SNACFamily uint16
+	SubType    uint16
+	Flags      uint16
+	Seq        uint16
+	Command    uint16
+	Extras     *TLVLBlock `oscar:"variant"`
+	Result     uint8
+	ErrMsg     string `oscar:"len_prefix=uint16"`
+	Void       [10]byte
+	Void2      *struct {
+		Void [6]byte
+	} `oscar:"variant"`
+	Total uint32
+	Pages *struct {
+		Pages uint16
+	} `oscar:"variant"`
+	BlockCount uint16
+	Items      []TLVLBlock
+}
+
+// SetVersion1 fills in the variant fields that clients sending the version
+// block expect.
+func (r *ICQDirectoryReply) SetVersion1(pages uint16) {
+	r.Flags |= 0x8000
+	r.Extras = &TLVLBlock{
+		TLVList: TLVList{
+			NewTLVBE(1, ICQDirNestedVersion),
+		},
+	}
+	r.Void2 = &struct {
+		Void [6]byte
+	}{}
+	r.Pages = &struct {
+		Pages uint16
+	}{Pages: pages}
 }
 
 type ICQ_0x07DA_0x010E_DBQueryMetaReplyHomePageCat struct {

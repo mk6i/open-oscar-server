@@ -38,6 +38,16 @@ func unmarshal(t reflect.Type, v reflect.Value, tag reflect.StructTag, r io.Read
 		effectiveQuirk = activeQuirk
 	}
 
+	if oscTag.variant {
+		if err := checkVariantType(t); err != nil {
+			return err
+		}
+		if v.IsNil() {
+			return nil // variant is not present
+		}
+		return unmarshalStruct(t.Elem(), v.Elem(), oscTag, r, order, effectiveQuirk)
+	}
+
 	if oscTag.optional {
 		v.Set(reflect.New(t.Elem()))
 		err := unmarshalStruct(t.Elem(), v.Elem(), oscTag, r, order, effectiveQuirk)
@@ -295,7 +305,11 @@ func unmarshalStruct(t reflect.Type, v reflect.Value, oscTag oscarTag, r io.Read
 	for i := 0; i < v.NumField(); i++ {
 		field := t.Field(i)
 		value := v.Field(i)
-		if field.Type.Kind() == reflect.Pointer {
+		fieldTag, err := parseOSCARTag(field.Tag)
+		if err != nil {
+			return fmt.Errorf("error parsing tag: %w", err)
+		}
+		if field.Type.Kind() == reflect.Pointer && !fieldTag.variant {
 			if i != v.NumField()-1 {
 				return fmt.Errorf("pointer type found at non-final field %s", field.Name)
 			}

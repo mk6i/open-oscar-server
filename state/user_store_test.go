@@ -535,7 +535,7 @@ func TestGetUser(t *testing.T) {
 		RegStatus:         3,
 		LastWarnUpdate:    time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC), // Database default value
 		ICQInfo: ICQInfo{
-			Permissions: ICQPermissions{AuthRequired: true},
+			Permissions: ICQPermissions{AuthRequired: true, WebAware: true},
 		},
 	}
 	err = f.InsertUser(context.Background(), *insertedUser)
@@ -549,6 +549,33 @@ func TestGetUser(t *testing.T) {
 	if !reflect.DeepEqual(insertedUser, actualUser) {
 		t.Fatalf("users are not equal. expect: %v actual: %v", insertedUser, actualUser)
 	}
+}
+
+// A new user publishes their web status unless they opt out later, whatever
+// the inserted struct says.
+func TestSQLiteUserStore_InsertUser_WebAwareDefault(t *testing.T) {
+	defer func() {
+		assert.NoError(t, os.Remove(testFile))
+	}()
+
+	f, err := NewSQLiteUserStore(testFile)
+	require.NoError(t, err)
+
+	screenName := NewIdentScreenName("100001")
+	require.NoError(t, f.InsertUser(context.Background(), User{
+		IdentScreenName:   screenName,
+		DisplayScreenName: DisplayScreenName("100001"),
+		IsICQ:             true,
+	}))
+
+	got, err := f.User(context.Background(), screenName)
+	require.NoError(t, err)
+	assert.True(t, got.ICQInfo.Permissions.WebAware)
+
+	require.NoError(t, f.SetPermissions(context.Background(), screenName, ICQPermissions{WebAware: false}))
+	got, err = f.User(context.Background(), screenName)
+	require.NoError(t, err)
+	assert.False(t, got.ICQInfo.Permissions.WebAware, "opting out still works")
 }
 
 func TestSQLiteUserStore_User_OfflineMsgCount(t *testing.T) {

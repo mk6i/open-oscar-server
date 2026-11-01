@@ -3,6 +3,7 @@ package foodgroup
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"testing"
@@ -55,6 +56,1491 @@ func TestICQService_DeleteMsgReq(t *testing.T) {
 	}
 }
 
+func TestICQService_DirectoryQuery(t *testing.T) {
+	tests := []struct {
+		name       string
+		seq        uint16
+		instance   *state.SessionInstance
+		req        wire.ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryQuery
+		mockParams mockParams
+		wantErr    error
+	}{
+		{
+			name:     "search with one hit, versioned",
+			seq:      1,
+			instance: newTestInstance("11111111", sessOptUIN(11111111)),
+			req: wire.ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryQuery{
+				Body: []byte{
+					0x05, 0xB9, // nested SNAC family
+					0x00, 0x02, // nested SNAC subtype: query info
+					0x80, 0x00, // flags (version block present)
+					0x00, 0x00, 0x00, 0x00, // sequence, command
+					0x00, 0x06, // version block length
+					0x00, 0x01, 0x00, 0x02, 0x00, 0x02, // version TLV
+					0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // filler
+					0x00, 0x02, // block: search
+					0x00, 0x00, // page
+					0x00, 0x01, // condition count
+					0x00, 0x0A, // conditions length
+					0x00, 0x6E, 0x00, 0x06, 0x50, 0x65, 0x74, 0x72, 0x6F, 0x76, // last name "Petrov"
+				},
+			},
+			mockParams: mockParams{
+				icqUserFinderParams: icqUserFinderParams{
+					searchICQUsersParams: searchICQUsersParams{
+						{
+							criteria: state.ICQUserSearchCriteria{
+								LastName: new("Petrov"),
+							},
+							result: []state.User{
+								{
+									IdentScreenName: state.NewIdentScreenName("100001"),
+									ICQInfo: state.ICQInfo{
+										Basic: state.ICQBasicInfo{
+											FirstName:    "Ivan",
+											LastName:     "Petrov",
+											Nickname:     "ip",
+											EmailAddress: "ivan@example.com",
+											CountryCode:  380,
+										},
+										More: state.ICQMoreInfo{
+											Gender:     2,
+											BirthDay:   17,
+											BirthMonth: 5,
+											BirthYear:  1990,
+										},
+										Permissions: state.ICQPermissions{
+											AuthRequired: true,
+											WebAware:     true,
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams{
+						{
+							screenName: state.NewIdentScreenName("100001"),
+							result:     state.NewSession(),
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("11111111"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.ICQ,
+									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
+								},
+								Body: wire.SNAC_0x15_0x02_DBReply{
+									TLVRestBlock: wire.TLVRestBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.ICQTLVTagsMetadata, wire.ICQMessageReplyEnvelope{
+												Message: wire.ICQ_0x07DA_0x0FAA_DBQueryMetaReplyDirectory{
+													ICQMetadata: wire.ICQMetadata{
+														UIN:     11111111,
+														ReqType: wire.ICQDBQueryMetaReply,
+														Seq:     1,
+													},
+													ReqSubType: wire.ICQDBQueryMetaReplyDirectoryResponse,
+													Success:    wire.ICQStatusCodeOK,
+													Payload: []byte{
+														0x05, 0xB9, // nested SNAC family
+														0x00, 0x09, // nested SNAC subtype: query info ack
+														0x80, 0x00, // flags (version block)
+														0x00, 0x00, 0x00, 0x00, // sequence, command
+														0x00, 0x06, // version block length
+														0x00, 0x01, 0x00, 0x02, 0x00, 0x02, // version TLV
+														0x01,       // result
+														0x00, 0x00, // error message length
+														0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // unknown
+														0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+														0x00, 0x00, 0x00, 0x01, // total hits
+														0x00, 0x01, // pages
+														0x00, 0x01, // block count
+														0x00, 0x5E, // block length
+														0x00, 0x32, 0x00, 0x06, 0x31, 0x30, 0x30, 0x30, 0x30, 0x31, // UID "100001"
+														0x00, 0x64, 0x00, 0x04, 0x49, 0x76, 0x61, 0x6E, // first name
+														0x00, 0x6E, 0x00, 0x06, 0x50, 0x65, 0x74, 0x72, 0x6F, 0x76, // last name
+														0x00, 0x78, 0x00, 0x02, 0x69, 0x70, // nickname
+														0x00, 0x50, 0x00, 0x10, 0x69, 0x76, 0x61, 0x6E, 0x40, 0x65, // email
+														0x78, 0x61, 0x6D, 0x70, 0x6C, 0x65, 0x2E, 0x63, 0x6F, 0x6D,
+														0x00, 0x82, 0x00, 0x01, 0x02, // gender: male
+														0x01, 0xA4, 0x00, 0x08, 0x40, 0xE0, 0x1E, 0x00, 0x00, 0x00, // birth date: 1990-05-17
+														0x00, 0x00,
+														0x01, 0x9A, 0x00, 0x01, 0x00, // authorization not optional
+														0x00, 0x96, 0x00, 0x08, 0x00, 0x8C, 0x00, 0x04, 0x00, 0x00, // home address: country 380
+														0x01, 0x7C,
+														0x01, 0x90, 0x00, 0x02, 0x00, 0x01, // presence: online
+													},
+												},
+											}),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "search with two hits sends one packet per hit",
+			seq:      2,
+			instance: newTestInstance("11111111", sessOptUIN(11111111)),
+			req: wire.ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryQuery{
+				Body: []byte{
+					0x05, 0xB9, // nested SNAC family
+					0x00, 0x02, // nested SNAC subtype: query info
+					0x00, 0x00, // flags
+					0x00, 0x00, 0x00, 0x00, // sequence, command
+					0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // filler
+					0x00, 0x02, // block: search
+					0x00, 0x00, // page
+					0x00, 0x01, // condition count
+					0x00, 0x0A, // conditions length
+					0x00, 0x6E, 0x00, 0x06, 0x50, 0x65, 0x74, 0x72, 0x6F, 0x76, // last name "Petrov"
+				},
+			},
+			mockParams: mockParams{
+				icqUserFinderParams: icqUserFinderParams{
+					searchICQUsersParams: searchICQUsersParams{
+						{
+							criteria: state.ICQUserSearchCriteria{
+								LastName: new("Petrov"),
+							},
+							result: []state.User{
+								{
+									IdentScreenName: state.NewIdentScreenName("100001"),
+									ICQInfo: state.ICQInfo{
+										Basic: state.ICQBasicInfo{
+											FirstName:    "Ivan",
+											LastName:     "Petrov",
+											Nickname:     "ip",
+											EmailAddress: "ivan@example.com",
+											CountryCode:  380,
+										},
+										More: state.ICQMoreInfo{
+											Gender:     2,
+											BirthDay:   17,
+											BirthMonth: 5,
+											BirthYear:  1990,
+										},
+										Permissions: state.ICQPermissions{
+											AuthRequired: true,
+											WebAware:     true,
+										},
+									},
+								},
+								{
+									IdentScreenName: state.NewIdentScreenName("100002"),
+									ICQInfo: state.ICQInfo{
+										Permissions: state.ICQPermissions{
+											WebAware: true,
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams{
+						{
+							screenName: state.NewIdentScreenName("100001"),
+							result:     state.NewSession(),
+						},
+						{
+							screenName: state.NewIdentScreenName("100002"),
+							result:     nil,
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("11111111"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.ICQ,
+									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
+									Flags:     wire.SNACFlagsMoreToCome,
+								},
+								Body: wire.SNAC_0x15_0x02_DBReply{
+									TLVRestBlock: wire.TLVRestBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.ICQTLVTagsMetadata, wire.ICQMessageReplyEnvelope{
+												Message: wire.ICQ_0x07DA_0x0FAA_DBQueryMetaReplyDirectory{
+													ICQMetadata: wire.ICQMetadata{
+														UIN:     11111111,
+														ReqType: wire.ICQDBQueryMetaReply,
+														Seq:     2,
+													},
+													ReqSubType: wire.ICQDBQueryMetaReplyDirectoryData,
+													Success:    wire.ICQStatusCodeOK,
+													Payload: []byte{
+														0x05, 0xB9, // nested SNAC family
+														0x00, 0x09, // nested SNAC subtype: query info ack
+														0x00, 0x01, // flags (more to come)
+														0x00, 0x00, 0x00, 0x00, // sequence, command
+														0x01,       // result
+														0x00, 0x00, // error message length
+														0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // unknown
+														0x00, 0x00, 0x00, 0x02, // total hits
+														0x00, 0x01, // block count
+														0x00, 0x5E, // block length
+														0x00, 0x32, 0x00, 0x06, 0x31, 0x30, 0x30, 0x30, 0x30, 0x31, // UID "100001"
+														0x00, 0x64, 0x00, 0x04, 0x49, 0x76, 0x61, 0x6E, // first name
+														0x00, 0x6E, 0x00, 0x06, 0x50, 0x65, 0x74, 0x72, 0x6F, 0x76, // last name
+														0x00, 0x78, 0x00, 0x02, 0x69, 0x70, // nickname
+														0x00, 0x50, 0x00, 0x10, 0x69, 0x76, 0x61, 0x6E, 0x40, 0x65, // email
+														0x78, 0x61, 0x6D, 0x70, 0x6C, 0x65, 0x2E, 0x63, 0x6F, 0x6D,
+														0x00, 0x82, 0x00, 0x01, 0x02, // gender: male
+														0x01, 0xA4, 0x00, 0x08, 0x40, 0xE0, 0x1E, 0x00, 0x00, 0x00, // birth date: 1990-05-17
+														0x00, 0x00,
+														0x01, 0x9A, 0x00, 0x01, 0x00, // authorization not optional
+														0x00, 0x96, 0x00, 0x08, 0x00, 0x8C, 0x00, 0x04, 0x00, 0x00, // home address: country 380
+														0x01, 0x7C,
+														0x01, 0x90, 0x00, 0x02, 0x00, 0x01, // presence: online
+													},
+												},
+											}),
+										},
+									},
+								},
+							},
+						},
+						{
+							screenName: state.NewIdentScreenName("11111111"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.ICQ,
+									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
+								},
+								Body: wire.SNAC_0x15_0x02_DBReply{
+									TLVRestBlock: wire.TLVRestBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.ICQTLVTagsMetadata, wire.ICQMessageReplyEnvelope{
+												Message: wire.ICQ_0x07DA_0x0FAA_DBQueryMetaReplyDirectory{
+													ICQMetadata: wire.ICQMetadata{
+														UIN:     11111111,
+														ReqType: wire.ICQDBQueryMetaReply,
+														Seq:     2,
+													},
+													ReqSubType: wire.ICQDBQueryMetaReplyDirectoryResponse,
+													Success:    wire.ICQStatusCodeOK,
+													Payload: []byte{
+														0x05, 0xB9, // nested SNAC family
+														0x00, 0x09, // nested SNAC subtype: query info ack
+														0x00, 0x00, // flags
+														0x00, 0x00, 0x00, 0x00, // sequence, command
+														0x01,       // result
+														0x00, 0x00, // error message length
+														0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // unknown
+														0x00, 0x00, 0x00, 0x02, // total hits
+														0x00, 0x01, // block count
+														0x00, 0x15, // block length
+														0x00, 0x32, 0x00, 0x06, 0x31, 0x30, 0x30, 0x30, 0x30, 0x32, // UID "100002"
+														0x01, 0x9A, 0x00, 0x01, 0x01, // authorization optional
+														0x01, 0x90, 0x00, 0x02, 0x00, 0x00, // presence: offline
+													},
+												},
+											}),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "a user who hides their web status is reported hidden",
+			seq:      3,
+			instance: newTestInstance("11111111", sessOptUIN(11111111)),
+			req: wire.ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryQuery{
+				Body: []byte{
+					0x05, 0xB9, // nested SNAC family
+					0x00, 0x02, // nested SNAC subtype: query info
+					0x00, 0x00, // flags
+					0x00, 0x00, 0x00, 0x00, // sequence, command
+					0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // filler
+					0x00, 0x02, // block: search
+					0x00, 0x00, // page
+					0x00, 0x01, // condition count
+					0x00, 0x0A, // conditions length
+					0x00, 0x6E, 0x00, 0x06, 0x50, 0x65, 0x74, 0x72, 0x6F, 0x76, // last name "Petrov"
+				},
+			},
+			mockParams: mockParams{
+				icqUserFinderParams: icqUserFinderParams{
+					searchICQUsersParams: searchICQUsersParams{
+						{
+							criteria: state.ICQUserSearchCriteria{
+								LastName: new("Petrov"),
+							},
+							result: []state.User{
+								{
+									IdentScreenName: state.NewIdentScreenName("100003"),
+									ICQInfo: state.ICQInfo{
+										Basic: state.ICQBasicInfo{
+											Nickname: "Leto",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("11111111"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.ICQ,
+									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
+								},
+								Body: wire.SNAC_0x15_0x02_DBReply{
+									TLVRestBlock: wire.TLVRestBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.ICQTLVTagsMetadata, wire.ICQMessageReplyEnvelope{
+												Message: wire.ICQ_0x07DA_0x0FAA_DBQueryMetaReplyDirectory{
+													ICQMetadata: wire.ICQMetadata{
+														UIN:     11111111,
+														ReqType: wire.ICQDBQueryMetaReply,
+														Seq:     3,
+													},
+													ReqSubType: wire.ICQDBQueryMetaReplyDirectoryResponse,
+													Success:    wire.ICQStatusCodeOK,
+													Payload: []byte{
+														0x05, 0xB9, // nested SNAC family
+														0x00, 0x09, // nested SNAC subtype: query info ack
+														0x00, 0x00, // flags
+														0x00, 0x00, 0x00, 0x00, // sequence, command
+														0x01,       // result
+														0x00, 0x00, // error message length
+														0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // unknown
+														0x00, 0x00, 0x00, 0x01, // total hits
+														0x00, 0x01, // block count
+														0x00, 0x1D, // block length
+														0x00, 0x32, 0x00, 0x06, 0x31, 0x30, 0x30, 0x30, 0x30, 0x33, // UID "100003"
+														0x00, 0x78, 0x00, 0x04, 0x4C, 0x65, 0x74, 0x6F, // nickname
+														0x01, 0x9A, 0x00, 0x01, 0x01, // authorization optional
+														0x01, 0x90, 0x00, 0x02, 0x00, 0x02, // presence: hidden
+													},
+												},
+											}),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "online only keeps connected users who publish their web status",
+			seq:      4,
+			instance: newTestInstance("11111111", sessOptUIN(11111111)),
+			req: wire.ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryQuery{
+				Body: []byte{
+					0x05, 0xB9, // nested SNAC family
+					0x00, 0x02, // nested SNAC subtype: query info
+					0x80, 0x00, // flags (version block present)
+					0x00, 0x00, 0x00, 0x00, // sequence, command
+					0x00, 0x06, // version block length
+					0x00, 0x01, 0x00, 0x02, 0x00, 0x02, // version TLV
+					0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // filler
+					0x00, 0x02, // block: search
+					0x00, 0x00, // page
+					0x00, 0x02, // condition count
+					0x00, 0x10, // conditions length
+					0x00, 0x6E, 0x00, 0x06, 0x50, 0x65, 0x74, 0x72, 0x6F, 0x76, // last name "Petrov"
+					0x01, 0x36, 0x00, 0x02, 0x00, 0x01, // online users only
+				},
+			},
+			mockParams: mockParams{
+				icqUserFinderParams: icqUserFinderParams{
+					searchICQUsersParams: searchICQUsersParams{
+						{
+							criteria: state.ICQUserSearchCriteria{
+								LastName: new("Petrov"),
+							},
+							result: []state.User{
+								{
+									IdentScreenName: state.NewIdentScreenName("100001"),
+									ICQInfo: state.ICQInfo{
+										Basic: state.ICQBasicInfo{
+											FirstName:    "Ivan",
+											LastName:     "Petrov",
+											Nickname:     "ip",
+											EmailAddress: "ivan@example.com",
+											CountryCode:  380,
+										},
+										More: state.ICQMoreInfo{
+											Gender:     2,
+											BirthDay:   17,
+											BirthMonth: 5,
+											BirthYear:  1990,
+										},
+										Permissions: state.ICQPermissions{
+											AuthRequired: true,
+											WebAware:     true,
+										},
+									},
+								},
+								{
+									IdentScreenName: state.NewIdentScreenName("100002"),
+									ICQInfo: state.ICQInfo{
+										Permissions: state.ICQPermissions{
+											WebAware: true,
+										},
+									},
+								},
+								{
+									IdentScreenName: state.NewIdentScreenName("100003"),
+									ICQInfo: state.ICQInfo{
+										Basic: state.ICQBasicInfo{
+											Nickname: "Leto",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams{
+						{
+							screenName: state.NewIdentScreenName("100001"),
+							result:     state.NewSession(),
+						},
+						{
+							screenName: state.NewIdentScreenName("100002"),
+							result:     nil,
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("11111111"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.ICQ,
+									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
+								},
+								Body: wire.SNAC_0x15_0x02_DBReply{
+									TLVRestBlock: wire.TLVRestBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.ICQTLVTagsMetadata, wire.ICQMessageReplyEnvelope{
+												Message: wire.ICQ_0x07DA_0x0FAA_DBQueryMetaReplyDirectory{
+													ICQMetadata: wire.ICQMetadata{
+														UIN:     11111111,
+														ReqType: wire.ICQDBQueryMetaReply,
+														Seq:     4,
+													},
+													ReqSubType: wire.ICQDBQueryMetaReplyDirectoryResponse,
+													Success:    wire.ICQStatusCodeOK,
+													Payload: []byte{
+														0x05, 0xB9, // nested SNAC family
+														0x00, 0x09, // nested SNAC subtype: query info ack
+														0x80, 0x00, // flags (version block)
+														0x00, 0x00, 0x00, 0x00, // sequence, command
+														0x00, 0x06, // version block length
+														0x00, 0x01, 0x00, 0x02, 0x00, 0x02, // version TLV
+														0x01,       // result
+														0x00, 0x00, // error message length
+														0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // unknown
+														0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+														0x00, 0x00, 0x00, 0x01, // total hits
+														0x00, 0x01, // pages
+														0x00, 0x01, // block count
+														0x00, 0x5E, // block length
+														0x00, 0x32, 0x00, 0x06, 0x31, 0x30, 0x30, 0x30, 0x30, 0x31, // UID "100001"
+														0x00, 0x64, 0x00, 0x04, 0x49, 0x76, 0x61, 0x6E, // first name
+														0x00, 0x6E, 0x00, 0x06, 0x50, 0x65, 0x74, 0x72, 0x6F, 0x76, // last name
+														0x00, 0x78, 0x00, 0x02, 0x69, 0x70, // nickname
+														0x00, 0x50, 0x00, 0x10, 0x69, 0x76, 0x61, 0x6E, 0x40, 0x65, // email
+														0x78, 0x61, 0x6D, 0x70, 0x6C, 0x65, 0x2E, 0x63, 0x6F, 0x6D,
+														0x00, 0x82, 0x00, 0x01, 0x02, // gender: male
+														0x01, 0xA4, 0x00, 0x08, 0x40, 0xE0, 0x1E, 0x00, 0x00, 0x00, // birth date: 1990-05-17
+														0x00, 0x00,
+														0x01, 0x9A, 0x00, 0x01, 0x00, // authorization not optional
+														0x00, 0x96, 0x00, 0x08, 0x00, 0x8C, 0x00, 0x04, 0x00, 0x00, // home address: country 380
+														0x01, 0x7C,
+														0x01, 0x90, 0x00, 0x02, 0x00, 0x01, // presence: online
+													},
+												},
+											}),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "online only with nobody connected sends an empty result",
+			seq:      5,
+			instance: newTestInstance("11111111", sessOptUIN(11111111)),
+			req: wire.ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryQuery{
+				Body: []byte{
+					0x05, 0xB9, // nested SNAC family
+					0x00, 0x02, // nested SNAC subtype: query info
+					0x00, 0x00, // flags
+					0x00, 0x00, 0x00, 0x00, // sequence, command
+					0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // filler
+					0x00, 0x02, // block: search
+					0x00, 0x00, // page
+					0x00, 0x02, // condition count
+					0x00, 0x10, // conditions length
+					0x00, 0x6E, 0x00, 0x06, 0x50, 0x65, 0x74, 0x72, 0x6F, 0x76, // last name "Petrov"
+					0x01, 0x36, 0x00, 0x02, 0x00, 0x01, // online users only
+				},
+			},
+			mockParams: mockParams{
+				icqUserFinderParams: icqUserFinderParams{
+					searchICQUsersParams: searchICQUsersParams{
+						{
+							criteria: state.ICQUserSearchCriteria{
+								LastName: new("Petrov"),
+							},
+							result: []state.User{
+								{
+									IdentScreenName: state.NewIdentScreenName("100002"),
+									ICQInfo: state.ICQInfo{
+										Permissions: state.ICQPermissions{
+											WebAware: true,
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams{
+						{
+							screenName: state.NewIdentScreenName("100002"),
+							result:     nil,
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("11111111"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.ICQ,
+									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
+								},
+								Body: wire.SNAC_0x15_0x02_DBReply{
+									TLVRestBlock: wire.TLVRestBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.ICQTLVTagsMetadata, wire.ICQMessageReplyEnvelope{
+												Message: wire.ICQ_0x07DA_0x0FAA_DBQueryMetaReplyDirectory{
+													ICQMetadata: wire.ICQMetadata{
+														UIN:     11111111,
+														ReqType: wire.ICQDBQueryMetaReply,
+														Seq:     5,
+													},
+													ReqSubType: wire.ICQDBQueryMetaReplyDirectoryResponse,
+													Success:    wire.ICQStatusCodeOK,
+													Payload: []byte{
+														0x05, 0xB9, // nested SNAC family
+														0x00, 0x09, // nested SNAC subtype: query info ack
+														0x00, 0x00, // flags
+														0x00, 0x00, 0x00, 0x00, // sequence, command
+														0x01,       // result
+														0x00, 0x00, // error message length
+														0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // unknown
+														0x00, 0x00, 0x00, 0x00, // total hits
+														0x00, 0x00, // block count
+													},
+												},
+											}),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "search with no match sends an empty result",
+			seq:      6,
+			instance: newTestInstance("11111111", sessOptUIN(11111111)),
+			req: wire.ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryQuery{
+				Body: []byte{
+					0x05, 0xB9, // nested SNAC family
+					0x00, 0x02, // nested SNAC subtype: query info
+					0x80, 0x00, // flags (version block present)
+					0x00, 0x00, 0x00, 0x00, // sequence, command
+					0x00, 0x06, // version block length
+					0x00, 0x01, 0x00, 0x02, 0x00, 0x02, // version TLV
+					0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // filler
+					0x00, 0x02, // block: search
+					0x00, 0x00, // page
+					0x00, 0x01, // condition count
+					0x00, 0x0A, // conditions length
+					0x00, 0x6E, 0x00, 0x06, 0x50, 0x65, 0x74, 0x72, 0x6F, 0x76, // last name "Petrov"
+				},
+			},
+			mockParams: mockParams{
+				icqUserFinderParams: icqUserFinderParams{
+					searchICQUsersParams: searchICQUsersParams{
+						{
+							criteria: state.ICQUserSearchCriteria{
+								LastName: new("Petrov"),
+							},
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("11111111"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.ICQ,
+									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
+								},
+								Body: wire.SNAC_0x15_0x02_DBReply{
+									TLVRestBlock: wire.TLVRestBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.ICQTLVTagsMetadata, wire.ICQMessageReplyEnvelope{
+												Message: wire.ICQ_0x07DA_0x0FAA_DBQueryMetaReplyDirectory{
+													ICQMetadata: wire.ICQMetadata{
+														UIN:     11111111,
+														ReqType: wire.ICQDBQueryMetaReply,
+														Seq:     6,
+													},
+													ReqSubType: wire.ICQDBQueryMetaReplyDirectoryResponse,
+													Success:    wire.ICQStatusCodeOK,
+													Payload: []byte{
+														0x05, 0xB9, // nested SNAC family
+														0x00, 0x09, // nested SNAC subtype: query info ack
+														0x80, 0x00, // flags (version block)
+														0x00, 0x00, 0x00, 0x00, // sequence, command
+														0x00, 0x06, // version block length
+														0x00, 0x01, 0x00, 0x02, 0x00, 0x02, // version TLV
+														0x01,       // result
+														0x00, 0x00, // error message length
+														0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // unknown
+														0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+														0x00, 0x00, 0x00, 0x00, // total hits
+														0x00, 0x01, // pages
+														0x00, 0x00, // block count
+													},
+												},
+											}),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "search with nothing searchable sends an empty result",
+			seq:      7,
+			instance: newTestInstance("11111111", sessOptUIN(11111111)),
+			req: wire.ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryQuery{
+				Body: []byte{
+					0x05, 0xB9, // nested SNAC family
+					0x00, 0x02, // nested SNAC subtype: query info
+					0x00, 0x00, // flags
+					0x00, 0x00, 0x00, 0x00, // sequence, command
+					0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // filler
+					0x00, 0x02, // block: search
+					0x00, 0x00, // page
+					0x00, 0x00, // condition count
+					0x00, 0x00, // conditions length
+				},
+			},
+			mockParams: mockParams{
+				icqUserFinderParams: icqUserFinderParams{
+					searchICQUsersParams: searchICQUsersParams{
+						{
+							criteria: state.ICQUserSearchCriteria{},
+							err:      state.ErrICQSearchEmptyCriteria,
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("11111111"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.ICQ,
+									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
+								},
+								Body: wire.SNAC_0x15_0x02_DBReply{
+									TLVRestBlock: wire.TLVRestBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.ICQTLVTagsMetadata, wire.ICQMessageReplyEnvelope{
+												Message: wire.ICQ_0x07DA_0x0FAA_DBQueryMetaReplyDirectory{
+													ICQMetadata: wire.ICQMetadata{
+														UIN:     11111111,
+														ReqType: wire.ICQDBQueryMetaReply,
+														Seq:     7,
+													},
+													ReqSubType: wire.ICQDBQueryMetaReplyDirectoryResponse,
+													Success:    wire.ICQStatusCodeOK,
+													Payload: []byte{
+														0x05, 0xB9, // nested SNAC family
+														0x00, 0x09, // nested SNAC subtype: query info ack
+														0x00, 0x00, // flags
+														0x00, 0x00, 0x00, 0x00, // sequence, command
+														0x01,       // result
+														0x00, 0x00, // error message length
+														0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // unknown
+														0x00, 0x00, 0x00, 0x00, // total hits
+														0x00, 0x00, // block count
+													},
+												},
+											}),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "search conditions are mapped to criteria",
+			seq:      8,
+			instance: newTestInstance("11111111", sessOptUIN(11111111)),
+			req: wire.ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryQuery{
+				Body: []byte{
+					0x05, 0xB9, // nested SNAC family
+					0x00, 0x02, // nested SNAC subtype: query info
+					0x80, 0x00, // flags (version block present)
+					0x00, 0x00, 0x00, 0x00, // sequence, command
+					0x00, 0x06, // version block length
+					0x00, 0x01, 0x00, 0x02, 0x00, 0x02, // version TLV
+					0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // filler
+					0x00, 0x02, // block: search
+					0x00, 0x00, // page
+					0x00, 0x09, // condition count
+					0x00, 0x51, // conditions length
+					0x00, 0x32, 0x00, 0x06, 0x31, 0x30, 0x30, 0x30, 0x30, 0x32, // UID "100002"
+					0x00, 0x64, 0x00, 0x04, 0x49, 0x76, 0x61, 0x6E, // first name "Ivan"
+					0x00, 0x6E, 0x00, 0x06, 0x50, 0x65, 0x74, 0x72, 0x6F, 0x76, // last name "Petrov"
+					0x00, 0x78, 0x00, 0x02, 0x69, 0x70, // nickname "ip"
+					0x00, 0x50, 0x00, 0x10, 0x69, 0x76, 0x61, 0x6E, 0x40, 0x65, // email
+					0x78, 0x61, 0x6D, 0x70, 0x6C, 0x65, 0x2E, 0x63, 0x6F, 0x6D,
+					0x00, 0x82, 0x00, 0x01, 0x02, // gender: male
+					0x00, 0xBE, 0x00, 0x04, 0x00, 0x00, 0x00, 0xD5, // country 213
+					0x00, 0xFA, 0x00, 0x02, 0x00, 0x07, // language 7
+					0x01, 0x54, 0x00, 0x04, 0x00, 0x16, 0x00, 0x12, // age range: 18-22
+				},
+			},
+			mockParams: mockParams{
+				icqUserFinderParams: icqUserFinderParams{
+					searchICQUsersParams: searchICQUsersParams{
+						{
+							criteria: state.ICQUserSearchCriteria{
+								UIN:            new(uint32(100002)),
+								FirstName:      new("Ivan"),
+								LastName:       new("Petrov"),
+								NickName:       new("ip"),
+								Email:          new("ivan@example.com"),
+								Gender:         new(uint8(2)),
+								CountryCode:    new(uint16(213)),
+								SpokenLanguage: new(uint8(7)),
+								MinAge:         new(uint16(18)),
+								MaxAge:         new(uint16(22)),
+							},
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("11111111"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.ICQ,
+									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
+								},
+								Body: wire.SNAC_0x15_0x02_DBReply{
+									TLVRestBlock: wire.TLVRestBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.ICQTLVTagsMetadata, wire.ICQMessageReplyEnvelope{
+												Message: wire.ICQ_0x07DA_0x0FAA_DBQueryMetaReplyDirectory{
+													ICQMetadata: wire.ICQMetadata{
+														UIN:     11111111,
+														ReqType: wire.ICQDBQueryMetaReply,
+														Seq:     8,
+													},
+													ReqSubType: wire.ICQDBQueryMetaReplyDirectoryResponse,
+													Success:    wire.ICQStatusCodeOK,
+													Payload: []byte{
+														0x05, 0xB9, // nested SNAC family
+														0x00, 0x09, // nested SNAC subtype: query info ack
+														0x80, 0x00, // flags (version block)
+														0x00, 0x00, 0x00, 0x00, // sequence, command
+														0x00, 0x06, // version block length
+														0x00, 0x01, 0x00, 0x02, 0x00, 0x02, // version TLV
+														0x01,       // result
+														0x00, 0x00, // error message length
+														0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // unknown
+														0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+														0x00, 0x00, 0x00, 0x00, // total hits
+														0x00, 0x01, // pages
+														0x00, 0x00, // block count
+													},
+												},
+											}),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "conditions the client leaves unset are not criteria",
+			seq:      9,
+			instance: newTestInstance("11111111", sessOptUIN(11111111)),
+			req: wire.ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryQuery{
+				Body: []byte{
+					0x05, 0xB9, // nested SNAC family
+					0x00, 0x02, // nested SNAC subtype: query info
+					0x00, 0x00, // flags
+					0x00, 0x00, 0x00, 0x00, // sequence, command
+					0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // filler
+					0x00, 0x02, // block: search
+					0x00, 0x00, // page
+					0x00, 0x07, // condition count
+					0x00, 0x39, // conditions length
+					0x00, 0x32, 0x00, 0x0C, 0x6E, 0x6F, 0x74, 0x20, 0x61, 0x20, // UID that is not a number
+					0x6E, 0x75, 0x6D, 0x62, 0x65, 0x72,
+					0x00, 0x64, 0x00, 0x00, // empty first name
+					0x00, 0x82, 0x00, 0x01, 0x00, // gender unset
+					0x00, 0xBE, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, // country unset
+					0x00, 0xFA, 0x00, 0x02, 0x00, 0x00, // language unset
+					0x01, 0x54, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, // age range unset
+					0x00, 0x6E, 0x00, 0x06, 0x50, 0x65, 0x74, 0x72, 0x6F, 0x76, // last name "Petrov"
+				},
+			},
+			mockParams: mockParams{
+				icqUserFinderParams: icqUserFinderParams{
+					searchICQUsersParams: searchICQUsersParams{
+						{
+							criteria: state.ICQUserSearchCriteria{
+								LastName: new("Petrov"),
+							},
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("11111111"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.ICQ,
+									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
+								},
+								Body: wire.SNAC_0x15_0x02_DBReply{
+									TLVRestBlock: wire.TLVRestBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.ICQTLVTagsMetadata, wire.ICQMessageReplyEnvelope{
+												Message: wire.ICQ_0x07DA_0x0FAA_DBQueryMetaReplyDirectory{
+													ICQMetadata: wire.ICQMetadata{
+														UIN:     11111111,
+														ReqType: wire.ICQDBQueryMetaReply,
+														Seq:     9,
+													},
+													ReqSubType: wire.ICQDBQueryMetaReplyDirectoryResponse,
+													Success:    wire.ICQStatusCodeOK,
+													Payload: []byte{
+														0x05, 0xB9, // nested SNAC family
+														0x00, 0x09, // nested SNAC subtype: query info ack
+														0x00, 0x00, // flags
+														0x00, 0x00, 0x00, 0x00, // sequence, command
+														0x01,       // result
+														0x00, 0x00, // error message length
+														0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // unknown
+														0x00, 0x00, 0x00, 0x00, // total hits
+														0x00, 0x00, // block count
+													},
+												},
+											}),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "search failure is refused",
+			seq:      10,
+			instance: newTestInstance("11111111", sessOptUIN(11111111)),
+			req: wire.ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryQuery{
+				Body: []byte{
+					0x05, 0xB9, // nested SNAC family
+					0x00, 0x02, // nested SNAC subtype: query info
+					0x80, 0x00, // flags (version block present)
+					0x00, 0x00, 0x00, 0x00, // sequence, command
+					0x00, 0x06, // version block length
+					0x00, 0x01, 0x00, 0x02, 0x00, 0x02, // version TLV
+					0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // filler
+					0x00, 0x02, // block: search
+					0x00, 0x00, // page
+					0x00, 0x01, // condition count
+					0x00, 0x0A, // conditions length
+					0x00, 0x6E, 0x00, 0x06, 0x50, 0x65, 0x74, 0x72, 0x6F, 0x76, // last name "Petrov"
+				},
+			},
+			mockParams: mockParams{
+				icqUserFinderParams: icqUserFinderParams{
+					searchICQUsersParams: searchICQUsersParams{
+						{
+							criteria: state.ICQUserSearchCriteria{
+								LastName: new("Petrov"),
+							},
+							err: errors.New("database error"),
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("11111111"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.ICQ,
+									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
+								},
+								Body: wire.SNAC_0x15_0x02_DBReply{
+									TLVRestBlock: wire.TLVRestBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.ICQTLVTagsMetadata, wire.ICQMessageReplyEnvelope{
+												Message: wire.ICQ_0x07DA_0x0FAA_DBQueryMetaReplyDirectory{
+													ICQMetadata: wire.ICQMetadata{
+														UIN:     11111111,
+														ReqType: wire.ICQDBQueryMetaReply,
+														Seq:     10,
+													},
+													ReqSubType: wire.ICQDBQueryMetaReplyDirectoryResponse,
+													Success:    wire.ICQStatusCodeOK,
+													Payload: []byte{
+														0x05, 0xB9, // nested SNAC family
+														0x00, 0x02, // nested SNAC subtype: query info
+														0x80, 0x00, // flags (version block)
+														0x00, 0x00, 0x00, 0x00, // sequence, command
+														0x00, 0x06, // version block length
+														0x00, 0x01, 0x00, 0x02, 0x00, 0x02, // version TLV
+														0x00,       // result
+														0x00, 0x00, // error message length
+														0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // unknown
+														0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+														0x00, 0x00, 0x00, 0x00, // total hits
+														0x00, 0x00, // pages
+														0x00, 0x00, // block count
+													},
+												},
+											}),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "QIP 2012 subtype is handled as a search",
+			seq:      11,
+			instance: newTestInstance("11111111", sessOptUIN(11111111)),
+			req: wire.ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryQuery{
+				Body: []byte{
+					0x05, 0xB9, // nested SNAC family
+					0x0F, 0xA0, // nested SNAC subtype: QIP 2012 directory query
+					0x00, 0x00, // flags
+					0x00, 0x00, 0x00, 0x00, // sequence, command
+					0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // filler
+					0x00, 0x02, // block: search
+					0x00, 0x00, // page
+					0x00, 0x01, // condition count
+					0x00, 0x0A, // conditions length
+					0x00, 0x6E, 0x00, 0x06, 0x50, 0x65, 0x74, 0x72, 0x6F, 0x76, // last name "Petrov"
+				},
+			},
+			mockParams: mockParams{
+				icqUserFinderParams: icqUserFinderParams{
+					searchICQUsersParams: searchICQUsersParams{
+						{
+							criteria: state.ICQUserSearchCriteria{
+								LastName: new("Petrov"),
+							},
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("11111111"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.ICQ,
+									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
+								},
+								Body: wire.SNAC_0x15_0x02_DBReply{
+									TLVRestBlock: wire.TLVRestBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.ICQTLVTagsMetadata, wire.ICQMessageReplyEnvelope{
+												Message: wire.ICQ_0x07DA_0x0FAA_DBQueryMetaReplyDirectory{
+													ICQMetadata: wire.ICQMetadata{
+														UIN:     11111111,
+														ReqType: wire.ICQDBQueryMetaReply,
+														Seq:     11,
+													},
+													ReqSubType: wire.ICQDBQueryMetaReplyDirectoryResponse,
+													Success:    wire.ICQStatusCodeOK,
+													Payload: []byte{
+														0x05, 0xB9, // nested SNAC family
+														0x00, 0x09, // nested SNAC subtype: query info ack
+														0x00, 0x00, // flags
+														0x00, 0x00, 0x00, 0x00, // sequence, command
+														0x01,       // result
+														0x00, 0x00, // error message length
+														0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // unknown
+														0x00, 0x00, 0x00, 0x00, // total hits
+														0x00, 0x00, // block count
+													},
+												},
+											}),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "profile lookup is refused",
+			seq:      12,
+			instance: newTestInstance("11111111", sessOptUIN(11111111)),
+			req: wire.ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryQuery{
+				Body: []byte{
+					0x05, 0xB9, // nested SNAC family
+					0x00, 0x02, // nested SNAC subtype: query info
+					0x80, 0x00, // flags (version block present)
+					0x00, 0x00, 0x00, 0x00, // sequence, command
+					0x00, 0x06, // version block length
+					0x00, 0x01, 0x00, 0x02, 0x00, 0x02, // version TLV
+					0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // filler
+					0x00, 0x03, // block: profile lookup
+					0x00, 0x00, 0x00, 0x01, // count
+					0x00, 0x0A, // conditions length
+					0x00, 0x32, 0x00, 0x06, 0x31, 0x30, 0x30, 0x30, 0x30, 0x31, // UID "100001"
+				},
+			},
+			mockParams: mockParams{
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("11111111"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.ICQ,
+									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
+								},
+								Body: wire.SNAC_0x15_0x02_DBReply{
+									TLVRestBlock: wire.TLVRestBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.ICQTLVTagsMetadata, wire.ICQMessageReplyEnvelope{
+												Message: wire.ICQ_0x07DA_0x0FAA_DBQueryMetaReplyDirectory{
+													ICQMetadata: wire.ICQMetadata{
+														UIN:     11111111,
+														ReqType: wire.ICQDBQueryMetaReply,
+														Seq:     12,
+													},
+													ReqSubType: wire.ICQDBQueryMetaReplyDirectoryResponse,
+													Success:    wire.ICQStatusCodeOK,
+													Payload: []byte{
+														0x05, 0xB9, // nested SNAC family
+														0x00, 0x02, // nested SNAC subtype: query info
+														0x80, 0x00, // flags (version block)
+														0x00, 0x00, 0x00, 0x00, // sequence, command
+														0x00, 0x06, // version block length
+														0x00, 0x01, 0x00, 0x02, 0x00, 0x02, // version TLV
+														0x00,       // result
+														0x00, 0x00, // error message length
+														0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // unknown
+														0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+														0x00, 0x00, 0x00, 0x00, // total hits
+														0x00, 0x00, // pages
+														0x00, 0x00, // block count
+													},
+												},
+											}),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "multi-lookup is refused and is not mistaken for a search",
+			seq:      13,
+			instance: newTestInstance("11111111", sessOptUIN(11111111)),
+			req: wire.ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryQuery{
+				Body: []byte{
+					0x05, 0xB9, // nested SNAC family
+					0x00, 0x06, // nested SNAC subtype: query multi info
+					0x00, 0x00, // flags
+					0x00, 0x00, 0x00, 0x00, // sequence, command
+					0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // filler
+					0x00, 0x02, // item count
+					0x00, 0x0A, // item length
+					0x00, 0x32, 0x00, 0x06, 0x31, 0x30, 0x30, 0x30, 0x30, 0x31, // UID "100001"
+					0x00, 0x0A, // item length
+					0x00, 0x32, 0x00, 0x06, 0x31, 0x30, 0x30, 0x30, 0x30, 0x32, // UID "100002"
+				},
+			},
+			mockParams: mockParams{
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("11111111"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.ICQ,
+									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
+								},
+								Body: wire.SNAC_0x15_0x02_DBReply{
+									TLVRestBlock: wire.TLVRestBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.ICQTLVTagsMetadata, wire.ICQMessageReplyEnvelope{
+												Message: wire.ICQ_0x07DA_0x0FAA_DBQueryMetaReplyDirectory{
+													ICQMetadata: wire.ICQMetadata{
+														UIN:     11111111,
+														ReqType: wire.ICQDBQueryMetaReply,
+														Seq:     13,
+													},
+													ReqSubType: wire.ICQDBQueryMetaReplyDirectoryResponse,
+													Success:    wire.ICQStatusCodeOK,
+													Payload: []byte{
+														0x05, 0xB9, // nested SNAC family
+														0x00, 0x06, // nested SNAC subtype: query multi info
+														0x00, 0x00, // flags
+														0x00, 0x00, 0x00, 0x00, // sequence, command
+														0x00,       // result
+														0x00, 0x00, // error message length
+														0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // unknown
+														0x00, 0x00, 0x00, 0x00, // total hits
+														0x00, 0x00, // block count
+													},
+												},
+											}),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "multi-lookup, versioned, is refused",
+			seq:      14,
+			instance: newTestInstance("11111111", sessOptUIN(11111111)),
+			req: wire.ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryQuery{
+				Body: []byte{
+					0x05, 0xB9, // nested SNAC family
+					0x00, 0x06, // nested SNAC subtype: query multi info
+					0x80, 0x00, // flags (version block present)
+					0x00, 0x00, 0x00, 0x00, // sequence, command
+					0x00, 0x06, // version block length
+					0x00, 0x01, 0x00, 0x02, 0x00, 0x02, // version TLV
+					0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // filler
+					0x00, 0x01, // item count
+					0x00, 0x0A, // item length
+					0x00, 0x32, 0x00, 0x06, 0x31, 0x30, 0x30, 0x30, 0x30, 0x31, // UID "100001"
+				},
+			},
+			mockParams: mockParams{
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("11111111"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.ICQ,
+									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
+								},
+								Body: wire.SNAC_0x15_0x02_DBReply{
+									TLVRestBlock: wire.TLVRestBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.ICQTLVTagsMetadata, wire.ICQMessageReplyEnvelope{
+												Message: wire.ICQ_0x07DA_0x0FAA_DBQueryMetaReplyDirectory{
+													ICQMetadata: wire.ICQMetadata{
+														UIN:     11111111,
+														ReqType: wire.ICQDBQueryMetaReply,
+														Seq:     14,
+													},
+													ReqSubType: wire.ICQDBQueryMetaReplyDirectoryResponse,
+													Success:    wire.ICQStatusCodeOK,
+													Payload: []byte{
+														0x05, 0xB9, // nested SNAC family
+														0x00, 0x06, // nested SNAC subtype: query multi info
+														0x80, 0x00, // flags (version block)
+														0x00, 0x00, 0x00, 0x00, // sequence, command
+														0x00, 0x06, // version block length
+														0x00, 0x01, 0x00, 0x02, 0x00, 0x02, // version TLV
+														0x00,       // result
+														0x00, 0x00, // error message length
+														0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // unknown
+														0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+														0x00, 0x00, 0x00, 0x00, // total hits
+														0x00, 0x00, // pages
+														0x00, 0x00, // block count
+													},
+												},
+											}),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "unsupported subtype is refused",
+			seq:      15,
+			instance: newTestInstance("11111111", sessOptUIN(11111111)),
+			req: wire.ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryQuery{
+				Body: []byte{
+					0x05, 0xB9, // nested SNAC family
+					0x00, 0x03, // nested SNAC subtype: set info
+					0x00, 0x00, // flags
+					0x00, 0x00, 0x00, 0x00, // sequence, command
+					0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // filler
+					0x00, 0x02, // block: search
+					0x00, 0x00, // page
+					0x00, 0x01, // condition count
+					0x00, 0x0A, // conditions length
+					0x00, 0x6E, 0x00, 0x06, 0x50, 0x65, 0x74, 0x72, 0x6F, 0x76, // last name "Petrov"
+				},
+			},
+			mockParams: mockParams{
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("11111111"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.ICQ,
+									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
+								},
+								Body: wire.SNAC_0x15_0x02_DBReply{
+									TLVRestBlock: wire.TLVRestBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.ICQTLVTagsMetadata, wire.ICQMessageReplyEnvelope{
+												Message: wire.ICQ_0x07DA_0x0FAA_DBQueryMetaReplyDirectory{
+													ICQMetadata: wire.ICQMetadata{
+														UIN:     11111111,
+														ReqType: wire.ICQDBQueryMetaReply,
+														Seq:     15,
+													},
+													ReqSubType: wire.ICQDBQueryMetaReplyDirectoryResponse,
+													Success:    wire.ICQStatusCodeOK,
+													Payload: []byte{
+														0x05, 0xB9, // nested SNAC family
+														0x00, 0x03, // nested SNAC subtype: set info
+														0x00, 0x00, // flags
+														0x00, 0x00, 0x00, 0x00, // sequence, command
+														0x00,       // result
+														0x00, 0x00, // error message length
+														0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // unknown
+														0x00, 0x00, 0x00, 0x00, // total hits
+														0x00, 0x00, // block count
+													},
+												},
+											}),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "unknown block is refused",
+			seq:      16,
+			instance: newTestInstance("11111111", sessOptUIN(11111111)),
+			req: wire.ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryQuery{
+				Body: []byte{
+					0x05, 0xB9, // nested SNAC family
+					0x00, 0x02, // nested SNAC subtype: query info
+					0x00, 0x00, // flags
+					0x00, 0x00, 0x00, 0x00, // sequence, command
+					0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // filler
+					0x00, 0x09, // block: unknown
+				},
+			},
+			mockParams: mockParams{
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("11111111"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.ICQ,
+									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
+								},
+								Body: wire.SNAC_0x15_0x02_DBReply{
+									TLVRestBlock: wire.TLVRestBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.ICQTLVTagsMetadata, wire.ICQMessageReplyEnvelope{
+												Message: wire.ICQ_0x07DA_0x0FAA_DBQueryMetaReplyDirectory{
+													ICQMetadata: wire.ICQMetadata{
+														UIN:     11111111,
+														ReqType: wire.ICQDBQueryMetaReply,
+														Seq:     16,
+													},
+													ReqSubType: wire.ICQDBQueryMetaReplyDirectoryResponse,
+													Success:    wire.ICQStatusCodeOK,
+													Payload: []byte{
+														0x05, 0xB9, // nested SNAC family
+														0x00, 0x02, // nested SNAC subtype: query info
+														0x00, 0x00, // flags
+														0x00, 0x00, 0x00, 0x00, // sequence, command
+														0x00,       // result
+														0x00, 0x00, // error message length
+														0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // unknown
+														0x00, 0x00, 0x00, 0x00, // total hits
+														0x00, 0x00, // block count
+													},
+												},
+											}),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "truncated request",
+			seq:      17,
+			instance: newTestInstance("11111111", sessOptUIN(11111111)),
+			req: wire.ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryQuery{
+				Body: []byte{
+					0x05, 0xB9, // nested SNAC family, then nothing
+				},
+			},
+			wantErr: wire.ErrUnmarshalFailure,
+		},
+		{
+			name:     "truncated search body",
+			seq:      18,
+			instance: newTestInstance("11111111", sessOptUIN(11111111)),
+			req: wire.ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryQuery{
+				Body: []byte{
+					0x05, 0xB9, // nested SNAC family
+					0x00, 0x02, // nested SNAC subtype: query info
+					0x00, 0x00, // flags
+					0x00, 0x00, 0x00, 0x00, // sequence, command
+					0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // filler
+					0x00, 0x02, // block: search
+					0x00, // page cut short
+				},
+			},
+			wantErr: wire.ErrUnmarshalFailure,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			userFinder := newMockICQUserFinder(t)
+			for _, params := range tt.mockParams.searchICQUsersParams {
+				userFinder.EXPECT().
+					SearchICQUsers(matchContext(), params.criteria).
+					Return(params.result, params.err)
+			}
+
+			messageRelayer := newMockMessageRelayer(t)
+			for _, params := range tt.mockParams.relayToScreenNameParams {
+				messageRelayer.EXPECT().RelayToScreenName(mock.Anything, params.screenName, params.message)
+			}
+
+			sessionRetriever := newMockSessionRetriever(t)
+			for _, params := range tt.mockParams.retrieveSessionParams {
+				sessionRetriever.EXPECT().
+					RetrieveSession(params.screenName).
+					Return(params.result)
+			}
+
+			s := ICQService{
+				logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
+				messageRelayer:   messageRelayer,
+				sessionRetriever: sessionRetriever,
+				userFinder:       userFinder,
+			}
+			err := s.DirectoryQuery(context.Background(), tt.instance, wire.SNACFrame{RequestID: 1234}, tt.req, tt.seq)
+			assert.ErrorIs(t, err, tt.wantErr)
+		})
+	}
+}
+
 func TestICQService_FindByICQName(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -95,6 +1581,7 @@ func TestICQService_FindByICQName(t *testing.T) {
 											Nickname:     "Janey",
 										},
 										Permissions: state.ICQPermissions{
+											WebAware:     true,
 											AuthRequired: false,
 										},
 										More: state.ICQMoreInfo{
@@ -115,6 +1602,7 @@ func TestICQService_FindByICQName(t *testing.T) {
 											Nickname:     "Johnny",
 										},
 										Permissions: state.ICQPermissions{
+											WebAware:     true,
 											AuthRequired: true,
 										},
 										More: state.ICQMoreInfo{
@@ -294,6 +1782,7 @@ func TestICQService_FindByICQEmail(t *testing.T) {
 										Nickname:     "Johnny",
 									},
 									Permissions: state.ICQPermissions{
+										WebAware:     true,
 										AuthRequired: true,
 									},
 									More: state.ICQMoreInfo{
@@ -435,6 +1924,7 @@ func TestICQService_FindByEmail3(t *testing.T) {
 										Nickname:     "Johnny",
 									},
 									Permissions: state.ICQPermissions{
+										WebAware:     true,
 										AuthRequired: true,
 									},
 									More: state.ICQMoreInfo{
@@ -564,6 +2054,7 @@ func TestICQService_FindByUIN(t *testing.T) {
 								IdentScreenName: state.NewIdentScreenName("123456789"),
 								ICQInfo: state.ICQInfo{
 									Permissions: state.ICQPermissions{
+										WebAware:     true,
 										AuthRequired: true,
 									},
 									Basic: state.ICQBasicInfo{
@@ -703,6 +2194,7 @@ func TestICQService_FindByUIN2(t *testing.T) {
 								IdentScreenName: state.NewIdentScreenName("123456789"),
 								ICQInfo: state.ICQInfo{
 									Permissions: state.ICQPermissions{
+										WebAware:     true,
 										AuthRequired: true,
 									},
 									Basic: state.ICQBasicInfo{
@@ -847,6 +2339,7 @@ func TestICQService_FindByWhitePages(t *testing.T) {
 											Nickname:     "Janey",
 										},
 										Permissions: state.ICQPermissions{
+											WebAware:     true,
 											AuthRequired: false,
 										},
 										More: state.ICQMoreInfo{
@@ -867,6 +2360,7 @@ func TestICQService_FindByWhitePages(t *testing.T) {
 											Nickname:     "Ally123",
 										},
 										Permissions: state.ICQPermissions{
+											WebAware:     true,
 											AuthRequired: true,
 										},
 										More: state.ICQMoreInfo{
@@ -1057,6 +2551,7 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 											Nickname:     "Janey",
 										},
 										Permissions: state.ICQPermissions{
+											WebAware:     true,
 											AuthRequired: false,
 										},
 										More: state.ICQMoreInfo{
@@ -1077,6 +2572,7 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 											Nickname:     "Ally123",
 										},
 										Permissions: state.ICQPermissions{
+											WebAware:     true,
 											AuthRequired: true,
 										},
 										More: state.ICQMoreInfo{
@@ -1234,6 +2730,7 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 											Nickname:     "Janey",
 										},
 										Permissions: state.ICQPermissions{
+											WebAware:     true,
 											AuthRequired: false,
 										},
 										More: state.ICQMoreInfo{
@@ -1420,6 +2917,7 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 											Nickname:     "Janey",
 										},
 										Permissions: state.ICQPermissions{
+											WebAware:     true,
 											AuthRequired: false,
 										},
 										More: state.ICQMoreInfo{
@@ -1708,6 +3206,7 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 											Nickname:     "Janey",
 										},
 										Permissions: state.ICQPermissions{
+											WebAware:     true,
 											AuthRequired: false,
 										},
 										More: state.ICQMoreInfo{
@@ -1728,6 +3227,7 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 											Nickname:     "Ally123",
 										},
 										Permissions: state.ICQPermissions{
+											WebAware:     true,
 											AuthRequired: true,
 										},
 										More: state.ICQMoreInfo{
@@ -1798,6 +3298,232 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 						// createResult step (only for the included user)
 						{
 							screenName: state.NewIdentScreenName("123456789"),
+							result:     state.NewSession(),
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "a user who hides their web status is reported hidden",
+			timeNow: func() time.Time {
+				return time.Date(2020, time.August, 1, 0, 0, 0, 0, time.UTC)
+			},
+			seq:      1,
+			instance: newTestInstance("11111111", sessOptUIN(11111111)),
+			req: wire.ICQ_0x07D0_0x055F_DBQueryMetaReqSearchWhitePages2{
+				TLVRestBlock: wire.TLVRestBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVLE(wire.ICQTLVTagsWhitepagesSearchKeywords, struct {
+							Val string `oscar:"len_prefix=uint16,nullterm"`
+						}{
+							Val: "knitting",
+						}),
+					},
+				},
+			},
+			mockParams: mockParams{
+				icqUserFinderParams: icqUserFinderParams{
+					searchICQUsersParams: searchICQUsersParams{
+						{
+							criteria: state.ICQUserSearchCriteria{
+								AnyKeyword: new("knitting"),
+							},
+							result: []state.User{
+								{
+									IdentScreenName: state.NewIdentScreenName("987654321"),
+									ICQInfo: state.ICQInfo{
+										Basic: state.ICQBasicInfo{
+											EmailAddress: "janey@example.com",
+											FirstName:    "Jane",
+											LastName:     "Doe",
+											Nickname:     "Janey",
+										},
+										Permissions: state.ICQPermissions{
+											WebAware:     false,
+											AuthRequired: false,
+										},
+										More: state.ICQMoreInfo{
+											BirthDay:   31,
+											BirthMonth: 7,
+											BirthYear:  1995,
+											Gender:     2,
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("11111111"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.ICQ,
+									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
+								},
+								Body: wire.SNAC_0x15_0x02_DBReply{
+									TLVRestBlock: wire.TLVRestBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.ICQTLVTagsMetadata, wire.ICQMessageReplyEnvelope{
+												Message: wire.ICQ_0x07DA_0x01AE_DBQueryMetaReplyLastUserFound{
+													ICQMetadata: wire.ICQMetadata{
+														UIN:     11111111,
+														ReqType: wire.ICQDBQueryMetaReply,
+														Seq:     1,
+													},
+													Success:    wire.ICQStatusCodeOK,
+													ReqSubType: wire.ICQDBQueryMetaReplyLastUserFound,
+													Details: wire.ICQUserSearchRecord{
+														UIN:           987654321,
+														Nickname:      "Janey",
+														FirstName:     "Jane",
+														LastName:      "Doe",
+														Email:         "janey@example.com",
+														Authorization: 1,
+														OnlineStatus:  2,
+														Gender:        2,
+														Age:           25,
+													},
+												},
+											}),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "online only leaves out a connected user who hides their web status",
+			timeNow: func() time.Time {
+				return time.Date(2020, time.August, 1, 0, 0, 0, 0, time.UTC)
+			},
+			seq:      1,
+			instance: newTestInstance("11111111", sessOptUIN(11111111)),
+			req: wire.ICQ_0x07D0_0x055F_DBQueryMetaReqSearchWhitePages2{
+				TLVRestBlock: wire.TLVRestBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVLE(wire.ICQTLVTagsWhitepagesSearchKeywords, struct {
+							Val string `oscar:"len_prefix=uint16,nullterm"`
+						}{
+							Val: "knitting",
+						}),
+						wire.NewTLVLE(wire.ICQTLVTagsSearchOnlineUsersFlag, uint8(1)),
+					},
+				},
+			},
+			mockParams: mockParams{
+				icqUserFinderParams: icqUserFinderParams{
+					searchICQUsersParams: searchICQUsersParams{
+						{
+							criteria: state.ICQUserSearchCriteria{
+								AnyKeyword: new("knitting"),
+							},
+							result: []state.User{
+								{
+									IdentScreenName: state.NewIdentScreenName("987654321"),
+									ICQInfo: state.ICQInfo{
+										Basic: state.ICQBasicInfo{
+											EmailAddress: "janey@example.com",
+											FirstName:    "Jane",
+											LastName:     "Doe",
+											Nickname:     "Janey",
+										},
+										Permissions: state.ICQPermissions{
+											WebAware:     true,
+											AuthRequired: false,
+										},
+										More: state.ICQMoreInfo{
+											BirthDay:   31,
+											BirthMonth: 7,
+											BirthYear:  1995,
+											Gender:     2,
+										},
+									},
+								},
+								{
+									IdentScreenName: state.NewIdentScreenName("123456789"),
+									ICQInfo: state.ICQInfo{
+										Basic: state.ICQBasicInfo{
+											EmailAddress: "alice@example.com",
+											FirstName:    "Alice",
+											LastName:     "Smith",
+											Nickname:     "Ally123",
+										},
+										Permissions: state.ICQPermissions{
+											WebAware:     false,
+											AuthRequired: true,
+										},
+										More: state.ICQMoreInfo{
+											BirthDay:   31,
+											BirthMonth: 7,
+											BirthYear:  1999,
+											Gender:     1,
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("11111111"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.ICQ,
+									SubGroup:  wire.ICQDBReply,
+									RequestID: 1234,
+								},
+								Body: wire.SNAC_0x15_0x02_DBReply{
+									TLVRestBlock: wire.TLVRestBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.ICQTLVTagsMetadata, wire.ICQMessageReplyEnvelope{
+												Message: wire.ICQ_0x07DA_0x01AE_DBQueryMetaReplyLastUserFound{
+													ICQMetadata: wire.ICQMetadata{
+														UIN:     11111111,
+														ReqType: wire.ICQDBQueryMetaReply,
+														Seq:     1,
+													},
+													Success:    wire.ICQStatusCodeOK,
+													ReqSubType: wire.ICQDBQueryMetaReplyLastUserFound,
+													Details: wire.ICQUserSearchRecord{
+														UIN:           987654321,
+														Nickname:      "Janey",
+														FirstName:     "Jane",
+														LastName:      "Doe",
+														Email:         "janey@example.com",
+														Authorization: 1,
+														OnlineStatus:  1,
+														Gender:        2,
+														Age:           25,
+													},
+												},
+											}),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams{
+						// filter step
+						{
+							screenName: state.NewIdentScreenName("987654321"),
+							result:     state.NewSession(),
+						},
+						// createResult step (only for the included user)
+						{
+							screenName: state.NewIdentScreenName("987654321"),
 							result:     state.NewSession(),
 						},
 					},
