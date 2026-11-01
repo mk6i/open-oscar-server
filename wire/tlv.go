@@ -64,6 +64,11 @@ func (t TLV) Uint32BE() uint32 {
 	return binary.BigEndian.Uint32(t.Value)
 }
 
+// Uint64BE returns a uint64 big-endian representation of the TLV.
+func (t TLV) Uint64BE() uint64 {
+	return binary.BigEndian.Uint64(t.Value)
+}
+
 // NewTLVBE creates a new TLV. Values are marshalled in big-endian order.
 func NewTLVBE(tag uint16, val any) TLV {
 	return newTLV(tag, val, binary.BigEndian)
@@ -164,6 +169,18 @@ func (s *TLVList) Remove(tag uint16) {
 	*s = slices.DeleteFunc(*s, func(tlv TLV) bool {
 		return tlv.Tag == tag
 	})
+}
+
+func (s *TLVList) BoolRemove(tag uint16) bool {
+	removed := false
+	*s = slices.DeleteFunc(*s, func(tlv TLV) bool {
+		if tlv.Tag == tag {
+			removed = true
+			return true
+		}
+		return false
+	})
+	return removed
 }
 
 // String retrieves the string value associated with the specified tag from the

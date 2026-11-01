@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
 )
@@ -1071,5 +1072,127 @@ func (s *FeedbagService) ForwardICQAuthEvents(ctx context.Context, sender state.
 		s.logger.WarnContext(ctx, "unknown authMsg ICBM message type", "type", authMsg.MessageType)
 	}
 
+	return nil
+}
+
+// inform user's buddies (by modifying their buddy list) that info has been updated
+func (s *FeedbagService) InformBuddiesICQDirInfoChanged(ctx context.Context, instance *state.SessionInstance) error {
+	fb, err := s.feedbagManager.Feedbag(ctx, instance.IdentScreenName())
+	if err != nil {
+		return err
+	}
+
+	user, err := s.userManager.User(ctx, instance.IdentScreenName())
+
+	if len(fb) > 0 {
+		// (TODO) Also need to upsert this to the owner's feedbag:
+		//000000D0: xx xx xx xx-xx xx xx 00-08 49 43 51-2D 4D 44 49         ..ICQ-MDI
+		//000000E0: 52 00 00 00-01 00 20 00-20 01 5C 00-10 77 AC 15  R..... . .\..wђ.
+		//000000F0: FD C8 DF 4E-07 86 42 5A-5D 2F 24 54-A9 01 5D 00  э»яN.ЖBZ]/$T©.].
+		//00000100: 08 40 E3 8D-53 DA A4 99-39                       .@гНSЏ§Щ9
+		var recipients []state.IdentScreenName
+		for i := range fb {
+			if fb[i].ClassID == wire.FeedbagClassIdBuddy {
+				recipients = append(recipients, state.NewIdentScreenName(fb[i].Name))
+			}
+		}
+
+		s.messageRelayer.RelayToScreenNames(ctx, recipients, wire.SNACMessage{
+			Frame: wire.SNACFrame{
+				FoodGroup: wire.Feedbag,
+				SubGroup:  wire.FeedbagStartCluster,
+				Flags:     wire.SNACFlagsExtendedInfo,
+				RequestID: wire.ReqIDFromServer,
+			},
+			Body: wire.SNAC_0x13_0x11_FeedbagStartCluster{
+				Version: &wire.TLVLBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.FeedbagTLVVersion, uint16(4)),
+					},
+				},
+			},
+		})
+
+		for _, recipient := range recipients {
+			fb, err := s.feedbagManager.Feedbag(ctx, recipient)
+			if err != nil {
+				return err
+			}
+
+			if len(fb) > 0 {
+				for i := range fb {
+					if fb[i].Name == instance.IdentScreenName().String() && fb[i].ClassID == wire.FeedbagClassIdBuddy {
+						if err := s.feedbagManager.FeedbagDelete(ctx, recipient, []wire.FeedbagItem{fb[i]}); err != nil {
+							return err
+						}
+
+						// 1:
+						mdirKeyRemoved := fb[i].TLVLBlock.BoolRemove(wire.FeedbagAttributesMDirPrivateKey)
+						mdirLastUpdateRemoved := fb[i].TLVLBlock.BoolRemove(wire.FeedbagAttributesMDirLastUpdate)
+						if mdirKeyRemoved || mdirLastUpdateRemoved {
+							s.messageRelayer.RelayToScreenName(ctx, recipient, wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagUpdateItem,
+									Flags:     wire.SNACFlagsExtendedInfo,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
+									Version: &wire.TLVLBlock{
+										TLVList: wire.TLVList{
+											wire.NewTLVBE(wire.FeedbagTLVVersion, uint16(4)),
+										},
+									},
+									Items: []wire.FeedbagItem{fb[i]},
+								},
+							})
+						}
+						// 2:
+						fb[i].TLVLBlock.Append(wire.NewTLVBE(wire.FeedbagAttributesMDirPrivateKey, uuid.MustParse(user.ICQInfo.MDirData.PrivateKey)))
+						fb[i].TLVLBlock.Append(wire.NewTLVBE(wire.FeedbagAttributesMDirLastUpdate, user.ICQInfo.MDirData.LastUpdate))
+
+						if err := s.feedbagManager.FeedbagUpsert(ctx, recipient, []wire.FeedbagItem{fb[i]}); err != nil {
+							return err
+						}
+
+						s.messageRelayer.RelayToScreenName(ctx, recipient, wire.SNACMessage{
+							Frame: wire.SNACFrame{
+								FoodGroup: wire.Feedbag,
+								SubGroup:  wire.FeedbagUpdateItem,
+								Flags:     wire.SNACFlagsExtendedInfo,
+								RequestID: wire.ReqIDFromServer,
+							},
+							Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
+								Version: &wire.TLVLBlock{
+									TLVList: wire.TLVList{
+										wire.NewTLVBE(wire.FeedbagTLVVersion, uint16(4)),
+									},
+								},
+								Items: []wire.FeedbagItem{fb[i]},
+							},
+						})
+						break
+					} else {
+						continue
+					}
+				}
+			}
+		}
+		s.messageRelayer.RelayToScreenNames(ctx, recipients, wire.SNACMessage{
+			Frame: wire.SNACFrame{
+				FoodGroup: wire.Feedbag,
+				SubGroup:  wire.FeedbagEndCluster,
+				Flags:     wire.SNACFlagsExtendedInfo,
+				RequestID: wire.ReqIDFromServer,
+			},
+			Body: wire.SNAC_0x13_0x12_FeedbagEndCluster{
+				Version: &wire.TLVLBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.FeedbagTLVVersion, uint16(4)),
+					},
+				},
+			},
+		})
+	}
 	return nil
 }

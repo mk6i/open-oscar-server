@@ -1,0 +1,6 @@
+ALTER TABLE users
+    ADD COLUMN icq_mDir_statusNote TEXT NOT NULL DEFAULT '';
+ALTER TABLE users
+    ADD COLUMN icq_mDir_privateKey TEXT NOT NULL DEFAULT '';
+ALTER TABLE users
+    ADD COLUMN icq_mDir_lastUpdate INTEGER NOT NULL DEFAULT 0;

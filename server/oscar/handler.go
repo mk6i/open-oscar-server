@@ -549,14 +549,6 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 				return nil
 			}
 			return rt.FullUserInfo(ctx, instance, inFrame, userInfo, icqMD.Seq)
-		case wire.ICQDBQueryMetaReqDirectoryQuery:
-			envelope := wire.ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryQuery{}
-			if err := wire.UnmarshalLE(&envelope, buf); err != nil {
-				return err
-			}
-			if err := rt.ICQService.DirectoryQuery(ctx, instance, inFrame, envelope, icqMD.Seq); err != nil {
-				return err
-			}
 		case wire.ICQDBQueryMetaReqXMLReq:
 			req := wire.ICQ_0x07D0_0x0898_DBQueryMetaReqXMLReq{}
 			if err := wire.UnmarshalLE(&req, buf); err != nil {
@@ -699,6 +691,61 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 				return err
 			}
 			if err := rt.SetICQInfo(ctx, instance, inFrame, req, icqMD.Seq); err != nil {
+				return err
+			}
+		case wire.ICQDBQueryMetaReqDirectoryQuery, wire.ICQDBQueryMetaReqDirectoryUpdate:
+			nestedSnac := wire.ICQMessageRequestEnvelope{}
+			if err := wire.UnmarshalLE(&nestedSnac, buf); err != nil {
+				return err
+			}
+			var snac struct {
+				Frame wire.SNACFrame
+				Body  []byte
+			}
+			if err := wire.UnmarshalBE(&snac, bytes.NewBuffer(nestedSnac.Body)); err != nil {
+				return err
+			}
+			if snac.Frame.FoodGroup == wire.ICQDir {
+				switch snac.Frame.SubGroup {
+				case wire.ICQDirQuery, wire.ICQDBQueryMetaReqDirectoryQuery:
+					req := wire.SNAC_0x5B9_ICQDirQuery{}
+					if snac.Frame.Flags == wire.SNACFlagsExtendedInfo {
+						req.Version = &wire.TLVLBlock{}
+					}
+					if err := wire.UnmarshalBE(&req, bytes.NewBuffer(snac.Body)); err != nil {
+						return err
+					}
+					if err := rt.DirQuery(ctx, instance, inFrame, req, icqMD.Seq, req.Version); err != nil {
+						return err
+					}
+				case wire.ICQDirUpdate:
+					req := wire.SNAC_0x5B9_0x03_ICQDirUpdate{}
+					if err := wire.UnmarshalBE(&req, bytes.NewBuffer(snac.Body)); err != nil {
+						return err
+					}
+					if err := rt.DirUpdate(ctx, instance, inFrame, req, icqMD.Seq); err != nil {
+						return err
+					}
+					if err := rt.InformBuddiesICQDirInfoChanged(ctx, instance); err != nil {
+						return err
+					}
+				case wire.ICQDirMultiQuery:
+					req := wire.SNAC_0x5B9_0x06_ICQDirMultiQuery{}
+					if err := wire.UnmarshalBE(&req, bytes.NewBuffer(snac.Body)); err != nil {
+						return err
+					}
+					if err := rt.DirMultiQuery(ctx, instance, inFrame, req, icqMD.Seq); err != nil {
+						return err
+					}
+				}
+			}
+		// Almost all ICQ 6 builds use this to perform search by e-mail, except for the earlier beta builds (they send email inside of a 0x5B9,02 request)
+		case wire.ICQDBQueryMetaReqEmailToUIN:
+			req := wire.ICQ_0x07D0_0x1090_DBQueryMetaReqEmailToUIN{}
+			if err := wire.UnmarshalLE(&req, buf); err != nil {
+				return err
+			}
+			if err := rt.EmailToUIN(ctx, instance, inFrame, req, icqMD.Seq); err != nil {
 				return err
 			}
 		default:

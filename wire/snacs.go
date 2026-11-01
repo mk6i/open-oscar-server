@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
 	"unicode"
 
 	"github.com/google/uuid"
@@ -44,6 +43,7 @@ const (
 	MDir        uint16 = 0x0025
 	ARS         uint16 = 0x044A
 	Kerberos    uint16 = 0x050C
+	ICQDir      uint16 = 0x05B9
 )
 
 //
@@ -1833,6 +1833,9 @@ const (
 	FeedbagAttributesBuddyfeedView           uint16 = 0x0154
 	FeedbagAttributesWorkPhoneNumber         uint16 = 0x0158
 	FeedbagAttributesOtherPhoneNumber        uint16 = 0x0159
+	FeedbagAttributesStatusNote              uint16 = 0x015B // +
+	FeedbagAttributesMDirPrivateKey          uint16 = 0x015C // +
+	FeedbagAttributesMDirLastUpdate          uint16 = 0x015D // +
 	FeedbagAttributesWebPdMode               uint16 = 0x015F
 	FeedbagAttributesFirstCreationTimeXc     uint16 = 0x0167
 	FeedbagAttributesPdModeXc                uint16 = 0x016E
@@ -1934,7 +1937,8 @@ type SNAC_0x13_0x08_FeedbagInsertItem struct {
 }
 
 type SNAC_0x13_0x09_FeedbagUpdateItem struct {
-	Items []FeedbagItem
+	Version *TLVLBlock `oscar:"variant"`
+	Items   []FeedbagItem
 }
 
 type SNAC_0x13_0x0A_FeedbagDeleteItem struct {
@@ -1946,10 +1950,12 @@ type SNAC_0x13_0x0E_FeedbagStatus struct {
 }
 
 type SNAC_0x13_0x11_FeedbagStartCluster struct {
+	Version *TLVLBlock `oscar:"variant"`
 	TLVRestBlock
 }
 
 type SNAC_0x13_0x12_FeedbagEndCluster struct {
+	Version *TLVLBlock `oscar:"variant"`
 }
 
 type SNAC_0x13_0x18_FeedbagRequestAuthorizationToHost struct {
@@ -2070,54 +2076,6 @@ const (
 	ICQTLVTagsOriginallyFromState       uint16 = 0x032A // User originally from state
 	ICQTLVTagsOriginallyFromCountryCode uint16 = 0x0334 // User originally from country (code)
 
-	ICQDirTLVTagsUID            uint16 = 0x0032 // Privacy token (16 bytes)
-	ICQDirTLVTagsPrivacyToken   uint16 = 0x003C // Privacy token (16 bytes)
-	ICQDirTLVTagsVerifiedEmail  uint16 = 0x0050 // Verified email address
-	ICQDirTLVTagsPendingEmail   uint16 = 0x0055 // Pending email address
-	ICQDirTLVTagsFirstName      uint16 = 0x0064 // First name
-	ICQDirTLVTagsLastName       uint16 = 0x006E // Last name
-	ICQDirTLVTagsNickname       uint16 = 0x0078 // Nickname
-	ICQDirTLVTagsGender         uint16 = 0x0082 // Gender (1=Female, 2=Male)
-	ICQDirTLVTagsEmailAddresses uint16 = 0x008C // Email addresses (record list)
-	ICQDirTLVTagsAddressCountry uint16 = 0x008C // Country inside an address record
-	ICQDirTLVTagsHomeAddress    uint16 = 0x0096 // Home address
-	ICQDirTLVTagsOriginAddress  uint16 = 0x00A0 // Origin/birth address
-	ICQDirTLVTagsLanguage1      uint16 = 0x00AA // Primary language
-	ICQDirTLVTagsLanguage2      uint16 = 0x00B4 // Secondary language
-	ICQDirTLVTagsLanguage3      uint16 = 0x00BE // Tertiary language
-	ICQDirTLVTagsPhoneNumbers   uint16 = 0x00C8 // Phone numbers (record list)
-	ICQDirTLVTagsHomepage       uint16 = 0x00FA // Homepage URL
-	ICQDirTLVTagsEducation      uint16 = 0x010E // Education info
-	ICQDirTLVTagsCompanyInfo    uint16 = 0x0118 // Company/work info
-	ICQDirTLVTagsInterests      uint16 = 0x0122 // Interests
-	ICQDirTLVTagsMaritalStatus  uint16 = 0x012C // Marital status
-	ICQDirTLVTagsTimezone       uint16 = 0x017C // Timezone
-	ICQDirTLVTagsAboutBio       uint16 = 0x0186 // About/biography text
-	ICQDirTLVTagsAuthRequired   uint16 = 0x019A // Authorization required flag
-	ICQDirTLVTagsBirthDate      uint16 = 0x01A4 // Birth date
-	ICQDirTLVTagsCodePage       uint16 = 0x01C2 // Code page
-	ICQDirTLVTagsMetadataTime   uint16 = 0x01CC // Metadata update time
-	ICQDirTLVTagsAllowSpam      uint16 = 0x01EA // Allow spam/messages from non-contacts flag
-	ICQDirTLVTagsPrivacyLevel   uint16 = 0x01F9 // Privacy level
-	ICQDirTLVTagsWebAware       uint16 = 0x0212 // Web aware flag (online visibility via web)
-	ICQDirTLVTagsOnlineStatus   uint16 = 0x0190 // Online status in a search hit (0=offline, 1=online, 2=hidden)
-	ICQDirTLVTagsOnlineOnly     uint16 = 0x0136 // Online users only (search request filter)
-
-	// Tags that appear only in a search request. They do not match the profile
-	// tags of the same number.
-	ICQDirTLVTagsSearchCountry  uint16 = 0x00BE // Country code (4 bytes)
-	ICQDirTLVTagsSearchLanguage uint16 = 0x00FA // Spoken language code (2 bytes)
-	ICQDirTLVTagsSearchAge      uint16 = 0x0154 // Age range (2 words)
-
-	ICQDirStatusOffline     uint16 = 0
-	ICQDirStatusOnline      uint16 = 1
-	ICQDirStatusHidden      uint16 = 2
-	ICQDirTLVTagsStatusNote uint16 = 0x0226 // Status note/message
-
-	ICQDirGenderUnknown uint8 = 0
-	ICQDirGenderFemale  uint8 = 1
-	ICQDirGenderMale    uint8 = 2
-
 	ICQStatusCodeOK   uint8 = 0x0A
 	ICQStatusCodeFail uint8 = 0x32
 	ICQStatusCodeErr  uint8 = 0x14
@@ -2129,23 +2087,6 @@ const (
 	ICQDBQueryMetaReq             uint16 = 0x07D0
 	ICQDBQueryMetaReply           uint16 = 0x07DA
 )
-
-// icqDirEpoch is where dates start in the directory protocol.
-var icqDirEpoch = time.Date(1900, time.January, 1, 0, 0, 0, 0, time.UTC)
-
-// ICQDirDate converts a date into the day count the directory protocol uses.
-// It returns false if the date is unset or precedes the epoch.
-func ICQDirDate(year uint16, month uint8, day uint8) (float64, bool) {
-	if year == 0 || month == 0 || day == 0 {
-		return 0, false
-	}
-	t := time.Date(int(year), time.Month(month), int(day), 0, 0, 0, 0, time.UTC)
-	days := t.Sub(icqDirEpoch).Hours() / 24
-	if days < 0 {
-		return 0, false
-	}
-	return days, true
-}
 
 const (
 	ICQUserFlagPublishEmailYes uint8 = 0
@@ -2185,31 +2126,36 @@ const (
 	ICQDBQueryMetaReqStat0acd          uint16 = 0x0ACD
 	ICQDBQueryMetaReqStat0ad2          uint16 = 0x0AD2
 	ICQDBQueryMetaReqStat0ad7          uint16 = 0x0AD7
-	ICQDBQueryMetaReqDirectoryQuery    uint16 = 0x0FA0
-	ICQDBQueryMetaReqDirectoryUpdate   uint16 = 0x0FD2
+	ICQDBQueryMetaReqDirectoryQuery    uint16 = 0x0FA0 // ICQ 6
+	ICQDBQueryMetaReqDirectoryUpdate   uint16 = 0x0FD2 // ICQ 6
+	ICQDBQueryMetaReqEmailToUIN        uint16 = 0x1090 // ICQ 6
 
-	ICQDBQueryMetaReplySetBasicInfo    uint16 = 0x0064
-	ICQDBQueryMetaReplySetWorkInfo     uint16 = 0x006E
-	ICQDBQueryMetaReplySetMoreInfo     uint16 = 0x0078
-	ICQDBQueryMetaReplySetNotes        uint16 = 0x0082
-	ICQDBQueryMetaReplySetEmails       uint16 = 0x0087
-	ICQDBQueryMetaReplySetInterests    uint16 = 0x008C
-	ICQDBQueryMetaReplySetAffiliations uint16 = 0x0096
-	ICQDBQueryMetaReplySetPermissions  uint16 = 0x00A0
-	ICQDBQueryMetaReplySetICQPhone     uint16 = 0x031E
-	ICQDBQueryMetaReplySetFullInfo     uint16 = 0x0C3F
-	ICQDBQueryMetaReplyBasicInfo       uint16 = 0x00C8
-	ICQDBQueryMetaReplyWorkInfo        uint16 = 0x00D2
-	ICQDBQueryMetaReplyMoreInfo        uint16 = 0x00DC
-	ICQDBQueryMetaReplyNotes           uint16 = 0x00E6
-	ICQDBQueryMetaReplyExtEmailInfo    uint16 = 0x00EB
-	ICQDBQueryMetaReplyInterests       uint16 = 0x00F0
-	ICQDBQueryMetaReplyAffiliations    uint16 = 0x00FA
-	ICQDBQueryMetaReplyShortInfo       uint16 = 0x0104
-	ICQDBQueryMetaReplyHomePageCat     uint16 = 0x010E
-	ICQDBQueryMetaReplyUserFound       uint16 = 0x01A4
-	ICQDBQueryMetaReplyLastUserFound   uint16 = 0x01AE
-	ICQDBQueryMetaReplyXMLData         uint16 = 0x08A2
+	ICQDBQueryMetaReplySetBasicInfo      uint16 = 0x0064
+	ICQDBQueryMetaReplySetWorkInfo       uint16 = 0x006E
+	ICQDBQueryMetaReplySetMoreInfo       uint16 = 0x0078
+	ICQDBQueryMetaReplySetNotes          uint16 = 0x0082
+	ICQDBQueryMetaReplySetEmails         uint16 = 0x0087
+	ICQDBQueryMetaReplySetInterests      uint16 = 0x008C
+	ICQDBQueryMetaReplySetAffiliations   uint16 = 0x0096
+	ICQDBQueryMetaReplySetPermissions    uint16 = 0x00A0
+	ICQDBQueryMetaReplySetICQPhone       uint16 = 0x031E
+	ICQDBQueryMetaReplySetFullInfo       uint16 = 0x0C3F
+	ICQDBQueryMetaReplyBasicInfo         uint16 = 0x00C8
+	ICQDBQueryMetaReplyWorkInfo          uint16 = 0x00D2
+	ICQDBQueryMetaReplyMoreInfo          uint16 = 0x00DC
+	ICQDBQueryMetaReplyNotes             uint16 = 0x00E6
+	ICQDBQueryMetaReplyExtEmailInfo      uint16 = 0x00EB
+	ICQDBQueryMetaReplyInterests         uint16 = 0x00F0
+	ICQDBQueryMetaReplyAffiliations      uint16 = 0x00FA
+	ICQDBQueryMetaReplyShortInfo         uint16 = 0x0104
+	ICQDBQueryMetaReplyHomePageCat       uint16 = 0x010E
+	ICQDBQueryMetaReplyUserFound         uint16 = 0x01A4
+	ICQDBQueryMetaReplyLastUserFound     uint16 = 0x01AE
+	ICQDBQueryMetaReplyXMLData           uint16 = 0x08A2
+	ICQDBQueryMetaReplyDirectoryData     uint16 = 0x0FAA //ICQ 6
+	ICQDBQueryMetaReplyDirectoryResponse uint16 = 0x0FB4 //ICQ 6
+	ICQDBQueryMetaReplyDirectoryUpdate   uint16 = 0x0FDC //ICQ 6
+	ICQDBQueryMetaReplyEmailToUIN        uint16 = 0x109A //ICQ 6
 )
 
 type SNAC_0x15_0x02_BQuery struct {
@@ -2383,153 +2329,12 @@ type ICQ_0x07D0_0x03EA_DBQueryMetaReqSetBasicInfo struct {
 	PublishEmail uint8
 }
 
+type ICQ_0x07D0_0x1090_DBQueryMetaReqEmailToUIN struct {
+	Email string `oscar:"len_prefix=uint16"`
+}
+
 type SNAC_0x15_0x02_DBReply struct {
 	TLVRestBlock
-}
-
-const (
-	ICQDirectorySNACFamily     uint16 = 0x05B9
-	ICQDirectorySNACVersion    uint16 = 0x0002
-	ICQDirectoryQueryInfo      uint16 = 0x0002
-	ICQDirectoryQueryMultiInfo uint16 = 0x0006
-	ICQDirectoryQueryInfoAck   uint16 = 0x0009
-	ICQDirectorySetInfo        uint16 = 0x0003
-	ICQDirectorySetInfoAck     uint16 = 0x000A
-
-	// ICQDirectoryBlockSearch and ICQDirectoryBlockInfo are the block tag in a
-	// directory query body. A search and a profile lookup share a subtype, and
-	// only this tag tells them apart.
-	ICQDirectoryBlockSearch uint16 = 0x0002
-	ICQDirectoryBlockInfo   uint16 = 0x0003
-
-	ICQDBQueryMetaReplyDirectoryData      uint16 = 0x0FAA
-	ICQDBQueryMetaReplyDirectoryResponse  uint16 = 0x0FB4
-	ICQDBQueryMetaReplyDirectoryUpdateAck uint16 = 0x0FDC
-	ICQDirectoryResultOK                  uint8  = 0x01
-)
-
-type ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryQuery struct {
-	Body []byte `oscar:"len_prefix=uint16"`
-	//BigEndianRequestEnvelope
-	//Envelope struct {
-	//	Family  uint16
-	//	SubType uint16
-	//	Flags   uint16
-	//	Seq     uint16
-	//	Command uint16
-	//	Body    []byte
-	//} `oscar:"len_prefix=uint16"`
-}
-
-type ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryBody struct {
-	Family  uint16
-	SubType uint16
-	Flags   uint16
-	Seq     uint16
-	Command uint16
-	Body    []byte
-}
-
-// Versioned reports whether the client sent the version block, which the reply
-// has to mirror.
-func (b ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryBody) Versioned() bool {
-	return b.Flags&0x8000 != 0
-}
-
-// ICQDirectorySearchQuery is the body of a directory search that follows the
-// block tag: the page, the number of conditions and the conditions as TLVs.
-type ICQDirectorySearchQuery struct {
-	Page  uint16
-	Count uint16
-	TLVLBlock
-}
-
-// ICQDirectoryInfoQuery is the body of a single profile lookup that follows the
-// block tag: the number of conditions and the conditions as TLVs.
-type ICQDirectoryInfoQuery struct {
-	Count uint32
-	TLVLBlock
-}
-
-// ICQDirectoryReplyBody describes the contents of a directory reply. An empty
-// Item means "nothing found" and leaves the block count at zero. The version
-// block is written only when the client sent one.
-type ICQDirectoryReplyBody struct {
-	SubType   uint16
-	Result    uint8
-	Item      TLVList
-	Total     uint32
-	Pages     uint16
-	More      bool
-	Versioned bool
-}
-
-type ICQ_0x07DA_0x0FAA_DBQueryMetaReplyDirectory struct {
-	ICQMetadata
-	ReqSubType uint16
-	Success    uint8
-	Payload    []byte `oscar:"len_prefix=uint16,nullterm"`
-}
-
-// ICQDirectoryQueryHeader is the start of a directory query body that follows the
-// nested SNAC header: the version extras, a filler and the block tag. The extras
-// are present only when the client sent the version block, see SetVersioned.
-type ICQDirectoryQueryHeader struct {
-	Extras *struct {
-		Body []byte `oscar:"len_prefix=uint16"`
-	} `oscar:"variant"`
-	Filler [8]byte
-	Block  uint16
-}
-
-// SetVersioned makes the header read the extras that clients sending the
-// version block put before the filler.
-func (h *ICQDirectoryQueryHeader) SetVersioned() {
-	h.Extras = &struct {
-		Body []byte `oscar:"len_prefix=uint16"`
-	}{}
-}
-
-// ICQDirectoryReply is the nested directory SNAC that carries a directory
-// query reply inside the meta reply payload. The variant fields are present
-// only when the client sent the version block, and Items holds at most one
-// block, the hit.
-type ICQDirectoryReply struct {
-	SNACFamily uint16
-	SubType    uint16
-	Flags      uint16
-	Seq        uint16
-	Command    uint16
-	Extras     *TLVLBlock `oscar:"variant"`
-	Result     uint8
-	ErrMsg     string `oscar:"len_prefix=uint16"`
-	Void       [10]byte
-	Void2      *struct {
-		Void [6]byte
-	} `oscar:"variant"`
-	Total uint32
-	Pages *struct {
-		Pages uint16
-	} `oscar:"variant"`
-	BlockCount uint16
-	Items      []TLVLBlock
-}
-
-// SetVersion1 fills in the variant fields that clients sending the version
-// block expect.
-func (r *ICQDirectoryReply) SetVersion1(pages uint16) {
-	r.Flags |= 0x8000
-	r.Extras = &TLVLBlock{
-		TLVList: TLVList{
-			NewTLVBE(1, ICQDirectorySNACVersion),
-		},
-	}
-	r.Void2 = &struct {
-		Void [6]byte
-	}{}
-	r.Pages = &struct {
-		Pages uint16
-	}{Pages: pages}
 }
 
 type ICQ_0x07DA_0x010E_DBQueryMetaReplyHomePageCat struct {
@@ -2667,6 +2472,21 @@ type ICQ_0x07DA_0x0104_DBQueryMetaReplyShortInfo struct {
 	Gender        uint8
 }
 
+// Also used for 0x0FAA (non-last directory reply) and 0x0FDC (directory update reply)
+type ICQ_0x07DA_0x0FB4_DBQueryMetaReplyDirectoryResponse struct {
+	ICQMetadata
+	ReqSubType  uint16
+	Success     uint8
+	SNACMessage `oscar:"len_prefix=uint16"`
+}
+
+type ICQ_0x07DA_0x109A_DBQueryMetaReplyEmailToUIN struct {
+	ICQMetadata
+	ReqSubType uint16
+	Success    uint8
+	UIN        uint32
+}
+
 type ICQ_0x0041_DBQueryOfflineMsgReply struct {
 	ICQMetadata
 	SenderUIN uint32
@@ -2701,10 +2521,6 @@ type ICQMetadata struct {
 // ICQMessageRequestEnvelope is a helper struct that provides syntactic sugar for
 // unmarshaling an ICQ message into a little-endian byte array.
 type ICQMessageRequestEnvelope struct {
-	Body []byte `oscar:"len_prefix=uint16"`
-}
-
-type BigEndianRequestEnvelope struct {
 	Body []byte `oscar:"len_prefix=uint16"`
 }
 
@@ -3032,6 +2848,156 @@ type KerberosBOSServerInfo struct {
 	// ConnectionInfo is a TLV block defining the next server to contact (BOS).
 	// Includes IP address, port, session cookie, and other required fields for login.
 	ConnectionInfo TLVBlock
+}
+
+//
+// 0x5B9: ICQ Directory. Used by ICQ 6 and some unofficial clients (such as Miranda).
+//
+
+const (
+	ICQDirQuery            uint16 = 0x0002
+	ICQDirUpdate           uint16 = 0x0003
+	ICQDirQueryReplyLegacy uint16 = 0x0004
+	ICQDirMultiQuery       uint16 = 0x0006
+	ICQDirQueryReply       uint16 = 0x0009
+	ICQDirUpdateAck        uint16 = 0x000A
+)
+
+const (
+	ICQDirGenderSearchTag      uint16 = 0x0082 // char
+	ICQDirCitySearchTag        uint16 = 0x00A0 // string
+	ICQDirCountrySearchTag     uint16 = 0x00BE // dword
+	ICQDirLanguageSearchTag    uint16 = 0x00FA // word
+	ICQDirOnlineUsersSearchTag uint16 = 0x0136 // word(0x0001)
+	ICQDirAgeRangeSearchTag    uint16 = 0x0154 // dword(word(MaxAge), word(MinAge))
+	ICQDirBasicSearchTag       uint16 = 0x017C // string. Nickname, first name or last name
+
+	ICQDirTLVTagsUID           uint16 = 0x0032 // string. User ID (UIN or SN)
+	ICQDirTLVTagsPrivateKey    uint16 = 0x003C // UUID. Published info private key (16 bytes)
+	ICQDirTLVTagsNickname2     uint16 = 0x0046 // string. Nickname
+	ICQDirTLVTagsVerifiedEmail uint16 = 0x0050 // string. Attached verified email address
+	ICQDirTLVTagsPendingEmail  uint16 = 0x0055 // string. Pending email address
+	ICQDirTLVTagsFirstName     uint16 = 0x0064 // string. First name
+	ICQDirTLVTagsLastName      uint16 = 0x006E // string. Last name
+	ICQDirTLVTagsNickname      uint16 = 0x0078 // string. Nickname
+	ICQDirTLVTagsGender        uint16 = 0x0082 // char. Gender. 0 = unspecified, 1 = female, 2 = male
+
+	ICQDirTLVTagsEmailAddresses uint16 = 0x008C // Email addresses (record list)
+	/* ^ */ ICQDirTLVTagsEmail uint16 = 0x0064 // Email
+
+	ICQDirTLVTagsHome uint16 = 0x0096 // Home info (record list)
+	/* ^ */ ICQDirTLVTagsHomeAddress uint16 = 0x0064
+	/* ^ */ ICQDirTLVTagsHomeCity uint16 = 0x006E
+	/* ^ */ ICQDirTLVTagsHomeState uint16 = 0x0078
+	/* ^ */ ICQDirTLVTagsHomeZIP uint16 = 0x0082
+	/* ^ */ ICQDirTLVTagsHomeCountry uint16 = 0x008C
+
+	ICQDirTLVTagsOrigin uint16 = 0x00A0 // Origin info (record list)
+	/* ^ */ ICQDirTLVTagsOriginAddress uint16 = 0x0064
+	/* ^ */ ICQDirTLVTagsOriginCity uint16 = 0x006E
+	/* ^ */ ICQDirTLVTagsOriginState uint16 = 0x0078
+	/* ^ */ ICQDirTLVTagsOriginZIP uint16 = 0x0082
+	/* ^ */ ICQDirTLVTagsOriginCountry uint16 = 0x008C
+
+	ICQDirTLVTagsLanguage1 uint16 = 0x00AA // word. Primary language
+	ICQDirTLVTagsLanguage2 uint16 = 0x00B4 // word. Secondary language
+	ICQDirTLVTagsLanguage3 uint16 = 0x00BE // word. Tertiary language
+
+	ICQDirTLVTagsPhoneNumbers uint16 = 0x00C8
+	/* ^ */ ICQDirTLVTagsPhoneNumber uint16 = 0x0064
+	/* ^ */ ICQDirTLVTagsPhoneType uint16 = 0x006E // 0x0001 = home, 0x0002 = work, 0x0003 = mobile, 0x0004 = fax, 0x0005 = fax (work), 0x0006 = other
+
+	ICQDirTLVTagsHomepage  uint16 = 0x00FA // string. Homepage URL
+	ICQDirTLVTagsEducation uint16 = 0x010E // Education info (record list)
+
+	ICQDirTLVTagsWork uint16 = 0x0118 // Work info (record list)
+	/* ^ */ ICQDirTLVTagsWorkPosition uint16 = 0x0064
+	/* ^ */ ICQDirTLVTagsWorkCompany uint16 = 0x006E
+	/* ^ */ ICQDirTLVTagsWorkWebPage uint16 = 0x0078
+	/* ^ */ ICQDirTLVTagsWorkDepartment uint16 = 0x007D
+	/* ^ */ ICQDirTLVTagsWorkOccupationCode uint16 = 0x0082
+	/* ^ */ ICQDirTLVTagsWorkAddress uint16 = 0x00AA
+	/* ^ */ ICQDirTLVTagsWorkCity uint16 = 0x00B4
+	/* ^ */ ICQDirTLVTagsWorkState uint16 = 0x00BE
+	/* ^ */ ICQDirTLVTagsWorkZIP uint16 = 0x00C8
+	/* ^ */ ICQDirTLVTagsWorkCountry uint16 = 0x00D2
+
+	ICQDirTLVTagsInterests uint16 = 0x0122
+	/* ^ */ ICQDirTLVTagsInterestKeyword uint16 = 0x0064
+	/* ^ */ ICQDirTLVTagsInterestCode uint16 = 0x006E
+
+	ICQDirTLVTagsInterestsGroup      uint16 = 0x0123 // word.
+	ICQDirTLVTagsInterestsBackground uint16 = 0x0124 // word.
+	ICQDirTLVTagsMaritalStatus       uint16 = 0x012C // Marital status
+	ICQDirTLVTagsAnniversary         uint16 = 0x0136 // qword.
+	ICQDirTLVTagsChildren            uint16 = 0x0140 // word.
+	ICQDirTLVTagsReligion            uint16 = 0x014A // word.
+	ICQDirTLVTagsSexualOrientation   uint16 = 0x0154 // word.
+	ICQDirTLVTagsSmoking             uint16 = 0x015E // word.
+	ICQDirTLVTagsHeight              uint16 = 0x0168 // word.
+	ICQDirTLVTagsHairColor           uint16 = 0x0172 // word.
+	ICQDirTLVTagsTimezone            uint16 = 0x017C // Timezone (GMT)
+	ICQDirTLVTagsAbout               uint16 = 0x0186 // string. About/personal notes
+	ICQDirTLVTagsWebStatus           uint16 = 0x0190 // word. User's status (for ICQ and web users). 2 = unknown, 1 = online, 0 = offline
+	ICQDirTLVTagsAuth                uint16 = 0x019A // word. Authorization flag (0 = required, 1 = not required)
+	ICQDirTLVTagsBirthDate           uint16 = 0x01A4 // qword. Birth date
+	ICQDirTLVTagsHasPhoto            uint16 = 0x01B8 // char.
+	ICQDirTLVTagsCodePage            uint16 = 0x01C2 // ACP (ANSI Code Page)
+	ICQDirTLVTagsLastUpdate          uint16 = 0x01CC // qword. Time of last directory info update
+	ICQDirTLVTagsAllowSpam           uint16 = 0x01EA // char. Allow spam/messages from non-contacts flag
+	ICQDirTLVTagsPrivacyLevel        uint16 = 0x01F9 // word. Privacy level. 0 = share all info with everybody, 1 = same, but share email and phone only with friends, 2 = share all info only with friends
+	ICQDirTLVTagsLookingFor          uint16 = 0x01FE
+	ICQDirTLVTagsWebAware            uint16 = 0x0212 // char. Web aware flag (online visibility for ICQ and web users). 1 = show status
+	ICQDirTLVTagsBetaFlag            uint16 = 0x021C // char. 0 = not set, 0x3C = set. Needed to be able to login on the beta builds of ICQ 6
+	ICQDirTLVTagsStatusNote          uint16 = 0x0226 // string. Status note
+	ICQDirTLVTagsVerifiedMobile      uint16 = 0x024E // Verified mobile phone number
+)
+
+// Had been in the final variant of the nested subgroup as "SNAC(0x5B9,0x02)" and had been used as "SNAC(0x5B9,0x0FA0)" in the first versions of the subgroup (and unofficial clients, which managed to support it)
+type SNAC_0x5B9_ICQDirQuery struct {
+	Version        *TLVLBlock `oscar:"variant"`
+	Codepage       uint32     // ACP (ANSI Code Page)
+	UnknownFlag    uint32     // Always/usually 0x00000002
+	RequestType    uint16     // 0x0002 (usually at login and search) = without interests, 0x0003 = with (full info)
+	RequestedPage  uint16     // By default: 0x0000, in search: 0x0000 = first page, 0x0001 = second page, ...
+	TLVLBlockCount uint16
+	TLVLBlock
+}
+
+type SNAC_0x5B9_0x03_ICQDirUpdate struct {
+	Version        TLVLBlock
+	Codepage       uint32 // ACP (ANSI Code Page)
+	UnknownFlag    uint32 // Always/usually 0x00000002
+	TLVLBlockCount uint16
+	TLVLBlock
+}
+
+type SNAC_0x5B9_0x06_ICQDirMultiQuery struct {
+	Version         TLVLBlock
+	Codepage        uint32      // ACP (ANSI Code Page)
+	UnknownFlag     uint32      // Always/usually 0x00000002
+	QueriedUserInfo []TLVLBlock `oscar:"count_prefix=uint16"`
+}
+
+// Had been in the final variant of the nested subgroup as "SNAC(0x5B9,0x09)" and also had been used as "SNAC(0x5B9,0x04)" to support legacy clients
+type SNAC_0x5B9_ICQDirQueryReply struct {
+	Version          *TLVLBlock `oscar:"variant"`
+	RequestStatus    uint8      // Clients accept 4 (purpose unknown) and 1. In reality, it had always been just 1. Everything other = error, for example, has been seen with 2 and "Invalid Search " in ServerData.
+	Reserved         uint16
+	ServerDataLegacy *struct{ Reserved [8]byte } `oscar:"variant"`
+	ServerData       *struct{ Data [16]byte }    `oscar:"variant"` // User's private key (MDIR), just zeros, or a message from server: as example, [16]byte{0, 'I', 'n', 'v', 'a', 'l', 'i', 'd', ' ', 'S', 'e', 'a', 'r', 'c', 'h', ' '}
+	TotalMatches     uint32
+	TotalPages       uint16
+	TLVLBlockCount   uint16
+	TLVLBlock        // While it's possible to have more than one tlvLBlock, which client might parse, historically the servers had always sent only one item containing the directory data in separate SNACs
+}
+
+type SNAC_0x5B9_0x0A_ICQDirUpdateAck struct {
+	Version       TLVLBlock
+	RequestStatus uint8
+	Reserved      uint16
+	Timestamp     uint64
+	PrivateKey    uuid.UUID
 }
 
 //

@@ -166,11 +166,16 @@ func marshalString(oscTag oscarTag, v reflect.Value, w io.Writer, order binary.B
 }
 
 func marshalStruct(t reflect.Type, v reflect.Value, oscTag oscarTag, w io.Writer, order binary.ByteOrder) error {
+	var isNestedSnac bool
+	switch t.Name() {
 	// marshal ICQ messages in little endian order
-	if t.Name() == "ICQMessageReplyEnvelope" {
+	case "ICQMessageReplyEnvelope":
 		order = binary.LittleEndian
+	// marshal nested SNAC messages in big endian order
+	case "SNACMessage":
+		order = binary.BigEndian
+		isNestedSnac = true
 	}
-
 	marshalEachField := func(w io.Writer) error {
 		for i := 0; i < t.NumField(); i++ {
 			field := t.Field(i)
@@ -198,6 +203,10 @@ func marshalStruct(t reflect.Type, v reflect.Value, oscTag oscarTag, w io.Writer
 		buf := &bytes.Buffer{}
 		if err := marshalEachField(buf); err != nil {
 			return err
+		}
+		// check if it's a nested SNAC message, because it's length should be written in little endian order
+		if isNestedSnac {
+			order = binary.LittleEndian
 		}
 		// write struct length
 		if err := marshalUnsignedInt(oscTag.lenPrefix, buf.Len(), w, order); err != nil {

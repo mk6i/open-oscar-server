@@ -398,6 +398,8 @@ type ICQUserSearchCriteria struct {
 	// Whitepages search keywords string (TLV 0x0226). This is modeled as a
 	// global keyword across searchable profile fields.
 	AnyKeyword *string
+
+	FirstLastNickName *string
 }
 
 // SearchICQUsers returns ICQ users whose stored profile fields satisfy every
@@ -514,6 +516,10 @@ func (f SQLiteUserStore) SearchICQUsers(ctx context.Context, c ICQUserSearchCrit
 			args = append(args, "%"+*c.AnyKeyword+"%")
 		}
 		clauses = append(clauses, fmt.Sprintf("(%s)", strings.Join(kwClauses, " OR ")))
+	}
+	if c.FirstLastNickName != nil {
+		args = append(args, *c.FirstLastNickName, *c.FirstLastNickName, *c.FirstLastNickName)
+		clauses = append(clauses, `(LOWER(icq_basicInfo_firstName) LIKE LOWER(?) OR LOWER(icq_basicInfo_lastName) LIKE LOWER(?) OR LOWER(icq_basicInfo_nickName) LIKE LOWER(?))`)
 	}
 
 	if len(clauses) == 0 {
@@ -701,6 +707,9 @@ func (f SQLiteUserStore) queryUsers(ctx context.Context, whereClause string, que
 			icq_homepageCategory_enabled,
 			icq_homepageCategory_index,
 			icq_homepageCategory_description,
+			icq_mDir_statusNote,
+			icq_mDir_privateKey,
+			icq_mDir_lastUpdate,
 			aim_firstName,
 			aim_lastName,
 			aim_middleName,
@@ -806,6 +815,9 @@ func (f SQLiteUserStore) queryUsers(ctx context.Context, whereClause string, que
 			&u.ICQInfo.HomepageCategory.Enabled,
 			&u.ICQInfo.HomepageCategory.Index,
 			&u.ICQInfo.HomepageCategory.Description,
+			&u.ICQInfo.MDirData.StatusNote,
+			&u.ICQInfo.MDirData.PrivateKey,
+			&u.ICQInfo.MDirData.LastUpdate,
 			&u.AIMDirectoryInfo.FirstName,
 			&u.AIMDirectoryInfo.LastName,
 			&u.AIMDirectoryInfo.MiddleName,
@@ -2061,7 +2073,10 @@ func (f SQLiteUserStore) SetICQInfo(ctx context.Context, name IdentScreenName, i
 			icq_affiliations_pastKeyword3 = ?,
 			icq_homepageCategory_enabled = ?,
 			icq_homepageCategory_index = ?,
-			icq_homepageCategory_description = ?
+			icq_homepageCategory_description = ?,
+			icq_mDir_statusNote = ?,
+			icq_mDir_privateKey = ?,
+			icq_mDir_lastUpdate = ?
 		WHERE identScreenName = ?
 	`
 	res, err := f.db.ExecContext(ctx, q,
@@ -2129,6 +2144,9 @@ func (f SQLiteUserStore) SetICQInfo(ctx context.Context, name IdentScreenName, i
 		info.HomepageCategory.Enabled,
 		info.HomepageCategory.Index,
 		info.HomepageCategory.Description,
+		info.MDirData.StatusNote,
+		info.MDirData.PrivateKey,
+		info.MDirData.LastUpdate,
 		name.String(),
 	)
 	if err != nil {
