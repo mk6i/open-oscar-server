@@ -3,9 +3,12 @@ package foodgroup
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -66,6 +69,28 @@ func (s *ICQService) DeleteMsgReq(ctx context.Context, instance *state.SessionIn
 		return fmt.Errorf("deleting messages: %w", err)
 	}
 	return nil
+}
+
+func (s *ICQService) DirectoryQuery(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryQuery, seq uint16) error {
+	req := wire.ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryBody{}
+	if err := wire.UnmarshalBE(&req, bytes.NewReader(inBody.Body)); err != nil {
+		return err
+	}
+
+	// QIP 2012 repeats the meta request subtype where the nested SNAC subtype
+	// belongs, so map it to the query info command.
+	if req.SubType == wire.ICQDBQueryMetaReqDirectoryQuery {
+		req.SubType = wire.ICQDirCmdQuery
+	}
+
+	switch req.SubType {
+	case wire.ICQDirCmdQuery:
+		return s.directoryQueryInfo(ctx, instance, inFrame, req, seq)
+	case wire.ICQDirCmdQueryMulti:
+		return s.directoryMultiInfo(ctx, instance, inFrame, req, seq)
+	default:
+		return s.directoryError(ctx, instance, inFrame.RequestID, seq, req.SubType, req.Versioned())
+	}
 }
 
 func (s *ICQService) FindByICQName(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x0515_DBQueryMetaReqSearchByDetails, seq uint16) error {
@@ -287,7 +312,7 @@ func (s *ICQService) FindByWhitePages2(ctx context.Context, instance *state.Sess
 	if onlineOnly {
 		var filtered []state.User
 		for _, u := range users {
-			if s.sessionRetriever.RetrieveSession(u.IdentScreenName) != nil {
+			if s.searchStatus(u) == wire.ICQDirStatusOnline {
 				filtered = append(filtered, u)
 			}
 		}
@@ -1367,9 +1392,303 @@ func (s *ICQService) createResult(res state.User) wire.ICQUserSearchRecord {
 		searchRecord.Authorization = 1
 	}
 
-	userSess := s.sessionRetriever.RetrieveSession(res.IdentScreenName)
-	if userSess != nil {
-		searchRecord.OnlineStatus = 1
-	}
+	searchRecord.OnlineStatus = s.searchStatus(res)
 	return searchRecord
+}
+
+// searchStatus is the presence a search result reports for u. A user who does
+// not publish their web status shows as hidden, connected or not.
+func (s *ICQService) searchStatus(u state.User) uint16 {
+	switch {
+	case !u.ICQInfo.Permissions.WebAware:
+		return wire.ICQDirStatusHidden
+	case s.sessionRetriever.RetrieveSession(u.IdentScreenName) == nil:
+		return wire.ICQDirStatusOffline
+	default:
+		return wire.ICQDirStatusOnline
+	}
+}
+
+// directoryQueryInfo handles a directory search or a single profile lookup. Both
+// share a layout up to the block tag, which tells them apart; each block then
+// carries its own body.
+func (s *ICQService) directoryQueryInfo(ctx context.Context, instance *state.SessionInstance, frame wire.SNACFrame, req wire.ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryBody, seq uint16) error {
+	header := wire.ICQDirectoryQueryHeader{}
+	if req.Versioned() {
+		header.SetVersioned()
+	}
+	r := bytes.NewReader(req.Body)
+	if err := wire.UnmarshalBE(&header, r); err != nil {
+		return err
+	}
+
+	switch header.Block {
+	case wire.ICQDirBlockSearch:
+		return s.directorySearch(ctx, instance, frame, req, r, seq)
+	case wire.ICQDirBlockLookup:
+		return s.directoryInfo(ctx, instance, frame, req, r, seq)
+	default:
+		return s.directoryError(ctx, instance, frame.RequestID, seq, req.SubType, req.Versioned())
+	}
+}
+
+// directoryInfo handles a single profile lookup. Profiles are not served yet, so
+// the request is refused.
+func (s *ICQService) directoryInfo(ctx context.Context, instance *state.SessionInstance, frame wire.SNACFrame, req wire.ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryBody, r io.Reader, seq uint16) error {
+	query := wire.ICQDirectoryInfoQuery{}
+	if err := wire.UnmarshalBE(&query, r); err != nil {
+		return err
+	}
+
+	s.logger.DebugContext(ctx, "directory profile lookup refused", "requester", instance.UIN())
+	return s.directoryError(ctx, instance, frame.RequestID, seq, req.SubType, req.Versioned())
+}
+
+// directorySearch applies the conditions of a directory search and replies with
+// the matching users.
+func (s *ICQService) directorySearch(ctx context.Context, instance *state.SessionInstance, frame wire.SNACFrame, req wire.ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryBody, r io.Reader, seq uint16) error {
+	versioned := req.Versioned()
+
+	query := wire.ICQDirectorySearchQuery{}
+	if err := wire.UnmarshalBE(&query, r); err != nil {
+		return err
+	}
+
+	var c state.ICQUserSearchCriteria
+	var onlineOnly bool
+	for _, tlv := range query.TLVList {
+		if len(tlv.Value) == 0 {
+			continue
+		}
+		val := string(tlv.Value)
+		switch tlv.Tag {
+		case wire.ICQDirTLVTagsUID:
+			uin, err := strconv.ParseUint(strings.TrimRight(val, "\x00"), 10, 32)
+			if err != nil {
+				s.logger.DebugContext(ctx, "directory search refused, malformed UID", "requester", instance.UIN())
+				return s.directoryError(ctx, instance, frame.RequestID, seq, req.SubType, versioned)
+			}
+			c.UIN = new(uint32(uin))
+		case wire.ICQDirTLVTagsFirstName:
+			c.FirstName = new(val)
+		case wire.ICQDirTLVTagsLastName:
+			c.LastName = new(val)
+		case wire.ICQDirTLVTagsNickname:
+			c.NickName = new(val)
+		case wire.ICQDirTLVTagsVerifiedEmail:
+			c.Email = new(val)
+		case wire.ICQDirTLVTagsOnlineOnly:
+			onlineOnly = tlv.Value[len(tlv.Value)-1] != 0
+		case wire.ICQDirTLVTagsGender:
+			if v := tlv.Uint8(); v != 0 {
+				c.Gender = &v
+			}
+		case wire.ICQDirTLVTagsSearchLanguage:
+			if v := tlv.Uint16BE(); v != 0 {
+				c.SpokenLanguage = new(uint8(v))
+			}
+		case wire.ICQDirTLVTagsSearchCountry:
+			if v := tlv.Uint32BE(); v != 0 {
+				c.CountryCode = new(uint16(v))
+			}
+		case wire.ICQDirTLVTagsSearchAge:
+			var age struct {
+				Max uint16
+				Min uint16
+			}
+			if err := wire.UnmarshalBE(&age, bytes.NewReader(tlv.Value)); err != nil {
+				return s.directoryError(ctx, instance, frame.RequestID, seq, req.SubType, versioned)
+			}
+			if age.Min != 0 && age.Max != 0 {
+				c.MinAge, c.MaxAge = &age.Min, &age.Max
+			}
+		}
+	}
+
+	users, err := s.userFinder.SearchICQUsers(ctx, c)
+	if errors.Is(err, state.ErrICQSearchEmptyCriteria) {
+		// Nothing searchable was sent, so nothing matches.
+		users, err = nil, nil
+	}
+	if err != nil {
+		s.logger.ErrorContext(ctx, "directory search failed", "requester", instance.UIN(), "err", err.Error())
+		return s.directoryError(ctx, instance, frame.RequestID, seq, req.SubType, versioned)
+	}
+
+	type hit struct {
+		user   state.User
+		status uint16
+	}
+	hits := make([]hit, 0, len(users))
+	for _, u := range users {
+		status := s.searchStatus(u)
+		if onlineOnly && status != wire.ICQDirStatusOnline {
+			continue
+		}
+		hits = append(hits, hit{user: u, status: status})
+	}
+
+	if len(hits) == 0 {
+		// The client finishes its search when it receives a reply with no blocks.
+		return s.directoryReply(ctx, instance, frame.RequestID, seq, wire.ICQDirectoryReplyBody{
+			SubType:   wire.ICQDirCmdQueryAck,
+			Result:    wire.ICQDirResultOK,
+			Pages:     1,
+			Versioned: versioned,
+		})
+	}
+
+	total := uint32(len(hits))
+	for i, h := range hits {
+		u := h.user
+		last := i == len(hits)-1
+
+		tlvs := wire.TLVList{}
+		tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsUID, u.IdentScreenName.String()))
+
+		if u.ICQInfo.Basic.FirstName != "" {
+			tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsFirstName, u.ICQInfo.Basic.FirstName))
+		}
+		if u.ICQInfo.Basic.LastName != "" {
+			tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsLastName, u.ICQInfo.Basic.LastName))
+		}
+		if u.ICQInfo.Basic.Nickname != "" {
+			tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsNickname, u.ICQInfo.Basic.Nickname))
+		}
+		if u.ICQInfo.Basic.EmailAddress != "" {
+			tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsVerifiedEmail, u.ICQInfo.Basic.EmailAddress))
+		}
+		if u.ICQInfo.More.Gender != 0 {
+			tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsGender, uint8(u.ICQInfo.More.Gender)))
+		}
+		if days, ok := wire.ICQDirDate(u.ICQInfo.More.BirthYear, u.ICQInfo.More.BirthMonth, u.ICQInfo.More.BirthDay); ok {
+			// a birth date goes out as the day count in an 8-byte big-endian float
+			var date [8]byte
+			binary.BigEndian.PutUint64(date[:], math.Float64bits(days))
+			tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsBirthDate, date[:]))
+		}
+
+		authOptional := uint8(0)
+		if !u.ICQInfo.Permissions.AuthRequired {
+			authOptional = 1
+		}
+		tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsAuthRequired, authOptional))
+
+		if u.ICQInfo.Basic.CountryCode != 0 {
+			addr := wire.TLVList{}
+			addr.Append(wire.NewTLVBE(wire.ICQDirTLVTagsAddressCountry, uint32(u.ICQInfo.Basic.CountryCode)))
+			blob := &bytes.Buffer{}
+			if err := wire.MarshalBE(wire.TLVRestBlock{TLVList: addr}, blob); err != nil {
+				return err
+			}
+			tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsHomeAddress, blob.Bytes()))
+		}
+
+		tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsOnlineStatus, h.status))
+
+		err := s.directoryReply(ctx, instance, frame.RequestID, seq, wire.ICQDirectoryReplyBody{
+			SubType:   wire.ICQDirCmdQueryAck,
+			Result:    wire.ICQDirResultOK,
+			Item:      tlvs,
+			Total:     total,
+			Pages:     1,
+			More:      !last,
+			Versioned: versioned,
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// directoryMultiInfo handles a request for the profiles of several users at
+// once. Each item is a length-prefixed TLV list naming one user: the UID, the
+// time the client last saw the profile and optionally a privacy token. The
+// profiles are not served yet, so the request is refused.
+func (s *ICQService) directoryMultiInfo(ctx context.Context, instance *state.SessionInstance, frame wire.SNACFrame, req wire.ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryBody, seq uint16) error {
+	query := struct {
+		Extras *struct {
+			Body []byte `oscar:"len_prefix=uint16"`
+		} `oscar:"variant"`
+		Filler [8]byte
+		Items  []wire.TLVLBlock `oscar:"count_prefix=uint16"`
+	}{}
+	versioned := req.Versioned()
+	if versioned {
+		query.Extras = &struct {
+			Body []byte `oscar:"len_prefix=uint16"`
+		}{}
+	}
+	if err := wire.UnmarshalBE(&query, bytes.NewReader(req.Body)); err != nil {
+		return err
+	}
+
+	s.logger.DebugContext(ctx, "directory multi lookup refused", "requester", instance.UIN(), "items", len(query.Items))
+	return s.directoryError(ctx, instance, frame.RequestID, seq, wire.ICQDirCmdQueryMulti, versioned)
+}
+
+// directoryReply builds one directory packet from r and sends it. The client
+// reads a single result from each packet, so a result set goes out as several
+// packets. All but the last are flagged as more to come and use the "data" meta
+// subtype; the last uses "response", which ends the search.
+func (s *ICQService) directoryReply(ctx context.Context, instance *state.SessionInstance, requestID uint32, seq uint16, r wire.ICQDirectoryReplyBody) error {
+	// A hit is a single block; no hit means no block at all, not an empty one.
+	var items []wire.TLVLBlock
+	if len(r.Item) > 0 {
+		items = []wire.TLVLBlock{{TLVList: r.Item}}
+	}
+
+	header := wire.ICQDirectoryReply{
+		SNACFamily: wire.ICQDirNestedFamily,
+		SubType:    r.SubType,
+		Result:     r.Result,
+		Total:      r.Total,
+		BlockCount: uint16(len(items)),
+		Items:      items,
+	}
+	if r.More {
+		header.Flags |= 0x0001
+	}
+	if r.Versioned {
+		header.SetVersion1(r.Pages)
+	}
+
+	body := &bytes.Buffer{}
+	if err := wire.MarshalBE(header, body); err != nil {
+		return err
+	}
+
+	if body.Len() > math.MaxUint16 {
+		return errors.New("directory payload too long")
+	}
+
+	snacFlags := uint16(0)
+	replySubType := wire.ICQDBQueryMetaReplyDirectoryResponse
+	if r.More {
+		snacFlags = wire.SNACFlagsMoreToCome
+		replySubType = wire.ICQDBQueryMetaReplyDirectoryData
+	}
+
+	msg := wire.ICQMessageReplyEnvelope{
+		Message: wire.ICQ_0x07DA_0x0FAA_DBQueryMetaReplyDirectory{
+			ICQMetadata: wire.ICQMetadata{
+				UIN:     instance.UIN(),
+				ReqType: wire.ICQDBQueryMetaReply,
+				Seq:     seq,
+			},
+			ReqSubType: replySubType,
+			Success:    wire.ICQStatusCodeOK,
+			Payload:    body.Bytes(),
+		},
+	}
+	return s.reply(ctx, instance, msg, requestID, snacFlags)
+}
+
+// directoryError replies to a request with its subtype, result 0 and no data.
+func (s *ICQService) directoryError(ctx context.Context, instance *state.SessionInstance, requestID uint32, seq uint16, subType uint16, versioned bool) error {
+	return s.directoryReply(ctx, instance, requestID, seq, wire.ICQDirectoryReplyBody{
+		SubType:   subType,
+		Versioned: versioned,
+	})
 }

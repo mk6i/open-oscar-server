@@ -749,6 +749,127 @@ func TestMarshal(t *testing.T) {
 			}{V: 1},
 			wantErr: errInvalidStructTag,
 		},
+		{
+			name: "variant struct has value mid-struct",
+			w:    &bytes.Buffer{},
+			given: struct {
+				Val0    uint16
+				Variant *struct {
+					Val1 uint16
+				} `oscar:"variant"`
+				Val2 uint8
+			}{
+				Val0: 34,
+				Variant: &struct {
+					Val1 uint16
+				}{
+					Val1: 100,
+				},
+				Val2: 7,
+			},
+			want: []byte{
+				0x00, 0x22, // Val0
+				0x00, 0x64, // Val1
+				0x07, // Val2
+			},
+		},
+		{
+			name: "variant struct is nil mid-struct",
+			w:    &bytes.Buffer{},
+			given: struct {
+				Val0    uint16
+				Variant *struct {
+					Val1 uint16
+				} `oscar:"variant"`
+				Val2 uint8
+			}{
+				Val0: 34,
+				Val2: 7,
+			},
+			want: []byte{
+				0x00, 0x22, // Val0
+				0x07, // Val2
+			},
+		},
+		{
+			name: "multiple variant structs",
+			w:    &bytes.Buffer{},
+			given: struct {
+				Val0 uint8
+				A    *struct{ Val uint8 } `oscar:"variant"`
+				Val1 uint8
+				B    *struct{ Val uint8 } `oscar:"variant"`
+			}{
+				Val0: 1,
+				A:    &struct{ Val uint8 }{Val: 2},
+				Val1: 3,
+				B:    &struct{ Val uint8 }{Val: 4},
+			},
+			want: []byte{0x01, 0x02, 0x03, 0x04},
+		},
+		{
+			name: "variant struct with uint16 len_prefix and value",
+			w:    &bytes.Buffer{},
+			given: struct {
+				Variant *struct {
+					Val1 uint16
+				} `oscar:"len_prefix=uint16,variant"`
+				Val2 uint8
+			}{
+				Variant: &struct {
+					Val1 uint16
+				}{
+					Val1: 100,
+				},
+				Val2: 7,
+			},
+			want: []byte{
+				0x00, 0x02, // Variant len
+				0x00, 0x64, // Val1
+				0x07, // Val2
+			},
+		},
+		{
+			name: "variant struct with uint16 len_prefix and no value",
+			w:    &bytes.Buffer{},
+			given: struct {
+				Variant *struct {
+					Val1 uint16
+				} `oscar:"len_prefix=uint16,variant"`
+				Val2 uint8
+			}{
+				Val2: 7,
+			},
+			want: []byte{0x07},
+		},
+		{
+			name: "variant field that isn't a pointer is unsupported",
+			w:    &bytes.Buffer{},
+			given: struct {
+				Variant struct {
+					Val1 uint16
+				} `oscar:"variant"`
+			}{},
+			wantErr: errVariantNonPointer,
+		},
+		{
+			name: "variant field that isn't a pointer to a struct is unsupported",
+			w:    &bytes.Buffer{},
+			given: struct {
+				Variant *uint16 `oscar:"variant"`
+			}{},
+			wantErr: errVariantNonPointer,
+		},
+		{
+			name: "variant and optional on the same field is unsupported",
+			w:    &bytes.Buffer{},
+			given: struct {
+				Variant *struct {
+					Val1 uint16
+				} `oscar:"variant,optional"`
+			}{},
+			wantErr: errInvalidStructTag,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
