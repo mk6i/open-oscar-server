@@ -158,6 +158,7 @@ type ICQInfo struct {
 	// HomepageCategory contains homepage category information for the user.
 	// Used by V5 META_SET_HPCAT (0x0442) command.
 	HomepageCategory ICQHomepageCategory
+	MDirData         ICQMDirData
 }
 
 // User represents a user account.
@@ -418,6 +419,14 @@ type ICQHomepageCategory struct {
 	Index uint16
 	// Description is the homepage category description/keyword.
 	Description string
+}
+
+type ICQMDirData struct {
+	// ICQStatusNote holds the user's status note. It's different from the ones
+	// in SNAC(01,1E) and stored on server.
+	StatusNote string
+	PrivateKey string
+	LastUpdate uint64
 }
 
 // Age returns the user's age relative to their birthday and timeNow.

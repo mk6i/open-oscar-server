@@ -3,16 +3,15 @@ package foodgroup
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"math"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
 	"golang.org/x/text/encoding"
@@ -69,27 +68,6 @@ func (s *ICQService) DeleteMsgReq(ctx context.Context, instance *state.SessionIn
 		return fmt.Errorf("deleting messages: %w", err)
 	}
 	return nil
-}
-
-func (s *ICQService) DirectoryQuery(ctx context.Context, instance *state.SessionInstance, frame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryQuery, seq uint16) error {
-	req := wire.ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryBody{}
-	if err := wire.UnmarshalBE(&req, bytes.NewReader(inBody.Body)); err != nil {
-		return err
-	}
-
-	// QIP 2012 puts the meta request subtype in the nested SNAC.
-	if req.SubType == wire.ICQDBQueryMetaReqDirectoryQuery {
-		req.SubType = wire.ICQDirectoryQueryInfo
-	}
-
-	switch req.SubType {
-	case wire.ICQDirectoryQueryInfo:
-		return s.directoryQueryInfo(ctx, instance, frame, req, seq)
-	case wire.ICQDirectoryQueryMultiInfo:
-		return s.directoryMultiInfo(ctx, instance, frame, req, seq)
-	default:
-		return s.directoryError(ctx, instance, frame.RequestID, seq, req.SubType, req.Versioned())
-	}
 }
 
 func (s *ICQService) FindByICQName(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x0515_DBQueryMetaReqSearchByDetails, seq uint16) error {
@@ -311,7 +289,7 @@ func (s *ICQService) FindByWhitePages2(ctx context.Context, instance *state.Sess
 	if onlineOnly {
 		var filtered []state.User
 		for _, u := range users {
-			if u.ICQInfo.Permissions.WebAware && s.sessionRetriever.RetrieveSession(u.IdentScreenName) != nil {
+			if s.sessionRetriever.RetrieveSession(u.IdentScreenName) != nil {
 				filtered = append(filtered, u)
 			}
 		}
@@ -1391,307 +1369,685 @@ func (s *ICQService) createResult(res state.User) wire.ICQUserSearchRecord {
 		searchRecord.Authorization = 1
 	}
 
-	switch {
-	case !res.ICQInfo.Permissions.WebAware:
-		searchRecord.OnlineStatus = wire.ICQDirStatusHidden
-	case s.sessionRetriever.RetrieveSession(res.IdentScreenName) != nil:
-		searchRecord.OnlineStatus = wire.ICQDirStatusOnline
-	default:
-		searchRecord.OnlineStatus = wire.ICQDirStatusOffline
+	userSess := s.sessionRetriever.RetrieveSession(res.IdentScreenName)
+	if userSess != nil {
+		searchRecord.OnlineStatus = 1
 	}
 	return searchRecord
 }
 
-// directoryQueryInfo handles a directory search or a single profile lookup. Both
-// share a layout up to the block tag, which tells them apart; each block then
-// carries its own body.
-func (s *ICQService) directoryQueryInfo(ctx context.Context, instance *state.SessionInstance, frame wire.SNACFrame, req wire.ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryBody, seq uint16) error {
-	header := wire.ICQDirectoryQueryHeader{}
-	if req.Versioned() {
-		header.SetVersioned()
-	}
-	r := bytes.NewReader(req.Body)
-	if err := wire.UnmarshalBE(&header, r); err != nil {
-		return err
-	}
+func (s *ICQService) DirQuery(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x5B9_ICQDirQuery, seq uint16, ver *wire.TLVLBlock) error {
+	var criteria state.ICQUserSearchCriteria
+	onlineOnly := false
 
-	switch header.Block {
-	case wire.ICQDirectoryBlockSearch:
-		return s.directorySearch(ctx, instance, frame, req, r, seq)
-	case wire.ICQDirectoryBlockInfo:
-		return s.directoryInfo(ctx, instance, frame, req, r, seq)
-	default:
-		return nil
-	}
-}
-
-// directoryInfo handles a single profile lookup. Profiles are not served yet, so
-// the request is refused.
-func (s *ICQService) directoryInfo(ctx context.Context, instance *state.SessionInstance, frame wire.SNACFrame, req wire.ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryBody, r io.Reader, seq uint16) error {
-	query := wire.ICQDirectoryInfoQuery{}
-	if err := wire.UnmarshalBE(&query, r); err != nil {
-		return err
-	}
-
-	s.logger.DebugContext(ctx, "directory profile lookup refused", "requester", instance.UIN())
-	return s.directoryError(ctx, instance, frame.RequestID, seq, req.SubType, req.Versioned())
-}
-
-// directorySearch answers a directory search.
-func (s *ICQService) directorySearch(ctx context.Context, instance *state.SessionInstance, frame wire.SNACFrame, req wire.ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryBody, r io.Reader, seq uint16) error {
-	versioned := req.Versioned()
-
-	query := wire.ICQDirectorySearchQuery{}
-	if err := wire.UnmarshalBE(&query, r); err != nil {
-		return err
-	}
-
-	var c state.ICQUserSearchCriteria
-	var onlineOnly bool
-	for _, tlv := range query.TLVList {
-		if len(tlv.Value) == 0 {
-			continue
-		}
-		val := string(tlv.Value)
+	for _, tlv := range inBody.TLVList {
 		switch tlv.Tag {
 		case wire.ICQDirTLVTagsUID:
-			if uin, err := strconv.ParseUint(val, 10, 32); err == nil {
-				c.UIN = new(uint32(uin))
+			if state.DisplayScreenName(string(tlv.Value)).IsUIN() {
+				uinFromSn, _ := strconv.Atoi(string(tlv.Value))
+				uin := uint32(uinFromSn)
+				criteria.UIN = &uin
 			}
-		case wire.ICQDirTLVTagsFirstName:
-			c.FirstName = new(val)
-		case wire.ICQDirTLVTagsLastName:
-			c.LastName = new(val)
-		case wire.ICQDirTLVTagsNickname:
-			c.NickName = new(val)
 		case wire.ICQDirTLVTagsVerifiedEmail:
-			c.Email = new(val)
-		case wire.ICQDirTLVTagsOnlineOnly:
-			onlineOnly = tlv.Value[len(tlv.Value)-1] != 0
-		case wire.ICQDirTLVTagsGender:
-			if len(tlv.Value) == 1 && (tlv.Value[0] == 1 || tlv.Value[0] == 2) {
-				c.Gender = new(tlv.Value[0])
+			email := string(tlv.Value)
+			criteria.Email = &email
+		case wire.ICQDirTLVTagsFirstName:
+			firstName := string(tlv.Value)
+			criteria.FirstName = &firstName
+		case wire.ICQDirTLVTagsLastName:
+			lastName := string(tlv.Value)
+			criteria.LastName = &lastName
+		case wire.ICQDirTLVTagsNickname:
+			nickName := string(tlv.Value)
+			criteria.NickName = &nickName
+		case wire.ICQDirGenderSearchTag:
+			gender := tlv.Uint8()
+			criteria.Gender = &gender
+		case wire.ICQDirCitySearchTag:
+			city := string(tlv.Value)
+			criteria.City = &city
+		case wire.ICQDirCountrySearchTag:
+			countryCode := uint16(tlv.Uint32BE())
+			criteria.CountryCode = &countryCode
+		case wire.ICQDirLanguageSearchTag:
+			lang := uint8(tlv.Uint16BE())
+			criteria.SpokenLanguage = &lang
+		case wire.ICQDirOnlineUsersSearchTag:
+			if tlv.Uint16BE() > 0 {
+				onlineOnly = true
 			}
-		case wire.ICQDirTLVTagsSearchLanguage:
-			if len(tlv.Value) == 2 {
-				if v := binary.BigEndian.Uint16(tlv.Value); v > 0 && v < 256 {
-					c.SpokenLanguage = new(uint8(v))
-				}
+		case wire.ICQDirAgeRangeSearchTag:
+			var ageRange struct {
+				MaxAge uint16
+				MinAge uint16
 			}
-		case wire.ICQDirTLVTagsSearchCountry:
-			if len(tlv.Value) == 4 {
-				if v := binary.BigEndian.Uint32(tlv.Value); v > 0 && v < 20000 {
-					c.CountryCode = new(uint16(v))
-				}
+			if err := wire.UnmarshalBE(&ageRange, bytes.NewReader(tlv.Value)); err != nil {
+				return fmt.Errorf("unmarshaling age range: %w", err)
 			}
-		case wire.ICQDirTLVTagsSearchAge:
-			if len(tlv.Value) == 4 {
-				lo := binary.BigEndian.Uint16(tlv.Value[0:2])
-				hi := binary.BigEndian.Uint16(tlv.Value[2:4])
-				if lo > hi {
-					lo, hi = hi, lo
-				}
-				if lo != 0 && hi != 0 {
-					c.MinAge, c.MaxAge = &lo, &hi
-				}
-			}
+			criteria.MinAge = &ageRange.MinAge
+			criteria.MaxAge = &ageRange.MaxAge
+		case wire.ICQDirBasicSearchTag:
+			nickOrName := string(tlv.Value)
+			criteria.FirstLastNickName = &nickOrName
 		}
 	}
 
-	users, err := s.userFinder.SearchICQUsers(ctx, c)
-	if errors.Is(err, state.ErrICQSearchEmptyCriteria) {
-		// Nothing searchable was sent, so nothing matches.
-		users, err = nil, nil
-	}
+	users, err := s.userFinder.SearchICQUsers(ctx, criteria)
 	if err != nil {
-		s.logger.ErrorContext(ctx, "directory search failed", "requester", instance.UIN(), "err", err.Error())
-		return s.directoryError(ctx, instance, frame.RequestID, seq, req.SubType, versioned)
+		return fmt.Errorf("FindByICQName failed: %w", err)
 	}
 
-	type hit struct {
-		user   state.User
-		status uint16
-	}
-	hits := make([]hit, 0, len(users))
-	for _, u := range users {
-		status := wire.ICQDirStatusOnline
-		switch {
-		case !u.ICQInfo.Permissions.WebAware:
-			status = wire.ICQDirStatusHidden
-		case s.sessionRetriever.RetrieveSession(u.IdentScreenName) == nil:
-			status = wire.ICQDirStatusOffline
+	if onlineOnly {
+		var filtered []state.User
+		for _, u := range users {
+			if s.sessionRetriever.RetrieveSession(u.IdentScreenName) != nil {
+				filtered = append(filtered, u)
+			}
 		}
-		if onlineOnly && status != wire.ICQDirStatusOnline {
-			continue
-		}
-		hits = append(hits, hit{user: u, status: status})
+		users = filtered
 	}
 
-	if len(hits) == 0 {
-		// A zero block count closes the search on the client.
-		return s.directoryReply(ctx, instance, frame.RequestID, seq, wire.ICQDirectoryReplyBody{
-			SubType:   wire.ICQDirectoryQueryInfoAck,
-			Result:    wire.ICQDirectoryResultOK,
-			Pages:     1,
-			Versioned: versioned,
-		})
+	if len(users) == 0 {
+		if err := s.icqDirQueryReply(ctx, instance, 0, inFrame.RequestID, seq, inBody.RequestType, true, ver, nil); err != nil {
+			return err
+		}
 	}
-
-	total := uint32(len(hits))
-	for i, h := range hits {
-		u := h.user
-		last := i == len(hits)-1
-
-		tlvs := wire.TLVList{}
-		tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsUID, u.IdentScreenName.String()))
-
-		if u.ICQInfo.Basic.FirstName != "" {
-			tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsFirstName, u.ICQInfo.Basic.FirstName))
-		}
-		if u.ICQInfo.Basic.LastName != "" {
-			tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsLastName, u.ICQInfo.Basic.LastName))
-		}
-		if u.ICQInfo.Basic.Nickname != "" {
-			tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsNickname, u.ICQInfo.Basic.Nickname))
-		}
-		if u.ICQInfo.Basic.EmailAddress != "" {
-			tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsVerifiedEmail, u.ICQInfo.Basic.EmailAddress))
-		}
-		if u.ICQInfo.More.Gender != 0 {
-			tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsGender, uint8(u.ICQInfo.More.Gender)))
-		}
-		if days, ok := wire.ICQDirDate(u.ICQInfo.More.BirthYear, u.ICQInfo.More.BirthMonth, u.ICQInfo.More.BirthDay); ok {
-			tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsBirthDate, dirDateBytes(days)))
-		}
-
-		authOptional := uint8(0)
-		if !u.ICQInfo.Permissions.AuthRequired {
-			authOptional = 1
-		}
-		tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsAuthRequired, authOptional))
-
-		if u.ICQInfo.Basic.CountryCode != 0 {
-			addr := wire.TLVList{}
-			addr.Append(wire.NewTLVBE(wire.ICQDirTLVTagsAddressCountry, uint32(u.ICQInfo.Basic.CountryCode)))
-			blob := &bytes.Buffer{}
-			if err := wire.MarshalBE(wire.TLVRestBlock{TLVList: addr}, blob); err != nil {
+	for i, user := range users {
+		if i == len(users)-1 {
+			if err := s.icqDirQueryReply(ctx, instance, uint32(len(users)), inFrame.RequestID, seq, inBody.RequestType, true, ver, &user); err != nil {
 				return err
 			}
-			tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsHomeAddress, blob.Bytes()))
-		}
-
-		tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsOnlineStatus, h.status))
-
-		err := s.directoryReply(ctx, instance, frame.RequestID, seq, wire.ICQDirectoryReplyBody{
-			SubType:   wire.ICQDirectoryQueryInfoAck,
-			Result:    wire.ICQDirectoryResultOK,
-			Item:      tlvs,
-			Total:     total,
-			Pages:     1,
-			More:      !last,
-			Versioned: versioned,
-		})
-		if err != nil {
-			return err
+		} else {
+			if err := s.icqDirQueryReply(ctx, instance, uint32(len(users)), inFrame.RequestID, seq, inBody.RequestType, false, ver, &user); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
 }
 
-// directoryMultiInfo handles a request for the profiles of several users at
-// once. Each item is a length-prefixed TLV list naming one user: the UID, the
-// time the client last saw the profile and optionally a privacy token. The
-// profiles are not served yet, so the request is refused.
-func (s *ICQService) directoryMultiInfo(ctx context.Context, instance *state.SessionInstance, frame wire.SNACFrame, req wire.ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryBody, seq uint16) error {
-	query := struct {
-		Extras *struct {
-			Body []byte `oscar:"len_prefix=uint16"`
-		} `oscar:"variant"`
-		Filler [8]byte
-		Items  []wire.TLVLBlock `oscar:"count_prefix=uint16"`
-	}{}
-	versioned := req.Versioned()
-	if versioned {
-		query.Extras = &struct {
-			Body []byte `oscar:"len_prefix=uint16"`
-		}{}
-	}
-	if err := wire.UnmarshalBE(&query, bytes.NewReader(req.Body)); err != nil {
+func (s *ICQService) DirUpdate(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x5B9_0x03_ICQDirUpdate, seq uint16) error {
+	user, err := s.userFinder.FindByUIN(ctx, instance.UIN())
+	if err != nil {
+		s.logger.Error("FindByUIN failed", "err", err.Error())
 		return err
 	}
 
-	s.logger.DebugContext(ctx, "directory multi lookup refused", "requester", instance.UIN(), "items", len(query.Items))
-	return s.directoryError(ctx, instance, frame.RequestID, seq, wire.ICQDirectoryQueryMultiInfo, versioned)
-}
+	for _, tlv := range inBody.TLVList {
+		switch tlv.Tag {
+		case wire.ICQDirTLVTagsStatusNote:
+			user.ICQInfo.MDirData.StatusNote = string(tlv.Value)
+		case wire.ICQDirTLVTagsAbout:
+			user.ICQInfo.Notes.Notes = string(tlv.Value)
+		case wire.ICQDirTLVTagsAuth:
+			user.ICQInfo.Permissions.AuthRequired = tlv.Uint16BE() == 0
+		case wire.ICQDirTLVTagsWebAware:
+			user.ICQInfo.Permissions.WebAware = tlv.Uint8() == 1
+		case wire.ICQDirTLVTagsGender:
+			user.ICQInfo.More.Gender = uint16(tlv.Uint8())
+		case wire.ICQDirTLVTagsHomepage:
+			user.ICQInfo.More.HomePageAddr = string(tlv.Value)
+		case wire.ICQDirTLVTagsBirthDate:
+			if len(tlv.Value) != 8 {
+				return fmt.Errorf("invalid birthdate length: need 8 bytes")
+			}
+			ConvertBirthDate := func(birthDate float64) (uint16, uint8, uint8) {
+				if birthDate > 0 {
+					birthTime := mdirTimeToTime(birthDate)
+					return uint16(birthTime.Year()), uint8(birthTime.Month()), uint8(birthTime.Day())
+				}
+				return 0, 0, 0
+			}
+			user.ICQInfo.More.BirthYear, user.ICQInfo.More.BirthMonth, user.ICQInfo.More.BirthDay = ConvertBirthDate(math.Float64frombits(tlv.Uint64BE()))
+		case wire.ICQDirTLVTagsLanguage1:
+			user.ICQInfo.More.Lang1 = uint8(tlv.Uint16BE())
+		case wire.ICQDirTLVTagsLanguage2:
+			user.ICQInfo.More.Lang2 = uint8(tlv.Uint16BE())
+		case wire.ICQDirTLVTagsLanguage3:
+			user.ICQInfo.More.Lang3 = uint8(tlv.Uint16BE())
+		case wire.ICQDirTLVTagsFirstName:
+			user.ICQInfo.Basic.FirstName = string(tlv.Value)
+		case wire.ICQDirTLVTagsLastName:
+			user.ICQInfo.Basic.LastName = string(tlv.Value)
+		case wire.ICQDirTLVTagsNickname:
+			user.ICQInfo.Basic.Nickname = string(tlv.Value)
+		case wire.ICQDirTLVTagsHome:
+			ICQTLVMetadata := wire.TLVList{}
+			if err := wire.UnmarshalBE(&ICQTLVMetadata, bytes.NewReader(tlv.Value)); err != nil {
+				return fmt.Errorf("unmarshal homes record: %w", err)
+			}
 
-// directoryReply wraps a directory reply in the directory envelope and sends it.
-// A client parses exactly one record per packet, so each hit is sent on its own
-// with the more-to-come flag raised on all but the last. Only the last packet
-// of a result set uses the "response" subtype, which is what closes the search.
-func (s *ICQService) directoryReply(ctx context.Context, instance *state.SessionInstance, requestID uint32, seq uint16, r wire.ICQDirectoryReplyBody) error {
-	// A hit is a single block; no hit means no block at all, not an empty one.
-	var items []wire.TLVLBlock
-	if len(r.Item) > 0 {
-		items = []wire.TLVLBlock{{TLVList: r.Item}}
+			for _, tlv := range ICQTLVMetadata {
+				if tlv.Tag == wire.ICQTLVTagsMetadata {
+					homesTLVs := wire.TLVList{}
+					if err := wire.UnmarshalBE(&homesTLVs, bytes.NewReader(tlv.Value)); err != nil {
+						return fmt.Errorf("unmarshal homes record: %w", err)
+					}
+
+					for _, tlv := range homesTLVs {
+						switch tlv.Tag {
+						case wire.ICQDirTLVTagsHomeAddress:
+							user.ICQInfo.Basic.Address = string(tlv.Value)
+						case wire.ICQDirTLVTagsHomeCity:
+							user.ICQInfo.Basic.City = string(tlv.Value)
+						case wire.ICQDirTLVTagsHomeState:
+							user.ICQInfo.Basic.State = string(tlv.Value)
+						case wire.ICQDirTLVTagsHomeZIP:
+							user.ICQInfo.Basic.ZIPCode = string(tlv.Value)
+						case wire.ICQDirTLVTagsHomeCountry:
+							user.ICQInfo.Basic.CountryCode = uint16(tlv.Uint32BE())
+						}
+					}
+				}
+			}
+		case wire.ICQDirTLVTagsOrigin:
+			ICQTLVMetadata := wire.TLVList{}
+			if err := wire.UnmarshalBE(&ICQTLVMetadata, bytes.NewReader(tlv.Value)); err != nil {
+				return fmt.Errorf("unmarshal homes record: %w", err)
+			}
+
+			for _, tlv := range ICQTLVMetadata {
+				if tlv.Tag == wire.ICQTLVTagsMetadata {
+					homesTLVs := wire.TLVList{}
+					if err := wire.UnmarshalBE(&homesTLVs, bytes.NewReader(tlv.Value)); err != nil {
+						return fmt.Errorf("unmarshal homes record: %w", err)
+					}
+
+					for _, tlv := range homesTLVs {
+						switch tlv.Tag {
+						case wire.ICQDirTLVTagsOriginCity:
+							user.ICQInfo.Basic.OriginallyFromCity = string(tlv.Value)
+						case wire.ICQDirTLVTagsOriginState:
+							user.ICQInfo.Basic.OriginallyFromState = string(tlv.Value)
+						case wire.ICQDirTLVTagsHomeCountry:
+							user.ICQInfo.Basic.OriginallyFromCountryCode = uint16(tlv.Uint32BE())
+						}
+					}
+				}
+			}
+		case wire.ICQDirTLVTagsWork:
+			ICQTLVMetadata := wire.TLVList{}
+			if err := wire.UnmarshalBE(&ICQTLVMetadata, bytes.NewReader(tlv.Value)); err != nil {
+				return fmt.Errorf("unmarshal homes record: %w", err)
+			}
+
+			for _, tlv := range ICQTLVMetadata {
+				if tlv.Tag == wire.ICQTLVTagsMetadata {
+					workTLVs := wire.TLVList{}
+					if err := wire.UnmarshalBE(&workTLVs, bytes.NewReader(tlv.Value)); err != nil {
+						return fmt.Errorf("unmarshal work info record: %w", err)
+					}
+
+					for _, tlv := range workTLVs {
+						switch tlv.Tag {
+						case wire.ICQDirTLVTagsWorkPosition:
+							user.ICQInfo.Work.Position = string(tlv.Value)
+						case wire.ICQDirTLVTagsWorkCompany:
+							user.ICQInfo.Work.Company = string(tlv.Value)
+						case wire.ICQDirTLVTagsWorkWebPage:
+							user.ICQInfo.Work.WebPage = string(tlv.Value)
+						case wire.ICQDirTLVTagsWorkDepartment:
+							user.ICQInfo.Work.Department = string(tlv.Value)
+						case wire.ICQDirTLVTagsWorkOccupationCode:
+							user.ICQInfo.Work.OccupationCode = tlv.Uint16BE()
+						case wire.ICQDirTLVTagsWorkAddress:
+							user.ICQInfo.Work.Address = string(tlv.Value)
+						case wire.ICQDirTLVTagsWorkCity:
+							user.ICQInfo.Work.City = string(tlv.Value)
+						case wire.ICQDirTLVTagsWorkState:
+							user.ICQInfo.Work.State = string(tlv.Value)
+						case wire.ICQDirTLVTagsWorkZIP:
+							user.ICQInfo.Work.ZIPCode = string(tlv.Value)
+						case wire.ICQDirTLVTagsWorkCountry:
+							user.ICQInfo.Work.CountryCode = uint16(tlv.Uint32BE())
+						}
+					}
+				}
+			}
+		case wire.ICQDirTLVTagsInterests:
+			user.ICQInfo.Interests = state.ICQInterests{}
+
+			var interestsTLVs struct {
+				Interests []wire.TLVLBlock `oscar:"count_prefix=uint16"`
+			}
+			if err := wire.UnmarshalBE(&interestsTLVs, bytes.NewReader(tlv.Value)); err != nil {
+				return fmt.Errorf("unmarshal interests record: %w", err)
+			}
+
+			for i := range interestsTLVs.Interests {
+				switch i {
+				case 0:
+					for _, tlv := range interestsTLVs.Interests[0].TLVList {
+						switch tlv.Tag {
+						case wire.ICQDirTLVTagsInterestCode:
+							user.ICQInfo.Interests.Code1 = tlv.Uint16BE()
+						case wire.ICQDirTLVTagsInterestKeyword:
+							user.ICQInfo.Interests.Keyword1 = string(tlv.Value)
+						}
+					}
+				case 1:
+					for _, tlv := range interestsTLVs.Interests[1].TLVList {
+						switch tlv.Tag {
+						case wire.ICQDirTLVTagsInterestCode:
+							user.ICQInfo.Interests.Code2 = tlv.Uint16BE()
+						case wire.ICQDirTLVTagsInterestKeyword:
+							user.ICQInfo.Interests.Keyword2 = string(tlv.Value)
+						}
+					}
+				case 2:
+					for _, tlv := range interestsTLVs.Interests[2].TLVList {
+						switch tlv.Tag {
+						case wire.ICQDirTLVTagsInterestCode:
+							user.ICQInfo.Interests.Code3 = tlv.Uint16BE()
+						case wire.ICQDirTLVTagsInterestKeyword:
+							user.ICQInfo.Interests.Keyword3 = string(tlv.Value)
+						}
+					}
+				case 3:
+					for _, tlv := range interestsTLVs.Interests[3].TLVList {
+						switch tlv.Tag {
+						case wire.ICQDirTLVTagsInterestCode:
+							user.ICQInfo.Interests.Code4 = tlv.Uint16BE()
+						case wire.ICQDirTLVTagsInterestKeyword:
+							user.ICQInfo.Interests.Keyword4 = string(tlv.Value)
+						}
+					}
+				}
+			}
+			//case wire.ICQDirTLVTagsPhoneNumbers:
+			/*var phonesTLVs struct {
+				Phones []wire.TLVLBlock `oscar:"count_prefix=uint16"`
+			}
+			if err := wire.UnmarshalBE(&phonesTLVs, bytes.NewReader(tlv.Value)); err != nil {
+				return fmt.Errorf("unmarshal interests record: %w", err)
+			}*/
+			//0000   2a 02 16 85 00 a7 00 15 00 02 00 00 03 13 00 02   *...............
+			//0010   00 01 00 99 97 00 84 7b 03 00 d0 07 25 ac d2 0f   .......{....%...
+			//0020   8b 00 05 b9 00 03 80 00 00 00 00 00 00 06 00 01   ................
+			//0030   00 02 00 02 00 00 04 e4 00 00 00 02 00 03 00 6d   ...............m
+
+			//0040   01 22 00 29 00 02 00 0f 00 6e 00 02 00 80 00 64   .".).....n.....d <- interests
+			//0050   00 05 61 73 74 72 6f 00 14 00 6e 00 02 00 93 00   ..astro...n.....
+			//0060   64 00 0a 61 75 64 69 6f 77 6f 72 6c 64 .. .. ..   d..audioworld
+
+			//0060   .. .. .. .. .. .. .. .. .. .. .. .. .. 00 c8 00                ...<- phones
+			//0070   3c 00 02 00 1d 00 6e 00 02 00 03 00 64 00 13 2b   <.....n.....d..+
+			//0080   31 20 39 39 20 39 39 39 39 39 39 39 39 39 20 53   1 99 999999999 S
+			//0090   4d 53 00 19 00 6e 00 02 00 01 00 64 00 0f 2b 31   MS...n.....d..+1
+			//00a0   20 31 31 20 31 31 31 31 31 31 31 31 31             11 111111111
+		}
 	}
 
-	header := wire.ICQDirectoryReply{
-		SNACFamily: wire.ICQDirectorySNACFamily,
-		SubType:    r.SubType,
-		Result:     r.Result,
-		Total:      r.Total,
-		BlockCount: uint16(len(items)),
-		Items:      items,
+	var ownersPrivateKey string
+	if user.ICQInfo.MDirData.PrivateKey != "" {
+		ownersPrivateKey = user.ICQInfo.MDirData.PrivateKey
+	} else {
+		ownersPrivateKey = uuid.New().String()
 	}
-	if r.More {
-		header.Flags |= 0x0001
-	}
-	if r.Versioned {
-		header.SetVersion1(r.Pages)
-	}
+	user.ICQInfo.MDirData.PrivateKey = ownersPrivateKey
 
-	body := &bytes.Buffer{}
-	if err := wire.MarshalBE(header, body); err != nil {
+	newLastUpdateTime := math.Float64bits(timeToMdirTime(s.timeNow()))
+	user.ICQInfo.MDirData.LastUpdate = newLastUpdateTime
+
+	if err := s.userUpdater.SetICQInfo(ctx, instance.IdentScreenName(), user.ICQInfo); err != nil {
 		return err
 	}
 
-	if body.Len() > math.MaxUint16 {
-		return errors.New("directory payload too long")
-	}
-
-	snacFlags := uint16(0)
-	replySubType := wire.ICQDBQueryMetaReplyDirectoryResponse
-	if r.More {
-		snacFlags = wire.SNACFlagsMoreToCome
-		replySubType = wire.ICQDBQueryMetaReplyDirectoryData
-	}
-
-	msg := wire.ICQMessageReplyEnvelope{
-		Message: wire.ICQ_0x07DA_0x0FAA_DBQueryMetaReplyDirectory{
-			ICQMetadata: wire.ICQMetadata{
-				UIN:     instance.UIN(),
-				ReqType: wire.ICQDBQueryMetaReply,
-				Seq:     seq,
+	resp := wire.ICQ_0x07DA_0x0FB4_DBQueryMetaReplyDirectoryResponse{
+		ICQMetadata: wire.ICQMetadata{
+			UIN:     instance.UIN(),
+			ReqType: wire.ICQDBQueryMetaReply,
+			Seq:     seq,
+		},
+		ReqSubType: wire.ICQDBQueryMetaReplyDirectoryUpdate,
+		Success:    wire.ICQStatusCodeOK,
+		SNACMessage: wire.SNACMessage{
+			Frame: wire.SNACFrame{
+				FoodGroup: wire.ICQDir,
+				SubGroup:  wire.ICQDirUpdateAck,
+				Flags:     wire.SNACFlagsExtendedInfo,
 			},
-			ReqSubType: replySubType,
-			Success:    wire.ICQStatusCodeOK,
-			Payload:    body.Bytes(),
+			Body: wire.SNAC_0x5B9_0x0A_ICQDirUpdateAck{
+				Version:       inBody.Version,
+				RequestStatus: 1,
+				Timestamp:     newLastUpdateTime,
+				PrivateKey:    uuid.MustParse(user.ICQInfo.MDirData.PrivateKey),
+			},
 		},
 	}
-	return s.reply(ctx, instance, msg, requestID, snacFlags)
+
+	return s.replyToSelf(ctx, instance, wire.ICQMessageReplyEnvelope{Message: resp}, inFrame.RequestID, 0)
 }
 
-// directoryError answers with a refusal in the directory envelope.
-func (s *ICQService) directoryError(ctx context.Context, instance *state.SessionInstance, requestID uint32, seq uint16, subType uint16, versioned bool) error {
-	return s.directoryReply(ctx, instance, requestID, seq, wire.ICQDirectoryReplyBody{
-		SubType:   subType,
-		Versioned: versioned,
-	})
+func (s *ICQService) DirMultiQuery(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x5B9_0x06_ICQDirMultiQuery, seq uint16) error {
+	foundUsers := []*state.User{}
+	for _, userInfo := range inBody.QueriedUserInfo {
+		if uid, hasUID := userInfo.String(wire.ICQDirTLVTagsUID); hasUID {
+			if state.DisplayScreenName(uid).IsUIN() { // AIM users aren't usually queried in this request, but let's check for safety, I guess
+				uin, _ := strconv.Atoi(uid)
+				user, err := s.userFinder.FindByUIN(ctx, uint32(uin))
+				switch {
+				default:
+					foundUsers = append(foundUsers, &user)
+				case errors.Is(err, state.ErrNoUser): // non-existent user in the contact list???
+					continue
+				case err != nil:
+					s.logger.Error("FindByUIN failed", "err", err.Error())
+					return err
+				}
+			}
+		}
+	}
+	for i, user := range foundUsers {
+		if i == len(foundUsers)-1 {
+			if err := s.icqDirQueryReply(ctx, instance, uint32(len(foundUsers)), inFrame.RequestID, seq, 0x0002, true, &inBody.Version, user); err != nil {
+				return err
+			}
+		} else {
+			if err := s.icqDirQueryReply(ctx, instance, uint32(len(foundUsers)), inFrame.RequestID, seq, 0x0002, false, &inBody.Version, user); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
-// dirDateBytes encodes a day count as the big-endian float the client expects.
-func dirDateBytes(days float64) []byte {
-	var buf [8]byte
-	binary.BigEndian.PutUint64(buf[:], math.Float64bits(days))
-	return buf[:]
+func (s *ICQService) icqDirQueryReply(ctx context.Context, instance *state.SessionInstance, totalMatches, reqID uint32, seq, reqType uint16, last bool, ver *wire.TLVLBlock, u *state.User) error {
+	var reqSubType, flag, more, subGroup uint16
+	if last {
+		reqSubType = wire.ICQDBQueryMetaReplyDirectoryResponse
+	} else {
+		reqSubType = wire.ICQDBQueryMetaReplyDirectoryData
+		more = wire.SNACFlagsMoreToCome
+	}
+
+	var pagesFound, tlvLBlockCount uint16
+	if totalMatches > 0 {
+		pagesFound = 1
+		tlvLBlockCount = 1
+	}
+
+	body := wire.SNAC_0x5B9_ICQDirQueryReply{
+		RequestStatus:  1,
+		TotalMatches:   totalMatches,
+		TotalPages:     pagesFound, // TODO: support multiple pages if there are too many results
+		TLVLBlockCount: tlvLBlockCount,
+		TLVLBlock:      s.dirTLVInfo(u, reqType),
+	}
+	if ver == nil {
+		subGroup = wire.ICQDirQueryReplyLegacy
+		body.ServerDataLegacy = &struct{ Reserved [8]byte }{}
+	} else {
+		subGroup = wire.ICQDirQueryReply
+		flag = wire.SNACFlagsExtendedInfo
+		body.Version = ver
+		body.ServerData = &struct{ Data [16]byte }{
+			Data: GetUsersPrivateKeyFromMDir(u),
+		}
+	}
+
+	resp := wire.ICQ_0x07DA_0x0FB4_DBQueryMetaReplyDirectoryResponse{
+		ICQMetadata: wire.ICQMetadata{
+			UIN:     instance.UIN(),
+			ReqType: wire.ICQDBQueryMetaReply,
+			Seq:     seq,
+		},
+		ReqSubType: reqSubType,
+		Success:    wire.ICQStatusCodeOK,
+		SNACMessage: wire.SNACMessage{
+			Frame: wire.SNACFrame{
+				FoodGroup: wire.ICQDir,
+				SubGroup:  subGroup,
+				Flags:     flag + more,
+			},
+			Body: body,
+		},
+	}
+
+	return s.replyToSelf(ctx, instance, wire.ICQMessageReplyEnvelope{Message: resp}, reqID, more)
+}
+
+func (s *ICQService) EmailToUIN(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x1090_DBQueryMetaReqEmailToUIN, seq uint16) error {
+	user, err := s.userFinder.FindByICQEmail(ctx, inBody.Email)
+
+	resp := wire.ICQ_0x07DA_0x109A_DBQueryMetaReplyEmailToUIN{
+		ICQMetadata: wire.ICQMetadata{
+			UIN:     instance.UIN(),
+			ReqType: wire.ICQDBQueryMetaReply,
+			Seq:     seq,
+		},
+		ReqSubType: wire.ICQDBQueryMetaReplyEmailToUIN,
+		Success:    wire.ICQStatusCodeOK,
+	}
+
+	switch {
+	case errors.Is(err, state.ErrNoUser):
+		// do nothing
+	case err != nil:
+		s.logger.Error("FindByICQEmail failed", "err", err.Error())
+	default:
+		resp.UIN = user.IdentScreenName.UIN()
+	}
+
+	return s.replyToSelf(ctx, instance, wire.ICQMessageReplyEnvelope{Message: resp}, inFrame.RequestID, 0)
+}
+
+//
+// Tools
+//
+
+func (s *ICQService) dirTLVInfo(user *state.User, reqType uint16) wire.TLVLBlock {
+	tlvs := wire.TLVLBlock{}
+	if user == nil {
+		return tlvs
+	}
+
+	GetUsersPhoneNumbers := func() struct {
+		Phones []wire.TLVLBlock `oscar:"count_prefix=uint16"`
+	} {
+		var tlvs struct {
+			Phones []wire.TLVLBlock `oscar:"count_prefix=uint16"`
+		}
+		if user.ICQInfo.Basic.Phone != "" {
+			tlvs.Phones = append(tlvs.Phones, wire.TLVLBlock{
+				TLVList: wire.TLVList{
+					wire.NewTLVBE(wire.ICQDirTLVTagsPhoneNumber, user.ICQInfo.Basic.Phone),
+					wire.NewTLVBE(wire.ICQDirTLVTagsPhoneType, uint16(0x0001)),
+				}})
+		}
+		if user.ICQInfo.Work.Phone != "" {
+			tlvs.Phones = append(tlvs.Phones, wire.TLVLBlock{
+				TLVList: wire.TLVList{
+					wire.NewTLVBE(wire.ICQDirTLVTagsPhoneNumber, user.ICQInfo.Work.Phone),
+					wire.NewTLVBE(wire.ICQDirTLVTagsPhoneType, uint16(0x0002)),
+				}})
+		}
+		if user.ICQInfo.Basic.CellPhone != "" {
+			tlvs.Phones = append(tlvs.Phones, wire.TLVLBlock{
+				TLVList: wire.TLVList{
+					wire.NewTLVBE(wire.ICQDirTLVTagsPhoneNumber, user.ICQInfo.Basic.CellPhone),
+					wire.NewTLVBE(wire.ICQDirTLVTagsPhoneType, uint16(0x0003)),
+				}})
+		}
+		if user.ICQInfo.Basic.Fax != "" {
+			tlvs.Phones = append(tlvs.Phones, wire.TLVLBlock{
+				TLVList: wire.TLVList{
+					wire.NewTLVBE(wire.ICQDirTLVTagsPhoneNumber, user.ICQInfo.Basic.Fax),
+					wire.NewTLVBE(wire.ICQDirTLVTagsPhoneType, uint16(0x0004)),
+				}})
+		}
+		if user.ICQInfo.Work.Fax != "" {
+			tlvs.Phones = append(tlvs.Phones, wire.TLVLBlock{
+				TLVList: wire.TLVList{
+					wire.NewTLVBE(wire.ICQDirTLVTagsPhoneNumber, user.ICQInfo.Work.Fax),
+					wire.NewTLVBE(wire.ICQDirTLVTagsPhoneType, uint16(0x0005)),
+				}})
+		}
+		return tlvs
+	}
+	GetUsersAuthFlag := func() uint16 {
+		if user.ICQInfo.Permissions.AuthRequired {
+			return 0
+		}
+		return 1
+	}
+	GetUsersBirthDate := func() float64 {
+		switch {
+		case user.ICQInfo.More.BirthYear > 0 && user.ICQInfo.More.BirthMonth == 0 && user.ICQInfo.More.BirthDay == 0:
+			bday := time.Date(int(user.ICQInfo.More.BirthYear), time.January, 1, 0, 0, 0, 0, time.UTC)
+			return timeToMdirTime(bday)
+		case user.ICQInfo.More.BirthYear > 0 && user.ICQInfo.More.BirthMonth > 0 && user.ICQInfo.More.BirthDay > 0:
+			bday := time.Date(int(user.ICQInfo.More.BirthYear), time.Month(user.ICQInfo.More.BirthMonth), int(user.ICQInfo.More.BirthDay), 0, 0, 0, 0, time.UTC)
+			return timeToMdirTime(bday)
+		default: // invalid date
+			return 0.0
+		}
+	}
+	GetUsersWebStatus := func() uint16 {
+		if user.ICQInfo.Permissions.WebAware {
+			if s.sessionRetriever.RetrieveSession(user.IdentScreenName) == nil {
+				return 0
+			} else {
+				return 1
+			}
+		}
+		return 2
+	}
+	GetUsersAllowSpam := func() uint8 {
+		if user.ICQInfo.Permissions.AllowSpam {
+			return 1
+		}
+		return 0
+	}
+	GetUsersWebAware := func() uint8 {
+		if user.ICQInfo.Permissions.WebAware {
+			return 1
+		}
+		return 0
+	}
+	tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsUID, user.IdentScreenName.String()))
+	tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsNickname2, user.ICQInfo.Basic.Nickname))
+	tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsVerifiedEmail, user.ICQInfo.Basic.EmailAddress))
+	tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsPendingEmail, "")) // Non-verified email
+	tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsFirstName, user.ICQInfo.Basic.FirstName))
+	tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsLastName, user.ICQInfo.Basic.LastName))
+	tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsNickname, user.ICQInfo.Basic.Nickname))
+	tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsGender, uint8(user.ICQInfo.More.Gender)))
+	tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsEmailAddresses, "")) // Additional mails aren't supported yet, should be packed as TLVList inside of the TLV with the ICQTLVTagsMetadata tag
+	tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsHome,
+		wire.NewTLVBE(wire.ICQTLVTagsMetadata, wire.TLVList{
+			wire.NewTLVBE(wire.ICQDirTLVTagsHomeAddress, user.ICQInfo.Basic.Address),
+			wire.NewTLVBE(wire.ICQDirTLVTagsHomeCity, user.ICQInfo.Basic.City),
+			wire.NewTLVBE(wire.ICQDirTLVTagsHomeState, user.ICQInfo.Basic.State),
+			wire.NewTLVBE(wire.ICQDirTLVTagsHomeZIP, user.ICQInfo.Basic.ZIPCode),
+			wire.NewTLVBE(wire.ICQDirTLVTagsHomeCountry, uint32(user.ICQInfo.Basic.CountryCode)),
+		})))
+	tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsOrigin,
+		wire.NewTLVBE(wire.ICQTLVTagsMetadata, wire.TLVList{
+			wire.NewTLVBE(wire.ICQDirTLVTagsOriginAddress, ""),
+			wire.NewTLVBE(wire.ICQDirTLVTagsOriginCity, user.ICQInfo.Basic.OriginallyFromCity),
+			wire.NewTLVBE(wire.ICQDirTLVTagsOriginState, user.ICQInfo.Basic.OriginallyFromState),
+			wire.NewTLVBE(wire.ICQDirTLVTagsOriginZIP, ""),
+			wire.NewTLVBE(wire.ICQDirTLVTagsOriginCountry, uint32(user.ICQInfo.Basic.OriginallyFromCountryCode)),
+		})))
+	tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsLanguage1, uint16(user.ICQInfo.More.Lang1)))
+	tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsLanguage2, uint16(user.ICQInfo.More.Lang2)))
+	tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsLanguage3, uint16(user.ICQInfo.More.Lang3)))
+	tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsPhoneNumbers, GetUsersPhoneNumbers()))
+	tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsHomepage, user.ICQInfo.More.HomePageAddr))
+	tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsWork,
+		wire.NewTLVBE(wire.ICQTLVTagsMetadata, wire.TLVList{
+			wire.NewTLVBE(wire.ICQDirTLVTagsWorkPosition, user.ICQInfo.Work.Position),
+			wire.NewTLVBE(wire.ICQDirTLVTagsWorkCompany, user.ICQInfo.Work.Company),
+			wire.NewTLVBE(wire.ICQDirTLVTagsWorkWebPage, user.ICQInfo.Work.WebPage),
+			wire.NewTLVBE(wire.ICQDirTLVTagsWorkDepartment, user.ICQInfo.Work.Department),
+			wire.NewTLVBE(wire.ICQDirTLVTagsWorkOccupationCode, user.ICQInfo.Work.OccupationCode),
+			wire.NewTLVBE(wire.ICQDirTLVTagsWorkAddress, user.ICQInfo.Work.Address),
+			wire.NewTLVBE(wire.ICQDirTLVTagsWorkCity, user.ICQInfo.Work.City),
+			wire.NewTLVBE(wire.ICQDirTLVTagsWorkState, user.ICQInfo.Work.State),
+			wire.NewTLVBE(wire.ICQDirTLVTagsWorkZIP, user.ICQInfo.Work.ZIPCode),
+			wire.NewTLVBE(wire.ICQDirTLVTagsWorkCountry, uint32(user.ICQInfo.Work.CountryCode)),
+		})))
+	if reqType == 0x0003 { // full info (with interests)
+		GetUsersInterests := func() struct {
+			Interests []wire.TLVLBlock `oscar:"count_prefix=uint16"`
+		} {
+			var tlvs struct {
+				Interests []wire.TLVLBlock `oscar:"count_prefix=uint16"`
+			}
+			if user.ICQInfo.Interests.Code1 > 0 && user.ICQInfo.Interests.Keyword1 != "" {
+				tlvs.Interests = append(tlvs.Interests, wire.TLVLBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.ICQDirTLVTagsInterestKeyword, user.ICQInfo.Interests.Keyword1),
+						wire.NewTLVBE(wire.ICQDirTLVTagsInterestCode, user.ICQInfo.Interests.Code1),
+					}})
+			}
+			if user.ICQInfo.Interests.Code2 > 0 && user.ICQInfo.Interests.Keyword2 != "" {
+				tlvs.Interests = append(tlvs.Interests, wire.TLVLBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.ICQDirTLVTagsInterestKeyword, user.ICQInfo.Interests.Keyword2),
+						wire.NewTLVBE(wire.ICQDirTLVTagsInterestCode, user.ICQInfo.Interests.Code2),
+					}})
+			}
+			if user.ICQInfo.Interests.Code3 > 0 && user.ICQInfo.Interests.Keyword3 != "" {
+				tlvs.Interests = append(tlvs.Interests, wire.TLVLBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.ICQDirTLVTagsInterestKeyword, user.ICQInfo.Interests.Keyword3),
+						wire.NewTLVBE(wire.ICQDirTLVTagsInterestCode, user.ICQInfo.Interests.Code3),
+					}})
+			}
+			if user.ICQInfo.Interests.Code4 > 0 && user.ICQInfo.Interests.Keyword4 != "" {
+				tlvs.Interests = append(tlvs.Interests, wire.TLVLBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.ICQDirTLVTagsInterestKeyword, user.ICQInfo.Interests.Keyword4),
+						wire.NewTLVBE(wire.ICQDirTLVTagsInterestCode, user.ICQInfo.Interests.Code4),
+					}})
+			}
+			return tlvs
+		}
+		tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsInterests, GetUsersInterests()))
+	}
+	tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsAbout, user.ICQInfo.Notes.Notes))
+	tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsWebStatus, GetUsersWebStatus()))
+	tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsAuth, GetUsersAuthFlag()))
+	tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsBirthDate, math.Float64bits(GetUsersBirthDate())))
+	tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsLastUpdate, user.ICQInfo.MDirData.LastUpdate))
+	tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsAllowSpam, GetUsersAllowSpam()))
+	tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsPrivacyLevel, uint16(0)))
+	tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsWebAware, GetUsersWebAware()))
+	tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsBetaFlag, uint8(0x3C)))
+	tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsStatusNote, user.ICQInfo.MDirData.StatusNote))
+	tlvs.Append(wire.NewTLVBE(wire.ICQDirTLVTagsPrivateKey, GetUsersPrivateKeyFromMDir(user)))
+
+	return tlvs
+}
+
+func GetUsersPrivateKeyFromMDir(user *state.User) [16]byte {
+	if user != nil {
+		if user.ICQInfo.MDirData.PrivateKey != "" {
+			return uuid.MustParse(user.ICQInfo.MDirData.PrivateKey)
+		}
+	}
+	return uuid.Nil
+}
+
+func mdirTimeToTime(mdir float64) time.Time {
+	mdirToOle := func() float64 {
+		if mdir != 0 {
+			return mdir + 2.0
+		}
+		return 0.0
+	}
+	return time.Date(1899, 12, 30, 0, 0, 0, 0, time.UTC).Add(time.Duration(mdirToOle() * 24 * float64(time.Hour)))
+}
+
+func timeToMdirTime(t time.Time) float64 {
+	oleToMdir := func(ole float64) float64 {
+		if ole != 0 {
+			return ole - 2.0
+		}
+		return 0.0
+	}
+	return oleToMdir(float64((t.Truncate(time.Second)).Sub(time.Date(1899, 12, 30, 0, 0, 0, 0, time.UTC))) / float64(24*time.Hour))
+	// The original ICQ servers had never had anything after seconds, so truncate
 }

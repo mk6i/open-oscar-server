@@ -102,6 +102,7 @@ type FeedbagService interface {
 	EndCluster(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame) error
 	UpsertItem(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, items []wire.FeedbagItem) (*wire.SNACMessage, error)
 	Use(ctx context.Context, instance *state.SessionInstance) error
+	InformBuddiesICQDirInfoChanged(ctx context.Context, instance *state.SessionInstance) error
 }
 
 type ICBMService interface {
@@ -138,7 +139,10 @@ type ICQService interface {
 	SetWorkInfo(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x03F3_DBQueryMetaReqSetWorkInfo, seq uint16) error
 	ShortUserInfo(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x04BA_DBQueryMetaReqShortInfo, seq uint16) error
 	XMLReqData(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x0898_DBQueryMetaReqXMLReq, seq uint16) error
-	DirectoryQuery(ctx context.Context, instance *state.SessionInstance, frame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryQuery, seq uint16) error
+	DirQuery(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x5B9_ICQDirQuery, seq uint16, ver *wire.TLVLBlock) error
+	DirUpdate(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x5B9_0x03_ICQDirUpdate, seq uint16) error
+	DirMultiQuery(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x5B9_0x06_ICQDirMultiQuery, seq uint16) error
+	EmailToUIN(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x1090_DBQueryMetaReqEmailToUIN, seq uint16) error
 }
 
 type LocateService interface {
