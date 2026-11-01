@@ -3,6 +3,7 @@ package foodgroup
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"testing"
@@ -55,6 +56,537 @@ func TestICQService_DeleteMsgReq(t *testing.T) {
 	}
 }
 
+func TestICQService_DirectoryQuery(t *testing.T) {
+	const (
+		uin      = 11111111
+		oneHitID = "100001"
+	)
+
+	// fullUser has every field a hit can carry, minUser has none, and
+	// hiddenUser does not publish their web status.
+	fullUser := state.User{
+		IdentScreenName: state.NewIdentScreenName("100001"),
+		ICQInfo: state.ICQInfo{
+			Basic: state.ICQBasicInfo{
+				FirstName:    "Ivan",
+				LastName:     "Petrov",
+				Nickname:     "ip",
+				EmailAddress: "ivan@example.com",
+				CountryCode:  380,
+			},
+			More:        state.ICQMoreInfo{Gender: 2, BirthYear: 1990, BirthMonth: 5, BirthDay: 17},
+			Permissions: state.ICQPermissions{AuthRequired: true, WebAware: true},
+		},
+	}
+	minUser := state.User{
+		IdentScreenName: state.NewIdentScreenName("100002"),
+		ICQInfo:         state.ICQInfo{Permissions: state.ICQPermissions{WebAware: true}},
+	}
+	hiddenUser := state.User{
+		IdentScreenName: state.NewIdentScreenName("100003"),
+		ICQInfo: state.ICQInfo{
+			Basic: state.ICQBasicInfo{Nickname: "Leto"},
+		},
+	}
+
+	// the TLVs a hit carries for each of the users above, in wire order
+	fullHit := func(status uint16) wire.TLVList {
+		return wire.TLVList{
+			wire.NewTLVBE(wire.ICQDirTLVTagsUID, "100001"),
+			wire.NewTLVBE(wire.ICQDirTLVTagsFirstName, "Ivan"),
+			wire.NewTLVBE(wire.ICQDirTLVTagsLastName, "Petrov"),
+			wire.NewTLVBE(wire.ICQDirTLVTagsNickname, "ip"),
+			wire.NewTLVBE(wire.ICQDirTLVTagsVerifiedEmail, "ivan@example.com"),
+			wire.NewTLVBE(wire.ICQDirTLVTagsGender, uint8(2)),
+			wire.NewTLVBE(wire.ICQDirTLVTagsBirthDate, directoryDate(1990, 5, 17)),
+			wire.NewTLVBE(wire.ICQDirTLVTagsAuthRequired, uint8(0)),
+			wire.NewTLVBE(wire.ICQDirTLVTagsHomeAddress, directoryAddress(380)),
+			wire.NewTLVBE(wire.ICQDirTLVTagsOnlineStatus, status),
+		}
+	}
+	minHit := func(status uint16) wire.TLVList {
+		return wire.TLVList{
+			wire.NewTLVBE(wire.ICQDirTLVTagsUID, "100002"),
+			wire.NewTLVBE(wire.ICQDirTLVTagsAuthRequired, uint8(1)),
+			wire.NewTLVBE(wire.ICQDirTLVTagsOnlineStatus, status),
+		}
+	}
+	hiddenHit := wire.TLVList{
+		wire.NewTLVBE(wire.ICQDirTLVTagsUID, "100003"),
+		wire.NewTLVBE(wire.ICQDirTLVTagsNickname, "Leto"),
+		wire.NewTLVBE(wire.ICQDirTLVTagsAuthRequired, uint8(1)),
+		wire.NewTLVBE(wire.ICQDirTLVTagsOnlineStatus, wire.ICQDirStatusHidden),
+	}
+
+	lastName := wire.TLVList{wire.NewTLVBE(wire.ICQDirTLVTagsLastName, "Petrov")}
+
+	tests := []struct {
+		name       string
+		seq        uint16
+		instance   *state.SessionInstance
+		req        wire.ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryQuery
+		mockParams mockParams
+		wantErr    error
+	}{
+		{
+			name:     "search with one hit, versioned",
+			seq:      1,
+			instance: newTestInstance("11111111", sessOptUIN(uin)),
+			req:      newDirectoryQuery(wire.ICQDirectoryQueryInfo, true, directorySearchBody(lastName)),
+			mockParams: mockParams{
+				icqUserFinderParams: icqUserFinderParams{
+					searchICQUsersParams: searchICQUsersParams{
+						{
+							criteria: state.ICQUserSearchCriteria{LastName: new("Petrov")},
+							result:   []state.User{fullUser},
+						},
+					},
+				},
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams{
+						{screenName: state.NewIdentScreenName(oneHitID), result: state.NewSession()},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("11111111"),
+							message: directoryReplyMessage(uin, 1, directoryReplyPayload(
+								wire.ICQDirectoryQueryInfoAck, wire.ICQDirectoryResultOK,
+								fullHit(wire.ICQDirStatusOnline), 1, 1, false, true), false),
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "search with two hits sends one packet per hit, unversioned",
+			seq:      2,
+			instance: newTestInstance("11111111", sessOptUIN(uin)),
+			req:      newDirectoryQuery(wire.ICQDirectoryQueryInfo, false, directorySearchBody(lastName)),
+			mockParams: mockParams{
+				icqUserFinderParams: icqUserFinderParams{
+					searchICQUsersParams: searchICQUsersParams{
+						{
+							criteria: state.ICQUserSearchCriteria{LastName: new("Petrov")},
+							result:   []state.User{fullUser, minUser},
+						},
+					},
+				},
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams{
+						{screenName: state.NewIdentScreenName("100001"), result: state.NewSession()},
+						{screenName: state.NewIdentScreenName("100002"), result: nil},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("11111111"),
+							message: directoryReplyMessage(uin, 2, directoryReplyPayload(
+								wire.ICQDirectoryQueryInfoAck, wire.ICQDirectoryResultOK,
+								fullHit(wire.ICQDirStatusOnline), 2, 1, true, false), true),
+						},
+						{
+							screenName: state.NewIdentScreenName("11111111"),
+							message: directoryReplyMessage(uin, 2, directoryReplyPayload(
+								wire.ICQDirectoryQueryInfoAck, wire.ICQDirectoryResultOK,
+								minHit(wire.ICQDirStatusOffline), 2, 1, false, false), false),
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "a user who hides their web status is reported hidden",
+			seq:      3,
+			instance: newTestInstance("11111111", sessOptUIN(uin)),
+			req:      newDirectoryQuery(wire.ICQDirectoryQueryInfo, false, directorySearchBody(lastName)),
+			mockParams: mockParams{
+				icqUserFinderParams: icqUserFinderParams{
+					searchICQUsersParams: searchICQUsersParams{
+						{
+							criteria: state.ICQUserSearchCriteria{LastName: new("Petrov")},
+							result:   []state.User{hiddenUser},
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("11111111"),
+							message: directoryReplyMessage(uin, 3, directoryReplyPayload(
+								wire.ICQDirectoryQueryInfoAck, wire.ICQDirectoryResultOK,
+								hiddenHit, 1, 1, false, false), false),
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "online only keeps connected users who publish their web status",
+			seq:      4,
+			instance: newTestInstance("11111111", sessOptUIN(uin)),
+			req: newDirectoryQuery(wire.ICQDirectoryQueryInfo, true, directorySearchBody(wire.TLVList{
+				wire.NewTLVBE(wire.ICQDirTLVTagsLastName, "Petrov"),
+				wire.NewTLVBE(wire.ICQDirTLVTagsOnlineOnly, uint16(1)),
+			})),
+			mockParams: mockParams{
+				icqUserFinderParams: icqUserFinderParams{
+					searchICQUsersParams: searchICQUsersParams{
+						{
+							criteria: state.ICQUserSearchCriteria{LastName: new("Petrov")},
+							result:   []state.User{fullUser, minUser, hiddenUser},
+						},
+					},
+				},
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams{
+						{screenName: state.NewIdentScreenName("100001"), result: state.NewSession()},
+						{screenName: state.NewIdentScreenName("100002"), result: nil},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("11111111"),
+							message: directoryReplyMessage(uin, 4, directoryReplyPayload(
+								wire.ICQDirectoryQueryInfoAck, wire.ICQDirectoryResultOK,
+								fullHit(wire.ICQDirStatusOnline), 1, 1, false, true), false),
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "online only with nobody connected sends an empty result",
+			seq:      5,
+			instance: newTestInstance("11111111", sessOptUIN(uin)),
+			req: newDirectoryQuery(wire.ICQDirectoryQueryInfo, false, directorySearchBody(wire.TLVList{
+				wire.NewTLVBE(wire.ICQDirTLVTagsLastName, "Petrov"),
+				wire.NewTLVBE(wire.ICQDirTLVTagsOnlineOnly, uint16(1)),
+			})),
+			mockParams: mockParams{
+				icqUserFinderParams: icqUserFinderParams{
+					searchICQUsersParams: searchICQUsersParams{
+						{
+							criteria: state.ICQUserSearchCriteria{LastName: new("Petrov")},
+							result:   []state.User{minUser},
+						},
+					},
+				},
+				sessionRetrieverParams: sessionRetrieverParams{
+					retrieveSessionParams{
+						{screenName: state.NewIdentScreenName("100002"), result: nil},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("11111111"),
+							message: directoryReplyMessage(uin, 5, directoryReplyPayload(
+								wire.ICQDirectoryQueryInfoAck, wire.ICQDirectoryResultOK,
+								nil, 0, 1, false, false), false),
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "search with no match sends an empty result",
+			seq:      6,
+			instance: newTestInstance("11111111", sessOptUIN(uin)),
+			req:      newDirectoryQuery(wire.ICQDirectoryQueryInfo, true, directorySearchBody(lastName)),
+			mockParams: mockParams{
+				icqUserFinderParams: icqUserFinderParams{
+					searchICQUsersParams: searchICQUsersParams{
+						{criteria: state.ICQUserSearchCriteria{LastName: new("Petrov")}},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("11111111"),
+							message: directoryReplyMessage(uin, 6, directoryReplyPayload(
+								wire.ICQDirectoryQueryInfoAck, wire.ICQDirectoryResultOK,
+								nil, 0, 1, false, true), false),
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "search with nothing searchable sends an empty result",
+			seq:      7,
+			instance: newTestInstance("11111111", sessOptUIN(uin)),
+			req:      newDirectoryQuery(wire.ICQDirectoryQueryInfo, false, directorySearchBody(nil)),
+			mockParams: mockParams{
+				icqUserFinderParams: icqUserFinderParams{
+					searchICQUsersParams: searchICQUsersParams{
+						{criteria: state.ICQUserSearchCriteria{}, err: state.ErrICQSearchEmptyCriteria},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("11111111"),
+							message: directoryReplyMessage(uin, 7, directoryReplyPayload(
+								wire.ICQDirectoryQueryInfoAck, wire.ICQDirectoryResultOK,
+								nil, 0, 1, false, false), false),
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "search conditions are mapped to criteria",
+			seq:      8,
+			instance: newTestInstance("11111111", sessOptUIN(uin)),
+			req: newDirectoryQuery(wire.ICQDirectoryQueryInfo, true, directorySearchBody(wire.TLVList{
+				wire.NewTLVBE(wire.ICQDirTLVTagsUID, "100002"),
+				wire.NewTLVBE(wire.ICQDirTLVTagsFirstName, "Ivan"),
+				wire.NewTLVBE(wire.ICQDirTLVTagsLastName, "Petrov"),
+				wire.NewTLVBE(wire.ICQDirTLVTagsNickname, "ip"),
+				wire.NewTLVBE(wire.ICQDirTLVTagsVerifiedEmail, "ivan@example.com"),
+				wire.NewTLVBE(wire.ICQDirTLVTagsGender, uint8(2)),
+				wire.NewTLVBE(wire.ICQDirTLVTagsSearchCountry, uint32(213)),
+				wire.NewTLVBE(wire.ICQDirTLVTagsSearchLanguage, uint16(7)),
+				wire.NewTLVBE(wire.ICQDirTLVTagsSearchAge, uint32(0x00160012)),
+			})),
+			mockParams: mockParams{
+				icqUserFinderParams: icqUserFinderParams{
+					searchICQUsersParams: searchICQUsersParams{
+						{
+							criteria: state.ICQUserSearchCriteria{
+								UIN:            new(uint32(100002)),
+								FirstName:      new("Ivan"),
+								LastName:       new("Petrov"),
+								NickName:       new("ip"),
+								Email:          new("ivan@example.com"),
+								Gender:         new(uint8(2)),
+								CountryCode:    new(uint16(213)),
+								SpokenLanguage: new(uint8(7)),
+								MinAge:         new(uint16(18)),
+								MaxAge:         new(uint16(22)),
+							},
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("11111111"),
+							message: directoryReplyMessage(uin, 8, directoryReplyPayload(
+								wire.ICQDirectoryQueryInfoAck, wire.ICQDirectoryResultOK,
+								nil, 0, 1, false, true), false),
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "conditions the client leaves unset are not criteria",
+			seq:      9,
+			instance: newTestInstance("11111111", sessOptUIN(uin)),
+			req: newDirectoryQuery(wire.ICQDirectoryQueryInfo, false, directorySearchBody(wire.TLVList{
+				wire.NewTLVBE(wire.ICQDirTLVTagsUID, "not a number"),
+				wire.NewTLVBE(wire.ICQDirTLVTagsFirstName, ""),
+				wire.NewTLVBE(wire.ICQDirTLVTagsGender, uint8(0)),
+				wire.NewTLVBE(wire.ICQDirTLVTagsSearchCountry, uint32(0)),
+				wire.NewTLVBE(wire.ICQDirTLVTagsSearchLanguage, uint16(0)),
+				wire.NewTLVBE(wire.ICQDirTLVTagsSearchAge, uint32(0)),
+				wire.NewTLVBE(wire.ICQDirTLVTagsLastName, "Petrov"),
+			})),
+			mockParams: mockParams{
+				icqUserFinderParams: icqUserFinderParams{
+					searchICQUsersParams: searchICQUsersParams{
+						{criteria: state.ICQUserSearchCriteria{LastName: new("Petrov")}},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("11111111"),
+							message: directoryReplyMessage(uin, 9, directoryReplyPayload(
+								wire.ICQDirectoryQueryInfoAck, wire.ICQDirectoryResultOK,
+								nil, 0, 1, false, false), false),
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "search failure is refused",
+			seq:      10,
+			instance: newTestInstance("11111111", sessOptUIN(uin)),
+			req:      newDirectoryQuery(wire.ICQDirectoryQueryInfo, true, directorySearchBody(lastName)),
+			mockParams: mockParams{
+				icqUserFinderParams: icqUserFinderParams{
+					searchICQUsersParams: searchICQUsersParams{
+						{
+							criteria: state.ICQUserSearchCriteria{LastName: new("Petrov")},
+							err:      errors.New("database error"),
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("11111111"),
+							message: directoryReplyMessage(uin, 10, directoryReplyPayload(
+								wire.ICQDirectoryQueryInfo, 0, nil, 0, 0, false, true), false),
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "QIP 2012 subtype is handled as a search",
+			seq:      11,
+			instance: newTestInstance("11111111", sessOptUIN(uin)),
+			req:      newDirectoryQuery(wire.ICQDBQueryMetaReqDirectoryQuery, false, directorySearchBody(lastName)),
+			mockParams: mockParams{
+				icqUserFinderParams: icqUserFinderParams{
+					searchICQUsersParams: searchICQUsersParams{
+						{criteria: state.ICQUserSearchCriteria{LastName: new("Petrov")}},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("11111111"),
+							message: directoryReplyMessage(uin, 11, directoryReplyPayload(
+								wire.ICQDirectoryQueryInfoAck, wire.ICQDirectoryResultOK,
+								nil, 0, 1, false, false), false),
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "profile lookup is refused",
+			seq:      12,
+			instance: newTestInstance("11111111", sessOptUIN(uin)),
+			req:      newDirectoryQuery(wire.ICQDirectoryQueryInfo, true, directoryInfoBody("100001")),
+			mockParams: mockParams{
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("11111111"),
+							message: directoryReplyMessage(uin, 12, directoryReplyPayload(
+								wire.ICQDirectoryQueryInfo, 0, nil, 0, 0, false, true), false),
+						},
+					},
+				},
+			},
+		},
+		{
+			// a multi-lookup carries an item count where a search carries its
+			// block tag, and two items look like a search
+			name:     "multi-lookup is refused and is not mistaken for a search",
+			seq:      13,
+			instance: newTestInstance("11111111", sessOptUIN(uin)),
+			req:      newDirectoryQuery(wire.ICQDirectoryQueryMultiInfo, false, directoryMultiBody("100001", "100002")),
+			mockParams: mockParams{
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("11111111"),
+							message: directoryReplyMessage(uin, 13, directoryReplyPayload(
+								wire.ICQDirectoryQueryMultiInfo, 0, nil, 0, 0, false, false), false),
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "multi-lookup, versioned, is refused",
+			seq:      14,
+			instance: newTestInstance("11111111", sessOptUIN(uin)),
+			req:      newDirectoryQuery(wire.ICQDirectoryQueryMultiInfo, true, directoryMultiBody("100001")),
+			mockParams: mockParams{
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("11111111"),
+							message: directoryReplyMessage(uin, 14, directoryReplyPayload(
+								wire.ICQDirectoryQueryMultiInfo, 0, nil, 0, 0, false, true), false),
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "unsupported subtype is refused",
+			seq:      15,
+			instance: newTestInstance("11111111", sessOptUIN(uin)),
+			req:      newDirectoryQuery(wire.ICQDirectorySetInfo, false, directorySearchBody(lastName)),
+			mockParams: mockParams{
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNameParams: relayToScreenNameParams{
+						{
+							screenName: state.NewIdentScreenName("11111111"),
+							message: directoryReplyMessage(uin, 15, directoryReplyPayload(
+								wire.ICQDirectorySetInfo, 0, nil, 0, 0, false, false), false),
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "unknown block gets no reply",
+			seq:      16,
+			instance: newTestInstance("11111111", sessOptUIN(uin)),
+			req:      newDirectoryQuery(wire.ICQDirectoryQueryInfo, false, []byte{0x00, 0x09}),
+		},
+		{
+			name:     "truncated request",
+			seq:      17,
+			instance: newTestInstance("11111111", sessOptUIN(uin)),
+			req:      wire.ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryQuery{Body: []byte{0x05, 0xB9}},
+			wantErr:  wire.ErrUnmarshalFailure,
+		},
+		{
+			name:     "truncated search body",
+			seq:      18,
+			instance: newTestInstance("11111111", sessOptUIN(uin)),
+			req:      newDirectoryQuery(wire.ICQDirectoryQueryInfo, false, []byte{0x00, 0x02, 0x00}),
+			wantErr:  wire.ErrUnmarshalFailure,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			userFinder := newMockICQUserFinder(t)
+			for _, params := range tt.mockParams.searchICQUsersParams {
+				userFinder.EXPECT().
+					SearchICQUsers(matchContext(), params.criteria).
+					Return(params.result, params.err)
+			}
+
+			messageRelayer := newMockMessageRelayer(t)
+			for _, params := range tt.mockParams.relayToScreenNameParams {
+				messageRelayer.EXPECT().RelayToScreenName(mock.Anything, params.screenName, params.message)
+			}
+
+			sessionRetriever := newMockSessionRetriever(t)
+			for _, params := range tt.mockParams.retrieveSessionParams {
+				sessionRetriever.EXPECT().
+					RetrieveSession(params.screenName).
+					Return(params.result)
+			}
+
+			s := ICQService{
+				logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
+				messageRelayer:   messageRelayer,
+				sessionRetriever: sessionRetriever,
+				userFinder:       userFinder,
+			}
+			err := s.DirectoryQuery(context.Background(), tt.instance, wire.SNACFrame{RequestID: 1234}, tt.req, tt.seq)
+			assert.ErrorIs(t, err, tt.wantErr)
+		})
+	}
+}
+
 func TestICQService_FindByICQName(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -95,6 +627,7 @@ func TestICQService_FindByICQName(t *testing.T) {
 											Nickname:     "Janey",
 										},
 										Permissions: state.ICQPermissions{
+											WebAware:     true,
 											AuthRequired: false,
 										},
 										More: state.ICQMoreInfo{
@@ -115,6 +648,7 @@ func TestICQService_FindByICQName(t *testing.T) {
 											Nickname:     "Johnny",
 										},
 										Permissions: state.ICQPermissions{
+											WebAware:     true,
 											AuthRequired: true,
 										},
 										More: state.ICQMoreInfo{
@@ -294,6 +828,7 @@ func TestICQService_FindByICQEmail(t *testing.T) {
 										Nickname:     "Johnny",
 									},
 									Permissions: state.ICQPermissions{
+										WebAware:     true,
 										AuthRequired: true,
 									},
 									More: state.ICQMoreInfo{
@@ -435,6 +970,7 @@ func TestICQService_FindByEmail3(t *testing.T) {
 										Nickname:     "Johnny",
 									},
 									Permissions: state.ICQPermissions{
+										WebAware:     true,
 										AuthRequired: true,
 									},
 									More: state.ICQMoreInfo{
@@ -564,6 +1100,7 @@ func TestICQService_FindByUIN(t *testing.T) {
 								IdentScreenName: state.NewIdentScreenName("123456789"),
 								ICQInfo: state.ICQInfo{
 									Permissions: state.ICQPermissions{
+										WebAware:     true,
 										AuthRequired: true,
 									},
 									Basic: state.ICQBasicInfo{
@@ -703,6 +1240,7 @@ func TestICQService_FindByUIN2(t *testing.T) {
 								IdentScreenName: state.NewIdentScreenName("123456789"),
 								ICQInfo: state.ICQInfo{
 									Permissions: state.ICQPermissions{
+										WebAware:     true,
 										AuthRequired: true,
 									},
 									Basic: state.ICQBasicInfo{
@@ -847,6 +1385,7 @@ func TestICQService_FindByWhitePages(t *testing.T) {
 											Nickname:     "Janey",
 										},
 										Permissions: state.ICQPermissions{
+											WebAware:     true,
 											AuthRequired: false,
 										},
 										More: state.ICQMoreInfo{
@@ -867,6 +1406,7 @@ func TestICQService_FindByWhitePages(t *testing.T) {
 											Nickname:     "Ally123",
 										},
 										Permissions: state.ICQPermissions{
+											WebAware:     true,
 											AuthRequired: true,
 										},
 										More: state.ICQMoreInfo{
@@ -1057,6 +1597,7 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 											Nickname:     "Janey",
 										},
 										Permissions: state.ICQPermissions{
+											WebAware:     true,
 											AuthRequired: false,
 										},
 										More: state.ICQMoreInfo{
@@ -1077,6 +1618,7 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 											Nickname:     "Ally123",
 										},
 										Permissions: state.ICQPermissions{
+											WebAware:     true,
 											AuthRequired: true,
 										},
 										More: state.ICQMoreInfo{
@@ -1234,6 +1776,7 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 											Nickname:     "Janey",
 										},
 										Permissions: state.ICQPermissions{
+											WebAware:     true,
 											AuthRequired: false,
 										},
 										More: state.ICQMoreInfo{
@@ -1420,6 +1963,7 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 											Nickname:     "Janey",
 										},
 										Permissions: state.ICQPermissions{
+											WebAware:     true,
 											AuthRequired: false,
 										},
 										More: state.ICQMoreInfo{
@@ -1708,6 +2252,7 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 											Nickname:     "Janey",
 										},
 										Permissions: state.ICQPermissions{
+											WebAware:     true,
 											AuthRequired: false,
 										},
 										More: state.ICQMoreInfo{
@@ -1728,6 +2273,7 @@ func TestICQService_FindByWhitePages2(t *testing.T) {
 											Nickname:     "Ally123",
 										},
 										Permissions: state.ICQPermissions{
+											WebAware:     true,
 											AuthRequired: true,
 										},
 										More: state.ICQMoreInfo{

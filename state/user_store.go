@@ -840,8 +840,8 @@ func (f SQLiteUserStore) InsertUser(ctx context.Context, u User) error {
 		return errors.New("inserting user with UIN and isICQ=false")
 	}
 	q := `
-		INSERT INTO users (identScreenName, displayScreenName, authKey, weakMD5Pass, strongMD5Pass, isICQ, isBot)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO users (identScreenName, displayScreenName, authKey, weakMD5Pass, strongMD5Pass, isICQ, isBot, icq_permissions_webAware)
+		VALUES (?, ?, ?, ?, ?, ?, ?, true)
 		ON CONFLICT (identScreenName) DO NOTHING
 	`
 	result, err := f.db.ExecContext(ctx,

@@ -1,7 +1,10 @@
 package foodgroup
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
+	"math"
 	"net/mail"
 	"net/netip"
 	"testing"
@@ -1060,4 +1063,172 @@ func matchContext() interface{} {
 		_, ok := ctx.(context.Context)
 		return ok
 	})
+}
+
+// newDirectoryQuery builds a directory meta request: the nested SNAC header, the
+// version block if versioned, the filler and then body, which starts at the
+// block tag (or the item count of a multi-lookup).
+func newDirectoryQuery(subType uint16, versioned bool, body []byte) wire.ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryQuery {
+	flags := uint16(0)
+	if versioned {
+		flags = 0x8000
+	}
+
+	buf := &bytes.Buffer{}
+	for _, v := range []uint16{wire.ICQDirectorySNACFamily, subType, flags, 0, 0} {
+		_ = binary.Write(buf, binary.BigEndian, v)
+	}
+	if versioned {
+		for _, v := range []uint16{6, 1, 2, wire.ICQDirectorySNACVersion} {
+			_ = binary.Write(buf, binary.BigEndian, v)
+		}
+	}
+	buf.Write(make([]byte, 8))
+	buf.Write(body)
+
+	return wire.ICQ_0x07D0_0x0FA0_DBQueryMetaReqDirectoryQuery{Body: buf.Bytes()}
+}
+
+// directorySearchBody builds the part of a directory search request that follows
+// the filler: the block tag, the page, the condition count and the conditions.
+func directorySearchBody(conditions wire.TLVList) []byte {
+	buf := &bytes.Buffer{}
+	for _, v := range []uint16{wire.ICQDirectoryBlockSearch, 0, uint16(len(conditions))} {
+		_ = binary.Write(buf, binary.BigEndian, v)
+	}
+	_ = wire.MarshalBE(wire.TLVLBlock{TLVList: conditions}, buf)
+	return buf.Bytes()
+}
+
+// directoryInfoBody builds the part of a directory profile lookup request that
+// follows the filler.
+func directoryInfoBody(uid string) []byte {
+	buf := &bytes.Buffer{}
+	_ = binary.Write(buf, binary.BigEndian, wire.ICQDirectoryBlockInfo)
+	_ = binary.Write(buf, binary.BigEndian, uint32(1))
+	_ = wire.MarshalBE(wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.ICQDirTLVTagsUID, uid)}}, buf)
+	return buf.Bytes()
+}
+
+// directoryMultiBody builds the part of a directory multi-lookup request that
+// follows the filler: the item count and one TLV list per item.
+func directoryMultiBody(uids ...string) []byte {
+	buf := &bytes.Buffer{}
+	_ = binary.Write(buf, binary.BigEndian, uint16(len(uids)))
+	for _, uid := range uids {
+		_ = wire.MarshalBE(wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.ICQDirTLVTagsUID, uid)}}, buf)
+	}
+	return buf.Bytes()
+}
+
+// directoryReplyPayload builds the payload of a directory reply: the nested SNAC
+// header, the result byte, the counters and at most one item. The meta reply
+// adds the length prefix. It writes the layout field by field so that it stays
+// independent of the structs the service marshals.
+func directoryReplyPayload(subType uint16, result uint8, item wire.TLVList, total uint32, pages uint16, more, versioned bool) []byte {
+	write := func(buf *bytes.Buffer, v any) {
+		_ = binary.Write(buf, binary.BigEndian, v)
+	}
+
+	body := &bytes.Buffer{}
+
+	flags := uint16(0)
+	if versioned {
+		flags |= 0x8000
+	}
+	if more {
+		flags |= 0x0001
+	}
+	for _, v := range []uint16{wire.ICQDirectorySNACFamily, subType, flags, 0, 0} {
+		write(body, v)
+	}
+	if versioned {
+		for _, v := range []uint16{6, 1, 2, wire.ICQDirectorySNACVersion} {
+			write(body, v)
+		}
+	}
+
+	write(body, result)
+	write(body, uint16(0)) // error message length
+	if versioned {
+		body.Write(make([]byte, 16))
+	} else {
+		body.Write(make([]byte, 10))
+	}
+	write(body, total)
+	if versioned {
+		write(body, pages)
+	}
+
+	if len(item) == 0 {
+		write(body, uint16(0)) // block count
+	} else {
+		itemBytes := &bytes.Buffer{}
+		_ = wire.MarshalBE(wire.TLVRestBlock{TLVList: item}, itemBytes)
+		write(body, uint16(1)) // block count
+		write(body, uint16(itemBytes.Len()))
+		body.Write(itemBytes.Bytes())
+	}
+
+	return body.Bytes()
+}
+
+// directoryReplyMessage wraps a directory reply payload in the SNAC the service
+// relays. A packet with more results to come is a "data" reply carrying the
+// more-to-come flag, and the last packet is the "response" reply.
+func directoryReplyMessage(uin uint32, seq uint16, payload []byte, more bool) wire.SNACMessage {
+	replySubType := wire.ICQDBQueryMetaReplyDirectoryResponse
+	snacFlags := uint16(0)
+	if more {
+		replySubType = wire.ICQDBQueryMetaReplyDirectoryData
+		snacFlags = wire.SNACFlagsMoreToCome
+	}
+
+	return wire.SNACMessage{
+		Frame: wire.SNACFrame{
+			FoodGroup: wire.ICQ,
+			SubGroup:  wire.ICQDBReply,
+			RequestID: 1234,
+			Flags:     snacFlags,
+		},
+		Body: wire.SNAC_0x15_0x02_DBReply{
+			TLVRestBlock: wire.TLVRestBlock{
+				TLVList: wire.TLVList{
+					wire.NewTLVBE(wire.ICQTLVTagsMetadata, wire.ICQMessageReplyEnvelope{
+						Message: wire.ICQ_0x07DA_0x0FAA_DBQueryMetaReplyDirectory{
+							ICQMetadata: wire.ICQMetadata{
+								UIN:     uin,
+								ReqType: wire.ICQDBQueryMetaReply,
+								Seq:     seq,
+							},
+							ReqSubType: replySubType,
+							Success:    wire.ICQStatusCodeOK,
+							Payload:    payload,
+						},
+					}),
+				},
+			},
+		},
+	}
+}
+
+// directoryDate encodes a date the way a directory hit carries it: a float
+// holding the days since 1900-01-01.
+func directoryDate(year, month, day int) []byte {
+	epoch := time.Date(1900, time.January, 1, 0, 0, 0, 0, time.UTC)
+	days := time.Date(year, time.Month(month), day, 0, 0, 0, 0, time.UTC).Sub(epoch).Hours() / 24
+
+	var buf [8]byte
+	binary.BigEndian.PutUint64(buf[:], math.Float64bits(days))
+	return buf[:]
+}
+
+// directoryAddress encodes the home address TLV of a hit: a TLV list holding
+// only the country as four bytes.
+func directoryAddress(country uint32) []byte {
+	buf := &bytes.Buffer{}
+	_ = wire.MarshalBE(wire.TLVRestBlock{TLVList: wire.TLVList{
+		wire.NewTLVBE(wire.ICQDirTLVTagsAddressCountry, country),
+	}}, buf)
+	return buf.Bytes()
 }
