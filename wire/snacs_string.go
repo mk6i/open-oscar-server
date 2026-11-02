@@ -266,6 +266,10 @@ var subGroupName = map[uint16]map[uint16]string{
 		BARTDownload2Query: "BARTDownload2Query",
 		BARTDownload2Reply: "BARTDownload2Reply",
 	},
+	Popup: {
+		PopupErr:     "PopupErr",
+		PopupDisplay: "PopupDisplay",
+	},
 	PermitDeny: {
 		PermitDenyErr:                      "PermitDenyErr",
 		PermitDenyRightsQuery:              "PermitDenyRightsQuery",
