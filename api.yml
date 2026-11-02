@@ -563,7 +563,8 @@ paths:
         Display a popup window to the given recipients, or to all connected users
         when broadcast is true. Set either recipients or broadcast, not both.
         Popups are not stored for offline users. Popups do not scroll, so set
-        width and height to fit the message.
+        width and height to fit the message. AIM 6+, ICQ, TOC and WebAPI clients
+        do not receive popups.
       requestBody:
         required: true
         content:
