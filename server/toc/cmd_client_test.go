@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 
+	"github.com/mk6i/open-oscar-server/server/oscarclient"
 	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
 )
@@ -50,9 +51,9 @@ func runCmdTests(t *testing.T, cases []cmdTestCase) {
 			assert.Equal(t, tc.wantMsg, msg)
 			assert.Equal(t, tc.wantSNACs, bos.sentSNACs())
 			if tc.wantCacheData != nil {
-				req, ok := me.cache.take(wire.SNACFrame{FoodGroup: tc.wantSNACs[0].Frame.FoodGroup, RequestID: 1})
+				req, ok := me.cache.Take(wire.SNACFrame{FoodGroup: tc.wantSNACs[0].Frame.FoodGroup, RequestID: 1})
 				assert.True(t, ok)
-				assert.Equal(t, tc.wantCacheData, req.data)
+				assert.Equal(t, tc.wantCacheData, req.Data)
 			}
 		})
 	}
@@ -66,10 +67,10 @@ func TestOSCARProxy_send(t *testing.T) {
 		msg := svc.send(context.Background(), me, bos, wire.Locate, wire.LocateUserInfoQuery, struct{}{}, getStatusReqCtx{screenName: "them"})
 		assert.Nil(t, msg)
 
-		req, ok := me.cache.take(wire.SNACFrame{FoodGroup: wire.Locate, RequestID: 1})
+		req, ok := me.cache.Take(wire.SNACFrame{FoodGroup: wire.Locate, RequestID: 1})
 		assert.True(t, ok)
-		assert.Equal(t, wire.LocateUserInfoQuery, req.frame.SubGroup)
-		assert.Equal(t, getStatusReqCtx{screenName: "them"}, req.data)
+		assert.Equal(t, wire.LocateUserInfoQuery, req.Frame.SubGroup)
+		assert.Equal(t, getStatusReqCtx{screenName: "them"}, req.Data)
 	})
 
 	t.Run("drops the cached request when the send fails", func(t *testing.T) {
@@ -80,7 +81,7 @@ func TestOSCARProxy_send(t *testing.T) {
 		msg := svc.send(context.Background(), me, bos, wire.Locate, wire.LocateUserInfoQuery, struct{}{}, nil)
 		assert.Equal(t, []string{cmdInternalSvcErr}, msg)
 
-		_, ok := me.cache.take(wire.SNACFrame{FoodGroup: wire.Locate, RequestID: 1})
+		_, ok := me.cache.Take(wire.SNACFrame{FoodGroup: wire.Locate, RequestID: 1})
 		assert.False(t, ok)
 	})
 }
@@ -484,9 +485,9 @@ func TestOSCARProxy_RecvClientCmd_ChatAccept(t *testing.T) {
 			assert.Equal(t, tc.wantMsg, msg)
 			assert.Equal(t, tc.wantSNACs, bos.sentSNACs())
 			if tc.wantCacheData != nil {
-				req, ok := me.cache.take(wire.SNACFrame{FoodGroup: wire.ChatNav, RequestID: 1})
+				req, ok := me.cache.Take(wire.SNACFrame{FoodGroup: wire.ChatNav, RequestID: 1})
 				assert.True(t, ok)
-				assert.Equal(t, tc.wantCacheData, req.data)
+				assert.Equal(t, tc.wantCacheData, req.Data)
 			}
 		})
 	}
@@ -1799,7 +1800,7 @@ func TestOSCARProxy_RecvClientCmd_NewBuddies(t *testing.T) {
 			me, bos := newTestTOCConn(tc.me)
 			me.isTOC2 = true
 			for _, params := range tc.mockParams.feedbagParams {
-				me.feedbag.reset(params.results)
+				me.feedbag.Reset(params.results)
 			}
 			wantSNACs, sendErrs := feedbagSNACs(tc.mockParams.feedBagParams)
 			bos.sendErrs = sendErrs
@@ -1972,7 +1973,7 @@ func TestOSCARProxy_RecvClientCmd_NewGroup(t *testing.T) {
 			me, bos := newTestTOCConn(tc.me)
 			me.isTOC2 = true
 			for _, params := range tc.mockParams.feedbagParams {
-				me.feedbag.reset(params.results)
+				me.feedbag.Reset(params.results)
 			}
 			wantSNACs, sendErrs := feedbagSNACs(tc.mockParams.feedBagParams)
 			bos.sendErrs = sendErrs
@@ -2146,7 +2147,7 @@ func TestOSCARProxy_RecvClientCmd_DelGroup(t *testing.T) {
 			me, bos := newTestTOCConn(tc.me)
 			me.isTOC2 = true
 			for _, params := range tc.mockParams.feedbagParams {
-				me.feedbag.reset(params.results)
+				me.feedbag.Reset(params.results)
 			}
 			wantSNACs, sendErrs := feedbagSNACs(tc.mockParams.feedBagParams)
 			bos.sendErrs = sendErrs
@@ -2331,7 +2332,7 @@ func TestOSCARProxy_RecvClientCmd_SetPDMode(t *testing.T) {
 			me, bos := newTestTOCConn(tc.me)
 			me.isTOC2 = true
 			for _, params := range tc.mockParams.feedbagParams {
-				me.feedbag.reset(params.results)
+				me.feedbag.Reset(params.results)
 			}
 			wantSNACs, sendErrs := feedbagSNACs(tc.mockParams.feedBagParams)
 			bos.sendErrs = sendErrs
@@ -2469,7 +2470,7 @@ func TestOSCARProxy_RecvClientCmd_AddPermit2(t *testing.T) {
 			me, bos := newTestTOCConn(tc.me)
 			me.isTOC2 = true
 			for _, params := range tc.mockParams.feedbagParams {
-				me.feedbag.reset(params.results)
+				me.feedbag.Reset(params.results)
 			}
 			wantSNACs, sendErrs := feedbagSNACs(tc.mockParams.feedBagParams)
 			bos.sendErrs = sendErrs
@@ -2606,7 +2607,7 @@ func TestOSCARProxy_RecvClientCmd_AddDeny2(t *testing.T) {
 			me, bos := newTestTOCConn(tc.me)
 			me.isTOC2 = true
 			for _, params := range tc.mockParams.feedbagParams {
-				me.feedbag.reset(params.results)
+				me.feedbag.Reset(params.results)
 			}
 			wantSNACs, sendErrs := feedbagSNACs(tc.mockParams.feedBagParams)
 			bos.sendErrs = sendErrs
@@ -2745,7 +2746,7 @@ func TestOSCARProxy_RecvClientCmd_RemoveBuddy2(t *testing.T) {
 			me, bos := newTestTOCConn(tc.me)
 			me.isTOC2 = true
 			for _, params := range tc.mockParams.feedbagParams {
-				me.feedbag.reset(params.results)
+				me.feedbag.Reset(params.results)
 			}
 			wantSNACs, sendErrs := feedbagSNACs(tc.mockParams.feedBagParams)
 			bos.sendErrs = sendErrs
@@ -2892,7 +2893,7 @@ func TestOSCARProxy_RecvClientCmd_RemovePermit2(t *testing.T) {
 			me, bos := newTestTOCConn(tc.me)
 			me.isTOC2 = true
 			for _, params := range tc.mockParams.feedbagParams {
-				me.feedbag.reset(params.results)
+				me.feedbag.Reset(params.results)
 			}
 			wantSNACs, sendErrs := feedbagSNACs(tc.mockParams.feedBagParams)
 			bos.sendErrs = sendErrs
@@ -3039,7 +3040,7 @@ func TestOSCARProxy_RecvClientCmd_RemoveDeny2(t *testing.T) {
 			me, bos := newTestTOCConn(tc.me)
 			me.isTOC2 = true
 			for _, params := range tc.mockParams.feedbagParams {
-				me.feedbag.reset(params.results)
+				me.feedbag.Reset(params.results)
 			}
 			wantSNACs, sendErrs := feedbagSNACs(tc.mockParams.feedBagParams)
 			bos.sendErrs = sendErrs
@@ -3968,7 +3969,7 @@ func TestOSCARProxy_Signon(t *testing.T) {
 
 			svc := OSCARProxy{
 				Logger:         slog.Default(),
-				OSCARServer:    oscarServer,
+				Dialer:         oscarclient.Dialer{Server: oscarServer, Logger: slog.Default()},
 				TOCConfigStore: tocConfigStore,
 			}
 			me, msg := svc.Signon(ctx, []byte(tc.givenCmd), clientAddr)
@@ -4005,7 +4006,7 @@ func TestOSCARProxy_Signon(t *testing.T) {
 			assert.Equal(t, tc.wantTOC2, me.IsTOC2())
 			assert.Equal(t, tc.wantMsgEnc, me.SupportsTOC2MsgEnc())
 			assert.Len(t, me.backlog, tc.wantBacklog)
-			assert.Equal(t, tc.wantFeedbag, me.feedbag.snapshot())
+			assert.Equal(t, tc.wantFeedbag, me.feedbag.Snapshot())
 			me.bos.Close()
 		})
 	}
@@ -4038,7 +4039,7 @@ func TestOSCARProxy_RecvClientCmd_LocalRateLimit(t *testing.T) {
 func TestOSCARProxy_RecvClientCmd_FeedbagMirrorFollowsChanges(t *testing.T) {
 	me, bos := newTestTOCConn(newTestSession("me"))
 	me.isTOC2 = true
-	me.feedbag.reset([]wire.FeedbagItem{
+	me.feedbag.Reset([]wire.FeedbagItem{
 		{
 			ClassID:   wire.FeedbagClassIdGroup,
 			TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{})}},
@@ -4073,19 +4074,19 @@ func TestOSCARProxy_RecvClientCmd_FeedbagMirrorFollowsChanges(t *testing.T) {
 	}, sent[1].Body.(wire.SNAC_0x13_0x09_FeedbagUpdateItem).Items)
 	assert.Equal(t, wire.FeedbagInsertItem, sent[2].Frame.SubGroup)
 
-	names := me.feedbag.groupNames()
+	names := me.feedbag.GroupNames()
 	assert.Equal(t, "Family", names[1])
 
 	// deleting the group removes it from the mirror
 	assert.Equal(t, []string{}, svc.RecvClientCmd(context.Background(), me, []byte("toc2_del_group Family")))
-	_, hasFamily := me.feedbag.groupNames()[1]
+	_, hasFamily := me.feedbag.GroupNames()[1]
 	assert.False(t, hasFamily)
 
 	// a change that fails to send is forgotten
-	before := me.feedbag.snapshot()
+	before := me.feedbag.Snapshot()
 	bos.sendErrs = append(make([]error, len(bos.sentSNACs())), io.EOF)
 	assert.Equal(t, []string{cmdInternalSvcErr}, svc.RecvClientCmd(context.Background(), me, []byte("toc2_new_group Work")))
-	assert.Equal(t, before, me.feedbag.snapshot())
+	assert.Equal(t, before, me.feedbag.Snapshot())
 }
 
 func TestOSCARProxy_RecvClientCmd_TOC2CmdFromTOC1(t *testing.T) {

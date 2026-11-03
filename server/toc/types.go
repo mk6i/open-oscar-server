@@ -2,21 +2,11 @@ package toc
 
 import (
 	"context"
-	"net"
 	"time"
 
-	"github.com/mk6i/open-oscar-server/config"
 	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
 )
-
-// OSCARServer serves OSCAR connections that the TOC server opens on behalf of
-// its users.
-type OSCARServer interface {
-	// ServeConn serves conn as if it had been accepted on the listener at
-	// endpointCfg, and returns when the connection ends.
-	ServeConn(conn net.Conn, endpointCfg config.Endpoint)
-}
 
 // LocateService looks up user profiles and directory info for the TOC HTTP
 // pages.
