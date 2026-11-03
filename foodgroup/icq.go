@@ -94,6 +94,7 @@ func (s *ICQService) DirectoryQuery(ctx context.Context, instance *state.Session
 }
 
 func (s *ICQService) FindByICQName(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x0515_DBQueryMetaReqSearchByDetails, seq uint16) error {
+	inBody = legacyToUTF8(s.legacyCharset, inBody)
 	res, err := s.userFinder.FindByICQName(ctx, inBody.FirstName, inBody.LastName, inBody.NickName)
 
 	if err != nil {
@@ -153,6 +154,7 @@ func (s *ICQService) FindByEmail3(ctx context.Context, instance *state.SessionIn
 
 func (s *ICQService) FindByICQInterests(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x0533_DBQueryMetaReqSearchWhitePages, seq uint16) error {
 
+	inBody = legacyToUTF8(s.legacyCharset, inBody)
 	interests := strings.Split(inBody.InterestsKeyword, ",")
 	res, err := s.userFinder.FindByICQInterests(ctx, inBody.InterestsCode, interests)
 
@@ -300,7 +302,7 @@ func (s *ICQService) FindByWhitePages2(ctx context.Context, instance *state.Sess
 		onlineOnly = true
 	}
 
-	users, err := s.userFinder.SearchICQUsers(ctx, criteria)
+	users, err := s.userFinder.SearchICQUsers(ctx, legacyToUTF8(s.legacyCharset, criteria))
 	if err != nil {
 		if errors.Is(err, state.ErrICQSearchEmptyCriteria) {
 			return s.reportNoSearchResults(ctx, instance, seq, inFrame.RequestID)
@@ -373,6 +375,7 @@ func (s *ICQService) FullUserInfo(ctx context.Context, instance *state.SessionIn
 	if err != nil {
 		return err
 	}
+	user.ICQInfo = utf8ToLegacy(s.legacyCharset, user.ICQInfo)
 
 	if err := s.userInfo(ctx, instance, user, inFrame.RequestID, seq, wire.SNACFlagsMoreToCome); err != nil {
 		return err
@@ -466,6 +469,7 @@ func (s *ICQService) OfflineMsgReq(ctx context.Context, inFrame wire.SNACFrame, 
 						if instance.Session().UsesFeedbag() {
 							// send auth grant/deny/request SNACs instead of the legacy MSG_TYPE_*
 							// ICQ messages.
+							msg.Message = ch4TextToUTF8(s.legacyCharset, msg.MessageType, msg.Message)
 							if err := s.forwardICQAuthEvents(ctx, msgIn.Sender, msgIn.Recipient, msg); err != nil {
 								return fmt.Errorf("s.forwardICQAuthEvents: %w", err)
 							}
@@ -474,7 +478,7 @@ func (s *ICQService) OfflineMsgReq(ctx context.Context, inFrame wire.SNACFrame, 
 					}
 					reply.MsgType = msg.MessageType
 					reply.Flags = msg.Flags
-					reply.Message = msg.Message
+					reply.Message = ch4TextToLegacy(s.legacyCharset, msg.Message)
 				}
 			}
 
@@ -560,6 +564,7 @@ func (s *ICQService) OfflineMsgReq(ctx context.Context, inFrame wire.SNACFrame, 
 }
 
 func (s *ICQService) SetAffiliations(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x041A_DBQueryMetaReqSetAffiliations, seq uint16) error {
+	inBody = legacyToUTF8(s.legacyCharset, inBody)
 	if len(inBody.PastAffiliations) != 3 || len(inBody.Affiliations) != 3 {
 		return fmt.Errorf("%w: expected 3 past affiliations and 3 affiliations", errICQBadRequest)
 	}
@@ -586,6 +591,7 @@ func (s *ICQService) SetAffiliations(ctx context.Context, instance *state.Sessio
 }
 
 func (s *ICQService) SetBasicInfo(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x03EA_DBQueryMetaReqSetBasicInfo, seq uint16) error {
+	inBody = legacyToUTF8(s.legacyCharset, inBody)
 	u := state.ICQBasicInfo{
 		CellPhone:    inBody.CellPhone,
 		CountryCode:  inBody.CountryCode,
@@ -857,7 +863,7 @@ func (s *ICQService) SetICQInfo(ctx context.Context, instance *state.SessionInst
 	}
 
 	name := instance.IdentScreenName()
-	if err := s.userUpdater.SetICQInfo(ctx, name, user.ICQInfo); err != nil {
+	if err := s.userUpdater.SetICQInfo(ctx, name, legacyToUTF8(s.legacyCharset, user.ICQInfo)); err != nil {
 		return err
 	}
 
@@ -870,6 +876,7 @@ func (s *ICQService) SetICQPhone(ctx context.Context, instance *state.SessionIns
 }
 
 func (s *ICQService) SetInterests(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x0410_DBQueryMetaReqSetInterests, seq uint16) error {
+	inBody = legacyToUTF8(s.legacyCharset, inBody)
 	if len(inBody.Interests) != 4 {
 		return fmt.Errorf("%w: expected 4 interests", errICQBadRequest)
 	}
@@ -892,6 +899,7 @@ func (s *ICQService) SetInterests(ctx context.Context, instance *state.SessionIn
 }
 
 func (s *ICQService) SetMoreInfo(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x03FD_DBQueryMetaReqSetMoreInfo, seq uint16) error {
+	inBody = legacyToUTF8(s.legacyCharset, inBody)
 	u := state.ICQMoreInfo{
 		Gender:       inBody.Gender,
 		HomePageAddr: inBody.HomePageAddr,
@@ -927,6 +935,7 @@ func (s *ICQService) SetPermissions(ctx context.Context, instance *state.Session
 }
 
 func (s *ICQService) SetUserNotes(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x0406_DBQueryMetaReqSetNotes, seq uint16) error {
+	inBody = legacyToUTF8(s.legacyCharset, inBody)
 	u := state.ICQUserNotes{
 		Notes: inBody.Notes,
 	}
@@ -939,6 +948,7 @@ func (s *ICQService) SetUserNotes(ctx context.Context, instance *state.SessionIn
 }
 
 func (s *ICQService) SetWorkInfo(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x03F3_DBQueryMetaReqSetWorkInfo, seq uint16) error {
+	inBody = legacyToUTF8(s.legacyCharset, inBody)
 	icqWorkInfo := state.ICQWorkInfo{
 		Company:        inBody.Company,
 		Department:     inBody.Department,
@@ -980,6 +990,7 @@ func (s *ICQService) ShortUserInfo(ctx context.Context, instance *state.SessionI
 		}
 		return err
 	}
+	user.ICQInfo = utf8ToLegacy(s.legacyCharset, user.ICQInfo)
 
 	info := wire.ICQ_0x07DA_0x0104_DBQueryMetaReplyShortInfo{
 		ICQMetadata: wire.ICQMetadata{
@@ -1378,6 +1389,7 @@ func (s *ICQService) reqAck(ctx context.Context, instance *state.SessionInstance
 
 func (s *ICQService) createResult(res state.User) wire.ICQUserSearchRecord {
 	uin, _ := strconv.Atoi(res.IdentScreenName.String())
+	res.ICQInfo = utf8ToLegacy(s.legacyCharset, res.ICQInfo)
 
 	searchRecord := wire.ICQUserSearchRecord{
 		UIN:       uint32(uin),
