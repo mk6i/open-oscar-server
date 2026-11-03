@@ -249,30 +249,9 @@ packages:
       BARTService:
         config:
           filename: "mock_bart_service_test.go"
-      BuddyBroadcaster:
-        config:
-          filename: "mock_buddy_broadcaster_test.go"
       BuddyIconRetriever:
         config:
           filename: "mock_buddy_icon_retriever_test.go"
-      BuddyService:
-        config:
-          filename: "mock_buddy_service_test.go"
-      DirSearchService:
-        config:
-          filename: "mock_dir_search_service_test.go"
-      FeedbagService:
-        config:
-          filename: "mock_feedbag_service_test.go"
-      ICBMService:
-        config:
-          filename: "mock_icbm_service_test.go"
-      LocateService:
-        config:
-          filename: "mock_locate_service_test.go"
-      OServiceService:
-        config:
-          filename: "mock_oservice_service_test.go"
       SessionResolver:
         config:
           filename: "mock_webapi_session_resolver_test.go"

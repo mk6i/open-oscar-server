@@ -12,6 +12,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 
 	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
@@ -39,7 +40,7 @@ func newExpressionsHandler(t *testing.T, id *wire.BARTID) *ExpressionsHandler {
 		IconRetriever: iconRetriever,
 		BARTService:   bartService,
 		Logger:        slog.Default(),
-	}, nil, nil, slog.Default())
+	}, slog.Default())
 }
 
 func TestExpressionsHandler_Get_ServesIconBytes(t *testing.T) {
@@ -104,7 +105,7 @@ func TestExpressionsHandler_Get_BartIdServesRequestedHash(t *testing.T) {
 		IconRetriever: iconRetriever,
 		BARTService:   bartService,
 		Logger:        slog.Default(),
-	}, nil, nil, slog.Default())
+	}, slog.Default())
 
 	r := httptest.NewRequest(http.MethodGet, "/expressions/get?t=mikekelly&type=buddyIcon&bartId=aa", nil)
 	w := httptest.NewRecorder()
@@ -129,7 +130,7 @@ func TestExpressionsHandler_Get_UnknownBartIdNotFound(t *testing.T) {
 		IconRetriever: iconRetriever,
 		BARTService:   bartService,
 		Logger:        slog.Default(),
-	}, nil, nil, slog.Default())
+	}, slog.Default())
 
 	r := httptest.NewRequest(http.MethodGet, "/expressions/get?t=mikekelly&type=buddyIcon&bartId=abcdef", nil)
 	w := httptest.NewRecorder()
@@ -215,11 +216,25 @@ func TestExpressionsHandler_Get_MissingTarget(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
-func newUploadSession() *Session {
-	return &Session{
-		AimSID:       "sid",
-		ScreenName:   state.DisplayScreenName("testuser"),
-		OSCARSession: state.NewSession().AddInstance(),
+// newUploadSession returns a running session whose OSCAR server answers BART
+// uploads with upload and holds the feedbag that server holds.
+func newUploadSession(t *testing.T, upload wire.SNAC_0x10_0x03_BARTUploadReply, server *feedbagServer) (*Session, *fakeConn) {
+	conn := newFakeConn().answering(firstAnswer(bartUploads(upload), server.respond))
+	sess := newTestSession(t, conn)
+	loadTestFeedbag(t, sess)
+	return sess, conn
+}
+
+// bartUploads returns a responder that answers BART uploads with reply.
+func bartUploads(reply wire.SNAC_0x10_0x03_BARTUploadReply) func(req wire.SNACMessage) []wire.SNACMessage {
+	return func(req wire.SNACMessage) []wire.SNACMessage {
+		if _, ok := req.Body.(wire.SNAC_0x10_0x02_BARTUploadQuery); !ok {
+			return nil
+		}
+		return []wire.SNACMessage{{
+			Frame: wire.SNACFrame{FoodGroup: wire.BART, SubGroup: wire.BARTUploadReply},
+			Body:  reply,
+		}}
 	}
 }
 
@@ -230,49 +245,28 @@ func TestExpressionsHandler_Upload_StoresAndPublishesIcon(t *testing.T) {
 	image := []byte{0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 'J', 'F', 'I', 'F'}
 	hash := []byte{0xde, 0xad, 0xbe, 0xef}
 
-	uploader := newMockBARTService(t)
-	uploader.EXPECT().UpsertItem(mock.Anything, mock.Anything,
-		wire.SNACFrame{FoodGroup: wire.BART, SubGroup: wire.BARTUploadQuery},
-		wire.SNAC_0x10_0x02_BARTUploadQuery{Type: wire.BARTTypesBuddyIcon, Data: image},
-	).Return(wire.SNACMessage{
-		Body: wire.SNAC_0x10_0x03_BARTUploadReply{
-			Code: wire.BARTReplyCodesSuccess,
-			ID: wire.BARTID{
-				Type:     wire.BARTTypesBuddyIcon,
-				BARTInfo: wire.BARTInfo{Flags: wire.BARTFlagsCustom, Hash: hash},
-			},
+	// The root group lives at GroupID 0 / ItemID 0.
+	server := newFeedbagServer(wire.FeedbagItem{ClassID: wire.FeedbagClassIdGroup})
+	session, conn := newUploadSession(t, wire.SNAC_0x10_0x03_BARTUploadReply{
+		Code: wire.BARTReplyCodesSuccess,
+		ID: wire.BARTID{
+			Type:     wire.BARTTypesBuddyIcon,
+			BARTInfo: wire.BARTInfo{Flags: wire.BARTFlagsCustom, Hash: hash},
 		},
-	}, nil).Once()
+	}, server)
 
-	fs := newMockFeedbagService(t)
-	fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-		Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{
-			Items: []wire.FeedbagItem{
-				// The root group, which lives at GroupID 0 / ItemID 0.
-				{ClassID: wire.FeedbagClassIdGroup},
-			},
-		}}, nil).Once()
-
-	var (
-		upserted    []wire.FeedbagItem
-		upsertFrame wire.SNACFrame
-	)
-	fs.EXPECT().UpsertItem(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Run(func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, items []wire.FeedbagItem) {
-			upsertFrame = inFrame
-			upserted = items
-		}).Return((*wire.SNACMessage)(nil), nil).Once()
-
-	h := NewExpressionsHandler(BuddyIconSource{Logger: slog.Default()}, uploader, fs, slog.Default())
+	h := NewExpressionsHandler(BuddyIconSource{Logger: slog.Default()}, slog.Default())
 
 	req := httptest.NewRequest(http.MethodPost,
 		"/expressions/upload?f=json&aimsid=sid&type=buddyIcon", bytes.NewReader(image))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rr := httptest.NewRecorder()
 
-	h.Upload(rr, req, newUploadSession())
+	h.Upload(rr, req, session)
 
 	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.Equal(t, []any{wire.SNAC_0x10_0x02_BARTUploadQuery{Type: wire.BARTTypesBuddyIcon, Data: image}},
+		conn.sentOf(wire.BART, wire.BARTUploadQuery))
 
 	var got struct {
 		Response struct {
@@ -288,63 +282,71 @@ func TestExpressionsHandler_Upload_StoresAndPublishesIcon(t *testing.T) {
 	assert.Equal(t, "0001deadbeef", got.Response.Data.ID)
 
 	// The icon must be published to the feedbag, or expressions/get never sees it.
-	assert.Len(t, upserted, 1)
+	changes := sentFeedbagChanges(conn)
+	require.Len(t, changes, 1)
+	assert.Equal(t, uint16(wire.FeedbagInsertItem), changes[0].SubGroup)
+	upserted := changes[0].Items
+	require.Len(t, upserted, 1)
 	assert.Equal(t, wire.FeedbagClassIdBart, upserted[0].ClassID)
 	assert.Equal(t, "1", upserted[0].Name)
 	// A first icon must not land on the root group's (0, 0) row.
 	assert.NotZero(t, upserted[0].ItemID)
-	assert.Equal(t, uint16(wire.FeedbagInsertItem), upsertFrame.SubGroup)
 	b, ok := upserted[0].Bytes(wire.FeedbagAttributesBartInfo)
 	assert.True(t, ok)
 	info := wire.BARTInfo{}
 	assert.NoError(t, wire.UnmarshalBE(&info, bytes.NewBuffer(b)))
 	assert.Equal(t, hash, info.Hash)
+
+	// The session's feedbag holds what the server confirmed.
+	assert.Equal(t, server.stored(), session.Feedbag())
 }
 
 // An existing icon is replaced in place rather than added alongside.
 func TestExpressionsHandler_Upload_ReusesExistingFeedbagItem(t *testing.T) {
-	uploader := newMockBARTService(t)
-	uploader.EXPECT().UpsertItem(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(wire.SNACMessage{
-			Body: wire.SNAC_0x10_0x03_BARTUploadReply{
-				Code: wire.BARTReplyCodesSuccess,
-				ID:   wire.BARTID{Type: wire.BARTTypesBuddyIcon, BARTInfo: wire.BARTInfo{Hash: []byte{0x01}}},
-			},
-		}, nil).Once()
+	server := newFeedbagServer(wire.FeedbagItem{GroupID: 7, ItemID: 9, ClassID: wire.FeedbagClassIdBart, Name: "1"})
+	session, conn := newUploadSession(t, wire.SNAC_0x10_0x03_BARTUploadReply{
+		Code: wire.BARTReplyCodesSuccess,
+		ID:   wire.BARTID{Type: wire.BARTTypesBuddyIcon, BARTInfo: wire.BARTInfo{Hash: []byte{0x01}}},
+	}, server)
 
-	fs := newMockFeedbagService(t)
-	fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-		Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{
-			Items: []wire.FeedbagItem{
-				{GroupID: 7, ItemID: 9, ClassID: wire.FeedbagClassIdBart, Name: "1"},
-			},
-		}}, nil).Once()
-
-	var (
-		upserted    []wire.FeedbagItem
-		upsertFrame wire.SNACFrame
-	)
-	fs.EXPECT().UpsertItem(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Run(func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, items []wire.FeedbagItem) {
-			upsertFrame = inFrame
-			upserted = items
-		}).
-		Return((*wire.SNACMessage)(nil), nil).Once()
-
-	h := NewExpressionsHandler(BuddyIconSource{Logger: slog.Default()}, uploader, fs, slog.Default())
+	h := NewExpressionsHandler(BuddyIconSource{Logger: slog.Default()}, slog.Default())
 	req := httptest.NewRequest(http.MethodPost,
 		"/expressions/upload?type=buddyIcon", bytes.NewReader([]byte{0x01, 0x02}))
 	rr := httptest.NewRecorder()
 
-	h.Upload(rr, req, newUploadSession())
+	h.Upload(rr, req, session)
 
 	assert.Equal(t, http.StatusOK, rr.Code)
-	assert.Len(t, upserted, 1)
-	assert.Equal(t, uint16(7), upserted[0].GroupID)
-	assert.Equal(t, uint16(9), upserted[0].ItemID)
+	changes := sentFeedbagChanges(conn)
+	require.Len(t, changes, 1)
+	require.Len(t, changes[0].Items, 1)
+	assert.Equal(t, uint16(7), changes[0].Items[0].GroupID)
+	assert.Equal(t, uint16(9), changes[0].Items[0].ItemID)
 	// Other instances are relayed this frame verbatim, so replacing an icon has
 	// to go out as an update of an item they already hold, not an insert.
-	assert.Equal(t, uint16(wire.FeedbagUpdateItem), upsertFrame.SubGroup)
+	assert.Equal(t, uint16(wire.FeedbagUpdateItem), changes[0].SubGroup)
+}
+
+func TestExpressionsHandler_Upload_ReportsUnpublishedIcon(t *testing.T) {
+	server := newFeedbagServer()
+	server.status = func(wire.SNACMessage) []wire.SNACMessage {
+		return []wire.SNACMessage{snacErr(wire.Feedbag, wire.ErrorCodeNotSupportedByHost)}
+	}
+	session, _ := newUploadSession(t, wire.SNAC_0x10_0x03_BARTUploadReply{
+		Code: wire.BARTReplyCodesSuccess,
+		ID:   wire.BARTID{Type: wire.BARTTypesBuddyIcon, BARTInfo: wire.BARTInfo{Hash: []byte{0x01}}},
+	}, server)
+
+	h := NewExpressionsHandler(BuddyIconSource{Logger: slog.Default()}, slog.Default())
+	req := httptest.NewRequest(http.MethodPost,
+		"/expressions/upload?type=buddyIcon", bytes.NewReader([]byte{0x01, 0x02}))
+	rr := httptest.NewRecorder()
+
+	h.Upload(rr, req, session)
+
+	assert.Equal(t, http.StatusInternalServerError, rr.Code)
+	assert.Contains(t, rr.Body.String(), "failed to publish expression")
+	assert.Empty(t, session.Feedbag(), "the rejected change is discarded")
 }
 
 func TestExpressionsHandler_Upload_RejectsBadRequests(t *testing.T) {
@@ -360,18 +362,16 @@ func TestExpressionsHandler_Upload_RejectsBadRequests(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			uploader := newMockBARTService(t)
-			fs := newMockFeedbagService(t)
-			h := NewExpressionsHandler(BuddyIconSource{Logger: slog.Default()}, uploader, fs, slog.Default())
+			conn := newFakeConn()
+			h := NewExpressionsHandler(BuddyIconSource{Logger: slog.Default()}, slog.Default())
 
 			req := httptest.NewRequest(http.MethodPost, tc.url, bytes.NewReader(tc.body))
 			rr := httptest.NewRecorder()
-			h.Upload(rr, req, newUploadSession())
+			h.Upload(rr, req, newTestSession(t, conn))
 
 			assert.Equal(t, http.StatusBadRequest, rr.Code)
 			// Nothing may be stored or published when the request is rejected.
-			uploader.AssertNotCalled(t, "UpsertItem", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
-			fs.AssertNotCalled(t, "UpsertItem", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+			assert.Empty(t, conn.sentSNACs())
 		})
 	}
 }

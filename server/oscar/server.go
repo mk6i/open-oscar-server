@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net"
 	"net/netip"
+	"slices"
 	"sync"
 	"time"
 
@@ -81,7 +82,7 @@ type Server struct {
 	shutdownCancel context.CancelFunc
 	closed         chan struct{}
 
-	handler func(ctx context.Context, conn net.Conn, endpointCfg config.Endpoint) error
+	handler func(ctx context.Context, conn net.Conn, endpointCfg config.Endpoint, rateLimitExempt []wire.SNACType) error
 }
 
 func (s *Server) ListenAndServe() error {
@@ -155,20 +156,21 @@ func (s *Server) acceptLoop(ln net.Listener, endpointCfg config.Endpoint) {
 			_ = conn.Close()
 			continue
 		}
-		go s.handleConnection(s.shutdownCtx, conn, endpointCfg)
+		go s.handleConnection(s.shutdownCtx, conn, endpointCfg, nil)
 	}
 }
 
 // ServeConn serves a connection that didn't come from one of the server's
 // listeners, such as an in-memory connection opened by the TOC server, as if
-// it had arrived on the listener at endpointCfg. It returns when the
-// connection ends.
-func (s *Server) ServeConn(conn net.Conn, endpointCfg config.Endpoint) {
+// it had arrived on the listener at endpointCfg. The SNACs in rateLimitExempt
+// are neither charged nor dropped by rate limiting on the connection. It
+// returns when the connection ends.
+func (s *Server) ServeConn(conn net.Conn, endpointCfg config.Endpoint, rateLimitExempt []wire.SNACType) {
 	if !s.trackConn(conn) {
 		_ = conn.Close()
 		return
 	}
-	s.handleConnection(s.shutdownCtx, conn, endpointCfg)
+	s.handleConnection(s.shutdownCtx, conn, endpointCfg, rateLimitExempt)
 }
 
 // trackConn registers conn so that Shutdown waits for it. It returns false
@@ -184,7 +186,7 @@ func (s *Server) trackConn(conn net.Conn) bool {
 	return true
 }
 
-func (s *Server) handleConnection(ctx context.Context, conn net.Conn, endpointCfg config.Endpoint) {
+func (s *Server) handleConnection(ctx context.Context, conn net.Conn, endpointCfg config.Endpoint, rateLimitExempt []wire.SNACType) {
 	defer func() {
 		// untrack connections
 		s.connMu.Lock()
@@ -195,7 +197,7 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn, endpointCf
 		s.connWg.Done()
 	}()
 	ctx = middleware.WithIP(ctx, conn.RemoteAddr().String())
-	if err := s.handler(ctx, conn, endpointCfg); err != nil {
+	if err := s.handler(ctx, conn, endpointCfg, rateLimitExempt); err != nil {
 		s.logger.InfoContext(ctx, "user session failed", "err", err.Error())
 	}
 }
@@ -222,7 +224,7 @@ type oscarServer struct {
 	lowerWarnLevel     func(ctx context.Context, instance *state.SessionInstance)
 }
 
-func (s oscarServer) routeConnection(ctx context.Context, conn net.Conn, endpointCfg config.Endpoint) error {
+func (s oscarServer) routeConnection(ctx context.Context, conn net.Conn, endpointCfg config.Endpoint, rateLimitExempt []wire.SNACType) error {
 	ip, _, err := net.SplitHostPort(conn.RemoteAddr().String())
 	if err != nil {
 		s.logger.Error("failed to parse remote address", "err", err.Error())
@@ -241,7 +243,7 @@ func (s oscarServer) routeConnection(ctx context.Context, conn net.Conn, endpoin
 	}
 
 	if flap.HasTag(wire.OServiceTLVTagsLoginCookie) {
-		return s.connectToOSCARService(ctx, flap, flapc, conn, endpointCfg)
+		return s.connectToOSCARService(ctx, flap, flapc, conn, endpointCfg, rateLimitExempt)
 	}
 
 	return s.authenticate(ctx, flap, ip, conn, flapc, endpointCfg)
@@ -253,6 +255,7 @@ func (s oscarServer) connectToOSCARService(
 	flapc *wire.FlapClient,
 	conn net.Conn,
 	endpointCfg config.Endpoint,
+	rateLimitExempt []wire.SNACType,
 ) error {
 	authCookie, ok := flap.Bytes(wire.OServiceTLVTagsLoginCookie)
 	if !ok {
@@ -406,7 +409,7 @@ func (s oscarServer) connectToOSCARService(
 		return err
 	}
 
-	return s.dispatchIncomingMessages(ctx, cookie.Service, instance, flapc, conn, endpointCfg)
+	return s.dispatchIncomingMessages(ctx, cookie.Service, instance, flapc, conn, endpointCfg, rateLimitExempt)
 }
 
 func shuttingDown(ctx context.Context) bool {
@@ -580,10 +583,11 @@ func sendInvalidSNACErr(frameIn wire.SNACFrame, rw ResponseWriter) error {
 
 // dispatchIncomingMessages receives incoming messages and sends them to the
 // appropriate message handler. Messages from the client are sent to the
-// router. Messages relayed from the user session are forwarded to the client.
-// This function ensures that the same sequence number is incremented for both
-// types of messages. The function terminates upon receiving a connection error
-// or when the session closes.
+// router, after rate limiting all but the SNACs in rateLimitExempt. Messages
+// relayed from the user session are forwarded to the client. This function
+// ensures that the same sequence number is incremented for both types of
+// messages. The function terminates upon receiving a connection error or when
+// the session closes.
 func (s oscarServer) dispatchIncomingMessages(
 	ctx context.Context,
 	fg uint16,
@@ -591,14 +595,17 @@ func (s oscarServer) dispatchIncomingMessages(
 	flapc *wire.FlapClient,
 	r io.ReadCloser,
 	endpointCfg config.Endpoint,
+	rateLimitExempt []wire.SNACType,
 ) error {
 	defer func() {
 		s.logger.InfoContext(ctx, "user disconnected")
 	}()
 
-	// buffered so that the go routine has room to exit
 	msgCh := make(chan wire.FLAPFrame, 1)
 	errCh := make(chan error, 1)
+	// done stops the frame reader once this function returns
+	done := make(chan struct{})
+	defer close(done)
 
 	// consume flap frames
 	go func() {
@@ -611,7 +618,11 @@ func (s oscarServer) dispatchIncomingMessages(
 				errCh <- err
 				return
 			}
-			msgCh <- frame
+			select {
+			case msgCh <- frame:
+			case <-done:
+				return
+			}
 		}
 	}()
 
@@ -630,16 +641,18 @@ func (s oscarServer) dispatchIncomingMessages(
 					return err
 				}
 
-				rateClassID, ok := s.rateLimits.RateClassLookup(inFrame.FoodGroup, inFrame.SubGroup)
-				if ok {
-					if status := instance.Session().EvaluateRateLimit(time.Now(), rateClassID); status == wire.RateLimitStatusLimited {
-						s.logger.DebugContext(ctx, "rate limit exceeded, dropping SNAC",
-							"foodgroup", wire.FoodGroupName(inFrame.FoodGroup),
-							"subgroup", wire.SubGroupName(inFrame.FoodGroup, inFrame.SubGroup))
-						break
+				if !slices.Contains(rateLimitExempt, wire.SNACType{FoodGroup: inFrame.FoodGroup, SubGroup: inFrame.SubGroup}) {
+					rateClassID, ok := s.rateLimits.RateClassLookup(inFrame.FoodGroup, inFrame.SubGroup)
+					if ok {
+						if status := instance.Session().EvaluateRateLimit(time.Now(), rateClassID); status == wire.RateLimitStatusLimited {
+							s.logger.DebugContext(ctx, "rate limit exceeded, dropping SNAC",
+								"foodgroup", wire.FoodGroupName(inFrame.FoodGroup),
+								"subgroup", wire.SubGroupName(inFrame.FoodGroup, inFrame.SubGroup))
+							break
+						}
+					} else {
+						s.logger.ErrorContext(ctx, "rate limit not found, allowing request through")
 					}
-				} else {
-					s.logger.ErrorContext(ctx, "rate limit not found, allowing request through")
 				}
 
 				// route a client request to the appropriate service handler. the

@@ -22,6 +22,7 @@ import (
 	"github.com/mk6i/open-oscar-server/server/kerberos"
 	"github.com/mk6i/open-oscar-server/server/oscar"
 	oscarmiddleware "github.com/mk6i/open-oscar-server/server/oscar/middleware"
+	"github.com/mk6i/open-oscar-server/server/oscarclient"
 	"github.com/mk6i/open-oscar-server/server/toc"
 	"github.com/mk6i/open-oscar-server/server/webapi"
 	"github.com/mk6i/open-oscar-server/state"
@@ -449,9 +450,12 @@ func TOC(deps Container, oscarServer *oscar.Server) *toc.Server {
 				deps.inMemorySessionManager,
 				deps.sqLiteUserStore,
 			),
-			Logger:           logger,
-			OSCARServer:      oscarServer,
-			OSCAREndpoint:    deps.Listeners[0].PlainEndpoint(),
+			Logger: logger,
+			Dialer: oscarclient.Dialer{
+				Server:   oscarServer,
+				Endpoint: deps.Listeners[0].PlainEndpoint(),
+				Logger:   logger,
+			},
 			SessionRetriever: deps.inMemorySessionManager,
 			TOCConfigStore:   deps.sqLiteUserStore,
 			RandIntn:         rand.Intn,
@@ -459,18 +463,11 @@ func TOC(deps Container, oscarServer *oscar.Server) *toc.Server {
 	)
 }
 
-// WebAPI creates an HTTP server for the webapi protocol.
-func WebAPI(deps Container) *webapi.Server {
+// WebAPI creates an HTTP server for the webapi protocol whose sessions are
+// clients of oscarServer.
+func WebAPI(deps Container, oscarServer *oscar.Server) *webapi.Server {
 	logger := deps.logger.With("svc", "webapi")
 
-	locateService := foodgroup.NewLocateService(
-		deps.sqLiteUserStore,
-		deps.inMemorySessionManager,
-		deps.sqLiteUserStore,
-		deps.sqLiteUserStore,
-		deps.inMemorySessionManager,
-		deps.sqLiteUserStore,
-	)
 	bartService := foodgroup.NewBARTService(
 		logger,
 		deps.sqLiteUserStore,
@@ -483,20 +480,7 @@ func WebAPI(deps Container) *webapi.Server {
 		BARTService:   bartService,
 		Logger:        logger,
 	}
-	buddyListManager := webapi.NewBuddyListManager(
-		deps.feedbagSvc,
-		locateService,
-		iconSource,
-		logger,
-	)
-	buddyService := foodgroup.NewBuddyService(
-		deps.inMemorySessionManager,
-		deps.sqLiteUserStore,
-		deps.sqLiteUserStore,
-		deps.inMemorySessionManager,
-		deps.sqLiteUserStore,
-		deps.sqLiteUserStore,
-	)
+	buddyListManager := webapi.NewBuddyListManager(iconSource, logger)
 	handler := webapi.Handler{
 		AuthService: foodgroup.NewAuthService(
 			deps.cfg,
@@ -513,40 +497,20 @@ func WebAPI(deps Container) *webapi.Server {
 			state.NewAccountCreator(deps.sqLiteUserStore.InsertUser),
 			logger,
 		),
-		BuddyListRegistry: deps.sqLiteUserStore,
-		ICBMService:       deps.icbmSvc,
-		LocateService:     locateService,
-		Logger:            logger,
-		OServiceService: foodgroup.NewOServiceService(
-			deps.cfg,
-			deps.inMemorySessionManager,
-			logger,
-			deps.hmacCookieBaker,
-			deps.sqLiteUserStore,
-			deps.sqLiteUserStore,
-			deps.inMemorySessionManager,
-			deps.sqLiteUserStore,
-			deps.snacRateLimits,
-			deps.chatSessionManager,
-			deps.sqLiteUserStore,
-			deps.sqLiteUserStore,
-			deps.sqLiteUserStore,
-		),
-		BuddyBroadcaster: buddyService,
-		BuddyService:     buddyService,
+		Logger: logger,
 		BOSListener: slices.MinFunc(deps.Listeners, func(a, b config.ListenerGroup) int {
 			return strings.Compare(a.Name, b.Name)
 		}),
-		BuddyListManager:   buddyListManager,
-		ChatSessionManager: deps.chatSessionManager,
-		RecalcWarning:      deps.icbmSvc.RestoreWarningLevel,
-		LowerWarnLevel:     deps.icbmSvc.UpdateWarnLevel,
-		FeedbagService:     deps.feedbagSvc,
-		DirSearchService:   foodgroup.NewODirService(logger, deps.sqLiteUserStore),
-		IconSource:         iconSource,
-		BARTService:        bartService,
-		SNACRateLimits:     deps.snacRateLimits,
-		AllowedOrigins:     deps.cfg.WebAPIAllowedOrigins,
+		BuddyListManager: buddyListManager,
+		IconSource:       iconSource,
+		Dialer: oscarclient.Dialer{
+			Server:          oscarServer,
+			Endpoint:        deps.Listeners[0].PlainEndpoint(),
+			RateLimitExempt: webapi.RateLimitExempt,
+			Logger:          logger,
+		},
+		SNACRateLimits: deps.snacRateLimits,
+		AllowedOrigins: deps.cfg.WebAPIAllowedOrigins,
 	}
 
 	return webapi.NewServer(deps.cfg.WebAPIListeners, logger, handler, deps.webAPISessionManager)

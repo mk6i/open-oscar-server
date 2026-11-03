@@ -1,12 +1,12 @@
 package webapi
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
 
-	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
@@ -27,10 +27,6 @@ func NewAuthMiddleware(logger *slog.Logger) *AuthMiddleware {
 // touches the session, sliding its expiry forward; this is the keepalive that
 // holds a long-polling client's session open (see the session lifecycle timeline
 // on state's Session manager).
-//
-// startSession is the only thing that creates a session and it always attaches an
-// OSCAR session (anonymous guests are unsupported), so downstream handlers treat
-// session.OSCARSession as non-nil.
 func (m *AuthMiddleware) RequireSession(sm SessionResolver, next func(http.ResponseWriter, *http.Request, *Session)) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		aimsid := param(r, "aimsid")
@@ -52,82 +48,23 @@ func (m *AuthMiddleware) RequireSession(sm SessionResolver, next func(http.Respo
 // AuthMiddleware.RequireSession invokes once it has resolved an aimsid.
 type SessionHandlerFunc = func(http.ResponseWriter, *http.Request, *Session)
 
-// RateLimitMiddleware enforces OSCAR rate limits on Web API routes that reach a
-// food group.
-//
-// Such routes are limited by OSCAR itself: OSCAR charges the session's shared
-// per-rate-class budget, the same budget a native OSCAR or TOC client spends, so
-// a user cannot dodge a limit by switching transports. Routes that reach no food
-// group are not limited here; edge rate limiting (a reverse proxy keyed by client
-// IP) is expected to cover the unauthenticated login/asset endpoints and the
-// authenticated bookkeeping ones.
-//
-// It lives in package webapi (rather than in server/oscar/middleware) so that its
-// rejection can be encoded through the same SendResponse path the handlers use,
-// honoring the request's JSON/JSONP/XML/AMF format.
-//
-// It only enforces the limit (the 430 rejection). Telling the client its status
-// changed is the job of OServiceService.MonitorRateLimits.
-type RateLimitMiddleware struct {
-	snacRateLimits wire.SNACRateLimits
-	logger         *slog.Logger
-}
+// lookupInterval and lookupBurst bound how often a session may call the
+// routes made of rate-limit-exempt lookups, which the OSCAR server doesn't
+// charge.
+const (
+	lookupInterval = time.Second
+	lookupBurst    = 10
+)
 
-// NewRateLimitMiddleware creates a RateLimitMiddleware. snacRateLimits is the
-// same SNAC-to-rate-class mapping the OSCAR and TOC servers use.
-func NewRateLimitMiddleware(snacRateLimits wire.SNACRateLimits, logger *slog.Logger) *RateLimitMiddleware {
-	return &RateLimitMiddleware{
-		snacRateLimits: snacRateLimits,
-		logger:         logger,
-	}
-}
-
-// OSCAR returns middleware that charges one unit against the OSCAR rate class
-// mapped to (foodGroup, subGroup) before invoking the wrapped handler. It is the
-// HTTP counterpart of the TOC server's per-command rate check.
-//
-// A SNAC with no rate class mapping is allowed through, since refusing traffic
-// because the server's own table is incomplete would be worse than not limiting
-// it.
-func (l *RateLimitMiddleware) OSCAR(foodGroup uint16, subGroup uint16) func(SessionHandlerFunc) SessionHandlerFunc {
+// limitLookups returns middleware that rejects a session's lookup route
+// requests beyond its lookup rate.
+func limitLookups(logger *slog.Logger) func(SessionHandlerFunc) SessionHandlerFunc {
 	return func(next SessionHandlerFunc) SessionHandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request, session *Session) {
-			ctx := r.Context()
-
-			rateClassID, ok := l.snacRateLimits.RateClassLookup(foodGroup, subGroup)
-			if !ok {
-				l.logger.ErrorContext(ctx, "rate limit not found, allowing request through",
-					"foodgroup", wire.FoodGroupName(foodGroup),
-					"subgroup", wire.SubGroupName(foodGroup, subGroup))
-				next(w, r, session)
+			if !session.lookups.Allow() {
+				sendRateLimited(w, r, lookupInterval, logger)
 				return
 			}
-
-			sess := session.OSCARSession.Session()
-			status := sess.EvaluateRateLimit(time.Now(), rateClassID)
-
-			// Disconnect is rejected alongside Limited: EvaluateRateLimit has
-			// already closed the account's OSCAR session by the time it returns,
-			// so there is nothing left for the handler to act on. That close also
-			// invalidates the aimsid (GetSession stops resolving a session whose
-			// OSCAR instance is closed), so every subsequent request is turned
-			// away at RequireSession rather than reaching here again.
-			if status == wire.RateLimitStatusLimited || status == wire.RateLimitStatusDisconnect {
-				l.logger.DebugContext(ctx, "(webapi) rate limit exceeded, dropping request",
-					"foodgroup", wire.FoodGroupName(foodGroup),
-					"subgroup", wire.SubGroupName(foodGroup, subGroup),
-					"status", rateLimitStatusName(status))
-
-				// A disconnected session has no aimsid left to retry with, so
-				// there is no wait to advertise.
-				var retryAfter time.Duration
-				if status == wire.RateLimitStatusLimited {
-					retryAfter = retryAfterFor(sess.RateLimitStates()[rateClassID-1])
-				}
-				l.sendRateLimited(w, r, retryAfter)
-				return
-			}
-
 			next(w, r, session)
 		}
 	}
@@ -138,8 +75,8 @@ func (l *RateLimitMiddleware) OSCAR(foodGroup uint16, subGroup uint16) func(Sess
 // limit, and a hint of zero invites an immediate retry.
 const minRetryAfter = 1 * time.Second
 
-// retryAfterFor returns how long the client must wait for its next request on
-// this class to clear the limit.
+// retryAfter returns how long a client must wait for its next request on a
+// class the OSCAR server announced with params to clear the limit.
 //
 // OSCAR's limiter has no fixed window: it tracks a moving average of the gap
 // between requests, and a request lifts the limit only once that average climbs
@@ -153,8 +90,9 @@ const minRetryAfter = 1 * time.Second
 // any hint below the class's ClearLevel holds the average just under the bar and
 // the client stays limited forever. The production ICBM class clears at 5100ms,
 // which a 5s hint would do exactly.
-func retryAfterFor(rcs state.RateClassState) time.Duration {
-	neededMs := int64(rcs.ClearLevel)*int64(rcs.WindowSize) - int64(rcs.CurrentLevel)*int64(rcs.WindowSize-1)
+func retryAfter(params wire.RateParamsSNAC) time.Duration {
+	clearLevel, windowSize, currentLevel := int64(params.ClearLevel), int64(params.WindowSize), int64(params.CurrentLevel)
+	neededMs := clearLevel*windowSize - currentLevel*(windowSize-1)
 
 	// Retry-After carries whole seconds, so round up: a hint that is short by a
 	// fraction of a second reproduces the same never-clears loop. A class barely
@@ -196,7 +134,7 @@ func rateLimitStatusName(status wire.RateLimitStatus) string {
 //
 // A retryAfter of zero sends no Retry-After header, for the rejections that have
 // nothing to retry.
-func (l *RateLimitMiddleware) sendRateLimited(w http.ResponseWriter, r *http.Request, retryAfter time.Duration) {
+func sendRateLimited(w http.ResponseWriter, r *http.Request, retryAfter time.Duration, logger *slog.Logger) {
 	if retryAfter > 0 {
 		w.Header().Set("Retry-After", fmt.Sprintf("%d", int(retryAfter.Seconds())))
 	}
@@ -205,7 +143,19 @@ func (l *RateLimitMiddleware) sendRateLimited(w http.ResponseWriter, r *http.Req
 	resp.Response.StatusCode = statusRateLimited
 	resp.Response.StatusText = "rate limit exceeded"
 
-	SendResponse(w, r, resp, l.logger)
+	SendResponse(w, r, resp, logger)
+}
+
+// sendRequestError answers a request that failed to reach the OSCAR server or
+// get its reply: a rate limit rejection when the rate class is limited, and an
+// internal error with text otherwise.
+func sendRequestError(w http.ResponseWriter, r *http.Request, err error, text string, logger *slog.Logger) {
+	var limited *rateLimitError
+	if errors.As(err, &limited) {
+		sendRateLimited(w, r, limited.retryAfter, logger)
+		return
+	}
+	SendError(w, r, http.StatusInternalServerError, text)
 }
 
 // RequestLogger logs each request with method, path, and raw query string.

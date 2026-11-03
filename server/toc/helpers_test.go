@@ -114,7 +114,7 @@ type cookieBakerParams struct {
 	issueParams issueParams
 }
 
-// fakeOSCARConn is an oscarConn that records the SNACs sent to it. The nth
+// fakeOSCARConn is an oscarclient.Conn that records the SNACs sent to it. The nth
 // send returns sendErrs[n], if set. Tests feed server SNACs through msgs.
 type fakeOSCARConn struct {
 	mu        sync.Mutex
@@ -327,7 +327,7 @@ func newReceivedSNAC(t *testing.T, foodGroup uint16, subGroup uint16, reqID uint
 	}
 }
 
-// fakeOSCARServer is an OSCARServer that serves each connection TOC opens
+// fakeOSCARServer is an oscarclient.OSCARServer that serves each connection TOC opens
 // with the next of its handlers, in order.
 type fakeOSCARServer struct {
 	mu          sync.Mutex
@@ -335,7 +335,7 @@ type fakeOSCARServer struct {
 	clientAddrs []net.Addr
 }
 
-func (s *fakeOSCARServer) ServeConn(conn net.Conn, _ config.Endpoint) {
+func (s *fakeOSCARServer) ServeConn(conn net.Conn, _ config.Endpoint, _ []wire.SNACType) {
 	defer func() { _ = conn.Close() }()
 
 	s.mu.Lock()

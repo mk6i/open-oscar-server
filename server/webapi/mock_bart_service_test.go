@@ -7,7 +7,6 @@ package webapi
 import (
 	"context"
 
-	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
 	mock "github.com/stretchr/testify/mock"
 )
@@ -116,84 +115,6 @@ func (_c *mockBARTService_RetrieveItem_Call) Return(sNACMessage wire.SNACMessage
 }
 
 func (_c *mockBARTService_RetrieveItem_Call) RunAndReturn(run func(ctx context.Context, inFrame wire.SNACFrame, inBody wire.SNAC_0x10_0x04_BARTDownloadQuery) (wire.SNACMessage, error)) *mockBARTService_RetrieveItem_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// UpsertItem provides a mock function for the type mockBARTService
-func (_mock *mockBARTService) UpsertItem(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x10_0x02_BARTUploadQuery) (wire.SNACMessage, error) {
-	ret := _mock.Called(ctx, instance, inFrame, inBody)
-
-	if len(ret) == 0 {
-		panic("no return value specified for UpsertItem")
-	}
-
-	var r0 wire.SNACMessage
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x10_0x02_BARTUploadQuery) (wire.SNACMessage, error)); ok {
-		return returnFunc(ctx, instance, inFrame, inBody)
-	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x10_0x02_BARTUploadQuery) wire.SNACMessage); ok {
-		r0 = returnFunc(ctx, instance, inFrame, inBody)
-	} else {
-		r0 = ret.Get(0).(wire.SNACMessage)
-	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.SNAC_0x10_0x02_BARTUploadQuery) error); ok {
-		r1 = returnFunc(ctx, instance, inFrame, inBody)
-	} else {
-		r1 = ret.Error(1)
-	}
-	return r0, r1
-}
-
-// mockBARTService_UpsertItem_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpsertItem'
-type mockBARTService_UpsertItem_Call struct {
-	*mock.Call
-}
-
-// UpsertItem is a helper method to define mock.On call
-//   - ctx context.Context
-//   - instance *state.SessionInstance
-//   - inFrame wire.SNACFrame
-//   - inBody wire.SNAC_0x10_0x02_BARTUploadQuery
-func (_e *mockBARTService_Expecter) UpsertItem(ctx any, instance any, inFrame any, inBody any) *mockBARTService_UpsertItem_Call {
-	return &mockBARTService_UpsertItem_Call{Call: _e.mock.On("UpsertItem", ctx, instance, inFrame, inBody)}
-}
-
-func (_c *mockBARTService_UpsertItem_Call) Run(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x10_0x02_BARTUploadQuery)) *mockBARTService_UpsertItem_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 *state.SessionInstance
-		if args[1] != nil {
-			arg1 = args[1].(*state.SessionInstance)
-		}
-		var arg2 wire.SNACFrame
-		if args[2] != nil {
-			arg2 = args[2].(wire.SNACFrame)
-		}
-		var arg3 wire.SNAC_0x10_0x02_BARTUploadQuery
-		if args[3] != nil {
-			arg3 = args[3].(wire.SNAC_0x10_0x02_BARTUploadQuery)
-		}
-		run(
-			arg0,
-			arg1,
-			arg2,
-			arg3,
-		)
-	})
-	return _c
-}
-
-func (_c *mockBARTService_UpsertItem_Call) Return(sNACMessage wire.SNACMessage, err error) *mockBARTService_UpsertItem_Call {
-	_c.Call.Return(sNACMessage, err)
-	return _c
-}
-
-func (_c *mockBARTService_UpsertItem_Call) RunAndReturn(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x10_0x02_BARTUploadQuery) (wire.SNACMessage, error)) *mockBARTService_UpsertItem_Call {
 	_c.Call.Return(run)
 	return _c
 }
