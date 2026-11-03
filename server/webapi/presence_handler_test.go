@@ -2,7 +2,6 @@ package webapi
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -20,87 +19,102 @@ import (
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
-// onlineUserInfoReply builds a locate UserInfoReply for an online user,
-// optionally marking them idle by the given number of minutes (0 = not idle).
-func onlineUserInfoReply(screenName string, idleMinutes uint16) wire.SNACMessage {
+// onlineUserInfo builds a locate UserInfoReply for an online user, optionally
+// marking them idle by the given number of minutes (0 = not idle).
+func onlineUserInfo(screenName string, idleMinutes uint16) wire.SNAC_0x02_0x06_LocateUserInfoReply {
 	info := wire.TLVUserInfo{ScreenName: screenName}
 	if idleMinutes > 0 {
 		info.Append(wire.NewTLVBE(wire.OServiceUserInfoIdleTime, idleMinutes))
 	}
-	return wire.SNACMessage{
-		Body: wire.SNAC_0x02_0x06_LocateUserInfoReply{TLVUserInfo: info},
-	}
+	return wire.SNAC_0x02_0x06_LocateUserInfoReply{TLVUserInfo: info}
 }
 
-// screenNameMatcher matches a UserInfoQuery request body by its target screen name.
-func screenNameMatcher(screenName string) any {
-	return mock.MatchedBy(func(b wire.SNAC_0x02_0x05_LocateUserInfoQuery) bool {
-		return b.ScreenName == screenName
-	})
+// onlineUsers returns the locate replies of online, non-idle users.
+func onlineUsers(screenNames ...string) map[string]wire.SNAC_0x02_0x06_LocateUserInfoReply {
+	users := make(map[string]wire.SNAC_0x02_0x06_LocateUserInfoReply, len(screenNames))
+	for _, name := range screenNames {
+		users[state.NewIdentScreenName(name).String()] = onlineUserInfo(name, 0)
+	}
+	return users
+}
+
+// sentLocateQueries returns the screen names of the locate user info queries
+// sent to the OSCAR server.
+func sentLocateQueries(conn *fakeConn) []string {
+	var names []string
+	for _, body := range conn.sentOf(wire.Locate, wire.LocateUserInfoQuery) {
+		names = append(names, body.(wire.SNAC_0x02_0x05_LocateUserInfoQuery).ScreenName)
+	}
+	return names
+}
+
+// getPresence serves presence/get for session with the given query
+// parameters, which start with '&'.
+func getPresence(t *testing.T, h *PresenceHandler, session *Session, params string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest("GET", "/presence/get?aimsid="+session.AimSID+params, nil)
+	rr := httptest.NewRecorder()
+	requireSession(h.SessionManager, h.GetPresence).ServeHTTP(rr, req)
+	return rr
 }
 
 func TestPresenceHandler_GetPresence(t *testing.T) {
 	tests := []struct {
 		name               string
 		queryParams        string
-		setupMocks         func(*mockFeedbagService, *mockLocateService)
+		feedbag            []wire.FeedbagItem
+		users              map[string]wire.SNAC_0x02_0x06_LocateUserInfoReply
 		seedPresence       func(*Session)
 		expectedStatusCode int
 		checkResponse      func(*testing.T, string)
+		wantLocateQueries  []string
 	}{
 		{
 			name:        "Success_BuddyList",
 			queryParams: "bl=1",
-			setupMocks: func(fr *mockFeedbagService, ls *mockLocateService) {
-				// The root group orders Friends before Coworkers; Family and Enemies
-				// are missing from it. Friends orders buddy2 before buddy1; buddy3
-				// and buddy4 are missing from it.
-				fr.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-					Return(wire.SNACMessage{
-						Body: wire.SNAC_0x13_0x06_FeedbagReply{
-							Items: []wire.FeedbagItem{
-								{
-									ClassID: wire.FeedbagClassIdGroup,
-									GroupID: 0,
-									TLVLBlock: wire.TLVLBlock{
-										TLVList: wire.TLVList{
-											wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{2, 1}),
-										},
-									},
-								},
-								{ClassID: wire.FeedbagClassIdGroup, Name: "Coworkers", GroupID: 1},
-								{ClassID: wire.FeedbagClassIdBuddy, Name: "coworker1", GroupID: 1, ItemID: 1},
-								{
-									ClassID: wire.FeedbagClassIdGroup,
-									Name:    "Friends",
-									GroupID: 2,
-									TLVLBlock: wire.TLVLBlock{
-										TLVList: wire.TLVList{
-											wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{5, 2}),
-										},
-									},
-								},
-								{ClassID: wire.FeedbagClassIdBuddy, Name: "buddy3", GroupID: 2, ItemID: 6},
-								{
-									ClassID: wire.FeedbagClassIdBuddy,
-									Name:    "buddy1",
-									GroupID: 2,
-									ItemID:  2,
-									TLVLBlock: wire.TLVLBlock{
-										TLVList: wire.TLVList{
-											wire.NewTLVBE(wire.FeedbagAttributesAlias, "Buddy One"),
-										},
-									},
-								},
-								{ClassID: wire.FeedbagClassIdBuddy, Name: "buddy4", GroupID: 2, ItemID: 7},
-								{ClassID: wire.FeedbagClassIdBuddy, Name: "buddy2", GroupID: 2, ItemID: 5},
-								{ClassID: wire.FeedbagClassIdGroup, Name: "Family", GroupID: 3},
-								{ClassID: wire.FeedbagClassIdBuddy, Name: "family1", GroupID: 3, ItemID: 3},
-								{ClassID: wire.FeedbagClassIdGroup, Name: "Enemies", GroupID: 4},
-								{ClassID: wire.FeedbagClassIdBuddy, Name: "enemy1", GroupID: 4, ItemID: 4},
-							},
+			// The root group orders Friends before Coworkers; Family and Enemies
+			// are missing from it. Friends orders buddy2 before buddy1; buddy3
+			// and buddy4 are missing from it.
+			feedbag: []wire.FeedbagItem{
+				{
+					ClassID: wire.FeedbagClassIdGroup,
+					GroupID: 0,
+					TLVLBlock: wire.TLVLBlock{
+						TLVList: wire.TLVList{
+							wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{2, 1}),
 						},
-					}, nil)
+					},
+				},
+				{ClassID: wire.FeedbagClassIdGroup, Name: "Coworkers", GroupID: 1},
+				{ClassID: wire.FeedbagClassIdBuddy, Name: "coworker1", GroupID: 1, ItemID: 1},
+				{
+					ClassID: wire.FeedbagClassIdGroup,
+					Name:    "Friends",
+					GroupID: 2,
+					TLVLBlock: wire.TLVLBlock{
+						TLVList: wire.TLVList{
+							wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{5, 2}),
+						},
+					},
+				},
+				{ClassID: wire.FeedbagClassIdBuddy, Name: "buddy3", GroupID: 2, ItemID: 6},
+				{
+					ClassID: wire.FeedbagClassIdBuddy,
+					Name:    "buddy1",
+					GroupID: 2,
+					ItemID:  2,
+					TLVLBlock: wire.TLVLBlock{
+						TLVList: wire.TLVList{
+							wire.NewTLVBE(wire.FeedbagAttributesAlias, "Buddy One"),
+						},
+					},
+				},
+				{ClassID: wire.FeedbagClassIdBuddy, Name: "buddy4", GroupID: 2, ItemID: 7},
+				{ClassID: wire.FeedbagClassIdBuddy, Name: "buddy2", GroupID: 2, ItemID: 5},
+				{ClassID: wire.FeedbagClassIdGroup, Name: "Family", GroupID: 3},
+				{ClassID: wire.FeedbagClassIdBuddy, Name: "family1", GroupID: 3, ItemID: 3},
+				{ClassID: wire.FeedbagClassIdGroup, Name: "Enemies", GroupID: 4},
+				{ClassID: wire.FeedbagClassIdBuddy, Name: "enemy1", GroupID: 4, ItemID: 4},
 			},
 			// bl=1 is served from the presence view, so the state comes from the
 			// buddy's arrival.
@@ -122,24 +136,17 @@ func TestPresenceHandler_GetPresence(t *testing.T) {
 		{
 			name:        "Success_BuddyList_NoGroupOrder",
 			queryParams: "bl=1",
-			setupMocks: func(fr *mockFeedbagService, ls *mockLocateService) {
-				// Neither the root group nor Family has an order attribute, so groups
-				// and buddies keep their feedbag position.
-				fr.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-					Return(wire.SNACMessage{
-						Body: wire.SNAC_0x13_0x06_FeedbagReply{
-							Items: []wire.FeedbagItem{
-								{ClassID: wire.FeedbagClassIdGroup, GroupID: 0},
-								{ClassID: wire.FeedbagClassIdGroup, Name: "Family", GroupID: 3},
-								{ClassID: wire.FeedbagClassIdBuddy, Name: "family2", GroupID: 3, ItemID: 9},
-								{ClassID: wire.FeedbagClassIdBuddy, Name: "family1", GroupID: 3, ItemID: 3},
-								{ClassID: wire.FeedbagClassIdGroup, Name: "Coworkers", GroupID: 1},
-								{ClassID: wire.FeedbagClassIdBuddy, Name: "coworker1", GroupID: 1, ItemID: 1},
-								{ClassID: wire.FeedbagClassIdGroup, Name: "Friends", GroupID: 2},
-								{ClassID: wire.FeedbagClassIdBuddy, Name: "buddy1", GroupID: 2, ItemID: 2},
-							},
-						},
-					}, nil)
+			// Neither the root group nor Family has an order attribute, so groups
+			// and buddies keep their feedbag position.
+			feedbag: []wire.FeedbagItem{
+				{ClassID: wire.FeedbagClassIdGroup, GroupID: 0},
+				{ClassID: wire.FeedbagClassIdGroup, Name: "Family", GroupID: 3},
+				{ClassID: wire.FeedbagClassIdBuddy, Name: "family2", GroupID: 3, ItemID: 9},
+				{ClassID: wire.FeedbagClassIdBuddy, Name: "family1", GroupID: 3, ItemID: 3},
+				{ClassID: wire.FeedbagClassIdGroup, Name: "Coworkers", GroupID: 1},
+				{ClassID: wire.FeedbagClassIdBuddy, Name: "coworker1", GroupID: 1, ItemID: 1},
+				{ClassID: wire.FeedbagClassIdGroup, Name: "Friends", GroupID: 2},
+				{ClassID: wire.FeedbagClassIdBuddy, Name: "buddy1", GroupID: 2, ItemID: 2},
 			},
 			seedPresence: func(sess *Session) {
 				buddyArrives(sess, onlineBuddy("buddy1"))
@@ -156,29 +163,22 @@ func TestPresenceHandler_GetPresence(t *testing.T) {
 		{
 			name:        "Success_BuddyList_DropsOrphans",
 			queryParams: "bl=1",
-			setupMocks: func(fr *mockFeedbagService, ls *mockLocateService) {
-				// orphan1 references a group with no group row; orphan2 sits in the
-				// root group.
-				fr.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-					Return(wire.SNACMessage{
-						Body: wire.SNAC_0x13_0x06_FeedbagReply{
-							Items: []wire.FeedbagItem{
-								{
-									ClassID: wire.FeedbagClassIdGroup,
-									GroupID: 0,
-									TLVLBlock: wire.TLVLBlock{
-										TLVList: wire.TLVList{
-											wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1}),
-										},
-									},
-								},
-								{ClassID: wire.FeedbagClassIdBuddy, Name: "orphan1", GroupID: 7, ItemID: 1},
-								{ClassID: wire.FeedbagClassIdBuddy, Name: "orphan2", GroupID: 0, ItemID: 2},
-								{ClassID: wire.FeedbagClassIdGroup, Name: "Friends", GroupID: 1},
-								{ClassID: wire.FeedbagClassIdBuddy, Name: "buddy1", GroupID: 1, ItemID: 3},
-							},
+			// orphan1 references a group with no group row; orphan2 sits in the
+			// root group.
+			feedbag: []wire.FeedbagItem{
+				{
+					ClassID: wire.FeedbagClassIdGroup,
+					GroupID: 0,
+					TLVLBlock: wire.TLVLBlock{
+						TLVList: wire.TLVList{
+							wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1}),
 						},
-					}, nil)
+					},
+				},
+				{ClassID: wire.FeedbagClassIdBuddy, Name: "orphan1", GroupID: 7, ItemID: 1},
+				{ClassID: wire.FeedbagClassIdBuddy, Name: "orphan2", GroupID: 0, ItemID: 2},
+				{ClassID: wire.FeedbagClassIdGroup, Name: "Friends", GroupID: 1},
+				{ClassID: wire.FeedbagClassIdBuddy, Name: "buddy1", GroupID: 1, ItemID: 3},
 			},
 			seedPresence: func(sess *Session) {
 				buddyArrives(sess, onlineBuddy("buddy1"))
@@ -194,46 +194,36 @@ func TestPresenceHandler_GetPresence(t *testing.T) {
 		{
 			name:        "Success_BuddyList_ProfileMsg_Alias",
 			queryParams: "bl=1&profileMsg=1",
-			setupMocks: func(fr *mockFeedbagService, ls *mockLocateService) {
-				// profileMsg=1 reads presence through a locate query; it fails here,
-				// so the buddy renders offline but still carries its alias.
-				fr.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-					Return(wire.SNACMessage{
-						Body: wire.SNAC_0x13_0x06_FeedbagReply{
-							Items: []wire.FeedbagItem{
-								{ClassID: wire.FeedbagClassIdGroup, Name: "Friends", GroupID: 1},
-								{
-									ClassID: wire.FeedbagClassIdBuddy,
-									Name:    "buddy1",
-									GroupID: 1,
-									ItemID:  1,
-									TLVLBlock: wire.TLVLBlock{
-										TLVList: wire.TLVList{
-											wire.NewTLVBE(wire.FeedbagAttributesAlias, "Buddy One"),
-										},
-									},
-								},
-							},
+			// profileMsg=1 reads presence through a locate query; it fails here,
+			// so the buddy renders offline but still carries its alias.
+			feedbag: []wire.FeedbagItem{
+				{ClassID: wire.FeedbagClassIdGroup, Name: "Friends", GroupID: 1},
+				{
+					ClassID: wire.FeedbagClassIdBuddy,
+					Name:    "buddy1",
+					GroupID: 1,
+					ItemID:  1,
+					TLVLBlock: wire.TLVLBlock{
+						TLVList: wire.TLVList{
+							wire.NewTLVBE(wire.FeedbagAttributesAlias, "Buddy One"),
 						},
-					}, nil)
-				ls.EXPECT().UserInfoQuery(mock.Anything, mock.Anything, mock.Anything, screenNameMatcher("buddy1")).
-					Return(wire.SNACMessage{}, fmt.Errorf("locate unavailable"))
+					},
+				},
 			},
 			expectedStatusCode: http.StatusOK,
 			checkResponse: func(t *testing.T, body string) {
 				want := `{"response":{"statusCode":200,"statusText":"Ok","data":{"groups":[{"name":"Friends","buddies":[{"aimId":"buddy1","displayId":"buddy1","friendly":"Buddy One","state":"offline","userType":"aim"}]}]}}}`
 				assert.Equal(t, want, body)
 			},
+			wantLocateQueries: []string{"buddy1"},
 		},
 		{
 			name:        "Success_TargetUsers",
 			queryParams: "t=user1,user2",
-			setupMocks: func(fr *mockFeedbagService, ls *mockLocateService) {
-				ls.EXPECT().UserInfoQuery(mock.Anything, mock.Anything, mock.Anything, screenNameMatcher("user1")).
-					Return(onlineUserInfoReply("user1", 0), nil)
+			users: map[string]wire.SNAC_0x02_0x06_LocateUserInfoReply{
+				"user1": onlineUserInfo("user1", 0),
 				// user2 is idle for 7 minutes.
-				ls.EXPECT().UserInfoQuery(mock.Anything, mock.Anything, mock.Anything, screenNameMatcher("user2")).
-					Return(onlineUserInfoReply("user2", 7), nil)
+				"user2": onlineUserInfo("user2", 7),
 			},
 			expectedStatusCode: http.StatusOK,
 			checkResponse: func(t *testing.T, body string) {
@@ -243,26 +233,23 @@ func TestPresenceHandler_GetPresence(t *testing.T) {
 				assert.Contains(t, body, `"user2"`)
 				assert.Contains(t, body, `"idle"`)
 			},
+			wantLocateQueries: []string{"user1", "user2"},
 		},
 		{
-			name:        "Success_BlockedOrOfflineUser",
-			queryParams: "t=blockeduser",
-			setupMocks: func(fr *mockFeedbagService, ls *mockLocateService) {
-				// A blocked or offline user comes back as a locate error.
-				ls.EXPECT().UserInfoQuery(mock.Anything, mock.Anything, mock.Anything, screenNameMatcher("blockeduser")).
-					Return(wire.SNACMessage{Body: wire.SNACError{Code: wire.ErrorCodeNotLoggedOn}}, nil)
-			},
+			// A blocked or offline user comes back as a locate error.
+			name:               "Success_BlockedOrOfflineUser",
+			queryParams:        "t=blockeduser",
 			expectedStatusCode: http.StatusOK,
 			checkResponse: func(t *testing.T, body string) {
 				assert.Contains(t, body, `"statusCode":200`)
 				assert.Contains(t, body, `"blockeduser"`)
 				assert.Contains(t, body, `"offline"`)
 			},
+			wantLocateQueries: []string{"blockeduser"},
 		},
 		{
 			name:               "Success_EmptyRequest",
 			queryParams:        "",
-			setupMocks:         func(fr *mockFeedbagService, ls *mockLocateService) {},
 			expectedStatusCode: http.StatusOK,
 			checkResponse: func(t *testing.T, body string) {
 				assert.Contains(t, body, `"statusCode":200`)
@@ -273,70 +260,46 @@ func TestPresenceHandler_GetPresence(t *testing.T) {
 			// client asks about every one, plus the keyword when it is a UIN.
 			// This is the largest list a real client sends, and it must be served
 			// whole — anything but a 200 costs the user the entire page.
-			name:        "Success_FullSearchPage",
-			queryParams: "t=" + strings.Join(searchPageTargets(21), "&t="),
-			setupMocks: func(fr *mockFeedbagService, ls *mockLocateService) {
-				ls.EXPECT().UserInfoQuery(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-					RunAndReturn(func(_ context.Context, _ *state.SessionInstance, _ wire.SNACFrame, body wire.SNAC_0x02_0x05_LocateUserInfoQuery) (wire.SNACMessage, error) {
-						return onlineUserInfoReply(body.ScreenName, 0), nil
-					}).Times(21)
-			},
+			name:               "Success_FullSearchPage",
+			queryParams:        "t=" + strings.Join(searchPageTargets(21), "&t="),
+			users:              onlineUsers(searchPageTargets(21)...),
 			expectedStatusCode: http.StatusOK,
 			checkResponse: func(t *testing.T, body string) {
 				assert.Contains(t, body, `"statusCode":200`)
 				assert.Contains(t, body, `"user0"`)
 				assert.Contains(t, body, `"user20"`)
 			},
+			wantLocateQueries: searchPageTargets(21),
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			feedbagService := newMockFeedbagService(t)
-			locateService := newMockLocateService(t)
+			conn := newFakeConn().answering(locateReplies(tt.users))
+			sessionMgr, sess := createTestSessionManager(t, "testuser", conn)
 
-			oscarInstance := state.NewSession().AddInstance()
-			sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
-
-			handler := &PresenceHandler{
-				SessionManager: sessionMgr,
-				FeedbagService: feedbagService,
-				LocateService:  locateService,
-				Logger:         slog.Default(),
-			}
-
-			tt.setupMocks(feedbagService, locateService)
-
-			// Presence payloads carry the viewer's alias, so GetPresence reads the
-			// feedbag. Registered last so a case's own Query stub takes precedence.
-			feedbagService.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-				Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{}}, nil).Maybe()
-
-			// Seeded after the stubs: an arrival resolves aliases off the feedbag.
-			sess, err := sessionMgr.GetSession(context.Background(), aimsid)
-			require.NoError(t, err)
-			sess.FeedbagLoader = feedbagServiceLoader(feedbagService, oscarInstance)
+			// Seeded after the feedbag: an arrival resolves aliases off it.
+			sess.feedbag.Reset(tt.feedbag)
 			if tt.seedPresence != nil {
 				tt.seedPresence(sess)
 			}
 
-			reqURL := "/presence/get?aimsid=" + aimsid
-			if tt.queryParams != "" {
-				reqURL += "&" + tt.queryParams
+			handler := &PresenceHandler{
+				SessionManager: sessionMgr,
+				Logger:         slog.Default(),
 			}
-			req, err := http.NewRequest("GET", reqURL, nil)
-			assert.NoError(t, err)
 
-			rr := httptest.NewRecorder()
-
-			requireSession(handler.SessionManager, handler.GetPresence).ServeHTTP(rr, req)
+			params := ""
+			if tt.queryParams != "" {
+				params = "&" + tt.queryParams
+			}
+			rr := getPresence(t, handler, sess, params)
 
 			assert.Equal(t, tt.expectedStatusCode, rr.Code)
-
 			if tt.checkResponse != nil {
-				responseBody := strings.TrimSpace(rr.Body.String())
-				tt.checkResponse(t, responseBody)
+				tt.checkResponse(t, strings.TrimSpace(rr.Body.String()))
 			}
+			assert.Equal(t, tt.wantLocateQueries, sentLocateQueries(conn))
 		})
 	}
 }
@@ -346,40 +309,21 @@ func TestPresenceHandler_GetPresence(t *testing.T) {
 // offline or blocking user is never even looked up — so neither their icon nor
 // its hash leaks to a caller they are invisible to.
 func TestPresenceHandler_GetPresence_PublishesIconForOnlineBuddiesOnly(t *testing.T) {
-	ctx := context.Background()
-
-	feedbagService := newMockFeedbagService(t)
-	feedbagService.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-		Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{}}, nil).Maybe()
-
-	locateService := newMockLocateService(t)
-	locateService.EXPECT().UserInfoQuery(mock.Anything, mock.Anything, mock.Anything, screenNameMatcher("onlineuser")).
-		Return(onlineUserInfoReply("onlineuser", 0), nil)
-	locateService.EXPECT().UserInfoQuery(mock.Anything, mock.Anything, mock.Anything, screenNameMatcher("offlineuser")).
-		Return(wire.SNACMessage{Body: wire.SNACError{Code: wire.ErrorCodeNotLoggedOn}}, nil)
-
 	iconRetriever := newMockBuddyIconRetriever(t)
 	iconRetriever.EXPECT().BuddyIconMetadata(mock.Anything, state.NewIdentScreenName("onlineuser")).
 		Return(bartID([]byte{0xab, 0xcd}), nil).Once()
 
-	oscarInstance := state.NewSession().AddInstance()
-	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
-	sess, err := sessionMgr.GetSession(ctx, aimsid)
-	require.NoError(t, err)
+	conn := newFakeConn().answering(locateReplies(onlineUsers("onlineuser")))
+	sessionMgr, sess := createTestSessionManager(t, "testuser", conn)
 	sess.BaseURL = "http://api.example.com"
 
 	handler := &PresenceHandler{
 		SessionManager: sessionMgr,
-		FeedbagService: feedbagService,
-		LocateService:  locateService,
 		IconSource:     BuddyIconSource{IconRetriever: iconRetriever, Logger: slog.Default()},
 		Logger:         slog.Default(),
 	}
 
-	req, err := http.NewRequest("GET", "/presence/get?aimsid="+aimsid+"&t=onlineuser,offlineuser", nil)
-	require.NoError(t, err)
-	rr := httptest.NewRecorder()
-	requireSession(handler.SessionManager, handler.GetPresence).ServeHTTP(rr, req)
+	rr := getPresence(t, handler, sess, "&t=onlineuser,offlineuser")
 	require.Equal(t, http.StatusOK, rr.Code)
 
 	var got struct {
@@ -412,43 +356,28 @@ func TestPresenceHandler_GetPresence_PublishesIconForOnlineBuddiesOnly(t *testin
 	iconRetriever.AssertNotCalled(t, "BuddyIconMetadata", mock.Anything, state.NewIdentScreenName("offlineuser"))
 }
 
-// TestPresenceHandler_GetPresence_BuddyListGrouping verifies that bl=1 places
-// each buddy under its own group using realistic feedbag data, where group rows
-// carry ItemID 0 and a distinct nonzero GroupID, and buddy rows reference those
-// GroupIDs. This is the shape the OSCAR feedbag actually stores.
 // A buddy's status message rides in the BART TLV, next to the icon reference.
 func TestPresenceHandler_GetPresence_PublishesStatusMessage(t *testing.T) {
-	ctx := context.Background()
-
 	withStatus := wire.TLVUserInfo{ScreenName: "hasstatus"}
 	withStatus.Append(wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, []wire.BARTID{testStatusBART}))
 
-	locateService := newMockLocateService(t)
-	locateService.EXPECT().UserInfoQuery(mock.Anything, mock.Anything, mock.Anything, screenNameMatcher("hasstatus")).
-		Return(wire.SNACMessage{Body: wire.SNAC_0x02_0x06_LocateUserInfoReply{TLVUserInfo: withStatus}}, nil)
-	locateService.EXPECT().UserInfoQuery(mock.Anything, mock.Anything, mock.Anything, screenNameMatcher("nostatus")).
-		Return(onlineUserInfoReply("nostatus", 0), nil)
+	conn := newFakeConn().answering(locateReplies(map[string]wire.SNAC_0x02_0x06_LocateUserInfoReply{
+		"hasstatus": {TLVUserInfo: withStatus},
+		"nostatus":  onlineUserInfo("nostatus", 0),
+	}))
+	sessionMgr, sess := createTestSessionManager(t, "testuser", conn)
+	sess.BaseURL = "http://api.example.com"
 
 	iconRetriever := newMockBuddyIconRetriever(t)
 	iconRetriever.EXPECT().BuddyIconMetadata(mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 
-	oscarInstance := state.NewSession().AddInstance()
-	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
-	sess, err := sessionMgr.GetSession(ctx, aimsid)
-	require.NoError(t, err)
-	sess.BaseURL = "http://api.example.com"
-
 	handler := &PresenceHandler{
 		SessionManager: sessionMgr,
-		LocateService:  locateService,
 		IconSource:     BuddyIconSource{IconRetriever: iconRetriever, Logger: slog.Default()},
 		Logger:         slog.Default(),
 	}
 
-	req, err := http.NewRequest("GET", "/presence/get?aimsid="+aimsid+"&t=hasstatus,nostatus", nil)
-	require.NoError(t, err)
-	rr := httptest.NewRecorder()
-	requireSession(handler.SessionManager, handler.GetPresence).ServeHTTP(rr, req)
+	rr := getPresence(t, handler, sess, "&t=hasstatus,nostatus")
 	require.Equal(t, http.StatusOK, rr.Code)
 
 	var got struct {
@@ -472,11 +401,14 @@ func TestPresenceHandler_GetPresence_PublishesStatusMessage(t *testing.T) {
 	assert.Empty(t, byName["nostatus"])
 }
 
+// TestPresenceHandler_GetPresence_BuddyListGrouping verifies that bl=1 places
+// each buddy under its own group using realistic feedbag data, where group rows
+// carry ItemID 0 and a distinct nonzero GroupID, and buddy rows reference those
+// GroupIDs. This is the shape the OSCAR feedbag actually stores.
 func TestPresenceHandler_GetPresence_BuddyListGrouping(t *testing.T) {
-	feedbagService := newMockFeedbagService(t)
-	locateService := newMockLocateService(t)
-
-	items := []wire.FeedbagItem{
+	conn := newFakeConn()
+	sessionMgr, sess := createTestSessionManager(t, "testuser", conn)
+	sess.feedbag.Reset([]wire.FeedbagItem{
 		// Root order group: ItemID 0, GroupID 0, empty name — not a real buddy group.
 		{ItemID: 0, GroupID: 0, ClassID: wire.FeedbagClassIdGroup, Name: ""},
 		// Named groups: ItemID 0, distinct nonzero GroupIDs.
@@ -485,30 +417,16 @@ func TestPresenceHandler_GetPresence_BuddyListGrouping(t *testing.T) {
 		// Buddies reference their group's GroupID.
 		{ItemID: 101, GroupID: 10, ClassID: wire.FeedbagClassIdBuddy, Name: "alice"},
 		{ItemID: 201, GroupID: 20, ClassID: wire.FeedbagClassIdBuddy, Name: "bob"},
-	}
-	feedbagService.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-		Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: items}}, nil)
-
-	oscarInstance := state.NewSession().AddInstance()
-	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
-	sess, err := sessionMgr.GetSession(context.Background(), aimsid)
-	require.NoError(t, err)
-	sess.FeedbagLoader = feedbagServiceLoader(feedbagService, oscarInstance)
+	})
 	buddyArrives(sess, onlineBuddy("alice"))
 	buddyArrives(sess, onlineBuddy("bob"))
 
 	handler := &PresenceHandler{
 		SessionManager: sessionMgr,
-		FeedbagService: feedbagService,
-		LocateService:  locateService,
 		Logger:         slog.Default(),
 	}
 
-	req, err := http.NewRequest("GET", "/presence/get?aimsid="+aimsid+"&bl=1", nil)
-	require.NoError(t, err)
-	rr := httptest.NewRecorder()
-	requireSession(handler.SessionManager, handler.GetPresence).ServeHTTP(rr, req)
-
+	rr := getPresence(t, handler, sess, "&bl=1")
 	assert.Equal(t, http.StatusOK, rr.Code)
 
 	var parsed struct {
@@ -587,67 +505,75 @@ func TestPresenceHandler_SetState_MissingAimsid(t *testing.T) {
 	assert.Contains(t, rr.Body.String(), "missing aimsid parameter")
 }
 
+// setState serves presence/setState for session with the given query
+// parameters, which start with '&'.
+func setState(t *testing.T, h *PresenceHandler, session *Session, params string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest("GET", "/presence/setState?aimsid="+session.AimSID+params, nil)
+	rr := httptest.NewRecorder()
+	requireSession(h.SessionManager, h.SetState).ServeHTTP(rr, req)
+	return rr
+}
+
+// statusFields is the SetUserInfoFields body that sets the status bits.
+func statusFields(status uint32) wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields {
+	return wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields{
+		TLVRestBlock: wire.TLVRestBlock{
+			TLVList: wire.TLVList{
+				wire.NewTLVBE(wire.OServiceUserInfoStatus, status),
+			},
+		},
+	}
+}
+
+// awayMessageInfo is the LocateSetInfo body that sets the away message.
+func awayMessageInfo(msg string) wire.SNAC_0x02_0x04_LocateSetInfo {
+	return wire.SNAC_0x02_0x04_LocateSetInfo{
+		TLVRestBlock: wire.TLVRestBlock{
+			TLVList: wire.TLVList{
+				wire.NewTLVBE(wire.LocateTLVTagsInfoUnavailableData, msg),
+			},
+		},
+	}
+}
+
 func TestPresenceHandler_SetState_InvalidState(t *testing.T) {
-	oscarInstance := state.NewSession().AddInstance()
-	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
+	conn := newFakeConn()
+	sessionMgr, sess := createTestSessionManager(t, "testuser", conn)
 
 	handler := &PresenceHandler{
 		SessionManager: sessionMgr,
 		Logger:         slog.Default(),
 	}
 
-	req, err := http.NewRequest("GET", "/presence/setState?aimsid="+aimsid+"&state=bogus", nil)
-	assert.NoError(t, err)
-
-	rr := httptest.NewRecorder()
-	requireSession(handler.SessionManager, handler.SetState).ServeHTTP(rr, req)
+	rr := setState(t, handler, sess, "&state=bogus")
 
 	assert.Equal(t, http.StatusBadRequest, rr.Code)
 	assert.Contains(t, rr.Body.String(), "invalid state parameter")
+	assert.Empty(t, conn.sentSNACs())
 }
 
 func TestPresenceHandler_SetState_AppliesAwayState(t *testing.T) {
-	// setState sets the away message and the status bits through the OSCAR
-	// services; the identity badge re-renders from the myInfo the user info
-	// update raises, so the handler queues no event of its own.
-	oscarInstance := state.NewSession().AddInstance()
-	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
-
-	locateService := newMockLocateService(t)
-	locateService.EXPECT().
-		SetInfo(mock.Anything, oscarInstance, wire.SNAC_0x02_0x04_LocateSetInfo{
-			TLVRestBlock: wire.TLVRestBlock{
-				TLVList: wire.TLVList{
-					wire.NewTLVBE(wire.LocateTLVTagsInfoUnavailableData, "brb"),
-				},
-			},
-		}).
-		Return(nil)
-
-	oserviceService := newMockOServiceService(t)
-	oserviceService.EXPECT().
-		SetUserInfoFields(mock.Anything, oscarInstance, wire.SNACFrame{}, wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields{
-			TLVRestBlock: wire.TLVRestBlock{
-				TLVList: wire.TLVList{
-					wire.NewTLVBE(wire.OServiceUserInfoStatus, wire.OServiceUserStatusAway),
-				},
-			},
-		}).
-		Return(nil)
+	// setState sets the away message and the status bits through OSCAR; the
+	// identity badge re-renders from the myInfo the user info update raises, so
+	// the handler queues no event of its own.
+	conn := newFakeConn()
+	sessionMgr, sess := createTestSessionManager(t, "testuser", conn)
 
 	handler := &PresenceHandler{
-		SessionManager:  sessionMgr,
-		LocateService:   locateService,
-		OServiceService: oserviceService,
-		Logger:          slog.Default(),
+		SessionManager: sessionMgr,
+		Logger:         slog.Default(),
 	}
 
-	req, err := http.NewRequest("GET", "/presence/setState?aimsid="+aimsid+"&state=away&awayMsg=brb", nil)
-	assert.NoError(t, err)
-
-	rr := httptest.NewRecorder()
-	requireSession(handler.SessionManager, handler.SetState).ServeHTTP(rr, req)
+	rr := setState(t, handler, sess, "&state=away&awayMsg=brb")
 	assert.Equal(t, http.StatusOK, rr.Code)
+
+	// The away message goes first, so the user info update the status change
+	// relays back carries it.
+	assert.Equal(t, []wire.SNACMessage{
+		{Frame: wire.SNACFrame{FoodGroup: wire.Locate, SubGroup: wire.LocateSetInfo, RequestID: 1}, Body: awayMessageInfo("brb")},
+		{Frame: wire.SNACFrame{FoodGroup: wire.OService, SubGroup: wire.OServiceSetUserInfoFields, RequestID: 2}, Body: statusFields(wire.OServiceUserStatusAway)},
+	}, conn.sentSNACs())
 
 	var resp struct {
 		Response struct {
@@ -659,109 +585,148 @@ func TestPresenceHandler_SetState_AppliesAwayState(t *testing.T) {
 	assert.Equal(t, "brb", resp.Response.Data.AwayMsg)
 	assert.Equal(t, "testuser", resp.Response.Data.AimID)
 
-	session, err := sessionMgr.GetSession(context.Background(), aimsid)
-	assert.NoError(t, err)
-	assert.Empty(t, session.EventQueue.GetAllEvents())
+	assert.Equal(t, "brb", sess.self.awayMessage())
+	assert.Empty(t, sess.EventQueue.GetAllEvents())
 }
 
 func TestPresenceHandler_SetState_OnlineClearsAwayMessage(t *testing.T) {
 	// Coming back online drops the away message, which LocateSetInfo owns, along
 	// with the status bits.
-	oscarInstance := state.NewSession().AddInstance()
-	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
-
-	locateService := newMockLocateService(t)
-	locateService.EXPECT().
-		SetInfo(mock.Anything, oscarInstance, wire.SNAC_0x02_0x04_LocateSetInfo{
-			TLVRestBlock: wire.TLVRestBlock{
-				TLVList: wire.TLVList{
-					wire.NewTLVBE(wire.LocateTLVTagsInfoUnavailableData, ""),
-				},
-			},
-		}).
-		Return(nil)
-
-	oserviceService := newMockOServiceService(t)
-	oserviceService.EXPECT().
-		SetUserInfoFields(mock.Anything, oscarInstance, wire.SNACFrame{}, wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields{
-			TLVRestBlock: wire.TLVRestBlock{
-				TLVList: wire.TLVList{
-					wire.NewTLVBE(wire.OServiceUserInfoStatus, uint32(0)),
-				},
-			},
-		}).
-		Return(nil)
+	conn := newFakeConn()
+	sessionMgr, sess := createTestSessionManager(t, "testuser", conn)
+	sess.self.setAwayMessage("brb")
 
 	handler := &PresenceHandler{
-		SessionManager:  sessionMgr,
-		LocateService:   locateService,
-		OServiceService: oserviceService,
-		Logger:          slog.Default(),
+		SessionManager: sessionMgr,
+		Logger:         slog.Default(),
 	}
 
-	req, err := http.NewRequest("GET", "/presence/setState?aimsid="+aimsid+"&state=online&awayMsg=brb", nil)
-	assert.NoError(t, err)
-
-	rr := httptest.NewRecorder()
-	requireSession(handler.SessionManager, handler.SetState).ServeHTTP(rr, req)
+	rr := setState(t, handler, sess, "&state=online&awayMsg=brb")
 	assert.Equal(t, http.StatusOK, rr.Code)
 	assert.Contains(t, rr.Body.String(), `"awayMsg":""`)
+
+	assert.Equal(t, []any{awayMessageInfo("")}, conn.sentOf(wire.Locate, wire.LocateSetInfo))
+	assert.Equal(t, []any{statusFields(0)}, conn.sentOf(wire.OService, wire.OServiceSetUserInfoFields))
+	assert.Empty(t, sess.self.awayMessage())
 }
 
-func TestPresenceHandler_SetState_ServiceError(t *testing.T) {
-	oscarInstance := state.NewSession().AddInstance()
-	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
-
-	oserviceService := newMockOServiceService(t)
-	oserviceService.EXPECT().
-		SetUserInfoFields(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(assert.AnError)
+func TestPresenceHandler_SetState_AvailableStateClearsTrackedAwayMessage(t *testing.T) {
+	// The server drops the away message when the user leaves the unavailable
+	// states, so the one myInfo reports goes with it. Invisible is not
+	// unavailable.
+	conn := newFakeConn()
+	sessionMgr, sess := createTestSessionManager(t, "testuser", conn)
+	sess.self.setAwayMessage("brb")
 
 	handler := &PresenceHandler{
-		SessionManager:  sessionMgr,
-		OServiceService: oserviceService,
-		Logger:          slog.Default(),
+		SessionManager: sessionMgr,
+		Logger:         slog.Default(),
 	}
 
-	req, err := http.NewRequest("GET", "/presence/setState?aimsid="+aimsid+"&state=dnd", nil)
-	assert.NoError(t, err)
+	rr := setState(t, handler, sess, "&state=invisible")
+	assert.Equal(t, http.StatusOK, rr.Code)
 
-	rr := httptest.NewRecorder()
-	requireSession(handler.SessionManager, handler.SetState).ServeHTTP(rr, req)
-	assert.Equal(t, http.StatusInternalServerError, rr.Code)
+	assert.Empty(t, conn.sentOf(wire.Locate, wire.LocateSetInfo))
+	assert.Equal(t, []any{statusFields(wire.OServiceUserStatusInvisible)}, conn.sentOf(wire.OService, wire.OServiceSetUserInfoFields))
+	assert.Empty(t, sess.self.awayMessage())
+}
+
+func TestPresenceHandler_SetState_UnavailableStateKeepsTrackedAwayMessage(t *testing.T) {
+	conn := newFakeConn()
+	sessionMgr, sess := createTestSessionManager(t, "testuser", conn)
+	sess.self.setAwayMessage("brb")
+
+	handler := &PresenceHandler{
+		SessionManager: sessionMgr,
+		Logger:         slog.Default(),
+	}
+
+	rr := setState(t, handler, sess, "&state=dnd")
+	assert.Equal(t, http.StatusOK, rr.Code)
+
+	assert.Equal(t, "brb", sess.self.awayMessage())
+}
+
+func TestPresenceHandler_SetState_SendErrors(t *testing.T) {
+	tests := []struct {
+		name    string
+		params  string
+		sendErr error
+		// limit gates the rate class of this SNAC.
+		limit      *wire.SNACType
+		wantStatus int
+	}{
+		{
+			name:       "the status change cannot be sent",
+			params:     "&state=dnd",
+			sendErr:    assert.AnError,
+			wantStatus: http.StatusInternalServerError,
+		},
+		{
+			name:       "the away message cannot be sent",
+			params:     "&state=away&awayMsg=brb",
+			sendErr:    assert.AnError,
+			wantStatus: http.StatusInternalServerError,
+		},
+		{
+			name:       "the status change is rate limited",
+			params:     "&state=dnd",
+			limit:      &wire.SNACType{FoodGroup: wire.OService, SubGroup: wire.OServiceSetUserInfoFields},
+			wantStatus: statusRateLimited,
+		},
+		{
+			name:       "the away message is rate limited",
+			params:     "&state=away&awayMsg=brb",
+			limit:      &wire.SNACType{FoodGroup: wire.Locate, SubGroup: wire.LocateSetInfo},
+			wantStatus: statusRateLimited,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			conn := newFakeConn()
+			conn.sendErr = tt.sendErr
+			sessionMgr, sess := createTestSessionManager(t, "testuser", conn)
+			sess.self.setAwayMessage("old")
+			if tt.limit != nil {
+				limitRateClass(sess, tt.limit.FoodGroup, tt.limit.SubGroup)
+			}
+
+			handler := &PresenceHandler{
+				SessionManager: sessionMgr,
+				Logger:         slog.Default(),
+			}
+
+			rr := setState(t, handler, sess, tt.params)
+			assert.Equal(t, tt.wantStatus, envelopeStatus(t, rr.Body.Bytes()))
+			// A failed change leaves the tracked away message alone.
+			assert.Equal(t, "old", sess.self.awayMessage())
+			if tt.limit != nil {
+				assert.Empty(t, conn.sentOf(tt.limit.FoodGroup, tt.limit.SubGroup))
+			}
+		})
+	}
 }
 
 func TestPresenceHandler_SetState_NormalizesAimID(t *testing.T) {
 	// The client keys users by the normalized aimId, so the response must carry
 	// that while displayId keeps the user's own casing and spacing.
-	oscarInstance := state.NewSession().AddInstance()
-	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("Mike Kelly", oscarInstance)
+	conn := newFakeConn()
+	sessionMgr, sess := createTestSessionManager(t, "Mike Kelly", conn)
+
+	handler := &PresenceHandler{
+		SessionManager: sessionMgr,
+		Logger:         slog.Default(),
+	}
+
+	rr := setState(t, handler, sess, "&state=away")
+	assert.Equal(t, http.StatusOK, rr.Code)
 
 	// An away state with no message leaves the stored away message alone, so the
 	// handler sends the status change only.
-	oserviceService := newMockOServiceService(t)
-	oserviceService.EXPECT().
-		SetUserInfoFields(mock.Anything, oscarInstance, wire.SNACFrame{}, wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields{
-			TLVRestBlock: wire.TLVRestBlock{
-				TLVList: wire.TLVList{
-					wire.NewTLVBE(wire.OServiceUserInfoStatus, wire.OServiceUserStatusAway),
-				},
-			},
-		}).
-		Return(nil)
-
-	handler := &PresenceHandler{
-		SessionManager:  sessionMgr,
-		OServiceService: oserviceService,
-		Logger:          slog.Default(),
-	}
-
-	req, err := http.NewRequest("GET", "/presence/setState?aimsid="+aimsid+"&state=away", nil)
-	assert.NoError(t, err)
-
-	rr := httptest.NewRecorder()
-	requireSession(handler.SessionManager, handler.SetState).ServeHTTP(rr, req)
-	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.Equal(t, []wire.SNACMessage{
+		{Frame: wire.SNACFrame{FoodGroup: wire.OService, SubGroup: wire.OServiceSetUserInfoFields, RequestID: 1}, Body: statusFields(wire.OServiceUserStatusAway)},
+	}, conn.sentSNACs())
 
 	// The setState response body carries the same identity fields.
 	var resp struct {
@@ -803,7 +768,6 @@ func TestPresenceHandler_Icon(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			handler := &PresenceHandler{
 				SessionManager: NewSessionManager(),
-				LocateService:  newMockLocateService(t),
 				Logger:         slog.Default(),
 			}
 
@@ -827,53 +791,87 @@ func TestPresenceHandler_Icon(t *testing.T) {
 	}
 }
 
-func TestPresenceHandler_SetProfile(t *testing.T) {
-	oscarInstance := state.NewSession().AddInstance()
+func TestPresenceHandler_Icon_LooksUpThroughSessionWithinLookupRate(t *testing.T) {
+	conn := newFakeConn().answering(locateReplies(onlineUsers("buddy")))
+	sessionMgr, sess := createTestSessionManager(t, "testuser", conn)
 
+	handler := &PresenceHandler{
+		SessionManager: sessionMgr,
+		IconSource:     newTestIconSource(t),
+		Logger:         slog.Default(),
+	}
+
+	icon := func() string {
+		req := httptest.NewRequest("GET", "/presence/icon?name=buddy&aimsid="+sess.AimSID, nil)
+		rr := httptest.NewRecorder()
+		handler.Icon(rr, req)
+		require.Equal(t, http.StatusFound, rr.Code)
+		return rr.Header().Get("Location")
+	}
+
+	for range lookupBurst {
+		assert.Equal(t, "/static/icons/online_aim_32.png", icon())
+	}
+	// Past the lookup rate, the badge is the one an anonymous caller gets.
+	assert.Equal(t, "/static/icons/offline_aim_32.png", icon())
+	assert.Len(t, sentLocateQueries(conn), lookupBurst)
+}
+
+func TestPresenceHandler_SetProfile(t *testing.T) {
 	tests := []struct {
 		name               string
 		queryParams        string
-		setupMocks         func(*mockLocateService)
+		sendErr            error
 		expectedStatusCode int
 		checkResponse      func(*testing.T, string)
+		wantSent           []any
 	}{
 		{
-			name:        "Success_SetProfile",
-			queryParams: "profile=Hello+World",
-			setupMocks: func(ls *mockLocateService) {
-				ls.EXPECT().SetInfo(mock.Anything, oscarInstance, mock.AnythingOfType("wire.SNAC_0x02_0x04_LocateSetInfo")).Return(nil)
-			},
+			name:               "Success_SetProfile",
+			queryParams:        "profile=Hello+World",
 			expectedStatusCode: http.StatusOK,
 			checkResponse: func(t *testing.T, body string) {
 				assert.Contains(t, body, `"statusCode":200`)
 			},
+			wantSent: []any{wire.SNAC_0x02_0x04_LocateSetInfo{
+				TLVRestBlock: wire.TLVRestBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.LocateTLVTagsInfoSigData, "Hello World"),
+					},
+				},
+			}},
 		},
 		{
 			name:               "Error_ProfileTooLarge",
 			queryParams:        "profile=" + strings.Repeat("x", 4097),
-			setupMocks:         func(ls *mockLocateService) {},
 			expectedStatusCode: http.StatusBadRequest,
 			checkResponse: func(t *testing.T, body string) {
 				assert.Contains(t, body, "profile too large")
+			},
+		},
+		{
+			name:               "Error_SendFails",
+			queryParams:        "profile=Hello+World",
+			sendErr:            io.EOF,
+			expectedStatusCode: http.StatusInternalServerError,
+			checkResponse: func(t *testing.T, body string) {
+				assert.Contains(t, body, "failed to save profile")
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			locateService := newMockLocateService(t)
-
-			sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
+			conn := newFakeConn()
+			conn.sendErr = tt.sendErr
+			sessionMgr, sess := createTestSessionManager(t, "testuser", conn)
 
 			handler := &PresenceHandler{
 				SessionManager: sessionMgr,
-				LocateService:  locateService,
 				Logger:         slog.Default(),
 			}
 
-			tt.setupMocks(locateService)
-
-			reqURL := "/presence/setProfile?aimsid=" + aimsid + "&" + tt.queryParams
+			reqURL := "/presence/setProfile?aimsid=" + sess.AimSID + "&" + tt.queryParams
 			req, err := http.NewRequest("GET", reqURL, nil)
 			assert.NoError(t, err)
 
@@ -884,37 +882,31 @@ func TestPresenceHandler_SetProfile(t *testing.T) {
 			assert.Equal(t, tt.expectedStatusCode, rr.Code)
 
 			if tt.checkResponse != nil {
-				responseBody := strings.TrimSpace(rr.Body.String())
-				tt.checkResponse(t, responseBody)
+				tt.checkResponse(t, strings.TrimSpace(rr.Body.String()))
 			}
+			assert.Equal(t, tt.wantSent, conn.sentOf(wire.Locate, wire.LocateSetInfo))
 		})
 	}
 }
 
 func TestPresenceHandler_GetProfile(t *testing.T) {
-	locateService := newMockLocateService(t)
-
-	oscarInstance := state.NewSession().AddInstance()
-	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
+	conn := newFakeConn().answering(locateReplies(map[string]wire.SNAC_0x02_0x06_LocateUserInfoReply{
+		"testuser": {
+			LocateInfo: wire.TLVRestBlock{
+				TLVList: wire.TLVList{
+					wire.NewTLVBE(wire.LocateTLVTagsInfoSigData, "My profile"),
+				},
+			},
+		},
+	}))
+	sessionMgr, sess := createTestSessionManager(t, "testuser", conn)
 
 	handler := &PresenceHandler{
 		SessionManager: sessionMgr,
-		LocateService:  locateService,
 		Logger:         slog.Default(),
 	}
 
-	locateService.EXPECT().UserInfoQuery(mock.Anything, mock.Anything, mock.Anything, screenNameMatcher("testuser")).
-		Return(wire.SNACMessage{
-			Body: wire.SNAC_0x02_0x06_LocateUserInfoReply{
-				LocateInfo: wire.TLVRestBlock{
-					TLVList: wire.TLVList{
-						wire.NewTLVBE(wire.LocateTLVTagsInfoSigData, "My profile"),
-					},
-				},
-			},
-		}, nil)
-
-	req, err := http.NewRequest("GET", "/presence/getProfile?aimsid="+aimsid, nil)
+	req, err := http.NewRequest("GET", "/presence/getProfile?aimsid="+sess.AimSID, nil)
 	assert.NoError(t, err)
 
 	rr := httptest.NewRecorder()
@@ -925,6 +917,8 @@ func TestPresenceHandler_GetProfile(t *testing.T) {
 	assert.Contains(t, body, `"statusCode":200`)
 	assert.Contains(t, body, `"My profile"`)
 	assert.Contains(t, body, `"testuser"`)
+	assert.Equal(t, []any{wire.SNAC_0x02_0x05_LocateUserInfoQuery{Type: uint16(wire.LocateTypeSig), ScreenName: "testuser"}},
+		conn.sentOf(wire.Locate, wire.LocateUserInfoQuery))
 }
 
 func TestPresenceHandler_SetState_Occupied(t *testing.T) {
@@ -941,87 +935,61 @@ func TestPresenceHandler_SetState_Occupied(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// The account that decides the reported state is read off the OSCAR session.
-			oscarSession := state.NewSession()
-			oscarSession.SetIdentScreenName(state.NewIdentScreenName(tt.screenName))
-			oscarInstance := oscarSession.AddInstance()
-			sessionMgr, aimsid := createTestSessionManagerWithOSCAR(tt.screenName, oscarInstance)
-
-			oserviceService := newMockOServiceService(t)
-			oserviceService.EXPECT().
-				SetUserInfoFields(mock.Anything, oscarInstance, wire.SNACFrame{}, wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields{
-					TLVRestBlock: wire.TLVRestBlock{
-						TLVList: wire.TLVList{
-							wire.NewTLVBE(wire.OServiceUserInfoStatus, wire.OServiceUserStatusBusy),
-						},
-					},
-				}).
-				// stand in for the service, which applies the status to the session
-				Run(func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields) {
-					status, _ := inBody.Uint32BE(wire.OServiceUserInfoStatus)
-					instance.SetUserStatusBitmask(status)
-				}).
-				Return(nil)
+			conn := newFakeConn()
+			sessionMgr, sess := createTestSessionManager(t, tt.screenName, conn)
 
 			handler := &PresenceHandler{
-				SessionManager:  sessionMgr,
-				OServiceService: oserviceService,
-				Logger:          slog.Default(),
+				SessionManager: sessionMgr,
+				Logger:         slog.Default(),
 			}
 
-			req, err := http.NewRequest("GET", "/presence/setState?aimsid="+aimsid+"&view=occupied&away=", nil)
-			assert.NoError(t, err)
-
-			rr := httptest.NewRecorder()
-			requireSession(handler.SessionManager, handler.SetState).ServeHTTP(rr, req)
+			rr := setState(t, handler, sess, "&view=occupied&away=")
 			assert.Equal(t, http.StatusOK, rr.Code)
 
 			// The Busy bit reaches OSCAR either way; only the reported state differs.
 			assert.Contains(t, rr.Body.String(), `"state":"`+tt.wantState+`"`)
+			sent := conn.sentOf(wire.OService, wire.OServiceSetUserInfoFields)
+			require.Equal(t, []any{statusFields(wire.OServiceUserStatusBusy)}, sent)
 
 			// The state must survive the round trip: the myInfo raised by the
 			// user info update reads the Busy bit back off the wire.
-			assert.Equal(t, tt.wantState, selfWebState(oscarSession.TLVUserInfo(), oscarSession.IdentScreenName().UIN() == 0))
+			fields := sent[0].(wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields)
+			status, _ := fields.Uint32BE(wire.OServiceUserInfoStatus)
+			relayed := wire.TLVUserInfo{ScreenName: tt.screenName}
+			relayed.Append(wire.NewTLVBE(wire.OServiceUserInfoStatus, status))
+			assert.Equal(t, tt.wantState, selfWebState(relayed, sess.isAIMViewer()))
 		})
+	}
+}
+
+// mdirServer answers locate queries with users and directory reads with
+// record, for every name.
+func mdirServer(users map[string]wire.SNAC_0x02_0x06_LocateUserInfoReply, record wire.SNAC_0x02_0x0C_LocateGetDirReply) func(req wire.SNACMessage) []wire.SNACMessage {
+	dir := dirServer{everyone: &record}
+	locate := locateReplies(users)
+	return func(req wire.SNACMessage) []wire.SNACMessage {
+		if _, ok := req.Body.(wire.SNAC_0x02_0x0B_LocateGetDirInfo); ok {
+			return dir.respond(req)
+		}
+		return locate(req)
 	}
 }
 
 func TestPresenceHandler_GetPresence_MdirAttachesProfile(t *testing.T) {
 	// Search results are populated from this call, and a user carrying no nested
 	// "profile" object is dropped by clients, so a found user would not render.
-	ctx := context.Background()
+	record := dirRecord("Bob", "Smith")
+	record.Append(wire.NewTLVBE(wire.ODirTLVCity, "Reno"))
 
-	dirReply := wire.SNAC_0x02_0x0C_LocateGetDirReply{Status: wire.LocateGetDirReplyOK}
-	dirReply.Append(wire.NewTLVBE(wire.ODirTLVFirstName, "Bob"))
-	dirReply.Append(wire.NewTLVBE(wire.ODirTLVLastName, "Smith"))
-	dirReply.Append(wire.NewTLVBE(wire.ODirTLVCity, "Reno"))
-
-	feedbagService := newMockFeedbagService(t)
-	feedbagService.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-		Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{}}, nil).Maybe()
-
-	locateService := newMockLocateService(t)
-	locateService.EXPECT().UserInfoQuery(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(onlineUserInfoReply("founduser", 0), nil)
-	locateService.EXPECT().DirInfo(mock.Anything, mock.Anything, mock.Anything).
-		Return(wire.SNACMessage{Body: dirReply}, nil)
-
-	oscarInstance := state.NewSession().AddInstance()
-	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
-	_, err := sessionMgr.GetSession(ctx, aimsid)
-	require.NoError(t, err)
+	conn := newFakeConn().answering(mdirServer(onlineUsers("founduser"), record))
+	sessionMgr, sess := createTestSessionManager(t, "testuser", conn)
 
 	handler := &PresenceHandler{
 		SessionManager: sessionMgr,
-		FeedbagService: feedbagService,
-		LocateService:  locateService,
 		Logger:         slog.Default(),
 	}
 
-	req, err := http.NewRequest("GET", "/presence/get?aimsid="+aimsid+"&mdir=1&t=founduser", nil)
-	require.NoError(t, err)
-	rr := httptest.NewRecorder()
-	requireSession(handler.SessionManager, handler.GetPresence).ServeHTTP(rr, req)
+	rr := getPresence(t, handler, sess, "&mdir=1&t=founduser")
 	require.Equal(t, http.StatusOK, rr.Code)
 
 	var got struct {
@@ -1043,142 +1011,120 @@ func TestPresenceHandler_GetPresence_MdirAttachesProfile(t *testing.T) {
 	assert.Equal(t, "Smith", profile.LastName)
 	require.Len(t, profile.HomeAddress, 1)
 	assert.Equal(t, "Reno", profile.HomeAddress[0].City)
+	assert.Equal(t, []any{wire.SNAC_0x02_0x0B_LocateGetDirInfo{ScreenName: "founduser"}},
+		conn.sentOf(wire.Locate, wire.LocateGetDirInfo))
 }
 
 func TestPresenceHandler_GetPresence_MdirProfileIsEmptyNotAbsent(t *testing.T) {
 	// A user with no directory record must still render, or a freshly created
 	// account can never be found.
-	ctx := context.Background()
-
-	feedbagService := newMockFeedbagService(t)
-	feedbagService.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-		Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{}}, nil).Maybe()
-
-	locateService := newMockLocateService(t)
-	locateService.EXPECT().UserInfoQuery(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(onlineUserInfoReply("blankuser", 0), nil)
-	locateService.EXPECT().DirInfo(mock.Anything, mock.Anything, mock.Anything).
-		Return(wire.SNACMessage{Body: wire.SNAC_0x02_0x0C_LocateGetDirReply{Status: wire.LocateGetDirReplyOK}}, nil)
-
-	oscarInstance := state.NewSession().AddInstance()
-	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
-	_, err := sessionMgr.GetSession(ctx, aimsid)
-	require.NoError(t, err)
-
-	handler := &PresenceHandler{
-		SessionManager: sessionMgr,
-		FeedbagService: feedbagService,
-		LocateService:  locateService,
-		Logger:         slog.Default(),
+	tests := []struct {
+		name    string
+		respond func(req wire.SNACMessage) []wire.SNACMessage
+	}{
+		{
+			name:    "no directory record",
+			respond: mdirServer(onlineUsers("blankuser"), wire.SNAC_0x02_0x0C_LocateGetDirReply{Status: wire.LocateGetDirReplyOK}),
+		},
+		{
+			name: "the directory read fails",
+			respond: func(req wire.SNACMessage) []wire.SNACMessage {
+				if _, ok := req.Body.(wire.SNAC_0x02_0x0B_LocateGetDirInfo); ok {
+					return []wire.SNACMessage{snacErr(wire.Locate, wire.ErrorCodeNotSupportedByHost)}
+				}
+				return locateReplies(onlineUsers("blankuser"))(req)
+			},
+		},
 	}
 
-	req, _ := http.NewRequest("GET", "/presence/get?aimsid="+aimsid+"&mdir=1&t=blankuser", nil)
-	rr := httptest.NewRecorder()
-	requireSession(handler.SessionManager, handler.GetPresence).ServeHTTP(rr, req)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			conn := newFakeConn().answering(tt.respond)
+			sessionMgr, sess := createTestSessionManager(t, "testuser", conn)
 
-	// The key must be present and non-null, which is what the client tests for.
-	assert.Contains(t, rr.Body.String(), `"profile":{}`)
+			handler := &PresenceHandler{
+				SessionManager: sessionMgr,
+				Logger:         slog.Default(),
+			}
+
+			rr := getPresence(t, handler, sess, "&mdir=1&t=blankuser")
+
+			// The key must be present and non-null, which is what the client tests for.
+			assert.Contains(t, rr.Body.String(), `"profile":{}`)
+		})
+	}
 }
 
 func TestPresenceHandler_GetPresence_NoMdirOmitsProfile(t *testing.T) {
-	// Without mdir the directory is not consulted at all — the mock asserts that by
-	// having no DirInfo expectation.
-	ctx := context.Background()
-
-	feedbagService := newMockFeedbagService(t)
-	feedbagService.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-		Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{}}, nil).Maybe()
-
-	locateService := newMockLocateService(t)
-	locateService.EXPECT().UserInfoQuery(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(onlineUserInfoReply("someuser", 0), nil)
-
-	oscarInstance := state.NewSession().AddInstance()
-	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
-	_, err := sessionMgr.GetSession(ctx, aimsid)
-	require.NoError(t, err)
+	// Without mdir the directory is not consulted at all.
+	conn := newFakeConn().answering(mdirServer(onlineUsers("someuser"), dirRecord("Some", "User")))
+	sessionMgr, sess := createTestSessionManager(t, "testuser", conn)
 
 	handler := &PresenceHandler{
 		SessionManager: sessionMgr,
-		FeedbagService: feedbagService,
-		LocateService:  locateService,
 		Logger:         slog.Default(),
 	}
 
-	req, _ := http.NewRequest("GET", "/presence/get?aimsid="+aimsid+"&t=someuser", nil)
-	rr := httptest.NewRecorder()
-	requireSession(handler.SessionManager, handler.GetPresence).ServeHTTP(rr, req)
+	rr := getPresence(t, handler, sess, "&t=someuser")
 
 	assert.NotContains(t, rr.Body.String(), `"profile"`)
+	assert.Empty(t, conn.sentOf(wire.Locate, wire.LocateGetDirInfo))
 }
 
 func TestPresenceHandler_GetPresence_EmptyQueryRendersBothArrays(t *testing.T) {
-	ctx := context.Background()
-
-	// No expectations on either service: naming no list must cost no lookups.
-	feedbagService := newMockFeedbagService(t)
-	locateService := newMockLocateService(t)
-
-	oscarInstance := state.NewSession().AddInstance()
-	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
-	_, err := sessionMgr.GetSession(ctx, aimsid)
-	require.NoError(t, err)
+	conn := newFakeConn()
+	sessionMgr, sess := createTestSessionManager(t, "testuser", conn)
 
 	handler := &PresenceHandler{
 		SessionManager: sessionMgr,
-		FeedbagService: feedbagService,
-		LocateService:  locateService,
 		Logger:         slog.Default(),
 	}
 
-	req, _ := http.NewRequest("GET", "/presence/get?aimsid="+aimsid+"&f=json&mdir=1", nil)
-	rr := httptest.NewRecorder()
-	requireSession(handler.SessionManager, handler.GetPresence).ServeHTTP(rr, req)
+	rr := getPresence(t, handler, sess, "&f=json&mdir=1")
 
 	assert.Equal(t, http.StatusOK, rr.Code)
 	assert.Contains(t, rr.Body.String(), `"users":[]`)
 	assert.Contains(t, rr.Body.String(), `"groups":[]`)
+	// Naming no list must cost no lookups.
+	assert.Empty(t, conn.sentSNACs())
 }
 
 func TestPresenceHandler_GetPresence_TruncatesOversizedTargetList(t *testing.T) {
-	ctx := context.Background()
-
-	feedbagService := newMockFeedbagService(t)
-
-	var queried int
-	locateService := newMockLocateService(t)
-	locateService.EXPECT().UserInfoQuery(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(_ context.Context, _ *state.SessionInstance, _ wire.SNACFrame, body wire.SNAC_0x02_0x05_LocateUserInfoQuery) (wire.SNACMessage, error) {
-			queried++
-			return onlineUserInfoReply(body.ScreenName, 0), nil
-		})
-
-	oscarInstance := state.NewSession().AddInstance()
-	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
-	_, err := sessionMgr.GetSession(ctx, aimsid)
-	require.NoError(t, err)
+	targets := searchPageTargets(maxPresenceTargets + 8)
+	conn := newFakeConn().answering(locateReplies(onlineUsers(targets...)))
+	sessionMgr, sess := createTestSessionManager(t, "testuser", conn)
 
 	handler := &PresenceHandler{
 		SessionManager: sessionMgr,
-		FeedbagService: feedbagService,
-		LocateService:  locateService,
 		Logger:         slog.Default(),
 	}
 
-	query := "/presence/get?aimsid=" + aimsid + "&f=json"
-	for i := range maxPresenceTargets + 8 {
-		query += fmt.Sprintf("&t=user%d", i)
-	}
-	req, _ := http.NewRequest("GET", query, nil)
-	rr := httptest.NewRecorder()
-	requireSession(handler.SessionManager, handler.GetPresence).ServeHTTP(rr, req)
+	rr := getPresence(t, handler, sess, "&f=json&t="+strings.Join(targets, "&t="))
 
 	assert.Equal(t, http.StatusOK, rr.Code)
 	assert.Contains(t, rr.Body.String(), `"statusCode":200`)
-	assert.Equal(t, maxPresenceTargets, queried, "the list is cut to the cap, not refused")
+	assert.Equal(t, targets[:maxPresenceTargets], sentLocateQueries(conn), "the list is cut to the cap, not refused")
 
 	// A full search page has to fit: 20 profiles plus the searched-for UIN.
 	assert.GreaterOrEqual(t, maxPresenceTargets, 21)
+}
+
+func TestPresenceHandler_GetPresence_LookupsBypassRateGate(t *testing.T) {
+	// The server never limits lookups, so a gated rate class must not hold
+	// them back.
+	conn := newFakeConn().answering(locateReplies(onlineUsers("user1")))
+	sessionMgr, sess := createTestSessionManager(t, "testuser", conn)
+	limitRateClass(sess, wire.Locate, wire.LocateUserInfoQuery)
+
+	handler := &PresenceHandler{
+		SessionManager: sessionMgr,
+		Logger:         slog.Default(),
+	}
+
+	rr := getPresence(t, handler, sess, "&t=user1")
+
+	assert.Contains(t, rr.Body.String(), `"state":"online"`)
+	assert.Equal(t, []string{"user1"}, sentLocateQueries(conn))
 }
 
 // searchPageTargets builds n distinct screen names, standing in for the hits of a
@@ -1192,94 +1138,63 @@ func searchPageTargets(n int) []string {
 }
 
 // newSetStatusDriver returns a function that drives setStatus and reports the
-// capability list that reached LocateService.SetInfo, or nil when SetInfo was
-// never called. The web session is built once, so consecutive calls see the
-// capabilities the earlier ones left on it. It starts out with the sign-on
-// capabilities, unless caps replaces them.
+// capability list of the LocateSetInfo it sent, or nil when it sent none. The
+// web session is built once, so consecutive calls see the capabilities the
+// earlier ones left on it. It starts out with the sign-on capabilities, unless
+// caps replaces them.
 func newSetStatusDriver(t *testing.T, caps ...[16]byte) func(query string) ([][16]byte, int) {
 	t.Helper()
 
-	instance := state.NewSession().AddInstance()
-	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", instance)
-
-	session, err := sessionMgr.GetSession(context.Background(), aimsid)
-	require.NoError(t, err)
+	conn := newFakeConn()
+	sessionMgr, session := createTestSessionManager(t, "testuser", conn)
 	if len(caps) > 0 {
 		session.capabilities = caps
 	}
 
-	var gotCaps [][16]byte
-	var called bool
-	locate := newMockLocateService(t)
-	locate.EXPECT().SetInfo(mock.Anything, mock.Anything, mock.Anything).
-		Run(func(_ context.Context, _ *state.SessionInstance, inBody wire.SNAC_0x02_0x04_LocateSetInfo) {
-			called = true
-			b, ok := inBody.Bytes(wire.LocateTLVTagsInfoCapabilities)
-			require.True(t, ok, "setStatus must always send a capabilities TLV")
-			require.Zero(t, len(b)%16)
-			gotCaps = userInfoCaps(wire.TLVUserInfo{
-				TLVBlock: wire.TLVBlock{
-					TLVList: wire.TLVList{wire.NewTLVBE(wire.OServiceUserInfoOscarCaps, b)},
-				},
-			})
-		}).Return(nil).Maybe()
-
-	oservice := newMockOServiceService(t)
-	oservice.EXPECT().
-		SetUserInfoFields(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(nil).
-		Maybe()
-
 	handler := &PresenceHandler{
-		SessionManager:  sessionMgr,
-		LocateService:   locate,
-		OServiceService: oservice,
-		Logger:          slog.Default(),
+		SessionManager: sessionMgr,
+		Logger:         slog.Default(),
 	}
 
 	return func(query string) ([][16]byte, int) {
-		gotCaps, called = nil, false
+		before := len(conn.sentOf(wire.Locate, wire.LocateSetInfo))
 
-		req, err := http.NewRequest("GET", "/presence/setStatus?aimsid="+aimsid+query, nil)
+		req, err := http.NewRequest("GET", "/presence/setStatus?aimsid="+session.AimSID+query, nil)
 		require.NoError(t, err)
 
 		rr := httptest.NewRecorder()
 		requireSession(handler.SessionManager, handler.SetStatus).ServeHTTP(rr, req)
 
-		if !called {
+		sent := conn.sentOf(wire.Locate, wire.LocateSetInfo)
+		if len(sent) == before {
 			return nil, rr.Code
 		}
-		return gotCaps, rr.Code
+		require.Len(t, sent, before+1)
+		setInfo := sent[before].(wire.SNAC_0x02_0x04_LocateSetInfo)
+		b, ok := setInfo.Bytes(wire.LocateTLVTagsInfoCapabilities)
+		require.True(t, ok, "setStatus must always send a capabilities TLV")
+		require.Zero(t, len(b)%16)
+		return userInfoCaps(wire.TLVUserInfo{
+			TLVBlock: wire.TLVBlock{
+				TLVList: wire.TLVList{wire.NewTLVBE(wire.OServiceUserInfoOscarCaps, b)},
+			},
+		}), rr.Code
 	}
 }
 
 // A state change must not blank the status message: the client renders both from
 // the same payload.
 func TestPresenceHandler_SetState_PreservesStatusMessage(t *testing.T) {
-	oscarInstance := state.NewSession().AddInstance()
-	oscarInstance.Session().SetStatus(testStatusBART)
-	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
-
-	oservice := newMockOServiceService(t)
-	oservice.EXPECT().
-		SetUserInfoFields(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(nil)
-
-	locate := newMockLocateService(t)
-	locate.EXPECT().SetInfo(mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	conn := newFakeConn()
+	sessionMgr, sess := createTestSessionManager(t, "testuser", conn)
+	sess.self.setRelayed(bartBuddy("testuser", testStatusBART))
 
 	handler := &PresenceHandler{
-		SessionManager:  sessionMgr,
-		LocateService:   locate,
-		OServiceService: oservice,
-		Logger:          slog.Default(),
+		SessionManager: sessionMgr,
+		Logger:         slog.Default(),
 	}
 
-	req, err := http.NewRequest("GET", "/presence/setState?aimsid="+aimsid+"&state=online", nil)
-	require.NoError(t, err)
-
-	rr := httptest.NewRecorder()
-	requireSession(handler.SessionManager, handler.SetState).ServeHTTP(rr, req)
+	rr := setState(t, handler, sess, "&state=online")
 	require.Equal(t, http.StatusOK, rr.Code)
 	assert.Contains(t, rr.Body.String(), `"statusMsg":"brb"`)
 }
@@ -1313,42 +1228,30 @@ func TestPresenceHandler_SetStatus_StatusMessage(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			oscarInstance := state.NewSession().AddInstance()
-			sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
-
-			var gotBody wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields
-			oservice := newMockOServiceService(t)
-			if tt.wantSet {
-				oservice.EXPECT().
-					SetUserInfoFields(mock.Anything, oscarInstance, wire.SNACFrame{}, mock.Anything).
-					Run(func(_ context.Context, _ *state.SessionInstance, _ wire.SNACFrame, inBody wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields) {
-						gotBody = inBody
-					}).
-					Return(nil)
-			}
-
-			locate := newMockLocateService(t)
-			locate.EXPECT().SetInfo(mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+			conn := newFakeConn()
+			sessionMgr, sess := createTestSessionManager(t, "testuser", conn)
 
 			handler := &PresenceHandler{
-				SessionManager:  sessionMgr,
-				LocateService:   locate,
-				OServiceService: oservice,
-				Logger:          slog.Default(),
+				SessionManager: sessionMgr,
+				Logger:         slog.Default(),
 			}
 
-			req, err := http.NewRequest("GET", "/presence/setStatus?aimsid="+aimsid+tt.query, nil)
+			req, err := http.NewRequest("GET", "/presence/setStatus?aimsid="+sess.AimSID+tt.query, nil)
 			require.NoError(t, err)
 
 			rr := httptest.NewRecorder()
 			requireSession(handler.SessionManager, handler.SetStatus).ServeHTTP(rr, req)
 			require.Equal(t, http.StatusOK, rr.Code)
 
+			sent := conn.sentOf(wire.OService, wire.OServiceSetUserInfoFields)
 			if !tt.wantSet {
+				assert.Empty(t, sent)
 				return
 			}
+			require.Len(t, sent, 1)
 
-			b, hasBART := gotBody.Bytes(wire.OServiceUserInfoBARTInfo)
+			fields := sent[0].(wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields)
+			b, hasBART := fields.Bytes(wire.OServiceUserInfoBARTInfo)
 			require.True(t, hasBART, "setStatus must send a BART TLV")
 
 			var gotID wire.BARTID
@@ -1364,21 +1267,16 @@ func TestPresenceHandler_SetStatus_StatusMessage(t *testing.T) {
 }
 
 func TestPresenceHandler_SetStatus_StatusMessageError(t *testing.T) {
-	oscarInstance := state.NewSession().AddInstance()
-	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
-
-	oservice := newMockOServiceService(t)
-	oservice.EXPECT().
-		SetUserInfoFields(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(io.EOF)
+	conn := newFakeConn()
+	conn.sendErr = io.EOF
+	sessionMgr, sess := createTestSessionManager(t, "testuser", conn)
 
 	handler := &PresenceHandler{
-		SessionManager:  sessionMgr,
-		OServiceService: oservice,
-		Logger:          slog.Default(),
+		SessionManager: sessionMgr,
+		Logger:         slog.Default(),
 	}
 
-	req, err := http.NewRequest("GET", "/presence/setStatus?aimsid="+aimsid+"&statusMsg=nope", nil)
+	req, err := http.NewRequest("GET", "/presence/setStatus?aimsid="+sess.AimSID+"&statusMsg=nope", nil)
 	require.NoError(t, err)
 
 	rr := httptest.NewRecorder()
@@ -1391,18 +1289,16 @@ func TestPresenceHandler_SetStatus_StatusMessageError(t *testing.T) {
 func TestPresenceHandler_SetStatus_StatusMessageTooLong(t *testing.T) {
 	// An overlong message would wrap the one-byte length prefix and corrupt the
 	// user info block.
-	oscarInstance := state.NewSession().AddInstance()
-	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
+	conn := newFakeConn()
+	sessionMgr, sess := createTestSessionManager(t, "testuser", conn)
 
-	// No EXPECT: nothing may reach OSCAR.
 	handler := &PresenceHandler{
-		SessionManager:  sessionMgr,
-		OServiceService: newMockOServiceService(t),
-		Logger:          slog.Default(),
+		SessionManager: sessionMgr,
+		Logger:         slog.Default(),
 	}
 
 	tooLong := strings.Repeat("a", 252)
-	req, err := http.NewRequest("GET", "/presence/setStatus?aimsid="+aimsid+"&statusMsg="+tooLong, nil)
+	req, err := http.NewRequest("GET", "/presence/setStatus?aimsid="+sess.AimSID+"&statusMsg="+tooLong, nil)
 	require.NoError(t, err)
 
 	rr := httptest.NewRecorder()
@@ -1410,6 +1306,8 @@ func TestPresenceHandler_SetStatus_StatusMessageTooLong(t *testing.T) {
 
 	assert.Equal(t, http.StatusBadRequest, rr.Code)
 	assert.Contains(t, rr.Body.String(), wire.ErrStatusTextSizeExceeded.Error())
+	// Nothing may reach OSCAR.
+	assert.Empty(t, conn.sentSNACs())
 }
 
 func TestPresenceHandler_SetStatus_Mood(t *testing.T) {
@@ -1418,7 +1316,7 @@ func TestPresenceHandler_SetStatus_Mood(t *testing.T) {
 		// query is appended to the request, after aimsid.
 		query string
 		// wantCaps is the capability list that must reach SetInfo. A nil value
-		// means SetInfo must not be called at all.
+		// means SetInfo must not be sent at all.
 		wantCaps [][16]byte
 		// wantCode defaults to 200.
 		wantCode int
@@ -1498,19 +1396,16 @@ func TestPresenceHandler_SetStatus_PreservesNonMoodCaps(t *testing.T) {
 }
 
 func TestPresenceHandler_SetStatus_SetInfoError(t *testing.T) {
-	instance := state.NewSession().AddInstance()
-	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", instance)
-
-	locate := newMockLocateService(t)
-	locate.EXPECT().SetInfo(mock.Anything, mock.Anything, mock.Anything).Return(io.EOF)
+	conn := newFakeConn()
+	conn.sendErr = io.EOF
+	sessionMgr, sess := createTestSessionManager(t, "testuser", conn)
 
 	handler := &PresenceHandler{
 		SessionManager: sessionMgr,
-		LocateService:  locate,
 		Logger:         slog.Default(),
 	}
 
-	req, err := http.NewRequest("GET", "/presence/setStatus?aimsid="+aimsid+"&mood=0icqmood6", nil)
+	req, err := http.NewRequest("GET", "/presence/setStatus?aimsid="+sess.AimSID+"&mood=0icqmood6", nil)
 	require.NoError(t, err)
 
 	rr := httptest.NewRecorder()
@@ -1522,79 +1417,59 @@ func TestPresenceHandler_SetStatus_SetInfoError(t *testing.T) {
 // presence/get?t= serves what the view knows and only pays for a locate query
 // when the caller asks for something the view cannot carry.
 func TestPresenceHandler_GetPresence_TargetsFallBackToLocate(t *testing.T) {
-	// getTargets drives presence/get for one target and returns the single user
-	// the response carries.
-	getTargets := func(t *testing.T, target, extraParams string, seed func(*Session), setupLocate func(*mockLocateService)) struct {
+	type user struct {
 		AimID     string `json:"aimId"`
 		State     string `json:"state"`
 		AwayMsg   string `json:"awayMsg"`
 		StatusMsg string `json:"statusMsg"`
-	} {
+	}
+
+	// getTargets drives presence/get for one target and returns the single user
+	// the response carries, and the locate queries it sent.
+	getTargets := func(t *testing.T, target, extraParams string, seed func(*Session), users map[string]wire.SNAC_0x02_0x06_LocateUserInfoReply) (user, []string) {
 		t.Helper()
 
-		feedbagService := newMockFeedbagService(t)
-		feedbagService.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-			Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{}}, nil).Maybe()
-
-		locateService := newMockLocateService(t)
-		setupLocate(locateService)
-
-		oscarInstance := state.NewSession().AddInstance()
-		sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
-		sess, err := sessionMgr.GetSession(context.Background(), aimsid)
-		require.NoError(t, err)
+		conn := newFakeConn().answering(locateReplies(users))
+		sessionMgr, sess := createTestSessionManager(t, "testuser", conn)
 		seed(sess)
 
 		handler := &PresenceHandler{
 			SessionManager: sessionMgr,
-			FeedbagService: feedbagService,
-			LocateService:  locateService,
 			IconSource:     newTestIconSource(t),
 			Logger:         slog.Default(),
 		}
 
-		req, err := http.NewRequest("GET", "/presence/get?aimsid="+aimsid+"&t="+target+extraParams, nil)
-		require.NoError(t, err)
-		rr := httptest.NewRecorder()
-		requireSession(handler.SessionManager, handler.GetPresence).ServeHTTP(rr, req)
+		rr := getPresence(t, handler, sess, "&t="+target+extraParams)
 		require.Equal(t, http.StatusOK, rr.Code)
 
 		var got struct {
 			Response struct {
 				Data struct {
-					Users []struct {
-						AimID     string `json:"aimId"`
-						State     string `json:"state"`
-						AwayMsg   string `json:"awayMsg"`
-						StatusMsg string `json:"statusMsg"`
-					} `json:"users"`
+					Users []user `json:"users"`
 				} `json:"data"`
 			} `json:"response"`
 		}
 		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &got))
 		require.Len(t, got.Response.Data.Users, 1)
-		return got.Response.Data.Users[0]
+		return got.Response.Data.Users[0], sentLocateQueries(conn)
 	}
 
-	noLocate := func(*mockLocateService) {}
-
 	t.Run("an online buddy is served from the view", func(t *testing.T) {
-		got := getTargets(t, "mikekelly", "", func(sess *Session) {
+		got, queries := getTargets(t, "mikekelly", "", func(sess *Session) {
 			buddyArrives(sess, bartBuddy("Mike Kelly", testStatusBART))
-		}, noLocate)
+		}, nil)
 
 		assert.Equal(t, "online", got.State)
 		assert.Equal(t, "brb", got.StatusMsg)
+		assert.Empty(t, queries)
 	})
 
 	// A target need not be a buddy, so nothing may be concluded from a miss.
 	t.Run("a target the view has never seen is looked up", func(t *testing.T) {
-		got := getTargets(t, "stranger", "", func(*Session) {}, func(ls *mockLocateService) {
-			ls.EXPECT().UserInfoQuery(mock.Anything, mock.Anything, mock.Anything, screenNameMatcher("stranger")).
-				Return(onlineUserInfoReply("stranger", 0), nil).Once()
-		})
+		got, queries := getTargets(t, "stranger", "", func(*Session) {}, onlineUsers("stranger"))
 
 		assert.Equal(t, "online", got.State)
+		assert.Equal(t, []string{"stranger"}, queries)
 	})
 
 	// An away message is absent from presence broadcasts, so it costs a query.
@@ -1602,64 +1477,52 @@ func TestPresenceHandler_GetPresence_TargetsFallBackToLocate(t *testing.T) {
 		awayReply := wire.TLVUserInfo{ScreenName: "awaybud"}
 		awayReply.Append(wire.NewTLVBE(wire.OServiceUserInfoUserFlags, wire.OServiceUserFlagUnavailable))
 
-		got := getTargets(t, "awaybud", "", func(sess *Session) {
+		got, queries := getTargets(t, "awaybud", "", func(sess *Session) {
 			buddyArrives(sess, awayReply)
-		}, func(ls *mockLocateService) {
-			ls.EXPECT().UserInfoQuery(mock.Anything, mock.Anything, mock.Anything, screenNameMatcher("awaybud")).
-				Return(wire.SNACMessage{Body: wire.SNAC_0x02_0x06_LocateUserInfoReply{
-					TLVUserInfo: awayReply,
-					LocateInfo: wire.TLVRestBlock{TLVList: wire.TLVList{
-						wire.NewTLVBE(wire.LocateTLVTagsInfoUnavailableData, "out to lunch"),
-					}},
-				}}, nil).Once()
+		}, map[string]wire.SNAC_0x02_0x06_LocateUserInfoReply{
+			"awaybud": {
+				TLVUserInfo: awayReply,
+				LocateInfo: wire.TLVRestBlock{TLVList: wire.TLVList{
+					wire.NewTLVBE(wire.LocateTLVTagsInfoUnavailableData, "out to lunch"),
+				}},
+			},
 		})
 
 		assert.Equal(t, "away", got.State)
 		assert.Equal(t, "out to lunch", got.AwayMsg)
+		assert.Equal(t, []string{"awaybud"}, queries)
 	})
 
 	// Profile text is likewise only reachable through a locate reply.
 	t.Run("profileMsg forces a lookup even for a cached buddy", func(t *testing.T) {
-		got := getTargets(t, "mikekelly", "&profileMsg=1", func(sess *Session) {
+		got, queries := getTargets(t, "mikekelly", "&profileMsg=1", func(sess *Session) {
 			buddyArrives(sess, onlineBuddy("Mike Kelly"))
-		}, func(ls *mockLocateService) {
-			ls.EXPECT().UserInfoQuery(mock.Anything, mock.Anything, mock.Anything, screenNameMatcher("mikekelly")).
-				Return(onlineUserInfoReply("Mike Kelly", 0), nil).Once()
-		})
+		}, onlineUsers("Mike Kelly"))
 
 		assert.Equal(t, "online", got.State)
+		assert.Equal(t, []string{"mikekelly"}, queries)
 	})
 }
 
 // presence/get?bl=1 walks the whole roster, so only an unavailable buddy may cost
-// a locate query. Mockery fails the test on any other call.
+// a locate query.
 func TestPresenceHandler_GetPresence_BuddyListQueriesOnlyAwayBuddies(t *testing.T) {
-	items := []wire.FeedbagItem{
+	conn := newFakeConn().answering(locateReplies(map[string]wire.SNAC_0x02_0x06_LocateUserInfoReply{
+		"awaybud": {
+			TLVUserInfo: wire.TLVUserInfo{ScreenName: "awaybud"},
+			LocateInfo: wire.TLVRestBlock{TLVList: wire.TLVList{
+				wire.NewTLVBE(wire.LocateTLVTagsInfoUnavailableData, "out to lunch"),
+			}},
+		},
+	}))
+	sessionMgr, sess := createTestSessionManager(t, "testuser", conn)
+	sess.feedbag.Reset([]wire.FeedbagItem{
 		{ItemID: 0, GroupID: 0, ClassID: wire.FeedbagClassIdGroup, Name: ""},
 		{ItemID: 0, GroupID: 10, ClassID: wire.FeedbagClassIdGroup, Name: "Friends"},
 		{ItemID: 101, GroupID: 10, ClassID: wire.FeedbagClassIdBuddy, Name: "onlinebud"},
 		{ItemID: 102, GroupID: 10, ClassID: wire.FeedbagClassIdBuddy, Name: "awaybud"},
 		{ItemID: 103, GroupID: 10, ClassID: wire.FeedbagClassIdBuddy, Name: "neverseen"},
-	}
-
-	feedbagService := newMockFeedbagService(t)
-	feedbagService.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-		Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: items}}, nil)
-
-	locateService := newMockLocateService(t)
-	locateService.EXPECT().UserInfoQuery(mock.Anything, mock.Anything, mock.Anything, screenNameMatcher("awaybud")).
-		Return(wire.SNACMessage{Body: wire.SNAC_0x02_0x06_LocateUserInfoReply{
-			TLVUserInfo: wire.TLVUserInfo{ScreenName: "awaybud"},
-			LocateInfo: wire.TLVRestBlock{TLVList: wire.TLVList{
-				wire.NewTLVBE(wire.LocateTLVTagsInfoUnavailableData, "out to lunch"),
-			}},
-		}}, nil).Once()
-
-	oscarInstance := state.NewSession().AddInstance()
-	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
-	sess, err := sessionMgr.GetSession(context.Background(), aimsid)
-	require.NoError(t, err)
-	sess.FeedbagLoader = feedbagServiceLoader(feedbagService, oscarInstance)
+	})
 
 	away := wire.TLVUserInfo{ScreenName: "awaybud"}
 	away.Append(wire.NewTLVBE(wire.OServiceUserInfoUserFlags, wire.OServiceUserFlagUnavailable))
@@ -1668,16 +1531,11 @@ func TestPresenceHandler_GetPresence_BuddyListQueriesOnlyAwayBuddies(t *testing.
 
 	handler := &PresenceHandler{
 		SessionManager: sessionMgr,
-		FeedbagService: feedbagService,
-		LocateService:  locateService,
 		IconSource:     newTestIconSource(t),
 		Logger:         slog.Default(),
 	}
 
-	req, err := http.NewRequest("GET", "/presence/get?aimsid="+aimsid+"&bl=1", nil)
-	require.NoError(t, err)
-	rr := httptest.NewRecorder()
-	requireSession(handler.SessionManager, handler.GetPresence).ServeHTTP(rr, req)
+	rr := getPresence(t, handler, sess, "&bl=1")
 	require.Equal(t, http.StatusOK, rr.Code)
 
 	var got struct {
@@ -1709,6 +1567,7 @@ func TestPresenceHandler_GetPresence_BuddyListQueriesOnlyAwayBuddies(t *testing.
 	// A buddy no arrival has been relayed for renders offline rather than
 	// triggering a lookup.
 	assert.Equal(t, "offline", states["neverseen"])
+	assert.Equal(t, []string{"awaybud"}, sentLocateQueries(conn))
 }
 
 // presence/get?t= must not trust a cache hit it no longer holds. It branches on a
@@ -1716,35 +1575,21 @@ func TestPresenceHandler_GetPresence_BuddyListQueriesOnlyAwayBuddies(t *testing.
 // looking it up a second time can miss after an eviction and report the user
 // offline instead of falling back to the locate query.
 func TestPresenceHandler_GetPresence_ForgottenTargetFallsBackToLocate(t *testing.T) {
-	feedbagService := newMockFeedbagService(t)
-	feedbagService.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-		Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{}}, nil).Maybe()
-
-	// The target is no longer watched, so only a live lookup knows their state.
-	locateService := newMockLocateService(t)
-	locateService.EXPECT().UserInfoQuery(mock.Anything, mock.Anything, mock.Anything, screenNameMatcher("mikekelly")).
-		Return(wire.SNACMessage{Body: wire.SNACError{Code: wire.ErrorCodeNotLoggedOn}}, nil).Once()
-
-	oscarInstance := state.NewSession().AddInstance()
-	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
-	sess, err := sessionMgr.GetSession(context.Background(), aimsid)
-	require.NoError(t, err)
+	// The target is no longer watched, so only a live lookup knows their state,
+	// and it finds them signed off.
+	conn := newFakeConn().answering(locateReplies(nil))
+	sessionMgr, sess := createTestSessionManager(t, "testuser", conn)
 
 	buddyArrives(sess, onlineBuddy("Mike Kelly"))
 	sess.forgetBuddyPresence(state.NewIdentScreenName("mikekelly"))
 
 	handler := &PresenceHandler{
 		SessionManager: sessionMgr,
-		FeedbagService: feedbagService,
-		LocateService:  locateService,
 		IconSource:     newTestIconSource(t),
 		Logger:         slog.Default(),
 	}
 
-	req, err := http.NewRequest("GET", "/presence/get?aimsid="+aimsid+"&t=mikekelly", nil)
-	require.NoError(t, err)
-	rr := httptest.NewRecorder()
-	requireSession(handler.SessionManager, handler.GetPresence).ServeHTTP(rr, req)
+	rr := getPresence(t, handler, sess, "&t=mikekelly")
 	require.Equal(t, http.StatusOK, rr.Code)
 
 	var got struct {
@@ -1762,6 +1607,7 @@ func TestPresenceHandler_GetPresence_ForgottenTargetFallsBackToLocate(t *testing
 
 	// The stale "online" snapshot must not survive the eviction.
 	assert.Equal(t, "offline", got.Response.Data.Users[0].State)
+	assert.Equal(t, []string{"mikekelly"}, sentLocateQueries(conn))
 }
 
 // An invisible user reads as offline, and an offline user publishes nothing.
@@ -1770,39 +1616,26 @@ func TestPresenceHandler_GetPresence_InvisibleUserPublishesNothing(t *testing.T)
 	invisible.Append(wire.NewTLVBE(wire.OServiceUserInfoStatus, wire.OServiceUserStatusInvisible))
 	invisible.Append(wire.NewTLVBE(wire.OServiceUserInfoBARTInfo, []wire.BARTID{testStatusBART}))
 
-	feedbagService := newMockFeedbagService(t)
-	feedbagService.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-		Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{}}, nil).Maybe()
-
-	locateService := newMockLocateService(t)
-	locateService.EXPECT().UserInfoQuery(mock.Anything, mock.Anything, mock.Anything, screenNameMatcher("sneaky")).
-		Return(wire.SNACMessage{Body: wire.SNAC_0x02_0x06_LocateUserInfoReply{
+	conn := newFakeConn().answering(locateReplies(map[string]wire.SNAC_0x02_0x06_LocateUserInfoReply{
+		"sneaky": {
 			TLVUserInfo: invisible,
 			LocateInfo: wire.TLVRestBlock{TLVList: wire.TLVList{
 				wire.NewTLVBE(wire.LocateTLVTagsInfoUnavailableData, "back later"),
 			}},
-		}}, nil).Once()
+		},
+	}))
+	sessionMgr, sess := createTestSessionManager(t, "testuser", conn)
+	sess.BaseURL = "http://api.example.com"
 
 	iconRetriever := newMockBuddyIconRetriever(t)
 
-	oscarInstance := state.NewSession().AddInstance()
-	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
-	sess, err := sessionMgr.GetSession(context.Background(), aimsid)
-	require.NoError(t, err)
-	sess.BaseURL = "http://api.example.com"
-
 	handler := &PresenceHandler{
 		SessionManager: sessionMgr,
-		FeedbagService: feedbagService,
-		LocateService:  locateService,
 		IconSource:     BuddyIconSource{IconRetriever: iconRetriever, Logger: slog.Default()},
 		Logger:         slog.Default(),
 	}
 
-	req, err := http.NewRequest("GET", "/presence/get?aimsid="+aimsid+"&t=sneaky", nil)
-	require.NoError(t, err)
-	rr := httptest.NewRecorder()
-	requireSession(handler.SessionManager, handler.GetPresence).ServeHTTP(rr, req)
+	rr := getPresence(t, handler, sess, "&t=sneaky")
 	require.Equal(t, http.StatusOK, rr.Code)
 
 	var got struct {

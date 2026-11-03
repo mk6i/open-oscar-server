@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/mk6i/open-oscar-server/state"
@@ -22,7 +21,7 @@ import (
 func searchReply(status uint16, results ...wire.TLVBlock) wire.SNACMessage {
 	body := wire.SNAC_0x0F_0x03_InfoReply{Status: status}
 	body.Results.List = results
-	return wire.SNACMessage{Body: body}
+	return reply(wire.ODir, wire.ODirInfoReply, body)
 }
 
 func result(screenName, firstName, lastName string) wire.TLVBlock {
@@ -31,6 +30,78 @@ func result(screenName, firstName, lastName string) wire.TLVBlock {
 		wire.NewTLVBE(wire.ODirTLVFirstName, firstName),
 		wire.NewTLVBE(wire.ODirTLVLastName, lastName),
 	}}
+}
+
+// dirRecord is the directory record of a user with the given names.
+func dirRecord(firstName, lastName string) wire.SNAC_0x02_0x0C_LocateGetDirReply {
+	record := wire.SNAC_0x02_0x0C_LocateGetDirReply{Status: wire.LocateGetDirReplyOK}
+	record.Append(wire.NewTLVBE(wire.ODirTLVFirstName, firstName))
+	record.Append(wire.NewTLVBE(wire.ODirTLVLastName, lastName))
+	return record
+}
+
+// dirServer answers directory SNACs the way the OSCAR server does.
+type dirServer struct {
+	// users holds the directory record of each existing user by screen name.
+	// A name with no record belongs to no user, and gets a record without
+	// directory TLVs.
+	users map[string]wire.SNAC_0x02_0x0C_LocateGetDirReply
+	// everyone, when set, is the record of every name.
+	everyone *wire.SNAC_0x02_0x0C_LocateGetDirReply
+	// search answers directory searches. Without it, searches find nobody.
+	search func(q wire.SNAC_0x0F_0x02_InfoQuery) wire.SNACMessage
+	// readErr makes directory reads fail.
+	readErr bool
+}
+
+func (d dirServer) respond(req wire.SNACMessage) []wire.SNACMessage {
+	switch body := req.Body.(type) {
+	case wire.SNAC_0x02_0x0B_LocateGetDirInfo:
+		if d.readErr {
+			return []wire.SNACMessage{snacErr(wire.Locate, wire.ErrorCodeNotSupportedByHost)}
+		}
+		record, ok := d.users[body.ScreenName]
+		switch {
+		case d.everyone != nil:
+			record = *d.everyone
+		case !ok:
+			record = wire.SNAC_0x02_0x0C_LocateGetDirReply{Status: wire.LocateGetDirReplyOK}
+		}
+		return []wire.SNACMessage{reply(wire.Locate, wire.LocateGetDirReply, record)}
+	case wire.SNAC_0x0F_0x02_InfoQuery:
+		if d.search == nil {
+			return []wire.SNACMessage{searchReply(wire.ODirSearchResponseOK)}
+		}
+		return []wire.SNACMessage{d.search(body)}
+	case wire.SNAC_0x02_0x09_LocateSetDirInfo:
+		return []wire.SNACMessage{reply(wire.Locate, wire.LocateSetDirReply, wire.SNAC_0x02_0x0A_LocateSetDirReply{Result: 1})}
+	}
+	return nil
+}
+
+// newDirSession returns a running session for screenName whose OSCAR server
+// is dir.
+func newDirSession(t *testing.T, screenName string, dir dirServer) (*Session, *fakeConn) {
+	conn := newFakeConn().answering(dir.respond)
+	return newTestSessionAs(t, state.DisplayScreenName(screenName), conn), conn
+}
+
+// sentSearches returns the directory searches sent to the OSCAR server.
+func sentSearches(conn *fakeConn) []wire.SNAC_0x0F_0x02_InfoQuery {
+	var queries []wire.SNAC_0x0F_0x02_InfoQuery
+	for _, body := range conn.sentOf(wire.ODir, wire.ODirInfoQuery) {
+		queries = append(queries, body.(wire.SNAC_0x0F_0x02_InfoQuery))
+	}
+	return queries
+}
+
+// sentDirUpdates returns the directory updates sent to the OSCAR server.
+func sentDirUpdates(conn *fakeConn) []wire.SNAC_0x02_0x09_LocateSetDirInfo {
+	var updates []wire.SNAC_0x02_0x09_LocateSetDirInfo
+	for _, body := range conn.sentOf(wire.Locate, wire.LocateSetDirInfo) {
+		updates = append(updates, body.(wire.SNAC_0x02_0x09_LocateSetDirInfo))
+	}
+	return updates
 }
 
 // decodeInfoArray pulls infoArray out of the response envelope at the given
@@ -56,28 +127,25 @@ func decodeInfoArray(t *testing.T, body []byte, nested bool) []MemberDirInfo {
 	return envelope.Response.Data.InfoArray
 }
 
-// stubNoDirUser answers DirInfo with no directory TLVs, which is what the service
-// returns for a name that belongs to no user. Every search test needs one, since
-// Search does an identity lookup alongside the directory query.
-func stubNoDirUser(t *testing.T) *mockLocateService {
-	ls := newMockLocateService(t)
-	ls.EXPECT().DirInfo(mock.Anything, mock.Anything, mock.Anything).
-		Return(wire.SNACMessage{Body: wire.SNAC_0x02_0x0C_LocateGetDirReply{
-			Status: wire.LocateGetDirReplyOK,
-		}}, nil).Maybe()
-	return ls
+// envelopeStatus returns the status code in a response envelope.
+func envelopeStatus(t *testing.T, body []byte) int {
+	t.Helper()
+	var envelope struct {
+		Response struct {
+			StatusCode int `json:"statusCode"`
+		} `json:"response"`
+	}
+	require.NoError(t, json.Unmarshal(body, &envelope))
+	return envelope.Response.StatusCode
 }
 
 func TestMemberDirHandler_Search_Keyword(t *testing.T) {
-	dirSvc := newMockDirSearchService(t)
-	// keyword=haha must map to the ODir interest TLV.
-	dirSvc.EXPECT().InfoQuery(mock.Anything, mock.Anything, mock.MatchedBy(func(q wire.SNAC_0x0F_0x02_InfoQuery) bool {
-		v, ok := q.String(wire.ODirTLVInterest)
-		return ok && v == "haha"
-	})).Return(searchReply(wire.ODirSearchResponseOK, result("FoundUser", "Found", "User")), nil)
-
-	h := &MemberDirHandler{DirSearchService: dirSvc, LocateService: stubNoDirUser(t), Logger: slog.Default()}
-	session := &Session{AimSID: "sid", ScreenName: state.DisplayScreenName("me")}
+	session, conn := newDirSession(t, "me", dirServer{
+		search: func(wire.SNAC_0x0F_0x02_InfoQuery) wire.SNACMessage {
+			return searchReply(wire.ODirSearchResponseOK, result("FoundUser", "Found", "User"))
+		},
+	})
+	h := &MemberDirHandler{Logger: slog.Default()}
 
 	req := httptest.NewRequest("GET", "/memberDir/search?aimsid=sid&match=keyword%3Dhaha&nToGet=200", nil)
 	rr := httptest.NewRecorder()
@@ -89,20 +157,22 @@ func TestMemberDirHandler_Search_Keyword(t *testing.T) {
 	assert.Equal(t, "founduser", infoArray[0].Profile.AimID)
 	assert.Equal(t, "FoundUser", infoArray[0].Profile.DisplayID)
 	assert.Equal(t, "Found", infoArray[0].Profile.FirstName)
+
+	// keyword=haha must map to the ODir interest TLV.
+	queries := sentSearches(conn)
+	require.Len(t, queries, 1)
+	interest, ok := queries[0].String(wire.ODirTLVInterest)
+	assert.True(t, ok)
+	assert.Equal(t, "haha", interest)
 }
 
 func TestMemberDirHandler_Search_FirstLastName(t *testing.T) {
-	dirSvc := newMockDirSearchService(t)
-	// firstName/lastName must map to the ODir name TLVs, not interest.
-	dirSvc.EXPECT().InfoQuery(mock.Anything, mock.Anything, mock.MatchedBy(func(q wire.SNAC_0x0F_0x02_InfoQuery) bool {
-		first, hasFirst := q.String(wire.ODirTLVFirstName)
-		last, hasLast := q.String(wire.ODirTLVLastName)
-		_, hasInterest := q.String(wire.ODirTLVInterest)
-		return hasFirst && first == "Bob" && hasLast && last == "Smith" && !hasInterest
-	})).Return(searchReply(wire.ODirSearchResponseOK, result("Bob", "Bob", "Smith")), nil)
-
-	h := &MemberDirHandler{DirSearchService: dirSvc, LocateService: stubNoDirUser(t), Logger: slog.Default()}
-	session := &Session{AimSID: "sid", ScreenName: state.DisplayScreenName("me")}
+	session, conn := newDirSession(t, "me", dirServer{
+		search: func(wire.SNAC_0x0F_0x02_InfoQuery) wire.SNACMessage {
+			return searchReply(wire.ODirSearchResponseOK, result("Bob", "Bob", "Smith"))
+		},
+	})
+	h := &MemberDirHandler{Logger: slog.Default()}
 
 	req := httptest.NewRequest("GET", "/memberDir/search?aimsid=sid&match=firstName%3DBob%2ClastName%3DSmith", nil)
 	rr := httptest.NewRecorder()
@@ -111,18 +181,29 @@ func TestMemberDirHandler_Search_FirstLastName(t *testing.T) {
 	infoArray := decodeInfoArray(t, rr.Body.Bytes(), true)
 	require.Len(t, infoArray, 1)
 	assert.Equal(t, "bob", infoArray[0].Profile.AimID)
+
+	// firstName/lastName must map to the ODir name TLVs, not interest.
+	queries := sentSearches(conn)
+	require.Len(t, queries, 1)
+	first, hasFirst := queries[0].String(wire.ODirTLVFirstName)
+	last, hasLast := queries[0].String(wire.ODirTLVLastName)
+	_, hasInterest := queries[0].String(wire.ODirTLVInterest)
+	assert.True(t, hasFirst && hasLast)
+	assert.Equal(t, "Bob", first)
+	assert.Equal(t, "Smith", last)
+	assert.False(t, hasInterest)
 }
 
 func TestMemberDirHandler_Search_ExcludesSelf(t *testing.T) {
-	dirSvc := newMockDirSearchService(t)
-	dirSvc.EXPECT().InfoQuery(mock.Anything, mock.Anything, mock.Anything).Return(
-		searchReply(wire.ODirSearchResponseOK,
-			result("Me", "", ""),    // caller — must be filtered out
-			result("Other", "", ""), // kept
-		), nil)
-
-	h := &MemberDirHandler{DirSearchService: dirSvc, LocateService: stubNoDirUser(t), Logger: slog.Default()}
-	session := &Session{AimSID: "sid", ScreenName: state.DisplayScreenName("M E")}
+	session, _ := newDirSession(t, "M E", dirServer{
+		search: func(wire.SNAC_0x0F_0x02_InfoQuery) wire.SNACMessage {
+			return searchReply(wire.ODirSearchResponseOK,
+				result("Me", "", ""),    // caller — must be filtered out
+				result("Other", "", ""), // kept
+			)
+		},
+	})
+	h := &MemberDirHandler{Logger: slog.Default()}
 
 	req := httptest.NewRequest("GET", "/memberDir/search?aimsid=sid&match=keyword%3Dx", nil)
 	rr := httptest.NewRecorder()
@@ -134,12 +215,8 @@ func TestMemberDirHandler_Search_ExcludesSelf(t *testing.T) {
 }
 
 func TestMemberDirHandler_Search_RespectsJSONPCallback(t *testing.T) {
-	dirSvc := newMockDirSearchService(t)
-	dirSvc.EXPECT().InfoQuery(mock.Anything, mock.Anything, mock.Anything).Return(
-		searchReply(wire.ODirSearchResponseOK), nil)
-
-	h := &MemberDirHandler{DirSearchService: dirSvc, LocateService: stubNoDirUser(t), Logger: slog.Default()}
-	session := &Session{AimSID: "sid", ScreenName: state.DisplayScreenName("me")}
+	session, _ := newDirSession(t, "me", dirServer{})
+	h := &MemberDirHandler{Logger: slog.Default()}
 
 	req := httptest.NewRequest("GET", "/memberDir/search?aimsid=sid&match=keyword%3Dx&c=_callbacks_._abc", nil)
 	rr := httptest.NewRecorder()
@@ -154,17 +231,10 @@ func TestMemberDirHandler_Search_RespectsJSONPCallback(t *testing.T) {
 }
 
 func TestMemberDirHandler_Get_Self(t *testing.T) {
-	reply := wire.SNAC_0x02_0x0C_LocateGetDirReply{Status: wire.LocateGetDirReplyOK}
-	reply.Append(wire.NewTLVBE(wire.ODirTLVFirstName, "Me"))
-	reply.Append(wire.NewTLVBE(wire.ODirTLVLastName, "Myself"))
-
-	locSvc := newMockLocateService(t)
-	locSvc.EXPECT().DirInfo(mock.Anything, mock.Anything, mock.MatchedBy(func(q wire.SNAC_0x02_0x0B_LocateGetDirInfo) bool {
-		return q.ScreenName == "me"
-	})).Return(wire.SNACMessage{Body: reply}, nil)
-
-	h := &MemberDirHandler{LocateService: locSvc, Logger: slog.Default()}
-	session := &Session{AimSID: "sid", ScreenName: state.DisplayScreenName("me")}
+	session, conn := newDirSession(t, "me", dirServer{
+		users: map[string]wire.SNAC_0x02_0x0C_LocateGetDirReply{"me": dirRecord("Me", "Myself")},
+	})
+	h := &MemberDirHandler{Logger: slog.Default()}
 
 	// No "t" param: defaults to self.
 	req := httptest.NewRequest("GET", "/memberDir/get?aimsid=sid", nil)
@@ -176,25 +246,18 @@ func TestMemberDirHandler_Get_Self(t *testing.T) {
 	assert.Equal(t, "me", infoArray[0].Profile.AimID)
 	assert.Equal(t, "Me", infoArray[0].Profile.FirstName)
 	assert.Equal(t, "Myself", infoArray[0].Profile.LastName)
+	assert.Equal(t, []any{wire.SNAC_0x02_0x0B_LocateGetDirInfo{ScreenName: "me"}},
+		conn.sentOf(wire.Locate, wire.LocateGetDirInfo))
 }
 
 func TestMemberDirHandler_Get_LabelsEachTargetWithOwnIdentity(t *testing.T) {
-	dirReply := func(firstName string) wire.SNACMessage {
-		reply := wire.SNAC_0x02_0x0C_LocateGetDirReply{Status: wire.LocateGetDirReplyOK}
-		reply.Append(wire.NewTLVBE(wire.ODirTLVFirstName, firstName))
-		return wire.SNACMessage{Body: reply}
-	}
-
-	locSvc := newMockLocateService(t)
-	locSvc.EXPECT().DirInfo(mock.Anything, mock.Anything, mock.MatchedBy(func(q wire.SNAC_0x02_0x0B_LocateGetDirInfo) bool {
-		return q.ScreenName == "Bob Smith"
-	})).Return(dirReply("Bob"), nil)
-	locSvc.EXPECT().DirInfo(mock.Anything, mock.Anything, mock.MatchedBy(func(q wire.SNAC_0x02_0x0B_LocateGetDirInfo) bool {
-		return q.ScreenName == "alice"
-	})).Return(dirReply("Alice"), nil)
-
-	h := &MemberDirHandler{LocateService: locSvc, Logger: slog.Default()}
-	session := &Session{AimSID: "sid", ScreenName: state.DisplayScreenName("Bob Smith")}
+	session, _ := newDirSession(t, "Bob Smith", dirServer{
+		users: map[string]wire.SNAC_0x02_0x0C_LocateGetDirReply{
+			"Bob Smith": dirRecord("Bob", ""),
+			"alice":     dirRecord("Alice", ""),
+		},
+	})
+	h := &MemberDirHandler{Logger: slog.Default()}
 
 	req := httptest.NewRequest("GET", "/memberDir/get?aimsid=sid&t=Bob+Smith,alice", nil)
 	rr := httptest.NewRecorder()
@@ -213,13 +276,8 @@ func TestMemberDirHandler_Get_LabelsEachTargetWithOwnIdentity(t *testing.T) {
 }
 
 func TestMemberDirHandler_Get_CapsTargetFanOut(t *testing.T) {
-	locSvc := newMockLocateService(t)
-	locSvc.EXPECT().DirInfo(mock.Anything, mock.Anything, mock.Anything).
-		Return(wire.SNACMessage{Body: wire.SNAC_0x02_0x0C_LocateGetDirReply{Status: wire.LocateGetDirReplyOK}}, nil).
-		Times(maxMemberDirTargets)
-
-	h := &MemberDirHandler{LocateService: locSvc, Logger: slog.Default()}
-	session := &Session{AimSID: "sid", ScreenName: state.DisplayScreenName("me")}
+	session, conn := newDirSession(t, "me", dirServer{})
+	h := &MemberDirHandler{Logger: slog.Default()}
 
 	// Every target costs a directory lookup, so an arbitrarily long "t" list
 	// must not translate into an unbounded number of them.
@@ -233,29 +291,18 @@ func TestMemberDirHandler_Get_CapsTargetFanOut(t *testing.T) {
 
 	infoArray := decodeInfoArray(t, rr.Body.Bytes(), false)
 	assert.Len(t, infoArray, maxMemberDirTargets)
+	assert.Len(t, conn.sentOf(wire.Locate, wire.LocateGetDirInfo), maxMemberDirTargets)
 }
 
 func TestMemberDirHandler_Update_PersistsNameAndPreservesOtherFields(t *testing.T) {
 	// Current directory record has a city set that the name form must not wipe.
-	current := wire.SNAC_0x02_0x0C_LocateGetDirReply{Status: wire.LocateGetDirReplyOK}
-	current.Append(wire.NewTLVBE(wire.ODirTLVFirstName, "Old"))
-	current.Append(wire.NewTLVBE(wire.ODirTLVLastName, "Name"))
+	current := dirRecord("Old", "Name")
 	current.Append(wire.NewTLVBE(wire.ODirTLVCity, "Reno"))
 
-	locSvc := newMockLocateService(t)
-	locSvc.EXPECT().DirInfo(mock.Anything, mock.Anything, mock.Anything).
-		Return(wire.SNACMessage{Body: current}, nil)
-	// The set request must carry the new name AND the preserved city.
-	locSvc.EXPECT().SetDirInfo(mock.Anything, mock.Anything, mock.Anything,
-		mock.MatchedBy(func(b wire.SNAC_0x02_0x09_LocateSetDirInfo) bool {
-			first, _ := b.String(wire.ODirTLVFirstName)
-			last, _ := b.String(wire.ODirTLVLastName)
-			city, _ := b.String(wire.ODirTLVCity)
-			return first == "Mike" && last == "K" && city == "Reno"
-		})).Return(wire.SNACMessage{}, nil)
-
-	h := &MemberDirHandler{LocateService: locSvc, Logger: slog.Default()}
-	session := &Session{AimSID: "sid", ScreenName: state.DisplayScreenName("mike")}
+	session, conn := newDirSession(t, "mike", dirServer{
+		users: map[string]wire.SNAC_0x02_0x0C_LocateGetDirReply{"mike": current},
+	})
+	h := &MemberDirHandler{Logger: slog.Default()}
 
 	req := httptest.NewRequest("GET",
 		"/memberDir/update?aimsid=sid&set=firstName%3DMike&set=lastName%3DK&set=hideLevel%3DemailsAndCellular", nil)
@@ -263,15 +310,20 @@ func TestMemberDirHandler_Update_PersistsNameAndPreservesOtherFields(t *testing.
 	h.Update(rr, req, session)
 
 	assert.Equal(t, http.StatusOK, rr.Code)
+	// The set request must carry the new name AND the preserved city.
+	updates := sentDirUpdates(conn)
+	require.Len(t, updates, 1)
+	first, _ := updates[0].String(wire.ODirTLVFirstName)
+	last, _ := updates[0].String(wire.ODirTLVLastName)
+	city, _ := updates[0].String(wire.ODirTLVCity)
+	assert.Equal(t, "Mike", first)
+	assert.Equal(t, "K", last)
+	assert.Equal(t, "Reno", city)
 }
 
 func TestMemberDirHandler_Update_AbortsWhenCurrentInfoUnreadable(t *testing.T) {
-	locSvc := newMockLocateService(t)
-	locSvc.EXPECT().DirInfo(mock.Anything, mock.Anything, mock.Anything).
-		Return(wire.SNACMessage{}, io.ErrUnexpectedEOF)
-
-	h := &MemberDirHandler{LocateService: locSvc, Logger: slog.Default()}
-	session := &Session{AimSID: "sid", ScreenName: state.DisplayScreenName("mike")}
+	session, conn := newDirSession(t, "mike", dirServer{readErr: true})
+	h := &MemberDirHandler{Logger: slog.Default()}
 
 	req := httptest.NewRequest("GET", "/memberDir/update?aimsid=sid&set=firstName%3DMike&set=lastName%3DK", nil)
 	rr := httptest.NewRecorder()
@@ -280,15 +332,8 @@ func TestMemberDirHandler_Update_AbortsWhenCurrentInfoUnreadable(t *testing.T) {
 	// SetDirectoryInfo replaces every column, so writing a record we couldn't
 	// seed would blank the fields this form doesn't edit. Report the failure
 	// instead.
-	locSvc.AssertNotCalled(t, "SetDirInfo", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
-
-	var envelope struct {
-		Response struct {
-			StatusCode int `json:"statusCode"`
-		} `json:"response"`
-	}
-	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &envelope))
-	assert.Equal(t, http.StatusInternalServerError, envelope.Response.StatusCode)
+	assert.Empty(t, sentDirUpdates(conn))
+	assert.Equal(t, http.StatusInternalServerError, envelopeStatus(t, rr.Body.Bytes()))
 }
 
 func TestMemberDirHandler_Update_ReadsDoubleEncodedFormBody(t *testing.T) {
@@ -298,21 +343,10 @@ func TestMemberDirHandler_Update_ReadsDoubleEncodedFormBody(t *testing.T) {
 	current := wire.SNAC_0x02_0x0C_LocateGetDirReply{Status: wire.LocateGetDirReplyOK}
 	current.Append(wire.NewTLVBE(wire.ODirTLVCity, "Reno"))
 
-	locSvc := newMockLocateService(t)
-	locSvc.EXPECT().DirInfo(mock.Anything, mock.Anything, mock.Anything).
-		Return(wire.SNACMessage{Body: current}, nil)
-	locSvc.EXPECT().SetDirInfo(mock.Anything, mock.Anything, mock.Anything,
-		mock.MatchedBy(func(b wire.SNAC_0x02_0x09_LocateSetDirInfo) bool {
-			first, _ := b.String(wire.ODirTLVFirstName)
-			last, _ := b.String(wire.ODirTLVLastName)
-			city, _ := b.String(wire.ODirTLVCity)
-			// Without the second unescape these arrive as "Bob%20Smith" and
-			// "O%27Brien" and are stored verbatim.
-			return first == "Bob Smith" && last == "O'Brien" && city == "Reno"
-		})).Return(wire.SNACMessage{}, nil)
-
-	h := &MemberDirHandler{LocateService: locSvc, Logger: slog.Default()}
-	session := &Session{AimSID: "sid", ScreenName: state.DisplayScreenName("mike")}
+	session, conn := newDirSession(t, "mike", dirServer{
+		users: map[string]wire.SNAC_0x02_0x0C_LocateGetDirReply{"mike": current},
+	})
+	h := &MemberDirHandler{Logger: slog.Default()}
 
 	form := url.Values{}
 	form.Set("aimsid", "sid")
@@ -326,25 +360,23 @@ func TestMemberDirHandler_Update_ReadsDoubleEncodedFormBody(t *testing.T) {
 	h.Update(rr, req, session)
 
 	assert.Equal(t, http.StatusOK, rr.Code)
+	updates := sentDirUpdates(conn)
+	require.Len(t, updates, 1)
+	first, _ := updates[0].String(wire.ODirTLVFirstName)
+	last, _ := updates[0].String(wire.ODirTLVLastName)
+	city, _ := updates[0].String(wire.ODirTLVCity)
+	// Without the second unescape these arrive as "Bob%20Smith" and
+	// "O%27Brien" and are stored verbatim.
+	assert.Equal(t, "Bob Smith", first)
+	assert.Equal(t, "O'Brien", last)
+	assert.Equal(t, "Reno", city)
 }
 
 func TestMemberDirHandler_Update_QueryValuesAreNotUnescapedTwice(t *testing.T) {
 	// Query values are encoded once and are final after the query decoder runs.
 	// Unescaping again would corrupt a name carrying a literal '%'.
-	current := wire.SNAC_0x02_0x0C_LocateGetDirReply{Status: wire.LocateGetDirReplyOK}
-
-	locSvc := newMockLocateService(t)
-	locSvc.EXPECT().DirInfo(mock.Anything, mock.Anything, mock.Anything).
-		Return(wire.SNACMessage{Body: current}, nil)
-	locSvc.EXPECT().SetDirInfo(mock.Anything, mock.Anything, mock.Anything,
-		mock.MatchedBy(func(b wire.SNAC_0x02_0x09_LocateSetDirInfo) bool {
-			first, _ := b.String(wire.ODirTLVFirstName)
-			last, _ := b.String(wire.ODirTLVLastName)
-			return first == "100%" && last == "Smith"
-		})).Return(wire.SNACMessage{}, nil)
-
-	h := &MemberDirHandler{LocateService: locSvc, Logger: slog.Default()}
-	session := &Session{AimSID: "sid", ScreenName: state.DisplayScreenName("mike")}
+	session, conn := newDirSession(t, "mike", dirServer{})
+	h := &MemberDirHandler{Logger: slog.Default()}
 
 	req := httptest.NewRequest("GET",
 		"/memberDir/update?aimsid=sid&set=firstName%3D100%25&set=lastName%3DSmith", nil)
@@ -352,6 +384,29 @@ func TestMemberDirHandler_Update_QueryValuesAreNotUnescapedTwice(t *testing.T) {
 	h.Update(rr, req, session)
 
 	assert.Equal(t, http.StatusOK, rr.Code)
+	updates := sentDirUpdates(conn)
+	require.Len(t, updates, 1)
+	first, _ := updates[0].String(wire.ODirTLVFirstName)
+	last, _ := updates[0].String(wire.ODirTLVLastName)
+	assert.Equal(t, "100%", first)
+	assert.Equal(t, "Smith", last)
+}
+
+func TestMemberDirHandler_Update_ReportsRejectedUpdate(t *testing.T) {
+	conn := newFakeConn().answering(func(req wire.SNACMessage) []wire.SNACMessage {
+		if _, ok := req.Body.(wire.SNAC_0x02_0x09_LocateSetDirInfo); ok {
+			return []wire.SNACMessage{snacErr(wire.Locate, wire.ErrorCodeNotSupportedByHost)}
+		}
+		return dirServer{}.respond(req)
+	})
+	session := newTestSessionAs(t, "mike", conn)
+	h := &MemberDirHandler{Logger: slog.Default()}
+
+	req := httptest.NewRequest("GET", "/memberDir/update?aimsid=sid&set=firstName%3DMike", nil)
+	rr := httptest.NewRecorder()
+	h.Update(rr, req, session)
+
+	assert.Equal(t, http.StatusInternalServerError, envelopeStatus(t, rr.Body.Bytes()))
 }
 
 func TestServer_MemberDirUpdateIsRoutedForGETAndPOST(t *testing.T) {
@@ -374,31 +429,12 @@ func TestServer_MemberDirUpdateIsRoutedForGETAndPOST(t *testing.T) {
 	}
 }
 
-// dirUser answers DirInfo as an existing user. The service appends directory TLVs
-// only for a user that exists, so their presence marks the name as found.
-func dirUser(t *testing.T, firstName, lastName string) *mockLocateService {
-	reply := wire.SNAC_0x02_0x0C_LocateGetDirReply{Status: wire.LocateGetDirReplyOK}
-	reply.Append(wire.NewTLVBE(wire.ODirTLVFirstName, firstName))
-	reply.Append(wire.NewTLVBE(wire.ODirTLVLastName, lastName))
-	ls := newMockLocateService(t)
-	ls.EXPECT().DirInfo(mock.Anything, mock.Anything, mock.Anything).
-		Return(wire.SNACMessage{Body: reply}, nil).Maybe()
-	return ls
-}
-
 func TestMemberDirHandler_Search_MatchesScreenName(t *testing.T) {
 	// An add-contact box that takes an email or UIN sends the value as keyword, but
 	// ODir searches interests, names and email — never the screen name.
-	dirSvc := newMockDirSearchService(t)
-	dirSvc.EXPECT().InfoQuery(mock.Anything, mock.Anything, mock.Anything).
-		Return(searchReply(wire.ODirSearchResponseOK), nil)
-
-	h := &MemberDirHandler{
-		DirSearchService: dirSvc,
-		LocateService:    dirUser(t, "Bob", "Smith"),
-		Logger:           slog.Default(),
-	}
-	session := &Session{AimSID: "sid", ScreenName: state.DisplayScreenName("me")}
+	bob := dirRecord("Bob", "Smith")
+	session, _ := newDirSession(t, "me", dirServer{everyone: &bob})
+	h := &MemberDirHandler{Logger: slog.Default()}
 
 	req := httptest.NewRequest("GET", "/memberDir/search?aimsid=sid&match=keyword%3D100888", nil)
 	rr := httptest.NewRecorder()
@@ -414,16 +450,9 @@ func TestMemberDirHandler_Search_MatchesScreenName(t *testing.T) {
 func TestMemberDirHandler_Search_ScreenNameMatchIsFoundForBlankProfile(t *testing.T) {
 	// A freshly created account has no directory info at all, and must still be
 	// findable by name.
-	dirSvc := newMockDirSearchService(t)
-	dirSvc.EXPECT().InfoQuery(mock.Anything, mock.Anything, mock.Anything).
-		Return(searchReply(wire.ODirSearchResponseOK), nil)
-
-	h := &MemberDirHandler{
-		DirSearchService: dirSvc,
-		LocateService:    dirUser(t, "", ""),
-		Logger:           slog.Default(),
-	}
-	session := &Session{AimSID: "sid", ScreenName: state.DisplayScreenName("me")}
+	blank := dirRecord("", "")
+	session, _ := newDirSession(t, "me", dirServer{everyone: &blank})
+	h := &MemberDirHandler{Logger: slog.Default()}
 
 	req := httptest.NewRequest("GET", "/memberDir/search?aimsid=sid&match=keyword%3D100888", nil)
 	rr := httptest.NewRecorder()
@@ -436,16 +465,8 @@ func TestMemberDirHandler_Search_ScreenNameMatchIsFoundForBlankProfile(t *testin
 
 func TestMemberDirHandler_Search_UnknownScreenNameYieldsNothing(t *testing.T) {
 	// The identity lookup must not invent a profile for a name nobody holds.
-	dirSvc := newMockDirSearchService(t)
-	dirSvc.EXPECT().InfoQuery(mock.Anything, mock.Anything, mock.Anything).
-		Return(searchReply(wire.ODirSearchResponseOK), nil)
-
-	h := &MemberDirHandler{
-		DirSearchService: dirSvc,
-		LocateService:    stubNoDirUser(t),
-		Logger:           slog.Default(),
-	}
-	session := &Session{AimSID: "sid", ScreenName: state.DisplayScreenName("me")}
+	session, _ := newDirSession(t, "me", dirServer{})
+	h := &MemberDirHandler{Logger: slog.Default()}
 
 	req := httptest.NewRequest("GET", "/memberDir/search?aimsid=sid&match=keyword%3Dnobody", nil)
 	rr := httptest.NewRecorder()
@@ -457,21 +478,17 @@ func TestMemberDirHandler_Search_UnknownScreenNameYieldsNothing(t *testing.T) {
 func TestMemberDirHandler_Search_ScreenNameMatchDoesNotDisplaceInterestResults(t *testing.T) {
 	// A keyword that also happens to name a user must return both the interest
 	// matches and the identity hit, with any overlap appearing once.
-	dirSvc := newMockDirSearchService(t)
-	dirSvc.EXPECT().InfoQuery(mock.Anything, mock.Anything, mock.MatchedBy(func(q wire.SNAC_0x0F_0x02_InfoQuery) bool {
-		v, ok := q.String(wire.ODirTLVInterest)
-		return ok && v == "music"
-	})).Return(searchReply(wire.ODirSearchResponseOK,
-		result("music", "Music", "Fan"), // same user the name lookup finds
-		result("OtherFan", "Other", "Fan"),
-	), nil)
-
-	h := &MemberDirHandler{
-		DirSearchService: dirSvc,
-		LocateService:    dirUser(t, "Music", "Fan"),
-		Logger:           slog.Default(),
-	}
-	session := &Session{AimSID: "sid", ScreenName: state.DisplayScreenName("me")}
+	music := dirRecord("Music", "Fan")
+	session, conn := newDirSession(t, "me", dirServer{
+		everyone: &music,
+		search: func(wire.SNAC_0x0F_0x02_InfoQuery) wire.SNACMessage {
+			return searchReply(wire.ODirSearchResponseOK,
+				result("music", "Music", "Fan"), // same user the name lookup finds
+				result("OtherFan", "Other", "Fan"),
+			)
+		},
+	})
+	h := &MemberDirHandler{Logger: slog.Default()}
 
 	req := httptest.NewRequest("GET", "/memberDir/search?aimsid=sid&match=keyword%3Dmusic", nil)
 	rr := httptest.NewRecorder()
@@ -481,20 +498,18 @@ func TestMemberDirHandler_Search_ScreenNameMatchDoesNotDisplaceInterestResults(t
 	require.Len(t, infoArray, 2)
 	assert.Equal(t, "music", infoArray[0].Profile.AimID)
 	assert.Equal(t, "otherfan", infoArray[1].Profile.AimID)
+
+	queries := sentSearches(conn)
+	require.Len(t, queries, 1)
+	interest, _ := queries[0].String(wire.ODirTLVInterest)
+	assert.Equal(t, "music", interest)
 }
 
 func TestMemberDirHandler_Search_ExcludesSelfByScreenName(t *testing.T) {
 	// Searching your own UIN must not offer you yourself as a contact.
-	dirSvc := newMockDirSearchService(t)
-	dirSvc.EXPECT().InfoQuery(mock.Anything, mock.Anything, mock.Anything).
-		Return(searchReply(wire.ODirSearchResponseOK), nil)
-
-	h := &MemberDirHandler{
-		DirSearchService: dirSvc,
-		LocateService:    dirUser(t, "Me", "Myself"),
-		Logger:           slog.Default(),
-	}
-	session := &Session{AimSID: "sid", ScreenName: state.DisplayScreenName("100777")}
+	me := dirRecord("Me", "Myself")
+	session, _ := newDirSession(t, "100777", dirServer{everyone: &me})
+	h := &MemberDirHandler{Logger: slog.Default()}
 
 	req := httptest.NewRequest("GET", "/memberDir/search?aimsid=sid&match=keyword%3D100777", nil)
 	rr := httptest.NewRecorder()
@@ -506,19 +521,12 @@ func TestMemberDirHandler_Search_ExcludesSelfByScreenName(t *testing.T) {
 func TestMemberDirHandler_Search_EmailKeywordUsesEmailSearch(t *testing.T) {
 	// An address can only be an identifier, and ODir searches email directly, so it
 	// must not be sent as an interest.
-	dirSvc := newMockDirSearchService(t)
-	dirSvc.EXPECT().InfoQuery(mock.Anything, mock.Anything, mock.MatchedBy(func(q wire.SNAC_0x0F_0x02_InfoQuery) bool {
-		v, ok := q.String(wire.ODirTLVEmailAddress)
-		_, isInterest := q.String(wire.ODirTLVInterest)
-		return ok && v == "bob@example.com" && !isInterest
-	})).Return(searchReply(wire.ODirSearchResponseOK, result("BobS", "Bob", "Smith")), nil)
-
-	h := &MemberDirHandler{
-		DirSearchService: dirSvc,
-		LocateService:    stubNoDirUser(t),
-		Logger:           slog.Default(),
-	}
-	session := &Session{AimSID: "sid", ScreenName: state.DisplayScreenName("me")}
+	session, conn := newDirSession(t, "me", dirServer{
+		search: func(wire.SNAC_0x0F_0x02_InfoQuery) wire.SNACMessage {
+			return searchReply(wire.ODirSearchResponseOK, result("BobS", "Bob", "Smith"))
+		},
+	})
+	h := &MemberDirHandler{Logger: slog.Default()}
 
 	req := httptest.NewRequest("GET", "/memberDir/search?aimsid=sid&match=keyword%3Dbob%40example.com", nil)
 	rr := httptest.NewRecorder()
@@ -527,6 +535,14 @@ func TestMemberDirHandler_Search_EmailKeywordUsesEmailSearch(t *testing.T) {
 	infoArray := decodeInfoArray(t, rr.Body.Bytes(), true)
 	require.Len(t, infoArray, 1)
 	assert.Equal(t, "bobs", infoArray[0].Profile.AimID)
+
+	queries := sentSearches(conn)
+	require.Len(t, queries, 1)
+	email, ok := queries[0].String(wire.ODirTLVEmailAddress)
+	_, isInterest := queries[0].String(wire.ODirTLVInterest)
+	assert.True(t, ok)
+	assert.Equal(t, "bob@example.com", email)
+	assert.False(t, isInterest)
 }
 
 // Mandarin escapes each match value before its request builder escapes the whole
@@ -595,19 +611,12 @@ func TestParseMatch(t *testing.T) {
 // second layer comes off, the keyword holds no literal '@', the email branch of
 // buildDirInfoQuery never fires, and the address is searched as an interest.
 func TestMemberDirHandler_Search_DoublyEscapedEmailUsesEmailSearch(t *testing.T) {
-	dirSvc := newMockDirSearchService(t)
-	dirSvc.EXPECT().InfoQuery(mock.Anything, mock.Anything, mock.MatchedBy(func(q wire.SNAC_0x0F_0x02_InfoQuery) bool {
-		v, ok := q.String(wire.ODirTLVEmailAddress)
-		_, isInterest := q.String(wire.ODirTLVInterest)
-		return ok && v == "bob@example.com" && !isInterest
-	})).Return(searchReply(wire.ODirSearchResponseOK, result("BobS", "Bob", "Smith")), nil)
-
-	h := &MemberDirHandler{
-		DirSearchService: dirSvc,
-		LocateService:    stubNoDirUser(t),
-		Logger:           slog.Default(),
-	}
-	session := &Session{AimSID: "sid", ScreenName: state.DisplayScreenName("me")}
+	session, conn := newDirSession(t, "me", dirServer{
+		search: func(wire.SNAC_0x0F_0x02_InfoQuery) wire.SNACMessage {
+			return searchReply(wire.ODirSearchResponseOK, result("BobS", "Bob", "Smith"))
+		},
+	})
+	h := &MemberDirHandler{Logger: slog.Default()}
 
 	// "keyword=bob%40example.com" with the whole parameter escaped once more.
 	req := httptest.NewRequest("GET", "/memberDir/search?aimsid=sid&match=keyword%3Dbob%2540example.com", nil)
@@ -617,60 +626,48 @@ func TestMemberDirHandler_Search_DoublyEscapedEmailUsesEmailSearch(t *testing.T)
 	infoArray := decodeInfoArray(t, rr.Body.Bytes(), true)
 	require.Len(t, infoArray, 1)
 	assert.Equal(t, "bobs", infoArray[0].Profile.AimID)
+
+	queries := sentSearches(conn)
+	require.Len(t, queries, 1)
+	email, ok := queries[0].String(wire.ODirTLVEmailAddress)
+	_, isInterest := queries[0].String(wire.ODirTLVInterest)
+	assert.True(t, ok)
+	assert.Equal(t, "bob@example.com", email)
+	assert.False(t, isInterest)
 }
 
 func TestMemberDirHandler_Search_ReportsDirectoryFailure(t *testing.T) {
-	dirSvc := newMockDirSearchService(t)
-	dirSvc.EXPECT().InfoQuery(mock.Anything, mock.Anything, mock.Anything).
-		Return(wire.SNACMessage{}, io.ErrUnexpectedEOF)
-
-	h := &MemberDirHandler{
-		DirSearchService: dirSvc,
-		// The screen name resolves, so a degraded search would have a profile to
-		// answer with. A failed directory query is still a failed request.
-		LocateService: dirUser(t, "Bob", "Smith"),
-		Logger:        slog.Default(),
-	}
-	session := &Session{AimSID: "sid", ScreenName: state.DisplayScreenName("me")}
+	// The screen name resolves, so a degraded search would have a profile to
+	// answer with. A failed directory query is still a failed request.
+	bob := dirRecord("Bob", "Smith")
+	session, _ := newDirSession(t, "me", dirServer{
+		everyone: &bob,
+		search: func(wire.SNAC_0x0F_0x02_InfoQuery) wire.SNACMessage {
+			return snacErr(wire.ODir, wire.ErrorCodeNotSupportedByHost)
+		},
+	})
+	h := &MemberDirHandler{Logger: slog.Default()}
 
 	req := httptest.NewRequest("GET", "/memberDir/search?aimsid=sid&match=keyword%3Dbobs", nil)
 	rr := httptest.NewRecorder()
 	h.Search(rr, req, session)
 
-	var envelope struct {
-		Response struct {
-			StatusCode int `json:"statusCode"`
-		} `json:"response"`
-	}
-	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &envelope))
-	assert.Equal(t, http.StatusInternalServerError, envelope.Response.StatusCode)
+	assert.Equal(t, http.StatusInternalServerError, envelopeStatus(t, rr.Body.Bytes()))
 	assert.NotContains(t, rr.Body.String(), "infoArray")
 }
 
 func TestMemberDirHandler_Search_ReportsScreenNameLookupFailure(t *testing.T) {
-	locSvc := newMockLocateService(t)
-	locSvc.EXPECT().DirInfo(mock.Anything, mock.Anything, mock.Anything).
-		Return(wire.SNACMessage{}, io.ErrUnexpectedEOF)
-
-	h := &MemberDirHandler{
-		// No expectation: the lookup runs first, so the directory query is never
-		// reached and a search that appears to succeed can never be answered.
-		DirSearchService: newMockDirSearchService(t),
-		LocateService:    locSvc,
-		Logger:           slog.Default(),
-	}
-	session := &Session{AimSID: "sid", ScreenName: state.DisplayScreenName("me")}
+	conn := newFakeConn()
+	conn.sendErr = io.ErrUnexpectedEOF
+	session := newTestSessionAs(t, "me", conn)
+	h := &MemberDirHandler{Logger: slog.Default()}
 
 	req := httptest.NewRequest("GET", "/memberDir/search?aimsid=sid&match=keyword%3Dbobs", nil)
 	rr := httptest.NewRecorder()
 	h.Search(rr, req, session)
 
-	var envelope struct {
-		Response struct {
-			StatusCode int `json:"statusCode"`
-		} `json:"response"`
-	}
-	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &envelope))
-	assert.Equal(t, http.StatusInternalServerError, envelope.Response.StatusCode)
+	// The lookup runs first, so the directory query is never reached and a
+	// search that appears to succeed can never be answered.
+	assert.Equal(t, http.StatusInternalServerError, envelopeStatus(t, rr.Body.Bytes()))
 	assert.NotContains(t, rr.Body.String(), "infoArray")
 }

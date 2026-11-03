@@ -1,490 +1,331 @@
 package webapi
 
 import (
-	"context"
 	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 
 	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
-func TestBuddyListHandler_AddBuddy(t *testing.T) {
-	tests := []struct {
-		name               string
-		queryParams        map[string][]string
-		setupMocks         func(*mockSessionResolver, *mockFeedbagService, *mockFeedbagService, string) *Session
-		expectedStatusCode int
-		expectedResponse   string
-	}{
-		{
-			name: "Success_AddBuddyToExistingGroup",
-			queryParams: map[string][]string{
-				"aimsid": {"test-session"},
-				"buddy":  {"newbuddy"},
-				"group":  {"Friends"},
-			},
-			setupMocks: func(sm *mockSessionResolver, fs *mockFeedbagService, blmFs *mockFeedbagService, aimsid string) *Session {
-				session := &Session{
-					AimSID:        aimsid,
-					ScreenName:    state.DisplayScreenName("testuser"),
-					OSCARSession:  state.NewSession().AddInstance(),
-					EventQueue:    NewEventQueue(100),
-					LastAccessed:  time.Now(),
-					FeedbagLoader: emptyFeedbagLoader,
-				}
-
-				items := []wire.FeedbagItem{
-					{GroupID: 1, ItemID: 0, ClassID: wire.FeedbagClassIdGroup, Name: "Friends"},
-				}
-				fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-					Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: items}}, nil).Once()
-				// addBuddyToFeedbag calls UpsertItem twice: once for group order update, once for buddy insert
-				fs.EXPECT().UpsertItem(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-					Return((*wire.SNACMessage)(nil), nil)
-				return session
-			},
-			expectedStatusCode: http.StatusOK,
-			expectedResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{}}}`,
-		},
-		{
-			name: "Error_BuddyAlreadyExists",
-			queryParams: map[string][]string{
-				"aimsid": {"test-session"},
-				"buddy":  {"existingbuddy"},
-				"group":  {"Friends"},
-			},
-			setupMocks: func(sm *mockSessionResolver, fs *mockFeedbagService, blmFs *mockFeedbagService, aimsid string) *Session {
-				session := &Session{
-					AimSID:        aimsid,
-					ScreenName:    state.DisplayScreenName("testuser"),
-					OSCARSession:  state.NewSession().AddInstance(),
-					EventQueue:    NewEventQueue(100),
-					LastAccessed:  time.Now(),
-					FeedbagLoader: emptyFeedbagLoader,
-				}
-
-				// Friends group with existingbuddy already present
-				items := []wire.FeedbagItem{
-					{GroupID: 1, ItemID: 0, ClassID: wire.FeedbagClassIdGroup, Name: "Friends"},
-					{GroupID: 1, ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, Name: "existingbuddy"},
-				}
-				fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-					Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: items}}, nil)
-				return session
-			},
-			expectedStatusCode: http.StatusOK,
-			expectedResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{"resultCode":"alreadyExists"}}}`,
-		},
-		{
-			name: "Error_MissingBuddyParameter",
-			queryParams: map[string][]string{
-				"aimsid": {"test-session"},
-				"group":  {"Friends"},
-			},
-			setupMocks: func(sm *mockSessionResolver, fs *mockFeedbagService, blmFs *mockFeedbagService, aimsid string) *Session {
-				return &Session{
-					AimSID:        aimsid,
-					ScreenName:    state.DisplayScreenName("testuser"),
-					EventQueue:    NewEventQueue(100),
-					LastAccessed:  time.Now(),
-					FeedbagLoader: emptyFeedbagLoader,
-				}
-			},
-			expectedStatusCode: http.StatusBadRequest,
-			expectedResponse:   `{"response":{"statusCode":400,"statusText":"missing buddy parameter","data":{}}}`,
-		},
+// newBuddyListHandler returns a BuddyListHandler for tests.
+func newBuddyListHandler(t *testing.T) *BuddyListHandler {
+	return &BuddyListHandler{
+		BuddyListManager: NewBuddyListManager(newTestIconSource(t), slog.Default()),
+		Logger:           slog.Default(),
 	}
+}
 
+// serveBuddyList serves a buddy list method with params for session.
+func serveBuddyList(method func(http.ResponseWriter, *http.Request, *Session), params url.Values, session *Session) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodGet, "/buddylist/method?"+params.Encode(), nil)
+	rr := httptest.NewRecorder()
+	method(rr, req, session)
+	return rr
+}
+
+// rejectChanges answers every feedbag change with an error SNAC.
+func rejectChanges(wire.SNACMessage) []wire.SNACMessage {
+	return []wire.SNACMessage{snacErr(wire.Feedbag, wire.ErrorCodeNotSupportedByHost)}
+}
+
+// buddyListCase is a buddy list method call against a feedbag.
+type buddyListCase struct {
+	name   string
+	params url.Values
+	// feedbag is the feedbag the OSCAR server holds.
+	feedbag []wire.FeedbagItem
+	// status answers feedbag changes in place of accepting them.
+	status func(wire.SNACMessage) []wire.SNACMessage
+	// limited gates the feedbag rate class.
+	limited          bool
+	wantStatusCode   int
+	wantResponse     string
+	wantStored       func(t *testing.T, stored []wire.FeedbagItem)
+	wantNoneSent     bool
+	wantMirrorStored bool
+}
+
+// runBuddyListCases runs each case against method.
+func runBuddyListCases(t *testing.T, method func(h *BuddyListHandler) func(http.ResponseWriter, *http.Request, *Session), tests []buddyListCase) {
+	t.Helper()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sessionManager := newMockSessionResolver(t)
-			feedbagService := newMockFeedbagService(t)
-			blmFeedbagService := newMockFeedbagService(t)
-			blm := NewBuddyListManager(blmFeedbagService, newMockLocateService(t), newTestIconSource(t), slog.Default())
-			logger := slog.Default()
-
-			handler := &BuddyListHandler{
-				FeedbagService:   feedbagService,
-				BuddyListManager: blm,
-				Logger:           logger,
+			server := newFeedbagServer(tt.feedbag...)
+			server.status = tt.status
+			session, conn := newFeedbagSession(t, server)
+			if tt.limited {
+				limitRateClass(session, wire.Feedbag, wire.FeedbagInsertItem)
+				limitRateClass(session, wire.Feedbag, wire.FeedbagUpdateItem)
+				limitRateClass(session, wire.Feedbag, wire.FeedbagDeleteItem)
 			}
 
-			aimsid := ""
-			if aimsids, ok := tt.queryParams["aimsid"]; ok && len(aimsids) > 0 {
-				aimsid = aimsids[0]
+			rr := serveBuddyList(method(newBuddyListHandler(t)), tt.params, session)
+
+			assert.Equal(t, tt.wantStatusCode, rr.Code)
+			assert.JSONEq(t, tt.wantResponse, rr.Body.String())
+			if tt.wantNoneSent {
+				assert.Empty(t, sentFeedbagChanges(conn))
 			}
-			session := tt.setupMocks(sessionManager, feedbagService, blmFeedbagService, aimsid)
-
-			reqURL := "/buddylist/addBuddy"
-			if len(tt.queryParams) > 0 {
-				values := url.Values{}
-				for key, vals := range tt.queryParams {
-					for _, val := range vals {
-						values.Add(key, val)
-					}
-				}
-				reqURL += "?" + values.Encode()
+			if tt.wantStored != nil {
+				tt.wantStored(t, server.stored())
 			}
-
-			req, err := http.NewRequest("GET", reqURL, nil)
-			assert.NoError(t, err)
-
-			rr := httptest.NewRecorder()
-			handler.AddBuddy(rr, req, session)
-
-			assert.Equal(t, tt.expectedStatusCode, rr.Code)
-			assert.JSONEq(t, tt.expectedResponse, rr.Body.String())
+			if tt.wantMirrorStored {
+				assert.Equal(t, server.stored(), session.Feedbag())
+			}
 		})
 	}
+}
+
+const (
+	okResponse            = `{"response":{"statusCode":200,"statusText":"Ok","data":{}}}`
+	alreadyExistsResponse = `{"response":{"statusCode":200,"statusText":"Ok","data":{"resultCode":"alreadyExists"}}}`
+	notFoundResponse      = `{"response":{"statusCode":200,"statusText":"Ok","data":{"resultCode":"notFound"}}}`
+	errorResponse         = `{"response":{"statusCode":200,"statusText":"Ok","data":{"resultCode":"error"}}}`
+	rateLimitedResponse   = `{"response":{"statusCode":430,"statusText":"rate limit exceeded","data":{}}}`
+)
+
+// listsBuddy reports whether items list buddy in the group named group.
+func listsBuddy(items []wire.FeedbagItem, group, buddy string) bool {
+	fl := state.NewFeedbagList(items, nil)
+	for _, g := range fl.Groups() {
+		if g.Name != group {
+			continue
+		}
+		for _, b := range fl.Buddies(g) {
+			if b.Name == buddy {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// groupNames returns the names of the group rows in items, other than the
+// root group's.
+func groupNames(items []wire.FeedbagItem) []string {
+	var names []string
+	for _, item := range items {
+		if item.ClassID == wire.FeedbagClassIdGroup && item.GroupID != 0 {
+			names = append(names, item.Name)
+		}
+	}
+	return names
+}
+
+func TestBuddyListHandler_AddBuddy(t *testing.T) {
+	friends := []wire.FeedbagItem{
+		{GroupID: 1, ItemID: 0, ClassID: wire.FeedbagClassIdGroup, Name: "Friends"},
+	}
+
+	runBuddyListCases(t, func(h *BuddyListHandler) func(http.ResponseWriter, *http.Request, *Session) {
+		return h.AddBuddy
+	}, []buddyListCase{
+		{
+			name:           "Success_AddBuddyToExistingGroup",
+			params:         url.Values{"buddy": {"newbuddy"}, "group": {"Friends"}},
+			feedbag:        friends,
+			wantStatusCode: http.StatusOK,
+			wantResponse:   okResponse,
+			wantStored: func(t *testing.T, stored []wire.FeedbagItem) {
+				assert.True(t, listsBuddy(stored, "Friends", "newbuddy"))
+			},
+			wantMirrorStored: true,
+		},
+		{
+			name:           "Success_AddBuddyToNewGroup",
+			params:         url.Values{"buddy": {"newbuddy"}, "group": {"Work"}},
+			feedbag:        friends,
+			wantStatusCode: http.StatusOK,
+			wantResponse:   okResponse,
+			wantStored: func(t *testing.T, stored []wire.FeedbagItem) {
+				assert.True(t, listsBuddy(stored, "Work", "newbuddy"))
+			},
+			wantMirrorStored: true,
+		},
+		{
+			name:   "Error_BuddyAlreadyExists",
+			params: url.Values{"buddy": {"existingbuddy"}, "group": {"Friends"}},
+			feedbag: []wire.FeedbagItem{
+				{GroupID: 1, ItemID: 0, ClassID: wire.FeedbagClassIdGroup, Name: "Friends"},
+				{GroupID: 1, ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, Name: "existingbuddy"},
+			},
+			wantStatusCode: http.StatusOK,
+			wantResponse:   alreadyExistsResponse,
+			wantNoneSent:   true,
+		},
+		{
+			name:           "Error_MissingBuddyParameter",
+			params:         url.Values{"group": {"Friends"}},
+			wantStatusCode: http.StatusBadRequest,
+			wantResponse:   `{"response":{"statusCode":400,"statusText":"missing buddy parameter","data":{}}}`,
+			wantNoneSent:   true,
+		},
+		{
+			name:             "Error_ChangeRejected",
+			params:           url.Values{"buddy": {"newbuddy"}, "group": {"Friends"}},
+			feedbag:          friends,
+			status:           rejectChanges,
+			wantStatusCode:   http.StatusOK,
+			wantResponse:     errorResponse,
+			wantMirrorStored: true,
+		},
+		{
+			name:           "Error_RateLimited",
+			params:         url.Values{"buddy": {"newbuddy"}, "group": {"Friends"}},
+			feedbag:        friends,
+			limited:        true,
+			wantStatusCode: http.StatusOK,
+			wantResponse:   rateLimitedResponse,
+			wantNoneSent:   true,
+		},
+	})
 }
 
 func TestBuddyListHandler_AddGroup(t *testing.T) {
-	type setupFunc func(*mockSessionResolver, *mockFeedbagService, *mockFeedbagService, string) *Session
-
-	newSession := func(aimsid string) *Session {
-		return &Session{
-			AimSID:        aimsid,
-			ScreenName:    state.DisplayScreenName("testuser"),
-			OSCARSession:  state.NewSession().AddInstance(),
-			EventQueue:    NewEventQueue(100),
-			LastAccessed:  time.Now(),
-			FeedbagLoader: emptyFeedbagLoader,
-		}
-	}
-
-	tests := []struct {
-		name               string
-		queryParams        map[string][]string
-		setup              setupFunc
-		expectedStatusCode int
-		expectedResponse   string
-	}{
+	runBuddyListCases(t, func(h *BuddyListHandler) func(http.ResponseWriter, *http.Request, *Session) {
+		return h.AddGroup
+	}, []buddyListCase{
 		{
-			name:        "Error_MissingGroupParam",
-			queryParams: map[string][]string{"aimsid": {"sess"}},
-			setup: func(sm *mockSessionResolver, fs *mockFeedbagService, blmFs *mockFeedbagService, aimsid string) *Session {
-				return newSession(aimsid)
-			},
-			expectedStatusCode: http.StatusBadRequest,
-			expectedResponse:   `{"response":{"statusCode":400,"statusText":"missing group parameter","data":{}}}`,
+			name:           "Error_MissingGroupParam",
+			wantStatusCode: http.StatusBadRequest,
+			wantResponse:   `{"response":{"statusCode":400,"statusText":"missing group parameter","data":{}}}`,
+			wantNoneSent:   true,
 		},
 		{
-			name:        "Success_GroupAdded",
-			queryParams: map[string][]string{"aimsid": {"sess"}, "group": {"NewGroup"}},
-			setup: func(sm *mockSessionResolver, fs *mockFeedbagService, blmFs *mockFeedbagService, aimsid string) *Session {
-				sess := newSession(aimsid)
-				// Empty feedbag — AddGroup will create root + NewGroup in pending
-				fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-					Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: nil}}, nil).Once()
-				fs.EXPECT().UpsertItem(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-					Return((*wire.SNACMessage)(nil), nil).Once()
-				return sess
+			// Empty feedbag — AddGroup creates the root and NewGroup.
+			name:           "Success_GroupAdded",
+			params:         url.Values{"group": {"NewGroup"}},
+			wantStatusCode: http.StatusOK,
+			wantResponse:   okResponse,
+			wantStored: func(t *testing.T, stored []wire.FeedbagItem) {
+				assert.Equal(t, []string{"NewGroup"}, groupNames(stored))
 			},
-			expectedStatusCode: http.StatusOK,
-			expectedResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{}}}`,
+			wantMirrorStored: true,
 		},
 		{
-			name:        "Success_GroupAlreadyExists",
-			queryParams: map[string][]string{"aimsid": {"sess"}, "group": {"Friends"}},
-			setup: func(sm *mockSessionResolver, fs *mockFeedbagService, blmFs *mockFeedbagService, aimsid string) *Session {
-				sess := newSession(aimsid)
-				items := []wire.FeedbagItem{
-					{GroupID: 1, ItemID: 0, ClassID: wire.FeedbagClassIdGroup, Name: "Friends"},
-				}
-				fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-					Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: items}}, nil)
-				return sess
+			name:   "Success_GroupAlreadyExists",
+			params: url.Values{"group": {"Friends"}},
+			feedbag: []wire.FeedbagItem{
+				{GroupID: 1, ItemID: 0, ClassID: wire.FeedbagClassIdGroup, Name: "Friends"},
 			},
-			expectedStatusCode: http.StatusOK,
-			expectedResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{"resultCode":"alreadyExists"}}}`,
+			wantStatusCode: http.StatusOK,
+			wantResponse:   alreadyExistsResponse,
+			wantNoneSent:   true,
 		},
 		{
-			name:        "Error_FeedbagQueryFails",
-			queryParams: map[string][]string{"aimsid": {"sess"}, "group": {"NewGroup"}},
-			setup: func(sm *mockSessionResolver, fs *mockFeedbagService, blmFs *mockFeedbagService, aimsid string) *Session {
-				sess := newSession(aimsid)
-				fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-					Return(wire.SNACMessage{}, errors.New("feedbag error"))
-				return sess
-			},
-			expectedStatusCode: http.StatusOK,
-			expectedResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{"resultCode":"error"}}}`,
+			name:             "Error_ChangeRejected",
+			params:           url.Values{"group": {"NewGroup"}},
+			status:           rejectChanges,
+			wantStatusCode:   http.StatusOK,
+			wantResponse:     errorResponse,
+			wantMirrorStored: true,
 		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			sm := newMockSessionResolver(t)
-			fs := newMockFeedbagService(t)
-			blmFs := newMockFeedbagService(t)
-			blm := NewBuddyListManager(blmFs, newMockLocateService(t), newTestIconSource(t), slog.Default())
-
-			aimsid := ""
-			if v := tt.queryParams["aimsid"]; len(v) > 0 {
-				aimsid = v[0]
-			}
-			session := tt.setup(sm, fs, blmFs, aimsid)
-
-			handler := &BuddyListHandler{
-				FeedbagService:   fs,
-				BuddyListManager: blm,
-				Logger:           slog.Default(),
-			}
-
-			values := url.Values{}
-			for k, vs := range tt.queryParams {
-				for _, v := range vs {
-					values.Add(k, v)
-				}
-			}
-			req, _ := http.NewRequest("GET", "/buddylist/addGroup?"+values.Encode(), nil)
-			rr := httptest.NewRecorder()
-			handler.AddGroup(rr, req, session)
-
-			assert.Equal(t, tt.expectedStatusCode, rr.Code)
-			assert.JSONEq(t, tt.expectedResponse, rr.Body.String())
-		})
-	}
+		{
+			name:           "Error_RateLimited",
+			params:         url.Values{"group": {"NewGroup"}},
+			limited:        true,
+			wantStatusCode: http.StatusOK,
+			wantResponse:   rateLimitedResponse,
+			wantNoneSent:   true,
+		},
+	})
 }
 
 func TestBuddyListHandler_RemoveBuddy(t *testing.T) {
-	type setupFunc func(*mockSessionResolver, *BuddyListManager, *mockFeedbagService, string) *Session
-
-	newBuddyListManager := func(t *testing.T, fs *mockFeedbagService) *BuddyListManager {
-		return NewBuddyListManager(fs, newMockLocateService(t), newTestIconSource(t), slog.Default())
-	}
-
-	tests := []struct {
-		name               string
-		queryParams        map[string][]string
-		setup              setupFunc
-		expectedStatusCode int
-		expectedResponse   string
-	}{
+	runBuddyListCases(t, func(h *BuddyListHandler) func(http.ResponseWriter, *http.Request, *Session) {
+		return h.RemoveBuddy
+	}, []buddyListCase{
 		{
-			name:        "Error_MissingBuddyParam",
-			queryParams: map[string][]string{"aimsid": {"sess"}},
-			setup: func(sm *mockSessionResolver, blm *BuddyListManager, fs *mockFeedbagService, aimsid string) *Session {
-				return &Session{AimSID: aimsid, ScreenName: state.DisplayScreenName("testuser"), LastAccessed: time.Now()}
-			},
-			expectedStatusCode: http.StatusBadRequest,
-			expectedResponse:   `{"response":{"statusCode":400,"statusText":"missing buddy parameter","data":{}}}`,
+			name:           "Error_MissingBuddyParam",
+			wantStatusCode: http.StatusBadRequest,
+			wantResponse:   `{"response":{"statusCode":400,"statusText":"missing buddy parameter","data":{}}}`,
+			wantNoneSent:   true,
 		},
 		{
-			name:        "Success_BuddyRemoved",
-			queryParams: map[string][]string{"aimsid": {"sess"}, "buddy": {"someBuddy"}, "group": {"Friends"}},
-			setup: func(sm *mockSessionResolver, blm *BuddyListManager, fs *mockFeedbagService, aimsid string) *Session {
-				sess := &Session{
-					AimSID:        aimsid,
-					ScreenName:    state.DisplayScreenName("testuser"),
-					OSCARSession:  state.NewSession().AddInstance(),
-					EventQueue:    NewEventQueue(100),
-					LastAccessed:  time.Now(),
-					FeedbagLoader: emptyFeedbagLoader,
-				}
-				items := []wire.FeedbagItem{
-					{GroupID: 1, ItemID: 0, ClassID: wire.FeedbagClassIdGroup, Name: "Friends"},
-					{GroupID: 1, ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, Name: "someBuddy"},
-				}
-				fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-					Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: items}}, nil).Once()
-				fs.EXPECT().DeleteItem(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-					Return((*wire.SNACMessage)(nil), nil).Once()
-				fs.EXPECT().UpsertItem(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-					Return((*wire.SNACMessage)(nil), nil).Once()
-				return sess
+			name:   "Success_BuddyRemoved",
+			params: url.Values{"buddy": {"someBuddy"}, "group": {"Friends"}},
+			feedbag: []wire.FeedbagItem{
+				{GroupID: 1, ItemID: 0, ClassID: wire.FeedbagClassIdGroup, Name: "Friends"},
+				{GroupID: 1, ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, Name: "someBuddy"},
 			},
-			expectedStatusCode: http.StatusOK,
-			expectedResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{}}}`,
+			wantStatusCode: http.StatusOK,
+			wantResponse:   okResponse,
+			wantStored: func(t *testing.T, stored []wire.FeedbagItem) {
+				assert.False(t, listsBuddy(stored, "Friends", "someBuddy"))
+			},
+			wantMirrorStored: true,
 		},
 		{
-			name:        "Success_BuddyNotFound",
-			queryParams: map[string][]string{"aimsid": {"sess"}, "buddy": {"ghost"}, "group": {"Friends"}},
-			setup: func(sm *mockSessionResolver, blm *BuddyListManager, fs *mockFeedbagService, aimsid string) *Session {
-				sess := &Session{
-					AimSID:       aimsid,
-					ScreenName:   state.DisplayScreenName("testuser"),
-					OSCARSession: state.NewSession().AddInstance(),
-					LastAccessed: time.Now(),
-				}
-				// Group exists but "ghost" is not in it
-				items := []wire.FeedbagItem{
-					{GroupID: 1, ItemID: 0, ClassID: wire.FeedbagClassIdGroup, Name: "Friends"},
-				}
-				fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-					Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: items}}, nil)
-				return sess
+			name:   "Success_BuddyNotFound",
+			params: url.Values{"buddy": {"ghost"}, "group": {"Friends"}},
+			// Group exists but "ghost" is not in it
+			feedbag: []wire.FeedbagItem{
+				{GroupID: 1, ItemID: 0, ClassID: wire.FeedbagClassIdGroup, Name: "Friends"},
 			},
-			expectedStatusCode: http.StatusOK,
-			expectedResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{"resultCode":"notFound"}}}`,
+			wantStatusCode: http.StatusOK,
+			wantResponse:   notFoundResponse,
+			wantNoneSent:   true,
 		},
 		{
-			name:        "Success_GroupNotFound",
-			queryParams: map[string][]string{"aimsid": {"sess"}, "buddy": {"someBuddy"}, "group": {"NoSuchGroup"}},
-			setup: func(sm *mockSessionResolver, blm *BuddyListManager, fs *mockFeedbagService, aimsid string) *Session {
-				sess := &Session{
-					AimSID:       aimsid,
-					ScreenName:   state.DisplayScreenName("testuser"),
-					OSCARSession: state.NewSession().AddInstance(),
-					LastAccessed: time.Now(),
-				}
-				fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-					Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: nil}}, nil)
-				return sess
-			},
-			expectedStatusCode: http.StatusOK,
-			expectedResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{"resultCode":"notFound"}}}`,
+			name:           "Success_GroupNotFound",
+			params:         url.Values{"buddy": {"someBuddy"}, "group": {"NoSuchGroup"}},
+			wantStatusCode: http.StatusOK,
+			wantResponse:   notFoundResponse,
+			wantNoneSent:   true,
 		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			sm := newMockSessionResolver(t)
-			fs := newMockFeedbagService(t)
-			blm := newBuddyListManager(t, fs)
-
-			aimsid := ""
-			if v := tt.queryParams["aimsid"]; len(v) > 0 {
-				aimsid = v[0]
-			}
-			session := tt.setup(sm, blm, fs, aimsid)
-
-			handler := &BuddyListHandler{
-				BuddyListManager: blm,
-				Logger:           slog.Default(),
-			}
-
-			values := url.Values{}
-			for k, vs := range tt.queryParams {
-				for _, v := range vs {
-					values.Add(k, v)
-				}
-			}
-			req, _ := http.NewRequest("GET", "/buddylist/removeBuddy?"+values.Encode(), nil)
-			rr := httptest.NewRecorder()
-			handler.RemoveBuddy(rr, req, session)
-
-			assert.Equal(t, tt.expectedStatusCode, rr.Code)
-			assert.JSONEq(t, tt.expectedResponse, rr.Body.String())
-		})
-	}
+	})
 }
 
 func TestBuddyListHandler_RemoveGroup(t *testing.T) {
-	type setupFunc func(*mockSessionResolver, *BuddyListManager, *mockFeedbagService, string) *Session
-
-	newBuddyListManager := func(t *testing.T, fs *mockFeedbagService) *BuddyListManager {
-		return NewBuddyListManager(fs, newMockLocateService(t), newTestIconSource(t), slog.Default())
-	}
-
-	tests := []struct {
-		name               string
-		queryParams        map[string][]string
-		setup              setupFunc
-		expectedStatusCode int
-		expectedResponse   string
-	}{
+	runBuddyListCases(t, func(h *BuddyListHandler) func(http.ResponseWriter, *http.Request, *Session) {
+		return h.RemoveGroup
+	}, []buddyListCase{
 		{
-			name:        "Error_MissingGroupParam",
-			queryParams: map[string][]string{"aimsid": {"sess"}},
-			setup: func(sm *mockSessionResolver, blm *BuddyListManager, fs *mockFeedbagService, aimsid string) *Session {
-				return &Session{AimSID: aimsid, ScreenName: state.DisplayScreenName("testuser"), LastAccessed: time.Now()}
-			},
-			expectedStatusCode: http.StatusBadRequest,
-			expectedResponse:   `{"response":{"statusCode":400,"statusText":"missing group parameter","data":{}}}`,
+			name:           "Error_MissingGroupParam",
+			wantStatusCode: http.StatusBadRequest,
+			wantResponse:   `{"response":{"statusCode":400,"statusText":"missing group parameter","data":{}}}`,
+			wantNoneSent:   true,
 		},
 		{
-			name:        "Success_GroupRemoved",
-			queryParams: map[string][]string{"aimsid": {"sess"}, "group": {"Friends"}},
-			setup: func(sm *mockSessionResolver, blm *BuddyListManager, fs *mockFeedbagService, aimsid string) *Session {
-				sess := &Session{
-					AimSID:        aimsid,
-					ScreenName:    state.DisplayScreenName("testuser"),
-					OSCARSession:  state.NewSession().AddInstance(),
-					EventQueue:    NewEventQueue(100),
-					LastAccessed:  time.Now(),
-					FeedbagLoader: emptyFeedbagLoader,
-				}
-				// Root order record + Friends group; DeleteGroup will delete Friends and update root.
-				items := []wire.FeedbagItem{
-					{
-						GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup, Name: "",
-						TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{
-							wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1}),
-						}},
-					},
-					{GroupID: 1, ItemID: 0, ClassID: wire.FeedbagClassIdGroup, Name: "Friends"},
-				}
-				fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-					Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: items}}, nil).Once()
-				fs.EXPECT().DeleteItem(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-					Return((*wire.SNACMessage)(nil), nil).Once()
-				fs.EXPECT().UpsertItem(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-					Return((*wire.SNACMessage)(nil), nil).Once()
-				return sess
+			// Root order record + Friends group; DeleteGroup deletes Friends and
+			// updates the root.
+			name:   "Success_GroupRemoved",
+			params: url.Values{"group": {"Friends"}},
+			feedbag: []wire.FeedbagItem{
+				{
+					GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup, Name: "",
+					TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1}),
+					}},
+				},
+				{GroupID: 1, ItemID: 0, ClassID: wire.FeedbagClassIdGroup, Name: "Friends"},
 			},
-			expectedStatusCode: http.StatusOK,
-			expectedResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{}}}`,
+			wantStatusCode: http.StatusOK,
+			wantResponse:   okResponse,
+			wantStored: func(t *testing.T, stored []wire.FeedbagItem) {
+				assert.Empty(t, groupNames(stored))
+			},
+			wantMirrorStored: true,
 		},
 		{
-			name:        "Success_GroupNotFound",
-			queryParams: map[string][]string{"aimsid": {"sess"}, "group": {"NoSuchGroup"}},
-			setup: func(sm *mockSessionResolver, blm *BuddyListManager, fs *mockFeedbagService, aimsid string) *Session {
-				sess := &Session{
-					AimSID:       aimsid,
-					ScreenName:   state.DisplayScreenName("testuser"),
-					OSCARSession: state.NewSession().AddInstance(),
-					LastAccessed: time.Now(),
-				}
-				fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-					Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: nil}}, nil)
-				return sess
-			},
-			expectedStatusCode: http.StatusOK,
-			expectedResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{"resultCode":"notFound"}}}`,
+			name:           "Success_GroupNotFound",
+			params:         url.Values{"group": {"NoSuchGroup"}},
+			wantStatusCode: http.StatusOK,
+			wantResponse:   notFoundResponse,
+			wantNoneSent:   true,
 		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			sm := newMockSessionResolver(t)
-			fs := newMockFeedbagService(t)
-			blm := newBuddyListManager(t, fs)
-
-			aimsid := ""
-			if v := tt.queryParams["aimsid"]; len(v) > 0 {
-				aimsid = v[0]
-			}
-			session := tt.setup(sm, blm, fs, aimsid)
-
-			handler := &BuddyListHandler{
-				BuddyListManager: blm,
-				Logger:           slog.Default(),
-			}
-
-			values := url.Values{}
-			for k, vs := range tt.queryParams {
-				for _, v := range vs {
-					values.Add(k, v)
-				}
-			}
-			req, _ := http.NewRequest("GET", "/buddylist/removeGroup?"+values.Encode(), nil)
-			rr := httptest.NewRecorder()
-			handler.RemoveGroup(rr, req, session)
-
-			assert.Equal(t, tt.expectedStatusCode, rr.Code)
-			assert.JSONEq(t, tt.expectedResponse, rr.Body.String())
-		})
-	}
+	})
 }
 
 func TestRequireSession(t *testing.T) {
@@ -541,7 +382,6 @@ func TestRequireSession(t *testing.T) {
 				sess := &Session{
 					AimSID:       aimsid,
 					ScreenName:   state.DisplayScreenName("testuser"),
-					OSCARSession: state.NewSession().AddInstance(),
 					LastAccessed: time.Now(),
 				}
 				sm.EXPECT().GetSession(mock.Anything, aimsid).Return(sess, nil)
@@ -588,342 +428,198 @@ func TestRequireSession(t *testing.T) {
 }
 
 func TestBuddyListHandler_RenameGroup(t *testing.T) {
-	newBLM := func(t *testing.T, fs *mockFeedbagService) *BuddyListManager {
-		return NewBuddyListManager(fs, newMockLocateService(t), newTestIconSource(t), slog.Default())
-	}
-	sessWithOSCAR := func(aimsid string) *Session {
-		return &Session{
-			AimSID:        aimsid,
-			ScreenName:    state.DisplayScreenName("testuser"),
-			OSCARSession:  state.NewSession().AddInstance(),
-			EventQueue:    NewEventQueue(100),
-			LastAccessed:  time.Now(),
-			FeedbagLoader: emptyFeedbagLoader,
-		}
-	}
-
-	tests := []struct {
-		name             string
-		queryParams      map[string][]string
-		setup            func(*mockFeedbagService, string) *Session
-		expectStatusCode int
-		expectResponse   string
-	}{
+	runBuddyListCases(t, func(h *BuddyListHandler) func(http.ResponseWriter, *http.Request, *Session) {
+		return h.RenameGroup
+	}, []buddyListCase{
 		{
-			name:        "Error_MissingParam",
-			queryParams: map[string][]string{"aimsid": {"sess"}, "oldGroup": {"Friends"}},
-			setup: func(fs *mockFeedbagService, aimsid string) *Session {
-				return &Session{AimSID: aimsid, LastAccessed: time.Now()}
-			},
-			expectStatusCode: http.StatusBadRequest,
-			expectResponse:   `{"response":{"statusCode":400,"statusText":"missing oldGroup or newGroup parameter","data":{}}}`,
+			name:           "Error_MissingParam",
+			params:         url.Values{"oldGroup": {"Friends"}},
+			wantStatusCode: http.StatusBadRequest,
+			wantResponse:   `{"response":{"statusCode":400,"statusText":"missing oldGroup or newGroup parameter","data":{}}}`,
+			wantNoneSent:   true,
 		},
 		{
-			name:        "Success",
-			queryParams: map[string][]string{"aimsid": {"sess"}, "oldGroup": {"Friends"}, "newGroup": {"Pals"}},
-			setup: func(fs *mockFeedbagService, aimsid string) *Session {
-				items := []wire.FeedbagItem{
-					{GroupID: 0, ClassID: wire.FeedbagClassIdGroup, Name: ""},
-					{GroupID: 1, ClassID: wire.FeedbagClassIdGroup, Name: "Friends"},
-				}
-				fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-					Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: items}}, nil).Once()
-				fs.EXPECT().UpsertItem(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-					Return((*wire.SNACMessage)(nil), nil).Once()
-				return sessWithOSCAR(aimsid)
+			name:   "Success",
+			params: url.Values{"oldGroup": {"Friends"}, "newGroup": {"Pals"}},
+			feedbag: []wire.FeedbagItem{
+				{GroupID: 0, ClassID: wire.FeedbagClassIdGroup, Name: ""},
+				{GroupID: 1, ClassID: wire.FeedbagClassIdGroup, Name: "Friends"},
 			},
-			expectStatusCode: http.StatusOK,
-			expectResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{}}}`,
+			wantStatusCode: http.StatusOK,
+			wantResponse:   okResponse,
+			wantStored: func(t *testing.T, stored []wire.FeedbagItem) {
+				assert.Equal(t, []string{"Pals"}, groupNames(stored))
+			},
+			wantMirrorStored: true,
 		},
 		{
-			name:        "NotFound",
-			queryParams: map[string][]string{"aimsid": {"sess"}, "oldGroup": {"Ghost"}, "newGroup": {"Pals"}},
-			setup: func(fs *mockFeedbagService, aimsid string) *Session {
-				fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-					Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: nil}}, nil).Once()
-				return sessWithOSCAR(aimsid)
-			},
-			expectStatusCode: http.StatusOK,
-			expectResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{"resultCode":"notFound"}}}`,
+			name:           "NotFound",
+			params:         url.Values{"oldGroup": {"Ghost"}, "newGroup": {"Pals"}},
+			wantStatusCode: http.StatusOK,
+			wantResponse:   notFoundResponse,
+			wantNoneSent:   true,
 		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			fs := newMockFeedbagService(t)
-			session := tt.setup(fs, "sess")
-			handler := &BuddyListHandler{BuddyListManager: newBLM(t, fs), Logger: slog.Default()}
-
-			values := url.Values{}
-			for k, vs := range tt.queryParams {
-				for _, v := range vs {
-					values.Add(k, v)
-				}
-			}
-			req, _ := http.NewRequest("GET", "/buddylist/renameGroup?"+values.Encode(), nil)
-			rr := httptest.NewRecorder()
-			handler.RenameGroup(rr, req, session)
-
-			assert.Equal(t, tt.expectStatusCode, rr.Code)
-			assert.JSONEq(t, tt.expectResponse, rr.Body.String())
-		})
-	}
+	})
 }
 
 func TestBuddyListHandler_MoveBuddy(t *testing.T) {
-	newBLM := func(t *testing.T, fs *mockFeedbagService) *BuddyListManager {
-		return NewBuddyListManager(fs, newMockLocateService(t), newTestIconSource(t), slog.Default())
-	}
-	sessWithOSCAR := func(aimsid string) *Session {
-		return &Session{
-			AimSID:        aimsid,
-			ScreenName:    state.DisplayScreenName("testuser"),
-			OSCARSession:  state.NewSession().AddInstance(),
-			EventQueue:    NewEventQueue(100),
-			LastAccessed:  time.Now(),
-			FeedbagLoader: emptyFeedbagLoader,
-		}
-	}
-
-	tests := []struct {
-		name             string
-		queryParams      map[string][]string
-		setup            func(*mockFeedbagService, string) *Session
-		expectStatusCode int
-		expectResponse   string
-	}{
+	runBuddyListCases(t, func(h *BuddyListHandler) func(http.ResponseWriter, *http.Request, *Session) {
+		return h.MoveBuddy
+	}, []buddyListCase{
 		{
-			name:        "Error_MissingBuddy",
-			queryParams: map[string][]string{"aimsid": {"sess"}, "group": {"Friends"}},
-			setup: func(fs *mockFeedbagService, aimsid string) *Session {
-				return &Session{AimSID: aimsid, LastAccessed: time.Now()}
-			},
-			expectStatusCode: http.StatusBadRequest,
-			expectResponse:   `{"response":{"statusCode":400,"statusText":"missing buddy parameter","data":{}}}`,
+			name:           "Error_MissingBuddy",
+			params:         url.Values{"group": {"Friends"}},
+			wantStatusCode: http.StatusBadRequest,
+			wantResponse:   `{"response":{"statusCode":400,"statusText":"missing buddy parameter","data":{}}}`,
+			wantNoneSent:   true,
 		},
 		{
-			name:        "Success_Reorder",
-			queryParams: map[string][]string{"aimsid": {"sess"}, "buddy": {"bob"}, "group": {"Friends"}, "beforeBuddy": {"alice"}},
-			setup: func(fs *mockFeedbagService, aimsid string) *Session {
-				items := []wire.FeedbagItem{
-					{GroupID: 1, ClassID: wire.FeedbagClassIdGroup, Name: "Friends",
-						TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{
-							wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{10, 20}),
-						}}},
-					{GroupID: 1, ItemID: 10, ClassID: wire.FeedbagClassIdBuddy, Name: "alice"},
-					{GroupID: 1, ItemID: 20, ClassID: wire.FeedbagClassIdBuddy, Name: "bob"},
-				}
-				fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-					Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: items}}, nil).Once()
-				fs.EXPECT().UpsertItem(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-					Return((*wire.SNACMessage)(nil), nil).Once()
-				return sessWithOSCAR(aimsid)
+			name:   "Success_Reorder",
+			params: url.Values{"buddy": {"bob"}, "group": {"Friends"}, "beforeBuddy": {"alice"}},
+			feedbag: []wire.FeedbagItem{
+				{GroupID: 1, ClassID: wire.FeedbagClassIdGroup, Name: "Friends",
+					TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{10, 20}),
+					}}},
+				{GroupID: 1, ItemID: 10, ClassID: wire.FeedbagClassIdBuddy, Name: "alice"},
+				{GroupID: 1, ItemID: 20, ClassID: wire.FeedbagClassIdBuddy, Name: "bob"},
 			},
-			expectStatusCode: http.StatusOK,
-			expectResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{}}}`,
+			wantStatusCode: http.StatusOK,
+			wantResponse:   okResponse,
+			wantStored: func(t *testing.T, stored []wire.FeedbagItem) {
+				fl := state.NewFeedbagList(stored, nil)
+				var order []string
+				for _, g := range fl.Groups() {
+					for _, b := range fl.Buddies(g) {
+						order = append(order, b.Name)
+					}
+				}
+				assert.Equal(t, []string{"bob", "alice"}, order)
+			},
+			wantMirrorStored: true,
 		},
 		{
-			name:        "NotFound_Buddy",
-			queryParams: map[string][]string{"aimsid": {"sess"}, "buddy": {"ghost"}, "group": {"Friends"}},
-			setup: func(fs *mockFeedbagService, aimsid string) *Session {
-				items := []wire.FeedbagItem{
-					{GroupID: 1, ClassID: wire.FeedbagClassIdGroup, Name: "Friends"},
-				}
-				fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-					Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: items}}, nil).Once()
-				return sessWithOSCAR(aimsid)
+			name:   "NotFound_Buddy",
+			params: url.Values{"buddy": {"ghost"}, "group": {"Friends"}},
+			feedbag: []wire.FeedbagItem{
+				{GroupID: 1, ClassID: wire.FeedbagClassIdGroup, Name: "Friends"},
 			},
-			expectStatusCode: http.StatusOK,
-			expectResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{"resultCode":"notFound"}}}`,
+			wantStatusCode: http.StatusOK,
+			wantResponse:   notFoundResponse,
+			wantNoneSent:   true,
 		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			fs := newMockFeedbagService(t)
-			session := tt.setup(fs, "sess")
-			handler := &BuddyListHandler{BuddyListManager: newBLM(t, fs), Logger: slog.Default()}
-
-			values := url.Values{}
-			for k, vs := range tt.queryParams {
-				for _, v := range vs {
-					values.Add(k, v)
-				}
-			}
-			req, _ := http.NewRequest("GET", "/buddylist/moveBuddy?"+values.Encode(), nil)
-			rr := httptest.NewRecorder()
-			handler.MoveBuddy(rr, req, session)
-
-			assert.Equal(t, tt.expectStatusCode, rr.Code)
-			assert.JSONEq(t, tt.expectResponse, rr.Body.String())
-		})
-	}
+	})
 }
 
 func TestBuddyListHandler_SetBuddyAttribute(t *testing.T) {
-	newBLM := func(t *testing.T, fs *mockFeedbagService) *BuddyListManager {
-		return NewBuddyListManager(fs, newMockLocateService(t), newTestIconSource(t), slog.Default())
-	}
-	sessWithOSCAR := func(aimsid string) *Session {
-		return &Session{
-			AimSID:        aimsid,
-			ScreenName:    state.DisplayScreenName("testuser"),
-			OSCARSession:  state.NewSession().AddInstance(),
-			EventQueue:    NewEventQueue(100),
-			LastAccessed:  time.Now(),
-			FeedbagLoader: emptyFeedbagLoader,
-		}
-	}
-
-	tests := []struct {
-		name             string
-		queryParams      map[string][]string
-		setup            func(*mockFeedbagService, string) *Session
-		expectStatusCode int
-		expectResponse   string
-	}{
+	runBuddyListCases(t, func(h *BuddyListHandler) func(http.ResponseWriter, *http.Request, *Session) {
+		return h.SetBuddyAttribute
+	}, []buddyListCase{
 		{
-			name:        "Error_MissingT",
-			queryParams: map[string][]string{"aimsid": {"sess"}, "friendly": {"Al"}},
-			setup: func(fs *mockFeedbagService, aimsid string) *Session {
-				return &Session{AimSID: aimsid, LastAccessed: time.Now()}
-			},
-			expectStatusCode: http.StatusBadRequest,
-			expectResponse:   `{"response":{"statusCode":400,"statusText":"missing t parameter","data":{}}}`,
+			name:           "Error_MissingT",
+			params:         url.Values{"friendly": {"Al"}},
+			wantStatusCode: http.StatusBadRequest,
+			wantResponse:   `{"response":{"statusCode":400,"statusText":"missing t parameter","data":{}}}`,
+			wantNoneSent:   true,
 		},
 		{
-			name:        "Success",
-			queryParams: map[string][]string{"aimsid": {"sess"}, "t": {"alice"}, "friendly": {"Al"}},
-			setup: func(fs *mockFeedbagService, aimsid string) *Session {
-				items := []wire.FeedbagItem{
-					{GroupID: 1, ClassID: wire.FeedbagClassIdGroup, Name: "Friends"},
-					{GroupID: 1, ItemID: 10, ClassID: wire.FeedbagClassIdBuddy, Name: "alice"},
-				}
-				fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-					Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: items}}, nil).Once()
-				fs.EXPECT().UpsertItem(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-					Return((*wire.SNACMessage)(nil), nil).Once()
-				return sessWithOSCAR(aimsid)
+			name:   "Success",
+			params: url.Values{"t": {"alice"}, "friendly": {"Al"}},
+			feedbag: []wire.FeedbagItem{
+				{GroupID: 1, ClassID: wire.FeedbagClassIdGroup, Name: "Friends"},
+				{GroupID: 1, ItemID: 10, ClassID: wire.FeedbagClassIdBuddy, Name: "alice"},
 			},
-			expectStatusCode: http.StatusOK,
-			expectResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{}}}`,
+			wantStatusCode: http.StatusOK,
+			wantResponse:   okResponse,
+			wantStored: func(t *testing.T, stored []wire.FeedbagItem) {
+				alias, _ := stored[1].String(wire.FeedbagAttributesAlias)
+				assert.Equal(t, "Al", alias)
+			},
+			wantMirrorStored: true,
 		},
 		{
-			name:        "NotFound",
-			queryParams: map[string][]string{"aimsid": {"sess"}, "t": {"ghost"}, "friendly": {"Al"}},
-			setup: func(fs *mockFeedbagService, aimsid string) *Session {
-				fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-					Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: nil}}, nil).Once()
-				return sessWithOSCAR(aimsid)
-			},
-			expectStatusCode: http.StatusOK,
-			expectResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{"resultCode":"notFound"}}}`,
+			name:           "NotFound",
+			params:         url.Values{"t": {"ghost"}, "friendly": {"Al"}},
+			wantStatusCode: http.StatusOK,
+			wantResponse:   notFoundResponse,
+			wantNoneSent:   true,
 		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			fs := newMockFeedbagService(t)
-			session := tt.setup(fs, "sess")
-			handler := &BuddyListHandler{BuddyListManager: newBLM(t, fs), Logger: slog.Default()}
-
-			values := url.Values{}
-			for k, vs := range tt.queryParams {
-				for _, v := range vs {
-					values.Add(k, v)
-				}
-			}
-			req, _ := http.NewRequest("GET", "/buddylist/setBuddyAttribute?"+values.Encode(), nil)
-			rr := httptest.NewRecorder()
-			handler.SetBuddyAttribute(rr, req, session)
-
-			assert.Equal(t, tt.expectStatusCode, rr.Code)
-			assert.JSONEq(t, tt.expectResponse, rr.Body.String())
-		})
-	}
+	})
 }
 
 func TestBuddyListHandler_SetGroupAttribute(t *testing.T) {
-	newBLM := func(t *testing.T, fs *mockFeedbagService) *BuddyListManager {
-		return NewBuddyListManager(fs, newMockLocateService(t), newTestIconSource(t), slog.Default())
-	}
-	sessWithOSCAR := func(aimsid string) *Session {
-		return &Session{
-			AimSID:        aimsid,
-			ScreenName:    state.DisplayScreenName("testuser"),
-			OSCARSession:  state.NewSession().AddInstance(),
-			EventQueue:    NewEventQueue(100),
-			LastAccessed:  time.Now(),
-			FeedbagLoader: emptyFeedbagLoader,
-		}
-	}
-
-	tests := []struct {
-		name             string
-		queryParams      map[string][]string
-		setup            func(*mockFeedbagService, string) *Session
-		expectStatusCode int
-		expectResponse   string
-	}{
+	runBuddyListCases(t, func(h *BuddyListHandler) func(http.ResponseWriter, *http.Request, *Session) {
+		return h.SetGroupAttribute
+	}, []buddyListCase{
 		{
-			name:        "Error_MissingCollapsed",
-			queryParams: map[string][]string{"aimsid": {"sess"}, "group": {"Friends"}},
-			setup: func(fs *mockFeedbagService, aimsid string) *Session {
-				return &Session{AimSID: aimsid, LastAccessed: time.Now()}
-			},
-			expectStatusCode: http.StatusBadRequest,
-			expectResponse:   `{"response":{"statusCode":400,"statusText":"missing collapsed parameter","data":{}}}`,
+			name:           "Error_MissingCollapsed",
+			params:         url.Values{"group": {"Friends"}},
+			wantStatusCode: http.StatusBadRequest,
+			wantResponse:   `{"response":{"statusCode":400,"statusText":"missing collapsed parameter","data":{}}}`,
+			wantNoneSent:   true,
 		},
 		{
-			name:        "Success",
-			queryParams: map[string][]string{"aimsid": {"sess"}, "group": {"Friends"}, "collapsed": {"true"}},
-			setup: func(fs *mockFeedbagService, aimsid string) *Session {
-				items := []wire.FeedbagItem{
-					{GroupID: 0, ClassID: wire.FeedbagClassIdGroup, Name: ""},
-					{GroupID: 1, ClassID: wire.FeedbagClassIdGroup, Name: "Friends"},
-				}
-				fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-					Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: items}}, nil).Once()
-				fs.EXPECT().UpsertItem(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-					Return((*wire.SNACMessage)(nil), nil).Once()
-				return sessWithOSCAR(aimsid)
+			name:   "Success",
+			params: url.Values{"group": {"Friends"}, "collapsed": {"true"}},
+			feedbag: []wire.FeedbagItem{
+				{GroupID: 0, ClassID: wire.FeedbagClassIdGroup, Name: ""},
+				{GroupID: 1, ClassID: wire.FeedbagClassIdGroup, Name: "Friends"},
 			},
-			expectStatusCode: http.StatusOK,
-			expectResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{}}}`,
+			wantStatusCode:   http.StatusOK,
+			wantResponse:     okResponse,
+			wantMirrorStored: true,
 		},
 		{
-			name:        "NotFound",
-			queryParams: map[string][]string{"aimsid": {"sess"}, "group": {"NoSuch"}, "collapsed": {"true"}},
-			setup: func(fs *mockFeedbagService, aimsid string) *Session {
-				fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-					Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: nil}}, nil).Once()
-				return sessWithOSCAR(aimsid)
-			},
-			expectStatusCode: http.StatusOK,
-			expectResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{"resultCode":"notFound"}}}`,
+			name:           "NotFound",
+			params:         url.Values{"group": {"NoSuch"}, "collapsed": {"true"}},
+			wantStatusCode: http.StatusOK,
+			wantResponse:   notFoundResponse,
+			wantNoneSent:   true,
 		},
-	}
+	})
+}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			fs := newMockFeedbagService(t)
-			session := tt.setup(fs, "sess")
-			handler := &BuddyListHandler{BuddyListManager: newBLM(t, fs), Logger: slog.Default()}
-
-			values := url.Values{}
-			for k, vs := range tt.queryParams {
-				for _, v := range vs {
-					values.Add(k, v)
-				}
-			}
-			req, _ := http.NewRequest("GET", "/buddylist/setGroupAttribute?"+values.Encode(), nil)
-			rr := httptest.NewRecorder()
-			handler.SetGroupAttribute(rr, req, session)
-
-			assert.Equal(t, tt.expectStatusCode, rr.Code)
-			assert.JSONEq(t, tt.expectResponse, rr.Body.String())
+// A session sends one feedbag change at a time, and each edit diffs against
+// the feedbag the edits before it left, so two adds to a new group create it
+// once.
+func TestBuddyListHandler_AddBuddy_ConcurrentEditsSeeEachOther(t *testing.T) {
+	server := newFeedbagServer()
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var once sync.Once
+	server.status = func(req wire.SNACMessage) []wire.SNACMessage {
+		once.Do(func() {
+			close(started)
+			<-release
 		})
+		return acceptChange(req)
 	}
+	session, conn := newFeedbagSession(t, server)
+	h := newBuddyListHandler(t)
+
+	var wg sync.WaitGroup
+	add := func(buddy string) {
+		defer wg.Done()
+		rr := serveBuddyList(h.AddBuddy, url.Values{"buddy": {buddy}, "group": {"Work"}}, session)
+		assert.JSONEq(t, okResponse, rr.Body.String())
+	}
+	wg.Add(2)
+	go add("alice")
+	<-started
+	go add("bob")
+
+	// bob's edit waits for alice's change to be answered.
+	time.Sleep(20 * time.Millisecond)
+	assert.Len(t, sentFeedbagChanges(conn), 1)
+
+	close(release)
+	wg.Wait()
+
+	stored := server.stored()
+	assert.Equal(t, []string{"Work"}, groupNames(stored))
+	assert.True(t, listsBuddy(stored, "Work", "alice"))
+	assert.True(t, listsBuddy(stored, "Work", "bob"))
+	assert.Equal(t, stored, session.Feedbag())
 }
 
 func TestBuddyListHandler_AddBuddy_PreAuthorized(t *testing.T) {
@@ -933,7 +629,7 @@ func TestBuddyListHandler_AddBuddy_PreAuthorized(t *testing.T) {
 		buddy         string
 		preAuthorized string
 		authMsg       string
-		grantErr      error
+		grantFails    bool
 		wantGrant     bool
 		// wantPending follows the account pairing alone: the two icq->icq cases
 		// differ only in preAuthorized yet expect the same value.
@@ -973,7 +669,7 @@ func TestBuddyListHandler_AddBuddy_PreAuthorized(t *testing.T) {
 			screenName:    "100002",
 			buddy:         "100001",
 			preAuthorized: "1",
-			grantErr:      errors.New("record failed"),
+			grantFails:    true,
 			wantGrant:     true,
 			wantPending:   true,
 		},
@@ -981,110 +677,62 @@ func TestBuddyListHandler_AddBuddy_PreAuthorized(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sm := newMockSessionResolver(t)
-			fs := newMockFeedbagService(t)
-			blmFs := newMockFeedbagService(t)
+			server := newFeedbagServer(wire.FeedbagItem{GroupID: 1, ItemID: 0, ClassID: wire.FeedbagClassIdGroup, Name: "Friends"})
+			conn := newFakeConn().answering(func(req wire.SNACMessage) []wire.SNACMessage {
+				if _, ok := req.Body.(wire.SNAC_0x13_0x14_FeedbagPreAuthorizeBuddy); ok && tt.grantFails {
+					return []wire.SNACMessage{snacErr(wire.Feedbag, wire.ErrorCodeNotSupportedByHost)}
+				}
+				return server.respond(req)
+			})
+			session := newTestSessionAs(t, state.DisplayScreenName(tt.screenName), conn)
+			loadTestFeedbag(t, session)
 
-			// The grant is recorded against the caller, so the instance has to
-			// carry their identity.
-			oscarSess := state.NewSession()
-			oscarSess.SetIdentScreenName(state.NewIdentScreenName(tt.screenName))
-			// UIN is stored separately from the screen name, so an ICQ session
-			// reads as AIM until it is set.
-			oscarSess.SetUIN(state.NewIdentScreenName(tt.screenName).UIN())
-
-			session := &Session{
-				AimSID:        "sid",
-				OSCARSession:  oscarSess.AddInstance(),
-				ScreenName:    state.DisplayScreenName(tt.screenName),
-				EventQueue:    NewEventQueue(100),
-				LastAccessed:  time.Now(),
-				FeedbagLoader: emptyFeedbagLoader,
-			}
-			sm.EXPECT().GetSession(mock.Anything, "sid").Return(session, nil)
-			sm.EXPECT().TouchSession(mock.Anything, "sid").Return(nil).Maybe()
-
-			items := []wire.FeedbagItem{
-				{GroupID: 1, ItemID: 0, ClassID: wire.FeedbagClassIdGroup, Name: "Friends"},
-			}
-			fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-				Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: items}}, nil).Once()
-
-			// Capture the pending flag to confirm preAuthorized does not drive it.
-			var sawPending, sawBuddyItem bool
-			fs.EXPECT().UpsertItem(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-				RunAndReturn(func(_ context.Context, _ *state.SessionInstance, _ wire.SNACFrame, upserted []wire.FeedbagItem) (*wire.SNACMessage, error) {
-					for _, item := range upserted {
-						if item.ClassID != wire.FeedbagClassIdBuddy {
-							continue
-						}
-						sawBuddyItem = true
-						if item.HasTag(wire.FeedbagAttributesPending) {
-							sawPending = true
-						}
-						break
-					}
-					return nil, nil
-				})
-
-			// No expectation in the ungranted case: an unexpected call fails the
-			// test, which is the assertion.
-			var grants int
-			var gotGrantor state.IdentScreenName
-			var gotFrame wire.SNACFrame
-			var gotBody wire.SNAC_0x13_0x14_FeedbagPreAuthorizeBuddy
-			if tt.wantGrant {
-				fs.EXPECT().PreAuthorizeBuddy(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-					RunAndReturn(func(_ context.Context, instance *state.SessionInstance, frame wire.SNACFrame, body wire.SNAC_0x13_0x14_FeedbagPreAuthorizeBuddy) (*wire.SNACMessage, error) {
-						grants++
-						gotGrantor = instance.IdentScreenName()
-						gotFrame = frame
-						gotBody = body
-						return nil, tt.grantErr
-					}).Once()
-			}
-
-			h := &BuddyListHandler{
-				FeedbagService: fs,
-				BuddyListManager: &BuddyListManager{
-					feedbagService: blmFs,
-					iconSource:     newTestIconSource(t),
-					logger:         slog.Default(),
-				},
-				Logger: slog.Default(),
-			}
-
-			query := "aimsid=sid&buddy=" + tt.buddy + "&group=Friends"
+			params := url.Values{"buddy": {tt.buddy}, "group": {"Friends"}}
 			if tt.preAuthorized != "" {
-				query += "&preAuthorized=" + tt.preAuthorized
+				params.Set("preAuthorized", tt.preAuthorized)
 			}
 			if tt.authMsg != "" {
-				query += "&authorizationMsg=" + url.QueryEscape(tt.authMsg)
+				params.Set("authorizationMsg", tt.authMsg)
 			}
-			req := httptest.NewRequest(http.MethodGet, "/buddylist/addBuddy?"+query, nil)
-			rr := httptest.NewRecorder()
-			requireSession(sm, h.AddBuddy).ServeHTTP(rr, req)
+			rr := serveBuddyList(newBuddyListHandler(t).AddBuddy, params, session)
 
 			assert.Equal(t, http.StatusOK, rr.Code)
 			// The handler claims no outcome either way; whether the item was
 			// stored is conveyed by the async buddylist event, not this reply.
-			assert.JSONEq(t, `{"response":{"statusCode":200,"statusText":"Ok","data":{}}}`, rr.Body.String())
-			assert.True(t, sawBuddyItem, "expected a buddy item to be upserted")
-			assert.Equal(t, tt.wantPending, sawPending,
+			assert.JSONEq(t, okResponse, rr.Body.String())
+			buddy, ok := addedBuddy(conn)
+			require.True(t, ok, "expected a buddy item to be inserted")
+			assert.Equal(t, tt.wantPending, buddy.HasTag(wire.FeedbagAttributesPending),
 				"the pending flag must follow the account pairing, not preAuthorized")
 
+			grants := conn.sentOf(wire.Feedbag, wire.FeedbagPreAuthorizeBuddy)
 			if !tt.wantGrant {
+				assert.Empty(t, grants)
 				return
 			}
-			assert.Equal(t, 1, grants, "expected exactly one pre-authorization")
-			assert.Equal(t, wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagPreAuthorizeBuddy}, gotFrame)
 			// The grant flows from the caller to the buddy they added: the buddy
 			// may now add the caller back without a prompt.
-			assert.Equal(t, state.NewIdentScreenName(tt.screenName), gotGrantor)
-			assert.Equal(t, tt.buddy, gotBody.ScreenName)
-			assert.Equal(t, tt.authMsg, gotBody.Message)
+			assert.Equal(t, []any{wire.SNAC_0x13_0x14_FeedbagPreAuthorizeBuddy{
+				ScreenName: tt.buddy,
+				Message:    tt.authMsg,
+			}}, grants)
 		})
 	}
+}
+
+// addedBuddy returns the buddy item inserted on conn.
+func addedBuddy(conn *fakeConn) (wire.FeedbagItem, bool) {
+	for _, change := range sentFeedbagChanges(conn) {
+		if change.SubGroup != wire.FeedbagInsertItem {
+			continue
+		}
+		for _, item := range change.Items {
+			if item.ClassID == wire.FeedbagClassIdBuddy {
+				return item, true
+			}
+		}
+	}
+	return wire.FeedbagItem{}, false
 }
 
 // icq->icq adds are marked pending up front so the item is stored either way:
@@ -1123,63 +771,16 @@ func TestBuddyListHandler_AddBuddy_PendingFlagFollowsPairing(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sm := newMockSessionResolver(t)
-			fs := newMockFeedbagService(t)
+			server := newFeedbagServer(wire.FeedbagItem{GroupID: 1, ItemID: 0, ClassID: wire.FeedbagClassIdGroup, Name: "Friends"})
+			session, conn := newFeedbagSessionAs(t, state.DisplayScreenName(tt.screenName), server)
 
-			oscarSess := state.NewSession()
-			oscarSess.SetIdentScreenName(state.NewIdentScreenName(tt.screenName))
-			oscarSess.SetUIN(state.NewIdentScreenName(tt.screenName).UIN())
-
-			session := &Session{
-				AimSID:        "sid",
-				OSCARSession:  oscarSess.AddInstance(),
-				ScreenName:    state.DisplayScreenName(tt.screenName),
-				EventQueue:    NewEventQueue(100),
-				LastAccessed:  time.Now(),
-				FeedbagLoader: emptyFeedbagLoader,
-			}
-			sm.EXPECT().GetSession(mock.Anything, "sid").Return(session, nil)
-			sm.EXPECT().TouchSession(mock.Anything, "sid").Return(nil).Maybe()
-
-			items := []wire.FeedbagItem{
-				{GroupID: 1, ItemID: 0, ClassID: wire.FeedbagClassIdGroup, Name: "Friends"},
-			}
-			fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-				Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: items}}, nil).Once()
-
-			var sawBuddyItem, sawPending bool
-			fs.EXPECT().UpsertItem(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-				RunAndReturn(func(_ context.Context, _ *state.SessionInstance, _ wire.SNACFrame, upserted []wire.FeedbagItem) (*wire.SNACMessage, error) {
-					for _, item := range upserted {
-						if item.ClassID != wire.FeedbagClassIdBuddy {
-							continue
-						}
-						sawBuddyItem = true
-						if item.HasTag(wire.FeedbagAttributesPending) {
-							sawPending = true
-						}
-					}
-					return nil, nil
-				})
-
-			h := &BuddyListHandler{
-				FeedbagService: fs,
-				BuddyListManager: &BuddyListManager{
-					feedbagService: newMockFeedbagService(t),
-					iconSource:     newTestIconSource(t),
-					logger:         slog.Default(),
-				},
-				Logger: slog.Default(),
-			}
-
-			req := httptest.NewRequest(http.MethodGet,
-				"/buddylist/addBuddy?aimsid=sid&buddy="+tt.buddy+"&group=Friends", nil)
-			rr := httptest.NewRecorder()
-			requireSession(sm, h.AddBuddy).ServeHTTP(rr, req)
+			rr := serveBuddyList(newBuddyListHandler(t).AddBuddy,
+				url.Values{"buddy": {tt.buddy}, "group": {"Friends"}}, session)
 
 			assert.Equal(t, http.StatusOK, rr.Code)
-			assert.True(t, sawBuddyItem, "expected a buddy item to be upserted")
-			assert.Equal(t, tt.wantPending, sawPending)
+			buddy, ok := addedBuddy(conn)
+			require.True(t, ok, "expected a buddy item to be inserted")
+			assert.Equal(t, tt.wantPending, buddy.HasTag(wire.FeedbagAttributesPending))
 		})
 	}
 }

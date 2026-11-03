@@ -2,6 +2,7 @@ package webapi
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -42,9 +43,7 @@ var dirInfoTags = []uint16{
 // MemberDirHandler handles Web AIM API member-directory endpoints
 // (memberDir/search, memberDir/get, and memberDir/update).
 type MemberDirHandler struct {
-	DirSearchService DirSearchService
-	LocateService    LocateService
-	Logger           *slog.Logger
+	Logger *slog.Logger
 }
 
 // MemberDirProfile is the per-result directory profile the web client consumes.
@@ -105,7 +104,7 @@ func (h *MemberDirHandler) Search(w http.ResponseWriter, r *http.Request, sessio
 		profiles = append(profiles, profile)
 	}
 
-	named, found, err := h.exactScreenNameMatch(ctx, fields["keyword"])
+	named, found, err := h.exactScreenNameMatch(ctx, session, fields["keyword"])
 	if err != nil {
 		h.Logger.ErrorContext(ctx, "memberDir search: screen name lookup failed",
 			"screenName", fields["keyword"], "err", err.Error())
@@ -116,7 +115,12 @@ func (h *MemberDirHandler) Search(w http.ResponseWriter, r *http.Request, sessio
 		addProfile(named)
 	}
 
-	reply, err := h.DirSearchService.InfoQuery(ctx, wire.SNACFrame{}, buildDirInfoQuery(fields))
+	reply, err := session.request(ctx, wire.ODir, wire.ODirInfoQuery, buildDirInfoQuery(fields), wire.ODirInfoReply)
+	if err == nil {
+		if body, isErr := reply.Body.(wire.SNACError); isErr {
+			err = fmt.Errorf("ODirInfoQuery error code %d", body.Code)
+		}
+	}
 	if err != nil {
 		h.Logger.ErrorContext(ctx, "memberDir search failed", "err", err.Error())
 		SendEnvelopeStatus(w, r, http.StatusInternalServerError, "internal server error", h.Logger)
@@ -181,15 +185,16 @@ func (h *MemberDirHandler) Search(w http.ResponseWriter, r *http.Request, sessio
 
 // exactScreenNameMatch resolves query as a screen name, reporting whether a user
 // by that name exists along with their directory profile.
-func (h *MemberDirHandler) exactScreenNameMatch(ctx context.Context, query string) (MemberDirProfile, bool, error) {
+func (h *MemberDirHandler) exactScreenNameMatch(ctx context.Context, session *Session, query string) (MemberDirProfile, bool, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
 		return MemberDirProfile{}, false, nil
 	}
 
-	reply, err := h.LocateService.DirInfo(ctx, wire.SNACFrame{}, wire.SNAC_0x02_0x0B_LocateGetDirInfo{ScreenName: query})
+	reply, err := session.request(ctx, wire.Locate, wire.LocateGetDirInfo,
+		wire.SNAC_0x02_0x0B_LocateGetDirInfo{ScreenName: query}, wire.LocateGetDirReply)
 	if err != nil {
-		return MemberDirProfile{}, false, fmt.Errorf("DirInfo: %w", err)
+		return MemberDirProfile{}, false, fmt.Errorf("LocateGetDirInfo: %w", err)
 	}
 	body, ok := reply.Body.(wire.SNAC_0x02_0x0C_LocateGetDirReply)
 	if !ok {
@@ -234,7 +239,8 @@ func (h *MemberDirHandler) Get(w http.ResponseWriter, r *http.Request, session *
 
 	infoArray := make([]MemberDirInfo, 0, len(targets))
 	for _, target := range targets {
-		reply, err := h.LocateService.DirInfo(ctx, wire.SNACFrame{}, wire.SNAC_0x02_0x0B_LocateGetDirInfo{ScreenName: target})
+		reply, err := session.request(ctx, wire.Locate, wire.LocateGetDirInfo,
+			wire.SNAC_0x02_0x0B_LocateGetDirInfo{ScreenName: target}, wire.LocateGetDirReply)
 		if err != nil {
 			h.Logger.ErrorContext(ctx, "memberDir get failed", "screenName", target, "err", err.Error())
 			continue
@@ -276,7 +282,8 @@ func (h *MemberDirHandler) Update(w http.ResponseWriter, r *http.Request, sessio
 	// Seed from the current record so untouched fields survive the replace. A
 	// failed read must abort: writing a record we couldn't seed would blank
 	// every field the form doesn't edit.
-	reply, err := h.LocateService.DirInfo(ctx, wire.SNACFrame{}, wire.SNAC_0x02_0x0B_LocateGetDirInfo{ScreenName: session.ScreenName.String()})
+	reply, err := session.request(ctx, wire.Locate, wire.LocateGetDirInfo,
+		wire.SNAC_0x02_0x0B_LocateGetDirInfo{ScreenName: session.ScreenName.String()}, wire.LocateGetDirReply)
 	if err != nil {
 		h.Logger.ErrorContext(ctx, "memberDir update: failed to read current dir info", "err", err.Error())
 		SendEnvelopeStatus(w, r, http.StatusInternalServerError, "failed to update directory info", h.Logger)
@@ -310,8 +317,19 @@ func (h *MemberDirHandler) Update(w http.ResponseWriter, r *http.Request, sessio
 		inBody.Append(wire.NewTLVBE(tag, values[tag]))
 	}
 
-	if _, err := h.LocateService.SetDirInfo(ctx, session.OSCARSession, wire.SNACFrame{}, inBody); err != nil {
+	reply, err = session.request(ctx, wire.Locate, wire.LocateSetDirInfo, inBody, wire.LocateSetDirReply)
+	if err != nil {
 		h.Logger.ErrorContext(ctx, "memberDir update failed", "err", err.Error())
+		var limited *rateLimitError
+		if errors.As(err, &limited) {
+			sendRateLimited(w, r, limited.retryAfter, h.Logger)
+			return
+		}
+		SendEnvelopeStatus(w, r, http.StatusInternalServerError, "failed to update directory info", h.Logger)
+		return
+	}
+	if _, ok := reply.Body.(wire.SNAC_0x02_0x0A_LocateSetDirReply); !ok {
+		h.Logger.ErrorContext(ctx, "memberDir update rejected", "reply", wire.SubGroupName(reply.Frame.FoodGroup, reply.Frame.SubGroup))
 		SendEnvelopeStatus(w, r, http.StatusInternalServerError, "failed to update directory info", h.Logger)
 		return
 	}

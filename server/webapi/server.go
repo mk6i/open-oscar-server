@@ -7,13 +7,12 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/rs/cors"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/mk6i/open-oscar-server/config"
-	"github.com/mk6i/open-oscar-server/state"
+	"github.com/mk6i/open-oscar-server/server/oscarclient"
 	"github.com/mk6i/open-oscar-server/wire"
 )
 
@@ -29,7 +28,6 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, session
 	servers := make([]*http.Server, 0, len(listeners))
 
 	authMiddleware := NewAuthMiddleware(logger)
-	rateLimiter := NewRateLimitMiddleware(handler.SNACRateLimits, logger)
 
 	authHandler := &AuthHandler{
 		AuthService: handler.AuthService,
@@ -39,72 +37,57 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, session
 	aimHandler := &AimHandler{
 		SessionManager:   sessionManager,
 		AuthService:      handler.AuthService,
-		FeedbagService:   handler.FeedbagService,
-		ICBMService:      handler.ICBMService,
-		LocateService:    handler.LocateService,
-		OServiceService:  handler.OServiceService,
 		BuddyListManager: handler.BuddyListManager,
-		BuddyService:     handler.BuddyService,
 		IconSource:       handler.IconSource,
+		Dialer:           handler.Dialer,
 		BOSListener:      handler.BOSListener,
 		SNACRateLimits:   handler.SNACRateLimits,
 		Logger:           logger,
 	}
 
 	presenceHandler := &PresenceHandler{
-		SessionManager:  sessionManager,
-		FeedbagService:  handler.FeedbagService,
-		LocateService:   handler.LocateService,
-		OServiceService: handler.OServiceService,
-		IconSource:      handler.IconSource,
-		Logger:          logger,
+		SessionManager: sessionManager,
+		IconSource:     handler.IconSource,
+		Logger:         logger,
 	}
 
 	buddyListHandler := &BuddyListHandler{
 		BuddyListManager: handler.BuddyListManager,
 		Logger:           logger,
-		FeedbagService:   handler.FeedbagService,
 	}
 
 	messagingHandler := &MessagingHandler{
-		ICBMService:    handler.ICBMService,
-		LocateService:  handler.LocateService,
-		FeedbagService: handler.FeedbagService,
-		Logger:         logger,
+		Logger: logger,
 	}
 
 	preferenceHandler := &PreferenceHandler{
 		SessionManager: sessionManager,
-		FeedbagService: handler.FeedbagService,
 		Logger:         logger,
 	}
 
 	memberDirHandler := &MemberDirHandler{
-		DirSearchService: handler.DirSearchService,
-		LocateService:    handler.LocateService,
-		Logger:           logger,
+		Logger: logger,
 	}
 
-	expressionsHandler := NewExpressionsHandler(
-		handler.IconSource, handler.BARTService, handler.FeedbagService, logger)
+	expressionsHandler := NewExpressionsHandler(handler.IconSource, logger)
 
 	crossDomainHandler := &CrossDomainPolicyHandler{Logger: logger}
 	conversationStub := &ConversationStubHandler{Logger: logger}
 	lifestreamStub := &UserInfoStubHandler{Logger: logger}
 	serviceStub := &ServiceStubHandler{Logger: logger}
 
-	oscarRoute := func(foodGroup uint16, subGroup uint16, h SessionHandlerFunc) http.Handler {
-		return authMiddleware.RequireSession(sessionManager,
-			rateLimiter.OSCAR(foodGroup, subGroup)(h))
-	}
 	sessionRoute := func(h SessionHandlerFunc) http.Handler {
 		return authMiddleware.RequireSession(sessionManager, h)
+	}
+	// lookupRoute bounds the routes made of rate-limit-exempt lookups.
+	lookupRoute := func(h SessionHandlerFunc) http.Handler {
+		return authMiddleware.RequireSession(sessionManager, limitLookups(logger)(h))
 	}
 
 	loginPSP := http.HandlerFunc(authHandler.LoginPSP)
 	startSession := http.HandlerFunc(aimHandler.StartSession)
-	sendIM := oscarRoute(wire.ICBM, wire.ICBMChannelMsgToHost, messagingHandler.SendIM)
-	memberDirUpdate := oscarRoute(wire.Locate, wire.LocateSetDirInfo, memberDirHandler.Update)
+	sendIM := sessionRoute(messagingHandler.SendIM)
+	memberDirUpdate := sessionRoute(memberDirHandler.Update)
 
 	corsHandler := cors.New(corsOptions(logger, handler.AllowedOrigins))
 
@@ -130,46 +113,45 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, session
 		mux.Handle("GET /aim/fetchEvents", sessionRoute(aimHandler.FetchEvents))
 		mux.HandleFunc("GET /aim/startOSCARSession", aimHandler.StartOSCARSession)
 
-		mux.Handle("GET /presence/get", oscarRoute(wire.Feedbag, wire.FeedbagQuery, presenceHandler.GetPresence))
-		mux.Handle("GET /presence/setState", oscarRoute(wire.OService, wire.OServiceSetUserInfoFields, presenceHandler.SetState))
-		mux.Handle("GET /presence/setStatus", oscarRoute(wire.OService, wire.OServiceSetUserInfoFields, presenceHandler.SetStatus))
-		mux.Handle("GET /presence/getProfile", oscarRoute(wire.Locate, wire.LocateUserInfoQuery, presenceHandler.GetProfile))
-		mux.Handle("GET /presence/setProfile", oscarRoute(wire.Locate, wire.LocateSetInfo, presenceHandler.SetProfile))
+		mux.Handle("GET /presence/get", lookupRoute(presenceHandler.GetPresence))
+		mux.Handle("GET /presence/setState", sessionRoute(presenceHandler.SetState))
+		mux.Handle("GET /presence/setStatus", sessionRoute(presenceHandler.SetStatus))
+		mux.Handle("GET /presence/getProfile", lookupRoute(presenceHandler.GetProfile))
+		mux.Handle("GET /presence/setProfile", sessionRoute(presenceHandler.SetProfile))
 		mux.HandleFunc("GET /presence/icon", presenceHandler.Icon)
 
-		mux.Handle("GET /buddylist/addBuddy", oscarRoute(wire.Feedbag, wire.FeedbagInsertItem, buddyListHandler.AddBuddy))
-		mux.Handle("GET /buddylist/addGroup", oscarRoute(wire.Feedbag, wire.FeedbagInsertItem, buddyListHandler.AddGroup))
-		mux.Handle("GET /buddylist/removeBuddy", oscarRoute(wire.Feedbag, wire.FeedbagDeleteItem, buddyListHandler.RemoveBuddy))
-		mux.Handle("GET /buddylist/removeGroup", oscarRoute(wire.Feedbag, wire.FeedbagDeleteItem, buddyListHandler.RemoveGroup))
-		mux.Handle("GET /buddylist/moveBuddy", oscarRoute(wire.Feedbag, wire.FeedbagUpdateItem, buddyListHandler.MoveBuddy))
-		mux.Handle("GET /buddylist/renameGroup", oscarRoute(wire.Feedbag, wire.FeedbagUpdateItem, buddyListHandler.RenameGroup))
-		mux.Handle("GET /buddylist/setBuddyAttribute", oscarRoute(wire.Feedbag, wire.FeedbagUpdateItem, buddyListHandler.SetBuddyAttribute))
-		mux.Handle("GET /buddylist/setGroupAttribute", oscarRoute(wire.Feedbag, wire.FeedbagUpdateItem, buddyListHandler.SetGroupAttribute))
-		mux.Handle("GET /aim/addTempBuddy", oscarRoute(wire.Buddy, wire.BuddyAddTempBuddies, aimHandler.AddTempBuddy))
-		mux.Handle("GET /aim/removeTempBuddy", oscarRoute(wire.Buddy, wire.BuddyDelTempBuddies, aimHandler.RemoveTempBuddy))
+		mux.Handle("GET /buddylist/addBuddy", sessionRoute(buddyListHandler.AddBuddy))
+		mux.Handle("GET /buddylist/addGroup", sessionRoute(buddyListHandler.AddGroup))
+		mux.Handle("GET /buddylist/removeBuddy", sessionRoute(buddyListHandler.RemoveBuddy))
+		mux.Handle("GET /buddylist/removeGroup", sessionRoute(buddyListHandler.RemoveGroup))
+		mux.Handle("GET /buddylist/moveBuddy", sessionRoute(buddyListHandler.MoveBuddy))
+		mux.Handle("GET /buddylist/renameGroup", sessionRoute(buddyListHandler.RenameGroup))
+		mux.Handle("GET /buddylist/setBuddyAttribute", sessionRoute(buddyListHandler.SetBuddyAttribute))
+		mux.Handle("GET /buddylist/setGroupAttribute", sessionRoute(buddyListHandler.SetGroupAttribute))
+		mux.Handle("GET /aim/addTempBuddy", sessionRoute(aimHandler.AddTempBuddy))
+		mux.Handle("GET /aim/removeTempBuddy", sessionRoute(aimHandler.RemoveTempBuddy))
 
 		// The Web AIM client POSTs the message body (non-IE browsers); IE uses GET.
 		mux.Handle("GET /im/sendIM", sendIM)
 		mux.Handle("POST /im/sendIM", sendIM)
-		mux.Handle("GET /im/setTyping", oscarRoute(wire.ICBM, wire.ICBMClientEvent, messagingHandler.SetTyping))
+		mux.Handle("GET /im/setTyping", sessionRoute(messagingHandler.SetTyping))
 		mux.Handle("GET /imlog/fetchStoredIMs", sessionRoute(conversationStub.FetchStoredIMs))
 		mux.HandleFunc("GET /imlog/markRead", conversationStub.MarkRead)
 		mux.HandleFunc("GET /conversation/update", conversationStub.Update)
 		mux.HandleFunc("GET /conversation/close", conversationStub.Close)
 
-		mux.Handle("GET /memberDir/search", oscarRoute(wire.ODir, wire.ODirInfoQuery, memberDirHandler.Search))
-		mux.Handle("GET /memberDir/get", oscarRoute(wire.Locate, wire.LocateGetDirInfo, memberDirHandler.Get))
+		mux.Handle("GET /memberDir/search", lookupRoute(memberDirHandler.Search))
+		mux.Handle("GET /memberDir/get", lookupRoute(memberDirHandler.Get))
 		mux.Handle("GET /memberDir/update", memberDirUpdate)
 		mux.Handle("POST /memberDir/update", memberDirUpdate)
 
-		mux.Handle("GET /preference/get", oscarRoute(wire.Feedbag, wire.FeedbagQuery, preferenceHandler.GetPreferences))
-		mux.Handle("GET /preference/set", oscarRoute(wire.Feedbag, wire.FeedbagUpdateItem, preferenceHandler.SetPreferences))
-		mux.Handle("GET /preference/getPermitDeny", oscarRoute(wire.Feedbag, wire.FeedbagQuery, preferenceHandler.GetPermitDeny))
-		mux.Handle("GET /preference/setPermitDeny", oscarRoute(wire.Feedbag, wire.FeedbagUpdateItem, preferenceHandler.SetPermitDeny))
+		mux.Handle("GET /preference/get", sessionRoute(preferenceHandler.GetPreferences))
+		mux.Handle("GET /preference/set", sessionRoute(preferenceHandler.SetPreferences))
+		mux.Handle("GET /preference/getPermitDeny", sessionRoute(preferenceHandler.GetPermitDeny))
+		mux.Handle("GET /preference/setPermitDeny", sessionRoute(preferenceHandler.SetPermitDeny))
 
 		mux.HandleFunc("GET /expressions/get", expressionsHandler.Get)
-		mux.Handle("POST /expressions/upload",
-			WithBinaryBody(oscarRoute(wire.BART, wire.BARTUploadQuery, expressionsHandler.Upload)))
+		mux.Handle("POST /expressions/upload", WithBinaryBody(sessionRoute(expressionsHandler.Upload)))
 
 		mux.HandleFunc("GET /aim/setForwardDomain", aimHandler.SetForwardDomain)
 		mux.HandleFunc("GET /aim/getData", aimHandler.GetData)
@@ -191,62 +173,6 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, session
 		})
 	}
 
-	aimHandler.FnSessCfg = func(sess *state.Session) {
-		sess.OnSessionClose(func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-			defer cancel()
-
-			if !shuttingDown(shutdownCtx) {
-				if err := handler.BuddyBroadcaster.BroadcastBuddyDeparted(ctx, sess.IdentScreenName()); err != nil {
-					logger.ErrorContext(ctx, "error sending buddy departure notifications", "err", err.Error())
-				}
-			}
-
-			// buddy list must be cleared before session is closed, otherwise
-			// there will be a race condition that could cause the buddy list
-			// be prematurely deleted.
-			if err := handler.BuddyListRegistry.UnregisterBuddyList(ctx, sess.IdentScreenName()); err != nil {
-				logger.ErrorContext(ctx, "error removing buddy list entry", "err", err.Error())
-			}
-			handler.ChatSessionManager.RemoveUserFromAllChats(sess.IdentScreenName())
-			handler.AuthService.Signout(ctx, sess)
-		})
-	}
-
-	aimHandler.FnSessInit = func(instance *state.SessionInstance) func() error {
-		return func() error {
-			// make buddy list visible to other users
-			if err := handler.BuddyListRegistry.RegisterBuddyList(shutdownCtx, instance.IdentScreenName()); err != nil {
-				return fmt.Errorf("unable to init buddy list: %w", err)
-			}
-			// restore warning level from last session
-			if err := handler.RecalcWarning(shutdownCtx, instance); err != nil {
-				return fmt.Errorf("failed to recalculate warning level: %w", err)
-			}
-			// periodically decay warning level
-			go handler.LowerWarnLevel(shutdownCtx, instance)
-			// broadcast rate limit transitions to every instance on the account
-			go handler.OServiceService.MonitorRateLimits(shutdownCtx, instance.Session())
-			return nil
-		}
-	}
-
-	aimHandler.FnInstanceClose = func(instance *state.SessionInstance) func() {
-		return func() {
-			if shuttingDown(shutdownCtx) {
-				return
-			}
-			if instance.Session().Invisible() {
-				if err := handler.BuddyBroadcaster.BroadcastBuddyDeparted(shutdownCtx, instance.IdentScreenName()); err != nil {
-					logger.ErrorContext(shutdownCtx, "error sending buddy departure notifications", "err", err.Error())
-				}
-			} else {
-				if err := handler.BuddyBroadcaster.BroadcastBuddyArrived(shutdownCtx, instance.IdentScreenName(), instance.Session().TLVUserInfo()); err != nil {
-					logger.ErrorContext(shutdownCtx, "error sending buddy arrival notifications", "err", err.Error())
-				}
-			}
-		}
-	}
 	return &Server{
 		servers:        servers,
 		logger:         logger,
@@ -319,36 +245,16 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	return nil
 }
 
-func shuttingDown(ctx context.Context) bool {
-	select {
-	case <-ctx.Done():
-		// server is shutting down, don't send buddy notifications
-		return true
-	default:
-	}
-	return false
-}
-
 type Handler struct {
-	AuthService        AuthService
-	BuddyListRegistry  BuddyListRegistry
-	ICBMService        ICBMService
-	LocateService      LocateService
-	Logger             *slog.Logger
-	OServiceService    OServiceService
-	BuddyBroadcaster   BuddyBroadcaster
-	BuddyService       BuddyService
-	BOSListener        config.ListenerGroup
-	AllowedOrigins     []string
-	BuddyListManager   *BuddyListManager
-	RecalcWarning      func(ctx context.Context, instance *state.SessionInstance) error
-	LowerWarnLevel     func(ctx context.Context, instance *state.SessionInstance)
-	ChatSessionManager ChatSessionManager
-	FeedbagService     FeedbagService
-	DirSearchService   DirSearchService
-	IconSource         BuddyIconSource
-	BARTService        BARTService
-	SNACRateLimits     wire.SNACRateLimits
+	AuthService      AuthService
+	Logger           *slog.Logger
+	BOSListener      config.ListenerGroup
+	AllowedOrigins   []string
+	BuddyListManager *BuddyListManager
+	IconSource       BuddyIconSource
+	// Dialer connects sessions to the OSCAR server.
+	Dialer         oscarclient.Dialer
+	SNACRateLimits wire.SNACRateLimits
 }
 
 func (h Handler) GetHelloWorldHandler(w http.ResponseWriter, r *http.Request) {

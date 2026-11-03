@@ -1,4 +1,4 @@
-package toc
+package oscarclient
 
 import (
 	"bytes"
@@ -15,7 +15,7 @@ import (
 func TestFLAPConn_readsWhileConsumerIsBusy(t *testing.T) {
 	clientEnd, serverEnd := net.Pipe()
 	server := wire.NewFlapClient(0, serverEnd, serverEnd)
-	conn := newFLAPConn(clientEnd, wire.NewFlapClient(0, clientEnd, clientEnd), slog.Default())
+	conn := NewFLAPConn(clientEnd, wire.NewFlapClient(0, clientEnd, clientEnd), slog.Default())
 	defer conn.Close()
 
 	// nobody reads conn.Messages() yet, so each send returns only because the
@@ -51,7 +51,7 @@ func TestDecodeSNAC(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name: "SNAC TOC handles",
+			name: "SNAC a client handles",
 			payload: func(t *testing.T) []byte {
 				return marshalSNAC(t, wire.SNACFrame{FoodGroup: wire.Buddy, SubGroup: wire.BuddyArrived, RequestID: 7},
 					wire.SNAC_0x03_0x0B_BuddyArrived{TLVUserInfo: wire.TLVUserInfo{ScreenName: "them", WarningLevel: 10}})
@@ -69,6 +69,28 @@ func TestDecodeSNAC(t *testing.T) {
 				wire.SNAC_0x13_0x08_FeedbagInsertItem{Items: []wire.FeedbagItem{{Name: "them"}}}),
 		},
 		{
+			name: "host ack",
+			payload: func(t *testing.T) []byte {
+				return marshalSNAC(t, wire.SNACFrame{FoodGroup: wire.ICBM, SubGroup: wire.ICBMHostAck, RequestID: 4},
+					wire.SNAC_0x04_0x0C_ICBMHostAck{Cookie: 1234, ChannelID: wire.ICBMChannelIM, ScreenName: "them"})
+			},
+			want: newSNAC(wire.ICBM, wire.ICBMHostAck, 4,
+				wire.SNAC_0x04_0x0C_ICBMHostAck{Cookie: 1234, ChannelID: wire.ICBMChannelIM, ScreenName: "them"}),
+		},
+		{
+			name: "directory search reply",
+			payload: func(t *testing.T) []byte {
+				reply := wire.SNAC_0x0F_0x03_InfoReply{Status: wire.ODirSearchResponseOK}
+				reply.Results.List = []wire.TLVBlock{{TLVList: wire.TLVList{wire.NewTLVBE(wire.ODirTLVScreenName, "them")}}}
+				return marshalSNAC(t, wire.SNACFrame{FoodGroup: wire.ODir, SubGroup: wire.ODirInfoReply, RequestID: 5}, reply)
+			},
+			want: func() wire.SNACMessage {
+				reply := wire.SNAC_0x0F_0x03_InfoReply{Status: wire.ODirSearchResponseOK}
+				reply.Results.List = []wire.TLVBlock{{TLVList: wire.TLVList{wire.NewTLVBE(wire.ODirTLVScreenName, "them")}}}
+				return newSNAC(wire.ODir, wire.ODirInfoReply, 5, reply)
+			}(),
+		},
+		{
 			name: "error in any food group",
 			payload: func(t *testing.T) []byte {
 				return marshalSNAC(t, wire.SNACFrame{FoodGroup: wire.ICBM, SubGroup: wire.ICBMErr, RequestID: 3},
@@ -77,7 +99,7 @@ func TestDecodeSNAC(t *testing.T) {
 			want: newSNAC(wire.ICBM, wire.ICBMErr, 3, wire.SNACError{Code: wire.ErrorCodeNotLoggedOn}),
 		},
 		{
-			name: "SNAC TOC doesn't handle has no body",
+			name: "SNAC no client handles has no body",
 			payload: func(t *testing.T) []byte {
 				return marshalSNAC(t, wire.SNACFrame{FoodGroup: wire.Stats, SubGroup: wire.StatsSetMinReportInterval},
 					wire.SNAC_0x0B_0x02_StatsSetMinReportInterval{MinReportInterval: 1})
@@ -102,7 +124,7 @@ func TestDecodeSNAC(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := decodeSNAC(tc.payload(t))
+			got, err := DecodeSNAC(tc.payload(t))
 			if tc.wantErr {
 				assert.Error(t, err)
 				return
@@ -116,7 +138,7 @@ func TestDecodeSNAC(t *testing.T) {
 func TestFLAPConn(t *testing.T) {
 	clientEnd, serverEnd := net.Pipe()
 	server := wire.NewFlapClient(0, serverEnd, serverEnd)
-	conn := newFLAPConn(clientEnd, wire.NewFlapClient(0, clientEnd, clientEnd), slog.Default())
+	conn := NewFLAPConn(clientEnd, wire.NewFlapClient(0, clientEnd, clientEnd), slog.Default())
 
 	// SNACs sent to the server arrive intact
 	go func() {
@@ -151,7 +173,7 @@ func TestFLAPConn(t *testing.T) {
 func TestFLAPConn_closesWhenConsumerFallsBehind(t *testing.T) {
 	clientEnd, serverEnd := net.Pipe()
 	server := wire.NewFlapClient(0, serverEnd, serverEnd)
-	conn := newFLAPConn(clientEnd, wire.NewFlapClient(0, clientEnd, clientEnd), slog.Default())
+	conn := NewFLAPConn(clientEnd, wire.NewFlapClient(0, clientEnd, clientEnd), slog.Default())
 
 	// nobody reads conn.Messages(), so its buffer fills up
 	go func() {
@@ -173,7 +195,7 @@ func TestFLAPConn_closesWhenConsumerFallsBehind(t *testing.T) {
 
 func TestFLAPConn_Close(t *testing.T) {
 	clientEnd, serverEnd := net.Pipe()
-	conn := newFLAPConn(clientEnd, wire.NewFlapClient(0, clientEnd, clientEnd), slog.Default())
+	conn := NewFLAPConn(clientEnd, wire.NewFlapClient(0, clientEnd, clientEnd), slog.Default())
 
 	conn.Close()
 	conn.Close()

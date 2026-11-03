@@ -15,85 +15,19 @@ type SessionResolver interface {
 	TouchSession(ctx context.Context, aimsid string) error
 }
 
-// AuthService cracks auth cookies and registers the BOS sessions they name.
+// AuthService logs users in and cracks the auth cookies it issues.
 type AuthService interface {
 	CrackCookie(authCookie []byte) (state.ServerCookie, time.Time, error)
 	FLAPLogin(ctx context.Context, inFrame wire.FLAPSignonFrame, endpointCfg config.Endpoint) (wire.TLVRestBlock, error)
-	RegisterBOSSession(ctx context.Context, authCookie state.ServerCookie, conf func(sess *state.Session)) (*state.SessionInstance, error)
-	Signout(ctx context.Context, session *state.Session)
 }
 
-// BARTService stores and retrieves BART (buddy art) assets by content hash.
+// BARTService retrieves BART (buddy art) assets by content hash.
 type BARTService interface {
 	RetrieveItem(ctx context.Context, inFrame wire.SNACFrame, inBody wire.SNAC_0x10_0x04_BARTDownloadQuery) (wire.SNACMessage, error)
-	UpsertItem(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x10_0x02_BARTUploadQuery) (wire.SNACMessage, error)
-}
-
-// BuddyBroadcaster announces a user's arrival and departure to their watchers.
-type BuddyBroadcaster interface {
-	BroadcastBuddyArrived(ctx context.Context, screenName state.IdentScreenName, userInfo wire.TLVUserInfo) error
-	BroadcastBuddyDeparted(ctx context.Context, screenName state.IdentScreenName) error
-}
-
-// BuddyService adds and removes buddies that live only for the duration of the
-// user's session.
-type BuddyService interface {
-	AddTempBuddies(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x03_0x0F_BuddyAddTempBuddies) (*wire.SNACMessage, error)
-	DelTempBuddies(ctx context.Context, instance *state.SessionInstance, inBody wire.SNAC_0x03_0x10_BuddyDelTempBuddies) error
-}
-
-// DirSearchService runs ODir member-directory searches.
-type DirSearchService interface {
-	InfoQuery(ctx context.Context, inFrame wire.SNACFrame, inBody wire.SNAC_0x0F_0x02_InfoQuery) (wire.SNACMessage, error)
-}
-
-// FeedbagService reads and edits the server-stored buddy list.
-type FeedbagService interface {
-	DeleteItem(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x0A_FeedbagDeleteItem) (*wire.SNACMessage, error)
-	PreAuthorizeBuddy(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x14_FeedbagPreAuthorizeBuddy) (*wire.SNACMessage, error)
-	Query(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame) (wire.SNACMessage, error)
-	UpsertItem(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, items []wire.FeedbagItem) (*wire.SNACMessage, error)
-	Use(ctx context.Context, instance *state.SessionInstance) error
-}
-
-// ICBMService sends instant messages and typing events and drains offline ones.
-type ICBMService interface {
-	ChannelMsgToHost(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) (*wire.SNACMessage, error)
-	ClientEvent(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x14_ICBMClientEvent) error
-	OfflineRetrieve(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame) (wire.SNACMessage, error)
-}
-
-// LocateService reads and writes user profiles and directory info.
-type LocateService interface {
-	SetDirInfo(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x02_0x09_LocateSetDirInfo) (wire.SNACMessage, error)
-	SetInfo(ctx context.Context, instance *state.SessionInstance, inBody wire.SNAC_0x02_0x04_LocateSetInfo) error
-	UserInfoQuery(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x02_0x05_LocateUserInfoQuery) (wire.SNACMessage, error)
-	DirInfo(ctx context.Context, inFrame wire.SNACFrame, inBody wire.SNAC_0x02_0x0B_LocateGetDirInfo) (wire.SNACMessage, error)
-}
-
-// OServiceService completes sign-on, updates presence state and manages rate
-// limit subscriptions.
-type OServiceService interface {
-	ClientOnline(ctx context.Context, service uint16, inBody wire.SNAC_0x01_0x02_OServiceClientOnline, instance *state.SessionInstance) error
-	MonitorRateLimits(ctx context.Context, session *state.Session)
-	RateParamsSubAdd(ctx context.Context, instance *state.SessionInstance, inBody wire.SNAC_0x01_0x08_OServiceRateParamsSubAdd)
-	SetUserInfoFields(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x01_0x1E_OServiceSetUserInfoFields) error
 }
 
 // BuddyIconRetriever resolves a user's icon reference from their feedbag, which
 // is where it lives, so it resolves for offline users too.
 type BuddyIconRetriever interface {
 	BuddyIconMetadata(ctx context.Context, screenName state.IdentScreenName) (*wire.BARTID, error)
-}
-
-// BuddyListRegistry registers a user's buddy list, making them and the users on
-// it visible to each other.
-type BuddyListRegistry interface {
-	RegisterBuddyList(ctx context.Context, user state.IdentScreenName) error
-	UnregisterBuddyList(ctx context.Context, user state.IdentScreenName) error
-}
-
-// ChatSessionManager removes a departing user from every chat room they joined.
-type ChatSessionManager interface {
-	RemoveUserFromAllChats(user state.IdentScreenName)
 }

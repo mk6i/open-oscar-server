@@ -209,11 +209,20 @@ func (s OServiceService) RateParamsQuery(ctx context.Context, instance *state.Se
 			MaxLevel:        uint32(class.MaxLevel),
 		}
 		if instance.FoodGroupVersions()[wire.OService] > 1 {
+			// The stored status is only refreshed for subscribed classes,
+			// so the class's status is computed as of now.
+			now := s.timeNow()
+			var dropping uint8
+			status, _ := wire.CheckRateLimit(class.LastTime, now, class.RateClass, class.CurrentLevel, class.LimitedNow)
+			if class.LimitedNow && status == wire.RateLimitStatusLimited {
+				dropping = 1
+			}
 			str.V2Params = &struct {
 				LastTime      uint32
 				DroppingSNACs uint8
 			}{
-				LastTime: uint32(s.timeNow().Add(-time.Second).Unix()),
+				LastTime:      uint32(now.Add(-time.Second).Unix()),
+				DroppingSNACs: dropping,
 			}
 		}
 		limits.RateClasses = append(limits.RateClasses, str)
