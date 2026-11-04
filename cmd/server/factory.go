@@ -547,6 +547,7 @@ func WebAPI(deps Container) *webapi.Server {
 		BARTService:        bartService,
 		SNACRateLimits:     deps.snacRateLimits,
 		AllowedOrigins:     deps.cfg.WebAPIAllowedOrigins,
+		LoginRateLimiter:   toc.NewIPRateLimiter(rate.Every(1*time.Minute), 10, 1*time.Minute),
 	}
 
 	return webapi.NewServer(deps.cfg.WebAPIListeners, logger, handler, deps.webAPISessionManager)

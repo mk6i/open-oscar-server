@@ -101,6 +101,16 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, session
 		return authMiddleware.RequireSession(sessionManager, h)
 	}
 
+	// Only requests that submit a password are counted. GET login.psp just
+	// renders the form.
+	clientLogin := LoginRateLimit(handler.LoginRateLimiter, logger,
+		func(w http.ResponseWriter, r *http.Request) {
+			SendErrorDetail(w, r, http.StatusTooManyRequests, statusRateLimited, 0, "rate limit exceeded")
+		}, http.HandlerFunc(authHandler.ClientLogin))
+	loginPSPPost := LoginRateLimit(handler.LoginRateLimiter, logger,
+		func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "rate limited", http.StatusTooManyRequests)
+		}, http.HandlerFunc(authHandler.LoginPSP))
 	loginPSP := http.HandlerFunc(authHandler.LoginPSP)
 	startSession := http.HandlerFunc(aimHandler.StartSession)
 	sendIM := oscarRoute(wire.ICBM, wire.ICBMChannelMsgToHost, messagingHandler.SendIM)
@@ -116,13 +126,13 @@ func NewServer(listeners []string, logger *slog.Logger, handler Handler, session
 		mux.HandleFunc("GET /{$}", handler.GetHelloWorldHandler)
 		mux.Handle("GET /crossdomain.xml", crossDomainHandler)
 
-		mux.HandleFunc("POST /auth/clientLogin", authHandler.ClientLogin)
+		mux.Handle("POST /auth/clientLogin", clientLogin)
 		mux.HandleFunc("GET /auth/getToken", authHandler.GetToken)
 		mux.HandleFunc("GET /auth/getInfo", authHandler.GetInfo)
 		mux.HandleFunc("POST /auth/getInfo", authHandler.GetInfo)
 		mux.HandleFunc("GET /auth/logout", authHandler.Logout)
 		mux.Handle("GET /_cqr/login/login.psp", loginPSP)
-		mux.Handle("POST /_cqr/login/login.psp", loginPSP)
+		mux.Handle("POST /_cqr/login/login.psp", loginPSPPost)
 
 		mux.Handle("GET /aim/startSession", startSession)
 		mux.Handle("POST /aim/startSession", startSession)
@@ -349,6 +359,9 @@ type Handler struct {
 	IconSource         BuddyIconSource
 	BARTService        BARTService
 	SNACRateLimits     wire.SNACRateLimits
+	// LoginRateLimiter limits password attempts per IP on the login routes.
+	// Nil disables the limit.
+	LoginRateLimiter LoginIPRateLimiter
 }
 
 func (h Handler) GetHelloWorldHandler(w http.ResponseWriter, r *http.Request) {

@@ -3,6 +3,7 @@ package webapi
 import (
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"time"
 
@@ -216,6 +217,43 @@ func RequestLogger(logger *slog.Logger, next http.Handler) http.Handler {
 			"path", r.URL.Path,
 			"query", r.URL.RawQuery,
 		)
+		next.ServeHTTP(w, r)
+	})
+}
+
+// LoginIPRateLimiter decides whether a client IP may make another login attempt.
+// The TOC server's IPRateLimiter satisfies it.
+type LoginIPRateLimiter interface {
+	Allow(ip string) bool
+}
+
+// loginRetryAfter is the Retry-After hint sent with a rejected login. The login
+// limiter refills one attempt per minute, so a minute is always enough.
+const loginRetryAfter = 60 * time.Second
+
+// LoginRateLimit limits password attempts per client IP. It keys on the IP in
+// r.RemoteAddr and ignores X-Forwarded-For / X-Real-IP, which any client can
+// set. Behind a reverse proxy every user therefore shares the proxy's bucket.
+//
+// A nil limiter turns the middleware off. reject writes the response for a
+// limited request, so each route can answer in its own format.
+func LoginRateLimit(limiter LoginIPRateLimiter, logger *slog.Logger, reject http.HandlerFunc, next http.Handler) http.Handler {
+	if limiter == nil {
+		return next
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ip, _, err := net.SplitHostPort(r.RemoteAddr)
+		if err != nil {
+			logger.ErrorContext(r.Context(), "failed to parse remote address", "err", err.Error())
+			SendError(w, r, http.StatusInternalServerError, "internal server error")
+			return
+		}
+		if !limiter.Allow(ip) {
+			logger.InfoContext(r.Context(), "(webapi) login rate limited", "ip", ip, "path", r.URL.Path)
+			w.Header().Set("Retry-After", fmt.Sprintf("%d", int(loginRetryAfter.Seconds())))
+			reject(w, r)
+			return
+		}
 		next.ServeHTTP(w, r)
 	})
 }
