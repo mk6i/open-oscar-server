@@ -687,3 +687,80 @@ func TestRateLimitStatusName(t *testing.T) {
 		})
 	}
 }
+
+// fakeLoginLimiter allows each IP a fixed number of attempts.
+type fakeLoginLimiter struct {
+	left map[string]int
+	seen []string
+}
+
+func (f *fakeLoginLimiter) Allow(ip string) bool {
+	f.seen = append(f.seen, ip)
+	if f.left[ip] <= 0 {
+		return false
+	}
+	f.left[ip]--
+	return true
+}
+
+func TestLoginRateLimit(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	reject := func(w http.ResponseWriter, r *http.Request) {
+		SendErrorDetail(w, r, http.StatusTooManyRequests, statusRateLimited, 0, "rate limit exceeded")
+	}
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	do := func(h http.Handler, remoteAddr string, hdr map[string]string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/auth/clientLogin?f=json", nil)
+		req.RemoteAddr = remoteAddr
+		for k, v := range hdr {
+			req.Header.Set(k, v)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+
+	t.Run("allowed request reaches the handler", func(t *testing.T) {
+		lim := &fakeLoginLimiter{left: map[string]int{"10.0.0.1": 1}}
+		rec := do(LoginRateLimit(lim, logger, reject, next), "10.0.0.1:5555", nil)
+		assert.Equal(t, http.StatusNoContent, rec.Code)
+	})
+
+	t.Run("limited request gets 429, envelope 430 and Retry-After", func(t *testing.T) {
+		lim := &fakeLoginLimiter{left: map[string]int{}}
+		rec := do(LoginRateLimit(lim, logger, reject, next), "10.0.0.1:5555", nil)
+		assert.Equal(t, http.StatusTooManyRequests, rec.Code)
+		assert.Equal(t, "60", rec.Header().Get("Retry-After"))
+		assert.Contains(t, rec.Body.String(), `"statusCode":430`)
+	})
+
+	t.Run("limit is per IP", func(t *testing.T) {
+		lim := &fakeLoginLimiter{left: map[string]int{"10.0.0.1": 1, "10.0.0.2": 1}}
+		h := LoginRateLimit(lim, logger, reject, next)
+		assert.Equal(t, http.StatusNoContent, do(h, "10.0.0.1:1", nil).Code)
+		assert.Equal(t, http.StatusTooManyRequests, do(h, "10.0.0.1:2", nil).Code)
+		assert.Equal(t, http.StatusNoContent, do(h, "10.0.0.2:1", nil).Code)
+	})
+
+	t.Run("forwarding headers are not trusted", func(t *testing.T) {
+		lim := &fakeLoginLimiter{left: map[string]int{"10.0.0.1": 5}}
+		h := LoginRateLimit(lim, logger, reject, next)
+		do(h, "10.0.0.1:1", map[string]string{"X-Forwarded-For": "1.2.3.4", "X-Real-IP": "5.6.7.8"})
+		assert.Equal(t, []string{"10.0.0.1"}, lim.seen)
+	})
+
+	t.Run("unparseable remote address is a 500", func(t *testing.T) {
+		lim := &fakeLoginLimiter{left: map[string]int{}}
+		rec := do(LoginRateLimit(lim, logger, reject, next), "not-an-address", nil)
+		assert.Equal(t, http.StatusInternalServerError, rec.Code)
+		assert.Empty(t, lim.seen)
+	})
+
+	t.Run("nil limiter disables the limit", func(t *testing.T) {
+		rec := do(LoginRateLimit(nil, logger, reject, next), "10.0.0.1:1", nil)
+		assert.Equal(t, http.StatusNoContent, rec.Code)
+	})
+}
