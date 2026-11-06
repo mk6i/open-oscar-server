@@ -1139,6 +1139,101 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 			expectOutput: nil,
 		},
 		{
+			name:     "ignore buddies",
+			instance: newTestInstance("me"),
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagInsertItem,
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x13_0x08_FeedbagInsertItem{
+					Items: []wire.FeedbagItem{
+						{
+							ClassID: wire.FeedbagClassIdIgnoreList,
+							Name:    "buddy1",
+						},
+						{
+							ClassID: wire.FeedbagClassIdIgnoreList,
+							Name:    "buddy2",
+						},
+					},
+				},
+			},
+			mockParams: mockParams{
+				feedbagManagerParams: feedbagManagerParams{
+					feedbagUpsertParams: feedbagUpsertParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							items: []wire.FeedbagItem{
+								{
+									ClassID: wire.FeedbagClassIdIgnoreList,
+									Name:    "buddy1",
+								},
+								{
+									ClassID: wire.FeedbagClassIdIgnoreList,
+									Name:    "buddy2",
+								},
+							},
+						},
+					},
+				},
+				buddyBroadcasterParams: buddyBroadcasterParams{
+					broadcastVisibilityParams: broadcastVisibilityParams{
+						{
+							from: state.NewIdentScreenName("me"),
+							filter: []state.IdentScreenName{
+								state.NewIdentScreenName("buddy1"),
+								state.NewIdentScreenName("buddy2"),
+							},
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToOtherInstancesParams: relayToOtherInstancesParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagInsertItem,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x13_0x09_FeedbagUpdateItem{
+									Items: []wire.FeedbagItem{
+										{
+											ClassID: wire.FeedbagClassIdIgnoreList,
+											Name:    "buddy1",
+										},
+										{
+											ClassID: wire.FeedbagClassIdIgnoreList,
+											Name:    "buddy2",
+										},
+									},
+								},
+							},
+						},
+					},
+					relayToSelfParams: relayToSelfParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagStatus,
+									RequestID: 1234,
+								},
+								Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
+									Results: []uint16{0x0000, 0x0000},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectOutput: nil,
+		},
+		{
 			name:     "permit buddies",
 			instance: newTestInstance("me"),
 			inputSNAC: wire.SNACMessage{
@@ -2816,6 +2911,113 @@ func TestFeedbagService_DeleteItem(t *testing.T) {
 										},
 										{
 											ClassID: wire.FeedbagClassIdBuddy,
+											Name:    "buddy2",
+										},
+										{
+											ClassID: wire.FeedbagClassIdGroup,
+											Name:    "group",
+										},
+									},
+								},
+							},
+						},
+					},
+					relayToSelfParams: relayToSelfParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagStatus,
+									RequestID: 1234,
+								},
+								Body: wire.SNAC_0x13_0x0E_FeedbagStatus{
+									Results: []uint16{0x0000, 0x0000, 0x0000},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectOutput: nil,
+		},
+		{
+			name:     "delete ignored users",
+			instance: newTestInstance("me"),
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.Feedbag,
+					SubGroup:  wire.FeedbagDeleteItem,
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
+					Items: []wire.FeedbagItem{
+						{
+							ClassID: wire.FeedbagClassIdIgnoreList,
+							Name:    "buddy1",
+						},
+						{
+							ClassID: wire.FeedbagClassIdIgnoreList,
+							Name:    "buddy2",
+						},
+						{
+							ClassID: wire.FeedbagClassIdGroup,
+							Name:    "group",
+						},
+					},
+				},
+			},
+			mockParams: mockParams{
+				feedbagManagerParams: feedbagManagerParams{
+					feedbagDeleteParams: feedbagDeleteParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							items: []wire.FeedbagItem{
+								{
+									ClassID: wire.FeedbagClassIdIgnoreList,
+									Name:    "buddy1",
+								},
+								{
+									ClassID: wire.FeedbagClassIdIgnoreList,
+									Name:    "buddy2",
+								},
+								{
+									ClassID: wire.FeedbagClassIdGroup,
+									Name:    "group",
+								},
+							},
+						},
+					},
+				},
+				buddyBroadcasterParams: buddyBroadcasterParams{
+					broadcastVisibilityParams: broadcastVisibilityParams{
+						{
+							from: state.NewIdentScreenName("me"),
+							filter: []state.IdentScreenName{
+								state.NewIdentScreenName("buddy1"),
+								state.NewIdentScreenName("buddy2"),
+							},
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToOtherInstancesParams: relayToOtherInstancesParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.Feedbag,
+									SubGroup:  wire.FeedbagDeleteItem,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: wire.SNAC_0x13_0x0A_FeedbagDeleteItem{
+									Items: []wire.FeedbagItem{
+										{
+											ClassID: wire.FeedbagClassIdIgnoreList,
+											Name:    "buddy1",
+										},
+										{
+											ClassID: wire.FeedbagClassIdIgnoreList,
 											Name:    "buddy2",
 										},
 										{
