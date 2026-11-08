@@ -1138,7 +1138,8 @@ func (f SQLiteUserStore) FeedbagUpsert(ctx context.Context, screenName IdentScre
 		if item.ClassID == wire.FeedbagClassIdBuddy ||
 			item.ClassID == wire.FeedbagClassIDPermit ||
 			item.ClassID == wire.FeedbagClassIdAlInfo ||
-			item.ClassID == wire.FeedbagClassIDDeny {
+			item.ClassID == wire.FeedbagClassIDDeny ||
+			item.ClassID == wire.FeedbagClassIdIgnoreList {
 			// insert screen name identifier
 			item.Name = NewIdentScreenName(item.Name).String()
 		}

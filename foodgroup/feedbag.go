@@ -332,7 +332,7 @@ func (s *FeedbagService) UpsertItem(ctx context.Context, instance *state.Session
 	var alertAll bool
 	for _, item := range toUpsert {
 		switch item.ClassID {
-		case wire.FeedbagClassIdBuddy, wire.FeedbagClassIDPermit, wire.FeedbagClassIDDeny:
+		case wire.FeedbagClassIdBuddy, wire.FeedbagClassIDPermit, wire.FeedbagClassIDDeny, wire.FeedbagClassIdIgnoreList:
 			filter = append(filter, state.NewIdentScreenName(item.Name))
 		case wire.FeedbagClassIdBart:
 			if err := s.setBARTItem(ctx, instance, item); err != nil {
@@ -513,7 +513,7 @@ func (s *FeedbagService) DeleteItem(ctx context.Context, instance *state.Session
 
 	for _, item := range inBody.Items {
 		switch item.ClassID {
-		case wire.FeedbagClassIdBuddy, wire.FeedbagClassIDDeny, wire.FeedbagClassIDPermit:
+		case wire.FeedbagClassIdBuddy, wire.FeedbagClassIDDeny, wire.FeedbagClassIDPermit, wire.FeedbagClassIdIgnoreList:
 			filter = append(filter, state.NewIdentScreenName(item.Name))
 		}
 	}

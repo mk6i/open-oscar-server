@@ -27,15 +27,17 @@ WITH myScreenName AS (SELECT ?),
      theirBuddyLists AS (SELECT COALESCE(clientSide._screenName, feedbag._screenName) AS _screenName,
                               COALESCE(clientSide.isBuddy OR feedbag.isBuddy, FALSE) AS isBuddy,
                               COALESCE(clientSide.isPermit OR feedbag.isPermit, FALSE) AS isPermit,
-                              COALESCE(clientSide.isDeny OR feedbag.isDeny, FALSE) AS isDeny
+                              COALESCE(clientSide.isDeny OR feedbag.isDeny, FALSE) AS isDeny,
+                              COALESCE(feedbag.isIgnore, FALSE) AS isIgnore
                        FROM (SELECT feedbag.screenName                                   AS _screenName,
                                     MAX(CASE WHEN feedbag.classId = 0 AND NOT feedbag.authPending THEN 1 ELSE 0 END) AS isBuddy,
                                     MAX(CASE WHEN feedbag.classId = 2 THEN 1 ELSE 0 END) AS isPermit,
-                                    MAX(CASE WHEN feedbag.classId = 3 THEN 1 ELSE 0 END) AS isDeny
+                                    MAX(CASE WHEN feedbag.classId = 3 THEN 1 ELSE 0 END) AS isDeny,
+                                    MAX(CASE WHEN feedbag.classId = 14 THEN 1 ELSE 0 END) AS isIgnore
                              FROM feedbag
                              WHERE feedbag.name = (SELECT * FROM myScreenName)
                              {{ if .DoFilter }}AND feedbag.screenName IN (SELECT * FROM filter){{ end }}
-                               AND feedbag.classId IN (0, 2, 3)
+                               AND feedbag.classId IN (0, 2, 3, 14)
                                AND EXISTS(SELECT 1
                                           FROM buddyListMode
                                           WHERE buddyListMode.screenName = feedbag.screenName
@@ -54,15 +56,17 @@ WITH myScreenName AS (SELECT ?),
      yourBuddyList AS (SELECT COALESCE(clientSide._screenName, feedbag._screenName) AS _screenName,
                               COALESCE(clientSide.isBuddy OR feedbag.isBuddy, FALSE) AS isBuddy,
                               COALESCE(clientSide.isPermit OR feedbag.isPermit, FALSE) AS isPermit,
-                              COALESCE(clientSide.isDeny OR feedbag.isDeny, FALSE) AS isDeny
+                              COALESCE(clientSide.isDeny OR feedbag.isDeny, FALSE) AS isDeny,
+                              COALESCE(feedbag.isIgnore, FALSE) AS isIgnore
                        FROM (SELECT feedbag.name                                         AS _screenName,
                                     MAX(CASE WHEN feedbag.classId = 0 AND NOT feedbag.authPending THEN 1 ELSE 0 END) AS isBuddy,
                                     MAX(CASE WHEN feedbag.classId = 2 THEN 1 ELSE 0 END) AS isPermit,
-                                    MAX(CASE WHEN feedbag.classId = 3 THEN 1 ELSE 0 END) AS isDeny
+                                    MAX(CASE WHEN feedbag.classId = 3 THEN 1 ELSE 0 END) AS isDeny,
+                                    MAX(CASE WHEN feedbag.classId = 14 THEN 1 ELSE 0 END) AS isIgnore
                              FROM feedbag
                              WHERE feedbag.screenName = (SELECT * FROM myScreenName)
                              {{ if .DoFilter }}AND feedbag.name IN (SELECT * FROM filter){{ end }}
-                               AND feedbag.classId IN (0, 2, 3)
+                               AND feedbag.classId IN (0, 2, 3, 14)
                                AND EXISTS(SELECT 1
                                           FROM buddyListMode
                                           WHERE buddyListMode.screenName = feedbag.screenName
@@ -107,6 +111,7 @@ WITH myScreenName AS (SELECT ?),
 -- create relationships between you and all combined users
 SELECT COALESCE(yourBuddyList._screenName, theirBuddyLists._screenName) AS screenName,
        CASE
+           WHEN IFNULL(yourBuddyList.isIgnore, false) THEN true
            WHEN yourPrivacyPrefs.pdMode = 1 THEN false
            WHEN yourPrivacyPrefs.pdMode = 2 THEN true
            WHEN yourPrivacyPrefs.pdMode = 3 THEN IFNULL(yourBuddyList.isPermit, false) = false
@@ -115,6 +120,7 @@ SELECT COALESCE(yourBuddyList._screenName, theirBuddyLists._screenName) AS scree
            ELSE false
            END                                                        AS youBlock,
        CASE
+           WHEN IFNULL(theirBuddyLists.isIgnore, false) THEN true
            WHEN theirPrivacyPrefs.pdMode = 1 THEN false
            WHEN theirPrivacyPrefs.pdMode = 2 THEN true
            WHEN theirPrivacyPrefs.pdMode = 3 THEN IFNULL(theirBuddyLists.isPermit, false) = false
@@ -151,6 +157,7 @@ type Relationship struct {
 	// 	- PermitSome (and you are not on permit list)
 	// 	- DenySome (and you are on deny list)
 	// 	- PermitOnList (and you are not on their buddy list)
+	// It is also true when you are on user's ignore list, regardless of mode.
 	BlocksYou bool
 	// YouBlock indicates whether you block user. This is true when user has
 	// the following permit/deny modes set:
@@ -158,6 +165,7 @@ type Relationship struct {
 	// 	- PermitSome (and they are not on your permit list)
 	// 	- DenySome (and they are on your deny list)
 	// 	- PermitOnList (and they are not on your buddy list)
+	// It is also true when user is on your ignore list, regardless of mode.
 	YouBlock bool
 	// IsOnTheirList indicates whether you are on user's buddy list.
 	IsOnTheirList bool

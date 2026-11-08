@@ -25,6 +25,8 @@ func TestSQLiteUserStore_AllRelationships(t *testing.T) {
 		// buddyPendingAuth lists buddies (subset of buddyList) whose server-side feedbag buddy row
 		// is written with TLV FeedbagAttributesPending / authPending.
 		buddyPendingAuth []IdentScreenName
+		// ignoreList is the list of users on the server-side ignore list. always active.
+		ignoreList []IdentScreenName
 	}
 
 	tests := []struct {
@@ -3194,6 +3196,78 @@ func TestSQLiteUserStore_AllRelationships(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:            "feedbag server-side: I ignore them while allowing all, block them",
+			me:              NewIdentScreenName("me"),
+			clientSideLists: map[IdentScreenName]buddyList{},
+			serverSideLists: map[IdentScreenName]buddyList{
+				NewIdentScreenName("me"): {
+					privacyMode: wire.FeedbagPDModePermitAll,
+					ignoreList:  []IdentScreenName{NewIdentScreenName("them")},
+				},
+				NewIdentScreenName("them"): {
+					privacyMode: wire.FeedbagPDModePermitAll,
+				},
+			},
+			expect: []Relationship{
+				{
+					User:          NewIdentScreenName("them"),
+					BlocksYou:     false,
+					YouBlock:      true,
+					IsOnTheirList: false,
+					IsOnYourList:  false,
+				},
+			},
+		},
+		{
+			name:            "feedbag server-side: they ignore me while allowing all, they block me",
+			me:              NewIdentScreenName("me"),
+			clientSideLists: map[IdentScreenName]buddyList{},
+			serverSideLists: map[IdentScreenName]buddyList{
+				NewIdentScreenName("me"): {
+					privacyMode: wire.FeedbagPDModePermitAll,
+					buddyList:   []IdentScreenName{NewIdentScreenName("them")},
+				},
+				NewIdentScreenName("them"): {
+					privacyMode: wire.FeedbagPDModePermitAll,
+					ignoreList:  []IdentScreenName{NewIdentScreenName("me")},
+				},
+			},
+			expect: []Relationship{
+				{
+					User:          NewIdentScreenName("them"),
+					BlocksYou:     true,
+					YouBlock:      false,
+					IsOnTheirList: false,
+					IsOnYourList:  true,
+				},
+			},
+		},
+		{
+			name:            "feedbag server-side: I have them on buddy and ignore lists, block them",
+			me:              NewIdentScreenName("me"),
+			clientSideLists: map[IdentScreenName]buddyList{},
+			serverSideLists: map[IdentScreenName]buddyList{
+				NewIdentScreenName("me"): {
+					privacyMode: wire.FeedbagPDModePermitOnList,
+					buddyList:   []IdentScreenName{NewIdentScreenName("them")},
+					ignoreList:  []IdentScreenName{NewIdentScreenName("them")},
+				},
+				NewIdentScreenName("them"): {
+					privacyMode: wire.FeedbagPDModePermitAll,
+					buddyList:   []IdentScreenName{NewIdentScreenName("me")},
+				},
+			},
+			expect: []Relationship{
+				{
+					User:          NewIdentScreenName("them"),
+					BlocksYou:     false,
+					YouBlock:      true,
+					IsOnTheirList: true,
+					IsOnYourList:  true,
+				},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -3242,6 +3316,10 @@ func TestSQLiteUserStore_AllRelationships(t *testing.T) {
 					items = append(items, newFeedbagItem(wire.FeedbagClassIDDeny, itemID, buddy.String(), false))
 					itemID++
 				}
+				for _, buddy := range list.ignoreList {
+					items = append(items, newFeedbagItem(wire.FeedbagClassIdIgnoreList, itemID, buddy.String(), false))
+					itemID++
+				}
 				assert.NoError(t, feedbagStore.FeedbagUpsert(context.Background(), sn, items))
 			}
 
@@ -3256,4 +3334,30 @@ func TestSQLiteUserStore_AllRelationships(t *testing.T) {
 			assert.ElementsMatch(t, tt.expect, have)
 		})
 	}
+}
+
+func TestSQLiteUserStore_AllRelationships_IgnoreListNormalizesScreenName(t *testing.T) {
+	defer func() {
+		_ = os.Remove(testFile)
+	}()
+
+	store, err := NewSQLiteUserStore(testFile)
+	assert.NoError(t, err)
+
+	me := NewIdentScreenName("me")
+	them := NewIdentScreenName("them")
+	for _, sn := range []IdentScreenName{me, them} {
+		insertTestUsers(t, store, sn)
+		assert.NoError(t, store.UseFeedbag(context.Background(), sn))
+		assert.NoError(t, store.FeedbagUpsert(context.Background(), sn, []wire.FeedbagItem{
+			pdInfoItem(1, wire.FeedbagPDModePermitAll),
+		}))
+	}
+	assert.NoError(t, store.FeedbagUpsert(context.Background(), me, []wire.FeedbagItem{
+		newFeedbagItem(wire.FeedbagClassIdIgnoreList, 2, "The M", false),
+	}))
+
+	have, err := store.AllRelationships(context.Background(), me, []IdentScreenName{them})
+	assert.NoError(t, err)
+	assert.Equal(t, []Relationship{{User: them, YouBlock: true}}, have)
 }

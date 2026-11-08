@@ -716,10 +716,11 @@ func (f *FeedbagList) genID() uint16 {
 }
 
 // hasScreenName reports whether the feedbag class stores a screen name that
-// should be normalized (buddy, permit, deny).
+// should be normalized (buddy, permit, deny, ignore).
 func hasScreenName(classID uint16) bool {
 	return classID == wire.FeedbagClassIdBuddy ||
 		classID == wire.FeedbagClassIDPermit ||
 		classID == wire.FeedbagClassIdAlInfo ||
-		classID == wire.FeedbagClassIDDeny
+		classID == wire.FeedbagClassIDDeny ||
+		classID == wire.FeedbagClassIdIgnoreList
 }
