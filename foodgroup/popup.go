@@ -3,6 +3,7 @@ package foodgroup
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
@@ -27,13 +28,20 @@ type PopupService struct {
 	messageRelayer MessageRelayer
 }
 
-// Display shows a popup to the given screen names.
+// Display shows a popup to the given screen names. Each screen name receives
+// the popup once.
 func (s PopupService) Display(ctx context.Context, screenNames []state.IdentScreenName, message string, url string, width uint16, height uint16) error {
 	msg, err := s.popupDisplay(message, url, width, height)
 	if err != nil {
 		return err
 	}
-	s.messageRelayer.RelayToScreenNames(ctx, screenNames, msg)
+	recipients := make([]state.IdentScreenName, 0, len(screenNames))
+	for _, screenName := range screenNames {
+		if !slices.Contains(recipients, screenName) {
+			recipients = append(recipients, screenName)
+		}
+	}
+	s.messageRelayer.RelayToScreenNames(ctx, recipients, msg)
 	return nil
 }
 

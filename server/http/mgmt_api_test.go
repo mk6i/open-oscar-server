@@ -1822,7 +1822,6 @@ func TestPopupHandler_POST(t *testing.T) {
 	tt := []struct {
 		name          string
 		body          string
-		sessions      map[state.IdentScreenName]*state.Session
 		wantDisplay   []state.IdentScreenName
 		wantBroadcast bool
 		wantMessage   string
@@ -1841,64 +1840,25 @@ func TestPopupHandler_POST(t *testing.T) {
 			wantURL:       "http://example.com",
 			wantWidth:     400,
 			wantHeight:    300,
-			want:          `{"offline":[]}`,
+			want:          `Popup sent successfully.`,
 			statusCode:    http.StatusOK,
 		},
 		{
-			name: "all recipients online",
-			body: `{"recipients":["alice","bob"],"message":"hello"}`,
-			sessions: map[state.IdentScreenName]*state.Session{
-				alice: state.NewSession(),
-				bob:   state.NewSession(),
-			},
+			name:        "recipients",
+			body:        `{"recipients":["Alice","bob"],"message":"hello"}`,
 			wantDisplay: []state.IdentScreenName{alice, bob},
 			wantMessage: "hello",
-			want:        `{"offline":[]}`,
+			want:        `Popup sent successfully.`,
 			statusCode:  http.StatusOK,
 		},
 		{
-			name: "some recipients offline",
-			body: `{"recipients":["alice","bob"],"message":"hello"}`,
-			sessions: map[state.IdentScreenName]*state.Session{
-				alice: state.NewSession(),
-				bob:   nil,
-			},
-			wantDisplay: []state.IdentScreenName{alice},
-			wantMessage: "hello",
-			want:        `{"offline":["bob"]}`,
-			statusCode:  http.StatusOK,
-		},
-		{
-			name: "duplicate recipients",
-			body: `{"recipients":["alice","ALICE","Ali Ce"],"message":"hello"}`,
-			sessions: map[state.IdentScreenName]*state.Session{
-				alice: state.NewSession(),
-			},
-			wantDisplay: []state.IdentScreenName{alice},
-			wantMessage: "hello",
-			want:        `{"offline":[]}`,
-			statusCode:  http.StatusOK,
-		},
-		{
-			name: "display fails",
-			body: `{"recipients":["alice"],"message":"hello"}`,
-			sessions: map[state.IdentScreenName]*state.Session{
-				alice: state.NewSession(),
-			},
+			name:        "display fails",
+			body:        `{"recipients":["alice"],"message":"hello"}`,
 			wantDisplay: []state.IdentScreenName{alice},
 			wantMessage: "hello",
 			displayErr:  io.EOF,
 			want:        `internal server error`,
 			statusCode:  http.StatusInternalServerError,
-		},
-		{
-			name: "no recipients online",
-			body: `{"recipients":["alice"],"message":"hello"}`,
-			sessions: map[state.IdentScreenName]*state.Session{
-				alice: nil,
-			},
-			want:       `no recipients are online`,
-			statusCode: http.StatusNotFound,
 		},
 		{
 			name:       "neither recipients nor broadcast",
@@ -1946,11 +1906,6 @@ func TestPopupHandler_POST(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			sessionRetriever := newMockSessionRetriever(t)
-			for screenName, sess := range tc.sessions {
-				sessionRetriever.EXPECT().RetrieveSession(screenName).Return(sess)
-			}
-
 			popupDisplayer := newMockPopupDisplayer(t)
 			if tc.wantBroadcast {
 				popupDisplayer.EXPECT().
@@ -1966,7 +1921,7 @@ func TestPopupHandler_POST(t *testing.T) {
 			request := httptest.NewRequest(http.MethodPost, "/popup", strings.NewReader(tc.body))
 			responseRecorder := httptest.NewRecorder()
 
-			postPopupHandler(responseRecorder, request, sessionRetriever, popupDisplayer, slog.Default())
+			postPopupHandler(responseRecorder, request, popupDisplayer, slog.Default())
 
 			assert.Equal(t, tc.statusCode, responseRecorder.Code)
 			assert.Equal(t, tc.want, strings.TrimSpace(responseRecorder.Body.String()))

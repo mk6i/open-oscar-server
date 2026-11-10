@@ -32,19 +32,21 @@ func TestPopupService_Display(t *testing.T) {
 	}
 
 	cases := []struct {
-		name       string
-		message    string
-		url        string
-		width      uint16
-		height     uint16
-		mockParams mockParams
+		name        string
+		screenNames []state.IdentScreenName
+		message     string
+		url         string
+		width       uint16
+		height      uint16
+		mockParams  mockParams
 	}{
 		{
-			name:    "all fields set",
-			message: "hello",
-			url:     "http://example.com",
-			width:   400,
-			height:  300,
+			name:        "all fields set",
+			screenNames: screenNames,
+			message:     "hello",
+			url:         "http://example.com",
+			width:       400,
+			height:      300,
 			mockParams: mockParams{
 				messageRelayerParams: messageRelayerParams{
 					relayToScreenNamesParams: relayToScreenNamesParams{
@@ -62,10 +64,11 @@ func TestPopupService_Display(t *testing.T) {
 			},
 		},
 		{
-			name:    "no url",
-			message: "hello",
-			width:   400,
-			height:  300,
+			name:        "no url",
+			screenNames: screenNames,
+			message:     "hello",
+			width:       400,
+			height:      300,
 			mockParams: mockParams{
 				messageRelayerParams: messageRelayerParams{
 					relayToScreenNamesParams: relayToScreenNamesParams{
@@ -82,10 +85,11 @@ func TestPopupService_Display(t *testing.T) {
 			},
 		},
 		{
-			name:    "non-ascii text",
-			message: "caf\u00e9 \u2122 \u65e5",
-			width:   400,
-			height:  300,
+			name:        "non-ascii text",
+			screenNames: screenNames,
+			message:     "caf\u00e9 \u2122 \u65e5",
+			width:       400,
+			height:      300,
 			mockParams: mockParams{
 				messageRelayerParams: messageRelayerParams{
 					relayToScreenNamesParams: relayToScreenNamesParams{
@@ -102,8 +106,30 @@ func TestPopupService_Display(t *testing.T) {
 			},
 		},
 		{
-			name:    "default dimensions",
-			message: "hello",
+			name:        "duplicate screen names",
+			screenNames: []state.IdentScreenName{screenNames[0], screenNames[1], screenNames[0]},
+			message:     "hello",
+			width:       400,
+			height:      300,
+			mockParams: mockParams{
+				messageRelayerParams: messageRelayerParams{
+					relayToScreenNamesParams: relayToScreenNamesParams{
+						{
+							screenNames: screenNames,
+							message: popupMessage(
+								wire.NewTLVBE(wire.PopupTLVMessage, []byte("hello")),
+								wire.NewTLVBE(wire.PopupTLVWidth, uint16(400)),
+								wire.NewTLVBE(wire.PopupTLVHeight, uint16(300)),
+							),
+						},
+					},
+				},
+			},
+		},
+		{
+			name:        "default dimensions",
+			screenNames: screenNames,
+			message:     "hello",
 			mockParams: mockParams{
 				messageRelayerParams: messageRelayerParams{
 					relayToScreenNamesParams: relayToScreenNamesParams{
@@ -130,7 +156,7 @@ func TestPopupService_Display(t *testing.T) {
 			}
 
 			svc := NewPopupService(messageRelayer)
-			err := svc.Display(context.Background(), screenNames, tc.message, tc.url, tc.width, tc.height)
+			err := svc.Display(context.Background(), tc.screenNames, tc.message, tc.url, tc.width, tc.height)
 			assert.NoError(t, err)
 		})
 	}

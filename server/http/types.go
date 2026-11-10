@@ -308,10 +308,6 @@ type popup struct {
 	Height     uint16   `json:"height"`
 }
 
-type popupResult struct {
-	Offline []string `json:"offline"`
-}
-
 type directoryKeyword struct {
 	ID   uint8  `json:"id"`
 	Name string `json:"name"`
