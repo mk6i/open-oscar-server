@@ -7,7 +7,7 @@ import (
 	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
 
-	"golang.org/x/text/encoding"
+	"golang.org/x/text/encoding/charmap"
 )
 
 const (
@@ -16,16 +16,14 @@ const (
 )
 
 // NewPopupService returns a new instance of PopupService.
-func NewPopupService(messageRelayer MessageRelayer, legacyCharset encoding.Encoding) PopupService {
+func NewPopupService(messageRelayer MessageRelayer) PopupService {
 	return PopupService{
-		legacyCharset:  legacyCharset,
 		messageRelayer: messageRelayer,
 	}
 }
 
 // PopupService implements the Popup food group.
 type PopupService struct {
-	legacyCharset  encoding.Encoding
 	messageRelayer MessageRelayer
 }
 
@@ -50,7 +48,7 @@ func (s PopupService) DisplayAll(ctx context.Context, message string, url string
 }
 
 func (s PopupService) popupDisplay(message string, url string, width uint16, height uint16) (wire.SNACMessage, error) {
-	text, err := encodeLegacy(s.legacyCharset, message)
+	text, err := encodeLegacy(charmap.Windows1252, message)
 	if err != nil {
 		return wire.SNACMessage{}, fmt.Errorf("encodeLegacy: %w", err)
 	}

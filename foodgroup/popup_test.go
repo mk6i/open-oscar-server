@@ -8,7 +8,6 @@ import (
 	"github.com/mk6i/open-oscar-server/wire"
 
 	"github.com/stretchr/testify/assert"
-	"golang.org/x/text/encoding/charmap"
 )
 
 func popupMessage(tlvs ...wire.TLV) wire.SNACMessage {
@@ -130,7 +129,7 @@ func TestPopupService_Display(t *testing.T) {
 					RelayToScreenNames(matchContext(), params.screenNames, params.message)
 			}
 
-			svc := NewPopupService(messageRelayer, charmap.Windows1252)
+			svc := NewPopupService(messageRelayer)
 			err := svc.Display(context.Background(), screenNames, tc.message, tc.url, tc.width, tc.height)
 			assert.NoError(t, err)
 		})
@@ -148,7 +147,7 @@ func TestPopupService_DisplayAll(t *testing.T) {
 	messageRelayer := newMockMessageRelayer(t)
 	messageRelayer.EXPECT().RelayToAll(matchContext(), want)
 
-	svc := NewPopupService(messageRelayer, charmap.Windows1252)
+	svc := NewPopupService(messageRelayer)
 	err := svc.DisplayAll(context.Background(), "hello", "http://example.com", 400, 300)
 	assert.NoError(t, err)
 }
