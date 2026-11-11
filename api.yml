@@ -587,7 +587,7 @@ paths:
                   type: string
                   minLength: 1
                   maxLength: 8000
-                  description: The text content of the popup. Supports HTML. Encoded with ICBM_LEGACY_CHARSET, and characters outside it become '?'.
+                  description: The text content of the popup. Supports HTML. Encoded as Windows-1252, and characters outside it become '?'.
                 url:
                   type: string
                   maxLength: 2048
@@ -607,20 +607,8 @@ paths:
       responses:
         '200':
           description: Popup sent.
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  offline:
-                    type: array
-                    items:
-                      type: string
-                    description: Recipients who were offline and did not receive the popup.
         '400':
           description: Bad request. Invalid input data.
-        '404':
-          description: None of the recipients are online.
         '500':
           description: Internal server error.
 

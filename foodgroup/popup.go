@@ -3,11 +3,12 @@ package foodgroup
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
 
-	"golang.org/x/text/encoding"
+	"golang.org/x/text/encoding/charmap"
 )
 
 const (
@@ -16,26 +17,31 @@ const (
 )
 
 // NewPopupService returns a new instance of PopupService.
-func NewPopupService(messageRelayer MessageRelayer, legacyCharset encoding.Encoding) PopupService {
+func NewPopupService(messageRelayer MessageRelayer) PopupService {
 	return PopupService{
-		legacyCharset:  legacyCharset,
 		messageRelayer: messageRelayer,
 	}
 }
 
 // PopupService implements the Popup food group.
 type PopupService struct {
-	legacyCharset  encoding.Encoding
 	messageRelayer MessageRelayer
 }
 
-// Display shows a popup to the given screen names.
+// Display shows a popup to the given screen names. Each screen name receives
+// the popup once.
 func (s PopupService) Display(ctx context.Context, screenNames []state.IdentScreenName, message string, url string, width uint16, height uint16) error {
 	msg, err := s.popupDisplay(message, url, width, height)
 	if err != nil {
 		return err
 	}
-	s.messageRelayer.RelayToScreenNames(ctx, screenNames, msg)
+	recipients := make([]state.IdentScreenName, 0, len(screenNames))
+	for _, screenName := range screenNames {
+		if !slices.Contains(recipients, screenName) {
+			recipients = append(recipients, screenName)
+		}
+	}
+	s.messageRelayer.RelayToScreenNames(ctx, recipients, msg)
 	return nil
 }
 
@@ -50,7 +56,7 @@ func (s PopupService) DisplayAll(ctx context.Context, message string, url string
 }
 
 func (s PopupService) popupDisplay(message string, url string, width uint16, height uint16) (wire.SNACMessage, error) {
-	text, err := encodeLegacy(s.legacyCharset, message)
+	text, err := encodeLegacy(charmap.Windows1252, message)
 	if err != nil {
 		return wire.SNACMessage{}, fmt.Errorf("encodeLegacy: %w", err)
 	}

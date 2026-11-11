@@ -104,7 +104,7 @@ func NewManagementAPI(bld config.Build, listener string, userManager UserManager
 
 	// Handlers for '/popup' route
 	mux.HandleFunc("POST /popup", func(w http.ResponseWriter, r *http.Request) {
-		postPopupHandler(w, r, sessionRetriever, popupDisplayer, logger)
+		postPopupHandler(w, r, popupDisplayer, logger)
 	})
 
 	// Handlers for '/version' route
@@ -714,7 +714,7 @@ const (
 )
 
 // postPopupHandler handles the POST /popup endpoint.
-func postPopupHandler(w http.ResponseWriter, r *http.Request, sessionRetriever SessionRetriever, popupDisplayer PopupDisplayer, logger *slog.Logger) {
+func postPopupHandler(w http.ResponseWriter, r *http.Request, popupDisplayer PopupDisplayer, logger *slog.Logger) {
 	input := popup{}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		http.Error(w, "malformed input", http.StatusBadRequest)
@@ -734,27 +734,14 @@ func postPopupHandler(w http.ResponseWriter, r *http.Request, sessionRetriever S
 	}
 
 	var err error
-	out := popupResult{Offline: []string{}}
 	if input.Broadcast {
 		err = popupDisplayer.DisplayAll(r.Context(), input.Message, input.URL, input.Width, input.Height)
 	} else {
-		online := make([]state.IdentScreenName, 0, len(input.Recipients))
+		screenNames := make([]state.IdentScreenName, 0, len(input.Recipients))
 		for _, recipient := range input.Recipients {
-			screenName := state.NewIdentScreenName(recipient)
-			if slices.Contains(online, screenName) {
-				continue
-			}
-			if sessionRetriever.RetrieveSession(screenName) == nil {
-				out.Offline = append(out.Offline, recipient)
-				continue
-			}
-			online = append(online, screenName)
+			screenNames = append(screenNames, state.NewIdentScreenName(recipient))
 		}
-		if len(online) == 0 {
-			http.Error(w, "no recipients are online", http.StatusNotFound)
-			return
-		}
-		err = popupDisplayer.Display(r.Context(), online, input.Message, input.URL, input.Width, input.Height)
+		err = popupDisplayer.Display(r.Context(), screenNames, input.Message, input.URL, input.Width, input.Height)
 	}
 	if err != nil {
 		logger.Error("error displaying popup POST /popup", "err", err.Error())
@@ -762,10 +749,8 @@ func postPopupHandler(w http.ResponseWriter, r *http.Request, sessionRetriever S
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(out); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
+	w.WriteHeader(http.StatusOK)
+	_, _ = fmt.Fprintln(w, "Popup sent successfully.")
 }
 
 // getUserBuddyIconHandler handles the GET /user/{screenname}/icon endpoint.
