@@ -1815,6 +1815,165 @@ func TestPrivateChatHandler_GET(t *testing.T) {
 	}
 }
 
+func TestPopupHandler_POST(t *testing.T) {
+	alice := state.NewIdentScreenName("alice")
+	bob := state.NewIdentScreenName("bob")
+
+	tt := []struct {
+		name          string
+		body          string
+		sessions      map[state.IdentScreenName]*state.Session
+		wantDisplay   []state.IdentScreenName
+		wantBroadcast bool
+		wantMessage   string
+		wantURL       string
+		wantWidth     uint16
+		wantHeight    uint16
+		displayErr    error
+		want          string
+		statusCode    int
+	}{
+		{
+			name:          "broadcast",
+			body:          `{"broadcast":true,"message":"hello","url":"http://example.com","width":400,"height":300}`,
+			wantBroadcast: true,
+			wantMessage:   "hello",
+			wantURL:       "http://example.com",
+			wantWidth:     400,
+			wantHeight:    300,
+			want:          `{"offline":[]}`,
+			statusCode:    http.StatusOK,
+		},
+		{
+			name: "all recipients online",
+			body: `{"recipients":["alice","bob"],"message":"hello"}`,
+			sessions: map[state.IdentScreenName]*state.Session{
+				alice: state.NewSession(),
+				bob:   state.NewSession(),
+			},
+			wantDisplay: []state.IdentScreenName{alice, bob},
+			wantMessage: "hello",
+			want:        `{"offline":[]}`,
+			statusCode:  http.StatusOK,
+		},
+		{
+			name: "some recipients offline",
+			body: `{"recipients":["alice","bob"],"message":"hello"}`,
+			sessions: map[state.IdentScreenName]*state.Session{
+				alice: state.NewSession(),
+				bob:   nil,
+			},
+			wantDisplay: []state.IdentScreenName{alice},
+			wantMessage: "hello",
+			want:        `{"offline":["bob"]}`,
+			statusCode:  http.StatusOK,
+		},
+		{
+			name: "duplicate recipients",
+			body: `{"recipients":["alice","ALICE","Ali Ce"],"message":"hello"}`,
+			sessions: map[state.IdentScreenName]*state.Session{
+				alice: state.NewSession(),
+			},
+			wantDisplay: []state.IdentScreenName{alice},
+			wantMessage: "hello",
+			want:        `{"offline":[]}`,
+			statusCode:  http.StatusOK,
+		},
+		{
+			name: "display fails",
+			body: `{"recipients":["alice"],"message":"hello"}`,
+			sessions: map[state.IdentScreenName]*state.Session{
+				alice: state.NewSession(),
+			},
+			wantDisplay: []state.IdentScreenName{alice},
+			wantMessage: "hello",
+			displayErr:  io.EOF,
+			want:        `internal server error`,
+			statusCode:  http.StatusInternalServerError,
+		},
+		{
+			name: "no recipients online",
+			body: `{"recipients":["alice"],"message":"hello"}`,
+			sessions: map[state.IdentScreenName]*state.Session{
+				alice: nil,
+			},
+			want:       `no recipients are online`,
+			statusCode: http.StatusNotFound,
+		},
+		{
+			name:       "neither recipients nor broadcast",
+			body:       `{"message":"hello"}`,
+			want:       `set either recipients or broadcast`,
+			statusCode: http.StatusBadRequest,
+		},
+		{
+			name:       "both recipients and broadcast",
+			body:       `{"recipients":["alice"],"broadcast":true,"message":"hello"}`,
+			want:       `set either recipients or broadcast`,
+			statusCode: http.StatusBadRequest,
+		},
+		{
+			name:       "missing message",
+			body:       `{"recipients":["alice"]}`,
+			want:       `message must be 1 to 8000 bytes`,
+			statusCode: http.StatusBadRequest,
+		},
+		{
+			name:       "message too long",
+			body:       fmt.Sprintf(`{"broadcast":true,"message":%q}`, strings.Repeat("a", maxPopupMessageLen+1)),
+			want:       `message must be 1 to 8000 bytes`,
+			statusCode: http.StatusBadRequest,
+		},
+		{
+			name:       "url too long",
+			body:       fmt.Sprintf(`{"broadcast":true,"message":"hello","url":%q}`, strings.Repeat("a", maxPopupURLLen+1)),
+			want:       `url must not exceed 2048 bytes`,
+			statusCode: http.StatusBadRequest,
+		},
+		{
+			name:       "dimension out of range",
+			body:       `{"broadcast":true,"message":"hello","width":70000}`,
+			want:       `malformed input`,
+			statusCode: http.StatusBadRequest,
+		},
+		{
+			name:       "malformed input",
+			body:       `{`,
+			want:       `malformed input`,
+			statusCode: http.StatusBadRequest,
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			sessionRetriever := newMockSessionRetriever(t)
+			for screenName, sess := range tc.sessions {
+				sessionRetriever.EXPECT().RetrieveSession(screenName).Return(sess)
+			}
+
+			popupDisplayer := newMockPopupDisplayer(t)
+			if tc.wantBroadcast {
+				popupDisplayer.EXPECT().
+					DisplayAll(mock.Anything, tc.wantMessage, tc.wantURL, tc.wantWidth, tc.wantHeight).
+					Return(tc.displayErr)
+			}
+			if tc.wantDisplay != nil {
+				popupDisplayer.EXPECT().
+					Display(mock.Anything, tc.wantDisplay, tc.wantMessage, tc.wantURL, tc.wantWidth, tc.wantHeight).
+					Return(tc.displayErr)
+			}
+
+			request := httptest.NewRequest(http.MethodPost, "/popup", strings.NewReader(tc.body))
+			responseRecorder := httptest.NewRecorder()
+
+			postPopupHandler(responseRecorder, request, sessionRetriever, popupDisplayer, slog.Default())
+
+			assert.Equal(t, tc.statusCode, responseRecorder.Code)
+			assert.Equal(t, tc.want, strings.TrimSpace(responseRecorder.Body.String()))
+		})
+	}
+}
+
 func TestInstantMessageHandler_POST(t *testing.T) {
 	senderExists := getUserParams{
 		{
