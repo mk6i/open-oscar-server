@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"golang.org/x/text/encoding"
 	"golang.org/x/text/encoding/charmap"
@@ -1017,6 +1018,58 @@ func TestConfigValidate(t *testing.T) {
 			},
 			wantErr:     true,
 			errContains: "missing host",
+		},
+
+		{
+			name: "valid config with relay listeners",
+			config: Config{
+				APIListener:       "127.0.0.1:8080",
+				RelayEnabled:      true,
+				RelayListeners:    []string{"0.0.0.0:4443"},
+				RelayAdvertisedIP: "192.0.2.7",
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid config with relay on the OSCAR port",
+			config: Config{
+				APIListener:         "127.0.0.1:8080",
+				RelayEnabled:        true,
+				RelaySharedPortWait: 500 * time.Millisecond,
+				RelayAdvertisedIP:   "192.0.2.7",
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid relay - nowhere to listen",
+			config: Config{
+				APIListener:       "127.0.0.1:8080",
+				RelayEnabled:      true,
+				RelayAdvertisedIP: "192.0.2.7",
+			},
+			wantErr:     true,
+			errContains: "needs RELAY_LISTENERS or RELAY_SHARED_PORT_WAIT",
+		},
+		{
+			name: "invalid relay - missing advertised IP",
+			config: Config{
+				APIListener:    "127.0.0.1:8080",
+				RelayEnabled:   true,
+				RelayListeners: []string{"0.0.0.0:4443"},
+			},
+			wantErr:     true,
+			errContains: "invalid RELAY_ADVERTISED_IP",
+		},
+		{
+			name: "invalid relay - IPv6 advertised IP",
+			config: Config{
+				APIListener:       "127.0.0.1:8080",
+				RelayEnabled:      true,
+				RelayListeners:    []string{"0.0.0.0:4443"},
+				RelayAdvertisedIP: "2001:db8::1",
+			},
+			wantErr:     true,
+			errContains: "invalid RELAY_ADVERTISED_IP",
 		},
 	}
 

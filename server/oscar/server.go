@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net"
 	"net/netip"
+	"os"
 	"sync"
 	"time"
 
@@ -82,6 +83,47 @@ type Server struct {
 	closed         chan struct{}
 
 	handler func(ctx context.Context, conn net.Conn, endpointCfg config.Endpoint) error
+}
+
+// RouteFirstBytes offers TCP connections to route, with up to four bytes they
+// sent within wait, and hands them to the function it returns instead of OSCAR.
+// OSCAR clients wait for the server's hello, so the hello is held back for up
+// to wait. Call it before ListenAndServe.
+func (s *Server) RouteFirstBytes(wait time.Duration, route func(first []byte, remote net.Addr) func(conn net.Conn)) {
+	next := s.handler
+	s.handler = func(ctx context.Context, conn net.Conn, endpointCfg config.Endpoint) error {
+		if _, isTCP := conn.(*net.TCPConn); !isTCP || endpointCfg.IsSSL {
+			return next(ctx, conn, endpointCfg)
+		}
+
+		started := time.Now()
+		first := make([]byte, 4)
+		_ = conn.SetReadDeadline(started.Add(wait))
+		n, err := io.ReadFull(conn, first)
+		_ = conn.SetReadDeadline(time.Time{})
+		if err != nil && !errors.Is(err, os.ErrDeadlineExceeded) {
+			return err
+		}
+
+		replay := prefixConn{Conn: conn, r: io.MultiReader(bytes.NewReader(first[:n]), conn)}
+		if serve := route(first[:n], conn.RemoteAddr()); serve != nil {
+			s.logger.InfoContext(ctx, "routed connection by first bytes", "after", time.Since(started).String())
+			serve(replay)
+			return nil
+		}
+		return next(ctx, replay, endpointCfg)
+	}
+}
+
+// prefixConn is a connection that reads from r, which holds bytes already read
+// from the connection ahead of the connection itself.
+type prefixConn struct {
+	net.Conn
+	r io.Reader
+}
+
+func (c prefixConn) Read(b []byte) (int, error) {
+	return c.r.Read(b)
 }
 
 func (s *Server) ListenAndServe() error {
