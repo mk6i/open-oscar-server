@@ -163,6 +163,9 @@ packages:
       ProfileManager:
         config:
           filename: "mock_profile_manager_test.go"
+      RendezvousBroker:
+        config:
+          filename: "mock_rendezvous_broker_test.go"
       SessionRegistry:
         config:
           filename: "mock_session_registry_test.go"
@@ -186,6 +189,11 @@ packages:
       CookieBaker:
         config:
           filename: "mock_cookie_baker_test.go"
+      SessionRetriever:
+        config:
+          filename: "mock_session_retriever_test.go"
+  github.com/mk6i/open-oscar-server/server/relay:
+    interfaces:
       SessionRetriever:
         config:
           filename: "mock_session_retriever_test.go"

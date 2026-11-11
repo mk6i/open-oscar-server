@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"net/url"
 	"strings"
 	"time"
@@ -161,6 +162,13 @@ type Config struct {
 	SystemMsgScreenName    string `envconfig:"SYSTEM_MSG_SCREEN_NAME" required:"false" basic:"" ssl:"" description:"Screen name that server notifications, such as the multiple sign-in and offline message notices, are sent from. Defaults to 'OOS System Msg' when blank."`
 	LogLevel               string `envconfig:"LOG_LEVEL" required:"true" basic:"info" ssl:"info" description:"Set logging granularity. Possible values: 'trace', 'debug', 'info', 'warn', 'error'."`
 	ICBMLegacyCharset      string `envconfig:"ICBM_LEGACY_CHARSET" required:"false" default:"Windows1251" basic:"Windows1251" ssl:"Windows1251" description:"Fallback character set used to transcode IMs between Unicode-capable and legacy clients. Possible values: Windows1250 (central european: polish, czech, hungarian), Windows1251 (russian), Windows1252 (western european: english, french, german), Windows1253 (greek), Windows1254 (turkish), Windows1255 (hebrew), Windows1256 (arabic), Windows1257 (baltic: lithuanian, latvian, estonian), Windows1258 (vietnamese), KOI8R (russian), KOI8U (ukrainian)."`
+
+	// Rendezvous relay configuration
+	RelayEnabled        bool          `envconfig:"RELAY_ENABLED" required:"false" default:"false" basic:"false" ssl:"false" description:"Enable the rendezvous relay, which carries Direct IM and file transfers through the server so clients need no port forwarding. When enabled, the server listens on RELAY_LISTENERS, and on the OSCAR listeners if RELAY_SHARED_PORT_WAIT is set."`
+	RelayListeners      []string      `envconfig:"RELAY_LISTENERS" required:"false" basic:"" ssl:"" description:"Network listeners for the rendezvous relay. AIM 5.1 dials port 4443 for Direct IM, whatever port the offer names.\n\nFormat: Comma-separated list of hostname:port pairs.\n\nExamples:\n\t// All interfaces, the port AIM 5.1 dials\n\t0.0.0.0:4443"`
+	RelayAdvertisedIP   string        `envconfig:"RELAY_ADVERTISED_IP" required:"false" basic:"" ssl:"" description:"IPv4 address clients dial to reach the relay. Required when RELAY_ENABLED is true."`
+	RelayAdvertisedPort uint16        `envconfig:"RELAY_ADVERTISED_PORT" required:"false" default:"5190" basic:"5190" ssl:"5190" description:"Port clients dial to reach the relay. Keep it equal to the OSCAR port when RELAY_SHARED_PORT_WAIT is on, or to a port in RELAY_LISTENERS."`
+	RelaySharedPortWait time.Duration `envconfig:"RELAY_SHARED_PORT_WAIT" required:"false" default:"0" basic:"0" ssl:"0" description:"Serve the relay on the OSCAR listeners too, for servers with one IP address. Every OSCAR connection waits this long for a relayed client's first bytes before the server says hello. 0 turns this off."`
 
 	// ICQ Legacy Protocol Configuration
 	ICQLegacy ICQLegacyConfig
@@ -411,6 +419,16 @@ func (c *Config) ParseICBMLegacyCharset() (encoding.Encoding, error) {
 }
 
 func (c *Config) Validate() error {
+	if c.RelayEnabled {
+		if len(c.RelayListeners) == 0 && c.RelaySharedPortWait == 0 {
+			return errors.New("RELAY_ENABLED needs RELAY_LISTENERS or RELAY_SHARED_PORT_WAIT")
+		}
+		ip, err := netip.ParseAddr(c.RelayAdvertisedIP)
+		if err != nil || !ip.Is4() {
+			return fmt.Errorf("invalid RELAY_ADVERTISED_IP %q: an IPv4 address is required when RELAY_ENABLED is true", c.RelayAdvertisedIP)
+		}
+	}
+
 	// Validate TOCListeners (format: hostname:port pairs). Every entry is
 	// bound as given, and an empty address binds a random port on all
 	// interfaces.

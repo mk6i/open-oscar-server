@@ -3570,6 +3570,38 @@ func TestICBMService_ClientErr(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func TestICBMService_ClientErr_rendezvousBroker(t *testing.T) {
+	tests := []struct {
+		name        string
+		channel     uint16
+		wantRefusal bool
+	}{
+		{name: "rendezvous", channel: wire.ICBMChannelRendezvous, wantRefusal: true},
+		{name: "other channel", channel: wire.ICBMChannelMIME},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			messageRelayer := newMockMessageRelayer(t)
+			messageRelayer.EXPECT().RelayToScreenName(mock.Anything, mock.Anything, mock.Anything)
+			rendezvousBroker := newMockRendezvousBroker(t)
+			if tt.wantRefusal {
+				rendezvousBroker.EXPECT().RefuseRendezvous(uint64(1234))
+			}
+			svc := NewICBMService(nil, messageRelayer, nil, nil, nil, nil, nil, nil, wire.DefaultSNACRateLimits(), charmap.Windows1251, slog.Default())
+			svc.SetRendezvousBroker(rendezvousBroker)
+
+			err := svc.ClientErr(context.Background(), newTestInstance("recipient"), wire.SNACFrame{}, wire.SNAC_0x04_0x0B_ICBMClientErr{
+				Cookie:     1234,
+				ChannelID:  tt.channel,
+				ScreenName: "offerer",
+				Code:       3,
+				ErrInfo:    []byte{0, 2, 0, 1},
+			})
+			assert.NoError(t, err)
+		})
+	}
+}
+
 func TestICBMService_OfflineRetrieve(t *testing.T) {
 	sent := time.Unix(1700000000, 0).UTC()
 
@@ -4599,6 +4631,62 @@ func TestStripHTML(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := stripHTML(tt.input)
 			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestICBMService_rendezvousTLV(t *testing.T) {
+	remote := netip.MustParseAddrPort("203.0.113.9:4000")
+	sess := state.NewSession()
+	instance := sess.AddInstance()
+	instance.SetRemoteAddr(&remote)
+	them := state.NewIdentScreenName("them")
+
+	frag := wire.ICBMCh2Fragment{Type: wire.ICBMRdvMessagePropose}
+	frag.Append(wire.NewTLVBE(wire.ICBMRdvTLVTagsRequesterIP, []byte{10, 0, 3, 5}))
+	in := wire.NewTLVBE(wire.ICBMTLVData, frag)
+
+	rewritten := wire.ICBMCh2Fragment{Type: wire.ICBMRdvMessagePropose}
+	rewritten.Append(wire.NewTLVBE(wire.ICBMRdvTLVTagsRequesterIP, []byte{192, 0, 2, 7}))
+
+	tests := []struct {
+		name         string
+		withBroker   bool
+		hold         bool
+		brokered     bool
+		wantIP       []byte
+		wantVerified bool
+		wantErr      error
+	}{
+		{name: "no broker rewrites the address", wantIP: []byte{203, 0, 113, 9}, wantVerified: true},
+		{name: "broker passes, address rewritten", withBroker: true, wantIP: []byte{203, 0, 113, 9}, wantVerified: true},
+		{name: "broker replaces the message", withBroker: true, brokered: true, wantIP: []byte{192, 0, 2, 7}},
+		{name: "broker holds the message", withBroker: true, hold: true, wantErr: errRendezvousHeld},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := &ICBMService{}
+			if tt.withBroker {
+				rendezvousBroker := newMockRendezvousBroker(t)
+				rendezvousBroker.EXPECT().HoldRendezvous(instance, frag).Return(tt.hold)
+				if !tt.hold {
+					rendezvousBroker.EXPECT().BrokerRendezvous(instance, them, frag).Return(rewritten, tt.brokered)
+				}
+				svc.SetRendezvousBroker(rendezvousBroker)
+			}
+
+			out, err := svc.rendezvousTLV(instance, them, in)
+			if tt.wantErr != nil {
+				assert.ErrorIs(t, err, tt.wantErr)
+				return
+			}
+			assert.NoError(t, err)
+
+			got := wire.ICBMCh2Fragment{}
+			assert.NoError(t, wire.UnmarshalBE(&got, bytes.NewReader(out.Value)))
+			ip, _ := got.Bytes(wire.ICBMRdvTLVTagsRequesterIP)
+			assert.Equal(t, tt.wantIP, ip)
+			assert.Equal(t, tt.wantVerified, got.HasTag(wire.ICBMRdvTLVTagsVerifiedIP))
 		})
 	}
 }
