@@ -645,7 +645,9 @@ func (s *FeedbagService) RequestAuthorizeToHost(ctx context.Context, instance *s
 	return s.sendLegacyAuthReq(ctx, instance, recipient, inBody.Reason, userInfo.ICQInfo.Basic, authorized)
 }
 
-// sendLegacyAuthReq sends an offline authorization request to ICQ client
+// sendLegacyAuthReq sends an offline authorization request to ICQ client. The
+// text is left as UTF-8: the message may be stored, and who reads it, a feedbag
+// client or a vintage one, is only known on delivery, which converts it.
 func (s *FeedbagService) sendLegacyAuthReq(ctx context.Context, from *state.SessionInstance, to state.IdentScreenName, reason string, userInfo state.ICQBasicInfo, authorized int) error {
 	frame := wire.SNACFrame{
 		FoodGroup: wire.ICBM,
@@ -665,7 +667,7 @@ func (s *FeedbagService) sendLegacyAuthReq(ctx context.Context, from *state.Sess
 						userInfo.LastName,
 						userInfo.EmailAddress,
 						authorized,
-						utf8ToLatin1(reason)),
+						reason),
 				}),
 				wire.NewTLVBE(wire.ICBMTLVStore, []byte{}),
 			},
@@ -703,30 +705,6 @@ func (s *FeedbagService) PreAuthorizeBuddy(ctx context.Context, instance *state.
 	}
 
 	return nil, nil
-}
-
-func utf8ToLatin1(s string) string {
-	if isASCII(s) {
-		return s
-	}
-	var result []byte
-	for _, r := range s {
-		if r <= 0xFF {
-			result = append(result, byte(r))
-		} else {
-			result = append(result, '?')
-		}
-	}
-	return string(result)
-}
-
-func isASCII(s string) bool {
-	for i := 0; i < len(s); i++ {
-		if s[i] > 0x7F {
-			return false
-		}
-	}
-	return true
 }
 
 func (s *FeedbagService) authorizeContact(ctx context.Context, granter state.IdentScreenName, requester state.IdentScreenName, message string) error {

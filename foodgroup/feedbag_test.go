@@ -3588,7 +3588,7 @@ func TestFeedbagService_RequestAuthorizeToHost(t *testing.T) {
 									authReqSender.ICQInfo.Basic.LastName,
 									authReqSender.ICQInfo.Basic.EmailAddress,
 									1,
-									utf8ToLatin1("please add me"),
+									"please add me",
 								),
 							}),
 							wire.NewTLVBE(wire.ICBMTLVStore, []byte{}),
@@ -3653,7 +3653,7 @@ func TestFeedbagService_RequestAuthorizeToHost(t *testing.T) {
 									authReqSender.ICQInfo.Basic.LastName,
 									authReqSender.ICQInfo.Basic.EmailAddress,
 									1,
-									utf8ToLatin1("please add me"),
+									"please add me",
 								),
 							}),
 							wire.NewTLVBE(wire.ICBMTLVStore, []byte{}),
@@ -3714,7 +3714,7 @@ func TestFeedbagService_RequestAuthorizeToHost(t *testing.T) {
 									authReqSender.ICQInfo.Basic.LastName,
 									authReqSender.ICQInfo.Basic.EmailAddress,
 									0,
-									utf8ToLatin1("please add me"),
+									"please add me",
 								),
 							}),
 							wire.NewTLVBE(wire.ICBMTLVStore, []byte{}),
@@ -3775,7 +3775,7 @@ func TestFeedbagService_RequestAuthorizeToHost(t *testing.T) {
 									authReqSender.ICQInfo.Basic.LastName,
 									authReqSender.ICQInfo.Basic.EmailAddress,
 									1,
-									utf8ToLatin1("please add me"),
+									"please add me",
 								),
 							}),
 							wire.NewTLVBE(wire.ICBMTLVStore, []byte{}),
@@ -4635,40 +4635,6 @@ func TestFeedbagService_PreAuthorizeBuddy(t *testing.T) {
 			out, err := svc.PreAuthorizeBuddy(context.Background(), alice, tt.inFrame, tt.inBody)
 			assert.ErrorIs(t, err, tt.wantErr)
 			assert.Equal(t, tt.wantOut, out)
-		})
-	}
-}
-
-func TestUtf8ToLatin1(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-		want  string
-	}{
-		{
-			name:  "pure ASCII string returned unchanged",
-			input: "hello world",
-			want:  "hello world",
-		},
-		{
-			name:  "Latin-1 characters converted to single bytes",
-			input: "caf\u00e9", // é = U+00E9
-			want:  "caf\xe9",
-		},
-		{
-			name:  "non-Latin-1 character replaced with question mark",
-			input: "price: \u20ac", // € = U+20AC (> 0xFF)
-			want:  "price: ?",
-		},
-		{
-			name:  "mixed input: ASCII and Latin-1 kept, non-Latin-1 replaced",
-			input: "r\u00e9sum\u00e9 \u20ac100", // résumé €100
-			want:  "r\xe9sum\xe9 ?100",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, utf8ToLatin1(tt.input))
 		})
 	}
 }
