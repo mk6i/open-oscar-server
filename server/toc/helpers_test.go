@@ -334,7 +334,7 @@ type fakeOSCARServer struct {
 	clientAddrs []net.Addr
 }
 
-func (s *fakeOSCARServer) ServeConn(conn net.Conn) error {
+func (s *fakeOSCARServer) ServeConn(conn net.Conn, _ []wire.SNACType) error {
 	s.mu.Lock()
 	s.clientAddrs = append(s.clientAddrs, conn.RemoteAddr())
 	if len(s.handlers) == 0 {

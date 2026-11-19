@@ -1,9 +1,7 @@
 package webapi
 
 import (
-	"context"
 	"encoding/json"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -12,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/mk6i/open-oscar-server/state"
@@ -24,42 +21,63 @@ func requireSession(sm SessionResolver, next func(http.ResponseWriter, *http.Req
 	return NewAuthMiddleware(slog.Default()).RequireSession(sm, next)
 }
 
-// createTestSessionManager creates a SessionManager with a pre-populated session.
-// createTestSessionManagerWithOSCAR creates a SessionManager with an OSCAR session instance set.
-func createTestSessionManagerWithOSCAR(screenName string, oscarSession *state.SessionInstance) (*SessionManager, string) {
-	mgr := NewSessionManager()
-	session, _ := mgr.CreateSession(state.DisplayScreenName(screenName), []string{"im", "presence", "buddylist", "sentIM", "typing"}, oscarSession, "", slog.Default())
-	session.FeedbagLoader = emptyFeedbagLoader
-	return mgr, session.AimSID
-}
-
-// stubLocateService answers UserInfoQuery with a reply carrying screenName, or
-// with an error when screenName is empty (i.e. the target is offline or blocked).
-func stubLocateService(t *testing.T, screenName string) *mockLocateService {
-	ls := newMockLocateService(t)
-	call := ls.EXPECT().UserInfoQuery(mock.Anything, mock.Anything, mock.Anything, mock.Anything)
-	if screenName == "" {
-		call.Return(wire.SNACMessage{}, io.EOF).Maybe()
-	} else {
-		call.Return(wire.SNACMessage{Body: wire.SNAC_0x02_0x06_LocateUserInfoReply{
-			TLVUserInfo: wire.TLVUserInfo{ScreenName: screenName},
-		}}, nil).Maybe()
+// createTestSessionManager creates a SessionManager holding one running
+// session for screenName over conn. Without events, the session subscribes to
+// the events the handlers under test push.
+func createTestSessionManager(t *testing.T, screenName string, conn *fakeConn, events ...string) (*SessionManager, *Session) {
+	t.Helper()
+	if len(events) == 0 {
+		events = []string{"im", "presence", "buddylist", "sentIM", "typing"}
 	}
-	return ls
+	mgr := NewSessionManager()
+	sess, err := mgr.CreateSession(state.DisplayScreenName(screenName), events, conn, wire.DefaultSNACRateLimits(), "", slog.Default())
+	require.NoError(t, err)
+	sess.Start()
+	t.Cleanup(sess.Close)
+	return mgr, sess
 }
 
-// stubFeedbagService answers Query with a single buddy item for buddy, carrying
+// imServer returns a responder that acknowledges each IM and answers each
+// locate query with displayName, or with a not-logged-on error when
+// displayName is empty.
+func imServer(displayName string) func(req wire.SNACMessage) []wire.SNACMessage {
+	return func(req wire.SNACMessage) []wire.SNACMessage {
+		switch body := req.Body.(type) {
+		case wire.SNAC_0x04_0x06_ICBMChannelMsgToHost:
+			return []wire.SNACMessage{reply(wire.ICBM, wire.ICBMHostAck, wire.SNAC_0x04_0x0C_ICBMHostAck{
+				Cookie:     body.Cookie,
+				ChannelID:  body.ChannelID,
+				ScreenName: body.ScreenName,
+			})}
+		case wire.SNAC_0x02_0x05_LocateUserInfoQuery:
+			if displayName == "" {
+				return []wire.SNACMessage{snacErr(wire.Locate, wire.ErrorCodeNotLoggedOn)}
+			}
+			return []wire.SNACMessage{reply(wire.Locate, wire.LocateUserInfoReply, wire.SNAC_0x02_0x06_LocateUserInfoReply{
+				TLVUserInfo: wire.TLVUserInfo{ScreenName: displayName},
+			})}
+		}
+		return nil
+	}
+}
+
+// buddyItem is a feedbag holding a single buddy item for buddy, carrying
 // alias when one is given.
-func stubFeedbagService(t *testing.T, buddy, alias string) *mockFeedbagService {
+func buddyItem(buddy, alias string) []wire.FeedbagItem {
 	item := wire.FeedbagItem{ItemID: 1, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: buddy}
 	if alias != "" {
 		item.TLVLBlock = wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesAlias, alias)}}
 	}
-	fs := newMockFeedbagService(t)
-	fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).Return(
-		wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: []wire.FeedbagItem{item}}}, nil,
-	).Maybe()
-	return fs
+	return []wire.FeedbagItem{item}
+}
+
+// sentIMs returns the IMs sent to the OSCAR server.
+func sentIMs(conn *fakeConn) []wire.SNAC_0x04_0x06_ICBMChannelMsgToHost {
+	var ims []wire.SNAC_0x04_0x06_ICBMChannelMsgToHost
+	for _, body := range conn.sentOf(wire.ICBM, wire.ICBMChannelMsgToHost) {
+		ims = append(ims, body.(wire.SNAC_0x04_0x06_ICBMChannelMsgToHost))
+	}
+	return ims
 }
 
 // sendIMForDest drives SendIM addressed to t, with the recipient's display name
@@ -68,25 +86,11 @@ func stubFeedbagService(t *testing.T, buddy, alias string) *mockFeedbagService {
 func sendIMForDest(t *testing.T, dest, locateName, alias string) []Event {
 	t.Helper()
 
-	oscarInstance := state.NewSession().AddInstance()
-	icbmService := newMockICBMService(t)
-	icbmService.EXPECT().ChannelMsgToHost(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(nil, nil)
+	conn := newFakeConn().answering(imServer(locateName))
+	mgr, session := createTestSessionManager(t, "Ann Dupree", conn, "im", "sentIM", "conversation")
+	session.feedbag.Reset(buddyItem(dest, alias))
 
-	mgr := NewSessionManager()
-	session, err := mgr.CreateSession(state.DisplayScreenName("Ann Dupree"), []string{"im", "sentIM", "conversation"}, oscarInstance, "", slog.Default())
-	require.NoError(t, err)
-	session.FeedbagLoader = emptyFeedbagLoader
-
-	handler := &MessagingHandler{
-		ICBMService:    icbmService,
-		LocateService:  stubLocateService(t, locateName),
-		FeedbagService: stubFeedbagService(t, dest, alias),
-		Logger:         slog.Default(),
-	}
-
-	// startSession wires this in production; SendIM reads aliases off the session.
-	session.FeedbagLoader = feedbagServiceLoader(handler.FeedbagService, session.OSCARSession)
+	handler := &MessagingHandler{Logger: slog.Default()}
 
 	req, err := http.NewRequest("GET", "/im/sendIM?aimsid="+session.AimSID+"&t="+url.QueryEscape(dest)+"&message=hi", nil)
 	require.NoError(t, err)
@@ -173,34 +177,45 @@ func TestMessagingHandler_SendIM_OmitsDestDisplayIDWhenUnresolved(t *testing.T) 
 }
 
 func TestMessagingHandler_SendIM(t *testing.T) {
-	oscarInstance := state.NewSession().AddInstance()
-
 	tests := []struct {
 		name               string
 		queryParams        string
-		setupMocks         func(*mockICBMService)
+		events             []string
+		limited            bool
+		wantTLVs           []uint16
 		expectedStatusCode int
 		checkResponse      func(*testing.T, string)
 	}{
 		{
 			name:        "Success",
 			queryParams: "t=recipient&message=hello+world",
-			setupMocks: func(is *mockICBMService) {
-				is.EXPECT().ChannelMsgToHost(mock.Anything, oscarInstance, mock.AnythingOfType("wire.SNACFrame"), mock.AnythingOfType("wire.SNAC_0x04_0x06_ICBMChannelMsgToHost")).
-					Return(nil, nil)
-			},
-			expectedStatusCode: http.StatusOK,
+			events:      []string{"im"},
+			wantTLVs:    []uint16{wire.ICBMTLVAOLIMData, wire.ICBMTLVRequestHostAck},
 			checkResponse: func(t *testing.T, body string) {
 				assert.Contains(t, body, `"statusCode":200`)
 				assert.Contains(t, body, `"msgId"`)
 				assert.Contains(t, body, `"state":"delivered"`)
 				assert.Contains(t, body, `"timestamp":`)
 			},
+			expectedStatusCode: http.StatusOK,
+		},
+		{
+			name:               "Success_TypingSubscriberAsksForTypingEvents",
+			queryParams:        "t=recipient&message=hello",
+			events:             []string{"im", "typing"},
+			wantTLVs:           []uint16{wire.ICBMTLVAOLIMData, wire.ICBMTLVWantEvents, wire.ICBMTLVRequestHostAck},
+			expectedStatusCode: http.StatusOK,
+		},
+		{
+			name:               "Success_AutoResponse",
+			queryParams:        "t=recipient&message=hello&autoResponse=1",
+			events:             []string{"im"},
+			wantTLVs:           []uint16{wire.ICBMTLVAOLIMData, wire.ICBMTLVAutoResponse, wire.ICBMTLVRequestHostAck},
+			expectedStatusCode: http.StatusOK,
 		},
 		{
 			name:               "Error_MissingRecipient",
 			queryParams:        "message=hello",
-			setupMocks:         func(is *mockICBMService) {},
 			expectedStatusCode: http.StatusBadRequest,
 			checkResponse: func(t *testing.T, body string) {
 				assert.Contains(t, body, "missing required parameter: t")
@@ -209,30 +224,33 @@ func TestMessagingHandler_SendIM(t *testing.T) {
 		{
 			name:               "Error_MissingMessage",
 			queryParams:        "t=recipient",
-			setupMocks:         func(is *mockICBMService) {},
 			expectedStatusCode: http.StatusBadRequest,
 			checkResponse: func(t *testing.T, body string) {
 				assert.Contains(t, body, "missing required parameter: message")
+			},
+		},
+		{
+			name:               "Error_RateLimited",
+			queryParams:        "t=recipient&message=hello",
+			limited:            true,
+			expectedStatusCode: http.StatusOK,
+			checkResponse: func(t *testing.T, body string) {
+				assert.Contains(t, body, `"statusCode":430`)
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			icbmService := newMockICBMService(t)
-
-			sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
-
-			handler := &MessagingHandler{
-				ICBMService:    icbmService,
-				LocateService:  stubLocateService(t, ""),
-				FeedbagService: stubFeedbagService(t, "someone", ""),
-				Logger:         slog.Default(),
+			conn := newFakeConn().answering(imServer(""))
+			sessionMgr, session := createTestSessionManager(t, "testuser", conn, tt.events...)
+			if tt.limited {
+				limitRateClass(session, wire.ICBM, wire.ICBMChannelMsgToHost)
 			}
 
-			tt.setupMocks(icbmService)
+			handler := &MessagingHandler{Logger: slog.Default()}
 
-			reqURL := "/im/sendIM?aimsid=" + aimsid + "&" + tt.queryParams
+			reqURL := "/im/sendIM?aimsid=" + session.AimSID + "&" + tt.queryParams
 			req, err := http.NewRequest("GET", reqURL, nil)
 			assert.NoError(t, err)
 
@@ -246,6 +264,20 @@ func TestMessagingHandler_SendIM(t *testing.T) {
 			if tt.checkResponse != nil {
 				tt.checkResponse(t, responseBody)
 			}
+
+			ims := sentIMs(conn)
+			if tt.wantTLVs == nil {
+				assert.Empty(t, ims)
+				return
+			}
+			require.Len(t, ims, 1)
+			assert.Equal(t, "recipient", ims[0].ScreenName)
+			assert.Equal(t, wire.ICBMChannelIM, ims[0].ChannelID)
+			var tags []uint16
+			for _, tlv := range ims[0].TLVList {
+				tags = append(tags, tlv.Tag)
+			}
+			assert.Equal(t, tt.wantTLVs, tags)
 		})
 	}
 }
@@ -253,31 +285,19 @@ func TestMessagingHandler_SendIM(t *testing.T) {
 // The ICBM service refuses to store a message for an offline recipient unless the
 // store directive is present, so the client's offlineIM flag has to become one.
 func TestMessagingHandler_SendIM_OfflineIMSetsStoreTLV(t *testing.T) {
-	oscarInstance := state.NewSession().AddInstance()
-	icbmService := newMockICBMService(t)
+	conn := newFakeConn().answering(imServer(""))
+	sessionMgr, session := createTestSessionManager(t, "testuser", conn)
+	handler := &MessagingHandler{Logger: slog.Default()}
 
-	var sent wire.SNAC_0x04_0x06_ICBMChannelMsgToHost
-	icbmService.EXPECT().ChannelMsgToHost(mock.Anything, oscarInstance, mock.Anything, mock.Anything).
-		Run(func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) {
-			sent = inBody
-		}).
-		Return(nil, nil)
-
-	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
-	handler := &MessagingHandler{
-		ICBMService:    icbmService,
-		LocateService:  stubLocateService(t, ""),
-		FeedbagService: stubFeedbagService(t, "recipient", ""),
-		Logger:         slog.Default(),
-	}
-
-	req, err := http.NewRequest("GET", "/im/sendIM?aimsid="+aimsid+"&t=recipient&message=hi&offlineIM=true", nil)
+	req, err := http.NewRequest("GET", "/im/sendIM?aimsid="+session.AimSID+"&t=recipient&message=hi&offlineIM=true", nil)
 	require.NoError(t, err)
 	rr := httptest.NewRecorder()
 	requireSession(sessionMgr, handler.SendIM).ServeHTTP(rr, req)
 
 	require.Equal(t, http.StatusOK, rr.Code)
-	_, hasStore := sent.Bytes(wire.ICBMTLVStore)
+	ims := sentIMs(conn)
+	require.Len(t, ims, 1)
+	_, hasStore := ims[0].Bytes(wire.ICBMTLVStore)
 	assert.True(t, hasStore)
 }
 
@@ -309,23 +329,16 @@ func TestMessagingHandler_SendIM_UndeliverableReportsStatus(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			oscarInstance := state.NewSession().AddInstance()
-			icbmService := newMockICBMService(t)
-			icbmService.EXPECT().ChannelMsgToHost(mock.Anything, oscarInstance, mock.Anything, mock.Anything).
-				Return(&wire.SNACMessage{
-					Frame: wire.SNACFrame{FoodGroup: wire.ICBM, SubGroup: wire.ICBMErr},
-					Body:  tt.errs,
-				}, nil)
+			conn := newFakeConn().answering(func(req wire.SNACMessage) []wire.SNACMessage {
+				if _, ok := req.Body.(wire.SNAC_0x04_0x06_ICBMChannelMsgToHost); ok {
+					return []wire.SNACMessage{reply(wire.ICBM, wire.ICBMErr, tt.errs)}
+				}
+				return nil
+			})
+			sessionMgr, session := createTestSessionManager(t, "testuser", conn)
+			handler := &MessagingHandler{Logger: slog.Default()}
 
-			sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
-			handler := &MessagingHandler{
-				ICBMService:    icbmService,
-				LocateService:  stubLocateService(t, ""),
-				FeedbagService: stubFeedbagService(t, "recipient", ""),
-				Logger:         slog.Default(),
-			}
-
-			req, err := http.NewRequest("GET", "/im/sendIM?aimsid="+aimsid+"&f=json&t=recipient&message=hi", nil)
+			req, err := http.NewRequest("GET", "/im/sendIM?aimsid="+session.AimSID+"&f=json&t=recipient&message=hi", nil)
 			require.NoError(t, err)
 			rr := httptest.NewRecorder()
 			requireSession(sessionMgr, handler.SendIM).ServeHTTP(rr, req)
@@ -338,23 +351,13 @@ func TestMessagingHandler_SendIM_UndeliverableReportsStatus(t *testing.T) {
 }
 
 func TestMessagingHandler_SendIM_POST(t *testing.T) {
-	oscarInstance := state.NewSession().AddInstance()
-	icbmService := newMockICBMService(t)
+	conn := newFakeConn().answering(imServer(""))
+	sessionMgr, session := createTestSessionManager(t, "testuser", conn)
 
-	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
-
-	icbmService.EXPECT().ChannelMsgToHost(mock.Anything, oscarInstance, mock.AnythingOfType("wire.SNACFrame"), mock.AnythingOfType("wire.SNAC_0x04_0x06_ICBMChannelMsgToHost")).
-		Return(nil, nil)
-
-	handler := &MessagingHandler{
-		ICBMService:    icbmService,
-		LocateService:  stubLocateService(t, ""),
-		FeedbagService: stubFeedbagService(t, "someone", ""),
-		Logger:         slog.Default(),
-	}
+	handler := &MessagingHandler{Logger: slog.Default()}
 
 	body := strings.NewReader("message=" + url.QueryEscape("hello from post"))
-	req, err := http.NewRequest(http.MethodPost, "/im/sendIM?aimsid="+aimsid+"&f=json&t=recipient&r=1", body)
+	req, err := http.NewRequest(http.MethodPost, "/im/sendIM?aimsid="+session.AimSID+"&f=json&t=recipient&r=1", body)
 	assert.NoError(t, err)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
@@ -363,6 +366,7 @@ func TestMessagingHandler_SendIM_POST(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, rr.Code)
 	assert.Contains(t, rr.Body.String(), `"msgId"`)
+	require.Len(t, sentIMs(conn), 1)
 }
 
 func TestMessagingHandler_SendIM_MissingAimsid(t *testing.T) {
@@ -398,13 +402,11 @@ func TestMessagingHandler_SendIM_InvalidSession(t *testing.T) {
 }
 
 func TestMessagingHandler_SetTyping(t *testing.T) {
-	oscarInstance := state.NewSession().AddInstance()
-
 	tests := []struct {
 		name               string
 		queryParams        string
 		peerWantsTyping    bool
-		setupMocks         func(*mockICBMService)
+		wantSent           []any
 		expectedStatusCode int
 		checkResponse      func(*testing.T, string)
 	}{
@@ -412,13 +414,11 @@ func TestMessagingHandler_SetTyping(t *testing.T) {
 			name:            "Success_TypingStarted",
 			queryParams:     "t=recipient&typingStatus=typing",
 			peerWantsTyping: true,
-			setupMocks: func(is *mockICBMService) {
-				is.EXPECT().ClientEvent(mock.Anything, oscarInstance, wire.SNACFrame{}, wire.SNAC_0x04_0x14_ICBMClientEvent{
-					ChannelID:  wire.ICBMChannelIM,
-					ScreenName: "recipient",
-					Event:      0x0002,
-				}).Return(nil)
-			},
+			wantSent: []any{wire.SNAC_0x04_0x14_ICBMClientEvent{
+				ChannelID:  wire.ICBMChannelIM,
+				ScreenName: "recipient",
+				Event:      0x0002,
+			}},
 			expectedStatusCode: http.StatusOK,
 			checkResponse: func(t *testing.T, body string) {
 				assert.Contains(t, body, `"statusCode":200`)
@@ -428,32 +428,27 @@ func TestMessagingHandler_SetTyping(t *testing.T) {
 			name:            "Success_TypingPaused",
 			queryParams:     "t=recipient&typingStatus=typed",
 			peerWantsTyping: true,
-			setupMocks: func(is *mockICBMService) {
-				is.EXPECT().ClientEvent(mock.Anything, oscarInstance, wire.SNACFrame{}, wire.SNAC_0x04_0x14_ICBMClientEvent{
-					ChannelID:  wire.ICBMChannelIM,
-					ScreenName: "recipient",
-					Event:      0x0001,
-				}).Return(nil)
-			},
+			wantSent: []any{wire.SNAC_0x04_0x14_ICBMClientEvent{
+				ChannelID:  wire.ICBMChannelIM,
+				ScreenName: "recipient",
+				Event:      0x0001,
+			}},
 			expectedStatusCode: http.StatusOK,
 		},
 		{
 			name:            "Success_TypingStopped",
 			queryParams:     "t=recipient&typingStatus=none",
 			peerWantsTyping: true,
-			setupMocks: func(is *mockICBMService) {
-				is.EXPECT().ClientEvent(mock.Anything, oscarInstance, wire.SNACFrame{}, wire.SNAC_0x04_0x14_ICBMClientEvent{
-					ChannelID:  wire.ICBMChannelIM,
-					ScreenName: "recipient",
-					Event:      0x0000,
-				}).Return(nil)
-			},
+			wantSent: []any{wire.SNAC_0x04_0x14_ICBMClientEvent{
+				ChannelID:  wire.ICBMChannelIM,
+				ScreenName: "recipient",
+				Event:      0x0000,
+			}},
 			expectedStatusCode: http.StatusOK,
 		},
 		{
 			name:               "PeerDidNotAskForTyping",
 			queryParams:        "t=recipient&typingStatus=typing",
-			setupMocks:         func(is *mockICBMService) {},
 			expectedStatusCode: http.StatusOK,
 			checkResponse: func(t *testing.T, body string) {
 				assert.Contains(t, body, `"statusCode":200`)
@@ -462,7 +457,6 @@ func TestMessagingHandler_SetTyping(t *testing.T) {
 		{
 			name:               "Error_MissingRecipient",
 			queryParams:        "typingStatus=typing",
-			setupMocks:         func(is *mockICBMService) {},
 			expectedStatusCode: http.StatusBadRequest,
 			checkResponse: func(t *testing.T, body string) {
 				assert.Contains(t, body, "missing required parameter: t")
@@ -472,23 +466,13 @@ func TestMessagingHandler_SetTyping(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			icbmService := newMockICBMService(t)
-
-			sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
-			sess, err := sessionMgr.GetSession(context.Background(), aimsid)
-			require.NoError(t, err)
+			conn := newFakeConn()
+			sessionMgr, sess := createTestSessionManager(t, "testuser", conn)
 			sess.setPeerWantsTyping(state.NewIdentScreenName("Recipient"), tt.peerWantsTyping)
 
-			handler := &MessagingHandler{
-				ICBMService:    icbmService,
-				LocateService:  stubLocateService(t, ""),
-				FeedbagService: stubFeedbagService(t, "someone", ""),
-				Logger:         slog.Default(),
-			}
+			handler := &MessagingHandler{Logger: slog.Default()}
 
-			tt.setupMocks(icbmService)
-
-			reqURL := "/im/setTyping?aimsid=" + aimsid + "&" + tt.queryParams
+			reqURL := "/im/setTyping?aimsid=" + sess.AimSID + "&" + tt.queryParams
 			req, err := http.NewRequest("GET", reqURL, nil)
 			assert.NoError(t, err)
 
@@ -502,6 +486,7 @@ func TestMessagingHandler_SetTyping(t *testing.T) {
 				responseBody := strings.TrimSpace(rr.Body.String())
 				tt.checkResponse(t, responseBody)
 			}
+			assert.Equal(t, tt.wantSent, conn.sentOf(wire.ICBM, wire.ICBMClientEvent))
 		})
 	}
 }
@@ -522,44 +507,32 @@ func TestMessagingHandler_SetTyping_MissingAimsid(t *testing.T) {
 	assert.Contains(t, rr.Body.String(), "missing aimsid parameter")
 }
 
-// ChannelMsgToHost delivers before it returns, so an ICBMClientErr can reach the pump
-// while SendIM is still inside that call. Recording the cookie->msgId mapping after
-// the send loses that race and emits a clientError naming no message. The interleaving
-// is driven deterministically by handling the error SNAC from inside the mock.
+// A recipient's client error for a message can reach the session before the
+// server's ack of it, and a relayed client error carries the recipient's own
+// request ID, which may collide with the send's. The error must still name the
+// message, and must not be taken for the send's reply.
 func TestMessagingHandler_SendIM_ClientErrorDuringSendNamesTheMessage(t *testing.T) {
-	oscarInstance := state.NewSession().AddInstance()
-	icbmService := newMockICBMService(t)
+	conn := newFakeConn().answering(func(req wire.SNACMessage) []wire.SNACMessage {
+		im, ok := req.Body.(wire.SNAC_0x04_0x06_ICBMChannelMsgToHost)
+		if !ok {
+			return imServer("")(req)
+		}
+		return append([]wire.SNACMessage{reply(wire.ICBM, wire.ICBMClientErr, wire.SNAC_0x04_0x0B_ICBMClientErr{
+			Cookie:     im.Cookie,
+			ChannelID:  wire.ICBMChannelIM,
+			ScreenName: "Recipient",
+		})}, imServer("")(req)...)
+	})
+	sessionMgr, sess := createTestSessionManager(t, "testuser", conn)
 
-	sessionMgr, aimsid := createTestSessionManagerWithOSCAR("testuser", oscarInstance)
-	sess, err := sessionMgr.GetSession(context.Background(), aimsid)
-	require.NoError(t, err)
+	handler := &MessagingHandler{Logger: slog.Default()}
 
-	icbmService.EXPECT().
-		ChannelMsgToHost(mock.Anything, oscarInstance, mock.AnythingOfType("wire.SNACFrame"), mock.AnythingOfType("wire.SNAC_0x04_0x06_ICBMChannelMsgToHost")).
-		Run(func(_ context.Context, _ *state.SessionInstance, _ wire.SNACFrame, inBody wire.SNAC_0x04_0x06_ICBMChannelMsgToHost) {
-			sess.handleSNACMessage(wire.SNACMessage{
-				Frame: wire.SNACFrame{FoodGroup: wire.ICBM, SubGroup: wire.ICBMClientErr},
-				Body: wire.SNAC_0x04_0x0B_ICBMClientErr{
-					Cookie:     inBody.Cookie,
-					ChannelID:  wire.ICBMChannelIM,
-					ScreenName: "Recipient",
-				},
-			})
-		}).
-		Return(nil, nil)
-
-	handler := &MessagingHandler{
-		ICBMService:    icbmService,
-		LocateService:  stubLocateService(t, ""),
-		FeedbagService: stubFeedbagService(t, "someone", ""),
-		Logger:         slog.Default(),
-	}
-
-	req, reqErr := http.NewRequest("GET", "/im/sendIM?aimsid="+aimsid+"&t=recipient&message=hello", nil)
+	req, reqErr := http.NewRequest("GET", "/im/sendIM?aimsid="+sess.AimSID+"&t=recipient&message=hello", nil)
 	require.NoError(t, reqErr)
 	rr := httptest.NewRecorder()
 	requireSession(sessionMgr, handler.SendIM).ServeHTTP(rr, req)
 	require.Equal(t, http.StatusOK, rr.Code)
+	assert.Contains(t, rr.Body.String(), `"state":"delivered"`)
 
 	var sentMsgID string
 	var clientErr ClientErrorEvent
@@ -584,35 +557,22 @@ func TestMessagingHandler_SendIM_ClientErrorDuringSendNamesTheMessage(t *testing
 // The sentIM echo is merged onto both parties' user objects, and sending a
 // message changes nobody's presence.
 func TestMessagingHandler_SendIM_EchoesRealStates(t *testing.T) {
-	// sendIM drives SendIM from a sender whose own OSCAR session is configured by
-	// configSender, with recipientPresence seeded into the session's view.
-	sendIM := func(t *testing.T, configSender func(*state.SessionInstance), recipientPresence *wire.TLVUserInfo) SentIMEvent {
+	// sendIM drives SendIM from a sender whose own user info is self, with
+	// recipientPresence seeded into the session's view.
+	sendIM := func(t *testing.T, self wire.TLVUserInfo, recipientPresence *wire.TLVUserInfo) SentIMEvent {
 		t.Helper()
 
-		oscarInstance := state.NewSession().AddInstance()
-		configSender(oscarInstance)
-
-		icbmService := newMockICBMService(t)
-		icbmService.EXPECT().ChannelMsgToHost(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-			Return(nil, nil)
-
-		mgr := NewSessionManager()
-		session, err := mgr.CreateSession(state.DisplayScreenName("Ann Dupree"),
-			[]string{"im", "sentIM"}, oscarInstance, "", slog.Default())
-		require.NoError(t, err)
-		session.FeedbagLoader = emptyFeedbagLoader
+		conn := newFakeConn().answering(imServer("Mike Kelly"))
+		mgr, session := createTestSessionManager(t, "Ann Dupree", conn, "im", "sentIM")
+		session.self.setRelayed(self)
 
 		if recipientPresence != nil {
 			buddyArrives(session, *recipientPresence)
 		}
 
-		handler := &MessagingHandler{
-			ICBMService:    icbmService,
-			LocateService:  stubLocateService(t, "Mike Kelly"),
-			FeedbagService: stubFeedbagService(t, "mikekelly", ""),
-			Logger:         slog.Default(),
-		}
-		session.FeedbagLoader = feedbagServiceLoader(handler.FeedbagService, session.OSCARSession)
+		session.feedbag.Reset(buddyItem("mikekelly", ""))
+
+		handler := &MessagingHandler{Logger: slog.Default()}
 
 		req, err := http.NewRequest("GET", "/im/sendIM?aimsid="+session.AimSID+"&t=mikekelly&message=hi", nil)
 		require.NoError(t, err)
@@ -629,7 +589,9 @@ func TestMessagingHandler_SendIM_EchoesRealStates(t *testing.T) {
 		return SentIMEvent{}
 	}
 
-	online := func(*state.SessionInstance) {}
+	online := wire.TLVUserInfo{ScreenName: "Ann Dupree"}
+	away := wire.TLVUserInfo{ScreenName: "Ann Dupree"}
+	away.Append(wire.NewTLVBE(wire.OServiceUserInfoUserFlags, wire.OServiceUserFlagUnavailable))
 	awayRecipient := func() *wire.TLVUserInfo {
 		info := wire.TLVUserInfo{ScreenName: "Mike Kelly"}
 		info.Append(wire.NewTLVBE(wire.OServiceUserInfoUserFlags, wire.OServiceUserFlagUnavailable))
@@ -647,9 +609,7 @@ func TestMessagingHandler_SendIM_EchoesRealStates(t *testing.T) {
 	})
 
 	t.Run("the sender's own away state survives sending", func(t *testing.T) {
-		got := sendIM(t, func(instance *state.SessionInstance) {
-			instance.SetUserInfoFlag(wire.OServiceUserFlagUnavailable)
-		}, nil)
+		got := sendIM(t, away, nil)
 		assert.Equal(t, "away", got.Sender.State)
 	})
 

@@ -16,13 +16,18 @@ import (
 )
 
 // stubServer serves each connection with serve on a goroutine of its own, or
-// refuses it with refuse if set.
+// refuses it with refuse if set. It records the rate limit exemptions it was
+// asked to apply in exempt, if set.
 type stubServer struct {
 	serve  func(conn net.Conn)
 	refuse error
+	exempt chan []wire.SNACType
 }
 
-func (s stubServer) ServeConn(conn net.Conn) error {
+func (s stubServer) ServeConn(conn net.Conn, rateLimitExempt []wire.SNACType) error {
+	if s.exempt != nil {
+		s.exempt <- rateLimitExempt
+	}
 	if s.refuse != nil {
 		_ = conn.Close()
 		return s.refuse
@@ -47,8 +52,10 @@ func TestClient_serverRefusesConnection(t *testing.T) {
 }
 
 func TestClient_ConnectService(t *testing.T) {
+	exempt := []wire.SNACType{{FoodGroup: wire.Locate, SubGroup: wire.LocateUserInfoQuery}}
 	later := make(chan struct{})
 	server := stubServer{
+		exempt: make(chan []wire.SNACType, 1),
 		serve: func(conn net.Conn) {
 			flapc := wire.NewFlapClient(100, conn, conn)
 			assert.NoError(t, flapc.SendSignonFrame(nil))
@@ -64,7 +71,7 @@ func TestClient_ConnectService(t *testing.T) {
 				wire.SNAC_0x01_0x10_OServiceEvilNotification{NewEvil: 1}))
 		},
 	}
-	c := Client{Server: server, Logger: slog.Default()}
+	c := Client{Server: server, RateLimitExempt: exempt, Logger: slog.Default()}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
@@ -72,6 +79,8 @@ func TestClient_ConnectService(t *testing.T) {
 	require.NoError(t, err)
 	defer conn.Close()
 	go conn.Run(context.Background())
+
+	assert.Equal(t, exempt, <-server.exempt)
 
 	// The handshake's deadline doesn't outlive it.
 	<-ctx.Done()

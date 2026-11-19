@@ -81,6 +81,19 @@ func (c *RequestTracker) Take(reply wire.SNACFrame) (frame wire.SNACFrame, data 
 	return entry.frame, entry.data, true
 }
 
+// Peek returns the frame and data of the request that reply answers,
+// without removing it.
+func (c *RequestTracker) Peek(reply wire.SNACFrame) (frame wire.SNACFrame, data any, ok bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	entry, ok := c.entries[reply.RequestID]
+	if !ok {
+		return wire.SNACFrame{}, nil, false
+	}
+	return entry.frame, entry.data, true
+}
+
 // Remove drops the request with the given ID.
 func (c *RequestTracker) Remove(requestID uint32) {
 	c.mu.Lock()

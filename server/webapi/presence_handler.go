@@ -15,12 +15,9 @@ import (
 
 // PresenceHandler handles Web AIM API presence-related endpoints.
 type PresenceHandler struct {
-	SessionManager  *SessionManager
-	FeedbagService  FeedbagService
-	LocateService   LocateService
-	OServiceService OServiceService
-	IconSource      BuddyIconSource
-	Logger          *slog.Logger
+	SessionManager *SessionManager
+	IconSource     BuddyIconSource
+	Logger         *slog.Logger
 }
 
 const maxPresenceTargets = 32
@@ -115,14 +112,7 @@ func (h *PresenceHandler) GetPresence(w http.ResponseWriter, r *http.Request, se
 	presenceData := PresenceData{}
 
 	if getBuddyList {
-		// Retrieve buddy list from feedbag
-		groups, err := h.getBuddyListGroups(ctx, session, wantProfileMsg)
-		if err != nil {
-			h.Logger.ErrorContext(ctx, "failed to get buddy list", "err", err.Error())
-			// Return empty buddy list on error instead of failing
-			groups = []BuddyGroupInfo{}
-		}
-		presenceData.Groups = groups
+		presenceData.Groups = h.getBuddyListGroups(ctx, session, wantProfileMsg)
 	} else if len(targetUsers) > 0 {
 		// Get presence for specific users
 		if len(targetUsers) > maxPresenceTargets {
@@ -138,13 +128,13 @@ func (h *PresenceHandler) GetPresence(w http.ResponseWriter, r *http.Request, se
 
 		// The client's user-object merge deletes any alias it holds, so every
 		// presence payload has to carry friendly for aliased buddies.
-		aliases := session.Aliases(ctx)
+		aliases := session.Aliases()
 
 		for _, user := range targetUsers {
 			info := h.targetPresence(ctx, session, state.DisplayScreenName(user), wantProfileMsg)
 			info.Friendly = aliases[info.AimID]
 			if wantDirInfo {
-				info.Profile = h.directoryProfile(ctx, user)
+				info.Profile = h.directoryProfile(ctx, session, user)
 			}
 			presenceList = append(presenceList, info)
 		}
@@ -167,10 +157,11 @@ func (h *PresenceHandler) GetPresence(w http.ResponseWriter, r *http.Request, se
 // directoryProfile reads a user's member-directory record for the mdir=1 profile
 // object. It never returns nil: a user with no directory record must still appear
 // as an empty profile rather than be dropped.
-func (h *PresenceHandler) directoryProfile(ctx context.Context, screenName string) *BuddyProfileInfo {
+func (h *PresenceHandler) directoryProfile(ctx context.Context, session *Session, screenName string) *BuddyProfileInfo {
 	profile := &BuddyProfileInfo{}
 
-	reply, err := h.LocateService.DirInfo(ctx, wire.SNACFrame{}, wire.SNAC_0x02_0x0B_LocateGetDirInfo{ScreenName: screenName})
+	reply, err := session.request(ctx, wire.Locate, wire.LocateGetDirInfo,
+		wire.SNAC_0x02_0x0B_LocateGetDirInfo{ScreenName: screenName}, wire.LocateGetDirReply)
 	if err != nil {
 		h.Logger.ErrorContext(ctx, "presence: directory lookup failed",
 			"screenName", screenName, "err", err.Error())
@@ -196,13 +187,8 @@ func (h *PresenceHandler) directoryProfile(ctx context.Context, screenName strin
 }
 
 // getBuddyListGroups retrieves the buddy list organized by groups.
-func (h *PresenceHandler) getBuddyListGroups(ctx context.Context, session *Session, wantProfileMsg bool) ([]BuddyGroupInfo, error) {
-	items, err := session.Feedbag(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	fl := state.NewFeedbagList(items, nil)
+func (h *PresenceHandler) getBuddyListGroups(ctx context.Context, session *Session, wantProfileMsg bool) []BuddyGroupInfo {
+	fl := state.NewFeedbagList(session.Feedbag(), nil)
 
 	var groups []BuddyGroupInfo
 	for _, group := range fl.Groups() {
@@ -220,7 +206,7 @@ func (h *PresenceHandler) getBuddyListGroups(ctx context.Context, session *Sessi
 			// text is only reachable through a locate reply.
 			var presence BuddyPresenceInfo
 			if wantProfileMsg {
-				presence = h.getUserPresence(ctx, session.OSCARSession, session.BaseURL, state.DisplayScreenName(buddy.Name), true)
+				presence = h.getUserPresence(ctx, session, session.BaseURL, state.DisplayScreenName(buddy.Name), true)
 			} else {
 				presence = h.cachedPresence(ctx, session, buddy.Name)
 			}
@@ -237,7 +223,7 @@ func (h *PresenceHandler) getBuddyListGroups(ctx context.Context, session *Sessi
 		groups = []BuddyGroupInfo{{Name: "Buddies", Buddies: []BuddyPresenceInfo{}}}
 	}
 
-	return groups, nil
+	return groups
 }
 
 // offlinePresenceInfo is the presence a user renders as when the session has no
@@ -293,7 +279,7 @@ func (h *PresenceHandler) presenceInfo(ctx context.Context, session *Session, ta
 	}
 
 	if hasAwayMsg(presence.State) {
-		info.AwayMsg = awayMessage(ctx, h.LocateService, session.OSCARSession, ident, h.Logger)
+		info.AwayMsg = session.awayMessage(ctx, ident)
 	}
 
 	// The presence SNAC carried the icon hash, so no metadata lookup is needed.
@@ -312,14 +298,14 @@ func (h *PresenceHandler) targetPresence(ctx context.Context, session *Session, 
 			return h.presenceInfo(ctx, session, target.String(), presence)
 		}
 	}
-	return h.getUserPresence(ctx, session.OSCARSession, session.BaseURL, target, wantProfileMsg)
+	return h.getUserPresence(ctx, session, session.BaseURL, target, wantProfileMsg)
 }
 
 // getUserPresence resolves a user's presence by issuing a locate UserInfoQuery
-// on behalf of the requesting OSCAR session (instance). UserInfoQuery performs
+// on behalf of the requesting session. UserInfoQuery performs
 // the OSCAR blocking check and online lookup internally: blocked and offline
 // users both come back as a locate error, which we surface as "offline".
-func (h *PresenceHandler) getUserPresence(ctx context.Context, instance *state.SessionInstance, baseURL string, target state.DisplayScreenName, wantProfileMsg bool) BuddyPresenceInfo {
+func (h *PresenceHandler) getUserPresence(ctx context.Context, session *Session, baseURL string, target state.DisplayScreenName, wantProfileMsg bool) BuddyPresenceInfo {
 	ident := target.IdentScreenName()
 
 	// Default offline presence
@@ -332,8 +318,8 @@ func (h *PresenceHandler) getUserPresence(ctx context.Context, instance *state.S
 	}
 
 	// The unauthenticated icon endpoint resolves presence without a session, so
-	// there may be no OSCAR instance to query on behalf of.
-	if instance == nil {
+	// there may be no session to query on behalf of.
+	if session == nil {
 		return presence
 	}
 
@@ -342,8 +328,8 @@ func (h *PresenceHandler) getUserPresence(ctx context.Context, instance *state.S
 		reqType |= wire.LocateTypeSig // profile text
 	}
 
-	reply, err := h.LocateService.UserInfoQuery(ctx, instance, wire.SNACFrame{},
-		wire.SNAC_0x02_0x05_LocateUserInfoQuery{Type: uint16(reqType), ScreenName: ident.String()})
+	reply, err := session.request(ctx, wire.Locate, wire.LocateUserInfoQuery,
+		wire.SNAC_0x02_0x05_LocateUserInfoQuery{Type: uint16(reqType), ScreenName: ident.String()}, wire.LocateUserInfoReply)
 	if err != nil {
 		h.Logger.WarnContext(ctx, "failed to query user info", "screenName", ident.String(), "error", err)
 		return presence
@@ -355,7 +341,7 @@ func (h *PresenceHandler) getUserPresence(ctx context.Context, instance *state.S
 		return presence
 	}
 
-	presence.State, presence.IdleTime = buddyWebState(info.TLVUserInfo, instance.IdentScreenName().UIN() == 0)
+	presence.State, presence.IdleTime = buddyWebState(info.TLVUserInfo, session.isAIMViewer())
 
 	// An offline user publishes nothing; locate still answers for an invisible one.
 	if presence.State == "offline" {
@@ -405,8 +391,6 @@ func (h *PresenceHandler) SetState(w http.ResponseWriter, r *http.Request, sessi
 		awayMsg = r.URL.Query().Get("away")
 	}
 
-	oscarSession := session.OSCARSession
-
 	// Map web state to OSCAR status bits. setAwayMsg reports whether the away
 	// message needs rewriting: only going online clears it, and only an away
 	// state with text replaces it, so the other states keep what is there.
@@ -442,9 +426,9 @@ func (h *PresenceHandler) SetState(w http.ResponseWriter, r *http.Request, sessi
 				},
 			},
 		}
-		if err := h.LocateService.SetInfo(ctx, oscarSession, setInfo); err != nil {
+		if err := session.send(wire.Locate, wire.LocateSetInfo, setInfo); err != nil {
 			h.Logger.ErrorContext(ctx, "failed to set away message", "err", err.Error())
-			SendError(w, r, http.StatusInternalServerError, "failed to set state")
+			sendRequestError(w, r, err, "failed to set state", h.Logger)
 			return
 		}
 	}
@@ -456,14 +440,25 @@ func (h *PresenceHandler) SetState(w http.ResponseWriter, r *http.Request, sessi
 			},
 		},
 	}
-	if err := h.OServiceService.SetUserInfoFields(ctx, oscarSession, wire.SNACFrame{}, setFields); err != nil {
+	if err := session.send(wire.OService, wire.OServiceSetUserInfoFields, setFields); err != nil {
 		h.Logger.ErrorContext(ctx, "failed to set user info fields", "err", err.Error())
-		SendError(w, r, http.StatusInternalServerError, "failed to set state")
+		sendRequestError(w, r, err, "failed to set state", h.Logger)
 		return
 	}
 
+	// The server drops the away message when the user leaves the unavailable
+	// states.
+	const unavailable = wire.OServiceUserStatusAway | wire.OServiceUserStatusBusy |
+		wire.OServiceUserStatusDND | wire.OServiceUserStatusOut
+	switch {
+	case setAwayMsg:
+		session.self.setAwayMessage(awayMsg)
+	case statusBitmask&unavailable == 0:
+		session.self.setAwayMessage("")
+	}
+
 	reportedState := stateParam
-	if st := statusMaskState(statusBitmask, oscarSession.IdentScreenName().UIN() == 0); st != "" {
+	if st := statusMaskState(statusBitmask, session.isAIMViewer()); st != "" {
 		reportedState = st
 	}
 
@@ -478,7 +473,7 @@ func (h *PresenceHandler) SetState(w http.ResponseWriter, r *http.Request, sessi
 		DisplayID:  session.ScreenName.String(),
 		State:      reportedState,
 		AwayMsg:    awayMsg,
-		StatusMsg:  sessionStatusMsg(oscarSession),
+		StatusMsg:  userStatusMsg(session.self.userInfo()),
 		UserType:   userTypeFor(session.ScreenName.IdentScreenName()),
 		OnlineTime: time.Now().Unix(),
 	}, h.Logger)
@@ -511,9 +506,9 @@ func (h *PresenceHandler) SetStatus(w http.ResponseWriter, r *http.Request, sess
 				},
 			},
 		}
-		if err := h.OServiceService.SetUserInfoFields(ctx, session.OSCARSession, wire.SNACFrame{}, setFields); err != nil {
+		if err := session.send(wire.OService, wire.OServiceSetUserInfoFields, setFields); err != nil {
 			h.Logger.ErrorContext(ctx, "failed to set user info fields", "err", err.Error())
-			SendError(w, r, http.StatusInternalServerError, "failed to set status")
+			sendRequestError(w, r, err, "failed to set status", h.Logger)
 			return
 		}
 	}
@@ -538,9 +533,9 @@ func (h *PresenceHandler) SetStatus(w http.ResponseWriter, r *http.Request, sess
 				},
 			},
 		}
-		if err := h.LocateService.SetInfo(ctx, session.OSCARSession, setInfo); err != nil {
+		if err := session.send(wire.Locate, wire.LocateSetInfo, setInfo); err != nil {
 			h.Logger.ErrorContext(ctx, "failed to set mood capability", "err", err.Error())
-			SendError(w, r, http.StatusInternalServerError, "failed to save status")
+			sendRequestError(w, r, err, "failed to save status", h.Logger)
 			return
 		}
 	}
@@ -566,9 +561,6 @@ func (h *PresenceHandler) SetProfile(w http.ResponseWriter, r *http.Request, ses
 		return
 	}
 
-	instance := session.OSCARSession
-
-	// Save profile via OSCAR LocateService.
 	setInfo := wire.SNAC_0x02_0x04_LocateSetInfo{
 		TLVRestBlock: wire.TLVRestBlock{
 			TLVList: wire.TLVList{
@@ -576,9 +568,9 @@ func (h *PresenceHandler) SetProfile(w http.ResponseWriter, r *http.Request, ses
 			},
 		},
 	}
-	if err := h.LocateService.SetInfo(ctx, instance, setInfo); err != nil {
+	if err := session.send(wire.Locate, wire.LocateSetInfo, setInfo); err != nil {
 		h.Logger.ErrorContext(ctx, "failed to set profile", "err", err.Error())
-		SendError(w, r, http.StatusInternalServerError, "failed to save profile")
+		sendRequestError(w, r, err, "failed to save profile", h.Logger)
 		return
 	}
 
@@ -600,9 +592,8 @@ func (h *PresenceHandler) GetProfile(w http.ResponseWriter, r *http.Request, ses
 	}
 
 	var profileText string
-	instance := session.OSCARSession
-	reply, err := h.LocateService.UserInfoQuery(ctx, instance, wire.SNACFrame{},
-		wire.SNAC_0x02_0x05_LocateUserInfoQuery{Type: uint16(wire.LocateTypeSig), ScreenName: targetSN})
+	reply, err := session.request(ctx, wire.Locate, wire.LocateUserInfoQuery,
+		wire.SNAC_0x02_0x05_LocateUserInfoQuery{Type: uint16(wire.LocateTypeSig), ScreenName: targetSN}, wire.LocateUserInfoReply)
 	if err != nil {
 		h.Logger.WarnContext(ctx, "failed to get profile", "err", err.Error())
 	} else if info, ok := reply.Body.(wire.SNAC_0x02_0x06_LocateUserInfoReply); ok {
@@ -647,19 +638,21 @@ func (h *PresenceHandler) Icon(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Resolve the target's presence via OSCAR LocateService, querying on behalf
-	// of the caller's session. This endpoint is unauthenticated, so fall back to
-	// the offline icon when no valid session is supplied.
-	var instance *state.SessionInstance
+	// Resolve the target's presence with a locate query on the caller's
+	// session. This endpoint is unauthenticated, so fall back to the offline
+	// icon when no valid session is supplied.
+	// The lookup counts against the session's lookup rate. Past it, the badge
+	// falls back to the one an anonymous caller gets.
+	var session *Session
 	if aimsid := r.URL.Query().Get("aimsid"); aimsid != "" {
-		if session, err := h.SessionManager.GetSession(r.Context(), aimsid); err == nil {
-			instance = session.OSCARSession
+		if s, err := h.SessionManager.GetSession(r.Context(), aimsid); err == nil && s.lookups.Allow() {
+			session = s
 		}
 	}
 
 	// This endpoint serves a presence state badge, not the user's buddy icon, so
 	// it has no use for a buddy icon URL.
-	switch h.getUserPresence(r.Context(), instance, "", state.DisplayScreenName(name), false).State {
+	switch h.getUserPresence(r.Context(), session, "", state.DisplayScreenName(name), false).State {
 	// occupied and dnd have no badge of their own and both mean unavailable.
 	case "away", "occupied", "dnd":
 		iconURL = "/static/icons/away_" + iconType + "_" + size + ".png"

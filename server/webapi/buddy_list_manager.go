@@ -15,19 +15,15 @@ import (
 // BuddyListManager handles the conversion of OSCAR feedbag data
 // to WebAPI buddy list format for web clients.
 type BuddyListManager struct {
-	feedbagService FeedbagService
-	locateService  LocateService
-	iconSource     BuddyIconSource
-	logger         *slog.Logger
+	iconSource BuddyIconSource
+	logger     *slog.Logger
 }
 
 // NewBuddyListManager creates a new instance of the buddy list manager.
-func NewBuddyListManager(feedbagService FeedbagService, locateService LocateService, iconSource BuddyIconSource, logger *slog.Logger) *BuddyListManager {
+func NewBuddyListManager(iconSource BuddyIconSource, logger *slog.Logger) *BuddyListManager {
 	return &BuddyListManager{
-		feedbagService: feedbagService,
-		locateService:  locateService,
-		iconSource:     iconSource,
-		logger:         logger,
+		iconSource: iconSource,
+		logger:     logger,
 	}
 }
 
@@ -66,13 +62,8 @@ type BuddyInfo struct {
 }
 
 // GetBuddyListForUser retrieves and converts the buddy list for a user.
-func (m *BuddyListManager) GetBuddyListForUser(ctx context.Context, sess *Session) ([]BuddyGroup, error) {
-	items, err := sess.Feedbag(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve feedbag: %w", err)
-	}
-
-	fl := state.NewFeedbagList(items, nil)
+func (m *BuddyListManager) GetBuddyListForUser(ctx context.Context, sess *Session) []BuddyGroup {
+	fl := state.NewFeedbagList(sess.Feedbag(), nil)
 
 	out := []BuddyGroup{}
 	for _, group := range fl.Groups() {
@@ -95,7 +86,7 @@ func (m *BuddyListManager) GetBuddyListForUser(ctx context.Context, sess *Sessio
 		out = append(out, wg)
 	}
 
-	return out, nil
+	return out
 }
 
 // getBuddyInfo renders a buddy's presence from the session's presence view. A
@@ -143,7 +134,7 @@ func (m *BuddyListManager) getBuddyInfo(ctx context.Context, sess *Session, budd
 	}
 
 	if hasAwayMsg(presence.State) {
-		info.AwayMsg = awayMessage(ctx, m.locateService, sess.OSCARSession, ident, m.logger)
+		info.AwayMsg = sess.awayMessage(ctx, ident)
 	}
 
 	info.Capabilities = []string{}
@@ -156,25 +147,18 @@ func (m *BuddyListManager) getBuddyInfo(ctx context.Context, sess *Session, budd
 
 // RemoveBuddyFromFeedbag removes a buddy from a group (or all groups if allGroups is true) using feedbag delete/update SNACs.
 func (m *BuddyListManager) RemoveBuddyFromFeedbag(ctx context.Context, sess *Session, buddyName, groupName string, allGroups bool) (resultCode string, err error) {
-	defer sess.InvalidateFeedbag()
-
 	buddyName = strings.TrimSpace(buddyName)
 	if buddyName == "" {
 		return "error", fmt.Errorf("empty buddy")
 	}
 
-	frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
-	snac, err := m.feedbagService.Query(ctx, sess.OSCARSession, frame)
+	items, err := sess.lockFeedbag(ctx)
 	if err != nil {
-		m.logger.ErrorContext(ctx, "remove buddy: feedbag query failed", "err", err.Error())
 		return "error", err
 	}
-	reply, ok := snac.Body.(wire.SNAC_0x13_0x06_FeedbagReply)
-	if !ok {
-		return "error", fmt.Errorf("unexpected feedbag reply type")
-	}
+	defer sess.unlockFeedbag()
 
-	fl := state.NewFeedbagList(reply.Items, rand.Intn)
+	fl := state.NewFeedbagList(items, rand.Intn)
 
 	target := groupName
 	if allGroups {
@@ -189,10 +173,7 @@ func (m *BuddyListManager) RemoveBuddyFromFeedbag(ctx context.Context, sess *Ses
 	}
 
 	if pending := fl.PendingDeletes(); len(pending) > 0 {
-		delFrame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagDeleteItem}
-		delBody := wire.SNAC_0x13_0x0A_FeedbagDeleteItem{Items: pending}
-		if _, err := m.feedbagService.DeleteItem(ctx, sess.OSCARSession, delFrame, delBody); err != nil {
-			m.logger.ErrorContext(ctx, "remove buddy: Feedbag DeleteItem failed", "err", err.Error())
+		if _, err := sess.changeFeedbag(ctx, wire.FeedbagDeleteItem, pending); err != nil {
 			return "error", err
 		}
 		if !stillListsBuddy(fl.Items(), buddyName) {
@@ -203,9 +184,7 @@ func (m *BuddyListManager) RemoveBuddyFromFeedbag(ctx context.Context, sess *Ses
 	}
 
 	if pending := fl.PendingUpdates(); len(pending) > 0 {
-		upFrame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagUpdateItem}
-		if _, err := m.feedbagService.UpsertItem(ctx, sess.OSCARSession, upFrame, pending); err != nil {
-			m.logger.ErrorContext(ctx, "remove buddy: Feedbag UpsertItem failed", "err", err.Error())
+		if _, err := sess.changeFeedbag(ctx, wire.FeedbagUpdateItem, pending); err != nil {
 			return "error", err
 		}
 	}
@@ -215,36 +194,26 @@ func (m *BuddyListManager) RemoveBuddyFromFeedbag(ctx context.Context, sess *Ses
 
 // RemoveGroupFromFeedbag deletes a buddy group and updates the root order (TOC DelGroup).
 func (m *BuddyListManager) RemoveGroupFromFeedbag(ctx context.Context, sess *Session, requestedGroup string) (resultCode string, err error) {
-	defer sess.InvalidateFeedbag()
-
 	req := strings.TrimSpace(requestedGroup)
 	if req == "" {
 		return "error", fmt.Errorf("empty group")
 	}
-	frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
-	snac, err := m.feedbagService.Query(ctx, sess.OSCARSession, frame)
+	items, err := sess.lockFeedbag(ctx)
 	if err != nil {
-		m.logger.ErrorContext(ctx, "remove group: feedbag query failed", "err", err.Error())
 		return "error", err
 	}
-	reply, ok := snac.Body.(wire.SNAC_0x13_0x06_FeedbagReply)
-	if !ok {
-		return "error", fmt.Errorf("unexpected feedbag reply type")
-	}
+	defer sess.unlockFeedbag()
 
-	storedName, found := storedGroupNameForRequest(reply.Items, req)
+	storedName, found := storedGroupNameForRequest(items, req)
 	if !found {
 		return "notFound", nil
 	}
 
-	fl := state.NewFeedbagList(reply.Items, rand.Intn)
+	fl := state.NewFeedbagList(items, rand.Intn)
 	fl.DeleteGroup(storedName)
 
 	if pending := fl.PendingDeletes(); len(pending) > 0 {
-		delFrame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagDeleteItem}
-		delBody := wire.SNAC_0x13_0x0A_FeedbagDeleteItem{Items: pending}
-		if _, err := m.feedbagService.DeleteItem(ctx, sess.OSCARSession, delFrame, delBody); err != nil {
-			m.logger.ErrorContext(ctx, "remove group: Feedbag DeleteItem failed", "err", err.Error())
+		if _, err := sess.changeFeedbag(ctx, wire.FeedbagDeleteItem, pending); err != nil {
 			return "error", err
 		}
 
@@ -262,9 +231,7 @@ func (m *BuddyListManager) RemoveGroupFromFeedbag(ctx context.Context, sess *Ses
 	}
 
 	if pending := fl.PendingUpdates(); len(pending) > 0 {
-		upFrame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagUpdateItem}
-		if _, err := m.feedbagService.UpsertItem(ctx, sess.OSCARSession, upFrame, pending); err != nil {
-			m.logger.ErrorContext(ctx, "remove group: Feedbag UpsertItem failed", "err", err.Error())
+		if _, err := sess.changeFeedbag(ctx, wire.FeedbagUpdateItem, pending); err != nil {
 			return "error", err
 		}
 	}
@@ -274,30 +241,23 @@ func (m *BuddyListManager) RemoveGroupFromFeedbag(ctx context.Context, sess *Ses
 
 // RenameGroupInFeedbag renames a buddy group, updating the group item in place.
 func (m *BuddyListManager) RenameGroupInFeedbag(ctx context.Context, sess *Session, oldGroup, newGroup string) (resultCode string, err error) {
-	defer sess.InvalidateFeedbag()
-
 	oldGroup = strings.TrimSpace(oldGroup)
 	newGroup = strings.TrimSpace(newGroup)
 	if oldGroup == "" || newGroup == "" {
 		return "error", fmt.Errorf("empty group name")
 	}
-	frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
-	snac, err := m.feedbagService.Query(ctx, sess.OSCARSession, frame)
+	items, err := sess.lockFeedbag(ctx)
 	if err != nil {
-		m.logger.ErrorContext(ctx, "rename group: feedbag query failed", "err", err.Error())
 		return "error", err
 	}
-	reply, ok := snac.Body.(wire.SNAC_0x13_0x06_FeedbagReply)
-	if !ok {
-		return "error", fmt.Errorf("unexpected feedbag reply type")
-	}
+	defer sess.unlockFeedbag()
 
-	storedName, found := storedGroupNameForRequest(reply.Items, oldGroup)
+	storedName, found := storedGroupNameForRequest(items, oldGroup)
 	if !found {
 		return "notFound", nil
 	}
 
-	fl := state.NewFeedbagList(reply.Items, rand.Intn)
+	fl := state.NewFeedbagList(items, rand.Intn)
 	if err := fl.RenameGroup(storedName, newGroup); err != nil {
 		switch {
 		case errors.Is(err, state.ErrGroupNotFound):
@@ -311,9 +271,7 @@ func (m *BuddyListManager) RenameGroupInFeedbag(ctx context.Context, sess *Sessi
 	}
 
 	if pending := fl.PendingUpdates(); len(pending) > 0 {
-		upFrame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagUpdateItem}
-		if _, err := m.feedbagService.UpsertItem(ctx, sess.OSCARSession, upFrame, pending); err != nil {
-			m.logger.ErrorContext(ctx, "rename group: Feedbag UpsertItem failed", "err", err.Error())
+		if _, err := sess.changeFeedbag(ctx, wire.FeedbagUpdateItem, pending); err != nil {
 			return "error", err
 		}
 	}
@@ -324,8 +282,6 @@ func (m *BuddyListManager) RenameGroupInFeedbag(ctx context.Context, sess *Sessi
 // MoveBuddyInFeedbag moves a buddy to a different group and/or repositions it
 // within a group's order.
 func (m *BuddyListManager) MoveBuddyInFeedbag(ctx context.Context, sess *Session, buddyName, fromGroup, toGroup, beforeBuddy string) (resultCode string, err error) {
-	defer sess.InvalidateFeedbag()
-
 	buddyName = strings.TrimSpace(buddyName)
 	fromGroup = strings.TrimSpace(fromGroup)
 	toGroup = strings.TrimSpace(toGroup)
@@ -333,30 +289,25 @@ func (m *BuddyListManager) MoveBuddyInFeedbag(ctx context.Context, sess *Session
 	if buddyName == "" || fromGroup == "" {
 		return "error", fmt.Errorf("empty buddy or group")
 	}
-	frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
-	snac, err := m.feedbagService.Query(ctx, sess.OSCARSession, frame)
+	items, err := sess.lockFeedbag(ctx)
 	if err != nil {
-		m.logger.ErrorContext(ctx, "move buddy: feedbag query failed", "err", err.Error())
 		return "error", err
 	}
-	reply, ok := snac.Body.(wire.SNAC_0x13_0x06_FeedbagReply)
-	if !ok {
-		return "error", fmt.Errorf("unexpected feedbag reply type")
-	}
+	defer sess.unlockFeedbag()
 
-	storedFrom, found := storedGroupNameForRequest(reply.Items, fromGroup)
+	storedFrom, found := storedGroupNameForRequest(items, fromGroup)
 	if !found {
 		return "notFound", nil
 	}
 	storedTo := ""
 	if toGroup != "" {
-		storedTo, found = storedGroupNameForRequest(reply.Items, toGroup)
+		storedTo, found = storedGroupNameForRequest(items, toGroup)
 		if !found {
 			return "notFound", nil
 		}
 	}
 
-	fl := state.NewFeedbagList(reply.Items, rand.Intn)
+	fl := state.NewFeedbagList(items, rand.Intn)
 	if err := fl.MoveBuddy(storedFrom, storedTo, buddyName, beforeBuddy); err != nil {
 		if errors.Is(err, state.ErrGroupNotFound) || errors.Is(err, state.ErrBuddyNotFound) {
 			return "notFound", nil
@@ -366,10 +317,7 @@ func (m *BuddyListManager) MoveBuddyInFeedbag(ctx context.Context, sess *Session
 	}
 
 	if pending := fl.PendingDeletes(); len(pending) > 0 {
-		delFrame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagDeleteItem}
-		delBody := wire.SNAC_0x13_0x0A_FeedbagDeleteItem{Items: pending}
-		if _, err := m.feedbagService.DeleteItem(ctx, sess.OSCARSession, delFrame, delBody); err != nil {
-			m.logger.ErrorContext(ctx, "move buddy: Feedbag DeleteItem failed", "err", err.Error())
+		if _, err := sess.changeFeedbag(ctx, wire.FeedbagDeleteItem, pending); err != nil {
 			return "error", err
 		}
 	}
@@ -384,16 +332,12 @@ func (m *BuddyListManager) MoveBuddyInFeedbag(ctx context.Context, sess *Session
 			}
 		}
 		if len(inserts) > 0 {
-			insFrame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem}
-			if _, err := m.feedbagService.UpsertItem(ctx, sess.OSCARSession, insFrame, inserts); err != nil {
-				m.logger.ErrorContext(ctx, "move buddy: Feedbag InsertItem failed", "err", err.Error())
+			if _, err := sess.changeFeedbag(ctx, wire.FeedbagInsertItem, inserts); err != nil {
 				return "error", err
 			}
 		}
 		if len(updates) > 0 {
-			upFrame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagUpdateItem}
-			if _, err := m.feedbagService.UpsertItem(ctx, sess.OSCARSession, upFrame, updates); err != nil {
-				m.logger.ErrorContext(ctx, "move buddy: Feedbag UpdateItem failed", "err", err.Error())
+			if _, err := sess.changeFeedbag(ctx, wire.FeedbagUpdateItem, updates); err != nil {
 				return "error", err
 			}
 		}
@@ -405,24 +349,17 @@ func (m *BuddyListManager) MoveBuddyInFeedbag(ctx context.Context, sess *Session
 // SetBuddyAttributeInFeedbag sets a buddy's friendly (alias) name across all
 // groups it belongs to. An empty friendly clears the alias.
 func (m *BuddyListManager) SetBuddyAttributeInFeedbag(ctx context.Context, sess *Session, buddyName, friendly string) (resultCode string, err error) {
-	defer sess.InvalidateFeedbag()
-
 	buddyName = strings.TrimSpace(buddyName)
 	if buddyName == "" {
 		return "error", fmt.Errorf("empty buddy")
 	}
-	frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
-	snac, err := m.feedbagService.Query(ctx, sess.OSCARSession, frame)
+	items, err := sess.lockFeedbag(ctx)
 	if err != nil {
-		m.logger.ErrorContext(ctx, "set buddy attribute: feedbag query failed", "err", err.Error())
 		return "error", err
 	}
-	reply, ok := snac.Body.(wire.SNAC_0x13_0x06_FeedbagReply)
-	if !ok {
-		return "error", fmt.Errorf("unexpected feedbag reply type")
-	}
+	defer sess.unlockFeedbag()
 
-	fl := state.NewFeedbagList(reply.Items, rand.Intn)
+	fl := state.NewFeedbagList(items, rand.Intn)
 	found, err := fl.SetBuddyAlias(buddyName, friendly)
 	if err != nil {
 		m.logger.ErrorContext(ctx, "set buddy attribute: SetBuddyAlias failed", "err", err.Error())
@@ -433,9 +370,7 @@ func (m *BuddyListManager) SetBuddyAttributeInFeedbag(ctx context.Context, sess 
 	}
 
 	if pending := fl.PendingUpdates(); len(pending) > 0 {
-		upFrame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagUpdateItem}
-		if _, err := m.feedbagService.UpsertItem(ctx, sess.OSCARSession, upFrame, pending); err != nil {
-			m.logger.ErrorContext(ctx, "set buddy attribute: Feedbag UpsertItem failed", "err", err.Error())
+		if _, err := sess.changeFeedbag(ctx, wire.FeedbagUpdateItem, pending); err != nil {
 			return "error", err
 		}
 	}
@@ -446,32 +381,25 @@ func (m *BuddyListManager) SetBuddyAttributeInFeedbag(ctx context.Context, sess 
 // SetGroupAttributeInFeedbag sets a group's collapsed state. An empty group
 // targets the unnamed default group.
 func (m *BuddyListManager) SetGroupAttributeInFeedbag(ctx context.Context, sess *Session, groupName string, collapsed bool) (resultCode string, err error) {
-	defer sess.InvalidateFeedbag()
-
 	groupName = strings.TrimSpace(groupName)
-	frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
-	snac, err := m.feedbagService.Query(ctx, sess.OSCARSession, frame)
+	items, err := sess.lockFeedbag(ctx)
 	if err != nil {
-		m.logger.ErrorContext(ctx, "set group attribute: feedbag query failed", "err", err.Error())
 		return "error", err
 	}
-	reply, ok := snac.Body.(wire.SNAC_0x13_0x06_FeedbagReply)
-	if !ok {
-		return "error", fmt.Errorf("unexpected feedbag reply type")
-	}
+	defer sess.unlockFeedbag()
 
 	// An empty group targets the unnamed default group (stored name ""); a named
 	// group is resolved through the "Buddies" default-label mapping.
 	storedName := ""
 	if groupName != "" {
 		var found bool
-		storedName, found = storedGroupNameForRequest(reply.Items, groupName)
+		storedName, found = storedGroupNameForRequest(items, groupName)
 		if !found {
 			return "notFound", nil
 		}
 	}
 
-	fl := state.NewFeedbagList(reply.Items, rand.Intn)
+	fl := state.NewFeedbagList(items, rand.Intn)
 	if err := fl.SetGroupCollapsed(storedName, collapsed); err != nil {
 		if errors.Is(err, state.ErrGroupNotFound) {
 			return "notFound", nil
@@ -481,9 +409,7 @@ func (m *BuddyListManager) SetGroupAttributeInFeedbag(ctx context.Context, sess 
 	}
 
 	if pending := fl.PendingUpdates(); len(pending) > 0 {
-		upFrame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagUpdateItem}
-		if _, err := m.feedbagService.UpsertItem(ctx, sess.OSCARSession, upFrame, pending); err != nil {
-			m.logger.ErrorContext(ctx, "set group attribute: Feedbag UpsertItem failed", "err", err.Error())
+		if _, err := sess.changeFeedbag(ctx, wire.FeedbagUpdateItem, pending); err != nil {
 			return "error", err
 		}
 	}

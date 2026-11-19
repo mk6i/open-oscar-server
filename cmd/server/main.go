@@ -78,7 +78,7 @@ func main() {
 
 	var webAPI *webapi.Server
 	if deps.cfg.WebAPIEnabled {
-		webAPI = WebAPI(deps)
+		webAPI = WebAPI(deps, oscar)
 		g.Go(webAPI.ListenAndServe)
 	}
 

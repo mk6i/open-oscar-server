@@ -36,7 +36,7 @@ func (m *FeedbagMirror) Snapshot() []wire.FeedbagItem {
 	for _, change := range m.pending {
 		items = applyFeedbagChange(items, change.del, change.items)
 	}
-	return cloneFeedbagItems(items)
+	return CloneFeedbagItems(items)
 }
 
 // Reset replaces the confirmed feedbag with items and forgets pending
@@ -44,7 +44,7 @@ func (m *FeedbagMirror) Snapshot() []wire.FeedbagItem {
 func (m *FeedbagMirror) Reset(items []wire.FeedbagItem) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.confirmed = cloneFeedbagItems(items)
+	m.confirmed = CloneFeedbagItems(items)
 	m.pending = nil
 }
 
@@ -58,7 +58,7 @@ func (m *FeedbagMirror) Sent(requestID uint32, del bool, items []wire.FeedbagIte
 		seq:       m.lastSeq,
 		requestID: requestID,
 		del:       del,
-		items:     cloneFeedbagItems(items),
+		items:     CloneFeedbagItems(items),
 	})
 }
 
@@ -112,7 +112,7 @@ func (m *FeedbagMirror) Mark() uint64 {
 func (m *FeedbagMirror) Reload(marker uint64, items []wire.FeedbagItem) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.confirmed = cloneFeedbagItems(items)
+	m.confirmed = CloneFeedbagItems(items)
 	var pending []feedbagChange
 	for _, change := range m.pending {
 		if change.seq > marker {
@@ -127,7 +127,7 @@ func (m *FeedbagMirror) Reload(marker uint64, items []wire.FeedbagItem) {
 func (m *FeedbagMirror) ApplyRemote(del bool, items []wire.FeedbagItem) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.confirmed = applyFeedbagChange(m.confirmed, del, cloneFeedbagItems(items))
+	m.confirmed = applyFeedbagChange(m.confirmed, del, CloneFeedbagItems(items))
 }
 
 // GroupNames returns the name of each group by group ID, with all pending
@@ -151,9 +151,9 @@ func (m *FeedbagMirror) indexOf(requestID uint32) int {
 	return -1
 }
 
-// cloneFeedbagItems returns a copy of items that shares no TLV lists with
+// CloneFeedbagItems returns a copy of items that shares no TLV lists with
 // them, since FeedbagList edits TLV lists in place.
-func cloneFeedbagItems(items []wire.FeedbagItem) []wire.FeedbagItem {
+func CloneFeedbagItems(items []wire.FeedbagItem) []wire.FeedbagItem {
 	items = slices.Clone(items)
 	for i := range items {
 		items[i].TLVList = slices.Clone(items[i].TLVList)

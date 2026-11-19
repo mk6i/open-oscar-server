@@ -2233,6 +2233,74 @@ func TestOServiceService_SetUserInfoFields_ClearUnavailableStatus(t *testing.T) 
 	}
 }
 
+// A class reports dropping SNACs while it is limited as of the query, whatever
+// status was last stored for it.
+func TestOServiceService_RateParamsQuery_DroppingSNACs(t *testing.T) {
+	// From MaxLevel 200, each back-to-back SNAC halves the moving average, so
+	// the second one limits the class. Clearing takes a ~150ms pause.
+	var classes [5]wire.RateClass
+	for i := range classes {
+		classes[i] = wire.RateClass{
+			ID:              wire.RateLimitClassID(i + 1),
+			WindowSize:      2,
+			ClearLevel:      100,
+			AlertLevel:      80,
+			LimitLevel:      70,
+			DisconnectLevel: 2,
+			MaxLevel:        200,
+		}
+	}
+	const limitedClass = wire.RateLimitClassID(3)
+	// busyClass had one SNAC just now, so the next would limit it.
+	const busyClass = wire.RateLimitClassID(2)
+	start := time.Unix(1000, 0)
+
+	tests := []struct {
+		name string
+		// queryAfter is how long after the class was limited the query arrives.
+		queryAfter   time.Duration
+		wantDropping uint8
+	}{
+		{
+			name:         "a class that is still limited drops SNACs",
+			queryAfter:   10 * time.Millisecond,
+			wantDropping: 1,
+		},
+		{
+			// Nothing has refreshed the stored status since the class cleared.
+			name:       "a class that has since cleared doesn't",
+			queryAfter: time.Second,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			instance := newTestInstance("me", sessOptSetFoodGroupVersion(wire.OService, 3))
+			instance.Session().SetRateClasses(start, wire.NewRateLimitClasses(classes))
+			require.Equal(t, wire.RateLimitStatusClear, instance.Session().EvaluateRateLimit(start, limitedClass))
+			require.Equal(t, wire.RateLimitStatusLimited, instance.Session().EvaluateRateLimit(start, limitedClass))
+			require.Equal(t, wire.RateLimitStatusClear, instance.Session().EvaluateRateLimit(start.Add(tt.queryAfter), busyClass))
+
+			svc := OServiceService{
+				logger:         slog.Default(),
+				snacRateLimits: wire.DefaultSNACRateLimits(),
+				timeNow:        func() time.Time { return start.Add(tt.queryAfter) },
+			}
+			reply := svc.RateParamsQuery(context.Background(), instance, wire.SNACFrame{}).Body.(wire.SNAC_0x01_0x07_OServiceRateParamsReply)
+
+			for _, class := range reply.RateClasses {
+				require.NotNil(t, class.V2Params)
+				// a class isn't dropping SNACs before it's limited
+				want := uint8(0)
+				if wire.RateLimitClassID(class.ID) == limitedClass {
+					want = tt.wantDropping
+				}
+				assert.Equal(t, want, class.V2Params.DroppingSNACs, "class %d", class.ID)
+			}
+		})
+	}
+}
+
 func TestOServiceService_RateParamsQuery(t *testing.T) {
 	rateClasses := wire.NewRateLimitClasses([5]wire.RateClass{
 		{
