@@ -339,17 +339,26 @@ func (s *Server) dispatchFLAP(ctx context.Context, conn net.Conn) error {
 		return err
 	}
 
-	me, err := s.login(ctx, clientFlap, conn.RemoteAddr())
-	if err != nil {
-		return fmt.Errorf("s.login: %w", err)
+	// the group runs every goroutine of the TOC session, starting with the
+	// BOS connection's reader during signon
+	g, ctx := errgroup.WithContext(ctx)
+	goAsync := func(f func(ctx context.Context) error) {
+		g.Go(func() error { return f(ctx) })
 	}
-	if me == nil {
+
+	me, err := s.login(ctx, clientFlap, conn.RemoteAddr(), goAsync)
+	if err != nil || me == nil {
+		// a failed signon closes the BOS connection, which ends its reader
+		_ = g.Wait()
+		if err != nil {
+			return fmt.Errorf("s.login: %w", err)
+		}
 		return nil // signon failed
 	}
 
 	ctx = context.WithValue(ctx, screenNameContextKey, me.IdentScreenName())
 
-	return s.handleTOCRequest(ctx, closeConn, me, clientFlap)
+	return s.handleTOCRequest(ctx, g, closeConn, me, clientFlap)
 }
 
 // handleTOCRequest processes incoming TOC requests and coordinates their handling.
@@ -362,14 +371,13 @@ func (s *Server) dispatchFLAP(ctx context.Context, conn net.Conn) error {
 //   - errServerWrite if an error occurs while sending the TOC response.
 func (s *Server) handleTOCRequest(
 	ctx context.Context,
+	g *errgroup.Group,
 	closeConn func(),
 	me *tocConn,
 	clientFlap *wire.FlapClient,
 ) error {
 	// TOC response queue
 	msgCh := make(chan []string, 1)
-
-	g, ctx := errgroup.WithContext(ctx)
 
 	me.toCh = msgCh
 	me.goAsync = func(f func(ctx context.Context) error) {
@@ -460,7 +468,7 @@ func (s *Server) sendToClient(ctx context.Context, toClient <-chan []string, cli
 	}
 }
 
-func (s *Server) login(ctx context.Context, clientFlap *wire.FlapClient, clientAddr net.Addr) (*tocConn, error) {
+func (s *Server) login(ctx context.Context, clientFlap *wire.FlapClient, clientAddr net.Addr, goAsync func(f func(ctx context.Context) error)) (*tocConn, error) {
 	clientFrame, err := clientFlap.ReceiveFLAP()
 	if err != nil {
 		if errors.Is(err, io.EOF) {
@@ -469,7 +477,7 @@ func (s *Server) login(ctx context.Context, clientFlap *wire.FlapClient, clientA
 		return nil, fmt.Errorf("clientFlap.ReceiveFLAP: %w", err)
 	}
 
-	me, reply := s.bosProxy.Signon(ctx, clientFrame.Payload, clientAddr)
+	me, reply := s.bosProxy.Signon(ctx, clientFrame.Payload, clientAddr, goAsync)
 
 	for _, m := range reply {
 		if err := clientFlap.SendDataFrame([]byte(m)); err != nil {

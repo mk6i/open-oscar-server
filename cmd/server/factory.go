@@ -22,6 +22,7 @@ import (
 	"github.com/mk6i/open-oscar-server/server/kerberos"
 	"github.com/mk6i/open-oscar-server/server/oscar"
 	oscarmiddleware "github.com/mk6i/open-oscar-server/server/oscar/middleware"
+	"github.com/mk6i/open-oscar-server/server/oscarclient"
 	"github.com/mk6i/open-oscar-server/server/toc"
 	"github.com/mk6i/open-oscar-server/server/webapi"
 	"github.com/mk6i/open-oscar-server/state"
@@ -451,9 +452,11 @@ func TOC(deps Container, oscarServer *oscar.Server) *toc.Server {
 				deps.inMemorySessionManager,
 				deps.sqLiteUserStore,
 			),
-			Logger:           logger,
-			OSCARServer:      oscarServer,
-			OSCAREndpoint:    deps.Listeners[0].PlainEndpoint(),
+			Logger: logger,
+			OSCARClient: oscarclient.Client{
+				Server: oscarServer,
+				Logger: logger,
+			},
 			SessionRetriever: deps.inMemorySessionManager,
 			TOCConfigStore:   deps.sqLiteUserStore,
 			RandIntn:         rand.Intn,

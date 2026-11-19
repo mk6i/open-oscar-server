@@ -159,16 +159,24 @@ func (s *Server) acceptLoop(ln net.Listener, endpointCfg config.Endpoint) {
 	}
 }
 
+// ErrServerClosed is returned by ServeConn once the server has begun shutting
+// down.
+var ErrServerClosed = errors.New("OSCAR server closed")
+
 // ServeConn serves a connection that didn't come from one of the server's
 // listeners, such as an in-memory connection opened by the TOC server, as if
-// it had arrived on the listener at endpointCfg. It returns when the
-// connection ends.
-func (s *Server) ServeConn(conn net.Conn, endpointCfg config.Endpoint) {
+// it had arrived on the plain listener of the server's first listener group.
+// The server serves it on a goroutine of its own that Shutdown waits for, and
+// ServeConn returns without waiting for the connection to end. Once the
+// server has begun shutting down, ServeConn closes conn and returns
+// ErrServerClosed.
+func (s *Server) ServeConn(conn net.Conn) error {
 	if !s.trackConn(conn) {
 		_ = conn.Close()
-		return
+		return ErrServerClosed
 	}
-	s.handleConnection(s.shutdownCtx, conn, endpointCfg)
+	go s.handleConnection(s.shutdownCtx, conn, s.listenerGroups[0].PlainEndpoint())
+	return nil
 }
 
 // trackConn registers conn so that Shutdown waits for it. It returns false

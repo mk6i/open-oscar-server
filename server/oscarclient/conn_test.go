@@ -1,7 +1,8 @@
-package toc
+package oscarclient
 
 import (
 	"bytes"
+	"context"
 	"log/slog"
 	"net"
 	"testing"
@@ -16,6 +17,7 @@ func TestFLAPConn_readsWhileConsumerIsBusy(t *testing.T) {
 	clientEnd, serverEnd := net.Pipe()
 	server := wire.NewFlapClient(0, serverEnd, serverEnd)
 	conn := newFLAPConn(clientEnd, wire.NewFlapClient(0, clientEnd, clientEnd), slog.Default())
+	go conn.Run(context.Background())
 	defer conn.Close()
 
 	// nobody reads conn.Messages() yet, so each send returns only because the
@@ -43,7 +45,7 @@ func marshalSNAC(t *testing.T, frame wire.SNACFrame, body any) []byte {
 	return buf.Bytes()
 }
 
-func TestDecodeSNAC(t *testing.T) {
+func Test_decodeSNAC(t *testing.T) {
 	cases := []struct {
 		name    string
 		payload func(t *testing.T) []byte
@@ -51,13 +53,15 @@ func TestDecodeSNAC(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name: "SNAC TOC handles",
+			name: "SNAC a client handles",
 			payload: func(t *testing.T) []byte {
 				return marshalSNAC(t, wire.SNACFrame{FoodGroup: wire.Buddy, SubGroup: wire.BuddyArrived, RequestID: 7},
 					wire.SNAC_0x03_0x0B_BuddyArrived{TLVUserInfo: wire.TLVUserInfo{ScreenName: "them", WarningLevel: 10}})
 			},
-			want: newSNAC(wire.Buddy, wire.BuddyArrived, 7,
-				wire.SNAC_0x03_0x0B_BuddyArrived{TLVUserInfo: wire.TLVUserInfo{ScreenName: "them", WarningLevel: 10}}),
+			want: wire.SNACMessage{
+				Frame: wire.SNACFrame{FoodGroup: wire.Buddy, SubGroup: wire.BuddyArrived, RequestID: 7},
+				Body:  wire.SNAC_0x03_0x0B_BuddyArrived{TLVUserInfo: wire.TLVUserInfo{ScreenName: "them", WarningLevel: 10}},
+			},
 		},
 		{
 			name: "relayed feedbag insert",
@@ -65,8 +69,10 @@ func TestDecodeSNAC(t *testing.T) {
 				return marshalSNAC(t, wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem},
 					wire.SNAC_0x13_0x09_FeedbagUpdateItem{Items: []wire.FeedbagItem{{Name: "them"}}})
 			},
-			want: newSNAC(wire.Feedbag, wire.FeedbagInsertItem, 0,
-				wire.SNAC_0x13_0x08_FeedbagInsertItem{Items: []wire.FeedbagItem{{Name: "them"}}}),
+			want: wire.SNACMessage{
+				Frame: wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem},
+				Body:  wire.SNAC_0x13_0x08_FeedbagInsertItem{Items: []wire.FeedbagItem{{Name: "them"}}},
+			},
 		},
 		{
 			name: "error in any food group",
@@ -74,10 +80,13 @@ func TestDecodeSNAC(t *testing.T) {
 				return marshalSNAC(t, wire.SNACFrame{FoodGroup: wire.ICBM, SubGroup: wire.ICBMErr, RequestID: 3},
 					wire.SNACError{Code: wire.ErrorCodeNotLoggedOn})
 			},
-			want: newSNAC(wire.ICBM, wire.ICBMErr, 3, wire.SNACError{Code: wire.ErrorCodeNotLoggedOn}),
+			want: wire.SNACMessage{
+				Frame: wire.SNACFrame{FoodGroup: wire.ICBM, SubGroup: wire.ICBMErr, RequestID: 3},
+				Body:  wire.SNACError{Code: wire.ErrorCodeNotLoggedOn},
+			},
 		},
 		{
-			name: "SNAC TOC doesn't handle has no body",
+			name: "SNAC no client handles has no body",
 			payload: func(t *testing.T) []byte {
 				return marshalSNAC(t, wire.SNACFrame{FoodGroup: wire.Stats, SubGroup: wire.StatsSetMinReportInterval},
 					wire.SNAC_0x0B_0x02_StatsSetMinReportInterval{MinReportInterval: 1})
@@ -117,6 +126,7 @@ func TestFLAPConn(t *testing.T) {
 	clientEnd, serverEnd := net.Pipe()
 	server := wire.NewFlapClient(0, serverEnd, serverEnd)
 	conn := newFLAPConn(clientEnd, wire.NewFlapClient(0, clientEnd, clientEnd), slog.Default())
+	go conn.Run(context.Background())
 
 	// SNACs sent to the server arrive intact
 	go func() {
@@ -152,6 +162,7 @@ func TestFLAPConn_closesWhenConsumerFallsBehind(t *testing.T) {
 	clientEnd, serverEnd := net.Pipe()
 	server := wire.NewFlapClient(0, serverEnd, serverEnd)
 	conn := newFLAPConn(clientEnd, wire.NewFlapClient(0, clientEnd, clientEnd), slog.Default())
+	go conn.Run(context.Background())
 
 	// nobody reads conn.Messages(), so its buffer fills up
 	go func() {
@@ -181,4 +192,44 @@ func TestFLAPConn_Close(t *testing.T) {
 	_, err := wire.NewFlapClient(0, serverEnd, serverEnd).ReceiveFLAP()
 	assert.Error(t, err)
 	<-conn.Closed()
+}
+
+func TestFLAPConn_Run_endsWithContext(t *testing.T) {
+	clientEnd, serverEnd := net.Pipe()
+	defer func() { _ = serverEnd.Close() }()
+	conn := newFLAPConn(clientEnd, wire.NewFlapClient(0, clientEnd, clientEnd), slog.Default())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		conn.Run(ctx)
+		close(done)
+	}()
+
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("Run didn't return after its context was done")
+	}
+	<-conn.Closed()
+}
+
+func TestFLAPConn_Run_endsWhenClosed(t *testing.T) {
+	clientEnd, serverEnd := net.Pipe()
+	defer func() { _ = serverEnd.Close() }()
+	conn := newFLAPConn(clientEnd, wire.NewFlapClient(0, clientEnd, clientEnd), slog.Default())
+
+	done := make(chan struct{})
+	go func() {
+		conn.Run(context.Background())
+		close(done)
+	}()
+
+	conn.Close()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("Run didn't return after the connection closed")
+	}
 }
