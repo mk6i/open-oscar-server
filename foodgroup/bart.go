@@ -21,14 +21,9 @@ var blankGIF = []byte{
 	0x32, 0x00, 0x32, 0x00, 0x00, 0x02, 0x02, 0x44, 0x01, 0x00, 0x3b,
 }
 
-// clearedIconData is served in place of a cleared buddy icon. It carries a
-// GIF signature but no image, so QIP 2005 replaces its cached icon file with
-// it, fails to decode it and shows its built-in "no icon" image.
-var clearedIconData = []byte("GIF89a")
-
-// blankGIFHash is the MD5 hash of clearedIconData.
+// blankGIFHash is the MD5 hash of blankGIF.
 var blankGIFHash = func() []byte {
-	h := md5.Sum(clearedIconData)
+	h := md5.Sum(blankGIF)
 	return h[:]
 }()
 
@@ -46,15 +41,9 @@ func blankBuddyIcon() wire.BARTID {
 	}
 }
 
-// blankIconData returns the payload served for a cleared icon hash.
-func blankIconData(info wire.BARTInfo) ([]byte, bool) {
-	switch {
-	case info.HasClearIconHash():
-		return blankGIF, true
-	case bytes.Equal(info.Hash, blankGIFHash):
-		return clearedIconData, true
-	}
-	return nil, false
+// isBlankIconHash reports whether hash refers to blankGIF.
+func isBlankIconHash(info wire.BARTInfo) bool {
+	return info.HasClearIconHash() || bytes.Equal(info.Hash, blankGIFHash)
 }
 
 func NewBARTService(
@@ -141,8 +130,8 @@ func (s BARTService) UpsertItem(ctx context.Context, instance *state.SessionInst
 // have on the request.
 func (s BARTService) RetrieveItem(ctx context.Context, inFrame wire.SNACFrame, inBody wire.SNAC_0x10_0x04_BARTDownloadQuery) (wire.SNACMessage, error) {
 	var item []byte
-	if data, ok := blankIconData(inBody.BARTInfo); ok {
-		item = data
+	if isBlankIconHash(inBody.BARTInfo) {
+		item = blankGIF
 	} else {
 		var err error
 		if item, err = s.bartItemManager.BARTItem(ctx, inBody.Hash); err != nil {
@@ -172,8 +161,8 @@ func (s BARTService) RetrieveItemV2(ctx context.Context, inFrame wire.SNACFrame,
 	for _, id := range inBody.IDs {
 		var item []byte
 
-		if data, ok := blankIconData(id.BARTInfo); ok && id.Type == wire.BARTTypesBuddyIcon {
-			item = data
+		if id.Type == wire.BARTTypesBuddyIcon && isBlankIconHash(id.BARTInfo) {
+			item = blankGIF
 		} else {
 			var err error
 			if item, err = s.bartItemManager.BARTItem(ctx, id.Hash); err != nil {
