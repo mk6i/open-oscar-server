@@ -80,7 +80,7 @@ func (s BARTService) UpsertItem(ctx context.Context, instance *state.SessionInst
 				Hash:  hash,
 			},
 		}
-		if inBody.Type == wire.BARTTypesBuddyIcon && s.feedbagManager != nil {
+		if inBody.Type == wire.BARTTypesBuddyIcon {
 			if err := s.assignBuddyIcon(ctx, instance, bartID); err != nil {
 				return wire.SNACMessage{}, err
 			}

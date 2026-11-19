@@ -359,67 +359,6 @@ func TestBARTService_UpsertItem(t *testing.T) {
 			expectOutput: wire.SNACMessage{},
 			wantErr:      io.EOF,
 		},
-		{
-			name: "insert new buddy icon unrelated to current session",
-			instance: newTestInstance("user_screen_name", sessOptBuddyIcon(wire.BARTID{
-				Type: wire.BARTTypesBuddyIcon,
-				BARTInfo: wire.BARTInfo{
-					Flags: wire.BARTFlagsCustom | wire.BARTFlagsKnown,
-					Hash:  []byte("unrelated icon"),
-				},
-			})),
-			inputSNAC: wire.SNACMessage{
-				Frame: wire.SNACFrame{
-					RequestID: 1234,
-				},
-				Body: wire.SNAC_0x10_0x02_BARTUploadQuery{
-					Type: wire.BARTTypesBuddyIcon,
-					Data: itemData,
-				},
-			},
-			mockParams: mockParams{
-				bartItemManagerParams: bartItemManagerParams{
-					bartItemManagerUpsertParams: bartItemManagerUpsertParams{
-						{
-							itemHash: itemHash,
-							payload:  itemData,
-							bartType: wire.BARTTypesBuddyIcon,
-						},
-					},
-				},
-				messageRelayerParams: messageRelayerParams{},
-			},
-			expectOutput: wire.SNACMessage{
-				Frame: wire.SNACFrame{
-					FoodGroup: wire.BART,
-					SubGroup:  wire.BARTUploadReply,
-					RequestID: 1234,
-				},
-				Body: wire.SNAC_0x10_0x03_BARTUploadReply{
-					Code: wire.BARTReplyCodesSuccess,
-					ID: wire.BARTID{
-						Type: wire.BARTTypesBuddyIcon,
-						BARTInfo: wire.BARTInfo{
-							Flags: wire.BARTFlagsCustom,
-							Hash:  itemHash,
-						},
-					},
-				},
-			},
-			instanceMatch: func(instance *state.SessionInstance) {
-				// assert session icon didn't change
-				have, hasIcon := instance.Session().BuddyIcon()
-				assert.True(t, hasIcon)
-				want := wire.BARTID{
-					Type: wire.BARTTypesBuddyIcon,
-					BARTInfo: wire.BARTInfo{
-						Flags: wire.BARTFlagsCustom | wire.BARTFlagsKnown,
-						Hash:  []byte("unrelated icon"),
-					},
-				}
-				assert.Equal(t, want, have)
-			},
-		},
 	}
 
 	for _, tc := range cases {
@@ -1006,12 +945,14 @@ func TestBARTService_UpsertItem_AssignsUploadedIcon(t *testing.T) {
 
 	cases := []struct {
 		name       string
+		instance   *state.SessionInstance
 		feedbag    []wire.FeedbagItem
 		wantItemID uint16
 		wantGroup  uint16
 	}{
 		{
-			name: "no BART feedbag item, create one with a free item ID",
+			name:     "no BART feedbag item, create one with a free item ID",
+			instance: newTestInstance("user_screen_name"),
 			feedbag: []wire.FeedbagItem{
 				{GroupID: 0, ItemID: 1, ClassID: wire.FeedbagClassIdPdinfo},
 				{GroupID: 10, ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, Name: "buddy"},
@@ -1020,7 +961,14 @@ func TestBARTService_UpsertItem_AssignsUploadedIcon(t *testing.T) {
 			wantGroup:  0,
 		},
 		{
-			name: "existing BART feedbag item, update it in place",
+			name: "existing BART feedbag item with an unrelated icon, update it in place",
+			instance: newTestInstance("user_screen_name", sessOptBuddyIcon(wire.BARTID{
+				Type: wire.BARTTypesBuddyIcon,
+				BARTInfo: wire.BARTInfo{
+					Flags: wire.BARTFlagsCustom | wire.BARTFlagsKnown,
+					Hash:  []byte("unrelated icon"),
+				},
+			})),
 			feedbag: []wire.FeedbagItem{
 				{GroupID: 0, ItemID: 7, ClassID: wire.FeedbagClassIdBart, Name: "1"},
 			},
@@ -1031,7 +979,7 @@ func TestBARTService_UpsertItem_AssignsUploadedIcon(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			instance := newTestInstance("user_screen_name")
+			instance := tc.instance
 
 			bartItemManager := newMockBARTItemManager(t)
 			bartItemManager.EXPECT().
