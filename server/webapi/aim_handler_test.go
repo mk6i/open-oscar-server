@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -13,7 +14,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/mk6i/open-oscar-server/config"
@@ -59,7 +59,10 @@ func TestAimHandler_AddTempBuddy(t *testing.T) {
 	tests := []struct {
 		name               string
 		queryParams        map[string][]string
-		mockSetup          func(*mockBuddyService, *state.SessionInstance)
+		respond            func(req wire.SNACMessage) []wire.SNACMessage
+		sendErr            error
+		limited            bool
+		wantSent           []any
 		expectedStatusCode int
 		expectedResponse   string
 	}{
@@ -69,11 +72,7 @@ func TestAimHandler_AddTempBuddy(t *testing.T) {
 				"aimsid": {"aimsid-1"},
 				"t":      {"buddy1"},
 			},
-			mockSetup: func(svc *mockBuddyService, instance *state.SessionInstance) {
-				svc.EXPECT().
-					AddTempBuddies(mock.Anything, instance, wire.SNACFrame{}, tempBuddiesSNAC("buddy1")).
-					Return(nil, nil)
-			},
+			wantSent:           []any{tempBuddiesSNAC("buddy1")},
 			expectedStatusCode: http.StatusOK,
 			expectedResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{}}}`,
 		},
@@ -83,11 +82,7 @@ func TestAimHandler_AddTempBuddy(t *testing.T) {
 				"aimsid": {"aimsid-1"},
 				"t":      {"buddy1", "buddy2", "buddy3"},
 			},
-			mockSetup: func(svc *mockBuddyService, instance *state.SessionInstance) {
-				svc.EXPECT().
-					AddTempBuddies(mock.Anything, instance, mock.Anything, tempBuddiesSNAC("buddy1", "buddy2", "buddy3")).
-					Return(nil, nil)
-			},
+			wantSent:           []any{tempBuddiesSNAC("buddy1", "buddy2", "buddy3")},
 			expectedStatusCode: http.StatusOK,
 			expectedResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{}}}`,
 		},
@@ -97,11 +92,7 @@ func TestAimHandler_AddTempBuddy(t *testing.T) {
 				"aimsid": {"aimsid-1"},
 				"t":      {"  buddy1  ", "", "buddy2 "},
 			},
-			mockSetup: func(svc *mockBuddyService, instance *state.SessionInstance) {
-				svc.EXPECT().
-					AddTempBuddies(mock.Anything, instance, mock.Anything, tempBuddiesSNAC("buddy1", "buddy2")).
-					Return(nil, nil)
-			},
+			wantSent:           []any{tempBuddiesSNAC("buddy1", "buddy2")},
 			expectedStatusCode: http.StatusOK,
 			expectedResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{}}}`,
 		},
@@ -111,23 +102,17 @@ func TestAimHandler_AddTempBuddy(t *testing.T) {
 				"aimsid": {"aimsid-1"},
 				"t":      {"buddy1", "100000"},
 			},
-			mockSetup: func(svc *mockBuddyService, instance *state.SessionInstance) {
-				svc.EXPECT().
-					AddTempBuddies(mock.Anything, instance, mock.Anything, tempBuddiesSNAC("buddy1", "100000")).
-					Return(&wire.SNACMessage{
-						Frame: wire.SNACFrame{
-							FoodGroup: wire.Buddy,
-							SubGroup:  wire.BuddyRejectNotification,
+			respond: func(req wire.SNACMessage) []wire.SNACMessage {
+				return []wire.SNACMessage{reply(wire.Buddy, wire.BuddyRejectNotification,
+					wire.SNAC_0x03_0x0A_BuddyRejectNotification{
+						Buddies: []struct {
+							ScreenName string `oscar:"len_prefix=uint8"`
+						}{
+							{ScreenName: "100000"},
 						},
-						Body: wire.SNAC_0x03_0x0A_BuddyRejectNotification{
-							Buddies: []struct {
-								ScreenName string `oscar:"len_prefix=uint8"`
-							}{
-								{ScreenName: "100000"},
-							},
-						},
-					}, nil)
+					})}
 			},
+			wantSent:           []any{tempBuddiesSNAC("buddy1", "100000")},
 			expectedStatusCode: http.StatusOK,
 			expectedResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{}}}`,
 		},
@@ -137,11 +122,7 @@ func TestAimHandler_AddTempBuddy(t *testing.T) {
 				"aimsid": {"aimsid-1"},
 				"t":      {"buddy1,buddy2", "buddy3"},
 			},
-			mockSetup: func(svc *mockBuddyService, instance *state.SessionInstance) {
-				svc.EXPECT().
-					AddTempBuddies(mock.Anything, instance, mock.Anything, tempBuddiesSNAC("buddy1", "buddy2", "buddy3")).
-					Return(nil, nil)
-			},
+			wantSent:           []any{tempBuddiesSNAC("buddy1", "buddy2", "buddy3")},
 			expectedStatusCode: http.StatusOK,
 			expectedResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{}}}`,
 		},
@@ -154,33 +135,38 @@ func TestAimHandler_AddTempBuddy(t *testing.T) {
 			expectedResponse:   `{"response":{"statusCode":400,"statusText":"missing buddy names (t parameter)","data":{}}}`,
 		},
 		{
-			name: "Error_ServiceFailure",
+			name: "Error_SendFailure",
 			queryParams: map[string][]string{
 				"aimsid": {"aimsid-1"},
 				"t":      {"buddy1"},
 			},
-			mockSetup: func(svc *mockBuddyService, instance *state.SessionInstance) {
-				svc.EXPECT().
-					AddTempBuddies(mock.Anything, instance, mock.Anything, mock.Anything).
-					Return(nil, io.ErrUnexpectedEOF)
-			},
+			sendErr:            io.ErrUnexpectedEOF,
 			expectedStatusCode: http.StatusInternalServerError,
 			expectedResponse:   `{"response":{"statusCode":500,"statusText":"unable to add temporary buddies","data":{}}}`,
+		},
+		{
+			name: "Error_RateLimited",
+			queryParams: map[string][]string{
+				"aimsid": {"aimsid-1"},
+				"t":      {"buddy1"},
+			},
+			limited:            true,
+			expectedStatusCode: http.StatusOK,
+			expectedResponse:   `{"response":{"statusCode":430,"statusText":"rate limit exceeded","data":{}}}`,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			session := newTestWebAPISession(t, tightRateLimitClasses())
-
-			buddyService := newMockBuddyService(t)
-			if tt.mockSetup != nil {
-				tt.mockSetup(buddyService, session.OSCARSession)
+			conn := newFakeConn().answering(tt.respond)
+			conn.sendErr = tt.sendErr
+			session := newTestSession(t, conn)
+			if tt.limited {
+				limitRateClass(session, wire.Buddy, wire.BuddyAddTempBuddies)
 			}
 
 			handler := &AimHandler{
-				BuddyService: buddyService,
-				Logger:       slog.Default(),
+				Logger: slog.Default(),
 			}
 
 			values := url.Values{}
@@ -196,6 +182,7 @@ func TestAimHandler_AddTempBuddy(t *testing.T) {
 
 			assert.Equal(t, tt.expectedStatusCode, rr.Code)
 			assert.JSONEq(t, tt.expectedResponse, rr.Body.String())
+			assert.Equal(t, tt.wantSent, conn.sentOf(wire.Buddy, wire.BuddyAddTempBuddies))
 		})
 	}
 }
@@ -204,25 +191,22 @@ func TestAimHandler_RemoveTempBuddy(t *testing.T) {
 	tests := []struct {
 		name               string
 		query              string
-		mockSetup          func(*mockBuddyService, *state.SessionInstance)
+		sendErr            error
+		wantSent           []any
 		expectedStatusCode int
 		expectedResponse   string
 	}{
 		{
 			name:  "Success",
 			query: "aimsid=aimsid-1&t=buddy1&t=+buddy2+&t=",
-			mockSetup: func(svc *mockBuddyService, instance *state.SessionInstance) {
-				svc.EXPECT().
-					DelTempBuddies(mock.Anything, instance, wire.SNAC_0x03_0x10_BuddyDelTempBuddies{
-						Buddies: []struct {
-							ScreenName string `oscar:"len_prefix=uint8"`
-						}{
-							{ScreenName: "buddy1"},
-							{ScreenName: "buddy2"},
-						},
-					}).
-					Return(nil)
-			},
+			wantSent: []any{wire.SNAC_0x03_0x10_BuddyDelTempBuddies{
+				Buddies: []struct {
+					ScreenName string `oscar:"len_prefix=uint8"`
+				}{
+					{ScreenName: "buddy1"},
+					{ScreenName: "buddy2"},
+				},
+			}},
 			expectedStatusCode: http.StatusOK,
 			expectedResponse:   `{"response":{"statusCode":200,"statusText":"Ok","data":{}}}`,
 		},
@@ -233,13 +217,9 @@ func TestAimHandler_RemoveTempBuddy(t *testing.T) {
 			expectedResponse:   `{"response":{"statusCode":400,"statusText":"missing buddy names (t parameter)","data":{}}}`,
 		},
 		{
-			name:  "Error_ServiceFailure",
-			query: "aimsid=aimsid-1&t=buddy1",
-			mockSetup: func(svc *mockBuddyService, instance *state.SessionInstance) {
-				svc.EXPECT().
-					DelTempBuddies(mock.Anything, instance, mock.Anything).
-					Return(io.ErrUnexpectedEOF)
-			},
+			name:               "Error_SendFailure",
+			query:              "aimsid=aimsid-1&t=buddy1",
+			sendErr:            io.ErrUnexpectedEOF,
 			expectedStatusCode: http.StatusInternalServerError,
 			expectedResponse:   `{"response":{"statusCode":500,"statusText":"unable to remove temporary buddies","data":{}}}`,
 		},
@@ -247,16 +227,12 @@ func TestAimHandler_RemoveTempBuddy(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			session := newTestWebAPISession(t, tightRateLimitClasses())
-
-			buddyService := newMockBuddyService(t)
-			if tt.mockSetup != nil {
-				tt.mockSetup(buddyService, session.OSCARSession)
-			}
+			conn := newFakeConn()
+			conn.sendErr = tt.sendErr
+			session := newTestSession(t, conn)
 
 			handler := &AimHandler{
-				BuddyService: buddyService,
-				Logger:       slog.Default(),
+				Logger: slog.Default(),
 			}
 
 			req := httptest.NewRequest(http.MethodGet, "/aim/removeTempBuddy?"+tt.query, nil)
@@ -266,22 +242,22 @@ func TestAimHandler_RemoveTempBuddy(t *testing.T) {
 
 			assert.Equal(t, tt.expectedStatusCode, rr.Code)
 			assert.JSONEq(t, tt.expectedResponse, rr.Body.String())
+			assert.Equal(t, tt.wantSent, conn.sentOf(wire.Buddy, wire.BuddyDelTempBuddies))
 		})
 	}
 }
 
 func TestAimHandler_AddTempBuddy_RejectsOversizedList(t *testing.T) {
-	session := newTestWebAPISession(t, tightRateLimitClasses())
+	conn := newFakeConn()
+	session := newTestSession(t, conn)
 
 	names := make([]string, 0, maxTempBuddies+1)
 	for i := range cap(names) {
 		names = append(names, fmt.Sprintf("buddy%d", i))
 	}
 
-	// No EXPECT: an oversized list must be rejected before it reaches the service.
 	handler := &AimHandler{
-		BuddyService: newMockBuddyService(t),
-		Logger:       slog.Default(),
+		Logger: slog.Default(),
 	}
 
 	values := url.Values{"aimsid": {"aimsid-1"}, "t": names}
@@ -292,6 +268,8 @@ func TestAimHandler_AddTempBuddy_RejectsOversizedList(t *testing.T) {
 
 	assert.Equal(t, http.StatusBadRequest, rr.Code)
 	assert.JSONEq(t, `{"response":{"statusCode":400,"statusText":"too many buddy names (max 160)","data":{}}}`, rr.Body.String())
+	// an oversized list is rejected before anything reaches the OSCAR server
+	assert.Empty(t, conn.sentSNACs())
 }
 
 // tempBuddiesSNAC builds the add-temp-buddies SNAC the handler is expected to
@@ -476,16 +454,12 @@ func TestSeedRateLimitAlert(t *testing.T) {
 	imClass, ok := wire.DefaultSNACRateLimits().RateClassLookup(wire.ICBM, wire.ICBMChannelMsgToHost)
 	require.True(t, ok)
 
-	// limitedSession returns a session on an account already in the limited state.
+	// limitedSession returns a session that signed on to an account whose IM
+	// class is limited.
 	limitedSession := func(t *testing.T) *Session {
 		t.Helper()
-
-		session := newTestWebAPISession(t, tightRateLimitClasses())
-		sess := session.OSCARSession.Session()
-		for i := 0; sess.RateLimitStates()[imClass-1].CurrentStatus != wire.RateLimitStatusLimited; i++ {
-			require.Less(t, i, 100, "class never reached the limited state")
-			sess.EvaluateRateLimit(time.Now(), imClass)
-		}
+		session := newTestSession(t, newFakeConn())
+		limitRateClass(session, wire.ICBM, wire.ICBMChannelMsgToHost)
 		return session
 	}
 
@@ -498,7 +472,7 @@ func TestSeedRateLimitAlert(t *testing.T) {
 	})
 
 	t.Run("a session starting on a clear account is told nothing", func(t *testing.T) {
-		session := newTestWebAPISession(t, tightRateLimitClasses())
+		session := newTestSession(t, newFakeConn())
 
 		seedRateLimitAlert(session, imClass)
 
@@ -519,21 +493,13 @@ func TestSeedRateLimitAlert(t *testing.T) {
 // is the most reachable form of that bug: add a temp buddy, remove it, and the
 // target's state is frozen at whatever it was when they were last observed.
 func TestAimHandler_RemoveTempBuddy_ForgetsPresence(t *testing.T) {
-	session := newTestWebAPISession(t, tightRateLimitClasses())
-	session.Events = []string{"presence"}
-	session.logger = slog.Default()
+	session := newTestSession(t, newFakeConn(), "presence")
 
 	buddyArrives(session, onlineBuddy("Mike Kelly"))
 	buddyArrives(session, onlineBuddy("keeper"))
 
-	buddyService := newMockBuddyService(t)
-	buddyService.EXPECT().
-		DelTempBuddies(mock.Anything, session.OSCARSession, mock.Anything).
-		Return(nil).Once()
-
 	handler := &AimHandler{
-		BuddyService: buddyService,
-		Logger:       slog.Default(),
+		Logger: slog.Default(),
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/aim/removeTempBuddy?aimsid="+session.AimSID+"&t=mikekelly", nil)
@@ -551,20 +517,14 @@ func TestAimHandler_RemoveTempBuddy_ForgetsPresence(t *testing.T) {
 
 // A failed removal leaves the buddy watched, so their presence must survive.
 func TestAimHandler_RemoveTempBuddy_KeepsPresenceOnFailure(t *testing.T) {
-	session := newTestWebAPISession(t, tightRateLimitClasses())
-	session.Events = []string{"presence"}
-	session.logger = slog.Default()
+	conn := newFakeConn()
+	conn.sendErr = io.ErrUnexpectedEOF
+	session := newTestSession(t, conn, "presence")
 
 	buddyArrives(session, onlineBuddy("Mike Kelly"))
 
-	buddyService := newMockBuddyService(t)
-	buddyService.EXPECT().
-		DelTempBuddies(mock.Anything, session.OSCARSession, mock.Anything).
-		Return(io.ErrUnexpectedEOF).Once()
-
 	handler := &AimHandler{
-		BuddyService: buddyService,
-		Logger:       slog.Default(),
+		Logger: slog.Default(),
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/aim/removeTempBuddy?aimsid="+session.AimSID+"&t=mikekelly", nil)
@@ -575,4 +535,40 @@ func TestAimHandler_RemoveTempBuddy_KeepsPresenceOnFailure(t *testing.T) {
 	got, ok := session.BuddyPresence(state.NewIdentScreenName("mikekelly"))
 	require.True(t, ok)
 	assert.Equal(t, "online", got.State)
+}
+
+func TestClientAddr(t *testing.T) {
+	tests := []struct {
+		name       string
+		remoteAddr string
+		want       net.Addr
+	}{
+		{
+			name:       "IPv4",
+			remoteAddr: "192.0.2.1:1234",
+			want:       &net.TCPAddr{IP: net.IPv4(192, 0, 2, 1).To4(), Port: 1234},
+		},
+		{
+			name:       "IPv6",
+			remoteAddr: "[2001:db8::1]:443",
+			want:       &net.TCPAddr{IP: net.ParseIP("2001:db8::1"), Port: 443},
+		},
+		{
+			// The OSCAR server still gets an address it can split.
+			name:       "unparsable",
+			remoteAddr: "pipe",
+			want:       &net.TCPAddr{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodGet, "/aim/startSession", nil)
+			r.RemoteAddr = tt.remoteAddr
+			got := clientAddr(r)
+			assert.Equal(t, tt.want.String(), got.String())
+			_, _, err := net.SplitHostPort(got.String())
+			assert.NoError(t, err)
+		})
+	}
 }

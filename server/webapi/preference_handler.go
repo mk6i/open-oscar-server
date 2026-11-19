@@ -2,7 +2,6 @@ package webapi
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"math/rand"
 	"net/http"
@@ -15,7 +14,6 @@ import (
 
 // PreferenceHandler handles Web AIM API preference-related endpoints.
 type PreferenceHandler struct {
-	FeedbagService FeedbagService
 	SessionManager *SessionManager
 	Logger         *slog.Logger
 }
@@ -216,42 +214,16 @@ type PermitDenyData struct {
 
 // SetPreferences handles GET /preference/set requests to update user preferences.
 func (h *PreferenceHandler) SetPreferences(w http.ResponseWriter, r *http.Request, session *Session) {
-	defer session.InvalidateFeedbag()
-
 	ctx := r.Context()
 
-	// Preferences are stored as OSCAR buddy prefs in the feedbag, which requires
-	// an OSCAR session to act on behalf of.
-	instance := session.OSCARSession
-
-	// Read-modify-write the buddy-prefs item so bits the web client doesn't
-	// manage (e.g. the typing-events bit consumed by the OSCAR session) survive.
-	item, err := buddyPrefsItem(ctx, h.FeedbagService, instance)
+	applied, err := h.setPreferences(ctx, session, r)
 	if err != nil {
-		h.Logger.ErrorContext(ctx, "failed to retrieve feedbag", "err", err.Error())
-		SendError(w, r, http.StatusInternalServerError, "failed to retrieve feedbag")
+		h.Logger.ErrorContext(ctx, "failed to set preferences", "err", err.Error())
+		sendRequestError(w, r, err, "failed to save preferences", h.Logger)
 		return
 	}
 
-	applied := &PreferenceData{}
-	for name, pref := range webBuddyPrefs {
-		val := r.URL.Query().Get(name)
-		if val == "" {
-			continue
-		}
-		on := parseBoolPref(val)
-		item.TLVList = wire.SetBuddyPref(item.TLVList, pref, on)
-		applied.Set(name, boolToPrefInt(on))
-	}
-
 	if applied.Len() > 0 {
-		frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem}
-		if _, err := h.FeedbagService.UpsertItem(ctx, instance, frame, []wire.FeedbagItem{item}); err != nil {
-			h.Logger.ErrorContext(ctx, "failed to set preferences", "err", err.Error())
-			SendError(w, r, http.StatusInternalServerError, "failed to save preferences")
-			return
-		}
-
 		// Notify the client's open windows via the event stream so display
 		// changes (e.g. bubbles/classic) take effect immediately without a
 		// browser refresh.
@@ -272,12 +244,7 @@ func (h *PreferenceHandler) GetPreferences(w http.ResponseWriter, r *http.Reques
 
 	// Load the buddy-prefs bitmask from the feedbag. Absent prefs fall back to
 	// the spec default.
-	var prefsList wire.TLVList
-	if item, err := buddyPrefsItem(ctx, h.FeedbagService, session.OSCARSession); err != nil {
-		h.Logger.WarnContext(ctx, "failed to get preferences", "err", err.Error())
-	} else {
-		prefsList = item.TLVList
-	}
+	prefsList := buddyPrefsItem(session.Feedbag()).TLVList
 
 	// When specific preferences are named in the query (e.g. playIMSound=1), the
 	// client is selecting those; otherwise return all preferences.
@@ -326,21 +293,44 @@ func (h *PreferenceHandler) GetPreferences(w http.ResponseWriter, r *http.Reques
 	SendOK(w, r, payload, h.Logger)
 }
 
+// setPreferences stores the buddy prefs named in r and returns the ones it
+// set.
+func (h *PreferenceHandler) setPreferences(ctx context.Context, session *Session, r *http.Request) (*PreferenceData, error) {
+	items, err := session.lockFeedbag(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer session.unlockFeedbag()
+
+	// Read-modify-write the buddy-prefs item so bits the web client doesn't
+	// manage (e.g. the typing-events bit consumed by the OSCAR session) survive.
+	item := buddyPrefsItem(items)
+
+	applied := &PreferenceData{}
+	for name, pref := range webBuddyPrefs {
+		val := r.URL.Query().Get(name)
+		if val == "" {
+			continue
+		}
+		on := parseBoolPref(val)
+		item.TLVList = wire.SetBuddyPref(item.TLVList, pref, on)
+		applied.Set(name, boolToPrefInt(on))
+	}
+
+	if applied.Len() > 0 {
+		if _, err := session.changeFeedbag(ctx, wire.FeedbagInsertItem, []wire.FeedbagItem{item}); err != nil {
+			return nil, err
+		}
+	}
+	return applied, nil
+}
+
 // buddyPrefsItem returns the user's buddy-prefs feedbag item, creating a fresh
 // (empty) one if the feedbag does not have it yet.
-func buddyPrefsItem(ctx context.Context, fs FeedbagService, instance *state.SessionInstance) (wire.FeedbagItem, error) {
-	frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
-	fb, err := fs.Query(ctx, instance, frame)
-	if err != nil {
-		return wire.FeedbagItem{}, err
-	}
-	reply, ok := fb.Body.(wire.SNAC_0x13_0x06_FeedbagReply)
-	if !ok {
-		return wire.FeedbagItem{}, fmt.Errorf("unexpected feedbag reply type")
-	}
-	for _, item := range reply.Items {
+func buddyPrefsItem(items []wire.FeedbagItem) wire.FeedbagItem {
+	for _, item := range items {
 		if item.ClassID == wire.FeedbagClassIdBuddyPrefs {
-			return item, nil
+			return item
 		}
 	}
 	// No buddy-prefs item yet; create one. Only a single item of this class is
@@ -348,7 +338,7 @@ func buddyPrefsItem(ctx context.Context, fs FeedbagService, instance *state.Sess
 	return wire.FeedbagItem{
 		ClassID: wire.FeedbagClassIdBuddyPrefs,
 		ItemID:  uint16(rand.Intn(0xFFFF)),
-	}, nil
+	}
 }
 
 // effectiveBuddyPrefs returns the 0/1 value of every web buddy pref, using the
@@ -454,106 +444,36 @@ func boolToPrefInt(b bool) int {
 
 // SetPermitDeny handles GET /preference/setPermitDeny requests to update permit/deny settings.
 func (h *PreferenceHandler) SetPermitDeny(w http.ResponseWriter, r *http.Request, session *Session) {
-	defer session.InvalidateFeedbag()
-
 	ctx := r.Context()
 
-	frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
-	fb, err := h.FeedbagService.Query(r.Context(), session.OSCARSession, frame)
-	if err != nil {
-		SendError(w, r, http.StatusInternalServerError, "failed to retrieve feedbag")
-		return
-	}
-
-	reply, ok := fb.Body.(wire.SNAC_0x13_0x06_FeedbagReply)
-	if !ok {
-		SendError(w, r, http.StatusInternalServerError, "failed to retrieve feedbag")
-		return
-	}
-
-	fl := state.NewFeedbagList(reply.Items, rand.Intn)
-
-	pdModeStr := r.URL.Query().Get("pdMode")
-	if pdModeStr != "" {
+	var mode *wire.FeedbagPDMode
+	if pdModeStr := r.URL.Query().Get("pdMode"); pdModeStr != "" {
+		var m wire.FeedbagPDMode
 		switch pdModeStr { // todo: are the string ints possible inputs?
 		case "permitAll", "1":
-			fl.SetMode(uint8(wire.FeedbagPDModePermitAll))
+			m = wire.FeedbagPDModePermitAll
 		case "denyAll", "2":
-			fl.SetMode(uint8(wire.FeedbagPDModeDenyAll))
+			m = wire.FeedbagPDModeDenyAll
 		case "permitSome", "3":
-			fl.SetMode(uint8(wire.FeedbagPDModePermitSome))
+			m = wire.FeedbagPDModePermitSome
 		case "denySome", "4":
-			fl.SetMode(uint8(wire.FeedbagPDModeDenySome))
+			m = wire.FeedbagPDModeDenySome
 		case "permitOnList", "5":
-			fl.SetMode(uint8(wire.FeedbagPDModePermitOnList))
+			m = wire.FeedbagPDModePermitOnList
 		default:
 			SendError(w, r, http.StatusBadRequest, "invalid pdMode value")
 			return
 		}
+		mode = &m
 	}
 
-	// Handle permit list updates
-	if pdAllow := r.URL.Query().Get("pdAllow"); pdAllow != "" {
-		users := strings.SplitSeq(pdAllow, ",")
-		for user := range users {
-			user = strings.TrimSpace(user)
-			if user != "" {
-				fl.PermitUser(user)
-			}
-		}
+	if err := h.setPermitDeny(ctx, session, mode, r); err != nil {
+		h.Logger.ErrorContext(ctx, "failed to set PD mode", "err", err.Error())
+		sendRequestError(w, r, err, "failed to update PD mode", h.Logger)
+		return
 	}
 
-	if pdAllowRemove := r.URL.Query().Get("pdAllowRemove"); pdAllowRemove != "" {
-		users := strings.SplitSeq(pdAllowRemove, ",")
-		for user := range users {
-			user = strings.TrimSpace(user)
-			if user != "" {
-				fl.DeletePermit(user)
-			}
-		}
-	}
-
-	// Handle deny list updates
-	if pdBlock := r.URL.Query().Get("pdBlock"); pdBlock != "" {
-		users := strings.SplitSeq(pdBlock, ",")
-		for user := range users {
-			user = strings.TrimSpace(user)
-			if user != "" {
-				fl.DenyUser(user)
-			}
-		}
-	}
-
-	if pdBlockRemove := r.URL.Query().Get("pdBlockRemove"); pdBlockRemove != "" {
-		users := strings.SplitSeq(pdBlockRemove, ",")
-		for user := range users {
-			user = strings.TrimSpace(user)
-			if user != "" {
-				fl.DeleteDeny(user)
-			}
-		}
-	}
-
-	if pending := fl.PendingUpdates(); len(pending) > 0 {
-		frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem}
-		if _, err := h.FeedbagService.UpsertItem(ctx, session.OSCARSession, frame, pending); err != nil {
-			h.Logger.ErrorContext(ctx, "failed to set PD mode", "err", err.Error())
-			SendError(w, r, http.StatusInternalServerError, "failed to update PD mode")
-			return
-		}
-	}
-
-	if pending := fl.PendingDeletes(); len(pending) > 0 {
-		frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagDeleteItem}
-		body := wire.SNAC_0x13_0x0A_FeedbagDeleteItem{Items: pending}
-		if _, err := h.FeedbagService.DeleteItem(ctx, session.OSCARSession, frame, body); err != nil {
-			h.Logger.ErrorContext(ctx, "failed to set PD mode", "err", err.Error())
-			SendError(w, r, http.StatusInternalServerError, "failed to update PD mode")
-			return
-		}
-	}
-
-	pdd := permitDenyData(fl.Items())
+	pdd := permitDenyData(session.Feedbag())
 
 	// The client reads the privacy state it renders (blocked buddies, the
 	// block/unblock menu label) only from the permitDeny event, and it sees no
@@ -569,6 +489,51 @@ func (h *PreferenceHandler) SetPermitDeny(w http.ResponseWriter, r *http.Request
 	)
 
 	SendOK(w, r, pdd, h.Logger)
+}
+
+// setPermitDeny applies mode, when it's not nil, and the permit and deny list
+// changes named in r to the feedbag.
+func (h *PreferenceHandler) setPermitDeny(ctx context.Context, session *Session, mode *wire.FeedbagPDMode, r *http.Request) error {
+	items, err := session.lockFeedbag(ctx)
+	if err != nil {
+		return err
+	}
+	defer session.unlockFeedbag()
+
+	fl := state.NewFeedbagList(items, rand.Intn)
+
+	if mode != nil {
+		fl.SetMode(uint8(*mode))
+	}
+
+	// each parameter lists users separated by commas
+	for _, list := range []struct {
+		param string
+		apply func(string)
+	}{
+		{"pdAllow", fl.PermitUser},
+		{"pdAllowRemove", fl.DeletePermit},
+		{"pdBlock", fl.DenyUser},
+		{"pdBlockRemove", fl.DeleteDeny},
+	} {
+		for user := range strings.SplitSeq(r.URL.Query().Get(list.param), ",") {
+			if user = strings.TrimSpace(user); user != "" {
+				list.apply(user)
+			}
+		}
+	}
+
+	if pending := fl.PendingUpdates(); len(pending) > 0 {
+		if _, err := session.changeFeedbag(ctx, wire.FeedbagInsertItem, pending); err != nil {
+			return err
+		}
+	}
+	if pending := fl.PendingDeletes(); len(pending) > 0 {
+		if _, err := session.changeFeedbag(ctx, wire.FeedbagDeleteItem, pending); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func permitDenyData(fl []wire.FeedbagItem) PermitDenyData {
@@ -605,13 +570,7 @@ func permitDenyData(fl []wire.FeedbagItem) PermitDenyData {
 func (h *PreferenceHandler) GetPermitDeny(w http.ResponseWriter, r *http.Request, session *Session) {
 	ctx := r.Context()
 
-	items, err := session.Feedbag(ctx)
-	if err != nil {
-		SendError(w, r, http.StatusInternalServerError, "failed to retrieve feedbag")
-		return
-	}
-
-	pdd := permitDenyData(items)
+	pdd := permitDenyData(session.Feedbag())
 	h.Logger.DebugContext(ctx, "permit/deny settings retrieved",
 		"screenName", session.ScreenName.String(),
 		"pdMode", pdd.PDMode,

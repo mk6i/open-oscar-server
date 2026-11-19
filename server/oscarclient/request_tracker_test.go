@@ -91,3 +91,20 @@ func TestRequestTracker_takeIgnoresServerRequestIDs(t *testing.T) {
 		})
 	}
 }
+
+func TestRequestTracker_Peek(t *testing.T) {
+	c := NewRequestTracker()
+	tracked := c.Track(wire.SNACFrame{FoodGroup: wire.Locate, SubGroup: wire.LocateUserInfoQuery}, "status of them")
+
+	_, _, ok := c.Peek(wire.SNACFrame{FoodGroup: wire.Locate, RequestID: tracked.RequestID + 1})
+	assert.False(t, ok)
+
+	frame, data, ok := c.Peek(wire.SNACFrame{FoodGroup: wire.Locate, SubGroup: wire.LocateUserInfoReply, RequestID: tracked.RequestID})
+	assert.True(t, ok)
+	assert.Equal(t, tracked, frame)
+	assert.Equal(t, "status of them", data)
+
+	// the request is still pending
+	_, _, ok = c.Take(tracked)
+	assert.True(t, ok)
+}

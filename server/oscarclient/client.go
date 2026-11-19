@@ -14,9 +14,10 @@ import (
 // OSCARServer serves OSCAR connections that in-process clients open.
 type OSCARServer interface {
 	// ServeConn starts serving conn as if it had been accepted on one of
-	// the server's listeners. The server owns the goroutine that serves it.
-	// It returns an error if the server won't serve the connection.
-	ServeConn(conn net.Conn) error
+	// the server's listeners, without rate limiting the SNACs in
+	// rateLimitExempt. The server owns the goroutine that serves it. It
+	// returns an error if the server won't serve the connection.
+	ServeConn(conn net.Conn, rateLimitExempt []wire.SNACType) error
 }
 
 // Client signs users on to the OSCAR server over in-memory connections, as
@@ -24,6 +25,9 @@ type OSCARServer interface {
 type Client struct {
 	// Server serves the connections.
 	Server OSCARServer
+	// RateLimitExempt lists the SNACs that the server doesn't rate limit on
+	// the connections.
+	RateLimitExempt []wire.SNACType
 	// Logger records problems on the connections, such as SNACs that don't
 	// decode or a consumer that falls too far behind.
 	Logger *slog.Logger
@@ -45,7 +49,7 @@ func (c clientAddrConn) RemoteAddr() net.Addr {
 // client at clientAddr.
 func (c Client) dial(clientAddr net.Addr) (net.Conn, error) {
 	clientEnd, serverEnd := net.Pipe()
-	if err := c.Server.ServeConn(clientAddrConn{Conn: serverEnd, clientAddr: clientAddr}); err != nil {
+	if err := c.Server.ServeConn(clientAddrConn{Conn: serverEnd, clientAddr: clientAddr}, c.RateLimitExempt); err != nil {
 		_ = clientEnd.Close()
 		return nil, fmt.Errorf("ServeConn: %w", err)
 	}

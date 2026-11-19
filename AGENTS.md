@@ -47,10 +47,10 @@ logic.
 | `state`              | Persistence and in-memory state: `SQLiteUserStore`, `InMemorySessionManager`, `InMemoryChatSessionManager`, DB migrations.                                                                                     |
 | `server/oscar`       | OSCAR protocol server; SNAC routing and handler wiring.                                                                                                                                                        |
 | `server/toc`         | TOC protocol server (text-based). Each TOC user is an OSCAR client of the OSCAR server (see `server/oscarclient`).                                                                                             |
-| `server/oscarclient` | Client side of the in-memory OSCAR connections that TOC opens to the OSCAR server (`Server.ServeConn`): login, service connections, SNAC decoding and request tracking.                                        |
+| `server/oscarclient` | Client side of the in-memory OSCAR connections that TOC and WebAPI open to the OSCAR server (`Server.ServeConn`): login, service connections, SNAC decoding and request tracking.                              |
 | `server/kerberos`    | Kerberos auth server.                                                                                                                                                                                          |
 | `server/http`        | Management HTTP API (users, sessions, chat rooms). Spec: `api.yml`.                                                                                                                                            |
-| `server/webapi`      | Web AIM-style API (AMF3). Spec: `docs/open_api/webapi.yml`.                                                                                                                                                    |
+| `server/webapi`      | Web AIM-style API (AMF3). Each session is an OSCAR client of the OSCAR server (see `server/oscarclient`). Spec: `docs/open_api/webapi.yml`.                                                                    |
 
 ## Database
 

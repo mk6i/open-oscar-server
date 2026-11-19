@@ -2,6 +2,7 @@ package webapi
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"math/rand"
 	"net/http"
@@ -15,7 +16,6 @@ import (
 type BuddyListHandler struct {
 	BuddyListManager *BuddyListManager
 	Logger           *slog.Logger
-	FeedbagService   FeedbagService
 }
 
 // AddBuddy handles GET /buddylist/addBuddy requests.
@@ -38,11 +38,12 @@ func (h *BuddyListHandler) AddBuddy(w http.ResponseWriter, r *http.Request, sess
 		groupName = "Buddies" // Default group
 	}
 
-	// Add buddy to feedbag
-	resultCode := h.addBuddyToFeedbag(ctx, session, buddyName, groupName, preAuthorized, authorizationMsg)
+	resultCode, addErr := h.addBuddyToFeedbag(ctx, session, buddyName, groupName, preAuthorized, authorizationMsg)
+	if addErr != nil {
+		h.Logger.ErrorContext(ctx, "add buddy failed", "err", addErr.Error())
+	}
 
-	// Prepare response
-	sendMutationResult(w, r, resultCode, h.Logger)
+	sendMutationOutcome(w, r, resultCode, addErr, h.Logger)
 
 	h.Logger.InfoContext(ctx, "buddy added",
 		"aimsid", aimsid,
@@ -64,9 +65,12 @@ func (h *BuddyListHandler) AddGroup(w http.ResponseWriter, r *http.Request, sess
 		return
 	}
 
-	resultCode := h.addGroupToFeedbag(ctx, session, groupName)
+	resultCode, addErr := h.addGroupToFeedbag(ctx, session, groupName)
+	if addErr != nil {
+		h.Logger.ErrorContext(ctx, "add group failed", "err", addErr.Error())
+	}
 
-	sendMutationResult(w, r, resultCode, h.Logger)
+	sendMutationOutcome(w, r, resultCode, addErr, h.Logger)
 
 	h.Logger.InfoContext(ctx, "buddy list group added",
 		"aimsid", aimsid,
@@ -75,36 +79,26 @@ func (h *BuddyListHandler) AddGroup(w http.ResponseWriter, r *http.Request, sess
 	)
 }
 
-func (h *BuddyListHandler) addGroupToFeedbag(ctx context.Context, sess *Session, groupName string) string {
-	defer sess.InvalidateFeedbag()
-
-	frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
-	snac, err := h.FeedbagService.Query(ctx, sess.OSCARSession, frame)
+func (h *BuddyListHandler) addGroupToFeedbag(ctx context.Context, sess *Session, groupName string) (string, error) {
+	items, err := sess.lockFeedbag(ctx)
 	if err != nil {
-		h.Logger.ErrorContext(ctx, "failed to retrieve feedbag", "err", err.Error())
-		return "error"
+		return "error", err
 	}
+	defer sess.unlockFeedbag()
 
-	reply, ok := snac.Body.(wire.SNAC_0x13_0x06_FeedbagReply)
-	if !ok {
-		return "error"
-	}
-
-	fl := state.NewFeedbagList(reply.Items, rand.Intn)
+	fl := state.NewFeedbagList(items, rand.Intn)
 	fl.AddGroup(groupName)
 
 	pending := fl.PendingUpdates()
 	if len(pending) == 0 {
-		return "alreadyExists"
+		return "alreadyExists", nil
 	}
 
-	insertFrame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem}
-	if _, err := h.FeedbagService.UpsertItem(ctx, sess.OSCARSession, insertFrame, pending); err != nil {
-		h.Logger.ErrorContext(ctx, "failed to add group", "err", err.Error())
-		return "error"
+	if _, err := sess.changeFeedbag(ctx, wire.FeedbagInsertItem, pending); err != nil {
+		return "error", err
 	}
 
-	return resultSuccess
+	return resultSuccess, nil
 }
 
 // RemoveBuddy handles GET /buddylist/removeBuddy requests.
@@ -126,7 +120,7 @@ func (h *BuddyListHandler) RemoveBuddy(w http.ResponseWriter, r *http.Request, s
 		h.Logger.ErrorContext(ctx, "remove buddy failed", "err", rmErr.Error())
 	}
 
-	sendMutationResult(w, r, resultCode, h.Logger)
+	sendMutationOutcome(w, r, resultCode, rmErr, h.Logger)
 
 	h.Logger.InfoContext(ctx, "buddy removed",
 		"aimsid", aimsid,
@@ -153,7 +147,7 @@ func (h *BuddyListHandler) RemoveGroup(w http.ResponseWriter, r *http.Request, s
 		h.Logger.ErrorContext(ctx, "remove group failed", "err", rmErr.Error())
 	}
 
-	sendMutationResult(w, r, resultCode, h.Logger)
+	sendMutationOutcome(w, r, resultCode, rmErr, h.Logger)
 
 	h.Logger.InfoContext(ctx, "buddy list group removed",
 		"aimsid", aimsid,
@@ -163,42 +157,29 @@ func (h *BuddyListHandler) RemoveGroup(w http.ResponseWriter, r *http.Request, s
 }
 
 // addBuddyToFeedbag adds a buddy to the user's feedbag.
-func (h *BuddyListHandler) addBuddyToFeedbag(ctx context.Context, sess *Session, buddyName, groupName string, preAuthorized bool, authorizationMsg string) string {
-	defer sess.InvalidateFeedbag()
-
-	// Retrieve current feedbag
-	frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagQuery}
-	snac, err := h.FeedbagService.Query(ctx, sess.OSCARSession, frame)
+func (h *BuddyListHandler) addBuddyToFeedbag(ctx context.Context, sess *Session, buddyName, groupName string, preAuthorized bool, authorizationMsg string) (string, error) {
+	items, err := sess.lockFeedbag(ctx)
 	if err != nil {
-		h.Logger.ErrorContext(ctx, "failed to retrieve feedbag", "err", err.Error())
-		return "error"
+		return "error", err
 	}
+	defer sess.unlockFeedbag()
 
-	reply, ok := snac.Body.(wire.SNAC_0x13_0x06_FeedbagReply)
-	if !ok {
-		// todo what
-		return "error"
-	}
-
-	fl := state.NewFeedbagList(reply.Items, rand.Intn)
+	fl := state.NewFeedbagList(items, rand.Intn)
 	target := state.NewIdentScreenName(buddyName)
 
 	fl.AddGroup(groupName)
 	if pending := fl.PendingUpdates(); len(pending) > 0 {
-		frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem}
-		if _, err := h.FeedbagService.UpsertItem(ctx, sess.OSCARSession, frame, pending); err != nil {
-			h.Logger.ErrorContext(ctx, "failed to add buddy", "err", err.Error())
-			return "error"
+		if _, err := sess.changeFeedbag(ctx, wire.FeedbagInsertItem, pending); err != nil {
+			return "error", err
 		}
 	}
 
 	added, err := fl.AddBuddy(groupName, buddyName, "", "")
 	if err != nil {
-		h.Logger.ErrorContext(ctx, "failed to add buddy to feedbag", "err", err.Error())
-		return "error"
+		return "error", err
 	}
 	if !added {
-		return "alreadyExists"
+		return "alreadyExists", nil
 	}
 
 	if pending := fl.PendingUpdates(); len(pending) > 0 {
@@ -213,7 +194,7 @@ func (h *BuddyListHandler) addBuddyToFeedbag(ctx context.Context, sess *Session,
 			}
 		}
 
-		if sess.OSCARSession.UIN() != 0 && target.UIN() != 0 {
+		if sess.ScreenName.IdentScreenName().UIN() != 0 && target.UIN() != 0 {
 			for _, buddies := range buddyItems {
 				for i := range buddies {
 					if state.NewIdentScreenName(buddies[i].Name) == target {
@@ -224,37 +205,32 @@ func (h *BuddyListHandler) addBuddyToFeedbag(ctx context.Context, sess *Session,
 		}
 
 		for _, buddies := range buddyItems {
-			frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagInsertItem}
-			if _, err := h.FeedbagService.UpsertItem(ctx, sess.OSCARSession, frame, buddies); err != nil {
-				h.Logger.ErrorContext(ctx, "failed to add buddy", "err", err.Error())
-				return "error"
+			if _, err := sess.changeFeedbag(ctx, wire.FeedbagInsertItem, buddies); err != nil {
+				return "error", err
 			}
 		}
 
 		for _, item := range pending { // todo why not filter buddies out of pending?
 			if item.ClassID == wire.FeedbagClassIdGroup {
-				frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagUpdateItem}
-				if _, err := h.FeedbagService.UpsertItem(ctx, sess.OSCARSession, frame, []wire.FeedbagItem{item}); err != nil {
-					h.Logger.ErrorContext(ctx, "failed to add buddy", "err", err.Error())
-					return "error"
+				if _, err := sess.changeFeedbag(ctx, wire.FeedbagUpdateItem, []wire.FeedbagItem{item}); err != nil {
+					return "error", err
 				}
 			}
 		}
 	}
 
 	if preAuthorized {
-		frame := wire.SNACFrame{FoodGroup: wire.Feedbag, SubGroup: wire.FeedbagPreAuthorizeBuddy}
 		body := wire.SNAC_0x13_0x14_FeedbagPreAuthorizeBuddy{
 			ScreenName: buddyName,
 			Message:    authorizationMsg,
 		}
-		if _, err := h.FeedbagService.PreAuthorizeBuddy(ctx, sess.OSCARSession, frame, body); err != nil {
+		if err := sess.send(wire.Feedbag, wire.FeedbagPreAuthorizeBuddy, body); err != nil {
 			h.Logger.ErrorContext(ctx, "failed to pre-authorize buddy",
 				"buddy", buddyName, "err", err.Error())
 		}
 	}
 
-	return resultSuccess
+	return resultSuccess, nil
 }
 
 // RenameGroup handles GET /buddylist/renameGroup requests.
@@ -278,7 +254,7 @@ func (h *BuddyListHandler) RenameGroup(w http.ResponseWriter, r *http.Request, s
 		h.Logger.ErrorContext(ctx, "rename group failed", "err", rnErr.Error())
 	}
 
-	sendMutationResult(w, r, resultCode, h.Logger)
+	sendMutationOutcome(w, r, resultCode, rnErr, h.Logger)
 
 	h.Logger.InfoContext(ctx, "buddy list group renamed",
 		"aimsid", aimsid,
@@ -316,7 +292,7 @@ func (h *BuddyListHandler) MoveBuddy(w http.ResponseWriter, r *http.Request, ses
 		h.Logger.ErrorContext(ctx, "move buddy failed", "err", mvErr.Error())
 	}
 
-	sendMutationResult(w, r, resultCode, h.Logger)
+	sendMutationOutcome(w, r, resultCode, mvErr, h.Logger)
 
 	h.Logger.InfoContext(ctx, "buddy moved",
 		"aimsid", aimsid,
@@ -349,7 +325,7 @@ func (h *BuddyListHandler) SetBuddyAttribute(w http.ResponseWriter, r *http.Requ
 		h.Logger.ErrorContext(ctx, "set buddy attribute failed", "err", saErr.Error())
 	}
 
-	sendMutationResult(w, r, resultCode, h.Logger)
+	sendMutationOutcome(w, r, resultCode, saErr, h.Logger)
 
 	h.Logger.InfoContext(ctx, "buddy attribute set",
 		"aimsid", aimsid,
@@ -382,7 +358,7 @@ func (h *BuddyListHandler) SetGroupAttribute(w http.ResponseWriter, r *http.Requ
 		h.Logger.ErrorContext(ctx, "set group attribute failed", "err", saErr.Error())
 	}
 
-	sendMutationResult(w, r, resultCode, h.Logger)
+	sendMutationOutcome(w, r, resultCode, saErr, h.Logger)
 
 	h.Logger.InfoContext(ctx, "buddy list group attribute set",
 		"aimsid", aimsid,
@@ -395,6 +371,17 @@ func (h *BuddyListHandler) SetGroupAttribute(w http.ResponseWriter, r *http.Requ
 // resultSuccess is the result code the buddy list methods no longer report; see
 // sendMutationResult.
 const resultSuccess = "success"
+
+// sendMutationOutcome answers a buddy list edit that ended with resultCode
+// and err: a rate limit rejection when err is one, and resultCode otherwise.
+func sendMutationOutcome(w http.ResponseWriter, r *http.Request, resultCode string, err error, logger *slog.Logger) {
+	var limited *rateLimitError
+	if errors.As(err, &limited) {
+		sendRateLimited(w, r, limited.retryAfter, logger)
+		return
+	}
+	sendMutationResult(w, r, resultCode, logger)
+}
 
 func sendMutationResult(w http.ResponseWriter, r *http.Request, resultCode string, logger *slog.Logger) {
 	if resultCode == resultSuccess {

@@ -2,7 +2,6 @@ package webapi
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"testing"
 
@@ -36,17 +35,10 @@ func TestBuddyListManager_GetBuddyListForUser(t *testing.T) {
 	owner := state.NewIdentScreenName("listowner")
 
 	tests := []struct {
-		name    string
-		fb      []wire.FeedbagItem
-		fbErr   error
-		want    []BuddyGroup
-		wantErr string
+		name string
+		fb   []wire.FeedbagItem
+		want []BuddyGroup
 	}{
-		{
-			name:    "retrieve feedbag error",
-			fbErr:   errors.New("db unavailable"),
-			wantErr: "failed to retrieve feedbag",
-		},
 		{
 			name: "root group only yields no groups",
 			fb: []wire.FeedbagItem{
@@ -392,33 +384,15 @@ func TestBuddyListManager_GetBuddyListForUser(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fs := newMockFeedbagService(t)
 			// No buddy arrives, so every buddy resolves to offline, keeping the
 			// focus on feedbag -> group conversion.
-			if tt.fbErr != nil {
-				fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).Return(wire.SNACMessage{}, tt.fbErr).Once()
-			} else {
-				fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).Return(
-					wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: tt.fb}}, nil,
-				).Once()
-			}
-
-			m := NewBuddyListManager(fs, newMockLocateService(t), newTestIconSource(t), slog.Default())
+			m := NewBuddyListManager(newTestIconSource(t), slog.Default())
 			sess := &Session{
-				ScreenName:   state.DisplayScreenName(owner.String()),
-				OSCARSession: state.NewSession().AddInstance(),
-				logger:       slog.Default(),
+				ScreenName: state.DisplayScreenName(owner.String()),
+				logger:     slog.Default(),
 			}
-			sess.FeedbagLoader = feedbagServiceLoader(fs, sess.OSCARSession)
-			got, err := m.GetBuddyListForUser(ctx, sess)
-
-			if tt.wantErr != "" {
-				assert.ErrorContains(t, err, tt.wantErr)
-				assert.Nil(t, got)
-				return
-			}
-			assert.NoError(t, err)
-			assert.Equal(t, tt.want, got)
+			sess.feedbag.Reset(tt.fb)
+			assert.Equal(t, tt.want, m.GetBuddyListForUser(ctx, sess))
 		})
 	}
 }
@@ -438,22 +412,15 @@ func TestBuddyListManager_GetBuddyListForUser_DisplayIDFromPresenceView(t *testi
 		{ItemID: 1, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "mikekelly"},
 	}
 
-	fs := newMockFeedbagService(t)
-	fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).Return(
-		wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: fb}}, nil,
-	).Once()
-
-	m := NewBuddyListManager(fs, newMockLocateService(t), newTestIconSource(t), slog.Default())
+	m := NewBuddyListManager(newTestIconSource(t), slog.Default())
 	sess := &Session{
-		ScreenName:   state.DisplayScreenName("listowner"),
-		OSCARSession: state.NewSession().AddInstance(),
-		logger:       slog.Default(),
+		ScreenName: state.DisplayScreenName("listowner"),
+		logger:     slog.Default(),
 	}
-	sess.FeedbagLoader = feedbagServiceLoader(fs, sess.OSCARSession)
+	sess.feedbag.Reset(fb)
 	buddyArrives(sess, onlineBuddy("Mike Kelly"))
 
-	got, err := m.GetBuddyListForUser(ctx, sess)
-	require.NoError(t, err)
+	got := m.GetBuddyListForUser(ctx, sess)
 	require.Len(t, got, 1)
 	require.Len(t, got[0].Buddies, 1)
 
@@ -475,24 +442,17 @@ func TestBuddyListManager_GetBuddyListForUser_DepartureKeepsDisplayID(t *testing
 		{ItemID: 1, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "mikekelly"},
 	}
 
-	fs := newMockFeedbagService(t)
-	fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).Return(
-		wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: fb}}, nil,
-	).Once()
-
-	m := NewBuddyListManager(fs, newMockLocateService(t), newTestIconSource(t), slog.Default())
+	m := NewBuddyListManager(newTestIconSource(t), slog.Default())
 	sess := &Session{
-		ScreenName:   state.DisplayScreenName("listowner"),
-		OSCARSession: state.NewSession().AddInstance(),
-		BaseURL:      "http://api.example.com",
-		logger:       slog.Default(),
+		ScreenName: state.DisplayScreenName("listowner"),
+		BaseURL:    "http://api.example.com",
+		logger:     slog.Default(),
 	}
-	sess.FeedbagLoader = feedbagServiceLoader(fs, sess.OSCARSession)
+	sess.feedbag.Reset(fb)
 	buddyArrives(sess, bartBuddy("Mike Kelly", testIconBART, testStatusBART))
 	buddyDeparts(sess, "Mike Kelly")
 
-	got, err := m.GetBuddyListForUser(ctx, sess)
-	require.NoError(t, err)
+	got := m.GetBuddyListForUser(ctx, sess)
 	require.Len(t, got[0].Buddies, 1)
 
 	buddy := got[0].Buddies[0]
@@ -520,33 +480,26 @@ func TestBuddyListManager_GetBuddyListForUser_PublishesBuddyIcons(t *testing.T) 
 		{ItemID: 3, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "onlinenoicon"},
 	}
 
-	fs := newMockFeedbagService(t)
-	fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).Return(
-		wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: fb}}, nil,
-	).Once()
-
 	iconRetriever := newMockBuddyIconRetriever(t)
 
-	m := NewBuddyListManager(fs, newMockLocateService(t), BuddyIconSource{
+	m := NewBuddyListManager(BuddyIconSource{
 		IconRetriever: iconRetriever,
 		Logger:        slog.Default(),
 	}, slog.Default())
 
 	sess := &Session{
-		ScreenName:   state.DisplayScreenName("listowner"),
-		OSCARSession: state.NewSession().AddInstance(),
-		BaseURL:      "http://api.example.com",
-		logger:       slog.Default(),
+		ScreenName: state.DisplayScreenName("listowner"),
+		BaseURL:    "http://api.example.com",
+		logger:     slog.Default(),
 	}
-	sess.FeedbagLoader = feedbagServiceLoader(fs, sess.OSCARSession)
+	sess.feedbag.Reset(fb)
 	buddyArrives(sess, bartBuddy("onlineicon", wire.BARTID{
 		Type:     wire.BARTTypesBuddyIcon,
 		BARTInfo: wire.BARTInfo{Hash: []byte{0xab, 0xcd}},
 	}))
 	buddyArrives(sess, onlineBuddy("onlinenoicon"))
 
-	got, err := m.GetBuddyListForUser(ctx, sess)
-	require.NoError(t, err)
+	got := m.GetBuddyListForUser(ctx, sess)
 	require.Len(t, got, 1)
 	require.Len(t, got[0].Buddies, 3)
 
@@ -583,24 +536,17 @@ func TestBuddyListManager_GetBuddyListForUser_PublishesStatusMessages(t *testing
 		{ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "nostatus"},
 	}
 
-	fs := newMockFeedbagService(t)
-	fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).Return(
-		wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: fb}}, nil,
-	).Once()
-
-	m := NewBuddyListManager(fs, newMockLocateService(t), newTestIconSource(t), slog.Default())
+	m := NewBuddyListManager(newTestIconSource(t), slog.Default())
 	sess := &Session{
-		ScreenName:   state.DisplayScreenName("listowner"),
-		OSCARSession: state.NewSession().AddInstance(),
-		BaseURL:      "http://api.example.com",
-		logger:       slog.Default(),
+		ScreenName: state.DisplayScreenName("listowner"),
+		BaseURL:    "http://api.example.com",
+		logger:     slog.Default(),
 	}
-	sess.FeedbagLoader = feedbagServiceLoader(fs, sess.OSCARSession)
+	sess.feedbag.Reset(fb)
 	buddyArrives(sess, bartBuddy("hasstatus", testStatusBART))
 	buddyArrives(sess, onlineBuddy("nostatus"))
 
-	got, err := m.GetBuddyListForUser(ctx, sess)
-	require.NoError(t, err)
+	got := m.GetBuddyListForUser(ctx, sess)
 	require.Len(t, got, 1)
 	require.Len(t, got[0].Buddies, 2)
 
@@ -609,7 +555,7 @@ func TestBuddyListManager_GetBuddyListForUser_PublishesStatusMessages(t *testing
 }
 
 // The roster is rebuilt on every feedbag change, so only an unavailable buddy may
-// cost a locate query. Mockery fails the test on any other call.
+// cost a locate query.
 func TestBuddyListManager_GetBuddyListForUser_QueriesOnlyAwayBuddies(t *testing.T) {
 	ctx := context.Background()
 
@@ -623,32 +569,18 @@ func TestBuddyListManager_GetBuddyListForUser_QueriesOnlyAwayBuddies(t *testing.
 		{ItemID: 3, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "neverseen"},
 	}
 
-	fs := newMockFeedbagService(t)
-	fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).Return(
-		wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: fb}}, nil,
-	).Once()
-
-	ls := newMockLocateService(t)
-	// Only the away buddy earns a query.
-	ls.EXPECT().UserInfoQuery(mock.Anything, mock.Anything, mock.Anything,
-		mock.MatchedBy(func(q wire.SNAC_0x02_0x05_LocateUserInfoQuery) bool {
-			return q.ScreenName == "awaybud"
-		})).
-		Return(wire.SNACMessage{Body: wire.SNAC_0x02_0x06_LocateUserInfoReply{
+	conn := newFakeConn().answering(locateReplies(map[string]wire.SNAC_0x02_0x06_LocateUserInfoReply{
+		"awaybud": {
 			TLVUserInfo: wire.TLVUserInfo{ScreenName: "awaybud"},
 			LocateInfo: wire.TLVRestBlock{TLVList: wire.TLVList{
 				wire.NewTLVBE(wire.LocateTLVTagsInfoUnavailableData, "out to lunch"),
 			}},
-		}}, nil).Once()
+		},
+	}))
 
-	m := NewBuddyListManager(fs, ls, newTestIconSource(t), slog.Default())
-	sess := &Session{
-		ScreenName:   state.DisplayScreenName("listowner"),
-		OSCARSession: state.NewSession().AddInstance(),
-		logger:       slog.Default(),
-	}
-
-	sess.FeedbagLoader = feedbagServiceLoader(fs, sess.OSCARSession)
+	m := NewBuddyListManager(newTestIconSource(t), slog.Default())
+	sess := newTestSession(t, conn)
+	sess.feedbag.Reset(fb)
 
 	away := wire.TLVUserInfo{ScreenName: "awaybud"}
 	away.Append(wire.NewTLVBE(wire.OServiceUserInfoUserFlags, wire.OServiceUserFlagUnavailable))
@@ -656,8 +588,7 @@ func TestBuddyListManager_GetBuddyListForUser_QueriesOnlyAwayBuddies(t *testing.
 	buddyArrives(sess, onlineBuddy("onlinebud"))
 	buddyArrives(sess, away)
 
-	got, err := m.GetBuddyListForUser(ctx, sess)
-	require.NoError(t, err)
+	got := m.GetBuddyListForUser(ctx, sess)
 	require.Len(t, got[0].Buddies, 3)
 
 	assert.Equal(t, "online", got[0].Buddies[0].State)
@@ -667,52 +598,50 @@ func TestBuddyListManager_GetBuddyListForUser_QueriesOnlyAwayBuddies(t *testing.
 	// A buddy no arrival has been relayed for renders offline rather than
 	// triggering a lookup.
 	assert.Equal(t, "offline", got[0].Buddies[2].State)
+	// Only the away buddy earns a query.
+	assert.Equal(t, []any{wire.SNAC_0x02_0x05_LocateUserInfoQuery{
+		Type:       uint16(wire.LocateTypeUnavailable),
+		ScreenName: "awaybud",
+	}}, conn.sentOf(wire.Locate, wire.LocateUserInfoQuery))
+}
+
+// rosterFeedbag is a feedbag with a Buddies group holding mikekelly, aliased
+// alias when alias isn't empty.
+func rosterFeedbag(alias string) []wire.FeedbagItem {
+	buddy := wire.FeedbagItem{ItemID: 1, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "mikekelly"}
+	if alias != "" {
+		buddy.TLVLBlock = wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesAlias, alias)}}
+	}
+	return []wire.FeedbagItem{
+		{Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+			TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{100})}}},
+		{Name: "Buddies", GroupID: 100, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
+			TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1})}}},
+		buddy,
+	}
 }
 
 // The feedbag service relays a session's own writes only to the owner's other
 // instances, so renaming a buddy from the web client produces no SNAC for that
-// session. Without an explicit invalidation, its cached aliases would keep serving
-// the old name and the next presence or IM event would rename the buddy back.
-func TestBuddyListManager_SetBuddyAttributeInFeedbag_InvalidatesAliasCache(t *testing.T) {
+// session. The confirmed change has to reach its aliases anyway, or the next
+// presence or IM event would rename the buddy back.
+func TestBuddyListManager_SetBuddyAttributeInFeedbag_UpdatesAliases(t *testing.T) {
 	ctx := context.Background()
 
-	feedbag := func(alias string) []wire.FeedbagItem {
-		buddy := wire.FeedbagItem{ItemID: 1, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "mikekelly"}
-		buddy.TLVLBlock = wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesAlias, alias)}}
-		return []wire.FeedbagItem{
-			{Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
-				TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{100})}}},
-			{Name: "Buddies", GroupID: 100, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
-				TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1})}}},
-			buddy,
-		}
-	}
+	server := newFeedbagServer(rosterFeedbag("MICHAELKELLY")...)
+	sess, conn := newFeedbagSession(t, server)
+	m := NewBuddyListManager(newTestIconSource(t), slog.Default())
 
-	fs := newMockFeedbagService(t)
-	// Query 1: the alias cache loads. Query 2: SetBuddyAttributeInFeedbag reads the
-	// feedbag it is about to rewrite. Query 3: the cache reloads post-invalidation,
-	// now seeing the stored rename.
-	fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-		Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: feedbag("MICHAELKELLY")}}, nil).Twice()
-	fs.EXPECT().UpsertItem(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(&wire.SNACMessage{}, nil).Once()
-	fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-		Return(wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: feedbag("MIKE")}}, nil).Once()
-
-	m := NewBuddyListManager(fs, newMockLocateService(t), newTestIconSource(t), slog.Default())
-	sess := &Session{
-		ScreenName:   state.DisplayScreenName("listowner"),
-		OSCARSession: state.NewSession().AddInstance(),
-	}
-	sess.FeedbagLoader = feedbagServiceLoader(fs, sess.OSCARSession)
-
-	require.Equal(t, "MICHAELKELLY", sess.Aliases(ctx)["mikekelly"])
+	require.Equal(t, "MICHAELKELLY", sess.Aliases()["mikekelly"])
 
 	resultCode, err := m.SetBuddyAttributeInFeedbag(ctx, sess, "mikekelly", "MIKE")
 	require.NoError(t, err)
 	require.Equal(t, "success", resultCode)
 
-	assert.Equal(t, "MIKE", sess.Aliases(ctx)["mikekelly"])
+	assert.Equal(t, "MIKE", sess.Aliases()["mikekelly"])
+	assert.Equal(t, server.stored(), sess.Feedbag())
+	// The change is diffed against the mirror, not a fresh read.
+	assert.Len(t, conn.sentOf(wire.Feedbag, wire.FeedbagQuery), 1, "only the load queries the feedbag")
 }
 
 func TestFeedbagGroupMatchesRequested(t *testing.T) {
@@ -765,12 +694,11 @@ func TestBuddyListManager_RemoveBuddyFromFeedbag_ForgetsPresence(t *testing.T) {
 	}
 
 	tests := []struct {
-		name        string
-		fb          []wire.FeedbagItem
-		group       string
-		allGroups   bool
-		wantForgot  bool
-		description string
+		name       string
+		fb         []wire.FeedbagItem
+		group      string
+		allGroups  bool
+		wantForgot bool
 	}{
 		{
 			name:       "sole listing forgets the buddy",
@@ -795,22 +723,9 @@ func TestBuddyListManager_RemoveBuddyFromFeedbag_ForgetsPresence(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fs := newMockFeedbagService(t)
-			fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).Return(
-				wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: tt.fb}}, nil,
-			).Maybe()
-			fs.EXPECT().DeleteItem(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-				Return(&wire.SNACMessage{}, nil).Once()
-			fs.EXPECT().UpsertItem(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-				Return(&wire.SNACMessage{}, nil).Maybe()
-
-			m := NewBuddyListManager(fs, newMockLocateService(t), newTestIconSource(t), slog.Default())
-			sess := &Session{
-				ScreenName:   state.DisplayScreenName("listowner"),
-				OSCARSession: state.NewSession().AddInstance(),
-				logger:       slog.Default(),
-			}
-			sess.FeedbagLoader = feedbagServiceLoader(fs, sess.OSCARSession)
+			server := newFeedbagServer(tt.fb...)
+			sess, conn := newFeedbagSession(t, server)
+			m := NewBuddyListManager(newTestIconSource(t), slog.Default())
 			buddyArrives(sess, onlineBuddy("Mike Kelly"))
 
 			resultCode, err := m.RemoveBuddyFromFeedbag(ctx, sess, "mikekelly", tt.group, tt.allGroups)
@@ -819,6 +734,8 @@ func TestBuddyListManager_RemoveBuddyFromFeedbag_ForgetsPresence(t *testing.T) {
 
 			_, ok := sess.BuddyPresence(state.NewIdentScreenName("mikekelly"))
 			assert.Equal(t, !tt.wantForgot, ok)
+			assert.Len(t, conn.sentOf(wire.Feedbag, wire.FeedbagDeleteItem), 1)
+			assert.Equal(t, server.stored(), sess.Feedbag())
 		})
 	}
 }
@@ -827,30 +744,9 @@ func TestBuddyListManager_RemoveBuddyFromFeedbag_ForgetsPresence(t *testing.T) {
 func TestBuddyListManager_RemoveGroupFromFeedbag_ForgetsPresence(t *testing.T) {
 	ctx := context.Background()
 
-	fb := []wire.FeedbagItem{
-		{Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
-			TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{100})}}},
-		{Name: "Buddies", GroupID: 100, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
-			TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1})}}},
-		{ItemID: 1, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "mikekelly"},
-	}
-
-	fs := newMockFeedbagService(t)
-	fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).Return(
-		wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: fb}}, nil,
-	).Maybe()
-	fs.EXPECT().DeleteItem(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(&wire.SNACMessage{}, nil).Once()
-	fs.EXPECT().UpsertItem(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(&wire.SNACMessage{}, nil).Maybe()
-
-	m := NewBuddyListManager(fs, newMockLocateService(t), newTestIconSource(t), slog.Default())
-	sess := &Session{
-		ScreenName:   state.DisplayScreenName("listowner"),
-		OSCARSession: state.NewSession().AddInstance(),
-		logger:       slog.Default(),
-	}
-	sess.FeedbagLoader = feedbagServiceLoader(fs, sess.OSCARSession)
+	server := newFeedbagServer(rosterFeedbag("")...)
+	sess, _ := newFeedbagSession(t, server)
+	m := NewBuddyListManager(newTestIconSource(t), slog.Default())
 	buddyArrives(sess, onlineBuddy("Mike Kelly"))
 
 	resultCode, err := m.RemoveGroupFromFeedbag(ctx, sess, "Buddies")
@@ -859,53 +755,83 @@ func TestBuddyListManager_RemoveGroupFromFeedbag_ForgetsPresence(t *testing.T) {
 
 	_, ok := sess.BuddyPresence(state.NewIdentScreenName("mikekelly"))
 	assert.False(t, ok)
+	assert.Equal(t, server.stored(), sess.Feedbag())
 }
 
-// A method that rewrites the feedbag must re-read it even when the cache is warm:
-// it computes a pending diff from what it reads.
-func TestBuddyListManager_MutationsReReadTheFeedbag(t *testing.T) {
+// Each edit sends the exact changes it computes from the mirror, one at a time.
+func TestBuddyListManager_EditsSendExactChanges(t *testing.T) {
 	ctx := context.Background()
+	buddiesGroup := func(order ...uint16) wire.FeedbagItem {
+		return wire.FeedbagItem{Name: "Buddies", GroupID: 100, ClassID: wire.FeedbagClassIdGroup,
+			TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, order)}}}
+	}
+	root := func(order ...uint16) wire.FeedbagItem {
+		return wire.FeedbagItem{ClassID: wire.FeedbagClassIdGroup,
+			TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, order)}}}
+	}
+	buddy := wire.FeedbagItem{ItemID: 1, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "mikekelly"}
+	aliased := buddy
+	aliased.TLVLBlock = wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesAlias, "MIKE")}}
+	renamed := buddiesGroup(1)
+	renamed.Name = "Friends"
 
-	fb := []wire.FeedbagItem{
-		{Name: "", GroupID: 0, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
-			TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{100})}}},
-		{Name: "Buddies", GroupID: 100, ItemID: 0, ClassID: wire.FeedbagClassIdGroup,
-			TLVLBlock: wire.TLVLBlock{TLVList: wire.TLVList{wire.NewTLVBE(wire.FeedbagAttributesOrder, []uint16{1})}}},
-		{ItemID: 1, ClassID: wire.FeedbagClassIdBuddy, GroupID: 100, Name: "mikekelly"},
+	tests := []struct {
+		name string
+		edit func(m *BuddyListManager, sess *Session) (string, error)
+		want []feedbagChangeSent
+	}{
+		{
+			name: "remove buddy",
+			edit: func(m *BuddyListManager, sess *Session) (string, error) {
+				return m.RemoveBuddyFromFeedbag(ctx, sess, "mikekelly", "Buddies", false)
+			},
+			want: []feedbagChangeSent{
+				{wire.FeedbagDeleteItem, []wire.FeedbagItem{buddy}},
+				{wire.FeedbagUpdateItem, []wire.FeedbagItem{buddiesGroup()}},
+			},
+		},
+		{
+			name: "remove group",
+			edit: func(m *BuddyListManager, sess *Session) (string, error) {
+				return m.RemoveGroupFromFeedbag(ctx, sess, "Buddies")
+			},
+			want: []feedbagChangeSent{
+				{wire.FeedbagDeleteItem, []wire.FeedbagItem{buddiesGroup(1), buddy}},
+				{wire.FeedbagUpdateItem, []wire.FeedbagItem{root()}},
+			},
+		},
+		{
+			name: "rename group",
+			edit: func(m *BuddyListManager, sess *Session) (string, error) {
+				return m.RenameGroupInFeedbag(ctx, sess, "Buddies", "Friends")
+			},
+			want: []feedbagChangeSent{
+				{wire.FeedbagUpdateItem, []wire.FeedbagItem{renamed}},
+			},
+		},
+		{
+			name: "set alias",
+			edit: func(m *BuddyListManager, sess *Session) (string, error) {
+				return m.SetBuddyAttributeInFeedbag(ctx, sess, "mikekelly", "MIKE")
+			},
+			want: []feedbagChangeSent{
+				{wire.FeedbagUpdateItem, []wire.FeedbagItem{aliased}},
+			},
+		},
 	}
 
-	var queries int
-	fs := newMockFeedbagService(t)
-	fs.EXPECT().Query(mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(context.Context, *state.SessionInstance, wire.SNACFrame) (wire.SNACMessage, error) {
-			queries++
-			return wire.SNACMessage{Body: wire.SNAC_0x13_0x06_FeedbagReply{Items: fb}}, nil
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := newFeedbagServer(root(100), buddiesGroup(1), buddy)
+			sess, conn := newFeedbagSession(t, server)
+			m := NewBuddyListManager(newTestIconSource(t), slog.Default())
+
+			resultCode, err := tt.edit(m, sess)
+			require.NoError(t, err)
+			require.Equal(t, "success", resultCode)
+
+			assert.Equal(t, tt.want, sentFeedbagChanges(conn))
+			assert.Equal(t, server.stored(), sess.Feedbag())
 		})
-	fs.EXPECT().DeleteItem(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(&wire.SNACMessage{}, nil).Once()
-	fs.EXPECT().UpsertItem(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(&wire.SNACMessage{}, nil).Maybe()
-
-	m := NewBuddyListManager(fs, newMockLocateService(t), newTestIconSource(t), slog.Default())
-	sess := &Session{
-		ScreenName:   state.DisplayScreenName("listowner"),
-		OSCARSession: state.NewSession().AddInstance(),
-		logger:       slog.Default(),
 	}
-	sess.FeedbagLoader = feedbagServiceLoader(fs, sess.OSCARSession)
-
-	_, err := m.GetBuddyListForUser(ctx, sess)
-	require.NoError(t, err)
-	require.Equal(t, 1, queries)
-	_, err = m.GetBuddyListForUser(ctx, sess)
-	require.NoError(t, err)
-	require.Equal(t, 1, queries, "a warm cache serves the roster without a read")
-
-	_, err = m.RemoveBuddyFromFeedbag(ctx, sess, "mikekelly", "Buddies", false)
-	require.NoError(t, err)
-	assert.Equal(t, 2, queries, "the mutation re-reads rather than trusting the cache")
-
-	_, err = m.GetBuddyListForUser(ctx, sess)
-	require.NoError(t, err)
-	assert.Equal(t, 3, queries, "the write invalidated the cache")
 }

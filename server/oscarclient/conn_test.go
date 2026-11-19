@@ -75,6 +75,33 @@ func Test_decodeSNAC(t *testing.T) {
 			},
 		},
 		{
+			name: "host ack",
+			payload: func(t *testing.T) []byte {
+				return marshalSNAC(t, wire.SNACFrame{FoodGroup: wire.ICBM, SubGroup: wire.ICBMHostAck, RequestID: 4},
+					wire.SNAC_0x04_0x0C_ICBMHostAck{Cookie: 1234, ChannelID: wire.ICBMChannelIM, ScreenName: "them"})
+			},
+			want: wire.SNACMessage{
+				Frame: wire.SNACFrame{FoodGroup: wire.ICBM, SubGroup: wire.ICBMHostAck, RequestID: 4},
+				Body:  wire.SNAC_0x04_0x0C_ICBMHostAck{Cookie: 1234, ChannelID: wire.ICBMChannelIM, ScreenName: "them"},
+			},
+		},
+		{
+			name: "directory search reply",
+			payload: func(t *testing.T) []byte {
+				reply := wire.SNAC_0x0F_0x03_InfoReply{Status: wire.ODirSearchResponseOK}
+				reply.Results.List = []wire.TLVBlock{{TLVList: wire.TLVList{wire.NewTLVBE(wire.ODirTLVScreenName, "them")}}}
+				return marshalSNAC(t, wire.SNACFrame{FoodGroup: wire.ODir, SubGroup: wire.ODirInfoReply, RequestID: 5}, reply)
+			},
+			want: func() wire.SNACMessage {
+				reply := wire.SNAC_0x0F_0x03_InfoReply{Status: wire.ODirSearchResponseOK}
+				reply.Results.List = []wire.TLVBlock{{TLVList: wire.TLVList{wire.NewTLVBE(wire.ODirTLVScreenName, "them")}}}
+				return wire.SNACMessage{
+					Frame: wire.SNACFrame{FoodGroup: wire.ODir, SubGroup: wire.ODirInfoReply, RequestID: 5},
+					Body:  reply,
+				}
+			}(),
+		},
+		{
 			name: "error in any food group",
 			payload: func(t *testing.T) []byte {
 				return marshalSNAC(t, wire.SNACFrame{FoodGroup: wire.ICBM, SubGroup: wire.ICBMErr, RequestID: 3},

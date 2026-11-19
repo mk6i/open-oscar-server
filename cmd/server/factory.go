@@ -464,18 +464,11 @@ func TOC(deps Container, oscarServer *oscar.Server) *toc.Server {
 	)
 }
 
-// WebAPI creates an HTTP server for the webapi protocol.
-func WebAPI(deps Container) *webapi.Server {
+// WebAPI creates an HTTP server for the webapi protocol whose sessions are
+// clients of oscarServer.
+func WebAPI(deps Container, oscarServer *oscar.Server) *webapi.Server {
 	logger := deps.logger.With("svc", "webapi")
 
-	locateService := foodgroup.NewLocateService(
-		deps.sqLiteUserStore,
-		deps.inMemorySessionManager,
-		deps.sqLiteUserStore,
-		deps.sqLiteUserStore,
-		deps.inMemorySessionManager,
-		deps.sqLiteUserStore,
-	)
 	bartService := foodgroup.NewBARTService(
 		logger,
 		deps.sqLiteUserStore,
@@ -488,20 +481,7 @@ func WebAPI(deps Container) *webapi.Server {
 		BARTService:   bartService,
 		Logger:        logger,
 	}
-	buddyListManager := webapi.NewBuddyListManager(
-		deps.feedbagSvc,
-		locateService,
-		iconSource,
-		logger,
-	)
-	buddyService := foodgroup.NewBuddyService(
-		deps.inMemorySessionManager,
-		deps.sqLiteUserStore,
-		deps.sqLiteUserStore,
-		deps.inMemorySessionManager,
-		deps.sqLiteUserStore,
-		deps.sqLiteUserStore,
-	)
+	buddyListManager := webapi.NewBuddyListManager(iconSource, logger)
 	handler := webapi.Handler{
 		AuthService: foodgroup.NewAuthService(
 			deps.cfg,
@@ -518,40 +498,19 @@ func WebAPI(deps Container) *webapi.Server {
 			state.NewAccountCreator(deps.sqLiteUserStore.InsertUser),
 			logger,
 		),
-		BuddyListRegistry: deps.sqLiteUserStore,
-		ICBMService:       deps.icbmSvc,
-		LocateService:     locateService,
-		Logger:            logger,
-		OServiceService: foodgroup.NewOServiceService(
-			deps.cfg,
-			deps.inMemorySessionManager,
-			logger,
-			deps.hmacCookieBaker,
-			deps.sqLiteUserStore,
-			deps.sqLiteUserStore,
-			deps.inMemorySessionManager,
-			deps.sqLiteUserStore,
-			deps.snacRateLimits,
-			deps.chatSessionManager,
-			deps.sqLiteUserStore,
-			deps.sqLiteUserStore,
-			deps.sqLiteUserStore,
-		),
-		BuddyBroadcaster: buddyService,
-		BuddyService:     buddyService,
+		Logger: logger,
 		BOSListener: slices.MinFunc(deps.Listeners, func(a, b config.ListenerGroup) int {
 			return strings.Compare(a.Name, b.Name)
 		}),
-		BuddyListManager:   buddyListManager,
-		ChatSessionManager: deps.chatSessionManager,
-		RecalcWarning:      deps.icbmSvc.RestoreWarningLevel,
-		LowerWarnLevel:     deps.icbmSvc.UpdateWarnLevel,
-		FeedbagService:     deps.feedbagSvc,
-		DirSearchService:   foodgroup.NewODirService(logger, deps.sqLiteUserStore),
-		IconSource:         iconSource,
-		BARTService:        bartService,
-		SNACRateLimits:     deps.snacRateLimits,
-		AllowedOrigins:     deps.cfg.WebAPIAllowedOrigins,
+		BuddyListManager: buddyListManager,
+		IconSource:       iconSource,
+		OSCARClient: oscarclient.Client{
+			Server:          oscarServer,
+			RateLimitExempt: webapi.RateLimitExempt,
+			Logger:          logger,
+		},
+		SNACRateLimits: deps.snacRateLimits,
+		AllowedOrigins: deps.cfg.WebAPIAllowedOrigins,
 	}
 
 	return webapi.NewServer(deps.cfg.WebAPIListeners, logger, handler, deps.webAPISessionManager)
