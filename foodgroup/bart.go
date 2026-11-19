@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strconv"
 
 	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
@@ -24,10 +23,17 @@ var blankGIF = []byte{
 // clearedIconData is served in place of a cleared buddy icon. QIP 2005 only
 // replaces a cached icon after downloading a payload longer than 16 bytes that
 // starts with an image signature. It deletes the cached icon files before
-// decoding the new image and swallows the decode error, so a GIF signature
-// followed by an invalid header leaves no icon file and QIP shows its
-// built-in "no icon" image.
-var clearedIconData = append([]byte("GIF89a"), make([]byte, 26)...)
+// decoding the new image and swallows the decode error. This GIF declares a
+// 256-color global color table but carries only a few bytes of it, so
+// decoding fails before QIP saves anything, no icon file is left and QIP shows
+// its built-in "no icon" image.
+var clearedIconData = append([]byte{
+	'G', 'I', 'F', '8', '9', 'a',
+	0x01, 0x00, // width
+	0x01, 0x00, // height
+	0xF7,       // global color table, 256 entries
+	0x00, 0x00, // background color, aspect ratio
+}, make([]byte, 10)...)
 
 // blankGIFHash is the MD5 hash of clearedIconData.
 var blankGIFHash = func() []byte {
@@ -66,11 +72,9 @@ func NewBARTService(
 	messageRelayer MessageRelayer,
 	relationshipFetcher RelationshipFetcher,
 	sessionRetriever SessionRetriever,
-	feedbagManager FeedbagManager,
 ) BARTService {
 	return BARTService{
 		bartItemManager:        bartItemManager,
-		feedbagManager:         feedbagManager,
 		buddyUpdateBroadcaster: newBuddyNotifier(bartItemManager, relationshipFetcher, messageRelayer, sessionRetriever),
 		messageRelayer:         messageRelayer,
 		logger:                 logger,
@@ -79,7 +83,6 @@ func NewBARTService(
 
 type BARTService struct {
 	bartItemManager        BARTItemManager
-	feedbagManager         FeedbagManager
 	buddyUpdateBroadcaster buddyBroadcaster
 	messageRelayer         MessageRelayer
 	logger                 *slog.Logger
@@ -209,37 +212,9 @@ func (s BARTService) RetrieveItemV2(ctx context.Context, inFrame wire.SNACFrame,
 }
 
 // assignBuddyIcon makes an uploaded icon the user's buddy icon. Clients such
-// as QIP 2005 upload the icon without first setting the feedbag BART item, so
-// the server stores the item itself and notifies the user's buddies.
+// as QIP 2005 upload the icon before setting the feedbag BART item, and only
+// set the item after the server confirms the icon with SNAC(0x01,0x21).
 func (s BARTService) assignBuddyIcon(ctx context.Context, instance *state.SessionInstance, bartID wire.BARTID) error {
-	items, err := s.feedbagManager.Feedbag(ctx, instance.IdentScreenName())
-	if err != nil {
-		return fmt.Errorf("failed to fetch feedbag: %w", err)
-	}
-
-	name := strconv.Itoa(int(wire.BARTTypesBuddyIcon))
-	item := wire.FeedbagItem{Name: name, ClassID: wire.FeedbagClassIdBart}
-	used := make(map[uint16]bool)
-	found := false
-	for _, it := range items {
-		if it.GroupID == 0 {
-			used[it.ItemID] = true
-		}
-		if !found && it.ClassID == wire.FeedbagClassIdBart && it.Name == name {
-			item.GroupID, item.ItemID = it.GroupID, it.ItemID
-			found = true
-		}
-	}
-	if !found {
-		for item.ItemID = 1; used[item.ItemID]; item.ItemID++ {
-		}
-	}
-	item.Append(wire.NewTLVBE(wire.FeedbagAttributesBartInfo, bartID.BARTInfo))
-
-	if err := s.feedbagManager.FeedbagUpsert(ctx, instance.IdentScreenName(), []wire.FeedbagItem{item}); err != nil {
-		return fmt.Errorf("failed to save BART feedbag item: %w", err)
-	}
-
 	instance.Session().SetBuddyIcon(bartID)
 	s.messageRelayer.RelayToSelf(ctx, instance, wire.SNACMessage{
 		Frame: wire.SNACFrame{

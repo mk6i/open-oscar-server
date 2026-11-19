@@ -522,7 +522,7 @@ func (s *FeedbagService) DeleteItem(ctx context.Context, instance *state.Session
 			filter = append(filter, state.NewIdentScreenName(item.Name))
 		case wire.FeedbagClassIdBart:
 			if itemType, err := strconv.ParseUint(item.Name, 0, 16); err == nil && uint16(itemType) == wire.BARTTypesBuddyIcon {
-				clearIcon = true
+				clearIcon = clearIcon || deletesCurrentIcon(instance, item)
 			}
 		}
 	}
@@ -548,6 +548,23 @@ func (s *FeedbagService) DeleteItem(ctx context.Context, instance *state.Session
 	}
 
 	return nil, nil
+}
+
+// deletesCurrentIcon reports whether deleting item removes the session's
+// current buddy icon. QIP 2005 replaces its icon by deleting the old BART item
+// after the server has already switched the session to the new icon, so
+// deleting an item that holds another hash must not clear the icon.
+func deletesCurrentIcon(instance *state.SessionInstance, item wire.FeedbagItem) bool {
+	b, ok := item.Bytes(wire.FeedbagAttributesBartInfo)
+	if !ok {
+		return true
+	}
+	info := wire.BARTInfo{}
+	if err := wire.UnmarshalBE(&info, bytes.NewBuffer(b)); err != nil {
+		return true
+	}
+	current, hasIcon := instance.Session().BuddyIcon()
+	return !hasIcon || bytes.Equal(current.Hash, info.Hash)
 }
 
 // StartCluster signals the beginning of a batch of feedbag operations that clients should

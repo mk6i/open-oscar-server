@@ -285,7 +285,6 @@ func OSCAR(deps Container) *oscar.Server {
 		deps.inMemorySessionManager,
 		deps.sqLiteUserStore,
 		deps.inMemorySessionManager,
-		deps.sqLiteUserStore,
 	)
 	buddyService := foodgroup.NewBuddyService(
 		deps.inMemorySessionManager,
@@ -483,7 +482,6 @@ func WebAPI(deps Container) *webapi.Server {
 		deps.inMemorySessionManager,
 		deps.sqLiteUserStore,
 		deps.inMemorySessionManager,
-		deps.sqLiteUserStore,
 	)
 	iconSource := webapi.BuddyIconSource{
 		IconRetriever: deps.sqLiteUserStore,

@@ -385,7 +385,7 @@ func TestBARTService_UpsertItem(t *testing.T) {
 							params.message.Body.(func(any) bool)(message.Body)
 					}))
 			}
-			svc := NewBARTService(slog.Default(), bartItemManager, messageRelayer, nil, nil, nil)
+			svc := NewBARTService(slog.Default(), bartItemManager, messageRelayer, nil, nil)
 			svc.buddyUpdateBroadcaster = buddyUpdateBroadcaster
 
 			output, err := svc.UpsertItem(context.Background(), tc.instance, tc.inputSNAC.Frame,
@@ -547,7 +547,7 @@ func TestBARTService_RetrieveItem(t *testing.T) {
 					Return(params.result, params.err)
 			}
 
-			svc := NewBARTService(slog.Default(), bartItemManager, nil, nil, nil, nil)
+			svc := NewBARTService(slog.Default(), bartItemManager, nil, nil, nil)
 
 			output, err := svc.RetrieveItem(context.Background(), tc.inputSNAC.Frame, tc.inputSNAC.Body.(wire.SNAC_0x10_0x04_BARTDownloadQuery))
 
@@ -921,7 +921,7 @@ func TestBARTService_RetrieveItemV2(t *testing.T) {
 					Return(params.result, params.err)
 			}
 
-			svc := NewBARTService(slog.Default(), bartItemManager, nil, nil, nil, nil)
+			svc := NewBARTService(slog.Default(), bartItemManager, nil, nil, nil)
 
 			output, err := svc.RetrieveItemV2(context.Background(), tc.inputSNAC.Frame, tc.inputSNAC.Body.(wire.SNAC_0x10_0x06_BARTDownload2Query))
 
@@ -944,24 +944,15 @@ func TestBARTService_UpsertItem_AssignsUploadedIcon(t *testing.T) {
 	}
 
 	cases := []struct {
-		name       string
-		instance   *state.SessionInstance
-		feedbag    []wire.FeedbagItem
-		wantItemID uint16
-		wantGroup  uint16
+		name     string
+		instance *state.SessionInstance
 	}{
 		{
-			name:     "no BART feedbag item, create one with a free item ID",
+			name:     "no current icon",
 			instance: newTestInstance("user_screen_name"),
-			feedbag: []wire.FeedbagItem{
-				{GroupID: 0, ItemID: 1, ClassID: wire.FeedbagClassIdPdinfo},
-				{GroupID: 10, ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, Name: "buddy"},
-			},
-			wantItemID: 2,
-			wantGroup:  0,
 		},
 		{
-			name: "existing BART feedbag item with an unrelated icon, update it in place",
+			name: "unrelated current icon",
 			instance: newTestInstance("user_screen_name", sessOptBuddyIcon(wire.BARTID{
 				Type: wire.BARTTypesBuddyIcon,
 				BARTInfo: wire.BARTInfo{
@@ -969,47 +960,14 @@ func TestBARTService_UpsertItem_AssignsUploadedIcon(t *testing.T) {
 					Hash:  []byte("unrelated icon"),
 				},
 			})),
-			feedbag: []wire.FeedbagItem{
-				{GroupID: 0, ItemID: 7, ClassID: wire.FeedbagClassIdBart, Name: "1"},
-			},
-			wantItemID: 7,
-			wantGroup:  0,
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			instance := tc.instance
-
 			bartItemManager := newMockBARTItemManager(t)
 			bartItemManager.EXPECT().
 				InsertBARTItem(matchContext(), itemHash, itemData, wire.BARTTypesBuddyIcon).
-				Return(nil)
-
-			feedbagManager := newMockFeedbagManager(t)
-			feedbagManager.EXPECT().
-				Feedbag(matchContext(), screenName).
-				Return(tc.feedbag, nil)
-			feedbagManager.EXPECT().
-				FeedbagUpsert(matchContext(), screenName, mock.MatchedBy(func(items []wire.FeedbagItem) bool {
-					if len(items) != 1 {
-						return false
-					}
-					item := items[0]
-					b, ok := item.Bytes(wire.FeedbagAttributesBartInfo)
-					if !ok {
-						return false
-					}
-					info := wire.BARTInfo{}
-					if err := wire.UnmarshalBE(&info, bytes.NewBuffer(b)); err != nil {
-						return false
-					}
-					return item.ClassID == wire.FeedbagClassIdBart &&
-						item.Name == "1" &&
-						item.GroupID == tc.wantGroup &&
-						item.ItemID == tc.wantItemID &&
-						assert.ObjectsAreEqual(wantID.BARTInfo, info)
-				})).
 				Return(nil)
 
 			messageRelayer := newMockMessageRelayer(t)
@@ -1039,10 +997,10 @@ func TestBARTService_UpsertItem_AssignsUploadedIcon(t *testing.T) {
 				})).
 				Return(nil)
 
-			svc := NewBARTService(slog.Default(), bartItemManager, messageRelayer, nil, nil, feedbagManager)
+			svc := NewBARTService(slog.Default(), bartItemManager, messageRelayer, nil, nil)
 			svc.buddyUpdateBroadcaster = buddyUpdateBroadcaster
 
-			output, err := svc.UpsertItem(context.Background(), instance, wire.SNACFrame{RequestID: 1234},
+			output, err := svc.UpsertItem(context.Background(), tc.instance, wire.SNACFrame{RequestID: 1234},
 				wire.SNAC_0x10_0x02_BARTUploadQuery{Type: wire.BARTTypesBuddyIcon, Data: itemData})
 
 			assert.NoError(t, err)
@@ -1058,7 +1016,7 @@ func TestBARTService_UpsertItem_AssignsUploadedIcon(t *testing.T) {
 				},
 			}, output)
 
-			have, hasIcon := instance.Session().BuddyIcon()
+			have, hasIcon := tc.instance.Session().BuddyIcon()
 			assert.True(t, hasIcon)
 			assert.Equal(t, wantID, have)
 		})
@@ -1066,7 +1024,7 @@ func TestBARTService_UpsertItem_AssignsUploadedIcon(t *testing.T) {
 }
 
 func TestBARTService_RetrieveItem_BlankIconHash(t *testing.T) {
-	svc := NewBARTService(slog.Default(), nil, nil, nil, nil, nil)
+	svc := NewBARTService(slog.Default(), nil, nil, nil, nil)
 
 	output, err := svc.RetrieveItem(context.Background(), wire.SNACFrame{RequestID: 1234}, wire.SNAC_0x10_0x04_BARTDownloadQuery{
 		ScreenName: "user",
