@@ -538,8 +538,12 @@ func (s *FeedbagService) DeleteItem(ctx context.Context, instance *state.Session
 func (s *FeedbagService) StartCluster(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x11_FeedbagStartCluster) {
 	instance.BeginNotifyTxn()
 	s.messageRelayer.RelayToOtherInstances(ctx, instance, wire.SNACMessage{
-		Frame: inFrame,
-		Body:  inBody,
+		Frame: wire.SNACFrame{
+			FoodGroup: wire.Feedbag,
+			SubGroup:  wire.FeedbagStartCluster,
+			RequestID: wire.ReqIDFromServer,
+		},
+		Body: inBody,
 	})
 }
 
@@ -548,8 +552,12 @@ func (s *FeedbagService) StartCluster(ctx context.Context, instance *state.Sessi
 // changes accumulated during the transaction.
 func (s *FeedbagService) EndCluster(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame) error {
 	s.messageRelayer.RelayToOtherInstances(ctx, instance, wire.SNACMessage{
-		Frame: inFrame,
-		Body:  wire.SNAC_0x13_0x12_FeedbagEndCluster{},
+		Frame: wire.SNACFrame{
+			FoodGroup: wire.Feedbag,
+			SubGroup:  wire.FeedbagEndCluster,
+			RequestID: wire.ReqIDFromServer,
+		},
+		Body: wire.SNAC_0x13_0x12_FeedbagEndCluster{},
 	})
 
 	shouldNotify, filter := instance.EndNotifyTxn()

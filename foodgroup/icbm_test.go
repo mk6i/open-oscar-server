@@ -2768,7 +2768,7 @@ func TestICBMService_ClientEvent(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICBM,
 									SubGroup:  wire.ICBMClientEvent,
-									RequestID: 1234,
+									RequestID: wire.ReqIDFromServer,
 								},
 								Body: wire.SNAC_0x04_0x14_ICBMClientEvent{
 									Cookie:     12345678,
@@ -2820,7 +2820,7 @@ func TestICBMService_ClientEvent(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICBM,
 									SubGroup:  wire.ICBMClientEvent,
-									RequestID: 5678,
+									RequestID: wire.ReqIDFromServer,
 								},
 								Body: wire.SNAC_0x04_0x14_ICBMClientEvent{
 									Cookie:     87654321,
@@ -2872,7 +2872,7 @@ func TestICBMService_ClientEvent(t *testing.T) {
 								Frame: wire.SNACFrame{
 									FoodGroup: wire.ICBM,
 									SubGroup:  wire.ICBMClientEvent,
-									RequestID: 9999,
+									RequestID: wire.ReqIDFromServer,
 								},
 								Body: wire.SNAC_0x04_0x14_ICBMClientEvent{
 									Cookie:     98765432,
@@ -3549,7 +3549,7 @@ func TestICBMService_ClientErr(t *testing.T) {
 		Frame: wire.SNACFrame{
 			FoodGroup: wire.ICBM,
 			SubGroup:  wire.ICBMClientErr,
-			RequestID: 1234,
+			RequestID: wire.ReqIDFromServer,
 		},
 		Body: wire.SNAC_0x04_0x0B_ICBMClientErr{
 			Cookie:     inBody.Cookie,
