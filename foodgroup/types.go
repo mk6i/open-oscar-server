@@ -433,3 +433,14 @@ type UserManager interface {
 	// SetWarnLevel updates the last warn update time and warning level for a user.
 	SetWarnLevel(ctx context.Context, user state.IdentScreenName, lastWarnUpdate time.Time, lastWarnLevel uint16) error
 }
+
+// RendezvousBroker takes part in rendezvous between clients.
+type RendezvousBroker interface {
+	// BrokerRendezvous sees a rendezvous message before it's relayed. It
+	// returns the message to relay in its place, or false to relay it as usual.
+	BrokerRendezvous(instance *state.SessionInstance, recipient state.IdentScreenName, frag wire.ICBMCh2Fragment) (wire.ICBMCh2Fragment, bool)
+	// HoldRendezvous reports whether a rendezvous message should go no further.
+	HoldRendezvous(instance *state.SessionInstance, frag wire.ICBMCh2Fragment) bool
+	// RefuseRendezvous sees a recipient turn a rendezvous down.
+	RefuseRendezvous(cookie uint64)
+}

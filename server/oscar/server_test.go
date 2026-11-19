@@ -1306,3 +1306,68 @@ func TestServer_ServeConn_afterShutdown(t *testing.T) {
 	_, err := clientEnd.Read(make([]byte, 1))
 	assert.Error(t, err)
 }
+
+func TestServer_RouteFirstBytes(t *testing.T) {
+	odc := []byte("ODC2\x00\x4c")
+	flap := []byte{0x2a, 0x01, 0x00, 0x01, 0x00, 0x00}
+
+	tests := []struct {
+		name      string
+		send      []byte
+		wantRoute bool
+	}{
+		{name: "a client the route wants goes to it", send: odc, wantRoute: true},
+		{name: "a client that waits goes to OSCAR"},
+		{name: "a client that speaks something else goes to OSCAR", send: flap},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			routed := make(chan []byte, 1)
+			oscared := make(chan []byte, 1)
+			read := func(conn net.Conn, n int) []byte {
+				b := make([]byte, n)
+				_ = conn.SetReadDeadline(time.Now().Add(time.Second))
+				_, _ = io.ReadFull(conn, b)
+				return b
+			}
+
+			srv := &Server{
+				logger: slog.Default(),
+				handler: func(_ context.Context, conn net.Conn, _ config.Endpoint) error {
+					oscared <- read(conn, len(tt.send))
+					return nil
+				},
+			}
+			srv.RouteFirstBytes(20*time.Millisecond, func(first []byte, _ net.Addr) func(net.Conn) {
+				if string(first) != "ODC2" {
+					return nil
+				}
+				return func(conn net.Conn) {
+					routed <- read(conn, len(tt.send))
+				}
+			})
+
+			ln, err := net.Listen("tcp", "127.0.0.1:0")
+			assert.NoError(t, err)
+			defer func() { _ = ln.Close() }()
+			client, err := net.Dial("tcp", ln.Addr().String())
+			assert.NoError(t, err)
+			defer func() { _ = client.Close() }()
+			_, err = client.Write(tt.send)
+			assert.NoError(t, err)
+
+			conn, err := ln.Accept()
+			assert.NoError(t, err)
+			defer func() { _ = conn.Close() }()
+			assert.NoError(t, srv.handler(context.Background(), conn, config.Endpoint{}))
+
+			if tt.wantRoute {
+				assert.Equal(t, tt.send, <-routed)
+				assert.Empty(t, oscared)
+				return
+			}
+			assert.Equal(t, append([]byte{}, tt.send...), append([]byte{}, <-oscared...))
+			assert.Empty(t, routed)
+		})
+	}
+}

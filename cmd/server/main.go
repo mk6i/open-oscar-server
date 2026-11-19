@@ -12,6 +12,7 @@ import (
 	"github.com/joho/godotenv"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/mk6i/open-oscar-server/server/relay"
 	"github.com/mk6i/open-oscar-server/server/webapi"
 )
 
@@ -65,6 +66,16 @@ func main() {
 	g, ctx := errgroup.WithContext(ctx)
 
 	oscar := OSCAR(deps)
+
+	var relayServer *relay.Server
+	if deps.cfg.RelayEnabled {
+		relayServer = Relay(deps)
+		if deps.cfg.RelaySharedPortWait > 0 {
+			oscar.RouteFirstBytes(deps.cfg.RelaySharedPortWait, relayServer.Route)
+		}
+		g.Go(relayServer.ListenAndServe)
+	}
+
 	g.Go(oscar.ListenAndServe)
 
 	kerb := KerberosAPI(deps)
@@ -100,6 +111,9 @@ func main() {
 	}
 	if deps.cfg.ICQLegacy.Enabled {
 		_ = icqLegacy.Shutdown(shutdownCtx)
+	}
+	if relayServer != nil {
+		_ = relayServer.Shutdown(shutdownCtx)
 	}
 
 	if err = g.Wait(); err != nil {
