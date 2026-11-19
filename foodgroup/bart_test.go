@@ -1064,3 +1064,22 @@ func TestBARTService_UpsertItem_AssignsUploadedIcon(t *testing.T) {
 		})
 	}
 }
+
+func TestBARTService_RetrieveItem_BlankIconHash(t *testing.T) {
+	svc := NewBARTService(slog.Default(), nil, nil, nil, nil, nil)
+
+	output, err := svc.RetrieveItem(context.Background(), wire.SNACFrame{RequestID: 1234}, wire.SNAC_0x10_0x04_BARTDownloadQuery{
+		ScreenName: "user",
+		BARTID:     blankBuddyIcon(),
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, blankGIF, output.Body.(wire.SNAC_0x10_0x05_BARTDownloadReply).Data)
+
+	outputs, err := svc.RetrieveItemV2(context.Background(), wire.SNACFrame{RequestID: 1234}, wire.SNAC_0x10_0x06_BARTDownload2Query{
+		ScreenName: "user",
+		IDs:        []wire.BARTID{blankBuddyIcon()},
+	})
+	assert.NoError(t, err)
+	assert.Len(t, outputs, 1)
+	assert.Equal(t, blankGIF, outputs[0].Body.(wire.SNAC_0x10_0x07_BARTDownload2Reply).Data)
+}

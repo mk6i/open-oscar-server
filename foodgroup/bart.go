@@ -21,6 +21,31 @@ var blankGIF = []byte{
 	0x32, 0x00, 0x32, 0x00, 0x00, 0x02, 0x02, 0x44, 0x01, 0x00, 0x3b,
 }
 
+// blankGIFHash is the MD5 hash of blankGIF.
+var blankGIFHash = func() []byte {
+	h := md5.Sum(blankGIF)
+	return h[:]
+}()
+
+// blankBuddyIcon returns the BART ID sent to buddies in place of a cleared
+// buddy icon. Some clients, such as QIP 2005, ignore the 5-byte clear icon
+// hash and keep showing the cached icon, but they do replace it when the hash
+// changes to a real 16-byte MD5 hash, so the server advertises blankGIF.
+func blankBuddyIcon() wire.BARTID {
+	return wire.BARTID{
+		Type: wire.BARTTypesBuddyIcon,
+		BARTInfo: wire.BARTInfo{
+			Flags: wire.BARTFlagsCustom,
+			Hash:  blankGIFHash,
+		},
+	}
+}
+
+// isBlankIconHash reports whether hash refers to blankGIF.
+func isBlankIconHash(info wire.BARTInfo) bool {
+	return info.HasClearIconHash() || bytes.Equal(info.Hash, blankGIFHash)
+}
+
 func NewBARTService(
 	logger *slog.Logger,
 	bartItemManager BARTItemManager,
@@ -105,7 +130,7 @@ func (s BARTService) UpsertItem(ctx context.Context, instance *state.SessionInst
 // have on the request.
 func (s BARTService) RetrieveItem(ctx context.Context, inFrame wire.SNACFrame, inBody wire.SNAC_0x10_0x04_BARTDownloadQuery) (wire.SNACMessage, error) {
 	var item []byte
-	if inBody.HasClearIconHash() {
+	if isBlankIconHash(inBody.BARTInfo) {
 		item = blankGIF
 	} else {
 		var err error
@@ -136,7 +161,7 @@ func (s BARTService) RetrieveItemV2(ctx context.Context, inFrame wire.SNACFrame,
 	for _, id := range inBody.IDs {
 		var item []byte
 
-		if id.Type == wire.BARTTypesBuddyIcon && id.HasClearIconHash() {
+		if id.Type == wire.BARTTypesBuddyIcon && isBlankIconHash(id.BARTInfo) {
 			item = blankGIF
 		} else {
 			var err error
