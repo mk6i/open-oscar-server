@@ -442,7 +442,11 @@ func (s *FeedbagService) setBARTItem(ctx context.Context, instance *state.Sessio
 
 	if itemExists {
 		if bartID.Type == wire.BARTTypesBuddyIconSmall || bartID.Type == wire.BARTTypesBuddyIcon {
-			instance.Session().SetBuddyIcon(bartID)
+			icon := bartID
+			if icon.HasClearIconHash() {
+				icon = blankBuddyIcon()
+			}
+			instance.Session().SetBuddyIcon(icon)
 			// tell buddies about the icon update
 			if err := s.buddyBroadcaster.BroadcastBuddyArrived(ctx, instance.IdentScreenName(), instance.Session().TLVUserInfo()); err != nil {
 				return err
@@ -510,11 +514,26 @@ func (s *FeedbagService) DeleteItem(ctx context.Context, instance *state.Session
 	})
 
 	var filter []state.IdentScreenName
+	var clearIcon bool
 
 	for _, item := range inBody.Items {
 		switch item.ClassID {
 		case wire.FeedbagClassIdBuddy, wire.FeedbagClassIDDeny, wire.FeedbagClassIDPermit, wire.FeedbagClassIdIgnoreList:
 			filter = append(filter, state.NewIdentScreenName(item.Name))
+		case wire.FeedbagClassIdBart:
+			if itemType, err := strconv.ParseUint(item.Name, 0, 16); err == nil && uint16(itemType) == wire.BARTTypesBuddyIcon {
+				clearIcon = clearIcon || deletesCurrentIcon(instance, item)
+			}
+		}
+	}
+
+	// Clients such as QIP 2005 clear their buddy icon by deleting the BART
+	// feedbag item instead of setting it to the clear icon hash.
+	if clearIcon {
+		instance.Session().SetBuddyIcon(blankBuddyIcon())
+		sendUserInfoUpdateToAll(ctx, s.messageRelayer, instance)
+		if err := s.buddyBroadcaster.BroadcastBuddyArrived(ctx, instance.IdentScreenName(), instance.Session().TLVUserInfo()); err != nil {
+			return nil, err
 		}
 	}
 
@@ -529,6 +548,23 @@ func (s *FeedbagService) DeleteItem(ctx context.Context, instance *state.Session
 	}
 
 	return nil, nil
+}
+
+// deletesCurrentIcon reports whether deleting item removes the session's
+// current buddy icon. QIP 2005 replaces its icon by deleting the old BART item
+// after the server has already switched the session to the new icon, so
+// deleting an item that holds another hash must not clear the icon.
+func deletesCurrentIcon(instance *state.SessionInstance, item wire.FeedbagItem) bool {
+	b, ok := item.Bytes(wire.FeedbagAttributesBartInfo)
+	if !ok {
+		return true
+	}
+	info := wire.BARTInfo{}
+	if err := wire.UnmarshalBE(&info, bytes.NewBuffer(b)); err != nil {
+		return true
+	}
+	current, hasIcon := instance.Session().BuddyIcon()
+	return !hasIcon || bytes.Equal(current.Hash, info.Hash)
 }
 
 // StartCluster signals the beginning of a batch of feedbag operations that clients should

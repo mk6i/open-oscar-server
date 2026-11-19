@@ -20,6 +20,52 @@ var blankGIF = []byte{
 	0x32, 0x00, 0x32, 0x00, 0x00, 0x02, 0x02, 0x44, 0x01, 0x00, 0x3b,
 }
 
+// clearedIconData is served in place of a cleared buddy icon. QIP 2005 only
+// replaces a cached icon after downloading a payload longer than 16 bytes that
+// starts with an image signature. It deletes the cached icon files before
+// decoding the new image and swallows the decode error. This GIF declares a
+// 256-color global color table but carries only a few bytes of it, so
+// decoding fails before QIP saves anything, no icon file is left and QIP shows
+// its built-in "no icon" image.
+var clearedIconData = append([]byte{
+	'G', 'I', 'F', '8', '9', 'a',
+	0x01, 0x00, // width
+	0x01, 0x00, // height
+	0xF7,       // global color table, 256 entries
+	0x00, 0x00, // background color, aspect ratio
+}, make([]byte, 10)...)
+
+// blankGIFHash is the MD5 hash of clearedIconData.
+var blankGIFHash = func() []byte {
+	h := md5.Sum(clearedIconData)
+	return h[:]
+}()
+
+// blankBuddyIcon returns the BART ID sent to buddies in place of a cleared
+// buddy icon. Some clients, such as QIP 2005, ignore the 5-byte clear icon
+// hash and keep showing the cached icon, but they do replace it when the hash
+// changes to a real 16-byte MD5 hash, so the server advertises blankGIF.
+func blankBuddyIcon() wire.BARTID {
+	return wire.BARTID{
+		Type: wire.BARTTypesBuddyIcon,
+		BARTInfo: wire.BARTInfo{
+			Flags: wire.BARTFlagsCustom,
+			Hash:  blankGIFHash,
+		},
+	}
+}
+
+// blankIconData returns the payload served for a cleared icon hash.
+func blankIconData(info wire.BARTInfo) ([]byte, bool) {
+	switch {
+	case info.HasClearIconHash():
+		return blankGIF, true
+	case bytes.Equal(info.Hash, blankGIFHash):
+		return clearedIconData, true
+	}
+	return nil, false
+}
+
 func NewBARTService(
 	logger *slog.Logger,
 	bartItemManager BARTItemManager,
@@ -76,6 +122,11 @@ func (s BARTService) UpsertItem(ctx context.Context, instance *state.SessionInst
 				Hash:  hash,
 			},
 		}
+		if inBody.Type == wire.BARTTypesBuddyIcon {
+			if err := s.assignBuddyIcon(ctx, instance, bartID); err != nil {
+				return wire.SNACMessage{}, err
+			}
+		}
 	}
 
 	return wire.SNACMessage{
@@ -96,8 +147,8 @@ func (s BARTService) UpsertItem(ctx context.Context, instance *state.SessionInst
 // have on the request.
 func (s BARTService) RetrieveItem(ctx context.Context, inFrame wire.SNACFrame, inBody wire.SNAC_0x10_0x04_BARTDownloadQuery) (wire.SNACMessage, error) {
 	var item []byte
-	if inBody.HasClearIconHash() {
-		item = blankGIF
+	if data, ok := blankIconData(inBody.BARTInfo); ok {
+		item = data
 	} else {
 		var err error
 		if item, err = s.bartItemManager.BARTItem(ctx, inBody.Hash); err != nil {
@@ -127,8 +178,8 @@ func (s BARTService) RetrieveItemV2(ctx context.Context, inFrame wire.SNACFrame,
 	for _, id := range inBody.IDs {
 		var item []byte
 
-		if id.Type == wire.BARTTypesBuddyIcon && id.HasClearIconHash() {
-			item = blankGIF
+		if data, ok := blankIconData(id.BARTInfo); ok && id.Type == wire.BARTTypesBuddyIcon {
+			item = data
 		} else {
 			var err error
 			if item, err = s.bartItemManager.BARTItem(ctx, id.Hash); err != nil {
@@ -158,4 +209,25 @@ func (s BARTService) RetrieveItemV2(ctx context.Context, inFrame wire.SNACFrame,
 	}
 
 	return result, nil
+}
+
+// assignBuddyIcon makes an uploaded icon the user's buddy icon. Clients such
+// as QIP 2005 upload the icon before setting the feedbag BART item, and only
+// set the item after the server confirms the icon with SNAC(0x01,0x21).
+func (s BARTService) assignBuddyIcon(ctx context.Context, instance *state.SessionInstance, bartID wire.BARTID) error {
+	instance.Session().SetBuddyIcon(bartID)
+	s.messageRelayer.RelayToSelf(ctx, instance, wire.SNACMessage{
+		Frame: wire.SNACFrame{
+			FoodGroup: wire.OService,
+			SubGroup:  wire.OServiceBartReply,
+		},
+		Body: wire.SNAC_0x01_0x21_OServiceBARTReply{
+			BARTID: bartID,
+		},
+	})
+	sendUserInfoUpdateToAll(ctx, s.messageRelayer, instance)
+
+	s.logger.DebugContext(ctx, "assigned uploaded icon as buddy icon", "hash", fmt.Sprintf("%x", bartID.Hash))
+
+	return s.buddyUpdateBroadcaster.BroadcastBuddyArrived(ctx, instance.IdentScreenName(), instance.Session().TLVUserInfo())
 }

@@ -178,6 +178,9 @@ func (s AuthService) RegisterBOSSession(ctx context.Context, authCookie state.Se
 			return nil, fmt.Errorf("BuddyIconMetadata: %w", err)
 		}
 		if bartID != nil {
+			if bartID.HasClearIconHash() {
+				*bartID = blankBuddyIcon()
+			}
 			sess.Session().SetBuddyIcon(*bartID)
 		}
 	}
