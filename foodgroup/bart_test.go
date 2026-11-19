@@ -1073,7 +1073,7 @@ func TestBARTService_RetrieveItem_BlankIconHash(t *testing.T) {
 		BARTID:     blankBuddyIcon(),
 	})
 	assert.NoError(t, err)
-	assert.Equal(t, blankGIF, output.Body.(wire.SNAC_0x10_0x05_BARTDownloadReply).Data)
+	assert.Equal(t, clearedIconData, output.Body.(wire.SNAC_0x10_0x05_BARTDownloadReply).Data)
 
 	outputs, err := svc.RetrieveItemV2(context.Background(), wire.SNACFrame{RequestID: 1234}, wire.SNAC_0x10_0x06_BARTDownload2Query{
 		ScreenName: "user",
@@ -1081,5 +1081,5 @@ func TestBARTService_RetrieveItem_BlankIconHash(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	assert.Len(t, outputs, 1)
-	assert.Equal(t, blankGIF, outputs[0].Body.(wire.SNAC_0x10_0x07_BARTDownload2Reply).Data)
+	assert.Equal(t, clearedIconData, outputs[0].Body.(wire.SNAC_0x10_0x07_BARTDownload2Reply).Data)
 }
