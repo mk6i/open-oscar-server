@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
 
 	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
@@ -26,9 +27,11 @@ func NewBARTService(
 	messageRelayer MessageRelayer,
 	relationshipFetcher RelationshipFetcher,
 	sessionRetriever SessionRetriever,
+	feedbagManager FeedbagManager,
 ) BARTService {
 	return BARTService{
 		bartItemManager:        bartItemManager,
+		feedbagManager:         feedbagManager,
 		buddyUpdateBroadcaster: newBuddyNotifier(bartItemManager, relationshipFetcher, messageRelayer, sessionRetriever),
 		messageRelayer:         messageRelayer,
 		logger:                 logger,
@@ -37,6 +40,7 @@ func NewBARTService(
 
 type BARTService struct {
 	bartItemManager        BARTItemManager
+	feedbagManager         FeedbagManager
 	buddyUpdateBroadcaster buddyBroadcaster
 	messageRelayer         MessageRelayer
 	logger                 *slog.Logger
@@ -75,6 +79,11 @@ func (s BARTService) UpsertItem(ctx context.Context, instance *state.SessionInst
 				Flags: wire.BARTFlagsCustom,
 				Hash:  hash,
 			},
+		}
+		if inBody.Type == wire.BARTTypesBuddyIcon && s.feedbagManager != nil {
+			if err := s.assignBuddyIcon(ctx, instance, bartID); err != nil {
+				return wire.SNACMessage{}, err
+			}
 		}
 	}
 
@@ -158,4 +167,53 @@ func (s BARTService) RetrieveItemV2(ctx context.Context, inFrame wire.SNACFrame,
 	}
 
 	return result, nil
+}
+
+// assignBuddyIcon makes an uploaded icon the user's buddy icon. Clients such
+// as QIP 2005 upload the icon without first setting the feedbag BART item, so
+// the server stores the item itself and notifies the user's buddies.
+func (s BARTService) assignBuddyIcon(ctx context.Context, instance *state.SessionInstance, bartID wire.BARTID) error {
+	items, err := s.feedbagManager.Feedbag(ctx, instance.IdentScreenName())
+	if err != nil {
+		return fmt.Errorf("failed to fetch feedbag: %w", err)
+	}
+
+	name := strconv.Itoa(int(wire.BARTTypesBuddyIcon))
+	item := wire.FeedbagItem{Name: name, ClassID: wire.FeedbagClassIdBart}
+	used := make(map[uint16]bool)
+	found := false
+	for _, it := range items {
+		if it.GroupID == 0 {
+			used[it.ItemID] = true
+		}
+		if !found && it.ClassID == wire.FeedbagClassIdBart && it.Name == name {
+			item.GroupID, item.ItemID = it.GroupID, it.ItemID
+			found = true
+		}
+	}
+	if !found {
+		for item.ItemID = 1; used[item.ItemID]; item.ItemID++ {
+		}
+	}
+	item.Append(wire.NewTLVBE(wire.FeedbagAttributesBartInfo, bartID.BARTInfo))
+
+	if err := s.feedbagManager.FeedbagUpsert(ctx, instance.IdentScreenName(), []wire.FeedbagItem{item}); err != nil {
+		return fmt.Errorf("failed to save BART feedbag item: %w", err)
+	}
+
+	instance.Session().SetBuddyIcon(bartID)
+	s.messageRelayer.RelayToSelf(ctx, instance, wire.SNACMessage{
+		Frame: wire.SNACFrame{
+			FoodGroup: wire.OService,
+			SubGroup:  wire.OServiceBartReply,
+		},
+		Body: wire.SNAC_0x01_0x21_OServiceBARTReply{
+			BARTID: bartID,
+		},
+	})
+	sendUserInfoUpdateToAll(ctx, s.messageRelayer, instance)
+
+	s.logger.DebugContext(ctx, "assigned uploaded icon as buddy icon", "hash", fmt.Sprintf("%x", bartID.Hash))
+
+	return s.buddyUpdateBroadcaster.BroadcastBuddyArrived(ctx, instance.IdentScreenName(), instance.Session().TLVUserInfo())
 }

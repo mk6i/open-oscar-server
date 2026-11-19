@@ -446,7 +446,7 @@ func TestBARTService_UpsertItem(t *testing.T) {
 							params.message.Body.(func(any) bool)(message.Body)
 					}))
 			}
-			svc := NewBARTService(slog.Default(), bartItemManager, messageRelayer, nil, nil)
+			svc := NewBARTService(slog.Default(), bartItemManager, messageRelayer, nil, nil, nil)
 			svc.buddyUpdateBroadcaster = buddyUpdateBroadcaster
 
 			output, err := svc.UpsertItem(context.Background(), tc.instance, tc.inputSNAC.Frame,
@@ -608,7 +608,7 @@ func TestBARTService_RetrieveItem(t *testing.T) {
 					Return(params.result, params.err)
 			}
 
-			svc := NewBARTService(slog.Default(), bartItemManager, nil, nil, nil)
+			svc := NewBARTService(slog.Default(), bartItemManager, nil, nil, nil, nil)
 
 			output, err := svc.RetrieveItem(context.Background(), tc.inputSNAC.Frame, tc.inputSNAC.Body.(wire.SNAC_0x10_0x04_BARTDownloadQuery))
 
@@ -982,12 +982,137 @@ func TestBARTService_RetrieveItemV2(t *testing.T) {
 					Return(params.result, params.err)
 			}
 
-			svc := NewBARTService(slog.Default(), bartItemManager, nil, nil, nil)
+			svc := NewBARTService(slog.Default(), bartItemManager, nil, nil, nil, nil)
 
 			output, err := svc.RetrieveItemV2(context.Background(), tc.inputSNAC.Frame, tc.inputSNAC.Body.(wire.SNAC_0x10_0x06_BARTDownload2Query))
 
 			assert.ErrorIs(t, err, tc.expectErr)
 			assert.Equal(t, output, tc.expectOutput)
+		})
+	}
+}
+
+func TestBARTService_UpsertItem_AssignsUploadedIcon(t *testing.T) {
+	itemHash := []byte{0x4e, 0xd9, 0xc1, 0x96, 0x45, 0xdb, 0x5a, 0xec, 0xdb, 0xf5, 0xc7, 0xa2, 0x4e, 0x8e, 0xa0, 0xed}
+	itemData := []byte{'i', 't', 'e', 'm', 'd', 'a', 't', 'a'}
+	screenName := state.NewIdentScreenName("user_screen_name")
+	wantID := wire.BARTID{
+		Type: wire.BARTTypesBuddyIcon,
+		BARTInfo: wire.BARTInfo{
+			Flags: wire.BARTFlagsCustom,
+			Hash:  itemHash,
+		},
+	}
+
+	cases := []struct {
+		name       string
+		feedbag    []wire.FeedbagItem
+		wantItemID uint16
+		wantGroup  uint16
+	}{
+		{
+			name: "no BART feedbag item, create one with a free item ID",
+			feedbag: []wire.FeedbagItem{
+				{GroupID: 0, ItemID: 1, ClassID: wire.FeedbagClassIdPdinfo},
+				{GroupID: 10, ItemID: 2, ClassID: wire.FeedbagClassIdBuddy, Name: "buddy"},
+			},
+			wantItemID: 2,
+			wantGroup:  0,
+		},
+		{
+			name: "existing BART feedbag item, update it in place",
+			feedbag: []wire.FeedbagItem{
+				{GroupID: 0, ItemID: 7, ClassID: wire.FeedbagClassIdBart, Name: "1"},
+			},
+			wantItemID: 7,
+			wantGroup:  0,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			instance := newTestInstance("user_screen_name")
+
+			bartItemManager := newMockBARTItemManager(t)
+			bartItemManager.EXPECT().
+				InsertBARTItem(matchContext(), itemHash, itemData, wire.BARTTypesBuddyIcon).
+				Return(nil)
+
+			feedbagManager := newMockFeedbagManager(t)
+			feedbagManager.EXPECT().
+				Feedbag(matchContext(), screenName).
+				Return(tc.feedbag, nil)
+			feedbagManager.EXPECT().
+				FeedbagUpsert(matchContext(), screenName, mock.MatchedBy(func(items []wire.FeedbagItem) bool {
+					if len(items) != 1 {
+						return false
+					}
+					item := items[0]
+					b, ok := item.Bytes(wire.FeedbagAttributesBartInfo)
+					if !ok {
+						return false
+					}
+					info := wire.BARTInfo{}
+					if err := wire.UnmarshalBE(&info, bytes.NewBuffer(b)); err != nil {
+						return false
+					}
+					return item.ClassID == wire.FeedbagClassIdBart &&
+						item.Name == "1" &&
+						item.GroupID == tc.wantGroup &&
+						item.ItemID == tc.wantItemID &&
+						assert.ObjectsAreEqual(wantID.BARTInfo, info)
+				})).
+				Return(nil)
+
+			messageRelayer := newMockMessageRelayer(t)
+			messageRelayer.EXPECT().
+				RelayToSelf(matchContext(), matchSession(screenName), mock.MatchedBy(func(message wire.SNACMessage) bool {
+					body, ok := message.Body.(wire.SNAC_0x01_0x21_OServiceBARTReply)
+					return ok &&
+						message.Frame.FoodGroup == wire.OService &&
+						message.Frame.SubGroup == wire.OServiceBartReply &&
+						assert.ObjectsAreEqual(wantID, body.BARTID)
+				}))
+			messageRelayer.EXPECT().
+				RelayToSelf(matchContext(), matchSession(screenName), mock.MatchedBy(func(message wire.SNACMessage) bool {
+					snac, ok := message.Body.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
+					if !ok {
+						return false
+					}
+					bartID, exists := snac.UserInfo[0].Bytes(wire.OServiceUserInfoBARTInfo)
+					return exists && bytes.Contains(bartID, itemHash)
+				}))
+
+			buddyUpdateBroadcaster := newMockbuddyBroadcaster(t)
+			buddyUpdateBroadcaster.EXPECT().
+				BroadcastBuddyArrived(mock.Anything, screenName, mock.MatchedBy(func(tlvInfo wire.TLVUserInfo) bool {
+					bartID, exists := tlvInfo.Bytes(wire.OServiceUserInfoBARTInfo)
+					return exists && bytes.Contains(bartID, itemHash)
+				})).
+				Return(nil)
+
+			svc := NewBARTService(slog.Default(), bartItemManager, messageRelayer, nil, nil, feedbagManager)
+			svc.buddyUpdateBroadcaster = buddyUpdateBroadcaster
+
+			output, err := svc.UpsertItem(context.Background(), instance, wire.SNACFrame{RequestID: 1234},
+				wire.SNAC_0x10_0x02_BARTUploadQuery{Type: wire.BARTTypesBuddyIcon, Data: itemData})
+
+			assert.NoError(t, err)
+			assert.Equal(t, wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.BART,
+					SubGroup:  wire.BARTUploadReply,
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x10_0x03_BARTUploadReply{
+					Code: wire.BARTReplyCodesSuccess,
+					ID:   wantID,
+				},
+			}, output)
+
+			have, hasIcon := instance.Session().BuddyIcon()
+			assert.True(t, hasIcon)
+			assert.Equal(t, wantID, have)
 		})
 	}
 }
