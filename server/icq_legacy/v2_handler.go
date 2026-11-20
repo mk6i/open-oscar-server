@@ -224,6 +224,7 @@ func (h *V2Handler) handleLogin(session *LegacySession, addr *net.UDPAddr, pkt *
 	}
 
 	newSession.SetStatus(loginData.Status)
+	newSession.SetDirectConnectionInfo(uint32(loginData.Port), 0, 0, 0)
 	newSession.Password = loginData.Password
 
 	// 4. Send ACK first, then login reply
@@ -344,25 +345,27 @@ func (h *V2Handler) handleContactList(session *LegacySession, pkt *V2ClientPacke
 		return h.sender.SendToSession(session, h.packetBuilder.BuildContactListDone(session.NextServerSeqNum(), session.UIN))
 	}
 
-	// 3. Build and send responses using packet builder
-	// Send online status for each contact that is online.
-	// Apply downgradeStatusForV2 so V2 clients see correct icons
-	// for statuses they don't natively support (N/A→Away, Occupied→DND, FFC→Online).
+	// 3. Send online status for each contact that is online.
 	for _, contact := range contactResult.OnlineContacts {
 		if contact.Online {
-			onlinePkt := h.packetBuilder.BuildUserOnline(
-				session.NextServerSeqNum(),
-				contact.UIN,
-				downgradeStatusForV2(contact.Status),
-				nil, // IP not available from service layer
-				0,   // Port not available from service layer
-			)
-			_ = h.sender.SendToSession(session, onlinePkt)
+			_ = h.sendV2UserOnline(session, contact.UIN, contact.Status)
 		}
 	}
 
 	// 4. Send contact list done using packet builder
 	return h.sender.SendToSession(session, h.packetBuilder.BuildContactListDone(session.NextServerSeqNum(), session.UIN))
+}
+
+// sendV2UserOnline sends the initial presence packet for an online contact.
+func (h *V2Handler) sendV2UserOnline(session *LegacySession, uin uint32, status uint32) error {
+	var ip net.IP
+	var port uint16
+	if session.Version == ICQLegacyVersionV2 {
+		ip, port = h.sessions.v2DirectConnection(uin)
+	}
+
+	packet := h.packetBuilder.BuildUserOnline(session.NextServerSeqNum(), uin, downgradeStatusForV2(status), ip, port)
+	return h.sender.SendToSession(session, packet)
 }
 
 // handleSendMessage processes a message send request
