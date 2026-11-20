@@ -1,7 +1,9 @@
 package icq_legacy
 
 import (
+	"encoding/binary"
 	"log/slog"
+	"net"
 	"testing"
 
 	"github.com/mk6i/open-oscar-server/config"
@@ -68,6 +70,44 @@ func TestProtocolDispatcher_SendUserOnline(t *testing.T) {
 
 			err := dispatcher.SendUserOnline(session, 67890, 0x00000000)
 			assert.NoError(t, err)
+		})
+	}
+}
+
+func TestProtocolDispatcher_SendUserOnlineV2DirectConnection(t *testing.T) {
+	for _, tt := range []struct {
+		name        string
+		enabled     bool
+		peerVersion uint16
+		wantIP      []byte
+		wantPort    uint16
+	}{
+		{"enabled", true, ICQLegacyVersionV2, []byte{192, 0, 2, 10}, 12345},
+		{"disabled", false, ICQLegacyVersionV2, []byte{0, 0, 0, 0}, 0},
+		{"different protocol", true, ICQLegacyVersionV5, []byte{0, 0, 0, 0}, 0},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			sender := newMockPacketSender(t)
+			dispatcher := newTestDispatcher(t, sender)
+			if tt.enabled {
+				dispatcher.v2Handler.sessions.config.DirectConnections = []int{int(ICQLegacyVersionV2)}
+			}
+			recipient := newTestLegacySession(10001, legacySessionOptVersion(ICQLegacyVersionV2))
+			peer := &LegacySession{
+				UIN:     67890,
+				Version: tt.peerVersion,
+				Addr:    &net.UDPAddr{IP: net.IPv4(192, 0, 2, 10), Port: 4001},
+			}
+			peer.SetDirectConnectionInfo(12345, 0, 0, 0)
+			registerSession(dispatcher.v2Handler.sessions, peer)
+
+			sender.EXPECT().SendToSession(recipient, mock.AnythingOfType("[]uint8")).
+				Run(func(_ *LegacySession, packet []byte) {
+					assert.Equal(t, ICQLegacySrvUserOnline, v2ServerCommand(packet))
+					assert.Equal(t, tt.wantIP, packet[10:14])
+					assert.Equal(t, tt.wantPort, binary.LittleEndian.Uint16(packet[14:16]))
+				}).Return(nil).Once()
+			assert.NoError(t, dispatcher.SendUserOnline(recipient, peer.UIN, 0))
 		})
 	}
 }
