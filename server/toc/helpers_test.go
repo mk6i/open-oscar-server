@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
-	"github.com/mk6i/open-oscar-server/config"
 	"github.com/mk6i/open-oscar-server/state"
 	"github.com/mk6i/open-oscar-server/wire"
 )
@@ -327,28 +326,31 @@ func newReceivedSNAC(t *testing.T, foodGroup uint16, subGroup uint16, reqID uint
 	}
 }
 
-// fakeOSCARServer is an OSCARServer that serves each connection TOC opens
-// with the next of its handlers, in order.
+// fakeOSCARServer is an oscarclient.OSCARServer that serves each connection TOC opens
+// with the next of its handlers, in order, each on a goroutine of its own.
 type fakeOSCARServer struct {
 	mu          sync.Mutex
 	handlers    []func(conn net.Conn)
 	clientAddrs []net.Addr
 }
 
-func (s *fakeOSCARServer) ServeConn(conn net.Conn, _ config.Endpoint) {
-	defer func() { _ = conn.Close() }()
-
+func (s *fakeOSCARServer) ServeConn(conn net.Conn) error {
 	s.mu.Lock()
 	s.clientAddrs = append(s.clientAddrs, conn.RemoteAddr())
 	if len(s.handlers) == 0 {
 		s.mu.Unlock()
-		return
+		_ = conn.Close()
+		return nil
 	}
 	handler := s.handlers[0]
 	s.handlers = s.handlers[1:]
 	s.mu.Unlock()
 
-	handler(conn)
+	go func() {
+		defer func() { _ = conn.Close() }()
+		handler(conn)
+	}()
+	return nil
 }
 
 // fakeAuth returns an auth service handler that records the client's signon

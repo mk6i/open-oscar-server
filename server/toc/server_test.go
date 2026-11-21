@@ -11,6 +11,7 @@ import (
 	"github.com/mk6i/open-oscar-server/wire"
 
 	"github.com/stretchr/testify/assert"
+	"golang.org/x/sync/errgroup"
 )
 
 // ensure correct behavior during global context cancellation (server shutdown)
@@ -34,7 +35,8 @@ func TestServer_handleTOCRequest_serverShutdown(t *testing.T) {
 			_ = serverReader.Close()
 		}
 		me, _ := newTestTOCConn(newTestSession("me"))
-		err := sv.handleTOCRequest(ctx, closeConn, me, fc)
+		g, gctx := errgroup.WithContext(ctx)
+		err := sv.handleTOCRequest(gctx, g, closeConn, me, fc)
 		assert.True(t, errors.Is(err, errTOCProcessing) || errors.Is(err, errServerWrite))
 	}()
 
@@ -64,7 +66,8 @@ func TestServer_handleTOCRequest_clientReadDisconnect(t *testing.T) {
 			bosProxy: testOSCARProxy(t),
 			logger:   slog.Default(),
 		}
-		err := sv.handleTOCRequest(context.Background(), closeConn, me, fc)
+		g, gctx := errgroup.WithContext(context.Background())
+		err := sv.handleTOCRequest(gctx, g, closeConn, me, fc)
 		assert.ErrorIs(t, err, errClientReq)
 		assert.ErrorIs(t, err, io.ErrClosedPipe)
 	}()
@@ -97,7 +100,8 @@ func TestServer_handleTOCRequest_sessClose(t *testing.T) {
 			bosProxy: testOSCARProxy(t),
 			logger:   slog.Default(),
 		}
-		err := sv.handleTOCRequest(context.Background(), closeConn, me, fc)
+		g, gctx := errgroup.WithContext(context.Background())
+		err := sv.handleTOCRequest(gctx, g, closeConn, me, fc)
 		assert.ErrorIs(t, err, errTOCProcessing)
 		assert.ErrorIs(t, err, errDisconnect)
 	}()
@@ -130,7 +134,8 @@ func TestServer_handleTOCRequest_replyFailure(t *testing.T) {
 			bosProxy: testOSCARProxy(t),
 			logger:   slog.Default(),
 		}
-		err := sv.handleTOCRequest(context.Background(), closeConn, me, fc)
+		g, gctx := errgroup.WithContext(context.Background())
+		err := sv.handleTOCRequest(gctx, g, closeConn, me, fc)
 		assert.ErrorIs(t, err, errServerWrite)
 		assert.ErrorIs(t, err, io.ErrClosedPipe)
 	}()
@@ -168,7 +173,8 @@ func TestServer_handleTOCRequest_happyPath(t *testing.T) {
 			logger:   slog.Default(),
 		}
 		me, _ := newTestTOCConn(newTestSession("me"))
-		err := sv.handleTOCRequest(context.Background(), closeConn, me, fc)
+		g, gctx := errgroup.WithContext(context.Background())
+		err := sv.handleTOCRequest(gctx, g, closeConn, me, fc)
 		assert.ErrorIs(t, err, errClientReq)
 		assert.ErrorIs(t, err, io.ErrClosedPipe)
 	}()

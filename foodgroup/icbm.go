@@ -560,7 +560,7 @@ func (s *ICBMService) ClientEvent(ctx context.Context, instance *state.SessionIn
 			Frame: wire.SNACFrame{
 				FoodGroup: wire.ICBM,
 				SubGroup:  wire.ICBMClientEvent,
-				RequestID: inFrame.RequestID,
+				RequestID: wire.ReqIDFromServer,
 			},
 			Body: wire.SNAC_0x04_0x14_ICBMClientEvent{
 				Cookie:     inBody.Cookie,
@@ -582,7 +582,7 @@ func (s *ICBMService) ClientErr(ctx context.Context, instance *state.SessionInst
 		Frame: wire.SNACFrame{
 			FoodGroup: wire.ICBM,
 			SubGroup:  wire.ICBMClientErr,
-			RequestID: inFrame.RequestID,
+			RequestID: wire.ReqIDFromServer,
 		},
 		Body: wire.SNAC_0x04_0x0B_ICBMClientErr{
 			Cookie:     inBody.Cookie,

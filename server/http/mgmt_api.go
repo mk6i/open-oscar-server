@@ -1303,7 +1303,10 @@ func putICQProfileHandler(w http.ResponseWriter, r *http.Request, mgr ICQProfile
 
 	// Validate field lengths. ICQ clients typically handle:
 	// - String fields: max 127 chars (some fields shorter)
-	// - Nickname: max 20 chars
+	// - Nickname: not checked. Clients save it through meta-info requests
+	//   without any server-side limit, and the 20 their UIs allow is counted
+	//   in ANSI characters, while a byte count here would cut UTF-8 text
+	//   (Cyrillic, emoji) to half of that or less.
 	// - Phone/fax: max 30 chars
 	// - Email: max 64 chars
 	// - Address/city/state: max 64 chars
@@ -1321,7 +1324,6 @@ func putICQProfileHandler(w http.ResponseWriter, r *http.Request, mgr ICQProfile
 		max  int
 	}
 	checks := []fieldCheck{
-		{"basic_info.nickname", input.BasicInfo.Nickname, 20},
 		{"basic_info.first_name", input.BasicInfo.FirstName, 64},
 		{"basic_info.last_name", input.BasicInfo.LastName, 64},
 		{"basic_info.email", input.BasicInfo.EmailAddress, 64},

@@ -1245,7 +1245,9 @@ func Test_oscarServer_receiveSessMessages_Chat_integration(t *testing.T) {
 	signoutWG.Wait()
 }
 
-func newServeConnTestServer() *Server {
+// newServeConnTestServer returns a server whose only listener group is
+// group.
+func newServeConnTestServer(group config.ListenerGroup) *Server {
 	return NewServer(
 		nil,
 		nil,
@@ -1257,40 +1259,66 @@ func newServeConnTestServer() *Server {
 		nil,
 		wire.DefaultSNACRateLimits(),
 		nil,
-		nil,
+		[]config.ListenerGroup{group},
 		func(ctx context.Context, instance *state.SessionInstance) error { return nil },
 		func(ctx context.Context, instance *state.SessionInstance) {},
 	)
 }
 
 func TestServer_ServeConn(t *testing.T) {
-	server := newServeConnTestServer()
+	group := config.ListenerGroup{Name: "LOCAL", BOSListenAddress: ":5190", BOSAdvertisedHostPlain: "127.0.0.1:5190"}
+	server := newServeConnTestServer(group)
 
-	var gotEndpoint config.Endpoint
-	var gotRemote net.Addr
+	type served struct {
+		endpoint config.Endpoint
+		remote   net.Addr
+	}
+	servedCh := make(chan served, 1)
+	release := make(chan struct{})
 	server.handler = func(ctx context.Context, conn net.Conn, endpointCfg config.Endpoint) error {
-		gotEndpoint = endpointCfg
-		gotRemote = conn.RemoteAddr()
+		servedCh <- served{endpoint: endpointCfg, remote: conn.RemoteAddr()}
+		<-release
 		return nil
 	}
 
 	serverEnd, clientEnd := net.Pipe()
 	clientAddr := &net.TCPAddr{IP: net.IPv4(10, 0, 0, 5), Port: 4321}
-	endpoint := config.Endpoint{ListenAddress: ":5190", Group: config.ListenerGroup{Name: "LOCAL"}}
 
-	server.ServeConn(fakeConn{Conn: serverEnd, remote: clientAddr}, endpoint)
+	// ServeConn returns while the connection is still being served, as if it
+	// had arrived on the first group's plain listener
+	assert.NoError(t, server.ServeConn(fakeConn{Conn: serverEnd, remote: clientAddr}))
+	got := <-servedCh
+	assert.Equal(t, group.PlainEndpoint(), got.endpoint)
+	assert.Equal(t, clientAddr, got.remote)
 
-	assert.Equal(t, endpoint, gotEndpoint)
-	assert.Equal(t, clientAddr, gotRemote)
+	// Shutdown waits for the connection's goroutine
+	shutdownDone := make(chan struct{})
+	go func() {
+		assert.NoError(t, server.Shutdown(context.Background()))
+		close(shutdownDone)
+	}()
+	select {
+	case <-shutdownDone:
+		t.Fatal("Shutdown returned while a connection was still being served")
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(release)
+	select {
+	case <-shutdownDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Shutdown didn't return after the connection ended")
+	}
 
-	// the connection is closed once served
+	// the connection is closed and untracked once served
 	_, err := clientEnd.Read(make([]byte, 1))
 	assert.Error(t, err)
+	server.connMu.Lock()
 	assert.Empty(t, server.conns)
+	server.connMu.Unlock()
 }
 
 func TestServer_ServeConn_afterShutdown(t *testing.T) {
-	server := newServeConnTestServer()
+	server := newServeConnTestServer(config.ListenerGroup{Name: "LOCAL"})
 
 	called := false
 	server.handler = func(ctx context.Context, conn net.Conn, endpointCfg config.Endpoint) error {
@@ -1300,7 +1328,7 @@ func TestServer_ServeConn_afterShutdown(t *testing.T) {
 	assert.NoError(t, server.Shutdown(context.Background()))
 
 	serverEnd, clientEnd := net.Pipe()
-	server.ServeConn(serverEnd, config.Endpoint{})
+	assert.ErrorIs(t, server.ServeConn(serverEnd), ErrServerClosed)
 
 	assert.False(t, called)
 	_, err := clientEnd.Read(make([]byte, 1))

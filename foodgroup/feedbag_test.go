@@ -4828,8 +4828,12 @@ func TestFeedbagService_StartCluster(t *testing.T) {
 	messageRelayer := newMockMessageRelayer(t)
 	messageRelayer.EXPECT().
 		RelayToOtherInstances(matchContext(), instance, wire.SNACMessage{
-			Frame: inFrame,
-			Body:  inBody,
+			Frame: wire.SNACFrame{
+				FoodGroup: wire.Feedbag,
+				SubGroup:  wire.FeedbagStartCluster,
+				RequestID: wire.ReqIDFromServer,
+			},
+			Body: inBody,
 		})
 
 	svc := NewFeedbagService(slog.Default(), messageRelayer, nil, nil, nil, nil, nil, nil, newMockBuddyAddedNotifierDeduper(t))
@@ -4845,8 +4849,12 @@ func TestFeedbagService_EndCluster(t *testing.T) {
 		RequestID: 1234,
 	}
 	endRelay := wire.SNACMessage{
-		Frame: endFrame,
-		Body:  wire.SNAC_0x13_0x12_FeedbagEndCluster{},
+		Frame: wire.SNACFrame{
+			FoodGroup: wire.Feedbag,
+			SubGroup:  wire.FeedbagEndCluster,
+			RequestID: wire.ReqIDFromServer,
+		},
+		Body: wire.SNAC_0x13_0x12_FeedbagEndCluster{},
 	}
 
 	cases := []struct {
