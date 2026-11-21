@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand"
+	"net/netip"
 	"os"
 	"slices"
 	"strings"
@@ -23,6 +24,7 @@ import (
 	"github.com/mk6i/open-oscar-server/server/oscar"
 	oscarmiddleware "github.com/mk6i/open-oscar-server/server/oscar/middleware"
 	"github.com/mk6i/open-oscar-server/server/oscarclient"
+	"github.com/mk6i/open-oscar-server/server/relay"
 	"github.com/mk6i/open-oscar-server/server/toc"
 	"github.com/mk6i/open-oscar-server/server/webapi"
 	"github.com/mk6i/open-oscar-server/state"
@@ -250,6 +252,20 @@ func getEnvOrDefault(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+// Relay creates a rendezvous relay server and has the ICBM service send
+// direct offers through it. Config.Validate has checked the advertised address.
+func Relay(deps Container) *relay.Server {
+	server := relay.NewServer(
+		deps.cfg.RelayListeners,
+		netip.MustParseAddr(deps.cfg.RelayAdvertisedIP),
+		deps.cfg.RelayAdvertisedPort,
+		deps.logger.With("svc", "Relay"),
+		deps.inMemorySessionManager,
+	)
+	deps.icbmSvc.SetRendezvousBroker(server)
+	return server
 }
 
 // OSCAR creates an OSCAR server for the OSCAR food group.

@@ -70,6 +70,7 @@ type ICBMService struct {
 	logger                *slog.Logger
 	interval              time.Duration
 	offlineMessageManager OfflineMessageManager
+	rendezvousBroker      RendezvousBroker
 	forwardICQAuthEvents  func(ctx context.Context, sender state.IdentScreenName, recipient state.IdentScreenName, authMsg wire.ICBMCh4Message) error
 }
 
@@ -96,6 +97,12 @@ func (s *ICBMService) ParameterQuery(_ context.Context, inFrame wire.SNACFrame) 
 			MinInterICBMInterval: 0,
 		},
 	}
+}
+
+// SetRendezvousBroker hands rendezvous messages to broker before they're
+// relayed.
+func (s *ICBMService) SetRendezvousBroker(broker RendezvousBroker) {
+	s.rendezvousBroker = broker
 }
 
 // ChannelMsgToHost relays the instant message SNAC wire.ICBMChannelMsgToHost
@@ -190,8 +197,11 @@ func (s *ICBMService) ChannelMsgToHost(ctx context.Context, instance *state.Sess
 			continue
 		}
 		if clientIM.ChannelID == wire.ICBMChannelRendezvous && tlv.Tag == wire.ICBMTLVData {
-			if tlv, err = addExternalIP(instance, tlv); err != nil {
-				return nil, fmt.Errorf("addExternalIP: %w", err)
+			if tlv, err = s.rendezvousTLV(instance, recip, tlv); err != nil {
+				if errors.Is(err, errRendezvousHeld) {
+					return nil, nil
+				}
+				return nil, fmt.Errorf("rendezvousTLV: %w", err)
 			}
 		}
 		// Strip HTML from ICQ messages if recipient doesn't support XHTML.
@@ -412,6 +422,26 @@ func (s *ICBMService) sendOfflineMessage(ctx context.Context, instance *state.Se
 	return nil, nil
 }
 
+// errRendezvousHeld means the broker kept a rendezvous message back.
+var errRendezvousHeld = errors.New("rendezvous message held")
+
+// rendezvousTLV returns the rendezvous data to relay to the recipient.
+func (s *ICBMService) rendezvousTLV(instance *state.SessionInstance, recip state.IdentScreenName, tlv wire.TLV) (wire.TLV, error) {
+	if s.rendezvousBroker != nil {
+		frag := wire.ICBMCh2Fragment{}
+		if err := wire.UnmarshalBE(&frag, bytes.NewReader(tlv.Value)); err != nil {
+			return tlv, fmt.Errorf("wire.UnmarshalBE: %w", err)
+		}
+		if s.rendezvousBroker.HoldRendezvous(instance, frag) {
+			return tlv, errRendezvousHeld
+		}
+		if rewritten, ok := s.rendezvousBroker.BrokerRendezvous(instance, recip, frag); ok {
+			return wire.NewTLVBE(tlv.Tag, rewritten), nil
+		}
+	}
+	return addExternalIP(instance, tlv)
+}
+
 // addExternalIP appends the client's IP address to the TLV if it's an ICBM
 // rendezvous proposal/accept message.
 func addExternalIP(instance *state.SessionInstance, tlv wire.TLV) (wire.TLV, error) {
@@ -545,6 +575,9 @@ func (s *ICBMService) ClientEvent(ctx context.Context, instance *state.SessionIn
 }
 
 func (s *ICBMService) ClientErr(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x04_0x0B_ICBMClientErr) error {
+	if s.rendezvousBroker != nil && inBody.ChannelID == wire.ICBMChannelRendezvous {
+		s.rendezvousBroker.RefuseRendezvous(inBody.Cookie)
+	}
 	s.messageRelayer.RelayToScreenName(ctx, state.NewIdentScreenName(inBody.ScreenName), wire.SNACMessage{
 		Frame: wire.SNACFrame{
 			FoodGroup: wire.ICBM,
