@@ -174,6 +174,29 @@ func (m *LegacySessionManager) GetSession(uin uint32) *LegacySession {
 	return m.sessions[uin]
 }
 
+// v2DirectConnection returns the peer's IPv4 address and TCP listening port.
+func (m *LegacySessionManager) v2DirectConnection(uin uint32) (net.IP, uint16) {
+	if !m.config.DirectConnectionEnabled(int(ICQLegacyVersionV2)) {
+		return nil, 0
+	}
+
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	peer := m.sessions[uin]
+	if peer == nil || peer.Version != ICQLegacyVersionV2 || peer.Addr == nil {
+		return nil, 0
+	}
+
+	ip := peer.Addr.IP.To4()
+	port := peer.GetTCPPort()
+	if ip == nil || port == 0 || port > 65535 {
+		return nil, 0
+	}
+
+	return ip, uint16(port)
+}
+
 // GetSessionByAddr retrieves a session by UDP address
 func (m *LegacySessionManager) GetSessionByAddr(addr *net.UDPAddr) *LegacySession {
 	m.mu.RLock()

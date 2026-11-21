@@ -97,7 +97,7 @@ func (d *ProtocolDispatcher) SendUserOnline(toSession *LegacySession, onlineUIN 
 	case ICQLegacyVersionV1:
 		return d.v1Handler.sendUserOnline(toSession, onlineUIN, downgradeStatusForV2(status), nil, 0)
 	case ICQLegacyVersionV2:
-		return d.v2Handler.sendUserOnline(toSession, onlineUIN, downgradeStatusForV2(status), nil, 0)
+		return d.v2Handler.sendV2UserOnline(toSession, onlineUIN, status)
 	case ICQLegacyVersionV3:
 		return d.v3Handler.sendUserOnline(toSession, onlineUIN, status)
 	case ICQLegacyVersionV4:
