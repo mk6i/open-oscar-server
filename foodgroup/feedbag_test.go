@@ -1470,6 +1470,11 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					},
 				},
 				feedbagManagerParams: feedbagManagerParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+						},
+					},
 					feedbagUpsertParams: feedbagUpsertParams{
 						{
 							screenName: state.NewIdentScreenName("me"),
@@ -1625,6 +1630,11 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 					},
 				},
 				feedbagManagerParams: feedbagManagerParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+						},
+					},
 					feedbagUpsertParams: feedbagUpsertParams{
 						{
 							screenName: state.NewIdentScreenName("me"),
@@ -1645,7 +1655,6 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 						},
 					},
 					adjacentUsersParams: adjacentUsersParams{},
-					feedbagParams:       feedbagParams{},
 				},
 				messageRelayerParams: messageRelayerParams{
 					relayToOtherInstancesParams: relayToOtherInstancesParams{
@@ -1780,6 +1789,11 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 			},
 			mockParams: mockParams{
 				feedbagManagerParams: feedbagManagerParams{
+					feedbagParams: feedbagParams{
+						{
+							screenName: state.NewIdentScreenName("me"),
+						},
+					},
 					feedbagUpsertParams: feedbagUpsertParams{
 						{
 							screenName: state.NewIdentScreenName("me"),
@@ -2718,6 +2732,16 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 			for _, params := range tc.mockParams.feedbagUpsertParams {
 				feedbagManager.EXPECT().
 					FeedbagUpsert(matchContext(), params.screenName, params.items).
+					Return(nil)
+			}
+			for _, params := range tc.mockParams.feedbagParams {
+				feedbagManager.EXPECT().
+					Feedbag(matchContext(), params.screenName).
+					Return(params.results, nil)
+			}
+			for _, params := range tc.mockParams.feedbagDeleteParams {
+				feedbagManager.EXPECT().
+					FeedbagDelete(matchContext(), params.screenName, params.items).
 					Return(nil)
 			}
 			messageRelayer := newMockMessageRelayer(t)
@@ -5355,4 +5379,200 @@ func TestFeedbagService_ForwardICQAuthEvents(t *testing.T) {
 			assert.ErrorIs(t, err, tt.wantErr)
 		})
 	}
+}
+
+func TestFeedbagService_DeleteItem_BARTItem(t *testing.T) {
+	currentIcon := wire.BARTID{
+		Type: wire.BARTTypesBuddyIcon,
+		BARTInfo: wire.BARTInfo{
+			Flags: wire.BARTFlagsCustom,
+			Hash:  []byte("current icon...."),
+		},
+	}
+	bartItem := func(hash []byte) wire.FeedbagItem {
+		return wire.FeedbagItem{
+			Name:    fmt.Sprintf("%d", wire.BARTTypesBuddyIcon),
+			ItemID:  10,
+			ClassID: wire.FeedbagClassIdBart,
+			TLVLBlock: wire.TLVLBlock{
+				TLVList: wire.TLVList{
+					wire.NewTLVBE(wire.FeedbagAttributesBartInfo, wire.BARTInfo{
+						Flags: wire.BARTFlagsCustom,
+						Hash:  hash,
+					}),
+				},
+			},
+		}
+	}
+	buddyItem := wire.FeedbagItem{
+		Name:    "friend",
+		GroupID: 1,
+		ItemID:  20,
+		ClassID: wire.FeedbagClassIdBuddy,
+	}
+	hasBlankIcon := func(info wire.TLVUserInfo) bool {
+		b, ok := info.Bytes(wire.OServiceUserInfoBARTInfo)
+		return ok && bytes.Contains(b, blankGIFHash)
+	}
+
+	tests := []struct {
+		name         string
+		instance     *state.SessionInstance
+		items        []wire.FeedbagItem
+		wantDeleted  []wire.FeedbagItem
+		wantUpserted []wire.FeedbagItem
+		wantFilter   []state.IdentScreenName
+		wantIcon     wire.BARTID
+		wantNoIcon   bool
+	}{
+		{
+			name:         "deleting the item that holds the current icon stores the blank icon in it",
+			instance:     newTestInstance("me", sessOptBuddyIcon(currentIcon)),
+			items:        []wire.FeedbagItem{bartItem(currentIcon.Hash)},
+			wantUpserted: []wire.FeedbagItem{bartItem(blankGIFHash)},
+			wantIcon:     blankBuddyIcon(),
+		},
+		{
+			name:         "deleting the current icon item with a buddy deletes only the buddy",
+			instance:     newTestInstance("me", sessOptBuddyIcon(currentIcon)),
+			items:        []wire.FeedbagItem{buddyItem, bartItem(currentIcon.Hash)},
+			wantDeleted:  []wire.FeedbagItem{buddyItem},
+			wantUpserted: []wire.FeedbagItem{bartItem(blankGIFHash)},
+			wantFilter:   []state.IdentScreenName{state.NewIdentScreenName("friend")},
+			wantIcon:     blankBuddyIcon(),
+		},
+		{
+			name:        "deleting an item that holds a replaced icon keeps the current icon",
+			instance:    newTestInstance("me", sessOptBuddyIcon(currentIcon)),
+			items:       []wire.FeedbagItem{bartItem([]byte("replaced icon..."))},
+			wantDeleted: []wire.FeedbagItem{bartItem([]byte("replaced icon..."))},
+			wantIcon:    currentIcon,
+		},
+		{
+			name:        "deleting a BART item without a session icon doesn't set one",
+			instance:    newTestInstance("me"),
+			items:       []wire.FeedbagItem{bartItem(currentIcon.Hash)},
+			wantDeleted: []wire.FeedbagItem{bartItem(currentIcon.Hash)},
+			wantNoIcon:  true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			feedbagManager := newMockFeedbagManager(t)
+			if tc.wantDeleted != nil {
+				feedbagManager.EXPECT().
+					FeedbagDelete(matchContext(), state.NewIdentScreenName("me"), tc.wantDeleted).
+					Return(nil)
+			}
+			if tc.wantUpserted != nil {
+				feedbagManager.EXPECT().
+					FeedbagUpsert(matchContext(), state.NewIdentScreenName("me"), tc.wantUpserted).
+					Return(nil)
+			}
+
+			buddyBroadcaster := newMockbuddyBroadcaster(t)
+			buddyBroadcaster.EXPECT().
+				BroadcastVisibility(mock.Anything, matchSession(state.NewIdentScreenName("me")), tc.wantFilter, true).
+				Return(nil)
+
+			messageRelayer := newMockMessageRelayer(t)
+			messageRelayer.EXPECT().
+				RelayToOtherInstances(mock.Anything, mock.Anything, mock.Anything)
+			messageRelayer.EXPECT().
+				RelayToSelf(mock.Anything, mock.Anything, mock.MatchedBy(func(msg wire.SNACMessage) bool {
+					return msg.Frame.FoodGroup == wire.Feedbag && msg.Frame.SubGroup == wire.FeedbagStatus
+				}))
+
+			if tc.wantUpserted != nil {
+				buddyBroadcaster.EXPECT().
+					BroadcastBuddyArrived(mock.Anything, state.NewIdentScreenName("me"), mock.MatchedBy(hasBlankIcon)).
+					Return(nil)
+				messageRelayer.EXPECT().
+					RelayToSelf(mock.Anything, mock.Anything, mock.MatchedBy(func(msg wire.SNACMessage) bool {
+						snac, ok := msg.Body.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
+						return ok && hasBlankIcon(snac.UserInfo[0])
+					}))
+			}
+
+			svc := FeedbagService{
+				buddyBroadcaster: buddyBroadcaster,
+				feedbagManager:   feedbagManager,
+				messageRelayer:   messageRelayer,
+			}
+			output, err := svc.DeleteItem(context.Background(), tc.instance, wire.SNACFrame{RequestID: 1234},
+				wire.SNAC_0x13_0x0A_FeedbagDeleteItem{Items: tc.items})
+			assert.NoError(t, err)
+			assert.Nil(t, output)
+
+			have, hasIcon := tc.instance.Session().BuddyIcon()
+			if tc.wantNoIcon {
+				assert.False(t, hasIcon)
+				return
+			}
+			assert.True(t, hasIcon)
+			assert.Equal(t, tc.wantIcon, have)
+		})
+	}
+}
+
+func TestFeedbagService_UpsertItem_RemovesOtherIconItems(t *testing.T) {
+	iconItem := func(itemID uint16, hash []byte) wire.FeedbagItem {
+		return wire.FeedbagItem{
+			Name:    fmt.Sprintf("%d", wire.BARTTypesBuddyIcon),
+			ItemID:  itemID,
+			ClassID: wire.FeedbagClassIdBart,
+			TLVLBlock: wire.TLVLBlock{
+				TLVList: wire.TLVList{
+					wire.NewTLVBE(wire.FeedbagAttributesBartInfo, wire.BARTInfo{
+						Flags: wire.BARTFlagsCustom,
+						Hash:  hash,
+					}),
+				},
+			},
+		}
+	}
+	newIcon := iconItem(30, []byte("new icon........"))
+	staleIcon := iconItem(10, blankGIFHash)
+	buddyItem := wire.FeedbagItem{Name: "friend", GroupID: 1, ItemID: 20, ClassID: wire.FeedbagClassIdBuddy}
+	sn := state.NewIdentScreenName("me")
+
+	feedbagManager := newMockFeedbagManager(t)
+	feedbagManager.EXPECT().
+		FeedbagUpsert(matchContext(), sn, []wire.FeedbagItem{newIcon}).
+		Return(nil)
+	feedbagManager.EXPECT().
+		Feedbag(matchContext(), sn).
+		Return([]wire.FeedbagItem{buddyItem, staleIcon, newIcon}, nil)
+	feedbagManager.EXPECT().
+		FeedbagDelete(matchContext(), sn, []wire.FeedbagItem{staleIcon}).
+		Return(nil)
+
+	bartItemManager := newMockBARTItemManager(t)
+	bartItemManager.EXPECT().
+		BARTItem(matchContext(), []byte("new icon........")).
+		Return([]byte("icon data"), nil)
+
+	buddyBroadcaster := newMockbuddyBroadcaster(t)
+	buddyBroadcaster.EXPECT().
+		BroadcastBuddyArrived(mock.Anything, sn, mock.Anything).
+		Return(nil)
+	buddyBroadcaster.EXPECT().
+		BroadcastVisibility(mock.Anything, matchSession(sn), []state.IdentScreenName(nil), true).
+		Return(nil).
+		Maybe()
+
+	messageRelayer := newMockMessageRelayer(t)
+	messageRelayer.EXPECT().RelayToSelf(mock.Anything, mock.Anything, mock.Anything)
+	messageRelayer.EXPECT().RelayToOtherInstances(mock.Anything, mock.Anything, mock.Anything)
+
+	svc := FeedbagService{
+		bartItemManager:  bartItemManager,
+		buddyBroadcaster: buddyBroadcaster,
+		feedbagManager:   feedbagManager,
+		logger:           slog.Default(),
+		messageRelayer:   messageRelayer,
+	}
+	_, err := svc.UpsertItem(context.Background(), newTestInstance("me"), wire.SNACFrame{RequestID: 1234},
+		[]wire.FeedbagItem{newIcon})
+	assert.NoError(t, err)
 }

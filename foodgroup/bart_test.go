@@ -3,6 +3,8 @@ package foodgroup
 import (
 	"bytes"
 	"context"
+	"image"
+	"image/gif"
 	"io"
 	"log/slog"
 	"testing"
@@ -360,7 +362,7 @@ func TestBARTService_UpsertItem(t *testing.T) {
 			wantErr:      io.EOF,
 		},
 		{
-			name: "insert new buddy icon unrelated to current session",
+			name: "upload of a new buddy icon assigns it and confirms it with SNAC(0x01,0x21)",
 			instance: newTestInstance("user_screen_name", sessOptBuddyIcon(wire.BARTID{
 				Type: wire.BARTTypesBuddyIcon,
 				BARTInfo: wire.BARTInfo{
@@ -387,7 +389,63 @@ func TestBARTService_UpsertItem(t *testing.T) {
 						},
 					},
 				},
-				messageRelayerParams: messageRelayerParams{},
+				buddyBroadcasterParams: buddyBroadcasterParams{
+					broadcastBuddyArrivedParams: broadcastBuddyArrivedParams{
+						{
+							screenName: state.DisplayScreenName("user_screen_name"),
+							bodyMatcher: func(tlvInfo wire.TLVUserInfo) bool {
+								bartID, exists := tlvInfo.Bytes(wire.OServiceUserInfoBARTInfo)
+								return exists &&
+									tlvInfo.ScreenName == "user_screen_name" &&
+									bytes.Contains(bartID, itemHash)
+							},
+						},
+					},
+				},
+				messageRelayerParams: messageRelayerParams{
+					relayToSelfParams: relayToSelfParams{
+						{
+							screenName: state.NewIdentScreenName("user_screen_name"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.OService,
+									SubGroup:  wire.OServiceBartReply,
+								},
+								Body: func(val any) bool {
+									return assert.Equal(t, wire.SNAC_0x01_0x21_OServiceBARTReply{
+										BARTID: wire.BARTID{
+											Type: wire.BARTTypesBuddyIcon,
+											BARTInfo: wire.BARTInfo{
+												Flags: wire.BARTFlagsCustom,
+												Hash:  itemHash,
+											},
+										},
+									}, val)
+								},
+							},
+						},
+						{
+							screenName: state.NewIdentScreenName("user_screen_name"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.OService,
+									SubGroup:  wire.OServiceUserInfoUpdate,
+									RequestID: wire.ReqIDFromServer,
+								},
+								Body: func(val any) bool {
+									snac, ok := val.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
+									if !ok {
+										return false
+									}
+									bartID, exists := snac.UserInfo[0].Bytes(wire.OServiceUserInfoBARTInfo)
+									return exists &&
+										snac.UserInfo[0].ScreenName == "user_screen_name" &&
+										bytes.Contains(bartID, itemHash)
+								},
+							},
+						},
+					},
+				},
 			},
 			expectOutput: wire.SNACMessage{
 				Frame: wire.SNACFrame{
@@ -407,7 +465,65 @@ func TestBARTService_UpsertItem(t *testing.T) {
 				},
 			},
 			instanceMatch: func(instance *state.SessionInstance) {
-				// assert session icon didn't change
+				have, hasIcon := instance.Session().BuddyIcon()
+				assert.True(t, hasIcon)
+				want := wire.BARTID{
+					Type: wire.BARTTypesBuddyIcon,
+					BARTInfo: wire.BARTInfo{
+						Flags: wire.BARTFlagsCustom,
+						Hash:  itemHash,
+					},
+				}
+				assert.Equal(t, want, have)
+			},
+		},
+		{
+			name: "upload of a non-icon BART item doesn't change the buddy icon",
+			instance: newTestInstance("user_screen_name", sessOptBuddyIcon(wire.BARTID{
+				Type: wire.BARTTypesBuddyIcon,
+				BARTInfo: wire.BARTInfo{
+					Flags: wire.BARTFlagsCustom | wire.BARTFlagsKnown,
+					Hash:  []byte("unrelated icon"),
+				},
+			})),
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x10_0x02_BARTUploadQuery{
+					Type: wire.BARTTypesArriveSound,
+					Data: itemData,
+				},
+			},
+			mockParams: mockParams{
+				bartItemManagerParams: bartItemManagerParams{
+					bartItemManagerUpsertParams: bartItemManagerUpsertParams{
+						{
+							itemHash: itemHash,
+							payload:  itemData,
+							bartType: wire.BARTTypesArriveSound,
+						},
+					},
+				},
+			},
+			expectOutput: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.BART,
+					SubGroup:  wire.BARTUploadReply,
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x10_0x03_BARTUploadReply{
+					Code: wire.BARTReplyCodesSuccess,
+					ID: wire.BARTID{
+						Type: wire.BARTTypesArriveSound,
+						BARTInfo: wire.BARTInfo{
+							Flags: wire.BARTFlagsCustom,
+							Hash:  itemHash,
+						},
+					},
+				},
+			},
+			instanceMatch: func(instance *state.SessionInstance) {
 				have, hasIcon := instance.Session().BuddyIcon()
 				assert.True(t, hasIcon)
 				want := wire.BARTID{
@@ -989,5 +1105,60 @@ func TestBARTService_RetrieveItemV2(t *testing.T) {
 			assert.ErrorIs(t, err, tc.expectErr)
 			assert.Equal(t, output, tc.expectOutput)
 		})
+	}
+}
+
+func TestBARTService_RetrieveItem_BlankIcon(t *testing.T) {
+	tests := []struct {
+		name   string
+		bartID wire.BARTID
+	}{
+		{
+			name: "clear icon hash",
+			bartID: wire.BARTID{
+				Type:     wire.BARTTypesBuddyIcon,
+				BARTInfo: wire.BARTInfo{Hash: wire.GetClearIconHash()},
+			},
+		},
+		{
+			name:   "blank icon hash",
+			bartID: blankBuddyIcon(),
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := NewBARTService(slog.Default(), nil, nil, nil, nil)
+
+			output, err := svc.RetrieveItem(context.Background(), wire.SNACFrame{RequestID: 1234}, wire.SNAC_0x10_0x04_BARTDownloadQuery{
+				ScreenName: "user",
+				BARTID:     tc.bartID,
+			})
+			assert.NoError(t, err)
+			assert.Equal(t, blankGIF, output.Body.(wire.SNAC_0x10_0x05_BARTDownloadReply).Data)
+
+			outputs, err := svc.RetrieveItemV2(context.Background(), wire.SNACFrame{RequestID: 1234}, wire.SNAC_0x10_0x06_BARTDownload2Query{
+				ScreenName: "user",
+				IDs:        []wire.BARTID{tc.bartID},
+			})
+			assert.NoError(t, err)
+			assert.Len(t, outputs, 1)
+			assert.Equal(t, blankGIF, outputs[0].Body.(wire.SNAC_0x10_0x07_BARTDownload2Reply).Data)
+		})
+	}
+}
+
+func TestBlankGIF(t *testing.T) {
+	assert.Len(t, blankGIF, 90)
+
+	img, err := gif.Decode(bytes.NewReader(blankGIF))
+	assert.NoError(t, err)
+
+	paletted, ok := img.(*image.Paletted)
+	assert.True(t, ok)
+	assert.Equal(t, image.Rect(0, 0, 44, 44), paletted.Bounds())
+	_, _, _, a := paletted.Palette[0].RGBA()
+	assert.Zero(t, a)
+	for _, px := range paletted.Pix {
+		assert.Zero(t, px)
 	}
 }

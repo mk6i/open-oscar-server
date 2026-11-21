@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -335,6 +336,11 @@ func (s *FeedbagService) UpsertItem(ctx context.Context, instance *state.Session
 		case wire.FeedbagClassIdBuddy, wire.FeedbagClassIDPermit, wire.FeedbagClassIDDeny, wire.FeedbagClassIdIgnoreList:
 			filter = append(filter, state.NewIdentScreenName(item.Name))
 		case wire.FeedbagClassIdBart:
+			if isBuddyIconItem(item) {
+				if err := s.removeOtherIconItems(ctx, instance, item); err != nil {
+					return nil, err
+				}
+			}
 			if err := s.setBARTItem(ctx, instance, item); err != nil {
 				return nil, err
 			}
@@ -482,8 +488,25 @@ func (s *FeedbagService) setBARTItem(ctx context.Context, instance *state.Sessio
 // Sends buddy arrival notifications to each unblocked buddy if current user is
 // visible. It returns wire.FeedbagStatus, which contains update confirmation.
 func (s *FeedbagService) DeleteItem(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x0A_FeedbagDeleteItem) (*wire.SNACMessage, error) {
-	if err := s.feedbagManager.FeedbagDelete(ctx, instance.IdentScreenName(), inBody.Items); err != nil {
-		return nil, err
+	// Keep a deleted buddy icon item with the blank icon so it survives sign-on.
+	var toDelete, blankIconItems []wire.FeedbagItem
+	for _, item := range inBody.Items {
+		if item.ClassID == wire.FeedbagClassIdBart && deletesCurrentIcon(instance, item) {
+			blankIconItems = append(blankIconItems, withBlankIcon(item))
+		} else {
+			toDelete = append(toDelete, item)
+		}
+	}
+
+	if len(toDelete) > 0 {
+		if err := s.feedbagManager.FeedbagDelete(ctx, instance.IdentScreenName(), toDelete); err != nil {
+			return nil, err
+		}
+	}
+	if len(blankIconItems) > 0 {
+		if err := s.feedbagManager.FeedbagUpsert(ctx, instance.IdentScreenName(), blankIconItems); err != nil {
+			return nil, err
+		}
 	}
 
 	snacPayloadOut := wire.SNAC_0x13_0x0E_FeedbagStatus{}
@@ -518,6 +541,14 @@ func (s *FeedbagService) DeleteItem(ctx context.Context, instance *state.Session
 		}
 	}
 
+	if len(blankIconItems) > 0 {
+		instance.Session().SetBuddyIcon(blankBuddyIcon())
+		sendUserInfoUpdateToAll(ctx, s.messageRelayer, instance)
+		if err := s.buddyBroadcaster.BroadcastBuddyArrived(ctx, instance.IdentScreenName(), instance.Session().TLVUserInfo()); err != nil {
+			return nil, err
+		}
+	}
+
 	if instance.InNotifyTxn() {
 		if err := instance.NotifyTxn(filter...); err != nil {
 			return nil, fmt.Errorf("NotifyTxn: %w", err)
@@ -529,6 +560,62 @@ func (s *FeedbagService) DeleteItem(ctx context.Context, instance *state.Session
 	}
 
 	return nil, nil
+}
+
+// withBlankIcon returns a copy of item that holds the blank icon.
+func withBlankIcon(item wire.FeedbagItem) wire.FeedbagItem {
+	item.TLVList = slices.Clone(item.TLVList)
+	item.Set(wire.NewTLVBE(wire.FeedbagAttributesBartInfo, blankBuddyIcon().BARTInfo))
+	return item
+}
+
+// isBuddyIconItem reports whether item is a buddy icon BART feedbag item.
+func isBuddyIconItem(item wire.FeedbagItem) bool {
+	if item.ClassID != wire.FeedbagClassIdBart {
+		return false
+	}
+	itemType, err := strconv.ParseUint(item.Name, 0, 16)
+	return err == nil && uint16(itemType) == wire.BARTTypesBuddyIcon
+}
+
+// removeOtherIconItems deletes the user's buddy icon items other than item,
+// since the stored icon is read from a single item at sign-on.
+func (s *FeedbagService) removeOtherIconItems(ctx context.Context, instance *state.SessionInstance, item wire.FeedbagItem) error {
+	items, err := s.feedbagManager.Feedbag(ctx, instance.IdentScreenName())
+	if err != nil {
+		return fmt.Errorf("feedbagManager.Feedbag: %w", err)
+	}
+	var stale []wire.FeedbagItem
+	for _, other := range items {
+		if isBuddyIconItem(other) && (other.GroupID != item.GroupID || other.ItemID != item.ItemID) {
+			stale = append(stale, other)
+		}
+	}
+	if len(stale) == 0 {
+		return nil
+	}
+	return s.feedbagManager.FeedbagDelete(ctx, instance.IdentScreenName(), stale)
+}
+
+// deletesCurrentIcon reports whether deleting item removes the session's
+// current buddy icon.
+func deletesCurrentIcon(instance *state.SessionInstance, item wire.FeedbagItem) bool {
+	if !isBuddyIconItem(item) {
+		return false
+	}
+	current, hasIcon := instance.Session().BuddyIcon()
+	if !hasIcon {
+		return false
+	}
+	b, ok := item.Bytes(wire.FeedbagAttributesBartInfo)
+	if !ok {
+		return true
+	}
+	info := wire.BARTInfo{}
+	if err := wire.UnmarshalBE(&info, bytes.NewBuffer(b)); err != nil {
+		return true
+	}
+	return bytes.Equal(current.Hash, info.Hash)
 }
 
 // StartCluster signals the beginning of a batch of feedbag operations that clients should
