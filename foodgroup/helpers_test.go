@@ -880,6 +880,13 @@ func sessOptUIN(UIN uint32) func(instance *state.SessionInstance) {
 	}
 }
 
+// sessOptICQDCInfo sets the instance's ICQ direct connection info
+func sessOptICQDCInfo(info wire.ICQDCInfo) func(instance *state.SessionInstance) {
+	return func(instance *state.SessionInstance) {
+		instance.SetICQDCInfo(info)
+	}
+}
+
 // sessOptCaps sets the instance's capability UUIDs
 func sessOptCaps(caps ...[16]byte) func(instance *state.SessionInstance) {
 	return func(instance *state.SessionInstance) {

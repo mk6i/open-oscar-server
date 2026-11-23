@@ -3,6 +3,7 @@ package foodgroup
 import (
 	"bytes"
 	"context"
+	"crypto/md5"
 	"fmt"
 	"log/slog"
 	"testing"
@@ -1645,7 +1646,6 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 						},
 					},
 					adjacentUsersParams: adjacentUsersParams{},
-					feedbagParams:       feedbagParams{},
 				},
 				messageRelayerParams: messageRelayerParams{
 					relayToOtherInstancesParams: relayToOtherInstancesParams{
@@ -1770,7 +1770,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 								TLVList: wire.TLVList{
 									wire.NewTLVBE(wire.FeedbagAttributesBartInfo, wire.BARTInfo{
 										Flags: wire.BARTFlagsKnown,
-										Hash:  wire.GetClearIconHash(),
+										Hash:  wire.ClearIconHash(),
 									}),
 								},
 							},
@@ -1791,7 +1791,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 										TLVList: wire.TLVList{
 											wire.NewTLVBE(wire.FeedbagAttributesBartInfo, wire.BARTInfo{
 												Flags: wire.BARTFlagsKnown,
-												Hash:  wire.GetClearIconHash(),
+												Hash:  wire.ClearIconHash(),
 											}),
 										},
 									},
@@ -1825,7 +1825,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 											TLVLBlock: wire.TLVLBlock{
 												TLVList: wire.TLVList{
 													wire.NewTLVBE(wire.FeedbagAttributesBartInfo, wire.BARTInfo{
-														Hash: wire.GetClearIconHash(),
+														Hash: wire.ClearIconHash(),
 													}),
 												},
 											},
@@ -1852,7 +1852,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 									bartID, exists := snac.UserInfo[0].Bytes(wire.OServiceUserInfoBARTInfo)
 									return assert.True(t, exists) &&
 										assert.Equal(t, "me", snac.UserInfo[0].ScreenName) &&
-										assert.True(t, bytes.Contains(bartID, wire.GetClearIconHash()), "user info BART hash doesn't match")
+										assert.True(t, bytes.Contains(bartID, wire.ClearIconHash()), "user info BART hash doesn't match")
 								},
 							},
 						},
@@ -1868,7 +1868,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 										Type: wire.BARTTypesBuddyIcon,
 										BARTInfo: wire.BARTInfo{
 											Flags: wire.BARTFlagsKnown,
-											Hash:  wire.GetClearIconHash(),
+											Hash:  wire.ClearIconHash(),
 										},
 									},
 								},
@@ -1894,7 +1894,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 			instanceMatch: func(instance *state.SessionInstance) {
 				bartInfo, hasIcon := instance.Session().BuddyIcon()
 				assert.True(t, hasIcon)
-				assert.Equal(t, wire.GetClearIconHash(), bartInfo.Hash)
+				assert.Equal(t, wire.ClearIconHash(), bartInfo.Hash)
 			},
 		},
 		{
@@ -5353,6 +5353,158 @@ func TestFeedbagService_ForwardICQAuthEvents(t *testing.T) {
 
 			err := svc.ForwardICQAuthEvents(context.Background(), sender.IdentScreenName(), recipient, tt.authMsg)
 			assert.ErrorIs(t, err, tt.wantErr)
+		})
+	}
+}
+
+func TestFeedbagService_DeleteItem_BARTItem(t *testing.T) {
+	currentIcon := wire.BARTID{
+		Type: wire.BARTTypesBuddyIcon,
+		BARTInfo: wire.BARTInfo{
+			Flags: wire.BARTFlagsCustom,
+			Hash:  []byte("current icon...."),
+		},
+	}
+	blankHash := md5.Sum(blankGIF)
+	blankIcon := wire.BARTID{
+		Type: wire.BARTTypesBuddyIcon,
+		BARTInfo: wire.BARTInfo{
+			Flags: wire.BARTFlagsCustom,
+			Hash:  blankHash[:],
+		},
+	}
+	bartItem := func(hash []byte) wire.FeedbagItem {
+		return wire.FeedbagItem{
+			Name:    fmt.Sprintf("%d", wire.BARTTypesBuddyIcon),
+			ItemID:  10,
+			ClassID: wire.FeedbagClassIdBart,
+			TLVLBlock: wire.TLVLBlock{
+				TLVList: wire.TLVList{
+					wire.NewTLVBE(wire.FeedbagAttributesBartInfo, wire.BARTInfo{
+						Flags: wire.BARTFlagsCustom,
+						Hash:  hash,
+					}),
+				},
+			},
+		}
+	}
+	buddyItem := wire.FeedbagItem{
+		Name:    "friend",
+		GroupID: 1,
+		ItemID:  20,
+		ClassID: wire.FeedbagClassIdBuddy,
+	}
+	hasBlankIcon := func(info wire.TLVUserInfo) bool {
+		b, ok := info.Bytes(wire.OServiceUserInfoBARTInfo)
+		return ok && bytes.Contains(b, blankHash[:])
+	}
+	qip2005 := []func(*state.SessionInstance){
+		sessOptBuddyIcon(currentIcon),
+		sessOptUIN(100003),
+		sessOptICQDCInfo(wire.ICQDCInfo{ProtoVersion: 11}),
+	}
+
+	tests := []struct {
+		name         string
+		instance     *state.SessionInstance
+		items        []wire.FeedbagItem
+		wantDeleted  []wire.FeedbagItem
+		wantUpserted []wire.FeedbagItem
+		wantFilter   []state.IdentScreenName
+		wantIcon     wire.BARTID
+	}{
+		{
+			name:         "QIP 2005 deleting its BART item stores the blank icon in it",
+			instance:     newTestInstance("100003", qip2005...),
+			items:        []wire.FeedbagItem{bartItem(currentIcon.Hash)},
+			wantUpserted: []wire.FeedbagItem{bartItem(blankHash[:])},
+			wantIcon:     blankIcon,
+		},
+		{
+			name:        "QIP 2005 deleting its BART item with a buddy deletes both",
+			instance:    newTestInstance("100003", qip2005...),
+			items:       []wire.FeedbagItem{buddyItem, bartItem(currentIcon.Hash)},
+			wantDeleted: []wire.FeedbagItem{buddyItem, bartItem(currentIcon.Hash)},
+			wantFilter:  []state.IdentScreenName{state.NewIdentScreenName("friend")},
+			wantIcon:    currentIcon,
+		},
+		{
+			name:        "QIP 2005 deleting a buddy deletes it",
+			instance:    newTestInstance("100003", qip2005...),
+			items:       []wire.FeedbagItem{buddyItem},
+			wantDeleted: []wire.FeedbagItem{buddyItem},
+			wantFilter:  []state.IdentScreenName{state.NewIdentScreenName("friend")},
+			wantIcon:    currentIcon,
+		},
+		{
+			name: "other ICQ client deleting its BART item deletes it",
+			instance: newTestInstance("100003", sessOptBuddyIcon(currentIcon), sessOptUIN(100003),
+				sessOptICQDCInfo(wire.ICQDCInfo{ProtoVersion: 8})),
+			items:       []wire.FeedbagItem{bartItem(currentIcon.Hash)},
+			wantDeleted: []wire.FeedbagItem{bartItem(currentIcon.Hash)},
+			wantIcon:    currentIcon,
+		},
+		{
+			name: "AIM client with DC protocol version 11 deleting its BART item deletes it",
+			instance: newTestInstance("me", sessOptBuddyIcon(currentIcon),
+				sessOptICQDCInfo(wire.ICQDCInfo{ProtoVersion: 11})),
+			items:       []wire.FeedbagItem{bartItem(currentIcon.Hash)},
+			wantDeleted: []wire.FeedbagItem{bartItem(currentIcon.Hash)},
+			wantIcon:    currentIcon,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			sn := tc.instance.IdentScreenName()
+
+			feedbagManager := newMockFeedbagManager(t)
+			buddyBroadcaster := newMockbuddyBroadcaster(t)
+			messageRelayer := newMockMessageRelayer(t)
+
+			messageRelayer.EXPECT().
+				RelayToSelf(mock.Anything, mock.Anything, mock.MatchedBy(func(msg wire.SNACMessage) bool {
+					return msg.Frame.FoodGroup == wire.Feedbag && msg.Frame.SubGroup == wire.FeedbagStatus
+				})).
+				Once()
+
+			if tc.wantDeleted != nil {
+				feedbagManager.EXPECT().
+					FeedbagDelete(matchContext(), sn, tc.wantDeleted).
+					Return(nil)
+				buddyBroadcaster.EXPECT().
+					BroadcastVisibility(mock.Anything, matchSession(sn), tc.wantFilter, true).
+					Return(nil)
+				messageRelayer.EXPECT().
+					RelayToOtherInstances(mock.Anything, mock.Anything, mock.Anything)
+			}
+			if tc.wantUpserted != nil {
+				feedbagManager.EXPECT().
+					FeedbagUpsert(matchContext(), sn, tc.wantUpserted).
+					Return(nil)
+				buddyBroadcaster.EXPECT().
+					BroadcastBuddyArrived(mock.Anything, sn, mock.MatchedBy(hasBlankIcon)).
+					Return(nil)
+				messageRelayer.EXPECT().
+					RelayToSelf(mock.Anything, mock.Anything, mock.MatchedBy(func(msg wire.SNACMessage) bool {
+						snac, ok := msg.Body.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
+						return ok && hasBlankIcon(snac.UserInfo[0])
+					})).
+					Once()
+			}
+
+			svc := FeedbagService{
+				buddyBroadcaster: buddyBroadcaster,
+				feedbagManager:   feedbagManager,
+				messageRelayer:   messageRelayer,
+			}
+			output, err := svc.DeleteItem(context.Background(), tc.instance, wire.SNACFrame{RequestID: 1234},
+				wire.SNAC_0x13_0x0A_FeedbagDeleteItem{Items: tc.items})
+			assert.NoError(t, err)
+			assert.Nil(t, output)
+
+			have, hasIcon := tc.instance.Session().BuddyIcon()
+			assert.True(t, hasIcon)
+			assert.Equal(t, tc.wantIcon, have)
 		})
 	}
 }

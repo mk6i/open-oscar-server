@@ -3,6 +3,7 @@ package foodgroup
 import (
 	"bytes"
 	"context"
+	"crypto/md5"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -428,7 +429,7 @@ func (s *FeedbagService) setBARTItem(ctx context.Context, instance *state.Sessio
 
 	itemExists := false
 
-	if bytes.Equal(bartID.Hash, wire.GetClearIconHash()) {
+	if bytes.Equal(bartID.Hash, wire.ClearIconHash()) {
 		s.logger.DebugContext(ctx, "user is clearing icon",
 			"hash", fmt.Sprintf("%x", bartID.Hash))
 		itemExists = true
@@ -441,7 +442,7 @@ func (s *FeedbagService) setBARTItem(ctx context.Context, instance *state.Sessio
 	}
 
 	if itemExists {
-		if bartID.Type == wire.BARTTypesBuddyIconSmall || bartID.Type == wire.BARTTypesBuddyIcon {
+		if bartID.IsBuddyIcon() {
 			instance.Session().SetBuddyIcon(bartID)
 			// tell buddies about the icon update
 			if err := s.buddyBroadcaster.BroadcastBuddyArrived(ctx, instance.IdentScreenName(), instance.Session().TLVUserInfo()); err != nil {
@@ -453,7 +454,7 @@ func (s *FeedbagService) setBARTItem(ctx context.Context, instance *state.Sessio
 	} else {
 		// icon doesn't exist, tell the client to upload buddy icon
 		bartID.Flags |= wire.BARTFlagsUnknown
-		if bartID.Type == wire.BARTTypesBuddyIconSmall || bartID.Type == wire.BARTTypesBuddyIcon {
+		if bartID.IsBuddyIcon() {
 			instance.Session().SetBuddyIcon(bartID)
 		}
 		s.logger.DebugContext(ctx, "icon doesn't exist in BART store, client must upload the icon file",
@@ -470,7 +471,7 @@ func (s *FeedbagService) setBARTItem(ctx context.Context, instance *state.Sessio
 		},
 	})
 
-	if bartID.Type == wire.BARTTypesBuddyIconSmall || bartID.Type == wire.BARTTypesBuddyIcon {
+	if bartID.IsBuddyIcon() {
 		sendUserInfoUpdateToAll(ctx, s.messageRelayer, instance)
 	}
 
@@ -482,13 +483,50 @@ func (s *FeedbagService) setBARTItem(ctx context.Context, instance *state.Sessio
 // Sends buddy arrival notifications to each unblocked buddy if current user is
 // visible. It returns wire.FeedbagStatus, which contains update confirmation.
 func (s *FeedbagService) DeleteItem(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.SNAC_0x13_0x0A_FeedbagDeleteItem) (*wire.SNACMessage, error) {
-	if err := s.feedbagManager.FeedbagDelete(ctx, instance.IdentScreenName(), inBody.Items); err != nil {
-		return nil, err
-	}
-
 	snacPayloadOut := wire.SNAC_0x13_0x0E_FeedbagStatus{}
 	for range inBody.Items {
 		snacPayloadOut.Results = append(snacPayloadOut.Results, 0x0000) // success by default
+	}
+
+	isQIP2005 := instance.UIN() != 0 && instance.ICQDCInfo().ProtoVersion == 11
+
+	if isQIP2005 && len(inBody.Items) == 1 && inBody.Items[0].ClassID == wire.FeedbagClassIdBart {
+
+		// blankBuddyIcon returns the BART ID advertised when a client clears its buddy
+		// icon by deleting the BART feedbag item.
+		h := md5.Sum(blankGIF)
+		bid := wire.BARTID{
+			Type: wire.BARTTypesBuddyIcon,
+			BARTInfo: wire.BARTInfo{
+				Flags: wire.BARTFlagsCustom,
+				Hash:  h[:],
+			},
+		}
+
+		inBody.Items[0].Set(wire.NewTLVBE(wire.FeedbagAttributesBartInfo, bid.BARTInfo))
+		if err := s.feedbagManager.FeedbagUpsert(ctx, instance.IdentScreenName(), inBody.Items); err != nil {
+			return nil, err
+		}
+		instance.Session().SetBuddyIcon(bid)
+		sendUserInfoUpdateToAll(ctx, s.messageRelayer, instance)
+		if err := s.buddyBroadcaster.BroadcastBuddyArrived(ctx, instance.IdentScreenName(), instance.Session().TLVUserInfo()); err != nil {
+			return nil, err
+		}
+
+		s.messageRelayer.RelayToSelf(ctx, instance, wire.SNACMessage{
+			Frame: wire.SNACFrame{
+				FoodGroup: wire.Feedbag,
+				SubGroup:  wire.FeedbagStatus,
+				RequestID: inFrame.RequestID,
+			},
+			Body: snacPayloadOut,
+		})
+
+		return nil, nil
+	}
+
+	if err := s.feedbagManager.FeedbagDelete(ctx, instance.IdentScreenName(), inBody.Items); err != nil {
+		return nil, err
 	}
 
 	s.messageRelayer.RelayToSelf(ctx, instance, wire.SNACMessage{

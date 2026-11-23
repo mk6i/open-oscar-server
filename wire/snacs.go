@@ -1637,9 +1637,10 @@ const (
 	BARTReplyCodesNotfound    uint8 = 0x07
 )
 
-// GetClearIconHash returns an opaque value set in BARTID hash that indicates
-// the user wants to clear their buddy icon.
-func GetClearIconHash() []byte {
+// ClearIconHash returns the BART ID for a blank, transparent icon requested by
+// some AIM clients that clears the current icon. This hash is not derived from
+// the icon payload.
+func ClearIconHash() []byte {
 	return []byte{0x02, 0x01, 0xd2, 0x04, 0x72}
 }
 
@@ -1652,7 +1653,7 @@ type BARTInfo struct {
 // HasClearIconHash reports whether the BART ID hash contains the
 // ClearIconHash sentinel value.
 func (h BARTInfo) HasClearIconHash() bool {
-	return bytes.Equal(h.Hash, GetClearIconHash())
+	return bytes.Equal(h.Hash, ClearIconHash())
 }
 
 // maxStatusMsgLen is the longest status message that fits in a BART item, whose
@@ -1700,6 +1701,12 @@ func (b *BARTID) StatusText() (string, error) {
 		return "", fmt.Errorf("BARTID.StatusText: failed to unmarshal BART status: %w", err)
 	}
 	return status.Status, nil
+}
+
+func (b *BARTID) IsBuddyIcon() bool {
+	return b.Type == BARTTypesBuddyIcon ||
+		b.Type == BARTTypesBuddyIconSmall ||
+		b.Type == BARTTypesBuddyIconBig
 }
 
 type BartQueryReplyID struct {

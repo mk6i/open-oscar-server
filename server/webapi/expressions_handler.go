@@ -126,7 +126,7 @@ func (h *ExpressionsHandler) serveIcon(w http.ResponseWriter, r *http.Request, s
 		if errors.Is(err, ErrNoBuddyIcon) {
 			// Serve the blank placeholder rather than 404 so a cleared icon still
 			// renders something and the client stops showing the previous one.
-			icon, err = h.IconSource.ImageForHash(ctx, screenName, wire.GetClearIconHash())
+			icon, err = h.IconSource.ImageForHash(ctx, screenName, wire.ClearIconHash())
 		}
 	}
 
@@ -168,7 +168,7 @@ func (h *ExpressionsHandler) Upload(w http.ResponseWriter, r *http.Request, sess
 	var bartType uint16
 	switch t := r.URL.Query().Get("type"); t {
 	case "buddyIcon", "bigBuddyIcon", "largeBuddyIcon":
-		bartType = wire.BARTTypesBuddyIcon
+		bartType = wire.BARTTypesBuddyIcon // todo what do here
 	case "":
 		SendErrorDetail(w, r, http.StatusBadRequest, statusMissingParameter, 0,
 			"required parameter 'type' is missing")
