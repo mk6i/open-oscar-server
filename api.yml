@@ -196,6 +196,55 @@ paths:
                 format: binary
         '404':
           description: User not found, or user has no buddy icon
+    put:
+      summary: Set AIM buddy icon for a screen name
+      description: >-
+        Store an image as the account's buddy icon. A signed-on user and the
+        buddies watching them are notified right away; a signed-off user picks
+        the icon up at next sign-on.
+      parameters:
+        - in: path
+          name: screenname
+          schema:
+            type: string
+          description: User's AIM screen name or ICQ UIN.
+          required: true
+      requestBody:
+        required: true
+        description: The image itself, 64 KiB at most.
+        content:
+          image/jpeg:
+            schema:
+              type: string
+              format: binary
+          image/gif:
+            schema:
+              type: string
+              format: binary
+          image/png:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: Buddy icon stored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  hash:
+                    type: string
+                    description: Hex MD5 hash the icon is stored under.
+                  type:
+                    type: integer
+                    description: BART type of the icon.
+        '400':
+          description: Empty body, or body is not an image
+        '404':
+          description: User not found
+        '413':
+          description: Image is larger than 64 KiB
 
   /session:
     get:

@@ -52,6 +52,10 @@ type BuddyBroadcaster interface {
 	// BroadcastVisibility sends presence updates to the specified filter list.
 	// If sendDepartures is true, departure events are sent as well.
 	BroadcastVisibility(ctx context.Context, you *state.SessionInstance, filter []state.IdentScreenName, sendDepartures bool) error
+
+	// BroadcastBuddyArrived sends the user's latest info, buddy icon
+	// included, to the users watching them.
+	BroadcastBuddyArrived(ctx context.Context, screenName state.IdentScreenName, userInfo wire.TLVUserInfo) error
 }
 
 // ChatRoomCreator defines a method for creating a new chat room.
