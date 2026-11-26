@@ -409,7 +409,7 @@ func TestBuddyIconSource_URL(t *testing.T) {
 		{
 			name:    "a cleared icon is not published",
 			baseURL: "http://api.example.com",
-			id:      bartID(wire.GetClearIconHash()),
+			id:      bartID(wire.ClearIconHash()),
 			want:    "",
 		},
 		{
@@ -538,7 +538,7 @@ func TestBuddyIconSource_PublishedURL(t *testing.T) {
 		{
 			name:    "a cleared icon yields the placeholder URL",
 			baseURL: "http://api.example.com",
-			id:      bartID(wire.GetClearIconHash()),
+			id:      bartID(wire.ClearIconHash()),
 			want:    "http://api.example.com/expressions/get?t=mikekelly&type=buddyIcon",
 		},
 		{

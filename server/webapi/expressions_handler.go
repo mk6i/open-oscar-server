@@ -126,7 +126,7 @@ func (h *ExpressionsHandler) serveIcon(w http.ResponseWriter, r *http.Request, s
 		if errors.Is(err, ErrNoBuddyIcon) {
 			// Serve the blank placeholder rather than 404 so a cleared icon still
 			// renders something and the client stops showing the previous one.
-			icon, err = h.IconSource.ImageForHash(ctx, screenName, wire.GetClearIconHash())
+			icon, err = h.IconSource.ImageForHash(ctx, screenName, wire.ClearIconHash())
 		}
 	}
 

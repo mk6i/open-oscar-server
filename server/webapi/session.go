@@ -743,7 +743,7 @@ func bartIDs(info wire.TLVUserInfo) []wire.BARTID {
 // when it carries none.
 func buddyIconHash(info wire.TLVUserInfo) []byte {
 	for _, id := range bartIDs(info) {
-		if id.Type == wire.BARTTypesBuddyIcon || id.Type == wire.BARTTypesBuddyIconSmall {
+		if id.IsBuddyIcon() {
 			return id.Hash
 		}
 	}

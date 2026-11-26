@@ -16,7 +16,7 @@ func TestBARTInfo_HasClearIconHash(t *testing.T) {
 	}{
 		{
 			bartInfo: BARTInfo{
-				Hash: GetClearIconHash(),
+				Hash: ClearIconHash(),
 			},
 			want: true,
 		},

@@ -1645,7 +1645,6 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 						},
 					},
 					adjacentUsersParams: adjacentUsersParams{},
-					feedbagParams:       feedbagParams{},
 				},
 				messageRelayerParams: messageRelayerParams{
 					relayToOtherInstancesParams: relayToOtherInstancesParams{
@@ -1770,7 +1769,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 								TLVList: wire.TLVList{
 									wire.NewTLVBE(wire.FeedbagAttributesBartInfo, wire.BARTInfo{
 										Flags: wire.BARTFlagsKnown,
-										Hash:  wire.GetClearIconHash(),
+										Hash:  wire.ClearIconHash(),
 									}),
 								},
 							},
@@ -1791,7 +1790,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 										TLVList: wire.TLVList{
 											wire.NewTLVBE(wire.FeedbagAttributesBartInfo, wire.BARTInfo{
 												Flags: wire.BARTFlagsKnown,
-												Hash:  wire.GetClearIconHash(),
+												Hash:  wire.ClearIconHash(),
 											}),
 										},
 									},
@@ -1825,7 +1824,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 											TLVLBlock: wire.TLVLBlock{
 												TLVList: wire.TLVList{
 													wire.NewTLVBE(wire.FeedbagAttributesBartInfo, wire.BARTInfo{
-														Hash: wire.GetClearIconHash(),
+														Hash: wire.ClearIconHash(),
 													}),
 												},
 											},
@@ -1852,7 +1851,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 									bartID, exists := snac.UserInfo[0].Bytes(wire.OServiceUserInfoBARTInfo)
 									return assert.True(t, exists) &&
 										assert.Equal(t, "me", snac.UserInfo[0].ScreenName) &&
-										assert.True(t, bytes.Contains(bartID, wire.GetClearIconHash()), "user info BART hash doesn't match")
+										assert.True(t, bytes.Contains(bartID, wire.ClearIconHash()), "user info BART hash doesn't match")
 								},
 							},
 						},
@@ -1868,7 +1867,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 										Type: wire.BARTTypesBuddyIcon,
 										BARTInfo: wire.BARTInfo{
 											Flags: wire.BARTFlagsKnown,
-											Hash:  wire.GetClearIconHash(),
+											Hash:  wire.ClearIconHash(),
 										},
 									},
 								},
@@ -1894,7 +1893,7 @@ func TestFeedbagService_UpsertItem(t *testing.T) {
 			instanceMatch: func(instance *state.SessionInstance) {
 				bartInfo, hasIcon := instance.Session().BuddyIcon()
 				assert.True(t, hasIcon)
-				assert.Equal(t, wire.GetClearIconHash(), bartInfo.Hash)
+				assert.Equal(t, wire.ClearIconHash(), bartInfo.Hash)
 			},
 		},
 		{
@@ -5353,6 +5352,162 @@ func TestFeedbagService_ForwardICQAuthEvents(t *testing.T) {
 
 			err := svc.ForwardICQAuthEvents(context.Background(), sender.IdentScreenName(), recipient, tt.authMsg)
 			assert.ErrorIs(t, err, tt.wantErr)
+		})
+	}
+}
+
+func TestFeedbagService_DeleteItem_BARTItem(t *testing.T) {
+	currentIcon := wire.BARTID{
+		Type: wire.BARTTypesBuddyIcon,
+		BARTInfo: wire.BARTInfo{
+			Flags: wire.BARTFlagsCustom,
+			Hash:  []byte("current icon...."),
+		},
+	}
+	bartItem := func(hash []byte) wire.FeedbagItem {
+		return wire.FeedbagItem{
+			Name:    fmt.Sprintf("%d", wire.BARTTypesBuddyIcon),
+			ItemID:  10,
+			ClassID: wire.FeedbagClassIdBart,
+			TLVLBlock: wire.TLVLBlock{
+				TLVList: wire.TLVList{
+					wire.NewTLVBE(wire.FeedbagAttributesBartInfo, wire.BARTInfo{
+						Flags: wire.BARTFlagsCustom,
+						Hash:  hash,
+					}),
+				},
+			},
+		}
+	}
+	buddyItem := wire.FeedbagItem{
+		Name:    "friend",
+		GroupID: 1,
+		ItemID:  20,
+		ClassID: wire.FeedbagClassIdBuddy,
+	}
+	hasBlankIcon := func(info wire.TLVUserInfo) bool {
+		b, ok := info.Bytes(wire.OServiceUserInfoBARTInfo)
+		return ok && bytes.Contains(b, blankGIFHash[:])
+	}
+	bartItemNoInfo := wire.FeedbagItem{
+		Name:    fmt.Sprintf("%d", wire.BARTTypesBuddyIcon),
+		ItemID:  10,
+		ClassID: wire.FeedbagClassIdBart,
+	}
+
+	tests := []struct {
+		name          string
+		instance      *state.SessionInstance
+		items         []wire.FeedbagItem
+		wantFilter    []state.IdentScreenName
+		wantBlankIcon bool
+		wantIcon      wire.BARTID
+		wantNoIcon    bool
+	}{
+		{
+			name:          "deleting the BART item that holds the current icon advertises the blank icon",
+			instance:      newTestInstance("me", sessOptBuddyIcon(currentIcon)),
+			items:         []wire.FeedbagItem{bartItem(currentIcon.Hash)},
+			wantBlankIcon: true,
+			wantIcon:      blankGIFBARTItem,
+		},
+		{
+			name:          "deleting the BART item that holds the current icon with a buddy advertises the blank icon",
+			instance:      newTestInstance("me", sessOptBuddyIcon(currentIcon)),
+			items:         []wire.FeedbagItem{buddyItem, bartItem(currentIcon.Hash)},
+			wantFilter:    []state.IdentScreenName{state.NewIdentScreenName("friend")},
+			wantBlankIcon: true,
+			wantIcon:      blankGIFBARTItem,
+		},
+		{
+			name:          "deleting two BART items that hold the current icon advertises the blank icon once",
+			instance:      newTestInstance("me", sessOptBuddyIcon(currentIcon)),
+			items:         []wire.FeedbagItem{bartItem(currentIcon.Hash), bartItem(currentIcon.Hash)},
+			wantBlankIcon: true,
+			wantIcon:      blankGIFBARTItem,
+		},
+		{
+			name:     "deleting a BART item that holds another icon keeps the current icon",
+			instance: newTestInstance("me", sessOptBuddyIcon(currentIcon)),
+			items:    []wire.FeedbagItem{bartItem([]byte("replaced icon..."))},
+			wantIcon: currentIcon,
+		},
+		{
+			name:     "deleting a BART item without BART info keeps the current icon",
+			instance: newTestInstance("me", sessOptBuddyIcon(currentIcon)),
+			items:    []wire.FeedbagItem{bartItemNoInfo},
+			wantIcon: currentIcon,
+		},
+		{
+			name:     "deleting a buddy keeps the current icon",
+			instance: newTestInstance("me", sessOptBuddyIcon(currentIcon)),
+			items:    []wire.FeedbagItem{buddyItem},
+			wantFilter: []state.IdentScreenName{
+				state.NewIdentScreenName("friend"),
+			},
+			wantIcon: currentIcon,
+		},
+		{
+			name:       "deleting a BART item without a session icon doesn't set one",
+			instance:   newTestInstance("me"),
+			items:      []wire.FeedbagItem{bartItem(currentIcon.Hash)},
+			wantNoIcon: true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			sn := tc.instance.IdentScreenName()
+
+			feedbagManager := newMockFeedbagManager(t)
+			feedbagManager.EXPECT().
+				FeedbagDelete(matchContext(), sn, tc.items).
+				Return(nil)
+
+			buddyBroadcaster := newMockbuddyBroadcaster(t)
+			buddyBroadcaster.EXPECT().
+				BroadcastVisibility(mock.Anything, matchSession(sn), tc.wantFilter, true).
+				Return(nil)
+
+			messageRelayer := newMockMessageRelayer(t)
+			messageRelayer.EXPECT().
+				RelayToSelf(mock.Anything, mock.Anything, mock.MatchedBy(func(msg wire.SNACMessage) bool {
+					return msg.Frame.FoodGroup == wire.Feedbag && msg.Frame.SubGroup == wire.FeedbagStatus
+				})).
+				Once()
+			messageRelayer.EXPECT().
+				RelayToOtherInstances(mock.Anything, mock.Anything, mock.Anything).
+				Once()
+
+			if tc.wantBlankIcon {
+				buddyBroadcaster.EXPECT().
+					BroadcastBuddyArrived(mock.Anything, sn, mock.MatchedBy(hasBlankIcon)).
+					Return(nil).
+					Once()
+				messageRelayer.EXPECT().
+					RelayToSelf(mock.Anything, mock.Anything, mock.MatchedBy(func(msg wire.SNACMessage) bool {
+						snac, ok := msg.Body.(wire.SNAC_0x01_0x0F_OServiceUserInfoUpdate)
+						return ok && hasBlankIcon(snac.UserInfo[0])
+					})).
+					Once()
+			}
+
+			svc := FeedbagService{
+				buddyBroadcaster: buddyBroadcaster,
+				feedbagManager:   feedbagManager,
+				messageRelayer:   messageRelayer,
+			}
+			output, err := svc.DeleteItem(context.Background(), tc.instance, wire.SNACFrame{RequestID: 1234},
+				wire.SNAC_0x13_0x0A_FeedbagDeleteItem{Items: tc.items})
+			assert.NoError(t, err)
+			assert.Nil(t, output)
+
+			have, hasIcon := tc.instance.Session().BuddyIcon()
+			if tc.wantNoIcon {
+				assert.False(t, hasIcon)
+				return
+			}
+			assert.True(t, hasIcon)
+			assert.Equal(t, tc.wantIcon, have)
 		})
 	}
 }

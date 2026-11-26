@@ -962,8 +962,8 @@ func TestSession_PublishesBuddyIconOnPresence(t *testing.T) {
 
 	t.Run("cleared icon yields a URL naming the sentinel hash", func(t *testing.T) {
 		sess := newSession()
-		arrived(sess, "Mike Kelly", wire.GetClearIconHash())
-		assert.Equal(t, "icon:"+hex.EncodeToString(wire.GetClearIconHash()), lastPresence(sess).BuddyIcon)
+		arrived(sess, "Mike Kelly", wire.ClearIconHash())
+		assert.Equal(t, "icon:"+hex.EncodeToString(wire.ClearIconHash()), lastPresence(sess).BuddyIcon)
 	})
 
 	t.Run("departed omits the icon so the client preserves it", func(t *testing.T) {

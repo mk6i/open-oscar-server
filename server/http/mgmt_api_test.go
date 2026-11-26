@@ -968,7 +968,7 @@ func TestUserBuddyIconHandler_GET(t *testing.T) {
 								Type: wire.BARTTypesBuddyIcon,
 								BARTInfo: wire.BARTInfo{
 									Flags: 0x00,
-									Hash:  wire.GetClearIconHash(),
+									Hash:  wire.ClearIconHash(),
 								},
 							},
 						},

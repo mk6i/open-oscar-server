@@ -3,6 +3,8 @@ package foodgroup
 import (
 	"bytes"
 	"context"
+	"image"
+	"image/gif"
 	"io"
 	"log/slog"
 	"testing"
@@ -360,7 +362,7 @@ func TestBARTService_UpsertItem(t *testing.T) {
 			wantErr:      io.EOF,
 		},
 		{
-			name: "insert new buddy icon unrelated to current session",
+			name: "upload of a new buddy icon confirms it with SNAC(0x01,0x21) without assigning it",
 			instance: newTestInstance("user_screen_name", sessOptBuddyIcon(wire.BARTID{
 				Type: wire.BARTTypesBuddyIcon,
 				BARTInfo: wire.BARTInfo{
@@ -387,7 +389,30 @@ func TestBARTService_UpsertItem(t *testing.T) {
 						},
 					},
 				},
-				messageRelayerParams: messageRelayerParams{},
+				messageRelayerParams: messageRelayerParams{
+					relayToSelfParams: relayToSelfParams{
+						{
+							screenName: state.NewIdentScreenName("user_screen_name"),
+							message: wire.SNACMessage{
+								Frame: wire.SNACFrame{
+									FoodGroup: wire.OService,
+									SubGroup:  wire.OServiceBartReply,
+								},
+								Body: func(val any) bool {
+									return assert.Equal(t, wire.SNAC_0x01_0x21_OServiceBARTReply{
+										BARTID: wire.BARTID{
+											Type: wire.BARTTypesBuddyIcon,
+											BARTInfo: wire.BARTInfo{
+												Flags: wire.BARTFlagsCustom,
+												Hash:  itemHash,
+											},
+										},
+									}, val)
+								},
+							},
+						},
+					},
+				},
 			},
 			expectOutput: wire.SNACMessage{
 				Frame: wire.SNACFrame{
@@ -407,7 +432,65 @@ func TestBARTService_UpsertItem(t *testing.T) {
 				},
 			},
 			instanceMatch: func(instance *state.SessionInstance) {
-				// assert session icon didn't change
+				have, hasIcon := instance.Session().BuddyIcon()
+				assert.True(t, hasIcon)
+				want := wire.BARTID{
+					Type: wire.BARTTypesBuddyIcon,
+					BARTInfo: wire.BARTInfo{
+						Flags: wire.BARTFlagsCustom | wire.BARTFlagsKnown,
+						Hash:  []byte("unrelated icon"),
+					},
+				}
+				assert.Equal(t, want, have)
+			},
+		},
+		{
+			name: "upload of a non-icon BART item doesn't change the buddy icon",
+			instance: newTestInstance("user_screen_name", sessOptBuddyIcon(wire.BARTID{
+				Type: wire.BARTTypesBuddyIcon,
+				BARTInfo: wire.BARTInfo{
+					Flags: wire.BARTFlagsCustom | wire.BARTFlagsKnown,
+					Hash:  []byte("unrelated icon"),
+				},
+			})),
+			inputSNAC: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x10_0x02_BARTUploadQuery{
+					Type: wire.BARTTypesArriveSound,
+					Data: itemData,
+				},
+			},
+			mockParams: mockParams{
+				bartItemManagerParams: bartItemManagerParams{
+					bartItemManagerUpsertParams: bartItemManagerUpsertParams{
+						{
+							itemHash: itemHash,
+							payload:  itemData,
+							bartType: wire.BARTTypesArriveSound,
+						},
+					},
+				},
+			},
+			expectOutput: wire.SNACMessage{
+				Frame: wire.SNACFrame{
+					FoodGroup: wire.BART,
+					SubGroup:  wire.BARTUploadReply,
+					RequestID: 1234,
+				},
+				Body: wire.SNAC_0x10_0x03_BARTUploadReply{
+					Code: wire.BARTReplyCodesSuccess,
+					ID: wire.BARTID{
+						Type: wire.BARTTypesArriveSound,
+						BARTInfo: wire.BARTInfo{
+							Flags: wire.BARTFlagsCustom,
+							Hash:  itemHash,
+						},
+					},
+				},
+			},
+			instanceMatch: func(instance *state.SessionInstance) {
 				have, hasIcon := instance.Session().BuddyIcon()
 				assert.True(t, hasIcon)
 				want := wire.BARTID{
@@ -540,7 +623,7 @@ func TestBARTService_RetrieveItem(t *testing.T) {
 						Type: wire.BARTTypesBuddyIcon,
 						BARTInfo: wire.BARTInfo{
 							Flags: wire.BARTFlagsKnown,
-							Hash:  wire.GetClearIconHash(),
+							Hash:  wire.ClearIconHash(),
 						},
 					},
 				},
@@ -557,7 +640,7 @@ func TestBARTService_RetrieveItem(t *testing.T) {
 						Type: wire.BARTTypesBuddyIcon,
 						BARTInfo: wire.BARTInfo{
 							Flags: wire.BARTFlagsKnown,
-							Hash:  wire.GetClearIconHash(),
+							Hash:  wire.ClearIconHash(),
 						},
 					},
 					Data: blankGIF,
@@ -896,7 +979,7 @@ func TestBARTService_RetrieveItemV2(t *testing.T) {
 							Type: wire.BARTTypesBuddyIcon,
 							BARTInfo: wire.BARTInfo{
 								Flags: wire.BARTFlagsKnown,
-								Hash:  wire.GetClearIconHash(),
+								Hash:  wire.ClearIconHash(),
 							},
 						},
 					},
@@ -954,7 +1037,7 @@ func TestBARTService_RetrieveItemV2(t *testing.T) {
 								Type: wire.BARTTypesBuddyIcon,
 								BARTInfo: wire.BARTInfo{
 									Flags: wire.BARTFlagsKnown,
-									Hash:  wire.GetClearIconHash(),
+									Hash:  wire.ClearIconHash(),
 								},
 							},
 							Code: 0x00, // found
@@ -962,7 +1045,7 @@ func TestBARTService_RetrieveItemV2(t *testing.T) {
 								Type: wire.BARTTypesBuddyIcon,
 								BARTInfo: wire.BARTInfo{
 									Flags: wire.BARTFlagsKnown,
-									Hash:  wire.GetClearIconHash(),
+									Hash:  wire.ClearIconHash(),
 								},
 							},
 						},
@@ -989,5 +1072,88 @@ func TestBARTService_RetrieveItemV2(t *testing.T) {
 			assert.ErrorIs(t, err, tc.expectErr)
 			assert.Equal(t, output, tc.expectOutput)
 		})
+	}
+}
+
+func TestBARTService_RetrieveItem_BlankIcon(t *testing.T) {
+	storedItem := []byte("stored item")
+
+	tests := []struct {
+		name     string
+		bartID   wire.BARTID
+		wantData []byte
+	}{
+		{
+			name: "buddy icon with the clear icon hash gets the blank GIF",
+			bartID: wire.BARTID{
+				Type:     wire.BARTTypesBuddyIcon,
+				BARTInfo: wire.BARTInfo{Hash: wire.ClearIconHash()},
+			},
+			wantData: blankGIF,
+		},
+		{
+			name:     "buddy icon with the blank GIF hash gets the blank GIF",
+			bartID:   blankGIFBARTItem,
+			wantData: blankGIF,
+		},
+		{
+			name: "non-icon item with the clear icon hash comes from the BART store",
+			bartID: wire.BARTID{
+				Type:     wire.BARTTypesArriveSound,
+				BARTInfo: wire.BARTInfo{Hash: wire.ClearIconHash()},
+			},
+			wantData: storedItem,
+		},
+		{
+			name: "non-icon item with the blank GIF hash comes from the BART store",
+			bartID: wire.BARTID{
+				Type:     wire.BARTTypesArriveSound,
+				BARTInfo: wire.BARTInfo{Hash: blankGIFHash[:]},
+			},
+			wantData: storedItem,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			bartItemManager := newMockBARTItemManager(t)
+			if !bytes.Equal(tc.wantData, blankGIF) {
+				bartItemManager.EXPECT().
+					BARTItem(matchContext(), tc.bartID.Hash).
+					Return(storedItem, nil).
+					Twice()
+			}
+			svc := NewBARTService(slog.Default(), bartItemManager, nil, nil, nil)
+
+			output, err := svc.RetrieveItem(context.Background(), wire.SNACFrame{RequestID: 1234}, wire.SNAC_0x10_0x04_BARTDownloadQuery{
+				ScreenName: "user",
+				BARTID:     tc.bartID,
+			})
+			assert.NoError(t, err)
+			assert.Equal(t, tc.wantData, output.Body.(wire.SNAC_0x10_0x05_BARTDownloadReply).Data)
+
+			outputs, err := svc.RetrieveItemV2(context.Background(), wire.SNACFrame{RequestID: 1234}, wire.SNAC_0x10_0x06_BARTDownload2Query{
+				ScreenName: "user",
+				IDs:        []wire.BARTID{tc.bartID},
+			})
+			assert.NoError(t, err)
+			assert.Len(t, outputs, 1)
+			assert.Equal(t, tc.wantData, outputs[0].Body.(wire.SNAC_0x10_0x07_BARTDownload2Reply).Data)
+		})
+	}
+}
+
+func TestBlankGIF(t *testing.T) {
+	assert.Len(t, blankGIF, 90)
+
+	img, err := gif.Decode(bytes.NewReader(blankGIF))
+	assert.NoError(t, err)
+
+	paletted, ok := img.(*image.Paletted)
+	assert.True(t, ok)
+	assert.Equal(t, image.Rect(0, 0, 44, 44), paletted.Bounds())
+	_, _, _, a := paletted.Palette[0].RGBA()
+	assert.Zero(t, a)
+	for _, px := range paletted.Pix {
+		assert.Zero(t, px)
 	}
 }
