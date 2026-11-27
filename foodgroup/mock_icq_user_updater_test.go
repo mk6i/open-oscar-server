@@ -551,6 +551,69 @@ func (_c *mockICQUserUpdater_SetUserNotes_Call) RunAndReturn(run func(ctx contex
 	return _c
 }
 
+// SetUserPassword provides a mock function for the type mockICQUserUpdater
+func (_mock *mockICQUserUpdater) SetUserPassword(ctx context.Context, screenName state.IdentScreenName, newPassword string) error {
+	ret := _mock.Called(ctx, screenName, newPassword)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetUserPassword")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, state.IdentScreenName, string) error); ok {
+		r0 = returnFunc(ctx, screenName, newPassword)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// mockICQUserUpdater_SetUserPassword_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetUserPassword'
+type mockICQUserUpdater_SetUserPassword_Call struct {
+	*mock.Call
+}
+
+// SetUserPassword is a helper method to define mock.On call
+//   - ctx context.Context
+//   - screenName state.IdentScreenName
+//   - newPassword string
+func (_e *mockICQUserUpdater_Expecter) SetUserPassword(ctx any, screenName any, newPassword any) *mockICQUserUpdater_SetUserPassword_Call {
+	return &mockICQUserUpdater_SetUserPassword_Call{Call: _e.mock.On("SetUserPassword", ctx, screenName, newPassword)}
+}
+
+func (_c *mockICQUserUpdater_SetUserPassword_Call) Run(run func(ctx context.Context, screenName state.IdentScreenName, newPassword string)) *mockICQUserUpdater_SetUserPassword_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 state.IdentScreenName
+		if args[1] != nil {
+			arg1 = args[1].(state.IdentScreenName)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *mockICQUserUpdater_SetUserPassword_Call) Return(err error) *mockICQUserUpdater_SetUserPassword_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *mockICQUserUpdater_SetUserPassword_Call) RunAndReturn(run func(ctx context.Context, screenName state.IdentScreenName, newPassword string) error) *mockICQUserUpdater_SetUserPassword_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // SetWorkInfo provides a mock function for the type mockICQUserUpdater
 func (_mock *mockICQUserUpdater) SetWorkInfo(ctx context.Context, name state.IdentScreenName, data state.ICQWorkInfo) error {
 	ret := _mock.Called(ctx, name, data)

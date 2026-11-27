@@ -6510,3 +6510,68 @@ func TestICQService_XMLReqData(t *testing.T) {
 		})
 	}
 }
+
+func TestICQService_SetPassword(t *testing.T) {
+	ackFor := func(status uint8) wire.SNACMessage {
+		return wire.SNACMessage{
+			Frame: wire.SNACFrame{
+				FoodGroup: wire.ICQ,
+				SubGroup:  wire.ICQDBReply,
+				RequestID: 1234,
+			},
+			Body: wire.SNAC_0x15_0x02_DBReply{
+				TLVRestBlock: wire.TLVRestBlock{
+					TLVList: wire.TLVList{
+						wire.NewTLVBE(wire.ICQTLVTagsMetadata, wire.ICQMessageReplyEnvelope{
+							Message: wire.ICQ_0x07DA_0x00DC_DBQueryMetaReplyMoreInfo{
+								ICQMetadata: wire.ICQMetadata{
+									UIN:     100003,
+									ReqType: wire.ICQDBQueryMetaReply,
+									Seq:     1,
+								},
+								ReqSubType: wire.ICQDBQueryMetaReplySetPassword,
+								Success:    status,
+							},
+						}),
+					},
+				},
+			},
+		}
+	}
+
+	tests := []struct {
+		name       string
+		password   string
+		storeErr   error
+		wantStatus uint8
+		wantErr    error
+	}{
+		{name: "password changed", password: "newpass1", wantStatus: wire.ICQStatusCodeOK},
+		{name: "invalid password length", password: "123", storeErr: state.ErrPasswordInvalid, wantStatus: wire.ICQStatusCodeFail},
+		{name: "runtime error", password: "newpass1", storeErr: io.EOF, wantErr: io.EOF},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			instance := newTestInstance("100003", sessOptUIN(100003))
+
+			userUpdater := newMockICQUserUpdater(t)
+			userUpdater.EXPECT().
+				SetUserPassword(matchContext(), state.NewIdentScreenName("100003"), tt.password).
+				Return(tt.storeErr)
+
+			messageRelayer := newMockMessageRelayer(t)
+			if tt.wantErr == nil {
+				messageRelayer.EXPECT().RelayToScreenName(mock.Anything, state.NewIdentScreenName("100003"), ackFor(tt.wantStatus))
+			}
+
+			s := ICQService{
+				userUpdater:    userUpdater,
+				messageRelayer: messageRelayer,
+				logger:         slog.Default(),
+			}
+			err := s.SetPassword(context.Background(), instance, wire.SNACFrame{RequestID: 1234},
+				wire.ICQ_0x07D0_0x042E_DBQueryMetaReqSetPassword{Password: tt.password}, 1)
+			assert.ErrorIs(t, err, tt.wantErr)
+		})
+	}
+}

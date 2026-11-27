@@ -926,6 +926,20 @@ func (s *ICQService) SetPermissions(ctx context.Context, instance *state.Session
 	return s.reqAck(ctx, instance, seq, wire.ICQDBQueryMetaReplySetPermissions, inFrame.RequestID)
 }
 
+// SetPassword changes the current user's password (META 0x042E), as sent by
+// ICQ 2000-era clients such as QIP 2005 from their "Change Password" dialog.
+func (s *ICQService) SetPassword(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x042E_DBQueryMetaReqSetPassword, seq uint16) error {
+	status := wire.ICQStatusCodeOK
+	if err := s.userUpdater.SetUserPassword(ctx, instance.IdentScreenName(), inBody.Password); err != nil {
+		if !errors.Is(err, state.ErrPasswordInvalid) {
+			return err
+		}
+		s.logger.InfoContext(ctx, "ICQ set password rejected", "uin", instance.UIN(), "err", err)
+		status = wire.ICQStatusCodeFail
+	}
+	return s.reqAckStatus(ctx, instance, seq, wire.ICQDBQueryMetaReplySetPassword, inFrame.RequestID, status)
+}
+
 func (s *ICQService) SetUserNotes(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x0406_DBQueryMetaReqSetNotes, seq uint16) error {
 	u := state.ICQUserNotes{
 		Notes: inBody.Notes,
@@ -1361,6 +1375,10 @@ func (s *ICQService) reportNoSearchResults(ctx context.Context, instance *state.
 }
 
 func (s *ICQService) reqAck(ctx context.Context, instance *state.SessionInstance, seq uint16, subType uint16, requestID uint32) error {
+	return s.reqAckStatus(ctx, instance, seq, subType, requestID, wire.ICQStatusCodeOK)
+}
+
+func (s *ICQService) reqAckStatus(ctx context.Context, instance *state.SessionInstance, seq uint16, subType uint16, requestID uint32, status uint8) error {
 	msg := wire.ICQMessageReplyEnvelope{
 		Message: wire.ICQ_0x07DA_0x00DC_DBQueryMetaReplyMoreInfo{
 			ICQMetadata: wire.ICQMetadata{
@@ -1369,7 +1387,7 @@ func (s *ICQService) reqAck(ctx context.Context, instance *state.SessionInstance
 				Seq:     seq,
 			},
 			ReqSubType: subType,
-			Success:    wire.ICQStatusCodeOK,
+			Success:    status,
 		},
 	}
 

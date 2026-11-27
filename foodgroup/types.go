@@ -320,6 +320,9 @@ type ICQUserUpdater interface {
 
 	// SetICQInfo updates all ICQ profile columns for the user in one operation.
 	SetICQInfo(ctx context.Context, name state.IdentScreenName, info state.ICQInfo) error
+
+	// SetUserPassword sets the user's password hashes and auth key.
+	SetUserPassword(ctx context.Context, screenName state.IdentScreenName, newPassword string) error
 }
 
 // MessageRelayer defines methods for delivering SNAC messages to one or more

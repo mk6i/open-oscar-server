@@ -2173,6 +2173,7 @@ const (
 	ICQDBQueryMetaReqSetInterests      uint16 = 0x0410
 	ICQDBQueryMetaReqSetAffiliations   uint16 = 0x041A
 	ICQDBQueryMetaReqSetPermissions    uint16 = 0x0424
+	ICQDBQueryMetaReqSetPassword       uint16 = 0x042E
 	ICQDBQueryMetaReqSetICQPhone       uint16 = 0x0654
 	ICQDBQueryMetaReqSetFullInfo       uint16 = 0x0C3A
 	ICQDBQueryMetaReqShortInfo         uint16 = 0x04BA
@@ -2208,6 +2209,7 @@ const (
 	ICQDBQueryMetaReplySetInterests    uint16 = 0x008C
 	ICQDBQueryMetaReplySetAffiliations uint16 = 0x0096
 	ICQDBQueryMetaReplySetPermissions  uint16 = 0x00A0
+	ICQDBQueryMetaReplySetPassword     uint16 = 0x00AA
 	ICQDBQueryMetaReplySetICQPhone     uint16 = 0x031E
 	ICQDBQueryMetaReplySetFullInfo     uint16 = 0x0C3F
 	ICQDBQueryMetaReplyBasicInfo       uint16 = 0x00C8
@@ -2234,6 +2236,12 @@ type ICQ_0x07D0_0x04BA_DBQueryMetaReqShortInfo struct {
 
 type ICQ_0x07D0_0x0898_DBQueryMetaReqXMLReq struct {
 	XMLRequest string `oscar:"len_prefix=uint16,nullterm"`
+}
+
+// ICQ_0x07D0_0x042E_DBQueryMetaReqSetPassword represents a request to change
+// the current user's password (CLI_META_SET_PASSWORD).
+type ICQ_0x07D0_0x042E_DBQueryMetaReqSetPassword struct {
+	Password string `oscar:"len_prefix=uint16,nullterm"`
 }
 
 type ICQ_0x07D0_0x0424_DBQueryMetaReqSetPermissions struct {
