@@ -1380,6 +1380,81 @@ func (_c *mockICQService_SetMoreInfo_Call) RunAndReturn(run func(ctx context.Con
 	return _c
 }
 
+// SetPassword provides a mock function for the type mockICQService
+func (_mock *mockICQService) SetPassword(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x042E_DBQueryMetaReqSetPassword, seq uint16) error {
+	ret := _mock.Called(ctx, instance, inFrame, inBody, seq)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetPassword")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *state.SessionInstance, wire.SNACFrame, wire.ICQ_0x07D0_0x042E_DBQueryMetaReqSetPassword, uint16) error); ok {
+		r0 = returnFunc(ctx, instance, inFrame, inBody, seq)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// mockICQService_SetPassword_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetPassword'
+type mockICQService_SetPassword_Call struct {
+	*mock.Call
+}
+
+// SetPassword is a helper method to define mock.On call
+//   - ctx context.Context
+//   - instance *state.SessionInstance
+//   - inFrame wire.SNACFrame
+//   - inBody wire.ICQ_0x07D0_0x042E_DBQueryMetaReqSetPassword
+//   - seq uint16
+func (_e *mockICQService_Expecter) SetPassword(ctx any, instance any, inFrame any, inBody any, seq any) *mockICQService_SetPassword_Call {
+	return &mockICQService_SetPassword_Call{Call: _e.mock.On("SetPassword", ctx, instance, inFrame, inBody, seq)}
+}
+
+func (_c *mockICQService_SetPassword_Call) Run(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x042E_DBQueryMetaReqSetPassword, seq uint16)) *mockICQService_SetPassword_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 *state.SessionInstance
+		if args[1] != nil {
+			arg1 = args[1].(*state.SessionInstance)
+		}
+		var arg2 wire.SNACFrame
+		if args[2] != nil {
+			arg2 = args[2].(wire.SNACFrame)
+		}
+		var arg3 wire.ICQ_0x07D0_0x042E_DBQueryMetaReqSetPassword
+		if args[3] != nil {
+			arg3 = args[3].(wire.ICQ_0x07D0_0x042E_DBQueryMetaReqSetPassword)
+		}
+		var arg4 uint16
+		if args[4] != nil {
+			arg4 = args[4].(uint16)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *mockICQService_SetPassword_Call) Return(err error) *mockICQService_SetPassword_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *mockICQService_SetPassword_Call) RunAndReturn(run func(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x042E_DBQueryMetaReqSetPassword, seq uint16) error) *mockICQService_SetPassword_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // SetPermissions provides a mock function for the type mockICQService
 func (_mock *mockICQService) SetPermissions(ctx context.Context, instance *state.SessionInstance, inFrame wire.SNACFrame, inBody wire.ICQ_0x07D0_0x0424_DBQueryMetaReqSetPermissions, seq uint16) error {
 	ret := _mock.Called(ctx, instance, inFrame, inBody, seq)

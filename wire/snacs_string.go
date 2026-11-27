@@ -359,6 +359,7 @@ var icqDBQueryMeta = map[uint16]string{
 	ICQDBQueryMetaReqSetInterests:      "ICQDBQueryMetaReqSetInterests",
 	ICQDBQueryMetaReqSetAffiliations:   "ICQDBQueryMetaReqSetAffiliations",
 	ICQDBQueryMetaReqSetPermissions:    "ICQDBQueryMetaReqSetPermissions",
+	ICQDBQueryMetaReqSetPassword:       "ICQDBQueryMetaReqSetPassword",
 	ICQDBQueryMetaReqSetICQPhone:       "ICQDBQueryMetaReqSetICQPhone",
 	ICQDBQueryMetaReqSetFullInfo:       "ICQDBQueryMetaReqSetFullInfo",
 	ICQDBQueryMetaReqShortInfo:         "ICQDBQueryMetaReqShortInfo",

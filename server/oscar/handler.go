@@ -573,6 +573,14 @@ func (rt Handler) ICQDBQuery(ctx context.Context, instance *state.SessionInstanc
 			if err := rt.SetPermissions(ctx, instance, inFrame, req, icqMD.Seq); err != nil {
 				return err
 			}
+		case wire.ICQDBQueryMetaReqSetPassword:
+			req := wire.ICQ_0x07D0_0x042E_DBQueryMetaReqSetPassword{}
+			if err := wire.UnmarshalLE(&req, buf); err != nil {
+				return err
+			}
+			if err := rt.SetPassword(ctx, instance, inFrame, req, icqMD.Seq); err != nil {
+				return err
+			}
 		case wire.ICQDBQueryMetaReqSetICQPhone:
 			req := wire.ICQ_0x07D0_0x0654_DBQueryMetaReqSetICQPhone{}
 			if err := wire.UnmarshalLE(&req, buf); err != nil {
